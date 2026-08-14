@@ -1,7 +1,6 @@
 # M0 spike — adapter/container SPI grid
 
-Status: **2 of 3 points done** (plain JVM + Logback; WildFly + JBoss LogManager).
-Spring Boot + Logback not yet run.
+Status: **3 of 3 points done.** All three grid points complete.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §17 (roadmap, M0 row),
 §13 open question 1 ("is render-stage wrapping durable?"), §15.1 (the two orthogonal
@@ -98,13 +97,76 @@ Genuinely testing §4.4's "no assumption of exactly one logging context" claim n
 deployed application, which this point deliberately didn't include (kept minimal to
 isolate the container-boot question first). Flag this as a real gap, not a covered case.
 
-## Point 3: Spring Boot + Logback — NOT STARTED
+## Point 3: Spring Boot + Logback — DONE
 
-Needed: confirm the *same* Logback adapter code from point 1 works unmodified inside a
-Spring Boot fat jar's `LaunchedURLClassLoader` (§4.4) — this point exists specifically to
-separate adapter-behavior concerns (already validated in point 1) from
-container-discovery-and-classloader concerns (§15.1), so it should be a much smaller
-delta than point 2 if the module split is right.
+**Question answered:** does the same class of operation work when Logback is loaded
+inside a Spring Boot fat jar's own classloader (`LaunchedClassLoader`, the JDK 17 line's
+name for what §4.4 calls `LaunchedURLClassLoader`) rather than the system classloader —
+and does an agent with **zero compile-time dependency on Logback or SLF4J** manage to
+reach across that boundary at all?
+
+**Result: yes, but only after finding and fixing a real timing bug along the way** — the
+most valuable outcome of this point, and worth walking through rather than just stating.
+
+| Operation | Approach | Result |
+|---|---|---|
+| Enumerate contexts | `Instrumentation.getAllLoadedClasses()` to find `ch.qos.logback.classic.LoggerContext` once loaded, then pure reflection (`LogManager.getLoggerNames()`-equivalent via `getLoggerList()`) | Worked once binding was correctly detected (see below). |
+| Set a level | `Logger.setLevel(Level)` via reflection, `Level.DEBUG` obtained via `Class.getField("DEBUG").get(null)` on a `Level` class loaded through the app's own classloader | Worked, including on a logger the app hadn't created yet, same as points 1 and 2. |
+| Install a gate-stage filter | A `TurboFilter` subclass, compiled separately against Logback as `provided`-scope, loaded via a **child `URLClassLoader` parented on the app's own classloader** so its superclass resolves to the exact same `TurboFilter` Class object the app's `LoggerContext` expects | Worked — `TurboFilter` is an abstract class, not an interface, so a JDK dynamic `Proxy` can't stand in for it; parenting a loader on the target classloader is the actual mechanism, not a shortcut. |
+| Wrap a render-stage encoder | JDK dynamic `Proxy` implementing `ch.qos.logback.core.encoder.Encoder` (an interface, so `Proxy` applies directly), `InvocationHandler` delegating every method to the original encoder via reflection except `encode()` | Worked, and confirms the render-stage wrap doesn't need the child-classloader trick when the type being replaced is an interface — only abstract classes need it. |
+
+**The real finding: detecting "the framework is ready" is harder than it looks, and
+getting it wrong fails silently.** First attempt used class-load detection
+(`getAllLoadedClasses()` seeing `LoggerContext`) as the readiness signal, exactly as point
+2 did for JBoss LogManager. It compiled, ran, and threw no exception — and every single
+operation was silently undone within a few seconds, because:
+
+1. **The class being loaded is not the same signal as SLF4J having bound to it.** The
+   first run's `LoggerFactory.getILoggerFactory()` call returned
+   `org.slf4j.helpers.SubstituteLoggerFactory` — SLF4J 2.x's placeholder that queues calls
+   during its own init window — not the real `LoggerContext`, even though the
+   `LoggerContext` class was already loaded and visible to `getAllLoadedClasses()`. Fixed
+   by polling the actual return value of `getILoggerFactory()` until it's an `instanceof`
+   the discovered `LoggerContext` class, not just checking whether the class exists.
+2. **Even after SLF4J is genuinely bound, Spring Boot's own `LoggingSystem` hasn't
+   necessarily finished configuring it.** With only the fix above, every operation
+   *appeared* to succeed (no exceptions, correct log output at the moment of the call) —
+   and then silently reverted: `worker.setLevel(DEBUG)` read back as `null` two seconds
+   later, the wrapped appender was a completely different object instance, the installed
+   `TurboFilter` stopped denying anything. Spring Boot's `LoggingSystem` resets and
+   reconfigures the `LoggerContext` (new appenders, cleared levels) as part of its own
+   bootstrap, and that reset happens **after** SLF4J's first binding, not before. A fixed
+   3-second wait after binding was enough to land after that reset in this setup, and
+   every operation then held steady for the full 10-second recheck window — level stayed
+   `DEBUG`, the filter's deny count climbed by 2 every 2 seconds (matching the app's
+   1-second tick), the appender instance and the wrapped encoder both stayed put, and the
+   actual log output showed `[WRAPPED]` prefixes and suppressed `Noisy` lines from that
+   point on.
+
+**This is not a Spring-Boot-specific curiosity — it's the general case §6.5 already names,
+demonstrated concretely.** A fixed delay is not an acceptable answer for the real product;
+it's a coin flip against however long a given container's startup happens to take on a
+given machine. The correct architecture, already implied by §6.5's "register for
+reconfiguration events... on reconfiguration: re-capture baseline, re-install filters and
+wrapped encoders, re-apply live overrides. Be idempotent," is to **treat every install as
+provisional until a `LoggerContextListener` confirms the context has stabilized**, and
+react to every subsequent reset the same way, rather than trying to find a safe moment to
+install once. This point makes that requirement concrete rather than theoretical — for at
+least one real, popular container, the reset is not a rare edge case, it is the default
+sequence of events on every single boot.
+
+**Bearing on §4.4 (classloader model):** the zero-compile-dependency approach works, and
+the two techniques needed — reflection for concrete calls, a child classloader parented on
+the target for subclassing an abstract framework type, `Proxy` for interfaces — are exactly
+the toolkit §4.4's "per-context adapter instances, holding reflective or direct references
+into the classloader that owns the framework classes" describes. Confirmed concretely
+rather than assumed.
+
+**Bearing on §13 open question 1:** third data point, same encoder/formatter-wrapping
+conclusion as points 1 and 2 — durable, public-API-only, no instrumentation — *once
+installed after the framework has actually settled*. All three points now agree on the
+mechanism; none of them yet cover a version other than the one tested, or a live
+`:reload`/redeploy after the initial boot has fully completed.
 
 ## Harness
 
@@ -138,8 +200,52 @@ instead and break WildFly's own logging bootstrap. Any real adapter-install/fram
 detection logic (§4.1) for this container needs the same discipline — detect readiness
 via a side channel first, never via the API you're about to take over.
 
-## Next step
+**Point 3**, reproducible from this doc: three small Maven modules. (a) A Spring Boot 3.3.4
+fat jar (`spring-boot-starter` only, JDK 17) with a `CommandLineRunner` that ticks once a
+second for 20s logging at `spike.demo.Worker` (INFO+DEBUG) and `spike.demo.Noisy` (INFO),
+then exits. (b) A one-class adapter jar, compiled with `logback-classic` as `provided`
+scope only, containing the `TurboFilter` subclass. (c) The agent — zero compile-time
+dependency on Logback/SLF4J, `Premain-Class` pointing at a class whose `premain` spawns a
+daemon thread that polls `Instrumentation.getAllLoadedClasses()` for
+`ch.qos.logback.classic.LoggerContext`, then polls `LoggerFactory.getILoggerFactory()`
+until it's actually an instance of that class (not the SLF4J substitute), waits 3s more,
+then runs all four operations via reflection plus the child-classloader/`Proxy` techniques
+described above, then rechecks every 2s for 10s. Launched as
+`java -javaagent:agent.jar=/path/to/adapter.jar -jar app.jar`.
 
-Point 3 (Spring Boot + Logback) — expected to be the smallest delta of the three, since
-it reuses the same Logback adapter code validated in point 1 and mainly exercises the
-classloader/discovery axis (§15.1) rather than new adapter mechanics.
+## M0 conclusion
+
+All three grid points pass their exit criteria (§17): plain JVM + Logback, WildFly +
+JBoss LogManager, and Spring Boot + Logback all support enumerate/set-level/gate-filter/
+render-wrap through public APIs alone, no bytecode instrumentation required anywhere, and
+WildFly boots cleanly with the agent attached. That's the M0 exit criterion, satisfied.
+
+The three points did **not** produce the same finding, and that's the actual value of
+running all three rather than stopping at one:
+
+- Point 1 (plain JVM) found the mechanism sound with nothing to complicate it — the
+  simplest case, deliberately.
+- Point 2 (WildFly) found a **second, independent gate** (handler-level thresholds) that
+  the level-control model needs to account for, and confirmed no reset problem in that
+  container over a 12s window.
+- Point 3 (Spring Boot) found the opposite of point 2's stability result: a **reliable
+  reset-after-install** race that a fixed delay works around in testing but that no fixed
+  delay can be trusted to work around in production, on arbitrary hardware and arbitrary
+  application startup work.
+
+That divergence is itself the headline finding for M1 planning: **reconfiguration
+re-application (§6.5) is not an edge case reserved for `logctl reload` or a rare config
+hot-swap — it is the ordinary sequence of events on a default Spring Boot boot.** Layer 0
+(§17) needs a `LoggerContextListener`-driven re-apply path from the start, not as a
+later hardening pass, for at least the Logback adapter. Whether the same is true for
+JBoss LogManager's boot sequence under other WildFly configurations, or for Log4j 2's
+`ConfigurationListener` path, is still open — this spike only found the Spring Boot case
+because point 3 happened to go looking for it.
+
+**Recommended next step:** fold the reset-detection requirement into
+[`doc/specs/level-control.md`](../specs/level-control.md) before implementation starts —
+specifically, baseline capture and override re-application need to be triggered from a
+`LoggerContextListener`, not from a one-time install routine, even in the M1 slice that
+is otherwise scoped to the `none` container only. A "no reconfiguration ever happens"
+assumption, which the current spec's semantics section is close to making, does not
+survive contact with the Spring Boot case found here.
