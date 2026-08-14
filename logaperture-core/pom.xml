@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ - Copyright 2026 David Deuchert
+ -
+ - Licensed under the Apache License, Version 2.0 (the "License");
+ - you may not use this file except in compliance with the License.
+ - You may obtain a copy of the License at
+ -
+ -     http://www.apache.org/licenses/LICENSE-2.0
+ -
+ - Unless required by applicable law or agreed to in writing, software
+ - distributed under the License is distributed on an "AS IS" BASIS,
+ - WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ - See the License for the specific language governing permissions and
+ - limitations under the License.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.logaperture</groupId>
+    <artifactId>logaperture-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>logaperture-core</artifactId>
+
+  <description>
+    Rule engine, matcher compilation, state store, config parsing —
+    framework- and agent-agnostic. See doc/logaperture-spec.md §4.6.
+  </description>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-api</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!--
+        core must never depend on agent (doc/logaperture-spec.md §4.6): the
+        agent is one delivery mechanism for the engine, not the engine
+        itself. This is the build-time assertion of that constraint —
+        fails the reactor if that dependency direction is ever introduced,
+        even accidentally via a convenience import.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>core-must-not-depend-on-agent</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes>
+                    <exclude>org.logaperture:logaperture-agent</exclude>
+                  </excludes>
+                  <message>
+                    logaperture-core must never depend on logaperture-agent.
+                    See doc/logaperture-spec.md §4.6: "core never depends on
+                    agent"—the agent is one delivery mechanism for the
+                    engine, not the engine itself.
+                  </message>
+                </bannedDependencies>
+              </rules>
+              <fail>true</fail>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
