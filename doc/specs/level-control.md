@@ -98,6 +98,22 @@ hatch operators need before this tool is trusted with anything sharper.
 - **Idempotency.** Calling `setLevel` twice on the same logger updates the existing
   override (new value, new `reason`) rather than creating a second one — one override
   per logger name, always.
+- **Override application must be re-appliable, not a one-time install.** The `none`
+  container has no reconfiguration event to defend against in this slice — confirmed
+  empirically, not just assumed: the M0 spike's point 1 (plain JVM + Logback) never
+  observed one, because nothing in a bare `java -jar` process re-initializes Logback after
+  startup the way a container's own logging system can (see
+  [`doc/spikes/m0-adapter-grid.md`](../spikes/m0-adapter-grid.md)). So this slice does
+  **not** need to wire up a reset listener. But `core`'s override tracking should still
+  model "apply this `LevelOverride` to the current adapter" as an operation that's safe to
+  invoke more than once — not folded into a single install step — so that a later
+  container slice (Spring Boot, WildFly) can drive re-application from Logback's
+  `LoggerContextListener` (§4.3, §15.5, §15.7) without redesigning the override model
+  itself. This isn't hypothetical hardening: the M0 spike's point 3 found Spring Boot's
+  `LoggingSystem` silently resetting the whole `LoggerContext` — installed levels
+  included — shortly after boot, with no exception, exactly the scenario §15.7 already
+  named. `none` is safe from it today; the data model shouldn't make it expensive to
+  handle later.
 
 ## Data model
 
@@ -125,6 +141,14 @@ Lives in `logaperture-api` (§4.6) — the public rule/level model, usable stand
 without the agent. `Level` is LogAperture's own small enum (`TRACE`..`OFF`), not
 Logback's, so `logaperture-api` stays framework-independent; the Logback adapter maps
 between the two.
+
+`LevelOverride` is pure state, deliberately — it describes an override, it isn't an
+install action. The Logback adapter's job is to apply a `LevelOverride` to the current
+`LoggerContext` reference on demand; `core` should be able to call that "apply" step
+again for the same `LevelOverride` without caring whether it's the first time or a
+re-application after the adapter detected a reset. This slice never exercises the
+second case (see the re-appliability note above), but the split keeps it cheap to add
+later instead of requiring a rework of this type.
 
 ## Module scope for this slice
 
