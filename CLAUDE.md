@@ -53,3 +53,20 @@ Every source file must carry a copyright header, using the Apache License
   later year gets that year instead.
 - Copyright holder is `David Deuchert`.
 - Package root is `org.logaperture` (project domain: logaperture.org).
+
+### Spikes still branch and merge, but the deliverable is a doc
+
+A spike (e.g. the M0 architecture spike in `doc/logaperture-spec.md` §17) is exploratory
+work with no committed spec and no shippable code as its goal — it exists to answer an
+open question before a spec can be written responsibly. It still uses a normal gitflow
+feature branch and still merges to `develop` like anything else; it does not get its own
+branch taxonomy.
+
+What differs is the deliverable:
+
+- The thing that lands on `develop` is a **written findings doc** — what was learned, and
+  which open question(s) it answers (link back to the spec section that raised them).
+- The exploratory code used to reach those findings is **not required to be committed**.
+  Discard it once the findings are written up, unless a piece of it is genuinely worth
+  keeping — in which case it graduates into a real feature branch, built against a spec,
+  same as any other code.
