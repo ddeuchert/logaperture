@@ -42,7 +42,16 @@ The shared core — adapters, matchers, level control with *enforced* expiry, ga
 - **Make every diagnostic change self-reverting.** Expiry is not a convenience feature; it is the mechanism that makes it safe to hand this tool to someone on a customer site.
 - Zero application code change; zero build change. Agent only.
 - Never mutate any configuration file the container or application owns (§15.10).
-- Support both `premain` (`-javaagent:`) and `agentmain` (dynamic attach) entry points.
+- **`premain` (`-javaagent:`) is the primary entry point**, and the one every guarantee in
+  this document is validated against. `agentmain` (dynamic attach to an already-running
+  JVM) is a secondary, best-effort entry point — worth supporting where it costs nothing
+  extra, not a design driver, and not assumed to have equal fidelity. §4.1 explains why:
+  much of what the agent needs to do reliably depends on hooking a class *as it first
+  loads*, which `agentmain` typically cannot offer, since by the time you attach to a
+  running JVM the target framework classes are usually already loaded. Nothing in the
+  architecture should foreclose improving `agentmain` support later — it just isn't where
+  v1's effort goes. (JDK 21+ also warns on dynamic agent loading by default, JEP 451 —
+  see §8.1 — an independent reason not to lean on it as primary.)
 - Support Logback, Log4j 2.x, `java.util.logging`, and Log4j 1.x, behind one uniform model.
 - Fail open. A malfunctioning agent must degrade to "normal logging", never to "no logging" or "crashed JVM".
 - Negligible overhead on the logging hot path (see §10 for a budget).
@@ -119,11 +128,14 @@ The instinct with a javaagent is to instrument everything. Resist it. Both major
 **Instrumentation should be reserved for:**
 
 - Detecting *when* the logging framework has been loaded, across arbitrary classloaders, so adapters can install at the right moment.
-- Frameworks or versions with no adequate extension point.
-- Re-installing after the framework reconfigures itself and discards our hooks.
+- Frameworks or versions with no adequate extension point — this also covers re-establishing hooks after a reconfiguration event, for the frameworks that expose no reconfiguration listener at all (JUL, Log4j 1 — §4.3, §15.5). Logback and Log4j 2 both ship a public listener for exactly this case, and that's public-API territory, not instrumentation — see below.
 - Optional interception of `Throwable.printStackTrace()` and similar direct-to-stderr paths.
 
 Everything else — filters, appender wrapping, encoder/layout delegation — uses public API. Budget the maintenance cost accordingly: an instrumentation-heavy design means a per-version test matrix that will dominate the project's effort.
+
+**Two different things both get called "instrumentation," and they have very different reliability profiles.** Hooking a class *as it first loads* — a `ClassFileTransformer` registered before the target class is ever defined — is reliable and well-trodden; it's how "detect when a framework has loaded" above actually works. **Retransforming a class that's already loaded is a different, much less reliable operation in practice**, independent of what the JVMTI spec formally permits: it's restricted to method-body-only changes (no new fields or methods, no signature or hierarchy changes), and even within that narrow lane, lambdas, anonymous/synthetic classes, and JIT-deoptimization interactions are long-documented sources of failure across JVM vendors and versions — the reason dedicated hot-reload tools (JRebel, HotswapAgent) build their own reload machinery rather than trust raw class redefinition for anything beyond the trivial case. **Treat class-load-time hooks as reliable and load-bearing; treat retransformation of an already-loaded class as a last resort, not a design pillar.**
+
+This is the concrete reason `agentmain` is a secondary entry point in §2's goals rather than an equal partner to `premain`: `premain` runs before the target frameworks load, so its hooks are the reliable, class-load-time kind. `agentmain` attaches to a JVM where those classes are typically already loaded, which pushes anything instrumentation-dependent into the fragile retransform case. That's a reason to make `premain` the one every guarantee is validated against — not a reason `agentmain` can never be supported.
 
 ### 4.2 Two-stage pipeline
 
@@ -144,7 +156,7 @@ Some actions are *decided* at gate stage but *applied* at render stage. Carry th
 | Level read/write | `LoggerContext.getLogger().setLevel()` | `Configurator.setLevel()` | `Logger.setLevel()` | `Logger.setLevel()` |
 | Gate stage | `TurboFilter` (context-wide) | context-wide `Filter` | `Logger.setFilter()` / handler filter | appender `Filter` |
 | Render stage | wrap `Encoder` on each appender; wrap `ILoggingEvent` to return trimmed `IThrowableProxy` | wrap `Layout`, or `RewriteAppender`/`RewritePolicy`; rebuild via `Log4jLogEvent.Builder` | wrap `Formatter` on each handler | wrap `Layout` |
-| Reconfiguration hook | `LoggerContextListener` | `ConfigurationListener` / `PropertyChangeListener` | none — poll or instrument `LogManager.readConfiguration` | none — poll |
+| Reconfiguration hook | `LoggerContextListener` | `ConfigurationListener` / `PropertyChangeListener` | none — poll (see §4.1: `LogManager` is typically already loaded before any agent attaches, so a reliable class-load-time hook usually isn't even available) | none — poll |
 | Multiple contexts | one `LoggerContext` per classloader via `ContextSelector` | same | single global `LogManager` | one hierarchy per classloader |
 
 Note that `ILoggingEvent` and `LogEvent` are both interfaces, which makes render-stage wrapping tractable without bytecode work.

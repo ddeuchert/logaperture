@@ -233,19 +233,40 @@ running all three rather than stopping at one:
   delay can be trusted to work around in production, on arbitrary hardware and arbitrary
   application startup work.
 
-That divergence is itself the headline finding for M1 planning: **reconfiguration
-re-application (§6.5) is not an edge case reserved for `logctl reload` or a rare config
-hot-swap — it is the ordinary sequence of events on a default Spring Boot boot.** Layer 0
-(§17) needs a `LoggerContextListener`-driven re-apply path from the start, not as a
-later hardening pass, for at least the Logback adapter. Whether the same is true for
-JBoss LogManager's boot sequence under other WildFly configurations, or for Log4j 2's
-`ConfigurationListener` path, is still open — this spike only found the Spring Boot case
-because point 3 happened to go looking for it.
+That divergence is itself the headline finding — but on rereading the top-level spec
+rather than treating it as new information, it turns out to **confirm** rather than
+overturn what §15.5 and §15.7 already say, not spring it as a surprise. §15.5 ("Assume the
+hooks will be discarded") already states the general invariant — "the agent must be able
+to re-establish its entire installed state, idempotently, at any moment, driven by either
+an event or a periodic verification sweep" — and §15.7 already names this exact case:
+"Spring Boot owns Logback... Hooks installed during `premain` will be discarded. Re-apply
+on the environment-prepared or context-refresh events, or fall back to the §15.5 sweep."
+This spike is the empirical confirmation of an already-written prediction, not a
+discovery of a gap. What it adds beyond the prediction: a measured shape for the race
+(SLF4J's `SubstituteLoggerFactory` window, then a further multi-second gap before
+`LoggingSystem` settles) and proof that a fixed delay is enough to dodge it in one
+concrete setup, which is useful for building a test but not a substitute for the
+event-driven re-apply §15.7 already calls for.
 
-**Recommended next step:** fold the reset-detection requirement into
-[`doc/specs/level-control.md`](../specs/level-control.md) before implementation starts —
-specifically, baseline capture and override re-application need to be triggered from a
-`LoggerContextListener`, not from a one-time install routine, even in the M1 slice that
-is otherwise scoped to the `none` container only. A "no reconfiguration ever happens"
-assumption, which the current spec's semantics section is close to making, does not
-survive contact with the Spring Boot case found here.
+**Where this belongs, revised:** §15.5/§15.7 are container-integration concerns
+(`logaperture-container-springboot`, per §4.6's module layout), which the roadmap places
+well after M1 (§17). [`doc/specs/level-control.md`](../specs/level-control.md)'s M1 slice
+explicitly scopes out Spring Boot, WildFly, and every container but `none` — so the
+reset-detection machinery does **not** need to be forced into that slice, and the earlier
+version of this conclusion was wrong to say so. The `none` container has no analogous
+reset event to defend against (point 1 never observed one, because nothing in a bare
+`java -jar` process re-initializes Logback after startup the way Spring Boot's
+`LoggingSystem` does). The right, narrower addition to `level-control.md` is a forward
+pointer: baseline capture and override state need to be re-appliable, not just
+appliable-once, so that a future `logaperture-container-springboot` slice can drive
+re-application from a `LoggerContextListener` without redesigning the core override
+model — a note for that spec's data model, not a requirement to build the listener path
+now.
+
+**One correction from the later premain/agentmain discussion (see `doc/logaperture-spec.md`
+§4.1):** the right mechanism for this, for Logback and Log4j 2, is each framework's public
+reconfiguration listener (`LoggerContextListener` / `ConfigurationListener`) — not
+instrumentation. Retransforming an already-loaded class is a fragile last resort per the
+updated §4.1, and isn't what's needed here regardless: both frameworks already expose a
+listener built for exactly this, so re-applying on reset is public-API work, consistent
+with §4.1's "extension points first."
