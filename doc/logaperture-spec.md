@@ -193,6 +193,8 @@ logaperture-it              integration test matrix
 
 ## 5. Feature 1 — Level control
 
+> Implementation spec for the first buildable slice: [`doc/specs/level-control.md`](specs/level-control.md).
+
 ### Operations
 
 - `listLoggers(filter)` → name, configured level, effective level, whether an override is active, override source and expiry.
