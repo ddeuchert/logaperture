@@ -1,0 +1,22 @@
+{
+  // Recommendations shown to anyone who opens this workspace (Extensions
+  // view -> "Recommended"). Kept minimal and specific to what this repo
+  // actually needs: a plain multi-module Maven reactor, JUnit 5 tests, no
+  // Spring/Jakarta EE surface.
+  "recommendations": [
+    // Language support, refactoring, navigation (Language Support for Java
+    // by Red Hat). Pulls in the Maven for Java and Debugger for Java
+    // extensions as dependencies, so they don't need to be listed here too.
+    "redhat.java",
+    // JUnit 5 test discovery/run/debug via CodeLens and the Test Explorer.
+    "vscjava.vscode-java-test",
+    // XML editing (pom.xml validation, formatting, outline).
+    "redhat.vscode-xml"
+  ],
+  // Extensions that overlap or fight with the above for this project.
+  "unwantedRecommendations": [
+    // Spring Boot tooling — none of the modules use Spring.
+    "vmware.vscode-spring-boot",
+    "vscjava.vscode-spring-initializr"
+  ]
+}

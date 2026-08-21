@@ -1,0 +1,46 @@
+{
+  // --- JDK ---
+  // pom.xml pins maven.compiler.release to 17. Point java.configuration.runtimes
+  // at your own JDK 17 install in user/global settings -- the path is
+  // machine-specific so it isn't committed here.
+
+  // --- Maven multi-module reactor ---
+  // Re-import the reactor automatically when a pom.xml changes, instead of
+  // requiring a manual "Reload Projects".
+  "java.configuration.updateBuildConfiguration": "automatic",
+
+  // --- Formatting ---
+  // The default redhat.java formatter (Eclipse-style: 4-space indent,
+  // opening brace on the same line) already matches this codebase's
+  // existing style, so no custom formatter profile is configured here —
+  // just turned on and applied consistently.
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "explicit"
+  },
+  "[java]": {
+    "editor.defaultFormatter": "redhat.java",
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true
+  },
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  // Never collapse imports into a wildcard — this codebase spells them out
+  // (see e.g. logaperture-agent/.../it/LevelControlEndToEndIT.java).
+  "java.sources.organizeImports.starThreshold": 999,
+  "java.sources.organizeImports.staticStarThreshold": 999,
+
+  // --- Workspace hygiene ---
+  // Every module has its own target/; keep build output out of search,
+  // the file explorer, and file-watcher churn.
+  "files.exclude": {
+    "**/target": true
+  },
+  "search.exclude": {
+    "**/target": true
+  },
+  "files.watcherExclude": {
+    "**/target/**": true
+  }
+}
