@@ -26,7 +26,3 @@ replay_pid*
 # Maven build output
 target/
 dependency-reduced-pom.xml
-
-# Personal review-progress checklists (see .review/*.md) — tracking only,
-# never meant to be committed.
-.review/
