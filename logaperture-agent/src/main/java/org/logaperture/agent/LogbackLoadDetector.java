@@ -54,8 +54,7 @@ final class LogbackLoadDetector {
     }
 
     static void awaitLogbackAndThen(Instrumentation inst, Runnable onReady) {
-        ClassFileTransformer[] holder = new ClassFileTransformer[1];
-        holder[0] = new ClassFileTransformer() {
+        ClassFileTransformer transformer = new ClassFileTransformer() {
             @Override
             public byte[] transform(
                     ClassLoader loader,
@@ -64,7 +63,7 @@ final class LogbackLoadDetector {
                     java.security.ProtectionDomain protectionDomain,
                     byte[] classfileBuffer) {
                 if (TARGET_CLASS_INTERNAL_NAME.equals(className)) {
-                    inst.removeTransformer(holder[0]); // one-shot: none has no reset event to re-detect
+                    inst.removeTransformer(this); // one-shot: none has no reset event to re-detect
                     Thread detectorThread = new Thread(() -> confirmBoundThenRun(onReady), "logaperture-detector");
                     detectorThread.setDaemon(true);
                     detectorThread.start();
@@ -72,7 +71,7 @@ final class LogbackLoadDetector {
                 return null; // unmodified -- a signal, not an instrumentation of behavior
             }
         };
-        inst.addTransformer(holder[0]); // 1-arg form: observes new loads only, no retransform needed
+        inst.addTransformer(transformer); // 1-arg form: observes new loads only, no retransform needed
     }
 
     private static void confirmBoundThenRun(Runnable onReady) {
