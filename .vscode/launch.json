@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  // No module in this repo has an application main() — logaperture-agent is
+  // a javaagent (LogApertureAgent.premain/agentmain), not a standalone app.
+  // JUnit tests don't need an entry here either: the Test Runner for Java
+  // extension adds "Debug Test" CodeLenses above @Test methods directly.
+  //
+  // The two configs below cover the cases a CodeLens can't:
+  "configurations": [
+    {
+      // Manually exercise the fixture app that LevelControlEndToEndIT
+      // forks as a child process (logaperture-agent/src/test/java/...
+      // it/FixtureApp.java) — a real java -jar-style SLF4J/Logback app,
+      // useful to run standalone while poking at the agent by hand.
+      // Add "-javaagent:<path-to-built-agent-jar>" to vmArgs to attach the
+      // agent the way the IT test does.
+      "type": "java",
+      "name": "Launch FixtureApp",
+      "request": "launch",
+      "mainClass": "org.logaperture.agent.it.FixtureApp",
+      "projectName": "logaperture-agent",
+      "vmArgs": ""
+    },
+    {
+      // Attach to an already-running JVM by PID — for stepping through
+      // premain/instrumentation logic in a process the agent was attached
+      // to outside VS Code (e.g. a forked IT test process, or a manually
+      // started -javaagent run).
+      "type": "java",
+      "name": "Attach to process",
+      "request": "attach",
+      "processId": "${command:PickJavaProcess}"
+    }
+  ]
+}
