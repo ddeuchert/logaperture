@@ -6,6 +6,22 @@ Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §6 (feature de
 Builds on: [`doc/specs/level-control.md`](level-control.md) (Feature 1, M1's already-shipped
 slice).
 
+## Functional summary
+
+After this feature, the user will be able to:
+
+- Set an override that automatically reverts after a chosen duration (`--for`), so a forgotten
+  DEBUG override can't linger.
+- Set an override that stays in effect indefinitely (`--sticky`), for a logger they've decided is
+  permanently noisy.
+- Restart the application and find those overrides still active — timed ones keep counting down
+  from where they left off, sticky ones simply remain.
+- Check, at any time, which tier an override is in and, for timed ones, when it will revert.
+- Rely on overrides surviving even when the application reloads its own logging configuration on
+  its own.
+- Review a full history of every override applied and every reversion, including ones that expired
+  while the application wasn't running.
+
 ## Scope of this slice
 
 Per the roadmap (§17), Feature 2 is still Layer 0 / M1 — level control alone is not the "read-only
