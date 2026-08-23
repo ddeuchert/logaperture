@@ -22,13 +22,19 @@ import java.util.List;
  * is a convenience over it" (doc/logaperture-spec.md §8.1). Levels are
  * plain {@code String}s at this boundary, for maximum compatibility with
  * generic JMX tooling (e.g. {@code jconsole}'s manual-invoke form) and to
- * sidestep any doubt about enum-type marshaling.
+ * sidestep any doubt about enum-type marshaling. {@code tier} follows the
+ * same convention, per doc/specs/persistence.md's "JMX surface changes".
  */
 public interface LevelControlMXBean {
 
     List<LoggerInfoData> listLoggers(String filter);
 
-    LevelOverrideData setLevel(String loggerName, String level, boolean includeChildren, String reason);
+    /**
+     * @param tier       {@code "SESSION"}/{@code "FOR"}/{@code "STICKY"}
+     * @param forSeconds ignored unless {@code tier} is {@code "FOR"}
+     */
+    LevelOverrideData setLevel(String loggerName, String level, boolean includeChildren, String reason,
+            String tier, long forSeconds);
 
     void resetLevel(String loggerName);
 

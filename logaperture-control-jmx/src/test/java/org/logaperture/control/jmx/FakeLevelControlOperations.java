@@ -18,6 +18,7 @@ package org.logaperture.control.jmx;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
+import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.core.LevelControlOperations;
 
@@ -48,7 +49,8 @@ final class FakeLevelControlOperations implements LevelControlOperations {
         if (throwOnSetLevel != null) {
             throw throwOnSetLevel;
         }
-        return new LevelOverride(loggerName, level, options.includeChildren(), options.reason(), Instant.now(), "jmx");
+        return new LevelOverride(loggerName, level, options.includeChildren(), options.reason(), Instant.now(), "jmx",
+                options.tier(), options.tier() == PersistenceTier.FOR ? Instant.now().plus(options.expiresIn()) : null);
     }
 
     @Override

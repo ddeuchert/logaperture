@@ -15,9 +15,14 @@
  */
 package org.logaperture.api;
 
+import java.time.Instant;
+
 /**
  * A single logger's state, as returned by {@code listLoggers} — see
- * doc/specs/level-control.md "Data model".
+ * doc/specs/level-control.md "Data model", extended by
+ * doc/specs/persistence.md so a caller can see an active override's
+ * durability tier and, for a timed one, when it reverts, without a second
+ * surface (persistence.md's "JMX surface changes").
  *
  * @param name             the logger's name
  * @param configuredLevel  the framework's own baseline value, captured on
@@ -34,6 +39,12 @@ package org.logaperture.api;
  * @param overrideReason   the override's recorded reason; {@code null} if
  *                         {@code overrideActive} is {@code false} or no
  *                         reason was given
+ * @param overrideTier     the override's durability tier; {@code null} if
+ *                         {@code overrideActive} is {@code false}
+ * @param overrideExpiresAt the override's revert deadline; {@code null}
+ *                         unless {@code overrideActive} is {@code true} and
+ *                         {@code overrideTier} is {@link
+ *                         PersistenceTier#FOR}
  */
 public record LoggerInfo(
         String name,
@@ -41,7 +52,9 @@ public record LoggerInfo(
         Level effectiveLevel,
         boolean overrideActive,
         String overrideSource,
-        String overrideReason) {
+        String overrideReason,
+        PersistenceTier overrideTier,
+        Instant overrideExpiresAt) {
 
     public LoggerInfo {
         if (name == null || name.isEmpty()) {

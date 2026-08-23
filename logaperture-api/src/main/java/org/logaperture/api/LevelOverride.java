@@ -37,7 +37,16 @@ import java.time.Instant;
  *                        was given
  * @param appliedAt       when this override was created
  * @param source          the control surface that created it (e.g. {@code
- *                        "jmx"})
+ *                        "jmx"}), or the internal source that reinstated it
+ *                        (e.g. {@code "resume"})
+ * @param tier            the durability tier this override was set at
+ *                        (doc/specs/persistence.md)
+ * @param expiresAt       the absolute deadline this override reverts at —
+ *                        an {@link Instant}, not a relative duration,
+ *                        because resume needs to compute *remaining* time
+ *                        without resetting the clock on every restart;
+ *                        {@code null} unless {@code tier} is {@link
+ *                        PersistenceTier#FOR}
  */
 public record LevelOverride(
         String loggerName,
@@ -45,7 +54,9 @@ public record LevelOverride(
         boolean includeChildren,
         String reason,
         Instant appliedAt,
-        String source) {
+        String source,
+        PersistenceTier tier,
+        Instant expiresAt) {
 
     public LevelOverride {
         if (loggerName == null || loggerName.isEmpty()) {
@@ -59,6 +70,16 @@ public record LevelOverride(
         }
         if (source == null || source.isEmpty()) {
             throw new IllegalArgumentException("source must not be null or empty");
+        }
+        if (tier == null) {
+            throw new IllegalArgumentException("tier must not be null");
+        }
+        if (tier == PersistenceTier.FOR) {
+            if (expiresAt == null) {
+                throw new IllegalArgumentException("tier FOR requires a non-null expiresAt");
+            }
+        } else if (expiresAt != null) {
+            throw new IllegalArgumentException("expiresAt must be null unless tier is FOR");
         }
     }
 }

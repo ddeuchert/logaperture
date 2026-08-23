@@ -57,4 +57,23 @@ public interface LoggingAdapter {
      * in doc/specs/level-control.md.
      */
     void applyLevel(String loggerName, Level level);
+
+    /**
+     * Registers {@code listener} to run after this adapter's underlying
+     * framework completes a reconfiguration that may have discarded
+     * previously-applied levels (doc/specs/persistence.md's "Reconfiguration
+     * re-application"; doc/logaperture-spec.md §4.3's "Reconfiguration
+     * hook" row). Default no-op — the {@code none} container's own baseline
+     * has no such event of its own (confirmed by the M0 spike), and a
+     * future adapter for a framework with no reconfiguration hook of its
+     * own (e.g. JUL, per §4.3) can rely on this default rather than
+     * throwing.
+     *
+     * <p>Callers may register at most one listener; a second call replaces
+     * the first rather than fanning out to both, since this slice has
+     * exactly one caller (the composition root, once, at install time).
+     */
+    default void onReset(Runnable listener) {
+        // no-op by default
+    }
 }

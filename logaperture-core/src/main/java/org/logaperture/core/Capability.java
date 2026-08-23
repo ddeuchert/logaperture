@@ -16,11 +16,11 @@
 package org.logaperture.core;
 
 /**
- * The minimal capability slice for this feature slice — see
- * doc/specs/level-control.md "Capability and audit" and
- * doc/logaperture-spec.md §9.3 for the full set this is drawn from.
- * {@code view}/{@code capture}/{@code rules.*}/{@code suppress}/{@code
- * persist}/{@code guard.override} are out of scope here.
+ * The capability slice implemented so far — see doc/specs/level-control.md
+ * "Capability and audit", doc/specs/persistence.md "Capability and audit",
+ * and doc/logaperture-spec.md §9.3 for the full set this is drawn from.
+ * {@code capture}/{@code rules.*}/{@code suppress}/{@code guard.override}
+ * remain out of scope here.
  */
 public enum Capability {
     /** Reading logger names and levels. Low risk. */
@@ -28,5 +28,12 @@ public enum Capability {
     /** Making a logger more verbose. Data-exposure risk (§9.3). */
     LEVEL_RAISE,
     /** Making a logger less verbose. Evidence-loss risk (§9.3). */
-    LEVEL_LOWER
+    LEVEL_LOWER,
+    /**
+     * Making a change outlive the process, rather than expiring with it —
+     * required in addition to {@link #LEVEL_RAISE}/{@link #LEVEL_LOWER}
+     * whenever a {@code setLevel} call's tier isn't {@code SESSION}
+     * (doc/specs/persistence.md).
+     */
+    PERSIST
 }
