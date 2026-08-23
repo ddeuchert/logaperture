@@ -12,10 +12,19 @@ No feature is implemented without a spec. Before writing code for a feature:
    `doc/logaperture-spec.md`; a feature large enough to need its own
    document goes in `doc/specs/<feature-name>.md` and is linked from the
    top-level spec.
-2. Get the spec to a state the user has agreed to before starting
+2. Every feature spec in `doc/specs/` opens with a **Functional summary**
+   section, right after the header/parent-spec block and before any scope
+   or design detail: a bulleted list in the form "After this feature, the
+   user will be able to X." Keep it as low on technical detail as the
+   feature's own user-facing vocabulary allows — name the commands/options
+   a user would actually type or see, not the mechanism behind them (no
+   data models, file formats, module names, or internal types). Less is
+   more: a handful of bullets a non-implementer can read to know what
+   changed, not a restatement of the scope section that follows it.
+3. Get the spec to a state the user has agreed to before starting
    implementation.
-3. Implement against the spec.
-4. **Commit the spec together with the code it describes**, in the same
+4. Implement against the spec.
+5. **Commit the spec together with the code it describes**, in the same
    commit (or the same PR if the change spans multiple commits). A spec
    change and its implementation should never land separately — the repo
    history should always show *what changed* and *why it changed* as one
