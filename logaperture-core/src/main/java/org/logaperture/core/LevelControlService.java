@@ -190,25 +190,37 @@ public final class LevelControlService implements LevelControlOperations {
      */
     public void resumeFromStateStore(Instant now) {
         for (LevelOverride persisted : stateStore.loadAll()) {
-            baselines.captureIfAbsent(persisted.loggerName(), adapter);
-
-            if (persisted.tier() == PersistenceTier.FOR && !persisted.expiresAt().isAfter(now)) {
-                // Expired while this JVM was down -- never (re-)applied this
-                // session, but still recorded as a reversion and dropped
-                // from the store, so the audit trail doesn't have a silent
-                // gap where the override simply stops existing.
-                recordReversionForNeverApplied(persisted, now);
-                safePersist(() -> stateStore.remove(persisted.loggerName()));
-                continue;
+            try {
+                resumeOne(persisted, now);
+            } catch (RuntimeException e) {
+                // One bad persisted entry must not take the whole install
+                // down with it (§9's fail-open discipline) -- skip it and
+                // keep resuming the rest.
+                System.err.println("[logaperture-state] failed to resume persisted override for '"
+                        + persisted.loggerName() + "', skipping it: " + e);
             }
-
-            String previousValue = adapter.effectiveLevel(persisted.loggerName()).toString();
-            OverrideApplier.apply(persisted, adapter);
-            overrides.put(persisted);
-            auditLog.record(new AuditRecord(
-                    now, principal, "resume", persisted.loggerName(), previousValue,
-                    persisted.level().toString(), persisted.reason(), AuditRecord.Action.MUTATION));
         }
+    }
+
+    private void resumeOne(LevelOverride persisted, Instant now) {
+        baselines.captureIfAbsent(persisted.loggerName(), adapter);
+
+        if (persisted.tier() == PersistenceTier.FOR && !persisted.expiresAt().isAfter(now)) {
+            // Expired while this JVM was down -- never (re-)applied this
+            // session, but still recorded as a reversion and dropped
+            // from the store, so the audit trail doesn't have a silent
+            // gap where the override simply stops existing.
+            recordReversionForNeverApplied(persisted, now);
+            safePersist(() -> stateStore.remove(persisted.loggerName()));
+            return;
+        }
+
+        String previousValue = adapter.effectiveLevel(persisted.loggerName()).toString();
+        OverrideApplier.apply(persisted, adapter);
+        overrides.put(persisted);
+        auditLog.record(new AuditRecord(
+                now, principal, "resume", persisted.loggerName(), previousValue,
+                persisted.level().toString(), persisted.reason(), AuditRecord.Action.MUTATION));
     }
 
     /**
@@ -220,11 +232,17 @@ public final class LevelControlService implements LevelControlOperations {
      * only what running it does.
      */
     public void sweepExpiredOverrides(Instant now) {
-        for (Map.Entry<String, LevelOverride> entry : overrides.all().entrySet()) {
-            LevelOverride override = entry.getValue();
-            if (override.tier() == PersistenceTier.FOR && !override.expiresAt().isAfter(now)) {
-                applyReset(entry.getKey(), override, "expiry-sweep", null);
-            }
+        // Iterate a snapshot of names, but re-read each one's CURRENT value
+        // right before deciding to revert it -- the snapshot can be stale
+        // by the time this loop reaches an entry (a concurrent setLevel may
+        // have already replaced it), and applyReset's compare-and-remove
+        // uses this same fresh value, not the (possibly stale) one below.
+        for (String loggerName : overrides.all().keySet()) {
+            overrides.get(loggerName).ifPresent(override -> {
+                if (override.tier() == PersistenceTier.FOR && !override.expiresAt().isAfter(now)) {
+                    applyReset(loggerName, override, "expiry-sweep", null);
+                }
+            });
         }
     }
 
@@ -245,8 +263,13 @@ public final class LevelControlService implements LevelControlOperations {
         OverrideApplier.apply(override, adapter); // mutation: the point of no return
 
         overrides.put(override); // commit
+        // state-store write -- SESSION also removes, in case this logger
+        // had a previously-persisted FOR/STICKY entry that this plain
+        // mutation now supersedes; leaving it would reappear on resume.
         if (opts.tier() != PersistenceTier.SESSION) {
-            safePersist(() -> stateStore.save(override)); // state-store write
+            safePersist(() -> stateStore.save(override));
+        } else {
+            safePersist(() -> stateStore.remove(loggerName));
         }
         auditLog.record(new AuditRecord(
                 now, principal, source, loggerName, previousValue, level.toString(), opts.reason(),
@@ -256,12 +279,20 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     private void applyReset(String loggerName, LevelOverride toRevert, String auditSource, String reasonOverride) {
+        // Atomic compare-and-remove first: if the registry's current entry
+        // for this logger is no longer exactly `toRevert`, a concurrent
+        // setLevel already replaced it (the expiry sweep's own race, per
+        // doc/specs/persistence.md's review) -- bail out without touching
+        // the adapter, so the newer override is never clobbered.
+        if (!overrides.removeIfCurrent(loggerName, toRevert)) {
+            return;
+        }
+
         String previousValue = toRevert.level().toString();
         Optional<Level> baseline = baselines.get(loggerName); // always captured -- setLevel/resume guarantees it
 
         adapter.applyLevel(loggerName, baseline.orElse(null)); // mutation
 
-        overrides.remove(loggerName); // commit
         // state-store write -- no-op if this override was never persisted
         safePersist(() -> stateStore.remove(loggerName));
 

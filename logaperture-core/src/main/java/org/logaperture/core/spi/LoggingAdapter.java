@@ -76,4 +76,16 @@ public interface LoggingAdapter {
     default void onReset(Runnable listener) {
         // no-op by default
     }
+
+    /**
+     * Unregisters the listener most recently passed to {@link #onReset}, if
+     * any. Default no-op. Called by the composition root when an {@code
+     * Installation} is closed, so a torn-down installation's listener
+     * doesn't keep firing against a shared static context that a later
+     * {@code install()} call reuses (doc/specs/persistence.md's review:
+     * repeated install()/close() cycles must not accumulate listeners).
+     */
+    default void clearResetListener() {
+        // no-op by default
+    }
 }

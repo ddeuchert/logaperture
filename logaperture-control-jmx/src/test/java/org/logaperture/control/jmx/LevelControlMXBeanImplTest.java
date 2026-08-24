@@ -15,6 +15,7 @@
  */
 package org.logaperture.control.jmx;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.logaperture.api.Level;
 import org.logaperture.api.LoggerInfo;
@@ -23,12 +24,36 @@ import org.logaperture.api.SetLevelOptions;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LevelControlMXBeanImplTest {
+
+    private final Locale originalDefaultLocale = Locale.getDefault();
+
+    @AfterEach
+    void restoreDefaultLocale() {
+        Locale.setDefault(originalDefaultLocale);
+    }
+
+    @Test
+    void setLevel_underTurkishDefaultLocale_stillParsesLowercaseTierAndLevel() {
+        // The Turkish "dotted/dotless I" locale rule turns a naive
+        // toUpperCase() "i" into u0130 rather than 'I', breaking enum
+        // lookups that assume ASCII uppercasing -- a code-review finding
+        // against this PR.
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+        LevelControlMXBeanImpl bean = new LevelControlMXBeanImpl(fake);
+
+        LevelOverrideData result = bean.setLevel("com.acme.Worker", "debug", false, null, "sticky", 0);
+
+        assertEquals("DEBUG", result.getLevel());
+        assertEquals("STICKY", result.getTier());
+    }
 
     @Test
     void listLoggers_mapsApiRecordsToDtos() {

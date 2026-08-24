@@ -83,7 +83,16 @@ public final class NoneContainer {
         LevelControlService service = new LevelControlService(
                 adapter, baselines, overrides, policy, auditLog, stateStore, principal(), "jmx");
 
-        service.resumeFromStateStore(Instant.now());
+        try {
+            // Per-entry failures are already isolated inside
+            // resumeFromStateStore; this outer guard is defense in depth
+            // against a StateStore implementation whose loadAll() itself
+            // throws -- fail-open, per doc/logaperture-spec.md §9: a
+            // resume problem must not cost the whole installation.
+            service.resumeFromStateStore(Instant.now());
+        } catch (RuntimeException e) {
+            Diagnostics.warn("LogAperture: failed to resume persisted overrides, continuing without them", e);
+        }
 
         // doc/specs/persistence.md "Reconfiguration re-application": a
         // container-specific reset source (Spring Boot, WildFly) is still
@@ -102,7 +111,7 @@ public final class NoneContainer {
         sweeper.scheduleAtFixedRate(
                 () -> service.sweepExpiredOverrides(Instant.now()), intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
 
-        return new Installation(service, sweeper, stateStore);
+        return new Installation(service, sweeper, stateStore, adapter);
     }
 
     /**
@@ -158,11 +167,14 @@ public final class NoneContainer {
         private final LevelControlService service;
         private final ScheduledExecutorService sweeper;
         private final StateStore stateStore;
+        private final LoggingAdapter adapter;
 
-        private Installation(LevelControlService service, ScheduledExecutorService sweeper, StateStore stateStore) {
+        private Installation(LevelControlService service, ScheduledExecutorService sweeper, StateStore stateStore,
+                LoggingAdapter adapter) {
             this.service = service;
             this.sweeper = sweeper;
             this.stateStore = stateStore;
+            this.adapter = adapter;
         }
 
         public LevelControlService service() {
@@ -171,7 +183,24 @@ public final class NoneContainer {
 
         @Override
         public void close() {
-            sweeper.shutdownNow();
+            // Plain shutdown(), not shutdownNow(): no further sweep ticks
+            // are scheduled after this, but an in-flight one is left to
+            // finish its current persist() undisturbed rather than
+            // interrupted mid-write (shutdownNow() would close the file
+            // channel out from under it) before the state-store lock below
+            // is released.
+            sweeper.shutdown();
+            try {
+                sweeper.awaitTermination(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+
+            // Unregister the reset listener so a later install() against
+            // the same shared static context doesn't inherit this closed
+            // installation's still-firing callback.
+            adapter.clearResetListener();
+
             if (stateStore instanceof Closeable closeable) {
                 try {
                     closeable.close();

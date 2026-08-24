@@ -85,9 +85,25 @@ public final class FileStateStore implements StateStore, Closeable {
         Path lockFile = instancesDir.resolve(baseName + ".lock");
 
         FileLock lock = acquireLock(lockFile);
-        writeOwnPid(lock);
+        try {
+            writeOwnPid(lock);
+            return new FileStateStore(stateFile, lock, readExisting(stateFile));
+        } catch (IOException | RuntimeException e) {
+            // Don't leak the lock if anything after acquiring it fails --
+            // otherwise this identity looks permanently held for the rest
+            // of the JVM's life even though no store was ever constructed.
+            releaseQuietly(lock);
+            throw e;
+        }
+    }
 
-        return new FileStateStore(stateFile, lock, readExisting(stateFile));
+    private static void releaseQuietly(FileLock lock) {
+        try {
+            lock.release();
+            lock.channel().close();
+        } catch (IOException ignored) {
+            // best effort -- we're already unwinding from a failure
+        }
     }
 
     @Override
@@ -116,9 +132,15 @@ public final class FileStateStore implements StateStore, Closeable {
         }
     }
 
-    /** Releases the instance lock. Production never calls this (the OS releases it at process exit); tests do. */
+    /**
+     * Releases the instance lock. Production never calls this (the OS
+     * releases it at process exit); tests do. {@code synchronized} on the
+     * same monitor as {@link #save}/{@link #remove}/{@link #clear}/{@link
+     * #loadAll} so this can never run concurrently with an in-flight
+     * {@link #persist}.
+     */
     @Override
-    public void close() throws IOException {
+    public synchronized void close() throws IOException {
         lock.release();
         lock.channel().close();
     }

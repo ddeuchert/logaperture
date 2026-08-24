@@ -107,6 +107,19 @@ class PersistenceServiceTest {
         assertTrue(stateStore.loadAll().isEmpty());
     }
 
+    @Test
+    void setLevel_sessionTier_afterAPreviousStickyOverride_clearsTheStalePersistedEntry() {
+        service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.sticky());
+        assertFalse(stateStore.loadAll().isEmpty());
+
+        // A later plain (SESSION) setLevel on the same logger supersedes the
+        // sticky one -- the stale disk entry must not survive to reappear
+        // on the next restart (code-review finding against this PR).
+        service.setLevel("com.acme.Worker", Level.WARN, SetLevelOptions.defaults());
+
+        assertTrue(stateStore.loadAll().isEmpty());
+    }
+
     // --- persist capability ---------------------------------------------------------------------
 
     @Test
@@ -195,6 +208,21 @@ class PersistenceServiceTest {
         AuditRecord record = auditLog.records().get(0);
         assertEquals("resume", record.source());
         assertEquals(AuditRecord.Action.REVERSION, record.action());
+    }
+
+    @Test
+    void resumeFromStateStore_oneBadEntry_doesNotAbortResumingTheRest() {
+        Instant appliedAt = Instant.now().minus(Duration.ofDays(1));
+        stateStore.save(new LevelOverride(
+                "com.acme.Bad", Level.DEBUG, false, null, appliedAt, "jmx", PersistenceTier.STICKY, null));
+        stateStore.save(new LevelOverride(
+                "com.acme.Good", Level.WARN, false, null, appliedAt, "jmx", PersistenceTier.STICKY, null));
+        adapter.throwOnApply("com.acme.Bad"); // simulates a bad entry blowing up mid-resume
+
+        service.resumeFromStateStore(Instant.now()); // must not throw
+
+        assertEquals(Level.WARN, adapter.effectiveLevel("com.acme.Good")); // the rest still resumed
+        assertTrue(overrides.get("com.acme.Bad").isEmpty());
     }
 
     // --- expiry sweep ------------------------------------------------------------------------------

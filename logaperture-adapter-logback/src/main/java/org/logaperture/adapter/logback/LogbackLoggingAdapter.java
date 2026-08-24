@@ -24,6 +24,7 @@ import org.logaperture.core.spi.LoggingAdapter;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * {@link LoggingAdapter} implementation over a real {@code LoggerContext}.
@@ -35,6 +36,7 @@ import java.util.Optional;
 public final class LogbackLoggingAdapter implements LoggingAdapter {
 
     private final LoggerContext context;
+    private final AtomicReference<LoggerContextListener> registeredListener = new AtomicReference<>();
 
     /** Package-visible: tests construct against a fresh, throwaway {@code LoggerContext} directly. */
     LogbackLoggingAdapter(LoggerContext context) {
@@ -73,10 +75,18 @@ public final class LogbackLoggingAdapter implements LoggingAdapter {
      * exactly what makes {@code listener} safe to run immediately: whatever
      * it reapplies won't itself be wiped by the reset it's reacting to. See
      * doc/specs/persistence.md "Reconfiguration re-application".
+     *
+     * <p>Replaces, rather than accumulates alongside, any listener already
+     * registered by an earlier call on this same instance -- matching the
+     * "at most one listener" contract {@link LoggingAdapter#onReset}
+     * documents. {@link #clearResetListener()} handles the other half:
+     * unregistering across separate adapter instances that all wrap the
+     * same shared static {@code context} (e.g. successive {@code
+     * NoneContainer.install()} calls in one JVM).
      */
     @Override
     public void onReset(Runnable listener) {
-        context.addListener(new LoggerContextListener() {
+        LoggerContextListener wrapper = new LoggerContextListener() {
             @Override
             public boolean isResetResistant() {
                 return false;
@@ -101,6 +111,19 @@ public final class LogbackLoggingAdapter implements LoggingAdapter {
             public void onLevelChange(Logger logger, ch.qos.logback.classic.Level level) {
                 // not of interest to this adapter
             }
-        });
+        };
+        LoggerContextListener previous = registeredListener.getAndSet(wrapper);
+        if (previous != null) {
+            context.removeListener(previous);
+        }
+        context.addListener(wrapper);
+    }
+
+    @Override
+    public void clearResetListener() {
+        LoggerContextListener previous = registeredListener.getAndSet(null);
+        if (previous != null) {
+            context.removeListener(previous);
+        }
     }
 }

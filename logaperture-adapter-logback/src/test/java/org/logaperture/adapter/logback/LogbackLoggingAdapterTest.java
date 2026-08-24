@@ -145,6 +145,33 @@ class LogbackLoggingAdapterTest {
     }
 
     @Test
+    void onReset_registeringASecondListener_replacesRatherThanAccumulates() {
+        List<String> fired = new ArrayList<>();
+        adapter.onReset(() -> fired.add("first"));
+        adapter.onReset(() -> fired.add("second"));
+
+        context.reset();
+
+        assertEquals(List.of("second"), fired);
+    }
+
+    @Test
+    void clearResetListener_unregistersSoAFutureResetDoesNotFireIt() {
+        List<String> fired = new ArrayList<>();
+        adapter.onReset(() -> fired.add("fired"));
+
+        adapter.clearResetListener();
+        context.reset();
+
+        assertEquals(List.of(), fired);
+    }
+
+    @Test
+    void clearResetListener_withNothingRegistered_isSafeNoOp() {
+        adapter.clearResetListener(); // must not throw
+    }
+
+    @Test
     void onReset_neverRegistered_resetStillWorksNormally() {
         context.getLogger("com.acme.Worker").setLevel(ch.qos.logback.classic.Level.DEBUG);
 

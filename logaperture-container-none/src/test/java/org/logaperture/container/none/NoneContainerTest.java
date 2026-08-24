@@ -193,4 +193,44 @@ class NoneContainerTest {
             assertEquals(Level.DEBUG, installation.service().listLoggers(loggerName).get(0).effectiveLevel());
         }
     }
+
+    /**
+     * A code-review finding against this PR: each {@code install()} against
+     * the shared static {@code LoggerContext} used to register its own
+     * reset listener without ever removing it on {@code close()}, so a
+     * closed installation's (stale) {@code reapplyActiveOverrides} kept
+     * firing on every later {@code context.reset()} -- including ones
+     * belonging to a completely different, later installation.
+     */
+    @Test
+    void install_closeThenReinstall_closedInstallationsListenerDoesNotFireAnymore() {
+        String firstLogger = "org.logaperture.container.none.reset.FirstInstallWorker";
+        String secondLogger = "org.logaperture.container.none.reset.SecondInstallWorker";
+
+        NoneContainer.Installation first = NoneContainer.install(CapabilityPolicy.allowAll(), new InMemoryAuditLog());
+        // SESSION deliberately -- never persisted, so any reappearance in
+        // `second` below can only come from the stale listener under test,
+        // never from legitimate resume-from-disk (which a STICKY override
+        // sharing this test's home/cwd would otherwise also explain). TRACE
+        // is likewise deliberate: distinct from whatever level Logback's
+        // own reset() leaves ROOT at, so a stale reapply is unambiguous.
+        first.service().setLevel(firstLogger, Level.TRACE, SetLevelOptions.defaults());
+        first.close();
+
+        try (NoneContainer.Installation second = NoneContainer.install(CapabilityPolicy.allowAll(), new InMemoryAuditLog())) {
+            second.service().setLevel(secondLogger, Level.DEBUG, SetLevelOptions.sticky());
+
+            ILoggerFactory factory = LoggerFactory.getILoggerFactory();
+            ((LoggerContext) factory).reset();
+
+            // The second installation's own override survives its own reset...
+            assertEquals(Level.DEBUG, second.service().listLoggers(secondLogger).get(0).effectiveLevel());
+            // ...but the first (closed) installation's listener must not have
+            // fired and reapplied its stale TRACE override directly onto the
+            // shared LoggerContext -- checked on the real logger, not
+            // `second`'s own registry (which never knew about firstLogger
+            // either way, so it can't tell the two cases apart by itself).
+            assertTrue(second.service().listLoggers(firstLogger).get(0).effectiveLevel() != Level.TRACE);
+        }
+    }
 }

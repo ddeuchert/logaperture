@@ -22,6 +22,7 @@ import org.logaperture.core.LevelControlOperations;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -76,7 +77,7 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
             throw new IllegalArgumentException("tier must not be null");
         }
         try {
-            return PersistenceTier.valueOf(tier.trim().toUpperCase());
+            return PersistenceTier.valueOf(tier.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("unknown tier: '" + tier + "' (expected one of "
                     + List.of(PersistenceTier.values()) + ")", e);
@@ -88,7 +89,7 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
             throw new IllegalArgumentException("level must not be null");
         }
         try {
-            return Level.valueOf(level.trim().toUpperCase());
+            return Level.valueOf(level.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("unknown level: '" + level + "' (expected one of "
                     + List.of(Level.values()) + ")", e);

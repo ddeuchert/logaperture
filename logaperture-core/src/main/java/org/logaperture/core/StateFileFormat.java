@@ -138,14 +138,46 @@ final class StateFileFormat {
         return (value == null || value.equals("null")) ? null : value;
     }
 
+    /**
+     * Escapes backslash and double-quote (so the value round-trips inside
+     * a quoted scalar) and, critically, {@code \n}/{@code \r} (so a
+     * multi-line {@code reason} can't split one logical record across
+     * physical lines and corrupt this line-oriented format for every
+     * record after it). Order matters: backslash first, so the backslash
+     * introduced by the later replacements is never itself re-escaped.
+     */
     private static String quote(String value) {
-        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        return "\"" + value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                + "\"";
     }
 
+    /** Single left-to-right pass, the inverse of {@link #quote}. */
     private static String unquote(String value) {
-        if (value != null && value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
-            return value.substring(1, value.length() - 1).replace("\\\"", "\"").replace("\\\\", "\\");
+        if (value == null || value.length() < 2 || !value.startsWith("\"") || !value.endsWith("\"")) {
+            return value;
         }
-        return value;
+        String inner = value.substring(1, value.length() - 1);
+        StringBuilder result = new StringBuilder(inner.length());
+        for (int i = 0; i < inner.length(); i++) {
+            char c = inner.charAt(i);
+            if (c == '\\' && i + 1 < inner.length()) {
+                char next = inner.charAt(i + 1);
+                switch (next) {
+                    case '"' -> result.append('"');
+                    case '\\' -> result.append('\\');
+                    case 'n' -> result.append('\n');
+                    case 'r' -> result.append('\r');
+                    default -> result.append(c).append(next); // unrecognized escape -- keep verbatim
+                }
+                i++;
+            } else {
+                result.append(c);
+            }
+        }
+        return result.toString();
     }
 }
