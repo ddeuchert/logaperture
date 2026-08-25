@@ -63,6 +63,34 @@ Every source file must carry a copyright header, using the Apache License
 - Copyright holder is `David Deuchert`.
 - Package root is `org.logaperture` (project domain: logaperture.org).
 
+### Name non-trivial lambdas before passing them
+
+A lambda passed inline as a method argument hides its resolved type and its
+captures behind syntax whose meaning depends on looking up the target
+method's parameter type. When a lambda has a block body, or captures
+several enclosing variables, assign it to a local variable typed by the
+functional interface, named for what it does, before passing it:
+
+```java
+Runnable reapplyOnReset = () -> {
+    for (String name : adapter.knownLoggerNames()) {
+        baselines.captureIfAbsent(name, adapter);
+    }
+    service.reapplyActiveOverrides(adapter);
+};
+adapter.onReset(reapplyOnReset);
+```
+
+rather than passing the lambda inline. This costs nothing at runtime — the
+compiler resolves the same target type and generates the same call site
+either way — and it turns "what type does this become, and from where" into
+a plain declaration instead of something the reader has to reconstruct.
+
+This doesn't apply to short, single-expression lambdas (`.map(x ->
+x.name())`, `Comparator.comparing(...)`) — naming every trivial lambda would
+add noise rather than remove it. Reserve the pattern for lambdas with a
+block body or non-obvious captures.
+
 ### Spikes still branch and merge, but the deliverable is a doc
 
 A spike (e.g. the M0 architecture spike in `doc/logaperture-spec.md` §17) is exploratory

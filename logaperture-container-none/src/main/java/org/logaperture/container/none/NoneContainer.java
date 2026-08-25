@@ -99,12 +99,13 @@ public final class NoneContainer {
         // deferred, but Logback's own reset event (scan="true", JMX
         // JMXConfigurator, an explicit context.reset()) is independent of
         // which container is hosting it, and `none` benefits immediately.
-        adapter.onReset(() -> {
+        Runnable reapplyOnReset = () -> {
             for (String name : adapter.knownLoggerNames()) {
                 baselines.captureIfAbsent(name, adapter);
             }
             service.reapplyActiveOverrides(adapter);
-        });
+        };
+        adapter.onReset(reapplyOnReset);
 
         ScheduledExecutorService sweeper = Executors.newSingleThreadScheduledExecutor(NoneContainer::newDaemonThread);
         long intervalMillis = sweepInterval.toMillis();
