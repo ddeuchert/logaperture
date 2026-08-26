@@ -238,7 +238,7 @@ The gap identified in §3 is that WildFly forces a choice between "dies at resta
 | `--for 30m` | Auto-reverts on a timer; survives restart within the window | **The default.** Support work, triage, most debugging |
 | `--sticky` | Survives restart until explicitly revoked | A known-noisy category you have decided about |
 
-All three are recorded in the agent's own state file. **None of them touch `standalone.xml`**, in any tier, ever. `logctl status` lists what is active in each tier and when it reverts; `logctl revert <id>` removes one; `logctl revert --all` restores the baseline.
+All three are recorded in the agent's own state file. **None of them touch `standalone.xml`**, in any tier, ever. `logctl status` lists what is active in each tier and when it reverts; `logctl reset <logger>` removes one; `logctl reset --all` restores the baseline. (One override per logger, so the target is the logger name, not a separate id — see [`doc/specs/cli-transport.md`](specs/cli-transport.md) "Naming reconciliation".)
 
 Making `--for` the default is the important choice. It means the careless path — a support engineer who forgets, a developer who moves on — resolves itself, and the durable options require someone to have thought about it.
 
@@ -419,6 +419,8 @@ Per-rule counters, exposed via JMX and the HTTP endpoint: `evaluations`, `matche
 ## 8. Control plane and user interfaces
 
 ### 8.1 One command model, several surfaces
+
+> Implementation spec for the `logctl` CLI transport: [`doc/specs/cli-transport.md`](specs/cli-transport.md).
 
 Every surface is a client of the same command model, subject to the same capability checks (§9.3), the same expiry defaults (§6.1), and the same audit trail (§9.7). **No surface is a privileged path.** A UI that can do something the CLI cannot is a security hole with a friendly icon.
 
@@ -777,7 +779,7 @@ Shipping a small Checkstyle/Error Prone rule module alongside the agent is cheap
 For this audience the CLI is not a convenience wrapper over JMX — it is the entire user experience, and it competes directly against four seconds of typing a println. Requirements:
 
 - **No PID argument** when exactly one candidate JVM is running. Discover it.
-- `logctl debug com.acme.Foo` — sets DEBUG, default 15-minute expiry, prints the expiry time in the confirmation.
+- `logctl debug com.acme.Foo` — sets DEBUG, default 4-hour expiry (a working session, not a phone call — see [`doc/specs/cli-transport.md`](specs/cli-transport.md)), prints the expiry time in the confirmation.
 - `logctl status` — what is overridden right now, by whom, why, and when it reverts.
 - `logctl undo` — revert the last change. People experiment; make experimenting safe.
 - `logctl quiet` / `logctl loud` — apply or drop the noise-suppression pack.

@@ -108,6 +108,12 @@
                   <manifestEntries>
                     <Premain-Class>org.logaperture.agent.LogApertureAgent</Premain-Class>
                     <Agent-Class>org.logaperture.agent.LogApertureAgent</Agent-Class>
+                    <!--
+                      Read back at runtime via Package.getImplementationVersion()
+                      and published as the -Dlogaperture.version marker
+                      logaperture-cli discovers JVMs by (doc/specs/cli-transport.md).
+                    -->
+                    <Implementation-Version>${project.version}</Implementation-Version>
                     <Can-Redefine-Classes>false</Can-Redefine-Classes>
                     <!--
                       false: LogbackLoadDetector only observes new class

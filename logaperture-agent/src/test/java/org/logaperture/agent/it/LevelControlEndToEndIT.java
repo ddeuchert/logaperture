@@ -108,6 +108,16 @@ class LevelControlEndToEndIT {
         assertFalse(afterReset.get(0).isOverrideActive());
 
         proxy.resetAll(); // smoke: must not throw even with nothing active
+
+        // The install also publishes the marker logaperture-cli's discovery
+        // filters candidate JVMs on (doc/specs/cli-transport.md "Discovery").
+        VirtualMachine vm = VirtualMachine.attach(Long.toString(fixtureProcess.pid()));
+        try {
+            assertNotNull(vm.getSystemProperties().getProperty("logaperture.version"),
+                    "a successful install must set the logaperture.version system property");
+        } finally {
+            vm.detach();
+        }
     }
 
     /**

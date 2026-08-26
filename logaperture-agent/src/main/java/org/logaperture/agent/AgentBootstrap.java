@@ -36,6 +36,15 @@ final class AgentBootstrap {
 
     private static final String DISABLED_PROPERTY = "logaperture.disabled";
 
+    /**
+     * Set (to the agent's version) only once install has fully succeeded,
+     * so its presence is a reliable "the control plane is up" marker. This
+     * is what {@code logaperture-cli}'s discovery filters candidate JVMs on
+     * — see doc/specs/cli-transport.md "Discovery" and "Changes outside the
+     * new module".
+     */
+    private static final String VERSION_PROPERTY = "logaperture.version";
+
     private AgentBootstrap() {
     }
 
@@ -60,9 +69,15 @@ final class AgentBootstrap {
             // per doc/specs/persistence.md.
             NoneContainer.Installation installation = NoneContainer.install(policy, auditLog);
             JmxRegistrar.register(installation.service());
+            System.setProperty(VERSION_PROPERTY, agentVersion());
             Diagnostics.info("LogAperture level control installed (none container, Logback adapter, JMX surface)");
         } catch (Throwable t) {
             Diagnostics.error("LogAperture failed to install level control", t);
         }
+    }
+
+    private static String agentVersion() {
+        String version = LogApertureAgent.class.getPackage().getImplementationVersion();
+        return version != null ? version : "dev"; // null when run from classes dir, e.g. AgentBootstrapTest
     }
 }

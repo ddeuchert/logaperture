@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ - Copyright 2026 David Deuchert
+ -
+ - Licensed under the Apache License, Version 2.0 (the "License");
+ - you may not use this file except in compliance with the License.
+ - You may obtain a copy of the License at
+ -
+ -     http://www.apache.org/licenses/LICENSE-2.0
+ -
+ - Unless required by applicable law or agreed to in writing, software
+ - distributed under the License is distributed on an "AS IS" BASIS,
+ - WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ - See the License for the specific language governing permissions and
+ - limitations under the License.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.logaperture</groupId>
+    <artifactId>logaperture-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>logaperture-cli</artifactId>
+
+  <description>
+    logctl, the attach-API and local-JMX client for the level-control
+    surface (doc/logaperture-spec.md §8.1, doc/specs/cli-transport.md). A
+    standalone tool, never shaded into a customer artifact; it is a client
+    of a running agent, not a peer of it, so it must not depend on
+    logaperture-agent (enforced below, mirroring core's own rule).
+  </description>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-api</artifactId>
+    </dependency>
+    <!--
+      Brings the MXBean contract (LevelControlMXBean, LoggerInfoData,
+      LevelOverrideData, JmxRegistrar.OBJECT_NAME) and, transitively,
+      logaperture-core, which the CLI actively uses: CapabilityDeniedException
+      and Capability live there and must be on the classpath to unwrap a
+      policy denial into exit 6 (doc/specs/cli-transport.md "Capability and
+      audit"). All first-party and JDK-only; no third-party dependency
+      anywhere in this graph.
+    -->
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-control-jmx</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!--
+        The CLI is a client of a running agent, never a peer of it
+        (doc/specs/cli-transport.md "Module scope"). Same build-time
+        assertion pattern as logaperture-core's own "must not depend on
+        agent" rule.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>cli-must-not-depend-on-agent</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes>
+                    <exclude>org.logaperture:logaperture-agent</exclude>
+                  </excludes>
+                  <message>
+                    logaperture-cli must never depend on logaperture-agent.
+                    See doc/specs/cli-transport.md "Module scope": the CLI is
+                    a client of a running agent, not a peer of it.
+                  </message>
+                </bannedDependencies>
+              </rules>
+              <fail>true</fail>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!--
+        Executable single jar: java -jar target/logaperture-cli.jar ...
+        First-party deps only, so no relocation is needed.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <configuration>
+              <finalName>logaperture-cli</finalName>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <manifestEntries>
+                    <Main-Class>org.logaperture.cli.Main</Main-Class>
+                    <Implementation-Version>${project.version}</Implementation-Version>
+                  </manifestEntries>
+                </transformer>
+              </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!--
+        CliEndToEndIT launches a fixture JVM and drives the CLI against it
+        cross-process. The fixture is self-contained (a fake
+        LevelControlOperations behind a real MBean over a real JMX
+        connection). It needs no agent jar, which is why this module can
+        run the IT without a logaperture-agent dependency.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>
