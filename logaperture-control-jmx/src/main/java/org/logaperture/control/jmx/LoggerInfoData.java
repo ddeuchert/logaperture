@@ -27,6 +27,11 @@ import java.beans.ConstructorProperties;
  * this project is pinned to Java 17 (doc/specs/level-control.md's design
  * calls). Levels are {@code String} at this boundary for
  * {@code jconsole}-friendliness, matching {@link LevelControlMXBean}.
+ *
+ * <p>{@code tier} and {@code expiresAt} (ISO-8601, or {@code null} unless an
+ * override is active with tier {@code "FOR"}) were added by doc/specs/
+ * persistence.md's "JMX surface changes", so a caller can see what's active
+ * and when it reverts without a second surface.
  */
 public final class LoggerInfoData {
 
@@ -36,21 +41,28 @@ public final class LoggerInfoData {
     private final boolean overrideActive;
     private final String overrideSource;
     private final String overrideReason;
+    private final String tier;
+    private final String expiresAt;
 
-    @ConstructorProperties({"name", "configuredLevel", "effectiveLevel", "overrideActive", "overrideSource", "overrideReason"})
+    @ConstructorProperties({"name", "configuredLevel", "effectiveLevel", "overrideActive", "overrideSource",
+            "overrideReason", "tier", "expiresAt"})
     public LoggerInfoData(
             String name,
             String configuredLevel,
             String effectiveLevel,
             boolean overrideActive,
             String overrideSource,
-            String overrideReason) {
+            String overrideReason,
+            String tier,
+            String expiresAt) {
         this.name = name;
         this.configuredLevel = configuredLevel;
         this.effectiveLevel = effectiveLevel;
         this.overrideActive = overrideActive;
         this.overrideSource = overrideSource;
         this.overrideReason = overrideReason;
+        this.tier = tier;
+        this.expiresAt = expiresAt;
     }
 
     public static LoggerInfoData from(LoggerInfo info) {
@@ -60,7 +72,9 @@ public final class LoggerInfoData {
                 info.effectiveLevel().name(),
                 info.overrideActive(),
                 info.overrideSource(),
-                info.overrideReason());
+                info.overrideReason(),
+                info.overrideTier() == null ? null : info.overrideTier().name(),
+                info.overrideExpiresAt() == null ? null : info.overrideExpiresAt().toString());
     }
 
     public String getName() {
@@ -85,5 +99,13 @@ public final class LoggerInfoData {
 
     public String getOverrideReason() {
         return overrideReason;
+    }
+
+    public String getTier() {
+        return tier;
+    }
+
+    public String getExpiresAt() {
+        return expiresAt;
     }
 }

@@ -18,6 +18,7 @@ package org.logaperture.core;
 import org.junit.jupiter.api.Test;
 import org.logaperture.api.Level;
 import org.logaperture.api.SetLevelOptions;
+import org.logaperture.core.spi.StateStore;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -37,7 +38,7 @@ class OverrideReapplyTest {
         OverrideRegistry overrides = new OverrideRegistry();
         LevelControlService service = new LevelControlService(
                 originalAdapter, baselines, overrides, CapabilityPolicy.allowAll(),
-                new InMemoryAuditLog(), "alice", "jmx");
+                new InMemoryAuditLog(), StateStore.noOp(), "alice", "jmx");
 
         service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
 
@@ -60,7 +61,7 @@ class OverrideReapplyTest {
         OverrideRegistry overrides = new OverrideRegistry();
         LevelControlService service = new LevelControlService(
                 adapter, baselines, overrides, CapabilityPolicy.allowAll(),
-                new InMemoryAuditLog(), "alice", "jmx");
+                new InMemoryAuditLog(), StateStore.noOp(), "alice", "jmx");
         service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
 
         service.reapplyActiveOverrides(adapter);

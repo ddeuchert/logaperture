@@ -20,7 +20,9 @@ import org.junit.jupiter.api.Test;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
+import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetLevelOptions;
+import org.logaperture.core.spi.StateStore;
 
 import java.util.List;
 import java.util.Optional;
@@ -36,6 +38,7 @@ class LevelControlServiceTest {
     private BaselineRegistry baselines;
     private OverrideRegistry overrides;
     private InMemoryAuditLog auditLog;
+    private StateStore stateStore;
     private LevelControlService service;
 
     @BeforeEach
@@ -44,11 +47,12 @@ class LevelControlServiceTest {
         baselines = new BaselineRegistry();
         overrides = new OverrideRegistry();
         auditLog = new InMemoryAuditLog();
+        stateStore = new InMemoryStateStore();
         service = newService(CapabilityPolicy.allowAll());
     }
 
     private LevelControlService newService(CapabilityPolicy policy) {
-        return new LevelControlService(adapter, baselines, overrides, policy, auditLog, "alice", "jmx");
+        return new LevelControlService(adapter, baselines, overrides, policy, auditLog, stateStore, "alice", "jmx");
     }
 
     // --- setLevel / resetLevel / resetAll round-trip -----------------------------------------
@@ -130,7 +134,7 @@ class LevelControlServiceTest {
         adapter.addKnownLogger("com.acme.http.client");
         adapter.addKnownLogger("com.other");
 
-        service.setLevel("com.acme", Level.DEBUG, new SetLevelOptions(true, "reason", null));
+        service.setLevel("com.acme", Level.DEBUG, new SetLevelOptions(true, "reason", null, PersistenceTier.SESSION));
 
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme"));
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme.http"));
@@ -200,7 +204,7 @@ class LevelControlServiceTest {
         LevelControlService denied = newService(capability -> capability != Capability.LEVEL_RAISE);
 
         assertThrows(CapabilityDeniedException.class,
-                () -> denied.setLevel("com.acme", Level.DEBUG, new SetLevelOptions(true, null, null)));
+                () -> denied.setLevel("com.acme", Level.DEBUG, new SetLevelOptions(true, null, null, PersistenceTier.SESSION)));
 
         // The parent passed its own check but must NOT have been mutated --
         // the whole batch is pre-checked before anything is applied.
@@ -265,7 +269,7 @@ class LevelControlServiceTest {
         adapter.throwOnApply("com.acme.a");
 
         assertThrows(RuntimeException.class,
-                () -> service.setLevel("com.acme", Level.DEBUG, new SetLevelOptions(true, null, null)));
+                () -> service.setLevel("com.acme", Level.DEBUG, new SetLevelOptions(true, null, null, PersistenceTier.SESSION)));
 
         // The parent, processed before the throwing child, is applied and recorded.
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme"));

@@ -39,7 +39,7 @@ class JmxRegistrarTest {
     @Test
     void register_makesTheMBeanReachableByName() throws Exception {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
-        fake.loggersToReturn = List.of(new LoggerInfo("com.acme.Worker", null, Level.INFO, false, null, null));
+        fake.loggersToReturn = List.of(new LoggerInfo("com.acme.Worker", null, Level.INFO, false, null, null, null, null));
 
         JmxRegistrar.register(fake);
 

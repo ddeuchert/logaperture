@@ -17,12 +17,14 @@ package org.logaperture.adapter.logback;
 
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.spi.LoggerContextListener;
 import org.logaperture.api.Level;
 import org.logaperture.core.spi.LoggingAdapter;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * {@link LoggingAdapter} implementation over a real {@code LoggerContext}.
@@ -34,6 +36,7 @@ import java.util.Optional;
 public final class LogbackLoggingAdapter implements LoggingAdapter {
 
     private final LoggerContext context;
+    private final AtomicReference<LoggerContextListener> registeredListener = new AtomicReference<>();
 
     /** Package-visible: tests construct against a fresh, throwaway {@code LoggerContext} directly. */
     LogbackLoggingAdapter(LoggerContext context) {
@@ -62,5 +65,65 @@ public final class LogbackLoggingAdapter implements LoggingAdapter {
     @Override
     public void applyLevel(String loggerName, Level level) {
         context.getLogger(loggerName).setLevel(level == null ? null : LevelMapper.toLogback(level));
+    }
+
+    /**
+     * Registers a bare-bones {@link LoggerContextListener} whose only real
+     * method is {@code onReset} -- Logback's own reconfiguration-notification
+     * mechanism (doc/logaperture-spec.md §4.3), fired once {@code
+     * context.reset()} has finished clearing logger levels, which is
+     * exactly what makes {@code listener} safe to run immediately: whatever
+     * it reapplies won't itself be wiped by the reset it's reacting to. See
+     * doc/specs/persistence.md "Reconfiguration re-application".
+     *
+     * <p>Replaces, rather than accumulates alongside, any listener already
+     * registered by an earlier call on this same instance -- matching the
+     * "at most one listener" contract {@link LoggingAdapter#onReset}
+     * documents. {@link #clearResetListener()} handles the other half:
+     * unregistering across separate adapter instances that all wrap the
+     * same shared static {@code context} (e.g. successive {@code
+     * NoneContainer.install()} calls in one JVM).
+     */
+    @Override
+    public void onReset(Runnable listener) {
+        LoggerContextListener wrapper = new LoggerContextListener() {
+            @Override
+            public boolean isResetResistant() {
+                return false;
+            }
+
+            @Override
+            public void onStart(LoggerContext context) {
+                // not of interest to this adapter
+            }
+
+            @Override
+            public void onReset(LoggerContext context) {
+                listener.run();
+            }
+
+            @Override
+            public void onStop(LoggerContext context) {
+                // not of interest to this adapter
+            }
+
+            @Override
+            public void onLevelChange(Logger logger, ch.qos.logback.classic.Level level) {
+                // not of interest to this adapter
+            }
+        };
+        LoggerContextListener previous = registeredListener.getAndSet(wrapper);
+        if (previous != null) {
+            context.removeListener(previous);
+        }
+        context.addListener(wrapper);
+    }
+
+    @Override
+    public void clearResetListener() {
+        LoggerContextListener previous = registeredListener.getAndSet(null);
+        if (previous != null) {
+            context.removeListener(previous);
+        }
     }
 }

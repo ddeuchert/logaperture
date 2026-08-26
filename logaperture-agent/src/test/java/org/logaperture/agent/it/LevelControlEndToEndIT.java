@@ -18,6 +18,7 @@ package org.logaperture.agent.it;
 import com.sun.tools.attach.VirtualMachine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.logaperture.control.jmx.JmxRegistrar;
 import org.logaperture.control.jmx.LevelControlMXBean;
 import org.logaperture.control.jmx.LevelOverrideData;
@@ -29,6 +30,8 @@ import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
 import java.io.OutputStream;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -49,23 +52,29 @@ class LevelControlEndToEndIT {
 
     private static final String FIXTURE_LOGGER = "org.logaperture.agent.it.fixture.Worker";
 
-    private Process fixtureProcess;
+    @TempDir
+    private Path logapertureHome;
+
+    private final List<Process> fixtureProcesses = new ArrayList<>();
 
     @AfterEach
     void tearDown() {
-        if (fixtureProcess != null && fixtureProcess.isAlive()) {
-            try (OutputStream stdin = fixtureProcess.getOutputStream()) {
+        for (Process process : fixtureProcesses) {
+            if (!process.isAlive()) {
+                continue;
+            }
+            try (OutputStream stdin = process.getOutputStream()) {
                 stdin.write('\n');
                 stdin.flush();
             } catch (Exception ignored) {
                 // best effort -- destroyForcibly below is the real backstop
             }
             try {
-                fixtureProcess.waitFor(5, TimeUnit.SECONDS);
+                process.waitFor(5, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            fixtureProcess.destroyForcibly();
+            process.destroyForcibly();
         }
     }
 
@@ -74,10 +83,8 @@ class LevelControlEndToEndIT {
         String agentJarPath = System.getProperty("logaperture.agent.jar");
         assertNotNull(agentJarPath, "system property logaperture.agent.jar must point at the shaded jar");
 
-        fixtureProcess = launchFixtureProcess(agentJarPath);
-        long pid = fixtureProcess.pid();
-
-        MBeanServerConnection connection = attachAndConnect(pid);
+        Process fixtureProcess = launchFixtureProcess(agentJarPath);
+        MBeanServerConnection connection = attachAndConnect(fixtureProcess.pid());
         LevelControlMXBean proxy = pollForMxBeanProxy(connection);
 
         // Baseline: ROOT is INFO per logback-test.xml; the fixture worker
@@ -87,7 +94,7 @@ class LevelControlEndToEndIT {
         assertEquals("INFO", before.get(0).getEffectiveLevel());
         assertFalse(before.get(0).isOverrideActive());
 
-        LevelOverrideData override = proxy.setLevel(FIXTURE_LOGGER, "DEBUG", false, "e2e-test");
+        LevelOverrideData override = proxy.setLevel(FIXTURE_LOGGER, "DEBUG", false, "e2e-test", "SESSION", 0);
         assertEquals("DEBUG", override.getLevel());
         assertEquals(FIXTURE_LOGGER, override.getLoggerName());
 
@@ -103,18 +110,63 @@ class LevelControlEndToEndIT {
         proxy.resetAll(); // smoke: must not throw even with nothing active
     }
 
-    private static Process launchFixtureProcess(String agentJarPath) throws Exception {
+    /**
+     * The literal exit criterion doc/specs/persistence.md adds on top of
+     * Feature 1's: a {@code --sticky} override survives a full process
+     * restart from the same working directory. The two fixture processes
+     * launch from the same {@code java.class.path}-derived working
+     * directory by construction (neither sets {@link ProcessBuilder#directory}),
+     * so they share the same instance identity by default (doc/specs/
+     * persistence.md "Location and identity") -- the second only starts
+     * once the first has fully exited, releasing its instance lock.
+     */
+    @Test
+    void stickyOverride_survivesARealProcessRestart() throws Exception {
+        String agentJarPath = System.getProperty("logaperture.agent.jar");
+        assertNotNull(agentJarPath, "system property logaperture.agent.jar must point at the shaded jar");
+
+        Process first = launchFixtureProcess(agentJarPath);
+        LevelControlMXBean firstProxy = pollForMxBeanProxy(attachAndConnect(first.pid()));
+        firstProxy.setLevel(FIXTURE_LOGGER, "DEBUG", false, "sticky-e2e-test", "STICKY", 0);
+        stopFixtureProcess(first);
+
+        Process second = launchFixtureProcess(agentJarPath);
+        LevelControlMXBean secondProxy = pollForMxBeanProxy(attachAndConnect(second.pid()));
+
+        List<LoggerInfoData> resumed = secondProxy.listLoggers(FIXTURE_LOGGER);
+        assertEquals(1, resumed.size());
+        assertEquals("DEBUG", resumed.get(0).getEffectiveLevel());
+        assertTrue(resumed.get(0).isOverrideActive());
+        assertEquals("STICKY", resumed.get(0).getTier());
+    }
+
+    private Process launchFixtureProcess(String agentJarPath) throws Exception {
         String javaBin = System.getProperty("java.home") + "/bin/java";
         String classpath = System.getProperty("java.class.path");
 
         ProcessBuilder builder = new ProcessBuilder(
                 javaBin,
                 "-javaagent:" + agentJarPath,
+                "-Dlogaperture.home=" + logapertureHome,
                 "-cp", classpath,
                 "org.logaperture.agent.it.FixtureApp");
         builder.redirectErrorStream(true);
         builder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-        return builder.start();
+        Process process = builder.start();
+        fixtureProcesses.add(process);
+        return process;
+    }
+
+    /** Signals clean shutdown and waits for full exit -- needed mid-test so a relaunch's instance lock is free. */
+    private static void stopFixtureProcess(Process process) throws Exception {
+        try (OutputStream stdin = process.getOutputStream()) {
+            stdin.write('\n');
+            stdin.flush();
+        }
+        if (!process.waitFor(5, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            process.waitFor(5, TimeUnit.SECONDS);
+        }
     }
 
     private static MBeanServerConnection attachAndConnect(long pid) throws Exception {

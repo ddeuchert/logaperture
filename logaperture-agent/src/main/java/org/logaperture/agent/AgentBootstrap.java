@@ -20,7 +20,6 @@ import org.logaperture.container.none.NoneContainer;
 import org.logaperture.control.jmx.JmxRegistrar;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.CapabilityPolicy;
-import org.logaperture.core.LevelControlService;
 import org.logaperture.core.StderrAuditLog;
 
 import java.lang.instrument.Instrumentation;
@@ -55,8 +54,12 @@ final class AgentBootstrap {
 
     private static void onLogbackReady(CapabilityPolicy policy, AuditLog auditLog) {
         try {
-            LevelControlService service = NoneContainer.install(policy, auditLog);
-            JmxRegistrar.register(service);
+            // The returned Installation is deliberately never closed here --
+            // its expiry-sweep thread is a daemon (never blocks JVM exit) and
+            // its state-store lock is released by the OS at process exit,
+            // per doc/specs/persistence.md.
+            NoneContainer.Installation installation = NoneContainer.install(policy, auditLog);
+            JmxRegistrar.register(installation.service());
             Diagnostics.info("LogAperture level control installed (none container, Logback adapter, JMX surface)");
         } catch (Throwable t) {
             Diagnostics.error("LogAperture failed to install level control", t);

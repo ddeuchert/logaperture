@@ -21,6 +21,8 @@ import org.junit.jupiter.api.Test;
 import org.logaperture.api.Level;
 import org.logaperture.core.spi.LoggingAdapter;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -113,5 +115,68 @@ class LogbackLoggingAdapterTest {
         context.getLogger("com.acme.http").setLevel(ch.qos.logback.classic.Level.DEBUG);
 
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme.http"));
+    }
+
+    // --- onReset -- doc/specs/persistence.md "Reconfiguration re-application" ------------------
+
+    @Test
+    void onReset_firesAfterLogbackHasAlreadyClearedLevels() {
+        context.getLogger("com.acme.Worker").setLevel(ch.qos.logback.classic.Level.DEBUG);
+        List<Level> observedAtCallbackTime = new ArrayList<>();
+        adapter.onReset(() -> observedAtCallbackTime.add(adapter.configuredLevel("com.acme.Worker").orElse(null)));
+
+        context.reset();
+
+        // Already cleared by the time the listener runs -- exactly what
+        // makes it safe for the listener to reapply state immediately,
+        // rather than racing the reset that triggered it.
+        assertEquals(1, observedAtCallbackTime.size());
+        assertEquals(null, observedAtCallbackTime.get(0));
+    }
+
+    @Test
+    void onReset_listenerCanReapplyAnOverrideThatThenSurvives() {
+        adapter.applyLevel("com.acme.Worker", Level.DEBUG);
+        adapter.onReset(() -> adapter.applyLevel("com.acme.Worker", Level.DEBUG));
+
+        context.reset();
+
+        assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme.Worker"));
+    }
+
+    @Test
+    void onReset_registeringASecondListener_replacesRatherThanAccumulates() {
+        List<String> fired = new ArrayList<>();
+        adapter.onReset(() -> fired.add("first"));
+        adapter.onReset(() -> fired.add("second"));
+
+        context.reset();
+
+        assertEquals(List.of("second"), fired);
+    }
+
+    @Test
+    void clearResetListener_unregistersSoAFutureResetDoesNotFireIt() {
+        List<String> fired = new ArrayList<>();
+        adapter.onReset(() -> fired.add("fired"));
+
+        adapter.clearResetListener();
+        context.reset();
+
+        assertEquals(List.of(), fired);
+    }
+
+    @Test
+    void clearResetListener_withNothingRegistered_isSafeNoOp() {
+        adapter.clearResetListener(); // must not throw
+    }
+
+    @Test
+    void onReset_neverRegistered_resetStillWorksNormally() {
+        context.getLogger("com.acme.Worker").setLevel(ch.qos.logback.classic.Level.DEBUG);
+
+        context.reset(); // must not throw even with no listener registered
+
+        assertEquals(Optional.empty(), adapter.configuredLevel("com.acme.Worker"));
     }
 }

@@ -19,7 +19,12 @@ import org.logaperture.api.LevelOverride;
 
 import java.beans.ConstructorProperties;
 
-/** MXBean-friendly mirror of {@link LevelOverride} — see {@link LoggerInfoData} for the pattern's rationale. */
+/**
+ * MXBean-friendly mirror of {@link LevelOverride} — see {@link
+ * LoggerInfoData} for the pattern's rationale. {@code tier} and {@code
+ * expiresAt} (ISO-8601, or {@code null} unless {@code tier} is {@code
+ * "FOR"}) were added by doc/specs/persistence.md's "JMX surface changes".
+ */
 public final class LevelOverrideData {
 
     private final String loggerName;
@@ -28,21 +33,27 @@ public final class LevelOverrideData {
     private final String reason;
     private final String appliedAt;
     private final String source;
+    private final String tier;
+    private final String expiresAt;
 
-    @ConstructorProperties({"loggerName", "level", "includeChildren", "reason", "appliedAt", "source"})
+    @ConstructorProperties({"loggerName", "level", "includeChildren", "reason", "appliedAt", "source", "tier", "expiresAt"})
     public LevelOverrideData(
             String loggerName,
             String level,
             boolean includeChildren,
             String reason,
             String appliedAt,
-            String source) {
+            String source,
+            String tier,
+            String expiresAt) {
         this.loggerName = loggerName;
         this.level = level;
         this.includeChildren = includeChildren;
         this.reason = reason;
         this.appliedAt = appliedAt;
         this.source = source;
+        this.tier = tier;
+        this.expiresAt = expiresAt;
     }
 
     public static LevelOverrideData from(LevelOverride override) {
@@ -52,7 +63,9 @@ public final class LevelOverrideData {
                 override.includeChildren(),
                 override.reason(),
                 override.appliedAt().toString(),
-                override.source());
+                override.source(),
+                override.tier().name(),
+                override.expiresAt() == null ? null : override.expiresAt().toString());
     }
 
     public String getLoggerName() {
@@ -77,5 +90,13 @@ public final class LevelOverrideData {
 
     public String getSource() {
         return source;
+    }
+
+    public String getTier() {
+        return tier;
+    }
+
+    public String getExpiresAt() {
+        return expiresAt;
     }
 }

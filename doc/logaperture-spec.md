@@ -226,6 +226,8 @@ logaperture-it              integration test matrix
 
 ## 6. Feature 2 — Persistence and resume
 
+> Implementation spec: [`doc/specs/persistence.md`](specs/persistence.md).
+
 ### 6.1 Three tiers, chosen explicitly
 
 The gap identified in §3 is that WildFly forces a choice between "dies at restart" and "edited into my configuration file forever". Offer three tiers instead, named at the point of use so the choice is conscious:
@@ -248,13 +250,22 @@ Adopt a concrete design criterion: **can a support engineer read the command dow
 
 ### 6.3 State store
 
-- Default: single file, human-readable and hand-editable (YAML), at `${logaperture.home}/state.yaml`, defaulting to `${user.dir}/.logaperture/`.
+- Default: single file, human-readable and hand-editable (YAML), under `${logaperture.home}/`,
+  defaulting `logaperture.home` to `${user.home}/.logaperture/` (`%USERPROFILE%` on Windows) — a
+  fixed, discoverable per-user location, not the JVM's own working directory. The specific file
+  within it is named from the JVM's canonical working directory rather than being one shared file,
+  so multiple JVMs on one box get one discoverable home without colliding by default; see
+  [`doc/specs/persistence.md`](specs/persistence.md) for the derivation.
 - Written atomically (temp file + rename), with a schema version field.
 - Pluggable `StateStore` SPI from day one — containers are ephemeral and the interesting deployments will want a shared or external store. Ship file-based only in v1; the SPI is what matters.
 
 ### 6.4 Identity problem
 
-"Resume on restart" requires knowing *which JVM's* state to resume. A single file path per JVM is the simplest correct answer and should be the default. Provide an explicit `logaperture.instanceId` for shared-store scenarios rather than trying to be clever about auto-detecting identity from hostname/main-class/args.
+"Resume on restart" requires knowing *which JVM's* state to resume. Default: derive it from the
+JVM's own canonical working directory, so the common case needs no operator configuration at all.
+Provide an explicit `logaperture.instanceId` as the escape hatch for the case that default can't
+disambiguate on its own — two instances launched from the identical working directory — rather
+than trying to be clever about auto-detecting identity from hostname/main-class/args.
 
 ### 6.5 Reconfiguration re-application
 

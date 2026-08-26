@@ -18,6 +18,7 @@ package org.logaperture.core;
 import org.junit.jupiter.api.Test;
 import org.logaperture.api.Level;
 import org.logaperture.api.SetLevelOptions;
+import org.logaperture.core.spi.StateStore;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -60,12 +61,12 @@ class CapabilityCheckTest {
         InMemoryAuditLog auditLog = new InMemoryAuditLog();
 
         LevelControlService allowAll = new LevelControlService(
-                adapter, baselines, overrides, CapabilityPolicy.allowAll(), auditLog, "alice", "jmx");
+                adapter, baselines, overrides, CapabilityPolicy.allowAll(), auditLog, StateStore.noOp(), "alice", "jmx");
         allowAll.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
 
         LevelControlService noLower = new LevelControlService(
                 adapter, baselines, overrides,
-                capability -> capability != Capability.LEVEL_LOWER, auditLog, "alice", "jmx");
+                capability -> capability != Capability.LEVEL_LOWER, auditLog, StateStore.noOp(), "alice", "jmx");
 
         assertThrows(CapabilityDeniedException.class, () -> noLower.resetLevel("com.acme.Worker"));
     }
@@ -79,7 +80,7 @@ class CapabilityCheckTest {
 
         LevelControlService noLower = new LevelControlService(
                 adapter, baselines, overrides,
-                capability -> capability != Capability.LEVEL_LOWER, auditLog, "alice", "jmx");
+                capability -> capability != Capability.LEVEL_LOWER, auditLog, StateStore.noOp(), "alice", "jmx");
 
         assertThrows(CapabilityDeniedException.class, noLower::resetAll);
     }

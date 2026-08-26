@@ -16,10 +16,13 @@
 package org.logaperture.control.jmx;
 
 import org.logaperture.api.Level;
+import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.core.LevelControlOperations;
 
+import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -45,9 +48,11 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
-    public LevelOverrideData setLevel(String loggerName, String level, boolean includeChildren, String reason) {
-        Level parsed = parseLevel(level);
-        var override = operations.setLevel(loggerName, parsed, new SetLevelOptions(includeChildren, reason, null));
+    public LevelOverrideData setLevel(String loggerName, String level, boolean includeChildren, String reason,
+            String tier, long forSeconds) {
+        Level parsedLevel = parseLevel(level);
+        SetLevelOptions options = toOptions(includeChildren, reason, tier, forSeconds);
+        var override = operations.setLevel(loggerName, parsedLevel, options);
         return LevelOverrideData.from(override);
     }
 
@@ -61,12 +66,30 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
         operations.resetAll();
     }
 
+    private static SetLevelOptions toOptions(boolean includeChildren, String reason, String tier, long forSeconds) {
+        PersistenceTier parsedTier = parseTier(tier);
+        Duration expiresIn = parsedTier == PersistenceTier.FOR ? Duration.ofSeconds(forSeconds) : null;
+        return new SetLevelOptions(includeChildren, reason, expiresIn, parsedTier);
+    }
+
+    private static PersistenceTier parseTier(String tier) {
+        if (tier == null) {
+            throw new IllegalArgumentException("tier must not be null");
+        }
+        try {
+            return PersistenceTier.valueOf(tier.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("unknown tier: '" + tier + "' (expected one of "
+                    + List.of(PersistenceTier.values()) + ")", e);
+        }
+    }
+
     private static Level parseLevel(String level) {
         if (level == null) {
             throw new IllegalArgumentException("level must not be null");
         }
         try {
-            return Level.valueOf(level.trim().toUpperCase());
+            return Level.valueOf(level.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("unknown level: '" + level + "' (expected one of "
                     + List.of(Level.values()) + ")", e);

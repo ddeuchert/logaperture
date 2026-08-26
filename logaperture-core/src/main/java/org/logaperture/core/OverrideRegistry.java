@@ -43,6 +43,20 @@ public final class OverrideRegistry {
         overrides.remove(loggerName);
     }
 
+    /**
+     * Removes {@code loggerName} only if its current value still equals
+     * {@code expected} — an atomic compare-and-remove that guards a stale
+     * caller (e.g. the expiry sweep, which reads a snapshot and may act on
+     * it after the registry has moved on) from clobbering a newer override
+     * for the same logger set concurrently.
+     *
+     * @return {@code true} if the removal happened, {@code false} if the
+     *         current value had already changed (or the entry was already gone)
+     */
+    public boolean removeIfCurrent(String loggerName, LevelOverride expected) {
+        return overrides.remove(loggerName, expected);
+    }
+
     /** A point-in-time snapshot, safe to iterate while the registry is concurrently mutated. */
     public Map<String, LevelOverride> all() {
         return Map.copyOf(overrides);
