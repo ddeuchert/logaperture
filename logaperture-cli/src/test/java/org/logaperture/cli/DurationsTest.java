@@ -40,4 +40,11 @@ class DurationsTest {
         CliError error = assertThrows(CliError.class, () -> Durations.parse(bad));
         assertEquals(CliError.USAGE, error.exitCode());
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"999999999999999d", "9999999999999999999h"})
+    void rejectsValuesThatOverflowRatherThanLettingArithmeticExceptionEscape(String tooBig) {
+        CliError error = assertThrows(CliError.class, () -> Durations.parse(tooBig));
+        assertEquals(CliError.USAGE, error.exitCode());
+    }
 }

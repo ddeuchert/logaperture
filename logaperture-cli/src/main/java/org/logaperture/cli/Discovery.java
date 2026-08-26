@@ -77,7 +77,7 @@ final class Discovery {
             // A JVM we can't attach to (a race, a different user, this same VM) can't be a candidate anyway.
             return null;
         } finally {
-            detachQuietly(vm);
+            Quietly.detach(vm);
         }
     }
 
@@ -88,17 +88,6 @@ final class Discovery {
         }
         return Format.table(List.of("PID", "VERSION", "COMMAND"), rows)
                 + "\nSeveral candidates — pass --pid <n>.";
-    }
-
-    private static void detachQuietly(VirtualMachine vm) {
-        if (vm == null) {
-            return;
-        }
-        try {
-            vm.detach();
-        } catch (Exception ignored) {
-            // best effort
-        }
     }
 
     private record Candidate(long pid, String displayName, String version) {

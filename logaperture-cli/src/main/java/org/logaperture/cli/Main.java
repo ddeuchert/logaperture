@@ -19,7 +19,6 @@ import org.logaperture.core.CapabilityDeniedException;
 
 import javax.management.RuntimeMBeanException;
 import java.io.PrintStream;
-import java.util.Arrays;
 
 /**
  * {@code logctl} — the attach-API + local-JMX client for the level-control
@@ -47,8 +46,6 @@ public final class Main {
     }
 
     static int run(String[] args, PrintStream out, PrintStream err, Connector connector) {
-        boolean debug = Arrays.asList(args).contains("--debug");
-
         Invocation invocation;
         try {
             invocation = Parser.parse(args);
@@ -81,13 +78,13 @@ public final class Main {
                 err.println("Refused: this JVM's policy does not grant " + denied.capability() + ".");
                 return CliError.REFUSED;
             }
-            if (debug) {
+            if (invocation.debug()) {
                 e.printStackTrace(err);
             }
             err.println("logctl: " + messageOf(target));
             return CliError.UNEXPECTED;
         } catch (Exception e) {
-            if (debug) {
+            if (invocation.debug()) {
                 e.printStackTrace(err);
             }
             err.println("logctl: " + messageOf(e));

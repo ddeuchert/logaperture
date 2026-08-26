@@ -15,6 +15,7 @@
  */
 package org.logaperture.cli;
 
+import com.sun.tools.attach.AttachNotSupportedException;
 import com.sun.tools.attach.VirtualMachine;
 import org.logaperture.control.jmx.JmxRegistrar;
 import org.logaperture.control.jmx.LevelControlMXBean;
@@ -66,16 +67,20 @@ final class AgentConnection implements ControlPlane {
             LevelControlMXBean proxy =
                     JMX.newMXBeanProxy(connection, JmxRegistrar.OBJECT_NAME, LevelControlMXBean.class);
             AgentConnection open = new AgentConnection(vm, connector, proxy);
-            connector = null; // ownership transferred; don't close it in the catch/finally below
+            connector = null; // ownership transferred; don't close it in the finally below
             vm = null;
             return open;
         } catch (CliError e) {
             throw e;
         } catch (Exception e) {
-            throw attachFailure(pid, e);
+            // The attach succeeded, so this is not a permissions problem: the JDK's
+            // management agent wouldn't start, or the JMX handshake failed. Exit 1,
+            // per doc/specs/cli-transport.md's "any other exception from the operation".
+            throw new CliError(CliError.UNEXPECTED,
+                    "Couldn't open a management connection to PID " + pid + ": " + describe(e));
         } finally {
-            closeQuietly(connector);
-            detachQuietly(vm);
+            Quietly.close(connector);
+            Quietly.detach(vm);
         }
     }
 
@@ -86,37 +91,24 @@ final class AgentConnection implements ControlPlane {
 
     @Override
     public void close() {
-        closeQuietly(connector);
-        detachQuietly(vm);
+        Quietly.close(connector);
+        Quietly.detach(vm);
     }
 
     private static CliError attachFailure(long pid, Exception cause) {
         if (ProcessHandle.of(pid).isEmpty()) {
             return new CliError(CliError.NO_JVM, "No process with PID " + pid + ".");
         }
+        if (cause instanceof AttachNotSupportedException) {
+            return new CliError(CliError.ATTACH_DENIED, "Can't attach to PID " + pid
+                    + " — it doesn't support the attach mechanism (started with -XX:+DisableAttachMechanism, "
+                    + "or not a HotSpot JVM).");
+        }
         return new CliError(CliError.ATTACH_DENIED,
                 "Can't attach to PID " + pid + " — run as the user that owns that process, or as root.");
     }
 
-    private static void closeQuietly(JMXConnector connector) {
-        if (connector == null) {
-            return;
-        }
-        try {
-            connector.close();
-        } catch (Exception ignored) {
-            // best effort
-        }
-    }
-
-    private static void detachQuietly(VirtualMachine vm) {
-        if (vm == null) {
-            return;
-        }
-        try {
-            vm.detach();
-        } catch (Exception ignored) {
-            // best effort
-        }
+    private static String describe(Throwable t) {
+        return t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
     }
 }

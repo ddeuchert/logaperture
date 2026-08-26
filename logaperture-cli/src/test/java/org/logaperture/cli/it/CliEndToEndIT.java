@@ -15,7 +15,10 @@
  */
 package org.logaperture.cli.it;
 
+import com.sun.tools.attach.VirtualMachine;
+import com.sun.tools.attach.VirtualMachineDescriptor;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.logaperture.cli.Main;
 
@@ -45,6 +48,24 @@ class CliEndToEndIT {
     private static final String LOGGER = "com.acme.batch.Worker";
 
     private final List<Process> fixtures = new ArrayList<>();
+
+    /**
+     * Discovery counts every attachable JVM this user owns that carries the
+     * {@code logaperture.version} marker — which the agent module's own
+     * {@code LevelControlEndToEndIT} fixture also sets. In the default
+     * serial reactor that IT has finished (and torn its fixtures down)
+     * before this module builds, so the only marked JVMs here are the ones
+     * we launch. If that's not true — a crashed leftover, or a {@code -T}
+     * parallel build — fail with a clear message rather than a mystifying
+     * "expected 0 but was 4".
+     */
+    @BeforeEach
+    void noStrayMarkedJvms() {
+        List<Long> stray = markedJvmPids();
+        assertTrue(stray.isEmpty(),
+                "a LogAperture-marked JVM is already running (pids " + stray + ") before this IT launched any — "
+                        + "a leftover fixture from a crashed run, or a parallel (-T) build. Kill it and re-run.");
+    }
 
     @AfterEach
     void stopFixtures() {
@@ -117,19 +138,41 @@ class CliEndToEndIT {
     }
 
     @Test
-    void noEnabledJvmIsExitThree() {
+    void noProcessAtThatPidIsExitThree() {
         Result result = run("--pid", Long.toString(unusedPid()), "status");
         assertEquals(3, result.exitCode, result.out + result.err);
+    }
+
+    @Test
+    void explicitPidOfAnAgentlessJvmIsExitThree() throws Exception {
+        Process plain = launchPlainJvm();
+        try {
+            awaitPlainReady(plain);
+            Result result = run("--pid", Long.toString(plain.pid()), "status");
+            assertEquals(3, result.exitCode, result.out + result.err);
+            assertTrue(result.err.contains("no LogAperture agent"), result.err);
+        } finally {
+            stop(plain);
+        }
     }
 
     // --- harness ---------------------------------------------------------
 
     private Process launchFixture() throws Exception {
+        return launch("org.logaperture.cli.it.CliFixtureApp");
+    }
+
+    /** A JVM with no agent and no marker — reachable by --pid, but not a LogAperture control target. */
+    private Process launchPlainJvm() throws Exception {
+        return launch("org.logaperture.cli.it.PlainApp");
+    }
+
+    private Process launch(String mainClass) throws Exception {
         String javaBin = System.getProperty("java.home") + "/bin/java";
         ProcessBuilder builder = new ProcessBuilder(
                 javaBin,
                 "-cp", System.getProperty("java.class.path"),
-                "org.logaperture.cli.it.CliFixtureApp");
+                mainClass);
         builder.redirectErrorStream(true);
         Process process = builder.start();
         fixtures.add(process);
@@ -137,23 +180,31 @@ class CliEndToEndIT {
     }
 
     private static void awaitReady(Process fixture) throws Exception {
+        awaitLine(fixture, "FIXTURE-READY");
+    }
+
+    private static void awaitPlainReady(Process plain) throws Exception {
+        awaitLine(plain, "PLAIN-READY");
+    }
+
+    private static void awaitLine(Process process, String token) throws Exception {
         BufferedReader reader =
-                new BufferedReader(new InputStreamReader(fixture.getInputStream(), StandardCharsets.UTF_8));
+                new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
         while (System.nanoTime() < deadline) {
-            if (!fixture.isAlive()) {
-                fail("fixture process exited before signalling readiness");
+            if (!process.isAlive()) {
+                fail("process exited before printing '" + token + "'");
             }
             if (reader.ready()) {
                 String line = reader.readLine();
-                if (line != null && line.contains("FIXTURE-READY")) {
+                if (line != null && line.contains(token)) {
                     return;
                 }
             } else {
                 Thread.sleep(50);
             }
         }
-        fail("fixture process never signalled readiness within 15s");
+        fail("process never printed '" + token + "' within 15s");
     }
 
     private static Result run(String... args) {
@@ -163,6 +214,31 @@ class CliEndToEndIT {
                 new PrintStream(out, true, StandardCharsets.UTF_8),
                 new PrintStream(err, true, StandardCharsets.UTF_8));
         return new Result(code, out.toString(StandardCharsets.UTF_8), err.toString(StandardCharsets.UTF_8));
+    }
+
+    /** Attachable JVMs owned by this user that already carry the discovery marker — same probe {@code Discovery} uses. */
+    private static List<Long> markedJvmPids() {
+        List<Long> pids = new ArrayList<>();
+        for (VirtualMachineDescriptor descriptor : VirtualMachine.list()) {
+            VirtualMachine vm = null;
+            try {
+                vm = VirtualMachine.attach(descriptor);
+                if (vm.getSystemProperties().getProperty("logaperture.version") != null) {
+                    pids.add(Long.parseLong(descriptor.id()));
+                }
+            } catch (Exception cannotInspect) {
+                // not attachable / not a pid → can't be one of ours
+            } finally {
+                if (vm != null) {
+                    try {
+                        vm.detach();
+                    } catch (Exception ignored) {
+                        // best effort
+                    }
+                }
+            }
+        }
+        return pids;
     }
 
     /** A PID that is (almost certainly) not a live process, for the no-JVM path. */

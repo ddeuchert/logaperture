@@ -49,9 +49,9 @@ final class Commands {
             List<List<String>> table = new ArrayList<>();
             for (LoggerInfoData row : rows) {
                 table.add(List.of(
-                        row.getName(),
+                        orDash(row.getName()),
                         orDash(row.getConfiguredLevel()),
-                        row.getEffectiveLevel(),
+                        orDash(row.getEffectiveLevel()),
                         overrideCell(row)));
             }
             out.println(Format.table(List.of("LOGGER", "CONFIGURED", "EFFECTIVE", "OVERRIDE"), table));
@@ -79,8 +79,8 @@ final class Commands {
             List<List<String>> table = new ArrayList<>();
             for (LoggerInfoData row : active) {
                 table.add(List.of(
-                        row.getName(),
-                        row.getEffectiveLevel(),
+                        orDash(row.getName()),
+                        orDash(row.getEffectiveLevel()),
                         orDash(row.getTier()),
                         revertsCell(row),
                         row.getOverrideReason() == null ? Format.NONE : '"' + row.getOverrideReason() + '"'));

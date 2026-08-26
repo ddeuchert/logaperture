@@ -48,12 +48,16 @@ final class Durations {
         if (value == 0) {
             throw new CliError(CliError.USAGE, "A duration must be greater than zero.");
         }
-        return switch (m.group(2)) {
-            case "s" -> Duration.ofSeconds(value);
-            case "m" -> Duration.ofMinutes(value);
-            case "h" -> Duration.ofHours(value);
-            case "d" -> Duration.ofDays(value);
-            default -> throw new AssertionError("unit regex admitted an unexpected suffix");
-        };
+        try {
+            return switch (m.group(2)) {
+                case "s" -> Duration.ofSeconds(value);
+                case "m" -> Duration.ofMinutes(value);
+                case "h" -> Duration.ofHours(value);
+                case "d" -> Duration.ofDays(value);
+                default -> throw new AssertionError("unit regex admitted an unexpected suffix");
+            };
+        } catch (ArithmeticException overflow) {
+            throw new CliError(CliError.USAGE, "Duration '" + token + "' is out of range.");
+        }
     }
 }
