@@ -40,6 +40,7 @@
     <module>logaperture-container-none</module>
     <module>logaperture-control-jmx</module>
     <module>logaperture-agent</module>
+    <module>logaperture-cli</module>
   </modules>
 
   <properties>
