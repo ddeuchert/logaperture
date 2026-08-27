@@ -1,6 +1,6 @@
 # CLI Transport — `logctl`
 
-Status: draft, not yet implemented.
+Status: implemented in M1.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §8 (control plane and
 interfaces), §8.1 (CLI over the Attach API), §8.2 (the agent never listens), §9.8
 (authentication from the OS), §14.5 (CLI ergonomics are the product), §17 (roadmap, M1's
@@ -134,11 +134,16 @@ Per §14.5, "No PID argument when exactly one candidate JVM is running. Discover
    the `logaperture.version` marker property set (see "Changes outside the new module").
    This filter is cheap and touches nothing — it does not start the management agent in
    JVMs that turn out not to be ours. A JVM that can't be attached to (a race, a
-   permissions quirk) is skipped silently; it can't be a candidate anyway.
+   permissions quirk, a different user) is not a candidate and does not stop discovery —
+   but its count is carried forward, to be surfaced only on the zero-candidate path (next).
 3. Resolve:
    - **exactly one** &rarr; use it.
    - **none** &rarr; exit 3, "No LogAperture-enabled JVM found. Start the application with
-     `-javaagent:logaperture-agent.jar`."
+     `-javaagent:logaperture-agent.jar`." If one or more running JVMs could not be
+     inspected during discovery, a second line reports how many and suggests `--pid <n>`
+     if one of them is the target — so a transiently un-attachable real target reads as
+     "couldn't look" rather than "nothing there." The `--pid` path is unaffected: an
+     explicit PID never runs discovery.
    - **more than one** &rarr; exit 4, print a table (pid, main class, the marker's
      version) and "Several candidates — pass `--pid <n>`."
 4. `--pid <n>` skips discovery entirely and targets that PID; if it has no marker
@@ -275,13 +280,28 @@ Zero active overrides prints `No active overrides.` and exits 0.
 ### `logctl reset <logger>` and `logctl reset --all`
 
 `resetLevel` and `resetAll` both return `void` (Feature 1's MXBean surface), so the CLI
-issues one follow-up `listLoggers` call to render its confirmation — a second control-plane
-round trip, negligible on this path.
+reads `listLoggers` to render its confirmation — extra control-plane round trips, negligible
+on this path.
 
-`logctl reset com.acme.batch.Worker` calls `resetLevel(name)`, then `listLoggers(name)` to
-learn the restored level. Not an error if nothing was overridden (Feature 1 semantics).
-Prints `com.acme.batch.Worker → INFO (baseline)`. `--json` emits the post-reset
-`LoggerInfoData` object, same shape as `logctl levels`.
+`logctl reset com.acme.batch.Worker` reads `listLoggers(name)` **before** the reset (to
+learn whether an override was actually active), calls `resetLevel(name)`, then reads
+`listLoggers(name)` **again** to learn the restored level. Not an error if nothing was
+overridden (Feature 1 semantics). Three outcomes:
+
+- The logger is still listed afterwards (the common case — the adapter retains any logger
+  it has touched): `com.acme.batch.Worker → INFO (baseline)`.
+- Nothing was overridden and the logger is unknown: `com.acme.batch.Worker — nothing was
+  overridden.`
+- An override *was* active but the logger is "Known", not "Live" (e.g. a `STICKY`/`FOR`
+  entry resumed from the state store for a logger nothing has instantiated), so clearing
+  it removes the name from `listLoggers` entirely: `com.acme.batch.Worker → baseline (not
+  yet instantiated, so no level to show)` — the pre-reset read is what keeps this from
+  being misreported as "nothing was overridden."
+
+`--json` emits the post-reset `LoggerInfoData` object, same shape as `logctl levels`. When
+that object doesn't exist (the third case, or a `--json` reset of an unknown logger), it
+emits `{"name": …, "overrideActive": false, "wasOverridden": <bool>}` instead of a bare
+`null`, so a script always gets an object and can see whether the call cleared anything.
 
 `logctl reset --all` calls `listLoggers(null)` first to count what's active, then
 `resetAll()`. This is Feature 1's "get me back to normal" escape hatch, so it does **not**
@@ -420,7 +440,7 @@ development).
 |---|---|---|
 | No arguments, or `--help` | usage text | 0 for `--help`, 2 for no args |
 | Unknown command/flag, wrong arity, unparseable level or duration | the specific problem + usage | 2 |
-| No candidate JVM | "No LogAperture-enabled JVM found. Start with `-javaagent:logaperture-agent.jar`." | 3 |
+| No candidate JVM | "No LogAperture-enabled JVM found. Start with `-javaagent:logaperture-agent.jar`." — plus, if any running JVM couldn't be inspected, a second line with that count and a `--pid` hint | 3 |
 | Several candidates, no `--pid` | table of pids + "pass `--pid <n>`" | 4 |
 | `--pid` names a JVM that's gone | "No process with PID <n>." | 3 |
 | Attach permission denied | "Can't attach to PID <n> — run as its owner or root." | 5 |
@@ -453,6 +473,11 @@ shallow cross-process integration test.
 - Rendering: table columns align; `--json` output parses and carries the expected keys;
   `status` with no overrides, and `levels` with a non-matching filter, print their
   empty-state lines and exit 0.
+- `reset` three-way outcome (stubbed transport): logger still listed &rarr; "→ level
+  (baseline)"; unknown and never overridden &rarr; "nothing was overridden."; override
+  cleared but logger drops out of `listLoggers` &rarr; the "not yet instantiated" line and,
+  under `--json`, an object with `overrideActive: false` / `wasOverridden: true` rather
+  than `null`.
 - Exit-code mapping: each `Situation` row above, driven through a stubbed transport, lands
   on its stated code — including a stubbed `RuntimeMBeanException` wrapping a
   `CapabilityDeniedException` &rarr; exit 6 with the capability named.
@@ -475,7 +500,9 @@ shallow cross-process integration test.
     &rarr; `run(["levels"])` with no `--pid` &rarr; exit 4, both pids listed; adding
     `--pid` for either &rarr; exit 0.
   - A plain JVM with no agent running alongside the fixture &rarr; discovery still
-    resolves to the one enabled JVM (marker property filters the plain one out).
+    resolves to the one enabled JVM (marker property filters the plain one out) — an
+    attachable non-LogAperture JVM is "not ours", not "uninspectable", so it adds no
+    second line.
   - No enabled JVM at all &rarr; exit 3.
 - The wrong-OS-user attach path is covered only at the unit level (stubbed attach failure
   &rarr; exit 5) — CI can't portably launch a JVM as another user.

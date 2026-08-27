@@ -44,16 +44,24 @@ final class Discovery {
         }
 
         List<Candidate> candidates = new ArrayList<>();
+        int uninspectable = 0;
         for (VirtualMachineDescriptor descriptor : VirtualMachine.list()) {
-            Candidate candidate = probe(descriptor);
-            if (candidate != null) {
-                candidates.add(candidate);
+            Probe probe = probe(descriptor);
+            if (probe.candidate() != null) {
+                candidates.add(probe.candidate());
+            } else if (probe.failed()) {
+                uninspectable++;
             }
         }
 
         if (candidates.isEmpty()) {
-            throw new CliError(CliError.NO_JVM,
-                    "No LogAperture-enabled JVM found. Start the application with -javaagent:logaperture-agent.jar.");
+            String message =
+                    "No LogAperture-enabled JVM found. Start the application with -javaagent:logaperture-agent.jar.";
+            if (uninspectable > 0) {
+                message += "\n(" + uninspectable + " running JVM(s) could not be inspected — if one of them "
+                        + "is yours, name it with --pid <n>.)";
+            }
+            throw new CliError(CliError.NO_JVM, message);
         }
         if (candidates.size() > 1) {
             throw new CliError(CliError.AMBIGUOUS, ambiguityMessage(candidates));
@@ -61,21 +69,30 @@ final class Discovery {
         return candidates.get(0).pid();
     }
 
-    private static Candidate probe(VirtualMachineDescriptor descriptor) {
+    private static Probe probe(VirtualMachineDescriptor descriptor) {
         long pid;
         try {
             pid = Long.parseLong(descriptor.id());
         } catch (NumberFormatException notAPid) {
-            return null;
+            return Probe.NOT_APPLICABLE;
+        }
+        if (pid == ProcessHandle.current().pid()) {
+            // The CLI's own JVM: attaching to self fails on most platforms. Not a candidate,
+            // and not an "un-attachable" one worth counting either.
+            return Probe.NOT_APPLICABLE;
         }
         VirtualMachine vm = null;
         try {
             vm = VirtualMachine.attach(descriptor);
             String version = vm.getSystemProperties().getProperty(MARKER_PROPERTY);
-            return version == null ? null : new Candidate(pid, descriptor.displayName(), version);
+            return version == null ? Probe.NOT_APPLICABLE : Probe.of(new Candidate(pid, descriptor.displayName(), version));
         } catch (Exception cannotInspect) {
-            // A JVM we can't attach to (a race, a different user, this same VM) can't be a candidate anyway.
-            return null;
+            // A JVM we can't attach to (a race, a different user, this same VM) can't be a candidate.
+            // Still count it: if discovery then finds nothing, the message should own up to the JVMs
+            // it couldn't see rather than flatly claim none is enabled (doc/specs/cli-transport.md
+            // "Discovery" — "skipped silently" for the resolve step, but the zero-candidate report
+            // is more honest with the count).
+            return Probe.FAILED;
         } finally {
             Quietly.detach(vm);
         }
@@ -91,5 +108,15 @@ final class Discovery {
     }
 
     private record Candidate(long pid, String displayName, String version) {
+    }
+
+    /** One descriptor's outcome: our agent (a {@link Candidate}), not ours, or un-attachable. */
+    private record Probe(Candidate candidate, boolean failed) {
+        static final Probe NOT_APPLICABLE = new Probe(null, false);
+        static final Probe FAILED = new Probe(null, true);
+
+        static Probe of(Candidate candidate) {
+            return new Probe(candidate, false);
+        }
     }
 }

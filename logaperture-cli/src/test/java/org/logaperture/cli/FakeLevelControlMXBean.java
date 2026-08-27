@@ -28,6 +28,8 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     final List<String> listLoggersFilters = new ArrayList<>();
     final List<Object[]> setLevelCalls = new ArrayList<>();
     final List<String> resetLevelCalls = new ArrayList<>();
+    /** Names dropped from {@link #loggers} when {@link #resetLevel} clears them — a "Known" but not "Live" logger. */
+    final List<String> forgetOnReset = new ArrayList<>();
     int resetAllCalls;
 
     List<LoggerInfoData> loggers = new ArrayList<>();
@@ -62,6 +64,9 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     public void resetLevel(String loggerName) {
         resetLevelCalls.add(loggerName);
         maybeThrow();
+        if (forgetOnReset.contains(loggerName)) {
+            loggers.removeIf(logger -> logger.getName().equals(loggerName));
+        }
     }
 
     @Override

@@ -26,9 +26,10 @@ import java.util.List;
 /**
  * The four sub-commands, each a thin renderer over one (occasionally two)
  * {@link org.logaperture.control.jmx.LevelControlMXBean} calls — see
- * doc/specs/cli-transport.md "Command surface". {@code reset} issues a
- * follow-up {@code listLoggers} only because {@code resetLevel}/{@code
- * resetAll} return {@code void}.
+ * doc/specs/cli-transport.md "Command surface". {@code reset} reads
+ * {@code listLoggers} before and after only because {@code resetLevel}/{@code
+ * resetAll} return {@code void} — the "before" read is what lets it tell
+ * "reverted a not-yet-instantiated logger" from "nothing to do".
  */
 final class Commands {
 
@@ -105,16 +106,20 @@ final class Commands {
 
     static Command reset(String logger, boolean json) {
         return (mbean, out) -> {
+            LoggerInfoData before = findLogger(mbean.listLoggers(logger), logger);
+            boolean wasOverridden = before != null && before.isOverrideActive();
             mbean.resetLevel(logger);
             LoggerInfoData after = findLogger(mbean.listLoggers(logger), logger);
             if (json) {
-                out.println(after == null ? "null" : Json.logger(after));
+                out.println(after != null ? Json.logger(after) : Json.reset(logger, wasOverridden));
                 return CliError.OK;
             }
-            if (after == null) {
-                out.println(logger + " — nothing was overridden.");
-            } else {
+            if (after != null) {
                 out.println(logger + " → " + after.getEffectiveLevel() + " (baseline)");
+            } else if (wasOverridden) {
+                out.println(logger + " → baseline (not yet instantiated, so no level to show)");
+            } else {
+                out.println(logger + " — nothing was overridden.");
             }
             return CliError.OK;
         };

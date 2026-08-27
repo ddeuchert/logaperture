@@ -24,6 +24,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -168,6 +169,29 @@ class CommandsTest {
     void resetOfAnUnknownLoggerSaysNothingWasOverridden() {
         assertEquals(CliError.OK, run(Commands.reset("com.acme.ghost", false)));
         assertEquals("com.acme.ghost — nothing was overridden.", output().strip());
+    }
+
+    @Test
+    void resetOfAnOverriddenButNotYetInstantiatedLoggerReportsTheRevertNotNothing() {
+        mbean.loggers = new ArrayList<>(List.of(
+                new LoggerInfoData("com.acme.Known", null, "DEBUG", true, "jmx", "resumed", "STICKY", null)));
+        mbean.forgetOnReset.add("com.acme.Known");
+
+        assertEquals(CliError.OK, run(Commands.reset("com.acme.Known", false)));
+        assertEquals(List.of("com.acme.Known"), mbean.resetLevelCalls);
+        assertEquals("com.acme.Known → baseline (not yet instantiated, so no level to show)", output().strip());
+    }
+
+    @Test
+    void resetJsonEmitsAnObjectEvenWhenNoPostResetLoggerRemains() {
+        mbean.loggers = new ArrayList<>(List.of(
+                new LoggerInfoData("com.acme.Known", null, "DEBUG", true, "jmx", null, "STICKY", null)));
+        mbean.forgetOnReset.add("com.acme.Known");
+
+        assertEquals(CliError.OK, run(Commands.reset("com.acme.Known", true)));
+        assertEquals(
+                "{\"name\":\"com.acme.Known\",\"overrideActive\":false,\"wasOverridden\":true}",
+                output().strip());
     }
 
     @Test

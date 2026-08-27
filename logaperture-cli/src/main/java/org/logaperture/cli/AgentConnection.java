@@ -100,9 +100,15 @@ final class AgentConnection implements ControlPlane {
             return new CliError(CliError.NO_JVM, "No process with PID " + pid + ".");
         }
         if (cause instanceof AttachNotSupportedException) {
+            // On Linux+HotSpot a cross-user attach commonly surfaces here rather than as an
+            // IOException: the QUIT signal that would create the attach socket is dropped for
+            // a foreign UID, so the JDK reports "not responding" as AttachNotSupportedException.
+            // Permissions is therefore the first thing to check; a genuinely disabled or
+            // non-HotSpot attach mechanism is the same exit code and the fallback explanation.
             return new CliError(CliError.ATTACH_DENIED, "Can't attach to PID " + pid
-                    + " — it doesn't support the attach mechanism (started with -XX:+DisableAttachMechanism, "
-                    + "or not a HotSpot JVM).");
+                    + " — run as the user that owns that process, or as root. If you already are, "
+                    + "that JVM has the attach mechanism disabled (-XX:+DisableAttachMechanism) "
+                    + "or is not a HotSpot JVM.");
         }
         return new CliError(CliError.ATTACH_DENIED,
                 "Can't attach to PID " + pid + " — run as the user that owns that process, or as root.");

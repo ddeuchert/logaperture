@@ -72,6 +72,21 @@ final class Json {
         return "{\"reverted\":" + count + "}";
     }
 
+    /**
+     * {@code reset <logger>} fell through with no post-reset {@link LoggerInfoData}
+     * to emit — the logger is not "Live" and holds no override, so {@code
+     * listLoggers} returns nothing for it. Report what is actually known instead
+     * of a bare {@code null}: the name, that no override is active, and whether
+     * this call cleared one.
+     */
+    static String reset(String loggerName, boolean wasOverridden) {
+        return new Obj()
+                .str("name", loggerName)
+                .bool("overrideActive", false)
+                .bool("wasOverridden", wasOverridden)
+                .toString();
+    }
+
     private static final class Obj {
         private final StringJoiner body = new StringJoiner(",", "{", "}");
 
