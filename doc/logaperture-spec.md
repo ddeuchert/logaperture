@@ -811,8 +811,8 @@ The axes also overlap in your favour: **JBoss LogManager covers WildFly *and* Qu
 public interface ContainerIntegration {
   String id();
   boolean detect();                                 // is this container present?
-  AggregateLevelControl activate(Instrumentation inst, CapabilityPolicy policy,
-                                 AuditLog audit, Runnable onFirstContextReady);
+  AggregateLevelControl activate(Instrumentation inst, CapabilityPolicy policy, AuditLog audit,
+                                 Consumer<AggregateLevelControl> onFirstContextReady);
   default InstallGuidance guidance();               // where the -javaagent flag goes
 }
 ```

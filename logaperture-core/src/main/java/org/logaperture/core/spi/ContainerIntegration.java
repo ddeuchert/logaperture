@@ -20,6 +20,7 @@ import org.logaperture.core.AuditLog;
 import org.logaperture.core.CapabilityPolicy;
 
 import java.lang.instrument.Instrumentation;
+import java.util.function.Consumer;
 
 /**
  * One container the agent knows how to bring logging under control for —
@@ -54,19 +55,23 @@ public interface ContainerIntegration {
      * Bring this container's logging under control. Returns promptly with
      * the (initially empty) {@link AggregateLevelControl}; the actual
      * discovery and per-context install complete asynchronously, once the
-     * backend is safe to touch. {@code onFirstContextReady} runs once, on
-     * whatever thread completes the first context's install — the agent
-     * uses it to publish its "control plane is up" marker only after there
-     * is really something to control.
+     * backend is safe to touch. {@code onFirstContextReady} is handed the
+     * aggregate once, on whatever thread completes the first context's
+     * install — the agent uses it to register the JMX surface and publish its
+     * "control plane is up" marker only after there is really something to
+     * control. It is the same instance this method returns; the callback
+     * exists so the agent never has to race the return value against the
+     * async install.
      *
      * @param inst                the agent's {@link Instrumentation}, for
      *                            class-load-time readiness detection
      * @param policy              the capability policy every mutation is checked against
      * @param auditLog            the sink every mutation and reversion is recorded to
-     * @param onFirstContextReady run once, after the first context is installed
+     * @param onFirstContextReady handed the aggregate once the first context is installed
      */
     AggregateLevelControl activate(
-            Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog, Runnable onFirstContextReady);
+            Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog,
+            Consumer<AggregateLevelControl> onFirstContextReady);
 
     /** Where the {@code -javaagent} flag goes, for diagnostics and help. Default {@link InstallGuidance#NONE}. */
     default InstallGuidance guidance() {

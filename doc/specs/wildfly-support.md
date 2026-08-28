@@ -127,13 +127,16 @@ public interface ContainerIntegration {
      * `none` that is "wait for SLF4J to bind to Logback, then install the one
      * system context"; for WildFly, "wait for org.jboss.logmanager.LogManager
      * to be installed, then install one context per registered LogContext, and
-     * keep reconciling that set". `onFirstContextReady` runs once, after the
-     * first context is installed — the agent uses it to register the JMX
-     * surface and publish its discovery marker only when there is really
-     * something to control.
+     * keep reconciling that set". `onFirstContextReady` is handed the aggregate
+     * once the first context is installed — the agent uses it to register the
+     * JMX surface and publish its discovery marker only when there is really
+     * something to control. Passing the aggregate (rather than a bare
+     * Runnable) keeps the agent from having to race `activate`'s return value
+     * against the async install.
      */
     AggregateLevelControl activate(
-            Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog, Runnable onFirstContextReady);
+            Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog,
+            Consumer<AggregateLevelControl> onFirstContextReady);
 
     /** Where the -javaagent flag goes, for diagnostics and help. Default InstallGuidance.NONE. */
     default InstallGuidance guidance() { return InstallGuidance.NONE; }
@@ -185,11 +188,13 @@ release, a persistence key — see "Broadcast semantics".
 correct for one context; Slice 1 does **not** rewrite it. Instead:
 
 - **`LevelControlService` stays single-context**, one per `ContextHandle`. Its constructor
-  and every existing method are untouched; it gains two small additive methods for the
-  broadcast path — `activeOverrides()` (a snapshot of what it currently tracks) and
+  and every existing method are untouched; it gains three small additive methods for the
+  broadcast path — `activeOverrides()` (a snapshot of what it currently tracks),
   `adoptOverride(LevelOverride)` (apply an override another context already holds, as a
   `"resume"`-flavoured mutation: adapter + registry + audit, no capability check, no
-  state-store write since the originating context already persisted it).
+  state-store write since the originating context already persisted it), and
+  `checkSetLevelPermitted(name, level, opts)` (the capability pre-flight `setLevel` already
+  runs, exposed so the aggregate can run it against every context before mutating any).
 - **A new `AggregateLevelControl implements LevelControlOperations`** holds a live
   `Map<String stableKey, ContextControl>` where `ContextControl` is a `record(ContextHandle
   handle, LevelControlService service)`. This is what `JmxRegistrar.register` receives now,
@@ -199,8 +204,9 @@ correct for one context; Slice 1 does **not** rewrite it. Instead:
 - Each container's composition root builds one `LevelControlService` per discovered
   context and registers it with the aggregate (`register` for a context found during
   initial discovery, `addContext` for one that appears later — the latter also
-  re-broadcasts the active overrides onto it); `removeContext` drops one on undeploy, its
-  persisted overrides left in the store (an undeploy is not a reset).
+  re-broadcasts the still-live overrides onto it, skipping any `--for` whose deadline has
+  already passed but the sweep has not yet reached); `removeContext` drops one on undeploy,
+  its persisted overrides left in the store (an undeploy is not a reset).
 
 For `none` the composition root is `NoneContainer` (refactored: it now owns the aggregate,
 the shared `StateStore`, and the single expiry-sweep thread, and installs level control per
@@ -217,14 +223,15 @@ one new class rather than smeared through the existing service.
 - **`listLoggers(filter)`** — fan out to every registered context, tag each `LoggerInfo`
   with its context's `stableKey`, concatenate. Sort by context then name. A logger name
   that exists in two contexts produces two rows.
-- **`setLevel(name, level, options)`** — **broadcast**: call `setLevel` on *every*
-  registered context's `LevelControlService`. A context that does not yet know the logger
-  creates it (the side-effecting observe the SPI already documents; pre-set works in JBoss
-  LogManager, confirmed by the M0 spike). The per-context capability check is deterministic
-  across contexts — all pass or all fail. Returns the `LevelOverride` from the `"system"`
-  context. If a context's `applyLevel` faults after earlier contexts succeeded, the
-  exception propagates; the verification sweep (Slice 3) reconciles the rest on its next
-  pass.
+- **`setLevel(name, level, options)`** — **broadcast**, "all pass or all fail": first call
+  `checkSetLevelPermitted` on *every* context (raise-vs-lower is judged against each
+  context's own effective level, so a capability can be granted in one context and denied
+  in another — the pre-flight has to run everywhere before any mutation), then call
+  `setLevel` on every context. A context that does not yet know the logger creates it (the
+  side-effecting observe the SPI already documents; pre-set works in JBoss LogManager,
+  confirmed by the M0 spike). Returns the `LevelOverride` from the `"system"` context. A
+  mid-broadcast `applyLevel` *adapter* fault can still leave earlier contexts changed; the
+  verification sweep (Slice 3) reconciles that.
 - **`resetLevel(name)`** — broadcast the reset to every context. **`resetAll()`** — fan
   out `resetAll` to every context.
 - There is no per-call context selector. A future scoping feature would add one here and
@@ -348,9 +355,12 @@ Per top-level §12, all in-process against the fast `none` path:
     both produces two rows.
   - `setLevel` broadcasts: the level lands in **both** contexts, including one where the
     logger did not previously exist (created / pre-set).
+  - `setLevel` denied in one context (raise there, lower in the other, under a no-raise
+    policy) mutates **neither** — the "all pass or all fail" pre-flight.
   - `resetLevel`, `resetAll`, and the expiry sweep revert the override in **both** contexts.
   - `addContext` for a later context re-broadcasts the active overrides onto it — a level
-    set before that context existed is present on it immediately after it registers.
+    set before that context existed is present on it immediately after it registers; an
+    already-elapsed `--for` override is **not** re-applied.
   - `removeContext` drops a context from the aggregate but leaves the persisted overrides
     in the `StateStore` (an undeploy is not a reset).
   - `setLevel` with no context registered throws.

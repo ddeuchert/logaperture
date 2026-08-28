@@ -16,6 +16,7 @@
 package org.logaperture.container.none;
 
 import org.logaperture.adapter.logback.LogbackAdapterFactory;
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.CapabilityPolicy;
@@ -25,6 +26,7 @@ import org.logaperture.core.spi.ContextHandle;
 import java.lang.instrument.Instrumentation;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * The {@link ContainerIntegration} for a plain {@code java -jar} app — the
@@ -59,13 +61,23 @@ public final class NoneContainerIntegration implements ContainerIntegration {
 
     @Override
     public AggregateLevelControl activate(
-            Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog, Runnable onFirstContextReady) {
+            Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog,
+            Consumer<AggregateLevelControl> onFirstContextReady) {
         NoneContainer root = new NoneContainer(policy, auditLog, sweepInterval);
-        LogbackLoadDetector.awaitLogbackAndThen(inst, () -> {
-            root.installContext(ContextHandle.of(
-                    ContextHandle.SYSTEM, "none", LogbackAdapterFactory.forCurrentContext()));
-            onFirstContextReady.run();
-        });
+
+        // Runs later, on the detector thread. Guard it: install failure must
+        // degrade to a Diagnostics line, never an uncaught exception on that
+        // thread (doc/specs/level-control.md "Failure handling").
+        Runnable installSystemContext = () -> {
+            try {
+                root.installContext(ContextHandle.of(
+                        ContextHandle.SYSTEM, "none", LogbackAdapterFactory.forCurrentContext()));
+                onFirstContextReady.accept(root.operations());
+            } catch (Throwable t) {
+                Diagnostics.error("LogAperture failed to install level control for the none container", t);
+            }
+        };
+        LogbackLoadDetector.awaitLogbackAndThen(inst, installSystemContext);
         return root.operations();
     }
 }

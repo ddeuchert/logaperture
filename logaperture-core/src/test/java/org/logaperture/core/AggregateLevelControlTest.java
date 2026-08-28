@@ -57,8 +57,12 @@ class AggregateLevelControlTest {
         final ContextControl control;
 
         Ctx(String key) {
+            this(key, CapabilityPolicy.allowAll());
+        }
+
+        Ctx(String key, CapabilityPolicy policy) {
             service = new LevelControlService(adapter, new BaselineRegistry(), new OverrideRegistry(),
-                    CapabilityPolicy.allowAll(), auditLog, sharedStore, "alice", "jmx");
+                    policy, auditLog, sharedStore, "alice", "jmx");
             control = new ContextControl(ContextHandle.of(key, key, adapter), service);
         }
     }
@@ -139,6 +143,28 @@ class AggregateLevelControlTest {
                 () -> aggregate.setLevel("com.x.Y", Level.DEBUG, SetLevelOptions.defaults()));
     }
 
+    @Test
+    void setLevel_deniedInOneContext_mutatesNoContext() {
+        // Raise-vs-lower is judged per context: "com.shared.Util" -> DEBUG is
+        // a RAISE in `system` (currently INFO) but a no-op/LOWER in `app`
+        // (already DEBUG). Policy denies RAISE, grants LOWER -- so `app`'s
+        // pre-check passes and `system`'s fails. The broadcast must mutate
+        // neither.
+        CapabilityPolicy noRaise = capability -> capability != Capability.LEVEL_RAISE;
+        Ctx system = new Ctx("system", noRaise);
+        Ctx app = new Ctx("myapp.war", noRaise);
+        app.adapter.setConfiguredLevel("com.shared.Util", Level.DEBUG);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        assertThrows(CapabilityDeniedException.class,
+                () -> aggregate.setLevel("com.shared.Util", Level.DEBUG, SetLevelOptions.defaults()));
+
+        assertTrue(system.service.activeOverrides().isEmpty());
+        assertTrue(app.service.activeOverrides().isEmpty(),
+                "the context whose pre-check passed must not have been mutated");
+    }
+
     // --- lifecycle: addContext / removeContext ------------------------------------------------
 
     @Test
@@ -154,6 +180,21 @@ class AggregateLevelControlTest {
                 "a level set before this context existed is present immediately after it registers");
         assertTrue(redeployed.service.activeOverrides().stream()
                 .anyMatch(o -> o.loggerName().equals("com.shared.Util")));
+    }
+
+    @Test
+    void addContext_doesNotReBroadcastAnAlreadyExpiredForOverride() throws InterruptedException {
+        Ctx system = new Ctx("system");
+        aggregate.register(system.control);
+        aggregate.setLevel("com.shared.Util", Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMillis(1)));
+        Thread.sleep(10); // the FOR override elapses, but no sweep has run to revert it
+
+        Ctx redeployed = new Ctx("myapp.war");
+        aggregate.addContext(redeployed.control);
+
+        assertEquals(Level.INFO, redeployed.adapter.effectiveLevel("com.shared.Util"),
+                "an already-elapsed --for override is not re-applied to a fresh context");
+        assertTrue(redeployed.service.activeOverrides().isEmpty());
     }
 
     @Test

@@ -103,12 +103,42 @@ public final class LevelControlService implements LevelControlOperations {
         Objects.requireNonNull(level, "level");
         SetLevelOptions opts = options == null ? SetLevelOptions.defaults() : options;
 
+        List<String> targets = targetsFor(loggerName, opts);
+        checkSetLevelPermitted(targets, level, opts);
+
+        LevelOverride primary = null;
+        for (String target : targets) {
+            LevelOverride applied = applyAndRecordMutation(target, level, opts);
+            if (target.equals(loggerName)) {
+                primary = applied;
+            }
+        }
+        return primary;
+    }
+
+    /**
+     * Runs {@code setLevel}'s capability pre-flight without mutating anything —
+     * throws {@link CapabilityDeniedException} exactly where {@code setLevel}
+     * would. {@link AggregateLevelControl} calls this against <em>every</em>
+     * context before broadcasting a {@code setLevel}, so a denial in any one
+     * context fails the whole broadcast before any context is mutated
+     * (doc/specs/wildfly-support.md, "all pass or all fail").
+     */
+    public void checkSetLevelPermitted(String loggerName, Level level, SetLevelOptions options) {
+        SetLevelOptions opts = options == null ? SetLevelOptions.defaults() : options;
+        checkSetLevelPermitted(targetsFor(loggerName, opts), level, opts);
+    }
+
+    private List<String> targetsFor(String loggerName, SetLevelOptions opts) {
         List<String> targets = new ArrayList<>();
         targets.add(loggerName);
         if (opts.includeChildren()) {
             targets.addAll(LoggerHierarchy.descendantsOf(loggerName, adapter.knownLoggerNames()));
         }
+        return targets;
+    }
 
+    private void checkSetLevelPermitted(List<String> targets, Level level, SetLevelOptions opts) {
         // Pre-check capability for every target before mutating any of
         // them (see the implementation plan's design call #5): removes
         // "partially applied because a capability was denied N loggers in"
@@ -128,15 +158,6 @@ public final class LevelControlService implements LevelControlOperations {
                 throw new CapabilityDeniedException(Capability.PERSIST);
             }
         }
-
-        LevelOverride primary = null;
-        for (String target : targets) {
-            LevelOverride applied = applyAndRecordMutation(target, level, opts);
-            if (target.equals(loggerName)) {
-                primary = applied;
-            }
-        }
-        return primary;
     }
 
     @Override

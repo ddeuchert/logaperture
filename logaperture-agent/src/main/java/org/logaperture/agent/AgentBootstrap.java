@@ -26,7 +26,7 @@ import org.logaperture.core.spi.ContainerIntegration;
 
 import java.lang.instrument.Instrumentation;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 /**
  * Detect-then-install: pick the first {@link ContainerIntegration} whose
@@ -78,10 +78,12 @@ final class AgentBootstrap {
             // The control surface is registered, and the discovery marker
             // published, only once the first context is actually installed --
             // so "MBean present" implies "there is something to control"
-            // (the CLI polls for the MBean, then calls it).
-            AtomicReference<AggregateLevelControl> operations = new AtomicReference<>();
-            Runnable onFirstContextReady = () -> publishControlSurface(container, operations.get());
-            operations.set(container.activate(inst, policy, auditLog, onFirstContextReady));
+            // (the CLI polls for the MBean, then calls it). The callback is
+            // handed the aggregate directly, so there is no return value to
+            // race against the async install.
+            Consumer<AggregateLevelControl> onFirstContextReady =
+                    operations -> publishControlSurface(container, operations);
+            container.activate(inst, policy, auditLog, onFirstContextReady);
         } catch (Throwable t) {
             Diagnostics.error("LogAperture agent bootstrap failed to start", t);
         }

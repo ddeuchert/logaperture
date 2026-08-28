@@ -18,6 +18,7 @@ package org.logaperture.core;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
+import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.core.spi.ContextHandle;
 
@@ -85,14 +86,29 @@ public final class AggregateLevelControl implements LevelControlOperations {
      * this with fake contexts only; {@code none} never calls it.
      */
     public void addContext(ContextControl control) {
+        Instant now = Instant.now();
         List<LevelOverride> toRebroadcast = byKey.values().stream()
                 .findFirst()
                 .map(existing -> existing.service().activeOverrides())
-                .orElseGet(List::of);
+                .orElseGet(List::of)
+                .stream()
+                .filter(override -> isStillLive(override, now))
+                .toList();
         byKey.put(control.stableKey(), control);
         for (LevelOverride override : toRebroadcast) {
             control.service().adoptOverride(override);
         }
+    }
+
+    /**
+     * A {@code FOR} override whose deadline has already passed is not
+     * re-broadcast onto a fresh context — it would be applied and audited as
+     * live, then reverted only on the next sweep tick (up to the sweep
+     * interval later). The other contexts' expiry sweep handles the real
+     * reversion; a context that never held it needs no reversion record.
+     */
+    private static boolean isStillLive(LevelOverride override, Instant now) {
+        return override.tier() != PersistenceTier.FOR || override.expiresAt().isAfter(now);
     }
 
     /**
@@ -137,12 +153,15 @@ public final class AggregateLevelControl implements LevelControlOperations {
         if (contexts.isEmpty()) {
             throw new IllegalStateException("no logging context is registered yet");
         }
-        // Broadcast. The per-context capability check is deterministic
-        // across contexts (same policy instance), so a denial fails on the
-        // first context before any context is mutated -- "all pass or all
-        // fail" (doc/specs/wildfly-support.md). A mid-broadcast adapter
-        // fault can still leave earlier contexts changed; the verification
-        // sweep (Slice 3) reconciles that.
+        // Broadcast, "all pass or all fail" (doc/specs/wildfly-support.md):
+        // pre-check the capability in *every* context before mutating any,
+        // because raise-vs-lower is judged against each context's own current
+        // effective level and so can differ per context under a non-trivial
+        // policy. A mid-broadcast adapter fault can still leave earlier
+        // contexts changed; the verification sweep (Slice 3) reconciles that.
+        for (ContextControl context : contexts) {
+            context.service().checkSetLevelPermitted(loggerName, level, options);
+        }
         LevelOverride fromSystem = null;
         LevelOverride fromAny = null;
         for (ContextControl context : contexts) {
