@@ -32,6 +32,11 @@ import java.beans.ConstructorProperties;
  * override is active with tier {@code "FOR"}) were added by doc/specs/
  * persistence.md's "JMX surface changes", so a caller can see what's active
  * and when it reverts without a second surface.
+ *
+ * <p>{@code context} (the owning logging context's stable key, e.g.
+ * {@code "system"}) was added by doc/specs/wildfly-support.md. Slice 1
+ * carries it over the wire; no CLI surface renders it yet (the CONTEXT
+ * column is Slice 3, shown only when more than one context exists).
  */
 public final class LoggerInfoData {
 
@@ -43,9 +48,32 @@ public final class LoggerInfoData {
     private final String overrideReason;
     private final String tier;
     private final String expiresAt;
+    private final String context;
 
     @ConstructorProperties({"name", "configuredLevel", "effectiveLevel", "overrideActive", "overrideSource",
-            "overrideReason", "tier", "expiresAt"})
+            "overrideReason", "tier", "expiresAt", "context"})
+    public LoggerInfoData(
+            String name,
+            String configuredLevel,
+            String effectiveLevel,
+            boolean overrideActive,
+            String overrideSource,
+            String overrideReason,
+            String tier,
+            String expiresAt,
+            String context) {
+        this.name = name;
+        this.configuredLevel = configuredLevel;
+        this.effectiveLevel = effectiveLevel;
+        this.overrideActive = overrideActive;
+        this.overrideSource = overrideSource;
+        this.overrideReason = overrideReason;
+        this.tier = tier;
+        this.expiresAt = expiresAt;
+        this.context = context;
+    }
+
+    /** Back-compat constructor for callers (tests) that don't care about {@code context}. */
     public LoggerInfoData(
             String name,
             String configuredLevel,
@@ -55,14 +83,8 @@ public final class LoggerInfoData {
             String overrideReason,
             String tier,
             String expiresAt) {
-        this.name = name;
-        this.configuredLevel = configuredLevel;
-        this.effectiveLevel = effectiveLevel;
-        this.overrideActive = overrideActive;
-        this.overrideSource = overrideSource;
-        this.overrideReason = overrideReason;
-        this.tier = tier;
-        this.expiresAt = expiresAt;
+        this(name, configuredLevel, effectiveLevel, overrideActive, overrideSource, overrideReason,
+                tier, expiresAt, null);
     }
 
     public static LoggerInfoData from(LoggerInfo info) {
@@ -74,7 +96,8 @@ public final class LoggerInfoData {
                 info.overrideSource(),
                 info.overrideReason(),
                 info.overrideTier() == null ? null : info.overrideTier().name(),
-                info.overrideExpiresAt() == null ? null : info.overrideExpiresAt().toString());
+                info.overrideExpiresAt() == null ? null : info.overrideExpiresAt().toString(),
+                info.context());
     }
 
     public String getName() {
@@ -107,5 +130,9 @@ public final class LoggerInfoData {
 
     public String getExpiresAt() {
         return expiresAt;
+    }
+
+    public String getContext() {
+        return context;
     }
 }

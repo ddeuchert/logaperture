@@ -16,36 +16,49 @@
 package org.logaperture.agent;
 
 import org.logaperture.bridge.Diagnostics;
-import org.logaperture.container.none.NoneContainer;
+import org.logaperture.container.none.NoneContainerIntegration;
 import org.logaperture.control.jmx.JmxRegistrar;
+import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.StderrAuditLog;
+import org.logaperture.core.spi.ContainerIntegration;
 
 import java.lang.instrument.Instrumentation;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Wires kill-switch &rarr; policy &rarr; audit sink &rarr; Logback-load
- * detector &rarr; on callback: {@link NoneContainer#install} &rarr; {@link
- * JmxRegistrar#register}. Every step is individually try/caught to {@link
- * Diagnostics} — install failure must never propagate into, or block
- * startup of, the target application (doc/specs/level-control.md "Failure
- * handling"; doc/logaperture-spec.md's "ordinary failure handling").
+ * Detect-then-install: pick the first {@link ContainerIntegration} whose
+ * {@link ContainerIntegration#detect() detect()} is true ({@code none} is
+ * the always-true fallback, tried last), hand it the {@link
+ * Instrumentation} / policy / audit sink, and register the {@link
+ * AggregateLevelControl} it returns with {@link JmxRegistrar}. Every step is
+ * individually try/caught to {@link Diagnostics} — install failure must
+ * never propagate into, or block startup of, the target application
+ * (doc/specs/level-control.md "Failure handling").
  */
 final class AgentBootstrap {
 
     private static final String DISABLED_PROPERTY = "logaperture.disabled";
 
     /**
-     * Set (to the agent's version) only once install has fully succeeded,
-     * so its presence is a reliable "the control plane is up" marker. This
-     * is what {@code logaperture-cli}'s discovery filters candidate JVMs on
-     * — see doc/specs/cli-transport.md "Discovery" and "Changes outside the
-     * new module".
+     * Set (to the agent's version) only once the first logging context has
+     * installed, so its presence is a reliable "the control plane is up"
+     * marker — what {@code logaperture-cli}'s discovery filters candidate
+     * JVMs on (doc/specs/cli-transport.md "Discovery").
      */
     private static final String VERSION_PROPERTY = "logaperture.version";
 
     private AgentBootstrap() {
+    }
+
+    /**
+     * The ordered integration list — "most specific first, {@code none}
+     * last". Slice 3 prepends the WildFly integration.
+     */
+    private static List<ContainerIntegration> integrations() {
+        return List.of(new NoneContainerIntegration());
     }
 
     static void start(Instrumentation inst) {
@@ -55,24 +68,32 @@ final class AgentBootstrap {
         try {
             CapabilityPolicy policy = CapabilityPolicy.allowAll();
             AuditLog auditLog = new StderrAuditLog();
-            LogbackLoadDetector.awaitLogbackAndThen(inst, () -> onLogbackReady(policy, auditLog));
+
+            ContainerIntegration container = integrations().stream()
+                    .filter(ContainerIntegration::detect)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException(
+                            "no ContainerIntegration detected -- none should always match"));
+
+            // The control surface is registered, and the discovery marker
+            // published, only once the first context is actually installed --
+            // so "MBean present" implies "there is something to control"
+            // (the CLI polls for the MBean, then calls it).
+            AtomicReference<AggregateLevelControl> operations = new AtomicReference<>();
+            Runnable onFirstContextReady = () -> publishControlSurface(container, operations.get());
+            operations.set(container.activate(inst, policy, auditLog, onFirstContextReady));
         } catch (Throwable t) {
             Diagnostics.error("LogAperture agent bootstrap failed to start", t);
         }
     }
 
-    private static void onLogbackReady(CapabilityPolicy policy, AuditLog auditLog) {
+    private static void publishControlSurface(ContainerIntegration container, AggregateLevelControl operations) {
         try {
-            // The returned Installation is deliberately never closed here --
-            // its expiry-sweep thread is a daemon (never blocks JVM exit) and
-            // its state-store lock is released by the OS at process exit,
-            // per doc/specs/persistence.md.
-            NoneContainer.Installation installation = NoneContainer.install(policy, auditLog);
-            JmxRegistrar.register(installation.service());
+            JmxRegistrar.register(operations);
             System.setProperty(VERSION_PROPERTY, agentVersion());
-            Diagnostics.info("LogAperture level control installed (none container, Logback adapter, JMX surface)");
+            Diagnostics.info("LogAperture level control installed (" + container.id() + " container, JMX surface)");
         } catch (Throwable t) {
-            Diagnostics.error("LogAperture failed to install level control", t);
+            Diagnostics.error("LogAperture failed to register the JMX control surface", t);
         }
     }
 

@@ -20,12 +20,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.logaperture.adapter.logback.LogbackAdapterFactory;
 import org.logaperture.api.Level;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.SetLevelOptions;
+import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.InMemoryAuditLog;
-import org.logaperture.core.LevelControlService;
+import org.logaperture.core.spi.ContextHandle;
 import org.slf4j.ILoggerFactory;
 import org.slf4j.LoggerFactory;
 
@@ -40,9 +42,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * In-process, real Logback, no agent and no JMX -- proves the whole
- * non-agent stack works end-to-end programmatically before adding
- * cross-process/remote concerns (implementation plan's build sequencing,
- * step 6).
+ * non-agent stack works end-to-end programmatically. Since
+ * doc/specs/wildfly-support.md (Slice 1), {@link NoneContainer} is the
+ * multi-context composition root; these tests drive it directly (the
+ * {@link LogbackLoadDetector} readiness gate is exercised only by the
+ * cross-process {@code LevelControlEndToEndIT}), installing the single
+ * {@code "system"} context by hand.
  *
  * <p>Every test points {@code logaperture.home} at a fresh {@code @TempDir}
  * so no test ever touches the developer's real {@code ~/.logaperture}.
@@ -63,50 +68,66 @@ class NoneContainerTest {
         System.clearProperty("logaperture.instanceId");
     }
 
+    private static NoneContainer newRoot() {
+        return new NoneContainer(CapabilityPolicy.allowAll(), new InMemoryAuditLog());
+    }
+
+    private static NoneContainer newRoot(Duration sweepInterval) {
+        return new NoneContainer(CapabilityPolicy.allowAll(), new InMemoryAuditLog(), sweepInterval);
+    }
+
+    /** Installs the single Logback context and returns the aggregate surface. */
+    private static AggregateLevelControl install(NoneContainer root) {
+        root.installContext(ContextHandle.of(
+                ContextHandle.SYSTEM, "none", LogbackAdapterFactory.forCurrentContext()));
+        return root.operations();
+    }
+
     @Test
-    void install_returnsWorkingServiceAgainstTheRealStaticContext() {
+    void installContext_returnsWorkingOperationsAgainstTheRealStaticContext() {
         LoggerFactory.getLogger("org.logaperture.container.none.PreExisting"); // instantiate before install
 
-        try (NoneContainer.Installation installation = NoneContainer.install(CapabilityPolicy.allowAll(), new InMemoryAuditLog())) {
-            LevelControlService service = installation.service();
-            assertNotNull(service);
+        try (NoneContainer root = newRoot()) {
+            AggregateLevelControl ops = install(root);
+            assertNotNull(ops);
 
-            List<LoggerInfo> loggers = service.listLoggers("org.logaperture.container.none.PreExisting");
+            List<LoggerInfo> loggers = ops.listLoggers("org.logaperture.container.none.PreExisting");
             assertEquals(1, loggers.size());
+            assertEquals("system", loggers.get(0).context());
         }
     }
 
     @Test
-    void install_capturesBaselineForPreExistingLoggers() {
+    void installContext_capturesBaselineForPreExistingLoggers() {
         LoggerFactory.getLogger("org.logaperture.container.none.baseline.Probe");
         // No explicit level set on it -- baseline should be captured as inherited.
 
-        try (NoneContainer.Installation installation = NoneContainer.install(CapabilityPolicy.allowAll(), new InMemoryAuditLog())) {
-            LevelControlService service = installation.service();
+        try (NoneContainer root = newRoot()) {
+            AggregateLevelControl ops = install(root);
 
-            Optional<LoggerInfo> info = service.listLoggers(null).stream()
+            Optional<LoggerInfo> info = ops.listLoggers(null).stream()
                     .filter(li -> li.name().equals("org.logaperture.container.none.baseline.Probe"))
                     .findFirst();
             assertTrue(info.isPresent());
 
             // resetLevel on a logger that was never overridden must be a safe
             // no-op -- if baseline capture hadn't run, this would misbehave.
-            service.resetLevel("org.logaperture.container.none.baseline.Probe");
+            ops.resetLevel("org.logaperture.container.none.baseline.Probe");
         }
     }
 
     @Test
-    void install_setLevelThenResetLevel_roundTrips() {
-        try (NoneContainer.Installation installation = NoneContainer.install(CapabilityPolicy.allowAll(), new InMemoryAuditLog())) {
-            LevelControlService service = installation.service();
+    void installContext_setLevelThenResetLevel_roundTrips() {
+        try (NoneContainer root = newRoot()) {
+            AggregateLevelControl ops = install(root);
 
-            service.setLevel("org.logaperture.container.none.roundtrip.Worker", Level.DEBUG, SetLevelOptions.defaults());
-            LoggerInfo afterSet = service.listLoggers("org.logaperture.container.none.roundtrip.Worker").get(0);
+            ops.setLevel("org.logaperture.container.none.roundtrip.Worker", Level.DEBUG, SetLevelOptions.defaults());
+            LoggerInfo afterSet = ops.listLoggers("org.logaperture.container.none.roundtrip.Worker").get(0);
             assertEquals(Level.DEBUG, afterSet.effectiveLevel());
             assertTrue(afterSet.overrideActive());
 
-            service.resetLevel("org.logaperture.container.none.roundtrip.Worker");
-            LoggerInfo afterReset = service.listLoggers("org.logaperture.container.none.roundtrip.Worker").get(0);
+            ops.resetLevel("org.logaperture.container.none.roundtrip.Worker");
+            LoggerInfo afterReset = ops.listLoggers("org.logaperture.container.none.roundtrip.Worker").get(0);
             assertTrue(!afterReset.overrideActive());
         }
     }
@@ -114,26 +135,26 @@ class NoneContainerTest {
     // --- persistence: resume across a simulated restart -----------------------------------------
 
     @Test
-    void install_stickyOverride_survivesASimulatedRestart() {
+    void stickyOverride_survivesASimulatedRestart() {
         String loggerName = "org.logaperture.container.none.resume.Sticky";
 
-        try (NoneContainer.Installation first = NoneContainer.install(CapabilityPolicy.allowAll(), new InMemoryAuditLog())) {
-            first.service().setLevel(loggerName, Level.DEBUG, SetLevelOptions.sticky());
+        try (NoneContainer first = newRoot()) {
+            install(first).setLevel(loggerName, Level.DEBUG, SetLevelOptions.sticky());
         } // "restart": releases the instance lock
 
-        try (NoneContainer.Installation second = NoneContainer.install(CapabilityPolicy.allowAll(), new InMemoryAuditLog())) {
-            LoggerInfo info = second.service().listLoggers(loggerName).get(0);
+        try (NoneContainer second = newRoot()) {
+            LoggerInfo info = install(second).listLoggers(loggerName).get(0);
             assertEquals(Level.DEBUG, info.effectiveLevel());
             assertTrue(info.overrideActive());
         }
     }
 
     @Test
-    void install_expiredForOverride_doesNotReappearAfterASimulatedRestart() {
+    void expiredForOverride_doesNotReappearAfterASimulatedRestart() {
         String loggerName = "org.logaperture.container.none.resume.ExpiredFor";
 
-        try (NoneContainer.Installation first = NoneContainer.install(CapabilityPolicy.allowAll(), new InMemoryAuditLog())) {
-            first.service().setLevel(loggerName, Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMillis(1)));
+        try (NoneContainer first = newRoot()) {
+            install(first).setLevel(loggerName, Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMillis(1)));
         }
         try {
             Thread.sleep(20); // let the 1ms expiry pass while this "JVM" is "down"
@@ -141,8 +162,8 @@ class NoneContainerTest {
             Thread.currentThread().interrupt();
         }
 
-        try (NoneContainer.Installation second = NoneContainer.install(CapabilityPolicy.allowAll(), new InMemoryAuditLog())) {
-            LoggerInfo info = second.service().listLoggers(loggerName).get(0);
+        try (NoneContainer second = newRoot()) {
+            LoggerInfo info = install(second).listLoggers(loggerName).get(0);
             assertTrue(!info.overrideActive());
         }
     }
@@ -150,87 +171,83 @@ class NoneContainerTest {
     // --- expiry sweep -------------------------------------------------------------------------------
 
     @Test
-    void install_expirySweep_revertsAForOverrideOnSchedule() throws InterruptedException {
+    void expirySweep_revertsAForOverrideOnSchedule() throws InterruptedException {
         String loggerName = "org.logaperture.container.none.sweep.Worker";
 
-        try (NoneContainer.Installation installation =
-                     NoneContainer.install(CapabilityPolicy.allowAll(), new InMemoryAuditLog(), Duration.ofMillis(20))) {
-            installation.service().setLevel(loggerName, Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMillis(1)));
+        try (NoneContainer root = newRoot(Duration.ofMillis(20))) {
+            AggregateLevelControl ops = install(root);
+            ops.setLevel(loggerName, Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMillis(1)));
 
-            LoggerInfo revertedInfo = pollUntilReverted(installation.service(), loggerName);
+            LoggerInfo revertedInfo = pollUntilReverted(ops, loggerName);
             assertTrue(!revertedInfo.overrideActive());
         }
     }
 
-    private static LoggerInfo pollUntilReverted(LevelControlService service, String loggerName) throws InterruptedException {
+    private static LoggerInfo pollUntilReverted(AggregateLevelControl ops, String loggerName) throws InterruptedException {
         for (int attempt = 0; attempt < 100; attempt++) { // up to ~2s
-            LoggerInfo info = service.listLoggers(loggerName).get(0);
+            LoggerInfo info = ops.listLoggers(loggerName).get(0);
             if (!info.overrideActive()) {
                 return info;
             }
             Thread.sleep(20);
         }
-        return service.listLoggers(loggerName).get(0);
+        return ops.listLoggers(loggerName).get(0);
     }
 
     // --- reconfiguration re-application ---------------------------------------------------------------
 
     @Test
-    void install_logbackReset_reappliesActiveOverridesWithoutDuplication() {
+    void logbackReset_reappliesActiveOverridesWithoutDuplication() {
         String loggerName = "org.logaperture.container.none.reset.Worker";
 
-        try (NoneContainer.Installation installation = NoneContainer.install(CapabilityPolicy.allowAll(), new InMemoryAuditLog())) {
-            installation.service().setLevel(loggerName, Level.DEBUG, SetLevelOptions.sticky());
+        try (NoneContainer root = newRoot()) {
+            AggregateLevelControl ops = install(root);
+            ops.setLevel(loggerName, Level.DEBUG, SetLevelOptions.sticky());
 
             ILoggerFactory factory = LoggerFactory.getILoggerFactory();
             assertTrue(factory instanceof LoggerContext, "test JVM must be bound to a real Logback LoggerContext");
             LoggerContext context = (LoggerContext) factory;
 
             context.reset(); // simulates the framework discarding installed levels on its own
-            assertEquals(Level.DEBUG, installation.service().listLoggers(loggerName).get(0).effectiveLevel());
+            assertEquals(Level.DEBUG, ops.listLoggers(loggerName).get(0).effectiveLevel());
 
             context.reset(); // a second reset must not double-apply or otherwise misbehave
-            assertEquals(Level.DEBUG, installation.service().listLoggers(loggerName).get(0).effectiveLevel());
+            assertEquals(Level.DEBUG, ops.listLoggers(loggerName).get(0).effectiveLevel());
         }
     }
 
     /**
-     * A code-review finding against this PR: each {@code install()} against
-     * the shared static {@code LoggerContext} used to register its own
-     * reset listener without ever removing it on {@code close()}, so a
-     * closed installation's (stale) {@code reapplyActiveOverrides} kept
-     * firing on every later {@code context.reset()} -- including ones
-     * belonging to a completely different, later installation.
+     * A prior code-review finding: each install against the shared static
+     * {@code LoggerContext} used to register a reset listener without ever
+     * removing it on teardown, so a closed root's (stale) {@code
+     * reapplyActiveOverrides} kept firing on every later {@code
+     * context.reset()}.
      */
     @Test
-    void install_closeThenReinstall_closedInstallationsListenerDoesNotFireAnymore() {
+    void closeThenReinstall_closedRootsListenerDoesNotFireAnymore() {
         String firstLogger = "org.logaperture.container.none.reset.FirstInstallWorker";
         String secondLogger = "org.logaperture.container.none.reset.SecondInstallWorker";
 
-        NoneContainer.Installation first = NoneContainer.install(CapabilityPolicy.allowAll(), new InMemoryAuditLog());
+        NoneContainer first = newRoot();
         // SESSION deliberately -- never persisted, so any reappearance in
-        // `second` below can only come from the stale listener under test,
-        // never from legitimate resume-from-disk (which a STICKY override
-        // sharing this test's home/cwd would otherwise also explain). TRACE
-        // is likewise deliberate: distinct from whatever level Logback's
-        // own reset() leaves ROOT at, so a stale reapply is unambiguous.
-        first.service().setLevel(firstLogger, Level.TRACE, SetLevelOptions.defaults());
+        // `second` can only come from the stale listener under test. TRACE
+        // is likewise deliberate: distinct from whatever level Logback's own
+        // reset() leaves ROOT at, so a stale reapply is unambiguous.
+        install(first).setLevel(firstLogger, Level.TRACE, SetLevelOptions.defaults());
         first.close();
 
-        try (NoneContainer.Installation second = NoneContainer.install(CapabilityPolicy.allowAll(), new InMemoryAuditLog())) {
-            second.service().setLevel(secondLogger, Level.DEBUG, SetLevelOptions.sticky());
+        try (NoneContainer second = newRoot()) {
+            AggregateLevelControl ops = install(second);
+            ops.setLevel(secondLogger, Level.DEBUG, SetLevelOptions.sticky());
 
             ILoggerFactory factory = LoggerFactory.getILoggerFactory();
             ((LoggerContext) factory).reset();
 
-            // The second installation's own override survives its own reset...
-            assertEquals(Level.DEBUG, second.service().listLoggers(secondLogger).get(0).effectiveLevel());
-            // ...but the first (closed) installation's listener must not have
-            // fired and reapplied its stale TRACE override directly onto the
-            // shared LoggerContext -- checked on the real logger, not
-            // `second`'s own registry (which never knew about firstLogger
-            // either way, so it can't tell the two cases apart by itself).
-            assertTrue(second.service().listLoggers(firstLogger).get(0).effectiveLevel() != Level.TRACE);
+            // The second root's own override survives its own reset...
+            assertEquals(Level.DEBUG, ops.listLoggers(secondLogger).get(0).effectiveLevel());
+            // ...but the first (closed) root's listener must not have fired
+            // and reapplied its stale TRACE override onto the shared context.
+            assertTrue(ops.listLoggers(firstLogger).get(0).effectiveLevel() != Level.TRACE);
         }
     }
 }

@@ -179,6 +179,36 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     /**
+     * Every override this context currently tracks — used by {@link
+     * AggregateLevelControl} to re-broadcast the active set onto a
+     * context that registered after they were applied
+     * (doc/specs/wildfly-support.md, "The redeploy loop").
+     */
+    public List<LevelOverride> activeOverrides() {
+        return List.copyOf(overrides.all().values());
+    }
+
+    /**
+     * Applies an override that another context in the same aggregate
+     * already holds, onto this context — the multi-context broadcast /
+     * redeploy re-application path (doc/specs/wildfly-support.md). Adapter
+     * mutation, registry commit, and a {@code "resume"} audit record; no
+     * capability check (this reinstates state an already-authorized action
+     * established) and no state-store write (the originating context
+     * already persisted it to the shared store).
+     */
+    public void adoptOverride(LevelOverride override) {
+        Objects.requireNonNull(override, "override");
+        baselines.captureIfAbsent(override.loggerName(), adapter);
+        String previousValue = adapter.effectiveLevel(override.loggerName()).toString();
+        OverrideApplier.apply(override, adapter);
+        overrides.put(override);
+        auditLog.record(new AuditRecord(
+                Instant.now(), principal, "resume", override.loggerName(), previousValue,
+                override.level().toString(), override.reason(), AuditRecord.Action.MUTATION));
+    }
+
+    /**
      * Runs once, at composition-root install time, after baseline capture
      * and before this service is handed back to its caller (doc/specs/
      * persistence.md "Resume on restart"). Bypasses capability checks

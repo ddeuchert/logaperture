@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.agent;
+package org.logaperture.container.none;
 
 import org.logaperture.adapter.logback.AdapterInstallException;
 import org.logaperture.adapter.logback.LogbackAdapterFactory;
@@ -25,24 +25,24 @@ import java.lang.instrument.Instrumentation;
 /**
  * Detects "Logback has loaded" via a one-shot {@link ClassFileTransformer}
  * registered at {@code premain} time — the reliable, class-load-time
- * pattern per the updated doc/logaperture-spec.md §4.1, not the M0 spike's
- * {@code Instrumentation.getAllLoadedClasses()} polling shortcut (spike
- * plumbing, never intended as a production pattern).
+ * pattern per doc/logaperture-spec.md §4.1, not the M0 spike's {@code
+ * Instrumentation.getAllLoadedClasses()} polling shortcut.
+ *
+ * <p>Lives in {@code logaperture-container-none} because it is the {@code
+ * none} integration's readiness gate (doc/specs/wildfly-support.md, Slice 1:
+ * "The Logback readiness poll moves behind the {@code none} integration").
  *
  * <p>The transformer only <em>observes</em> the class-load event — it
  * returns {@code null} (unmodified bytecode) unconditionally, so it needs
- * no retransform capability (see this module's pom: {@code
+ * no retransform capability (see the agent module's pom: {@code
  * Can-Retransform-Classes: false}).
  *
  * <p>Deliberately holds no compile-time reference to any {@code
- * ch.qos.logback} type (see this module's pom: Logback is test-scope
- * only, for the IT fixture app, never on the agent's own runtime
- * classpath). Readiness is confirmed by repeatedly attempting {@link
- * LogbackAdapterFactory#forCurrentContext()} as a probe — succeeding means
- * SLF4J is genuinely bound, not just that the class loaded (see the M0
- * Spring Boot spike's {@code SubstituteLoggerFactory} finding, doc/spikes/
- * m0-adapter-grid.md point 3 — the same distinction matters here even
- * though {@code none} never actually races against a framework reset).
+ * ch.qos.logback} type. Readiness is confirmed by repeatedly attempting
+ * {@link LogbackAdapterFactory#forCurrentContext()} as a probe — succeeding
+ * means SLF4J is genuinely bound, not just that the class loaded (see the
+ * M0 Spring Boot spike's {@code SubstituteLoggerFactory} finding,
+ * doc/spikes/m0-adapter-grid.md point 3).
  */
 final class LogbackLoadDetector {
 

@@ -15,14 +15,16 @@
  */
 package org.logaperture.container.none;
 
-import org.logaperture.adapter.logback.LogbackAdapterFactory;
 import org.logaperture.bridge.Diagnostics;
+import org.logaperture.core.AggregateLevelControl;
+import org.logaperture.core.AggregateLevelControl.ContextControl;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.BaselineRegistry;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.FileStateStore;
 import org.logaperture.core.LevelControlService;
 import org.logaperture.core.OverrideRegistry;
+import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
 
@@ -36,41 +38,61 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Composition root for the plain {@code java -jar} container — "the
- * baseline, built first" (doc/logaperture-spec.md §4.6). No server-specific
- * discovery needed: this class is the entire module.
+ * baseline, built first" (doc/logaperture-spec.md §4.6). Since
+ * doc/specs/wildfly-support.md (Slice 1) it is multi-context aware: it owns
+ * one {@link AggregateLevelControl}, the shared {@link StateStore}, and the
+ * single expiry-sweep thread, and installs level control <em>per context</em>
+ * ({@link #installContext}). For {@code none} there is only ever one context
+ * ({@code "system"}); the machinery is shared with the container
+ * integrations to come.
  *
- * <p>Since doc/specs/persistence.md, {@link #install} does more than build
- * the service: it opens this JVM's persisted state, resumes what's still
- * live, wires Logback's own reset event back into {@link
- * LevelControlService#reapplyActiveOverrides}, and starts the expiry sweep
- * that owns "when" for {@code --for} overrides (per the spec, {@code core}
- * has no opinion about scheduling; this class is where that opinion lives).
+ * <p>Per-context install does what it always did: capture baseline for every
+ * known logger, resume this JVM's persisted state, wire the framework's own
+ * reset event back into {@link LevelControlService#reapplyActiveOverrides},
+ * and register the resulting service with the aggregate. Scheduling of the
+ * expiry sweep lives here, not in {@code core} (per the spec, {@code core}
+ * has no opinion about "when").
  */
-public final class NoneContainer {
+public final class NoneContainer implements AutoCloseable {
 
-    private static final Duration DEFAULT_SWEEP_INTERVAL = Duration.ofSeconds(30);
+    static final Duration DEFAULT_SWEEP_INTERVAL = Duration.ofSeconds(30);
 
-    private NoneContainer() {
-    }
+    private final CapabilityPolicy policy;
+    private final AuditLog auditLog;
+    private final StateStore stateStore;
+    private final AggregateLevelControl aggregate = new AggregateLevelControl();
+    private final ScheduledExecutorService sweeper;
 
-    /**
-     * Builds the Logback adapter, eagerly walks and captures baseline for
-     * every currently-known logger (doc/specs/level-control.md: baseline
-     * capture must happen before any override, "without this, reset is
-     * undefined"), resumes this JVM's persisted state, wires reconfiguration
-     * re-application, starts the expiry sweep, and returns a ready-to-use
-     * {@link Installation}.
-     *
-     * @throws org.logaperture.adapter.logback.AdapterInstallException if
-     *         SLF4J isn't bound to a Logback {@code LoggerContext}
-     */
-    public static Installation install(CapabilityPolicy policy, AuditLog auditLog) {
-        return install(policy, auditLog, DEFAULT_SWEEP_INTERVAL);
+    public NoneContainer(CapabilityPolicy policy, AuditLog auditLog) {
+        this(policy, auditLog, DEFAULT_SWEEP_INTERVAL);
     }
 
     /** Package-visible so tests can use a short sweep interval instead of waiting on the real 30s one. */
-    static Installation install(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval) {
-        LoggingAdapter adapter = LogbackAdapterFactory.forCurrentContext();
+    NoneContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval) {
+        this.policy = policy;
+        this.auditLog = auditLog;
+        this.stateStore = openStateStore();
+
+        this.sweeper = Executors.newSingleThreadScheduledExecutor(NoneContainer::newDaemonThread);
+        long intervalMillis = sweepInterval.toMillis();
+        sweeper.scheduleAtFixedRate(
+                () -> aggregate.sweepExpiredOverrides(Instant.now()), intervalMillis, intervalMillis,
+                TimeUnit.MILLISECONDS);
+    }
+
+    /** The surface a control plane (JMX) binds to. */
+    public AggregateLevelControl operations() {
+        return aggregate;
+    }
+
+    /**
+     * Builds, wires, and registers level control for one logging context:
+     * eager baseline capture, resume of this JVM's persisted state,
+     * reconfiguration re-application wiring, then {@link
+     * AggregateLevelControl#register}.
+     */
+    public void installContext(ContextHandle handle) {
+        LoggingAdapter adapter = handle.adapter();
 
         BaselineRegistry baselines = new BaselineRegistry();
         for (String name : adapter.knownLoggerNames()) {
@@ -78,27 +100,22 @@ public final class NoneContainer {
         }
 
         OverrideRegistry overrides = new OverrideRegistry();
-        StateStore stateStore = openStateStore();
-
         LevelControlService service = new LevelControlService(
                 adapter, baselines, overrides, policy, auditLog, stateStore, principal(), "jmx");
 
         try {
             // Per-entry failures are already isolated inside
             // resumeFromStateStore; this outer guard is defense in depth
-            // against a StateStore implementation whose loadAll() itself
-            // throws -- fail-open, per doc/logaperture-spec.md §9: a
-            // resume problem must not cost the whole installation.
+            // against a StateStore whose loadAll() itself throws -- fail-open
+            // (doc/logaperture-spec.md §9).
             service.resumeFromStateStore(Instant.now());
         } catch (RuntimeException e) {
             Diagnostics.warn("LogAperture: failed to resume persisted overrides, continuing without them", e);
         }
 
-        // doc/specs/persistence.md "Reconfiguration re-application": a
-        // container-specific reset source (Spring Boot, WildFly) is still
-        // deferred, but Logback's own reset event (scan="true", JMX
-        // JMXConfigurator, an explicit context.reset()) is independent of
-        // which container is hosting it, and `none` benefits immediately.
+        // doc/specs/persistence.md "Reconfiguration re-application": Logback's
+        // own reset event (scan="true", JMXConfigurator, an explicit
+        // context.reset()) is independent of which container hosts it.
         Runnable reapplyOnReset = () -> {
             for (String name : adapter.knownLoggerNames()) {
                 baselines.captureIfAbsent(name, adapter);
@@ -107,22 +124,13 @@ public final class NoneContainer {
         };
         adapter.onReset(reapplyOnReset);
 
-        ScheduledExecutorService sweeper = Executors.newSingleThreadScheduledExecutor(NoneContainer::newDaemonThread);
-        long intervalMillis = sweepInterval.toMillis();
-        sweeper.scheduleAtFixedRate(
-                () -> service.sweepExpiredOverrides(Instant.now()), intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
-
-        return new Installation(service, sweeper, stateStore, adapter);
+        aggregate.register(new ContextControl(handle, service));
     }
 
     /**
      * Opens this JVM's {@link FileStateStore}, degrading to {@link
      * StateStore#noOp()} for this JVM's entire lifetime on any failure to
-     * do so — fail-open, per doc/logaperture-spec.md §9. A same-working-
-     * directory lock collision (doc/specs/persistence.md) is the expected
-     * case; any other I/O failure opening the store is treated the same
-     * way, since a JVM that can't establish its own persistence should
-     * still start and serve session-only level control.
+     * do so — fail-open, per doc/logaperture-spec.md §9.
      */
     private static StateStore openStateStore() {
         try {
@@ -147,69 +155,38 @@ public final class NoneContainer {
         return thread;
     }
 
-    /**
-     * §9.7's "principal (JVM UID, since JMX auth is the JVM's own)" for
-     * this slice — the JVM's own account name, matching the audit-trail
-     * field this feeds.
-     */
+    /** §9.7's principal for this slice — the JVM's own account name, matching the audit-trail field this feeds. */
     private static String principal() {
         return System.getProperty("user.name", "unknown");
     }
 
     /**
-     * A completed install: the service, plus the resources backing its
-     * ongoing persistence (the expiry-sweep thread and, if it implements
-     * {@link Closeable}, the state store's own lock). Production keeps this
-     * for the JVM's lifetime and never calls {@link #close}; tests use it
-     * to tear down cleanly between cases.
+     * Stops the expiry sweep, unregisters every context's reset listener,
+     * and releases the state store's lock. Production keeps a {@code
+     * NoneContainer} for the JVM's lifetime and never calls this; tests use
+     * it to tear down cleanly between cases.
      */
-    public static final class Installation implements AutoCloseable {
-
-        private final LevelControlService service;
-        private final ScheduledExecutorService sweeper;
-        private final StateStore stateStore;
-        private final LoggingAdapter adapter;
-
-        private Installation(LevelControlService service, ScheduledExecutorService sweeper, StateStore stateStore,
-                LoggingAdapter adapter) {
-            this.service = service;
-            this.sweeper = sweeper;
-            this.stateStore = stateStore;
-            this.adapter = adapter;
+    @Override
+    public void close() {
+        // Plain shutdown(), not shutdownNow(): an in-flight sweep is left to
+        // finish its current persist() undisturbed rather than interrupted
+        // mid-write.
+        sweeper.shutdown();
+        try {
+            sweeper.awaitTermination(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
 
-        public LevelControlService service() {
-            return service;
+        for (ContextControl context : aggregate.contexts()) {
+            context.handle().adapter().clearResetListener();
         }
 
-        @Override
-        public void close() {
-            // Plain shutdown(), not shutdownNow(): no further sweep ticks
-            // are scheduled after this, but an in-flight one is left to
-            // finish its current persist() undisturbed rather than
-            // interrupted mid-write (shutdownNow() would close the file
-            // channel out from under it) before the state-store lock below
-            // is released.
-            sweeper.shutdown();
+        if (stateStore instanceof Closeable closeable) {
             try {
-                sweeper.awaitTermination(5, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-
-            // Unregister the reset listener so a later install() against
-            // the same shared static context doesn't inherit this closed
-            // installation's still-firing callback.
-            adapter.clearResetListener();
-
-            if (stateStore instanceof Closeable closeable) {
-                try {
-                    closeable.close();
-                } catch (IOException e) {
-                    // Best effort -- releasing the instance lock a little
-                    // late is harmless; the OS releases it at process exit
-                    // regardless.
-                }
+                closeable.close();
+            } catch (IOException e) {
+                // Best effort -- the OS releases the lock at process exit regardless.
             }
         }
     }
