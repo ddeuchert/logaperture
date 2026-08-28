@@ -811,15 +811,22 @@ The axes also overlap in your favour: **JBoss LogManager covers WildFly *and* Qu
 public interface ContainerIntegration {
   String id();
   boolean detect();                                 // is this container present?
-  void discoverContexts(Consumer<ContextHandle> sink);
-  void onContextAdded(Consumer<ContextHandle> cb);  // deploy, reload, refresh
-  void onContextRemoved(Consumer<ContextHandle> cb);
-  String stableKey(ContextHandle h);                // survives classloader replacement
-  InstallGuidance guidance();                       // where the -javaagent flag goes
+  AggregateLevelControl activate(Instrumentation inst, CapabilityPolicy policy, AuditLog audit,
+                                 Consumer<AggregateLevelControl> onFirstContextReady);
+  default InstallGuidance guidance();               // where the -javaagent flag goes
 }
 ```
 
-`stableKey` is the one that earns its place. Overrides keyed on classloader identity evaporate on redeploy; keyed on a logical name — deployment name, context path, application name — they survive, which is what makes the persistence tiers of §6.1 actually work in a redeploy loop rather than only across a restart.
+> Implemented shape, as of `doc/specs/wildfly-support.md` Slice 1. The original sketch had
+> `discoverContexts` plus `onContextAdded` / `onContextRemoved` callbacks and a
+> `stableKey(ContextHandle)` method. Implementation moved the per-container composition
+> root *into* each integration (it legitimately needs `logaperture-bridge` and class-load
+> instrumentation, neither of which belongs in `core`), so the SPI collapsed to one
+> `activate` call that returns the finished `AggregateLevelControl`. `stableKey` moved onto
+> `ContextHandle` itself; "a context appeared / went away" became `AggregateLevelControl`'s
+> `addContext` / `removeContext`, driven by each integration internally.
+
+`stableKey` (now `ContextHandle.stableKey()`) is the one that earns its place. Overrides keyed on classloader identity evaporate on redeploy; keyed on a logical name — deployment name, context path, application name — they survive, which is what lets the aggregate re-broadcast still-active overrides onto a context after it is re-registered (`doc/specs/wildfly-support.md`, "The redeploy loop"). In the current release overrides are broadcast to every context rather than keyed per context in the store; `stableKey` is a redeploy-recognition identity, not yet a persistence key.
 
 `detect()` must be non-invasive: resource and class-presence probing only, never speculative class loading, for the reasons in §15.6.
 
@@ -863,7 +870,7 @@ Idempotence is the hard half. Double-wrapping a formatter on every reload is an 
 
 ### 15.6 WildFly
 
-
+> Implementation spec: [`doc/specs/wildfly-support.md`](specs/wildfly-support.md) — the JBoss LogManager adapter, the `ContainerIntegration` SPI, per-deployment contexts, and the redeploy loop, delivered in three slices.
 
 WildFly installs **JBoss LogManager** as the `java.util.logging.LogManager` and routes deployment logging — SLF4J, Log4j, commons-logging, JUL — into it through the logging subsystem. That is a significant simplification: **one backend adapter covers most of a WildFly estate**, rather than four. The exception is a deployment using `use-deployment-logging-config` with its own bundled configuration, which gets its own isolated setup.
 

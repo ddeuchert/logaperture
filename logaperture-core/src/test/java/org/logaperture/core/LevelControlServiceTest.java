@@ -311,4 +311,48 @@ class LevelControlServiceTest {
         assertTrue(info.isPresent());
         assertFalse(info.get().overrideActive());
     }
+
+    // --- multi-context: activeOverrides / adoptOverride -------------------------------------------
+
+    @Test
+    void activeOverrides_returnsEveryTrackedOverride() {
+        adapter.addKnownLogger("com.acme.A");
+        adapter.addKnownLogger("com.acme.B");
+        service.setLevel("com.acme.A", Level.DEBUG, SetLevelOptions.sticky());
+        service.setLevel("com.acme.B", Level.TRACE, SetLevelOptions.defaults());
+
+        List<LevelOverride> active = service.activeOverrides();
+
+        assertEquals(2, active.size());
+        assertTrue(active.stream().anyMatch(o -> o.loggerName().equals("com.acme.A") && o.level() == Level.DEBUG));
+        assertTrue(active.stream().anyMatch(o -> o.loggerName().equals("com.acme.B") && o.level() == Level.TRACE));
+    }
+
+    @Test
+    void adoptOverride_appliesToAdapterAndRegistry_andRecordsAResume() {
+        LevelOverride fromAnotherContext = new LevelOverride(
+                "com.acme.Shared", Level.DEBUG, false, "why", java.time.Instant.now(), "jmx",
+                PersistenceTier.STICKY, null);
+
+        service.adoptOverride(fromAnotherContext);
+
+        assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme.Shared"));
+        assertTrue(overrides.get("com.acme.Shared").isPresent());
+        assertTrue(auditLog.records().stream()
+                .anyMatch(r -> r.source().equals("resume") && r.loggerName().equals("com.acme.Shared")
+                        && r.action() == AuditRecord.Action.MUTATION));
+    }
+
+    @Test
+    void adoptOverride_doesNotWriteToTheStateStore() {
+        LevelOverride fromAnotherContext = new LevelOverride(
+                "com.acme.Shared", Level.DEBUG, false, null, java.time.Instant.now(), "jmx",
+                PersistenceTier.STICKY, null);
+
+        service.adoptOverride(fromAnotherContext);
+
+        // The originating context already persisted it to the shared store;
+        // adopting it in a second context must not write again.
+        assertTrue(stateStore.loadAll().isEmpty());
+    }
 }

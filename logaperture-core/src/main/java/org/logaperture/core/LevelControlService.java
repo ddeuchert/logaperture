@@ -103,12 +103,42 @@ public final class LevelControlService implements LevelControlOperations {
         Objects.requireNonNull(level, "level");
         SetLevelOptions opts = options == null ? SetLevelOptions.defaults() : options;
 
+        List<String> targets = targetsFor(loggerName, opts);
+        checkSetLevelPermitted(targets, level, opts);
+
+        LevelOverride primary = null;
+        for (String target : targets) {
+            LevelOverride applied = applyAndRecordMutation(target, level, opts);
+            if (target.equals(loggerName)) {
+                primary = applied;
+            }
+        }
+        return primary;
+    }
+
+    /**
+     * Runs {@code setLevel}'s capability pre-flight without mutating anything —
+     * throws {@link CapabilityDeniedException} exactly where {@code setLevel}
+     * would. {@link AggregateLevelControl} calls this against <em>every</em>
+     * context before broadcasting a {@code setLevel}, so a denial in any one
+     * context fails the whole broadcast before any context is mutated
+     * (doc/specs/wildfly-support.md, "all pass or all fail").
+     */
+    public void checkSetLevelPermitted(String loggerName, Level level, SetLevelOptions options) {
+        SetLevelOptions opts = options == null ? SetLevelOptions.defaults() : options;
+        checkSetLevelPermitted(targetsFor(loggerName, opts), level, opts);
+    }
+
+    private List<String> targetsFor(String loggerName, SetLevelOptions opts) {
         List<String> targets = new ArrayList<>();
         targets.add(loggerName);
         if (opts.includeChildren()) {
             targets.addAll(LoggerHierarchy.descendantsOf(loggerName, adapter.knownLoggerNames()));
         }
+        return targets;
+    }
 
+    private void checkSetLevelPermitted(List<String> targets, Level level, SetLevelOptions opts) {
         // Pre-check capability for every target before mutating any of
         // them (see the implementation plan's design call #5): removes
         // "partially applied because a capability was denied N loggers in"
@@ -128,15 +158,6 @@ public final class LevelControlService implements LevelControlOperations {
                 throw new CapabilityDeniedException(Capability.PERSIST);
             }
         }
-
-        LevelOverride primary = null;
-        for (String target : targets) {
-            LevelOverride applied = applyAndRecordMutation(target, level, opts);
-            if (target.equals(loggerName)) {
-                primary = applied;
-            }
-        }
-        return primary;
     }
 
     @Override
@@ -176,6 +197,36 @@ public final class LevelControlService implements LevelControlOperations {
         for (LevelOverride override : overrides.all().values()) {
             OverrideApplier.apply(override, targetAdapter);
         }
+    }
+
+    /**
+     * Every override this context currently tracks — used by {@link
+     * AggregateLevelControl} to re-broadcast the active set onto a
+     * context that registered after they were applied
+     * (doc/specs/wildfly-support.md, "The redeploy loop").
+     */
+    public List<LevelOverride> activeOverrides() {
+        return List.copyOf(overrides.all().values());
+    }
+
+    /**
+     * Applies an override that another context in the same aggregate
+     * already holds, onto this context — the multi-context broadcast /
+     * redeploy re-application path (doc/specs/wildfly-support.md). Adapter
+     * mutation, registry commit, and a {@code "resume"} audit record; no
+     * capability check (this reinstates state an already-authorized action
+     * established) and no state-store write (the originating context
+     * already persisted it to the shared store).
+     */
+    public void adoptOverride(LevelOverride override) {
+        Objects.requireNonNull(override, "override");
+        baselines.captureIfAbsent(override.loggerName(), adapter);
+        String previousValue = adapter.effectiveLevel(override.loggerName()).toString();
+        OverrideApplier.apply(override, adapter);
+        overrides.put(override);
+        auditLog.record(new AuditRecord(
+                Instant.now(), principal, "resume", override.loggerName(), previousValue,
+                override.level().toString(), override.reason(), AuditRecord.Action.MUTATION));
     }
 
     /**

@@ -45,6 +45,13 @@ import java.time.Instant;
  *                         unless {@code overrideActive} is {@code true} and
  *                         {@code overrideTier} is {@link
  *                         PersistenceTier#FOR}
+ * @param context          the owning logging context's stable key (e.g.
+ *                         {@code "system"}) — see doc/specs/wildfly-support.md.
+ *                         {@code null} on a row produced by a single-context
+ *                         service directly; {@code AggregateLevelControl}
+ *                         stamps the real key ({@link #withContext}) on every
+ *                         row it returns, so it is never {@code null} on the
+ *                         control-plane path
  */
 public record LoggerInfo(
         String name,
@@ -54,7 +61,8 @@ public record LoggerInfo(
         String overrideSource,
         String overrideReason,
         PersistenceTier overrideTier,
-        Instant overrideExpiresAt) {
+        Instant overrideExpiresAt,
+        String context) {
 
     public LoggerInfo {
         if (name == null || name.isEmpty()) {
@@ -63,5 +71,29 @@ public record LoggerInfo(
         if (effectiveLevel == null) {
             throw new IllegalArgumentException("effectiveLevel must not be null");
         }
+    }
+
+    /**
+     * A single-context service builds its rows without a context key;
+     * {@code AggregateLevelControl} fills it in afterwards. Keeps every
+     * existing {@code new LoggerInfo(...)} call site unchanged.
+     */
+    public LoggerInfo(
+            String name,
+            Level configuredLevel,
+            Level effectiveLevel,
+            boolean overrideActive,
+            String overrideSource,
+            String overrideReason,
+            PersistenceTier overrideTier,
+            Instant overrideExpiresAt) {
+        this(name, configuredLevel, effectiveLevel, overrideActive, overrideSource, overrideReason,
+                overrideTier, overrideExpiresAt, null);
+    }
+
+    /** This same row, tagged with its owning context's stable key. */
+    public LoggerInfo withContext(String context) {
+        return new LoggerInfo(name, configuredLevel, effectiveLevel, overrideActive, overrideSource,
+                overrideReason, overrideTier, overrideExpiresAt, context);
     }
 }
