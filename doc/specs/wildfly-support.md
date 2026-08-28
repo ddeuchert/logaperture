@@ -473,6 +473,22 @@ Against a single `org.jboss.logmanager.LogContext`:
   logging-subsystem change is Slice 3's job, driven by the container's periodic
   verification sweep (§15.5), not by an adapter event.
 
+Three details the adapter handles that the Logback one doesn't have to:
+
+- **Root logger name.** JBoss LogManager (like JUL) names its root logger `""`, which
+  `core`/`NameFilter` would read as "match every logger". The adapter surfaces it — and
+  accepts it — as `"ROOT"`, matching the Logback adapter's convention, so `logctl levels
+  ROOT` means the same thing on both backends.
+- **Pinned loggers.** JBoss LogManager holds `Logger` facades through weak/phantom
+  references by default; a logger nothing else strongly references can be reaped and lose
+  its applied level. The adapter keeps a strong reference to every `Logger` it touches
+  (which pins the node chain up to the root), so an override stays applied without
+  depending on Slice 3's sweep.
+- **Create-on-observe applies to all read methods**, not just `configuredLevel` — same as
+  the Logback adapter, and `core` creates the logger during baseline capture first anyway.
+  `handlerFloorsBelow(name, null)` (a "back to inherited", not a raise) returns an empty
+  list rather than probing.
+
 ## Handler-level thresholds — the second gate
 
 The M0 spike's headline WildFly finding (point 2): raising a logger's level is **necessary
@@ -548,6 +564,9 @@ In-process, JBoss LogManager on the test classpath (with
   `applyLevel`, hierarchy resolution, and `applyLevel(name, null)` clearing back to
   inherited.
 - Two independent `LogContext`s: a level set in one is invisible in the other.
+- The root logger is surfaced as `"ROOT"` (not `""`); `configuredLevel("ROOT")` /
+  `applyLevel("ROOT", …)` resolve to the real empty-string root and an inheriting child
+  sees the change.
 - Handler floor: a `ConsoleHandler` pinned at `INFO` on the context root;
   `handlerFloorsBelow(x, DEBUG)` returns it, `handlerFloorsBelow(x, WARN)` does not;
   `applyLevel(x, DEBUG)` emits exactly one `level floor` diagnostic naming

@@ -148,6 +148,19 @@ class JbossLogManagerAdapterTest {
         assertEquals(Level.INFO, adapter.effectiveLevel("apply.Clear"), "now inherits the root's INFO");
     }
 
+    @Test
+    void rootLogger_isSurfacedAndAddressedAsRoot_notEmptyString() {
+        assertTrue(adapter.knownLoggerNames().contains("ROOT"));
+        assertFalse(adapter.knownLoggerNames().contains(""), "the JBoss empty-string root name is not surfaced");
+
+        assertEquals(Level.INFO, adapter.configuredLevel("ROOT").orElseThrow());
+
+        adapter.applyLevel("ROOT", Level.WARN);
+        assertSame(java.util.logging.Level.WARNING, context.getLogger("").getLevel(),
+                "'ROOT' resolves to the real empty-string root logger");
+        assertEquals(Level.WARN, adapter.effectiveLevel("some.inheriting.Child"));
+    }
+
     // --- isolation between contexts ------------------------------------------------------------
 
     @Test
@@ -178,6 +191,9 @@ class JbossLogManagerAdapterTest {
 
         assertTrue(adapter.handlerFloorsBelow("floor.Worker", Level.WARN).isEmpty(),
                 "an INFO handler is not a floor for a WARN target");
+
+        assertTrue(adapter.handlerFloorsBelow("floor.Worker", null).isEmpty(),
+                "a null target ('back to inherited') is not a raise");
     }
 
     @Test

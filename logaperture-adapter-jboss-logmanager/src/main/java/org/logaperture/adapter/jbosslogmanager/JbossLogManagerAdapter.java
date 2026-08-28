@@ -35,6 +35,28 @@ import java.util.logging.Handler;
  * (§15.4); Slice 3's WildFly integration builds one per registered
  * {@code LogContext} via {@link JbossLogManagerAdapterFactory}.
  *
+ * <p><b>Read methods create on observe.</b> {@code configuredLevel},
+ * {@code effectiveLevel}, {@code applyLevel} and {@link #handlerFloorsBelow}
+ * all resolve a logger via {@code LogContext.getLogger(name)}, which
+ * materialises it if absent — the "Known" state doc/specs/level-control.md
+ * §8.5 describes, and the same behaviour as the Logback adapter (which has
+ * no non-creating accessor). {@code core}'s baseline capture creates the
+ * logger first anyway, so this costs nothing on the real call paths.
+ *
+ * <p><b>Root logger.</b> JBoss LogManager names its root logger {@code ""}
+ * (empty string), which {@code core}/{@code NameFilter} would read as
+ * "match everything". This adapter surfaces and accepts it as {@code
+ * "ROOT"} instead, matching the Logback adapter's convention so a
+ * cross-backend {@code logctl levels ROOT} means the same thing.
+ *
+ * <p><b>Pinned loggers.</b> JBoss LogManager holds {@code Logger} facades
+ * through weak/phantom references by default ({@code LogContext.create()}
+ * included), so a logger nothing else strongly references can be reaped and
+ * lose its applied level. This adapter keeps a strong reference to every
+ * {@code Logger} it has touched, which pins the whole node chain to the
+ * root — an override applied through here stays applied without depending
+ * on Slice 3's sweep.
+ *
  * <p>Level read-back is lossy-but-defined (see {@link LevelMapper}); to keep
  * {@code resetLevel} exact anyway, this adapter privately retains the real
  * {@code java.util.logging.Level} it first observed for each logger and
@@ -48,14 +70,23 @@ import java.util.logging.Handler;
  */
 public final class JbossLogManagerAdapter implements LoggingAdapter {
 
+    /** How this adapter names the root logger externally (Logback's convention). */
+    static final String ROOT_ALIAS = "ROOT";
+
+    /** JBoss LogManager's / JUL's actual name for the root logger. */
+    private static final String JBOSS_ROOT_NAME = "";
+
     private final LogContext context;
+
+    /** Strong references to every {@code Logger} touched — see "Pinned loggers" in the class doc. Keyed by resolved name. */
+    private final ConcurrentHashMap<String, Logger> loggers = new ConcurrentHashMap<>();
 
     /**
      * The real {@code java.util.logging.Level} each logger carried when this
      * adapter first observed it — {@code Optional.empty()} means "observed,
      * had no explicit level". Lets {@code applyLevel} restore an exact
      * {@code FINER}/{@code CONFIG} baseline that read back only as an
-     * approximation.
+     * approximation. Keyed by resolved name.
      */
     private final ConcurrentHashMap<String, Optional<java.util.logging.Level>> capturedOriginals =
             new ConcurrentHashMap<>();
@@ -67,23 +98,31 @@ public final class JbossLogManagerAdapter implements LoggingAdapter {
 
     @Override
     public List<String> knownLoggerNames() {
-        return Collections.list(context.getLoggerNames());
+        List<String> names = new ArrayList<>();
+        boolean sawRoot = false;
+        for (String name : Collections.list(context.getLoggerNames())) {
+            if (name.equals(JBOSS_ROOT_NAME)) {
+                names.add(ROOT_ALIAS);
+                sawRoot = true;
+            } else {
+                names.add(name);
+            }
+        }
+        if (!sawRoot) {
+            names.add(0, ROOT_ALIAS); // the root always exists in a LogContext; surface it like Logback does
+        }
+        return List.copyOf(names);
     }
 
     @Override
     public Optional<Level> configuredLevel(String loggerName) {
-        // getLogger(name) creates the Logger as a side effect if absent --
-        // the "Known" state doc/specs/level-control.md §8.5 describes, and
-        // JBoss LogManager's own native behaviour, same as the Logback adapter.
-        Logger logger = context.getLogger(loggerName);
-        captureOriginalIfAbsent(loggerName, logger);
-        return Optional.ofNullable(LevelMapper.toApi(logger.getLevel()));
+        return Optional.ofNullable(LevelMapper.toApi(logger(loggerName).getLevel()));
     }
 
     @Override
     public Level effectiveLevel(String loggerName) {
-        Logger logger = context.getLogger(loggerName);
-        for (Logger current = logger; current != null; current = current.getParent()) {
+        Logger start = logger(loggerName);
+        for (Logger current = start; current != null; current = current.getParent()) {
             java.util.logging.Level explicit = current.getLevel();
             if (explicit != null) {
                 return LevelMapper.toApi(explicit);
@@ -92,16 +131,16 @@ public final class JbossLogManagerAdapter implements LoggingAdapter {
         // No ancestor carried an explicit level (a real WildFly root always
         // does; this is the defensive path). getEffectiveLevel() is JBoss
         // LogManager's own already-resolved int.
-        return LevelMapper.fromIntValue(logger.getEffectiveLevel());
+        return LevelMapper.fromIntValue(start.getEffectiveLevel());
     }
 
     @Override
     public void applyLevel(String loggerName, Level level) {
-        Logger logger = context.getLogger(loggerName);
-        captureOriginalIfAbsent(loggerName, logger);
+        String resolved = resolveName(loggerName);
+        Logger logger = logger(loggerName);
 
         Level previousEffective = effectiveLevel(loggerName);
-        logger.setLevel(resolveTarget(loggerName, level));
+        logger.setLevel(resolveTarget(resolved, level));
         warnIfHandlerFloorWouldSwallow(loggerName, level, previousEffective);
     }
 
@@ -111,12 +150,17 @@ public final class JbossLogManagerAdapter implements LoggingAdapter {
      * The handlers on {@code loggerName}'s path to the root whose own level
      * floor is stricter than {@code target} — the second, independent gate
      * (doc/specs/wildfly-support.md, "Handler-level thresholds"). Not on the
-     * {@link LoggingAdapter} SPI: it does not generalise to Logback.
+     * {@link LoggingAdapter} SPI: it does not generalise to Logback. A
+     * {@code null} {@code target} ("back to inherited") is not a raise, so
+     * it yields an empty list.
      */
     public List<HandlerFloor> handlerFloorsBelow(String loggerName, Level target) {
+        if (target == null) {
+            return List.of();
+        }
         int targetValue = LevelMapper.toJul(target).intValue();
         List<HandlerFloor> floors = new ArrayList<>();
-        for (Logger current = context.getLogger(loggerName); current != null; current = current.getParent()) {
+        for (Logger current = logger(loggerName); current != null; current = current.getParent()) {
             for (Handler handler : current.getHandlers()) {
                 java.util.logging.Level handlerLevel = handler.getLevel();
                 if (handlerLevel != null && handlerLevel.intValue() > targetValue) {
@@ -130,11 +174,24 @@ public final class JbossLogManagerAdapter implements LoggingAdapter {
         return List.copyOf(floors);
     }
 
-    private java.util.logging.Level resolveTarget(String loggerName, Level level) {
+    /** Resolves the root alias, materialises the logger, and pins a strong reference to it. */
+    private Logger logger(String requestedName) {
+        return loggers.computeIfAbsent(resolveName(requestedName), name -> {
+            Logger materialised = context.getLogger(name);
+            capturedOriginals.computeIfAbsent(name, n -> Optional.ofNullable(materialised.getLevel()));
+            return materialised;
+        });
+    }
+
+    private static String resolveName(String loggerName) {
+        return ROOT_ALIAS.equals(loggerName) ? JBOSS_ROOT_NAME : loggerName;
+    }
+
+    private java.util.logging.Level resolveTarget(String resolvedName, Level level) {
         if (level == null) {
             return null; // back to inherited -- always exact
         }
-        Optional<java.util.logging.Level> original = capturedOriginals.get(loggerName);
+        Optional<java.util.logging.Level> original = capturedOriginals.get(resolvedName);
         if (original != null && original.isPresent() && LevelMapper.toApi(original.get()) == level) {
             // Asked to apply exactly the level the captured baseline read
             // back as -- restore the real object (e.g. FINER, not FINEST).
@@ -142,10 +199,6 @@ public final class JbossLogManagerAdapter implements LoggingAdapter {
             return original.get();
         }
         return LevelMapper.toJul(level);
-    }
-
-    private void captureOriginalIfAbsent(String loggerName, Logger logger) {
-        capturedOriginals.computeIfAbsent(loggerName, name -> Optional.ofNullable(logger.getLevel()));
     }
 
     private void warnIfHandlerFloorWouldSwallow(String loggerName, Level applied, Level previousEffective) {
