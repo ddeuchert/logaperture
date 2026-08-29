@@ -39,6 +39,8 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     private final Map<String, Level> explicitLevels = new LinkedHashMap<>();
     private final Set<String> knownNames = new LinkedHashSet<>();
     private String throwOnApplyFor;
+    private String runOnEffectiveLevelFor;
+    private Runnable runOnEffectiveLevel;
 
     FakeLoggingAdapter(Level rootLevel) {
         knownNames.add("ROOT");
@@ -59,6 +61,16 @@ final class FakeLoggingAdapter implements LoggingAdapter {
         this.throwOnApplyFor = loggerName;
     }
 
+    /**
+     * Runs {@code action} once, the next time {@link #effectiveLevel} is
+     * called for {@code loggerName} — a deterministic seam for simulating a
+     * concurrent control-plane mutation landing mid-sweep.
+     */
+    void runOnEffectiveLevel(String loggerName, Runnable action) {
+        this.runOnEffectiveLevelFor = loggerName;
+        this.runOnEffectiveLevel = action;
+    }
+
     @Override
     public List<String> knownLoggerNames() {
         return List.copyOf(knownNames);
@@ -72,6 +84,12 @@ final class FakeLoggingAdapter implements LoggingAdapter {
 
     @Override
     public Level effectiveLevel(String loggerName) {
+        if (loggerName.equals(runOnEffectiveLevelFor)) {
+            Runnable action = runOnEffectiveLevel;
+            runOnEffectiveLevelFor = null; // one-shot
+            runOnEffectiveLevel = null;
+            action.run();
+        }
         String name = loggerName;
         while (true) {
             Level explicit = explicitLevels.get(name);

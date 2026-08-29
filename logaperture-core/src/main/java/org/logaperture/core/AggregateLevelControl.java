@@ -199,6 +199,23 @@ public final class AggregateLevelControl implements LevelControlOperations {
         }
     }
 
+    /**
+     * Runs the verification sweep across every context
+     * (doc/specs/wildfly-support.md, §15.5) — re-applies any override a
+     * framework reconfiguration has silently overwritten. Driven by the
+     * composition root, from its periodic tick and (for WildFly) from a
+     * `LogManager` configuration-change event.
+     *
+     * @return total overrides re-applied across all contexts
+     */
+    public int verificationSweep(Instant now) {
+        int reapplied = 0;
+        for (ContextControl context : sortedByKey()) {
+            reapplied += context.service().verifyAndReapply(now);
+        }
+        return reapplied;
+    }
+
     private List<ContextControl> sortedByKey() {
         return byKey.values().stream()
                 .sorted(Comparator.comparing(ContextControl::stableKey))

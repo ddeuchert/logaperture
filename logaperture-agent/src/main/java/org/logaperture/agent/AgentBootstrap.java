@@ -17,6 +17,7 @@ package org.logaperture.agent;
 
 import org.logaperture.bridge.Diagnostics;
 import org.logaperture.container.none.NoneContainerIntegration;
+import org.logaperture.container.wildfly.WildFlyContainerIntegration;
 import org.logaperture.control.jmx.JmxRegistrar;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditLog;
@@ -58,7 +59,7 @@ final class AgentBootstrap {
      * last". Slice 3 prepends the WildFly integration.
      */
     private static List<ContainerIntegration> integrations() {
-        return List.of(new NoneContainerIntegration());
+        return List.of(new WildFlyContainerIntegration(), new NoneContainerIntegration());
     }
 
     static void start(Instrumentation inst) {

@@ -15,7 +15,6 @@
  */
 package org.logaperture.adapter.jbosslogmanager;
 
-import org.jboss.logmanager.LogContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,7 +26,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.UUID;
 import java.util.logging.ConsoleHandler;
+import java.util.logging.Handler;
+import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -35,24 +37,43 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * In-process, JBoss LogManager on the test classpath, no WildFly — see
- * doc/specs/wildfly-support.md, Slice 2's "Testing".
+ * In-process, against the JVM's own {@code java.util.logging.LogManager} —
+ * see doc/specs/wildfly-support.md, Slice 2's "Testing". No {@code
+ * org.jboss.logmanager} on the classpath: the adapter is pure JUL, and its
+ * mechanics are identical whichever {@code LogManager} is installed. The
+ * real-WildFly path (JBoss LogManager as the manager) is covered by
+ * {@code logaperture-it}'s {@code WildFlyContainerIT}.
+ *
+ * <p>The global {@code LogManager} is shared, so each test uses a
+ * unique-prefixed logger namespace and the root logger's level is captured
+ * and restored.
  */
 class JbossLogManagerAdapterTest {
 
-    private LogContext context;
     private JbossLogManagerAdapter adapter;
+    private String prefix;
+    private java.util.logging.Level originalRootLevel;
 
     @BeforeEach
     void setUp() {
-        context = LogContext.create();
-        context.getLogger("").setLevel(java.util.logging.Level.INFO); // a known root baseline
-        adapter = new JbossLogManagerAdapter(context);
+        adapter = new JbossLogManagerAdapter();
+        prefix = "it." + UUID.randomUUID().toString().replace("-", "") + ".";
+        originalRootLevel = Logger.getLogger("").getLevel();
+        if (originalRootLevel == null) {
+            Logger.getLogger("").setLevel(java.util.logging.Level.INFO);
+            originalRootLevel = java.util.logging.Level.INFO;
+        }
     }
 
     @AfterEach
-    void resetDiagnostics() {
+    void tearDown() {
+        Logger.getLogger("").setLevel(originalRootLevel);
         Diagnostics.resetToDefault();
+        // each handler-floor test removes its own ConsoleHandler in a finally block
+    }
+
+    private String name(String suffix) {
+        return prefix + suffix;
     }
 
     // --- level mapping ---------------------------------------------------------------------------
@@ -60,185 +81,186 @@ class JbossLogManagerAdapterTest {
     @Test
     void levelMapping_roundTripsForAllSevenLevels() {
         for (Level level : Level.values()) {
-            adapter.applyLevel("map.RoundTrip", level);
-            assertEquals(level, adapter.configuredLevel("map.RoundTrip").orElseThrow(),
+            adapter.applyLevel(name("RoundTrip"), level);
+            assertEquals(level, adapter.configuredLevel(name("RoundTrip")).orElseThrow(),
                     "write is exact for " + level);
         }
     }
 
     @Test
     void finerReadsBackAsTrace_butResetRestoresTheExactOriginal() {
-        context.getLogger("map.Finer").setLevel(java.util.logging.Level.FINER);
+        Logger.getLogger(name("Finer")).setLevel(java.util.logging.Level.FINER);
 
-        assertEquals(Level.TRACE, adapter.configuredLevel("map.Finer").orElseThrow(),
+        assertEquals(Level.TRACE, adapter.configuredLevel(name("Finer")).orElseThrow(),
                 "FINER has no LogAperture equivalent — displays as TRACE");
 
-        adapter.applyLevel("map.Finer", Level.DEBUG);                 // an override
-        adapter.applyLevel("map.Finer", Level.TRACE);                 // core's reset: baseline read back as TRACE
+        adapter.applyLevel(name("Finer"), Level.DEBUG);
+        adapter.applyLevel(name("Finer"), Level.TRACE); // core's reset: baseline read back as TRACE
 
-        assertSame(java.util.logging.Level.FINER, context.getLogger("map.Finer").getLevel(),
+        assertSame(java.util.logging.Level.FINER, Logger.getLogger(name("Finer")).getLevel(),
                 "reset restores the exact captured java.util.logging.Level, not FINEST");
     }
 
     @Test
     void configReadsBackAsInfo_butResetRestoresTheExactOriginal() {
-        context.getLogger("map.Config").setLevel(java.util.logging.Level.CONFIG);
+        Logger.getLogger(name("Config")).setLevel(java.util.logging.Level.CONFIG);
 
-        assertEquals(Level.INFO, adapter.configuredLevel("map.Config").orElseThrow());
+        assertEquals(Level.INFO, adapter.configuredLevel(name("Config")).orElseThrow());
 
-        adapter.applyLevel("map.Config", Level.DEBUG);
-        adapter.applyLevel("map.Config", Level.INFO);
+        adapter.applyLevel(name("Config"), Level.DEBUG);
+        adapter.applyLevel(name("Config"), Level.INFO);
 
-        assertSame(java.util.logging.Level.CONFIG, context.getLogger("map.Config").getLevel());
+        assertSame(java.util.logging.Level.CONFIG, Logger.getLogger(name("Config")).getLevel());
     }
 
     // --- knownLoggerNames / configuredLevel / effectiveLevel / applyLevel ----------------------
 
     @Test
-    void knownLoggerNames_materialisesTheContextEnumeration() {
-        context.getLogger("a.b.C");
-        context.getLogger("a.b.D");
+    void knownLoggerNames_includesLoggersThatExistAndTheRoot() {
+        Logger.getLogger(name("a.b.C"));
 
         List<String> names = adapter.knownLoggerNames();
 
-        assertTrue(names.contains("a.b.C"));
-        assertTrue(names.contains("a.b.D"));
+        assertTrue(names.contains(name("a.b.C")));
+        assertTrue(names.contains("ROOT"));
+        assertFalse(names.contains(""), "the empty-string root name is not surfaced");
     }
 
     @Test
     void configuredLevel_isExplicitVsInherited() {
-        context.getLogger("cfg.Explicit").setLevel(java.util.logging.Level.WARNING);
-        context.getLogger("cfg.Inherited"); // created, no explicit level
+        Logger.getLogger(name("Explicit")).setLevel(java.util.logging.Level.WARNING);
+        Logger.getLogger(name("Inherited")); // created, no explicit level
 
-        assertEquals(Level.WARN, adapter.configuredLevel("cfg.Explicit").orElseThrow());
-        assertTrue(adapter.configuredLevel("cfg.Inherited").isEmpty());
+        assertEquals(Level.WARN, adapter.configuredLevel(name("Explicit")).orElseThrow());
+        assertTrue(adapter.configuredLevel(name("Inherited")).isEmpty());
     }
 
     @Test
     void configuredLevel_createsTheLoggerAsASideEffect() {
-        assertFalse(adapter.knownLoggerNames().contains("cfg.NotYet"));
+        assertFalse(adapter.knownLoggerNames().contains(name("NotYet")));
 
-        adapter.configuredLevel("cfg.NotYet");
+        adapter.configuredLevel(name("NotYet"));
 
-        assertTrue(adapter.knownLoggerNames().contains("cfg.NotYet"), "asking by name creates it, like Logback");
+        assertTrue(adapter.knownLoggerNames().contains(name("NotYet")), "asking by name creates it");
     }
 
     @Test
     void applyLevel_onANotYetCreatedLogger_preSetsIt() {
-        adapter.applyLevel("apply.PreSet", Level.DEBUG);
+        adapter.applyLevel(name("PreSet"), Level.DEBUG);
 
-        assertEquals(Level.DEBUG, adapter.configuredLevel("apply.PreSet").orElseThrow());
+        assertEquals(Level.DEBUG, adapter.configuredLevel(name("PreSet")).orElseThrow());
     }
 
     @Test
     void effectiveLevel_resolvesUpTheHierarchy() {
-        context.getLogger("eff.parent").setLevel(java.util.logging.Level.FINE);
-        context.getLogger("eff.parent.child"); // inherits
+        Logger.getLogger(name("parent")).setLevel(java.util.logging.Level.FINE);
+        Logger.getLogger(name("parent.child")); // inherits
 
-        assertEquals(Level.DEBUG, adapter.effectiveLevel("eff.parent.child"));
+        assertEquals(Level.DEBUG, adapter.effectiveLevel(name("parent.child")));
     }
 
     @Test
     void applyLevel_null_clearsBackToInherited() {
-        context.getLogger("apply.Clear").setLevel(java.util.logging.Level.FINE);
+        Logger.getLogger(name("Clear")).setLevel(java.util.logging.Level.FINE);
+        Logger.getLogger("").setLevel(java.util.logging.Level.INFO);
 
-        adapter.applyLevel("apply.Clear", null);
+        adapter.applyLevel(name("Clear"), null);
 
-        assertTrue(adapter.configuredLevel("apply.Clear").isEmpty());
-        assertEquals(Level.INFO, adapter.effectiveLevel("apply.Clear"), "now inherits the root's INFO");
+        assertTrue(adapter.configuredLevel(name("Clear")).isEmpty());
+        assertEquals(Level.INFO, adapter.effectiveLevel(name("Clear")));
     }
 
+    // --- root logger ---------------------------------------------------------------------------
+
     @Test
-    void rootLogger_isSurfacedAndAddressedAsRoot_notEmptyString() {
-        assertTrue(adapter.knownLoggerNames().contains("ROOT"));
-        assertFalse(adapter.knownLoggerNames().contains(""), "the JBoss empty-string root name is not surfaced");
-
-        assertEquals(Level.INFO, adapter.configuredLevel("ROOT").orElseThrow());
-
+    void rootLogger_isAddressedAsRoot_andResolvesToTheRealRoot() {
         adapter.applyLevel("ROOT", Level.WARN);
-        assertSame(java.util.logging.Level.WARNING, context.getLogger("").getLevel(),
-                "'ROOT' resolves to the real empty-string root logger");
-        assertEquals(Level.WARN, adapter.effectiveLevel("some.inheriting.Child"));
-    }
 
-    // --- isolation between contexts ------------------------------------------------------------
-
-    @Test
-    void twoIndependentContexts_areIsolated() {
-        LogContext other = LogContext.create();
-        other.getLogger("").setLevel(java.util.logging.Level.INFO);
-        JbossLogManagerAdapter otherAdapter = new JbossLogManagerAdapter(other);
-
-        adapter.applyLevel("iso.Worker", Level.TRACE);
-
-        assertEquals(Level.TRACE, adapter.effectiveLevel("iso.Worker"));
-        assertEquals(Level.INFO, otherAdapter.effectiveLevel("iso.Worker"),
-                "a level set in one LogContext is invisible in the other");
+        assertSame(java.util.logging.Level.WARNING, Logger.getLogger("").getLevel());
+        assertEquals(Level.WARN, adapter.effectiveLevel(name("some.inheriting.Child")));
     }
 
     // --- handler-level thresholds -----------------------------------------------------------------
 
     @Test
     void handlerFloor_belowATarget_isReported() {
-        ConsoleHandler console = new ConsoleHandler();
-        console.setLevel(java.util.logging.Level.INFO);
-        context.getLogger("").addHandler(console);
+        // JBoss LogManager's root may already carry handlers -- measure the delta our own adds.
+        long debugFloorsBefore = countConsoleFloors(adapter.handlerFloorsBelow(name("floor.Worker"), Level.DEBUG));
+        long warnFloorsBefore = countConsoleFloors(adapter.handlerFloorsBelow(name("floor.Worker"), Level.WARN));
 
-        List<HandlerFloor> below = adapter.handlerFloorsBelow("floor.Worker", Level.DEBUG);
-        assertEquals(1, below.size());
-        assertEquals("ConsoleHandler", below.get(0).handlerName());
-        assertEquals(Level.INFO, below.get(0).floor());
-
-        assertTrue(adapter.handlerFloorsBelow("floor.Worker", Level.WARN).isEmpty(),
-                "an INFO handler is not a floor for a WARN target");
-
-        assertTrue(adapter.handlerFloorsBelow("floor.Worker", null).isEmpty(),
-                "a null target ('back to inherited') is not a raise");
+        ConsoleHandler console = testConsoleAtInfo();
+        Logger.getLogger("").addHandler(console);
+        try {
+            assertEquals(debugFloorsBefore + 1,
+                    countConsoleFloors(adapter.handlerFloorsBelow(name("floor.Worker"), Level.DEBUG)),
+                    "our INFO console handler is a floor for a DEBUG target");
+            assertEquals(warnFloorsBefore,
+                    countConsoleFloors(adapter.handlerFloorsBelow(name("floor.Worker"), Level.WARN)),
+                    "an INFO handler is not a floor for a WARN target");
+            assertTrue(adapter.handlerFloorsBelow(name("floor.Worker"), null).isEmpty(),
+                    "a null target is not a raise");
+        } finally {
+            Logger.getLogger("").removeHandler(console);
+        }
     }
 
     @Test
     void applyLevel_raiseBelowAHandlerFloor_emitsExactlyOneDiagnostic() {
-        ConsoleHandler console = new ConsoleHandler();
-        console.setLevel(java.util.logging.Level.INFO);
-        context.getLogger("").addHandler(console);
-
+        ConsoleHandler console = testConsoleAtInfo();
+        Logger.getLogger("").addHandler(console);
         ByteArrayOutputStream captured = new ByteArrayOutputStream();
         Diagnostics.configure(new PrintStream(captured, true, StandardCharsets.UTF_8), DiagnosticLevel.DEBUG);
+        try {
+            adapter.applyLevel(name("floor.Raised"), Level.DEBUG);
 
-        adapter.applyLevel("floor.Raised", Level.DEBUG);
-
-        String output = captured.toString(StandardCharsets.UTF_8);
-        assertEquals(1, output.lines().filter(l -> l.contains("level floor")).count());
-        assertTrue(output.contains("ConsoleHandler"));
-        assertTrue(output.contains("floor.Raised set to DEBUG"));
+            String output = captured.toString(StandardCharsets.UTF_8);
+            assertEquals(1, output.lines().filter(l -> l.contains("level floor")).count());
+            assertTrue(output.contains("ConsoleHandler"));
+            assertTrue(output.contains("set to DEBUG"));
+        } finally {
+            Logger.getLogger("").removeHandler(console);
+        }
     }
 
     @Test
     void applyLevel_notARaise_emitsNoHandlerFloorDiagnostic() {
-        ConsoleHandler console = new ConsoleHandler();
-        console.setLevel(java.util.logging.Level.INFO);
-        context.getLogger("").addHandler(console);
-
+        ConsoleHandler console = testConsoleAtInfo();
+        Logger.getLogger("").addHandler(console);
+        Logger.getLogger("").setLevel(java.util.logging.Level.INFO);
         ByteArrayOutputStream captured = new ByteArrayOutputStream();
         Diagnostics.configure(new PrintStream(captured, true, StandardCharsets.UTF_8), DiagnosticLevel.DEBUG);
+        try {
+            adapter.applyLevel(name("floor.Lowered"), Level.WARN); // INFO -> WARN is not more verbose
 
-        adapter.applyLevel("floor.Lowered", Level.WARN); // INFO -> WARN is not more verbose
-
-        assertFalse(captured.toString(StandardCharsets.UTF_8).contains("level floor"));
+            assertFalse(captured.toString(StandardCharsets.UTF_8).contains("level floor"));
+        } finally {
+            Logger.getLogger("").removeHandler(console);
+        }
     }
 
     // --- re-appliability ----------------------------------------------------------------------
 
     @Test
     void applyLevel_isIdempotentAndSurvivesAnExternalReset() {
-        adapter.applyLevel("reapply.Worker", Level.DEBUG);
-        adapter.applyLevel("reapply.Worker", Level.DEBUG); // no-op-equivalent
-        assertEquals(Level.DEBUG, adapter.effectiveLevel("reapply.Worker"));
+        adapter.applyLevel(name("reapply.Worker"), Level.DEBUG);
+        adapter.applyLevel(name("reapply.Worker"), Level.DEBUG);
+        assertEquals(Level.DEBUG, adapter.effectiveLevel(name("reapply.Worker")));
 
-        context.getLogger("reapply.Worker").setLevel(null); // something else reset it
+        Logger.getLogger(name("reapply.Worker")).setLevel(null); // something else reset it
+        Logger.getLogger("").setLevel(java.util.logging.Level.INFO);
+        assertEquals(Level.INFO, adapter.effectiveLevel(name("reapply.Worker")));
 
-        assertEquals(Level.INFO, adapter.effectiveLevel("reapply.Worker"));
-        adapter.applyLevel("reapply.Worker", Level.DEBUG); // still works
-        assertEquals(Level.DEBUG, adapter.effectiveLevel("reapply.Worker"));
+        adapter.applyLevel(name("reapply.Worker"), Level.DEBUG); // still works
+        assertEquals(Level.DEBUG, adapter.effectiveLevel(name("reapply.Worker")));
+    }
+
+    private static ConsoleHandler testConsoleAtInfo() {
+        ConsoleHandler console = new ConsoleHandler();
+        console.setLevel(java.util.logging.Level.INFO);
+        return console;
+    }
+
+    private static long countConsoleFloors(List<HandlerFloor> floors) {
+        return floors.stream().filter(f -> f.handlerName().equals("ConsoleHandler")).count();
     }
 }

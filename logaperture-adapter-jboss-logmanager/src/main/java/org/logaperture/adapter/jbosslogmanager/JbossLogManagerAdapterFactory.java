@@ -15,36 +15,23 @@
  */
 package org.logaperture.adapter.jbosslogmanager;
 
-import org.jboss.logmanager.LogContext;
 import org.logaperture.core.spi.LoggingAdapter;
 
-import java.util.Objects;
-
 /**
- * Builds a {@link JbossLogManagerAdapter} for a given {@link
- * org.jboss.logmanager.LogContext} — mirrors {@code
- * logaperture-adapter-logback}'s {@code LogbackAdapterFactory}. Slice 3's
- * WildFly {@code ContainerIntegration} calls {@link #forContext} once per
- * registered {@code LogContext} (the server's own, plus one per deployment
- * that carries its own logging configuration).
+ * Builds a {@link JbossLogManagerAdapter} — mirrors {@code
+ * logaperture-adapter-logback}'s {@code LogbackAdapterFactory}. The adapter
+ * is over {@code java.util.logging}; on WildFly the installed
+ * {@code java.util.logging.LogManager} is JBoss LogManager and its logger
+ * tree is the server's system context (the only context this release
+ * supports).
  */
 public final class JbossLogManagerAdapterFactory {
 
     private JbossLogManagerAdapterFactory() {
     }
 
-    /** An adapter bound to {@code context}. */
-    public static LoggingAdapter forContext(LogContext context) {
-        return new JbossLogManagerAdapter(Objects.requireNonNull(context, "context"));
-    }
-
-    /**
-     * An adapter bound to whatever {@code LogContext} the current
-     * {@code LogContextSelector} resolves — the server's own, in a
-     * standalone WildFly with no per-deployment logging configuration
-     * (doc/specs/wildfly-support.md, Slice 3).
-     */
+    /** An adapter over the installed {@code java.util.logging.LogManager}. */
     public static LoggingAdapter forCurrentContext() {
-        return forContext(LogContext.getLogContext());
+        return new JbossLogManagerAdapter();
     }
 }

@@ -211,4 +211,44 @@ class CommandsTest {
         assertEquals(CliError.OK, run(Commands.resetAll(true)));
         assertEquals("{\"reverted\":0}", output().strip());
     }
+
+    // --- CONTEXT column (doc/specs/wildfly-support.md, Slice 3) ------------------------------------
+
+    @Test
+    void levels_showsContextColumn_onlyWhenTheResultSpansMoreThanOneContext() {
+        mbean.loggers = List.of(
+                new LoggerInfoData("com.shared.Util", "INFO", "DEBUG", true, "jmx", null, "STICKY", null, "system"),
+                new LoggerInfoData("com.myapp.Svc", null, "INFO", false, null, null, null, null, "myapp.war"));
+
+        assertEquals(CliError.OK, run(Commands.levels(null, false)));
+
+        String text = output();
+        assertTrue(text.contains("CONTEXT"), "column header present");
+        assertTrue(text.contains("system"));
+        assertTrue(text.contains("myapp.war"));
+    }
+
+    @Test
+    void levels_hidesContextColumn_whenEveryRowSharesOneContext() {
+        mbean.loggers = List.of(
+                new LoggerInfoData("a", "INFO", "DEBUG", true, "jmx", null, "STICKY", null, "system"),
+                new LoggerInfoData("b", "INFO", "INFO", false, null, null, null, null, "system"));
+
+        assertEquals(CliError.OK, run(Commands.levels(null, false)));
+
+        assertFalse(output().contains("CONTEXT"), "a single-context server never shows the column");
+    }
+
+    @Test
+    void status_showsContextColumn_whenTheServerHasMoreThanOneContext() {
+        mbean.loggers = List.of(
+                new LoggerInfoData("com.shared.Util", "INFO", "DEBUG", true, "jmx", "why", "STICKY", null, "system"),
+                new LoggerInfoData("com.myapp.Idle", null, "INFO", false, null, null, null, null, "myapp.war"));
+
+        assertEquals(CliError.OK, run(Commands.status(false)));
+
+        String text = output();
+        assertTrue(text.contains("CONTEXT"));
+        assertTrue(text.contains("system"));
+    }
 }

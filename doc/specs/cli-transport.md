@@ -328,6 +328,13 @@ and the test would catch it.
   data objects — no third-party JSON library (the shapes are tiny and fully controlled,
   same reasoning as `persistence.md`'s hand-written state-file reader).
 
+**Multi-context CONTEXT column (added by wildfly-support).** `levels` and `status` prepend
+a `CONTEXT` column to their plain-text table **only when the result spans more than one
+distinct logging context** — a plain `java -jar` app, and a stock standalone WildFly (one
+shared system context), never see it. Display only: there is no `--context` flag and no
+new exit code (overrides are blanket — see `doc/specs/wildfly-support.md`, "Broadcast
+semantics"). `--json` output is unchanged.
+
 | Exit | Meaning |
 |---|---|
 | 0 | Success. |

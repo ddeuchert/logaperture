@@ -216,6 +216,25 @@ class AggregateLevelControlTest {
     // --- expiry sweep fan-out ---------------------------------------------------------------------
 
     @Test
+    void verificationSweep_fansOutToEveryContext_andReturnsTheReAppliedCount() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+        aggregate.setLevel("com.shared.Util", Level.DEBUG, SetLevelOptions.sticky());
+
+        // drift in both contexts
+        system.adapter.applyLevel("com.shared.Util", Level.INFO);
+        app.adapter.applyLevel("com.shared.Util", Level.INFO);
+
+        int reapplied = aggregate.verificationSweep(Instant.now());
+
+        assertEquals(2, reapplied);
+        assertEquals(Level.DEBUG, system.adapter.effectiveLevel("com.shared.Util"));
+        assertEquals(Level.DEBUG, app.adapter.effectiveLevel("com.shared.Util"));
+    }
+
+    @Test
     void sweepExpiredOverrides_fansOutToEveryContext() {
         Ctx system = new Ctx("system");
         Ctx app = new Ctx("myapp.war");
