@@ -20,6 +20,7 @@ import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.CapabilityPolicy;
+import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.spi.ContainerIntegration;
 import org.logaperture.core.spi.ContextHandle;
 
@@ -41,7 +42,7 @@ public final class NoneContainerIntegration implements ContainerIntegration {
     private final Duration sweepInterval;
 
     public NoneContainerIntegration() {
-        this(NoneContainer.DEFAULT_SWEEP_INTERVAL);
+        this(SweepPolicy.interval());
     }
 
     /** Test seam: a short expiry-sweep interval instead of the real 30s one. */

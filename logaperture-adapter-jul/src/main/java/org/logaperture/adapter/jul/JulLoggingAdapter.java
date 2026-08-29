@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.adapter.jbosslogmanager;
+package org.logaperture.adapter.jul;
 
 import org.logaperture.api.Level;
 import org.logaperture.bridge.Diagnostics;
@@ -63,7 +63,7 @@ import java.util.logging.Logger;
  * listener, own re-application. {@link #onReset}/{@link #clearResetListener}
  * keep the SPI's no-op default.
  */
-public final class JbossLogManagerAdapter implements LoggingAdapter {
+public final class JulLoggingAdapter implements LoggingAdapter {
 
     /** How this adapter names the root logger externally (Logback's convention). */
     static final String ROOT_ALIAS = "ROOT";
@@ -73,8 +73,8 @@ public final class JbossLogManagerAdapter implements LoggingAdapter {
     private final ConcurrentHashMap<String, Optional<java.util.logging.Level>> capturedOriginals =
             new ConcurrentHashMap<>();
 
-    /** Package-visible: constructed by {@link JbossLogManagerAdapterFactory}. */
-    JbossLogManagerAdapter() {
+    /** Package-visible: constructed by {@link JulAdapterFactory}. */
+    JulLoggingAdapter() {
     }
 
     @Override

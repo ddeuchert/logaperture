@@ -57,15 +57,49 @@
       <version>${slf4j.version}</version>
       <scope>test</scope>
     </dependency>
+    <!--
+      Compile-time only: the probe WAR's @WebListener is compiled against this
+      in-test. WildFly 26.1.3.Final is Jakarta EE 8 (Servlet 4.0, javax.servlet
+      namespace, Weld 3.1.9), so the probe must use javax.servlet, not jakarta.
+      maven-dependency-plugin:properties (below) exposes this artifact's local
+      path as ${javax.servlet:javax.servlet-api:jar}, which the IT hands to the
+      in-process compiler explicitly, so the probe compile does not depend on
+      the shape of the forked JVM's java.class.path.
+    -->
+    <dependency>
+      <groupId>javax.servlet</groupId>
+      <artifactId>javax.servlet-api</artifactId>
+      <version>4.0.1</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.7.1</version>
+        <executions>
+          <execution>
+            <!-- Sets ${javax.servlet:javax.servlet-api:jar} to the artifact's local path. -->
+            <id>expose-probe-compile-deps</id>
+            <goals>
+              <goal>properties</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-failsafe-plugin</artifactId>
         <configuration>
           <systemPropertyVariables>
+            <!--
+              The javax.servlet-api jar the in-test probe WAR compiles against;
+              passed explicitly so the compile does not rely on java.class.path.
+            -->
+            <probe.compile.classpath>${javax.servlet:javax.servlet-api:jar}</probe.compile.classpath>
             <!--
               The shaded agent jar from logaperture-agent, which the reactor
               builds before this module. finalName there is "logaperture-agent",

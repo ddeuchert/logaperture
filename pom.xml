@@ -37,7 +37,7 @@
     <module>logaperture-api</module>
     <module>logaperture-core</module>
     <module>logaperture-adapter-logback</module>
-    <module>logaperture-adapter-jboss-logmanager</module>
+    <module>logaperture-adapter-jul</module>
     <module>logaperture-container-none</module>
     <module>logaperture-container-wildfly</module>
     <module>logaperture-control-jmx</module>
@@ -105,7 +105,7 @@
       </dependency>
       <dependency>
         <groupId>org.logaperture</groupId>
-        <artifactId>logaperture-adapter-jboss-logmanager</artifactId>
+        <artifactId>logaperture-adapter-jul</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

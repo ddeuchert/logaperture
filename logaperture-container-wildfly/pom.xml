@@ -48,7 +48,7 @@
     </dependency>
     <dependency>
       <groupId>org.logaperture</groupId>
-      <artifactId>logaperture-adapter-jboss-logmanager</artifactId>
+      <artifactId>logaperture-adapter-jul</artifactId>
     </dependency>
 
     <!--

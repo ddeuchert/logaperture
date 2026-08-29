@@ -19,7 +19,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.logaperture.adapter.jbosslogmanager.JbossLogManagerAdapterFactory;
+import org.logaperture.adapter.jul.JulAdapterFactory;
 import org.logaperture.api.Level;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.SetLevelOptions;
@@ -82,7 +82,7 @@ class WildFlyContainerTest {
 
     private AggregateLevelControl install(WildFlyContainer host) {
         host.installContext(ContextHandle.of(
-                ContextHandle.SYSTEM, "wildfly", JbossLogManagerAdapterFactory.forCurrentContext()));
+                ContextHandle.SYSTEM, "wildfly", JulAdapterFactory.forCurrentContext()));
         return host.operations();
     }
 

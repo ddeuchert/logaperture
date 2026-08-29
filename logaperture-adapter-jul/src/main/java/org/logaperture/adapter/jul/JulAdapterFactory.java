@@ -13,25 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.adapter.jbosslogmanager;
+package org.logaperture.adapter.jul;
 
 import org.logaperture.core.spi.LoggingAdapter;
 
 /**
- * Builds a {@link JbossLogManagerAdapter} — mirrors {@code
+ * Builds a {@link JulLoggingAdapter} — mirrors {@code
  * logaperture-adapter-logback}'s {@code LogbackAdapterFactory}. The adapter
  * is over {@code java.util.logging}; on WildFly the installed
  * {@code java.util.logging.LogManager} is JBoss LogManager and its logger
  * tree is the server's system context (the only context this release
  * supports).
  */
-public final class JbossLogManagerAdapterFactory {
+public final class JulAdapterFactory {
 
-    private JbossLogManagerAdapterFactory() {
+    private JulAdapterFactory() {
     }
 
     /** An adapter over the installed {@code java.util.logging.LogManager}. */
     public static LoggingAdapter forCurrentContext() {
-        return new JbossLogManagerAdapter();
+        return new JulLoggingAdapter();
     }
 }

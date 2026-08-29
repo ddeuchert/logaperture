@@ -24,6 +24,7 @@ import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.FileStateStore;
 import org.logaperture.core.LevelControlService;
 import org.logaperture.core.OverrideRegistry;
+import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
@@ -60,8 +61,6 @@ import java.util.concurrent.TimeUnit;
  */
 public final class WildFlyContainer implements AutoCloseable {
 
-    static final Duration DEFAULT_SWEEP_INTERVAL = Duration.ofSeconds(30);
-
     private final CapabilityPolicy policy;
     private final AuditLog auditLog;
     private final StateStore stateStore;
@@ -69,7 +68,7 @@ public final class WildFlyContainer implements AutoCloseable {
     private final ScheduledExecutorService sweeper;
 
     public WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog) {
-        this(policy, auditLog, DEFAULT_SWEEP_INTERVAL);
+        this(policy, auditLog, SweepPolicy.interval());
     }
 
     /** Package-visible so tests can use a short sweep interval instead of the real 30s one. */

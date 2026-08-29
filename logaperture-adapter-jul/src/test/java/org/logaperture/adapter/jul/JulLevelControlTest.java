@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.adapter.jbosslogmanager;
+package org.logaperture.adapter.jul;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,11 +46,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The Slice 2 exit criterion: {@code AggregateLevelControl} driving a
- * {@link JbossLogManagerAdapter} through the full Feature 1 + Feature 2
+ * {@link JulLoggingAdapter} through the full Feature 1 + Feature 2
  * loop — list, set, reset, expiry, resume — against the JVM's own
  * {@code java.util.logging.LogManager}, with correct level mapping.
  */
-class JbossLogManagerLevelControlTest {
+class JulLevelControlTest {
 
     @TempDir
     private Path home;
@@ -77,7 +77,7 @@ class JbossLogManagerLevelControlTest {
     }
 
     private AggregateLevelControl wire(StateStore store) {
-        LoggingAdapter adapter = JbossLogManagerAdapterFactory.forCurrentContext();
+        LoggingAdapter adapter = JulAdapterFactory.forCurrentContext();
         BaselineRegistry baselines = new BaselineRegistry();
         for (String name : adapter.knownLoggerNames()) {
             baselines.captureIfAbsent(name, adapter);

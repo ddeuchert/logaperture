@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.adapter.jbosslogmanager;
+package org.logaperture.adapter.jul;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,15 +48,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * unique-prefixed logger namespace and the root logger's level is captured
  * and restored.
  */
-class JbossLogManagerAdapterTest {
+class JulLoggingAdapterTest {
 
-    private JbossLogManagerAdapter adapter;
+    private JulLoggingAdapter adapter;
     private String prefix;
     private java.util.logging.Level originalRootLevel;
 
     @BeforeEach
     void setUp() {
-        adapter = new JbossLogManagerAdapter();
+        adapter = new JulLoggingAdapter();
         prefix = "it." + UUID.randomUUID().toString().replace("-", "") + ".";
         originalRootLevel = Logger.getLogger("").getLevel();
         if (originalRootLevel == null) {
