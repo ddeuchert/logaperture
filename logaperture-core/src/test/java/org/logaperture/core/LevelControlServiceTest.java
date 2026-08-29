@@ -371,6 +371,40 @@ class LevelControlServiceTest {
     }
 
     @Test
+    void verifyAndReapply_doesNotResurrectAnOverrideResetConcurrently() {
+        adapter.addKnownLogger("com.acme.Raced");
+        service.setLevel("com.acme.Raced", Level.DEBUG, SetLevelOptions.sticky());
+
+        // A control-plane resetLevel lands while the sweep is reading this logger.
+        adapter.runOnEffectiveLevel("com.acme.Raced", () -> service.resetLevel("com.acme.Raced"));
+
+        int reapplied = service.verifyAndReapply(java.time.Instant.now());
+
+        assertEquals(0, reapplied);
+        assertTrue(overrides.get("com.acme.Raced").isEmpty(), "the reset stands");
+        assertEquals(Level.INFO, adapter.effectiveLevel("com.acme.Raced"),
+                "the override was not resurrected onto the adapter");
+        assertTrue(auditLog.records().stream().noneMatch(r -> r.source().equals("verification-sweep")),
+                "no phantom verification-sweep audit for an override that was reset");
+    }
+
+    @Test
+    void verifyAndReapply_honoursAnOverrideReplacedConcurrently() {
+        adapter.addKnownLogger("com.acme.Swapped");
+        service.setLevel("com.acme.Swapped", Level.DEBUG, SetLevelOptions.sticky());
+
+        adapter.runOnEffectiveLevel("com.acme.Swapped",
+                () -> service.setLevel("com.acme.Swapped", Level.TRACE, SetLevelOptions.defaults()));
+
+        int reapplied = service.verifyAndReapply(java.time.Instant.now());
+
+        assertEquals(0, reapplied);
+        assertEquals(Level.TRACE, overrides.get("com.acme.Swapped").orElseThrow().level());
+        assertEquals(Level.TRACE, adapter.effectiveLevel("com.acme.Swapped"),
+                "the newer setLevel wins; the sweep did not shadow it with the stale level");
+    }
+
+    @Test
     void verifyAndReapply_leavesExpiredForOverridesForTheExpirySweep() {
         adapter.addKnownLogger("com.acme.Expired");
         service.setLevel("com.acme.Expired", Level.DEBUG,

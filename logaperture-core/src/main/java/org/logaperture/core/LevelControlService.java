@@ -212,21 +212,48 @@ public final class LevelControlService implements LevelControlOperations {
      * quiet system produces no re-applies and no audit noise. Expired {@code
      * FOR} overrides are left to {@link #sweepExpiredOverrides}.
      *
+     * <p>Concurrency: this runs on the composition root's sweep thread while
+     * {@code setLevel}/{@code resetLevel} run on a control-plane thread. It
+     * follows {@link #sweepExpiredOverrides}'s discipline — iterate a snapshot
+     * of <em>names</em>, re-read the registry entry per iteration, and (here)
+     * re-check the entry <em>after</em> applying — so a concurrent reset that
+     * removed the override cannot be "resurrected" by a stale snapshot value,
+     * and a concurrent {@code setLevel} that replaced it is honoured rather
+     * than shadowed.
+     *
      * @return how many overrides had drifted and were re-applied
      */
     public int verifyAndReapply(Instant now) {
         int reapplied = 0;
-        for (LevelOverride override : List.copyOf(overrides.all().values())) {
+        for (String loggerName : List.copyOf(overrides.all().keySet())) {
+            LevelOverride override = overrides.get(loggerName).orElse(null);
+            if (override == null) {
+                continue; // reset out from under this sweep between snapshot and now
+            }
             if (override.tier() == PersistenceTier.FOR && !override.expiresAt().isAfter(now)) {
                 continue; // expired -- the expiry sweep owns this one
             }
-            Level current = adapter.effectiveLevel(override.loggerName());
+            Level current = adapter.effectiveLevel(loggerName);
             if (current == override.level()) {
                 continue; // still in force
             }
+
             OverrideApplier.apply(override, adapter);
+
+            Optional<LevelOverride> afterApply = overrides.get(loggerName);
+            if (!afterApply.map(override::equals).orElse(false)) {
+                // A concurrent resetLevel/setLevel won the race between our
+                // read and our apply. Undo what we just did rather than leave
+                // the adapter disagreeing with the registry, and record no
+                // audit for a re-apply that did not stick.
+                afterApply.ifPresentOrElse(
+                        replacement -> OverrideApplier.apply(replacement, adapter),
+                        () -> adapter.applyLevel(loggerName, baselines.get(loggerName).orElse(null)));
+                continue;
+            }
+
             auditLog.record(new AuditRecord(
-                    now, principal, "verification-sweep", override.loggerName(), current.toString(),
+                    now, principal, "verification-sweep", loggerName, current.toString(),
                     override.level().toString(), override.reason(), AuditRecord.Action.MUTATION));
             reapplied++;
         }

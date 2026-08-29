@@ -692,6 +692,11 @@ Slice 3 adds the **verification sweep** as `LevelControlService.verifyAndReapply
   `"verification-sweep"` mutation. Idempotent — an already-correct override is skipped, so
   a quiet sweep writes nothing and produces no audit noise. Expired `FOR` overrides are
   left to the expiry sweep.
+- Runs on the sweep thread while `setLevel` / `resetLevel` run on the control-plane thread,
+  so it follows `sweepExpiredOverrides`'s discipline: iterate a snapshot of *names*,
+  re-read the registry entry per iteration, and re-check it *after* applying — so a
+  concurrent `resetLevel` that removed the override cannot be resurrected by a stale
+  value, and a concurrent `setLevel` that replaced it is honoured, not shadowed.
 - `WildFlyContainer`'s single sweep thread runs it every N seconds (default 30) right
   after the expiry sweep. `NoneContainer` runs it too, on the same schedule — §15.5 makes
   it a core invariant, not a WildFly special case (belt-and-suspenders there, since

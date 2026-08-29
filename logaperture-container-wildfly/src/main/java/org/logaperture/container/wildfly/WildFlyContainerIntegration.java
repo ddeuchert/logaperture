@@ -135,18 +135,34 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
      * sweep is the only re-apply mechanism.
      */
     private static void wireConfigurationListener(WildFlyContainer host) {
-        java.util.logging.LogManager logManager = java.util.logging.LogManager.getLogManager();
+        if (registerConfigurationListener(java.util.logging.LogManager.getLogManager(), host::runVerificationSweepNow)) {
+            Diagnostics.debug("LogAperture: registered a JBoss LogManager configuration-change listener");
+        } else {
+            Diagnostics.debug("LogAperture: no JBoss LogManager configuration-change hook; "
+                    + "relying on the periodic verification sweep");
+        }
+    }
+
+    /**
+     * Reflectively registers {@code callback} on {@code
+     * org.jboss.logmanager.LogManager.addConfigurationListener(Runnable)}.
+     * Package-visible so a test can lock in that API assumption against a
+     * JBoss LogManager version bump.
+     *
+     * @return {@code true} if the listener was registered
+     */
+    static boolean registerConfigurationListener(java.util.logging.LogManager logManager, Runnable callback) {
         if (!"org.jboss.logmanager.LogManager".equals(logManager.getClass().getName())) {
-            return;
+            return false;
         }
         try {
             logManager.getClass()
                     .getMethod("addConfigurationListener", Runnable.class)
-                    .invoke(logManager, (Runnable) host::runVerificationSweepNow);
-            Diagnostics.debug("LogAperture: registered a JBoss LogManager configuration-change listener");
+                    .invoke(logManager, callback);
+            return true;
         } catch (ReflectiveOperationException | RuntimeException noHook) {
-            Diagnostics.debug("LogAperture: no JBoss LogManager configuration-change hook; "
-                    + "relying on the periodic verification sweep (" + noHook + ")");
+            Diagnostics.debug("LogAperture: addConfigurationListener not available (" + noHook + ")");
+            return false;
         }
     }
 
