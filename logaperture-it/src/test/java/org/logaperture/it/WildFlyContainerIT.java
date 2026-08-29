@@ -192,9 +192,10 @@ class WildFlyContainerIT {
         try {
             assertTrue(pollLogctl("levels", BOOT_LOGGER, out -> out.contains("DEBUG")),
                     "the verification sweep re-applied the override after the management change");
-            assertTrue(wildfly.getLogs().contains("source=verification-sweep")
-                            && wildfly.getLogs().contains(BOOT_LOGGER),
-                    "a verification-sweep audit entry was recorded");
+            assertTrue(wildfly.getLogs().lines().anyMatch(line ->
+                            line.contains("source=verification-sweep")
+                                    && line.contains("logger=" + BOOT_LOGGER)),
+                    "a single verification-sweep audit entry names " + BOOT_LOGGER);
         } finally {
             logctl("reset", BOOT_LOGGER);
             exec(JBOSS_CLI, "--connect", "--command=/subsystem=logging/logger=" + BOOT_LOGGER + ":remove");
@@ -211,11 +212,23 @@ class WildFlyContainerIT {
                 "the app logger appeared after deploy");
     }
 
-    private void redeployProbeWar() throws Exception {
-        // The deployment scanner redeploys on a content change; touch is enough.
+    private void redeployProbeWar() {
+        long initsBefore = probeInitCount();
+        // The scanner redeploys on a content change (default scan interval 5s).
+        // The existing probe.war.deployed marker is not rewritten on a redeploy,
+        // so gate on the app's own contextInitialized log line running again
+        // rather than on a marker file that is already present.
         exec("touch", DEPLOYMENTS + "/probe.war");
         exec("rm", "-f", DEPLOYMENTS + "/probe.war.failed");
-        assertTrue(awaitFile(DEPLOYMENTS + "/probe.war.deployed"), "probe.war redeployed");
+        assertTrue(pollUntil(() -> probeInitCount() > initsBefore),
+                "probe.war redeployed: contextInitialized ran a second time");
+    }
+
+    /** How many times the probe's {@code contextInitialized} has logged "probe deployed". */
+    private long probeInitCount() {
+        return wildfly.getLogs().lines()
+                .filter(line -> line.contains(APP_LOGGER) && line.contains("probe deployed"))
+                .count();
     }
 
     private void undeployProbeWar() {
@@ -246,7 +259,7 @@ class WildFlyContainerIT {
         assertNotNull(compiler, "a JDK (not JRE) is required to build the probe WAR");
         int rc = compiler.run(null, null, null,
                 "--release", "17", // the WildFly image runs JDK 17
-                "-classpath", System.getProperty("java.class.path"),
+                "-classpath", probeCompileClasspath(),
                 "-d", classes.toString(), src.toString());
         assertEquals(0, rc, "probe compile failed");
 
@@ -261,6 +274,20 @@ class WildFlyContainerIT {
             zip.closeEntry();
         }
         return war;
+    }
+
+    /**
+     * The javax.servlet-api jar to compile the probe against. Maven's
+     * dependency:properties goal sets {@code probe.compile.classpath} to that
+     * artifact's local path (see logaperture-it/pom.xml); fall back to the
+     * forked JVM's full classpath only if that wiring is absent.
+     */
+    private static String probeCompileClasspath() {
+        String explicit = System.getProperty("probe.compile.classpath", "");
+        if (!explicit.isBlank() && Files.isReadable(Path.of(explicit))) {
+            return explicit;
+        }
+        return System.getProperty("java.class.path");
     }
 
     private boolean awaitFile(String path) {
@@ -279,8 +306,13 @@ class WildFlyContainerIT {
     }
 
     private boolean pollLogctl(String arg1, String arg2, java.util.function.Predicate<String> until) {
+        return pollUntil(() -> until.test(logctl(arg1, arg2).stdout()));
+    }
+
+    /** Poll a condition for up to 30s (1s between checks). */
+    private boolean pollUntil(java.util.function.BooleanSupplier condition) {
         for (int i = 0; i < 30; i++) {
-            if (until.test(logctl(arg1, arg2).stdout())) {
+            if (condition.getAsBoolean()) {
                 return true;
             }
             sleep(1000);
