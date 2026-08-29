@@ -212,14 +212,21 @@ class WildFlyContainerIT {
                 "the app logger appeared after deploy");
     }
 
-    private void redeployProbeWar() {
+    private void redeployProbeWar() throws Exception {
         long initsBefore = probeInitCount();
-        // The scanner redeploys on a content change (default scan interval 5s).
-        // The existing probe.war.deployed marker is not rewritten on a redeploy,
-        // so gate on the app's own contextInitialized log line running again
-        // rather than on a marker file that is already present.
-        exec("touch", DEPLOYMENTS + "/probe.war");
-        exec("rm", "-f", DEPLOYMENTS + "/probe.war.failed");
+        // A full undeploy -> deploy cycle: remove the archive, wait for the
+        // scanner to undeploy, then copy it back. This is what the scanner does
+        // internally for a changed archive anyway, and unlike a bare `touch` it
+        // is picked up regardless of container-filesystem mtime granularity
+        // (touch works locally but not on the CI runner). It also exercises the
+        // adapter keeping the logger node (and its override) alive across the
+        // deployment being gone entirely.
+        exec("rm", "-f", DEPLOYMENTS + "/probe.war");
+        assertTrue(awaitFile(DEPLOYMENTS + "/probe.war.undeployed"), "probe.war undeployed for redeploy");
+        exec("rm", "-f", DEPLOYMENTS + "/probe.war.undeployed", DEPLOYMENTS + "/probe.war.deployed",
+                DEPLOYMENTS + "/probe.war.failed");
+        wildfly.copyFileToContainer(MountableFile.forHostPath(buildProbeWar()), DEPLOYMENTS + "/probe.war");
+        assertTrue(awaitFile(DEPLOYMENTS + "/probe.war.deployed"), "probe.war redeployed");
         assertTrue(pollUntil(() -> probeInitCount() > initsBefore),
                 "probe.war redeployed: contextInitialized ran a second time");
     }
