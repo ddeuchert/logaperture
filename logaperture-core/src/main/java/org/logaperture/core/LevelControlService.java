@@ -200,6 +200,40 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     /**
+     * The verification sweep (doc/specs/wildfly-support.md, §15.5; §15.5's
+     * "re-establish installed state from an event <em>or</em> a periodic
+     * sweep"): for every active override, compare the adapter's current
+     * {@code effectiveLevel} against the override's level. Where they
+     * disagree, something reconfigured the logger out from under us — a
+     * WildFly {@code /subsystem=logging} change, an XML edit + {@code
+     * :reload}, JBoss LogManager having no reconfiguration event of its own
+     * (§4.3) — so re-apply it and record a {@code "verification-sweep"}
+     * mutation. Idempotent: an already-correct override is skipped, so a
+     * quiet system produces no re-applies and no audit noise. Expired {@code
+     * FOR} overrides are left to {@link #sweepExpiredOverrides}.
+     *
+     * @return how many overrides had drifted and were re-applied
+     */
+    public int verifyAndReapply(Instant now) {
+        int reapplied = 0;
+        for (LevelOverride override : List.copyOf(overrides.all().values())) {
+            if (override.tier() == PersistenceTier.FOR && !override.expiresAt().isAfter(now)) {
+                continue; // expired -- the expiry sweep owns this one
+            }
+            Level current = adapter.effectiveLevel(override.loggerName());
+            if (current == override.level()) {
+                continue; // still in force
+            }
+            OverrideApplier.apply(override, adapter);
+            auditLog.record(new AuditRecord(
+                    now, principal, "verification-sweep", override.loggerName(), current.toString(),
+                    override.level().toString(), override.reason(), AuditRecord.Action.MUTATION));
+            reapplied++;
+        }
+        return reapplied;
+    }
+
+    /**
      * Every override this context currently tracks — used by {@link
      * AggregateLevelControl} to re-broadcast the active set onto a
      * context that registered after they were applied

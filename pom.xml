@@ -39,9 +39,11 @@
     <module>logaperture-adapter-logback</module>
     <module>logaperture-adapter-jboss-logmanager</module>
     <module>logaperture-container-none</module>
+    <module>logaperture-container-wildfly</module>
     <module>logaperture-control-jmx</module>
     <module>logaperture-agent</module>
     <module>logaperture-cli</module>
+    <module>logaperture-it</module>
   </modules>
 
   <properties>
@@ -62,6 +64,10 @@
       #getParent/#getHandlers) is stable across the 2.1.x-3.0.x range.
     -->
     <jboss-logmanager.version>3.0.6.Final</jboss-logmanager.version>
+
+    <!-- Real-WildFly integration test (logaperture-it). Gated on Docker being available. -->
+    <testcontainers.version>1.19.8</testcontainers.version>
+    <wildfly.image>quay.io/wildfly/wildfly:26.1.3.Final-jdk17</wildfly.image>
 
     <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
     <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
@@ -105,6 +111,11 @@
       </dependency>
       <dependency>
         <groupId>org.logaperture</groupId>
+        <artifactId>logaperture-container-wildfly</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.logaperture</groupId>
         <artifactId>logaperture-control-jmx</artifactId>
         <version>${project.version}</version>
       </dependency>
@@ -129,6 +140,13 @@
         <groupId>org.junit</groupId>
         <artifactId>junit-bom</artifactId>
         <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>testcontainers-bom</artifactId>
+        <version>${testcontainers.version}</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>

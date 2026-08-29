@@ -1,6 +1,8 @@
 # WildFly Support — JBoss LogManager backend, multi-context core
 
-Status: Slices 1 & 2 implemented and merged; Slice 3 not yet started.
+Status: Slices 1 & 2 merged. Slice 3 implemented; its real-WildFly Testcontainers IT is
+written and gated (self-skips without Docker) but has not yet had a shakeout run against a
+real Docker daemon.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §4.3 (per-framework
 mechanism map), §4.4 (classloader model), §4.6 (module layout), §15 (containers) — §15.1
 (the two orthogonal axes), §15.2 (the `ContainerIntegration` SPI), §15.4 (one JVM, several
@@ -47,7 +49,7 @@ than doing them tangled up with a new adapter and a real app server.
 |---|---|---|---|
 | **1 — Container SPI + multi-context core** | `logaperture-core`, `logaperture-container-none`, `logaperture-agent`, `logaperture-api`, `logaperture-control-jmx` | The `ContainerIntegration` SPI (§15.2); `core` broadcasts level control across every logging context instead of assuming one; `none` re-expressed as a `ContainerIntegration`; agent bootstrap becomes detect-then-install. No new capability, no changed signature — `none` behaves exactly as today. | Features 1, 2 |
 | **2 — JBoss LogManager adapter** | new `logaperture-adapter-jboss-logmanager` | A `LoggingAdapter` over `org.jboss.logmanager` / `java.util.logging`: per-`LogContext` level read/write, baseline capture, the LogAperture↔JUL level mapping, and detection of the handler-floor trap. Tested in-process against JBoss LogManager on the classpath — no WildFly. | Slice 1 |
-| **3 — WildFly container integration** | new `logaperture-container-wildfly`, `logaperture-agent`, `logaperture-it` | The WildFly `ContainerIntegration`: detection, the premain discipline, `LogContext` discovery and lifecycle, redeploy re-application (re-broadcast on context registration), the verification sweep, and a real-WildFly integration test (Testcontainers) including the `LogManager`-install assertion §15.6 demands. | Slices 1, 2 |
+| **3 — WildFly container integration** | new `logaperture-container-wildfly` + `logaperture-it`, `logaperture-agent`, `logaperture-core`, `logaperture-cli` | The WildFly `ContainerIntegration`: premain-safe detection, binding the system `LogContext`, the verification sweep (`LevelControlService.verifyAndReapply` + a `LogManager` config-change hook), the display-only CONTEXT column, and a gated real-WildFly Testcontainers IT. | Slices 1, 2 |
 
 The rest of this document specifies Slice 1 at implementation depth; Slices 2 and 3 at
 design depth — enough to start, with the decisions that constrain Slice 1 pinned now so it
@@ -624,16 +626,22 @@ premain gotcha that will cost you a day").
 
 Therefore:
 
-- **`detect()`** probes **only** system properties and class *presence*: is
-  `System.getProperty("java.util.logging.manager")` equal to
-  `org.jboss.logmanager.LogManager`, and/or is `org.jboss.modules.Module` loadable? It
-  must not call any `java.util.logging` method and must not force-load a JBoss LogManager
-  class.
-- **`discoverContexts`** does the M0 spike point 2 discipline exactly: spawn a daemon
-  thread that polls `System.getProperty("java.util.logging.manager")` (a side channel —
-  never `java.util.logging` itself) until it reads `org.jboss.logmanager.LogManager`, wait
-  a short settle interval, *then* touch the API for the first time to enumerate
-  `LogContext`s.
+- **`detect()`** probes **only** system properties and class *presence*, never a
+  `java.util.logging` method and never a force-load of a JBoss LogManager class. It
+  requires **both** `System.getProperty("java.util.logging.manager")` ==
+  `org.jboss.logmanager.LogManager` **and** `org.jboss.modules.Module` loadable — the
+  second disambiguates a JBoss-Modules server (WildFly) from other JBoss-LogManager users
+  (Quarkus-JVM, a separate future integration). A domain-mode launch
+  (`jboss.domain.base.dir` set) is detected and declined with a diagnostic (§15.6: v1 is
+  standalone only).
+- **Discovery** (`WildFlyLogManagerReadiness`, driven on a daemon thread from `activate`)
+  does the M0 spike point 2 discipline: poll `System.getProperty("java.util.logging.manager")`
+  (a side channel — never `java.util.logging` itself) until it reads
+  `org.jboss.logmanager.LogManager`, wait a short settle, *then* make the first JUL call —
+  `LogManager.getLogManager()` — and confirm the installed manager really is the JBoss one
+  before installing anything. Then bind a `JbossLogManagerAdapter` to
+  `LogContext.getLogContext()` (the current selector's context — the server's own system
+  context) and `installContext` it as `stableKey` `"system"`.
 - **Regression test (§15.6 demands this):** the Testcontainers IT boots WildFly with the
   agent attached and asserts `java.util.logging.LogManager.getLogManager().getClass()
   .getName()` (read from inside the server, e.g. via a tiny deployed probe or a management
@@ -642,57 +650,39 @@ Therefore:
 
 ## `LogContext` discovery and lifecycle
 
-The API surface is `org.jboss.logmanager.LogContext` and `LogContextSelector` (§15.6). In
-WildFly:
+Implementation finding: **`org.jboss.logmanager.LogContextSelector` exposes only
+`getLogContext()`** — there is no API to *enumerate* every registered `LogContext`.
+`ClassLoaderLogContextSelector` (what WildFly builds on) keeps its per-classloader
+contexts in a private map. So "discover every `LogContext`" is not something the public
+API supports, and Slice 3 does not attempt it.
 
-- The **system** `LogContext` is the server's own — `LogContext.getSystemLogContext()` /
-  the selector's default. `stableKey` `"system"`. For a stock standalone WildFly with no
-  `use-deployment-logging-config` and no `<logging-profile>`, deployments route their
-  loggers here too, so this is the *only* context (the M0 finding).
-- A deployment gets its **own** `LogContext` only when its configuration asks for one
-  (`use-deployment-logging-config`, a `<logging-profile>`) — out of scope for this
-  release. Where one does exist, it is selected by the deployment module's classloader and
-  `WildFlyLogContextSelector` registers / unregisters it as the deployment comes and goes;
-  `stableKey` = the deployment name (`myapp.war`).
+It does not need to. For a stock standalone WildFly with no `use-deployment-logging-config`
+and no `<logging-profile>` — the only configuration this release supports — **every
+deployment's loggers route to the server's own system `LogContext`** (the M0 finding). So
+there is exactly one context, `LogContext.getLogContext()` returns it, and the Slice 1
+multi-context machinery runs at N = 1, exactly as for `none`.
 
-`discoverContexts` emits one `ContextHandle` per currently-registered `LogContext`, each
-wrapping a `JbossLogManagerAdapter` (Slice 2) bound to that context.
-
-**Lifecycle** — `onContextAdded` / `onContextRemoved`: WildFly does not publish a clean
-"LogContext registered" event to arbitrary code. Two mechanisms, in order of preference:
-
-1. If a hook point exists on `WildFlyLogContextSelector` / the deployment processors that
-   can be observed without instrumentation, use it.
-2. Otherwise, a **periodic reconciliation** (the §15.5 sweep, below) that diffs the current
-   set of registered `LogContext`s against the aggregate's registered contexts and fires
-   added/removed synthetically. Slower to notice a redeploy (bounded by the sweep
-   interval) but requires no WildFly-internal cooperation and cannot be broken by a WildFly
-   version bump.
-
-Slice 3 ships mechanism 2 as the baseline and uses mechanism 1 only if the empirical work
-finds a clean, stable hook. Either way the observable contract is `onContextAdded` fires
-with the new context's handle.
+A deployment gets its **own** `LogContext` only under the deferred config
+(`use-deployment-logging-config` / `<logging-profile>`). Since this release doesn't support
+that and there's no enumeration API, the `onContextAdded` / `onContextRemoved` lifecycle
+is not reachable in the supported configuration and Slice 3 wires nothing for it. The
+`AggregateLevelControl.addContext` / `removeContext` methods from Slice 1 stay for when a
+future slice adds deployment contexts.
 
 ## The redeploy loop
 
-Every redeploy discards and re-registers a deployment's `LogContext` (where it has its
-own); an override keyed on classloader identity would be gone (§15.6, "The redeploy
-loop"). Broadcast overrides have no such key — they are a flat list of
-`(logger, level, expiry)` in the one state file — so redeploy survival is a
-re-application, not a lookup:
+For the supported configuration there is a single system `LogContext` that **survives
+every redeploy** — it is the server's, not the deployment's. So redeploy survival is
+automatic, from two independent mechanisms already in place:
 
-- On `onContextAdded` (whatever its `stableKey`), the composition root builds that
-  context's `LevelControlService`, registers it with the aggregate, and **re-broadcasts
-  every active override onto it** — each `--sticky` override, and each `--for` override
-  still inside its window — recording a `resume` audit entry per re-applied override (the
-  audit trail shows the override reappearing, per `persistence.md`'s resume design).
-- On `onContextRemoved`, the context's `LevelControlService` is dropped from the aggregate.
-  The state file is untouched — an undeploy is not a revert; the next context to register
-  picks the overrides up again.
+- The `JbossLogManagerAdapter` (Slice 2) pins a strong reference to every `Logger` it
+  touches, so a redeployed app calling `Logger.getLogger("com.myapp.X")` gets back the
+  same node — still carrying the override — rather than a fresh one.
+- The override is in the one state file; a JVM restart resumes it (Feature 2), and the
+  verification sweep re-applies it if anything cleared it.
 
-This makes the §6 persistence machinery load-bearing for the dev redeploy use case, not
-just the restart case — §15.6 argues it "should be validated against redeploy before it's
-validated against restart", and the IT does exactly that.
+The redeploy-keyed-by-deployment-name path the earlier draft described only applies to
+per-deployment `LogContext`s, which the supported config doesn't produce.
 
 ## Reconfiguration re-application: the verification sweep
 
@@ -702,23 +692,43 @@ overwrite a runtime override with no notification. Per §15.5, the answer is not
 per-container hook but a **core invariant**: the agent must be able to re-establish its
 entire installed state, idempotently, at any moment, from an event *or* a periodic sweep.
 
-Slice 3 adds that periodic **verification sweep** to the composition root (the same layer
-that already owns the expiry sweep):
+Slice 3 adds the **verification sweep** as `LevelControlService.verifyAndReapply(Instant)`
++ `AggregateLevelControl.verificationSweep(Instant)`:
 
-- Every N seconds (default 30, matching the expiry sweep — they can share a thread), for
-  every registered context, for every active override: check the adapter's current
-  `effectiveLevel` against the override's level. If they disagree, the framework reset the
-  logger out from under us — re-apply via the same path Feature 2's
-  `reapplyActiveOverrides` uses, and record it (audit `source` `"verification-sweep"`).
-- The same pass reconciles the `LogContext` set (the lifecycle mechanism 2 above).
-- Idempotent by construction: `applyLevel` is a plain `setLevel`, not a stateful
-  wrap-and-track, so re-applying an already-correct override is a no-op. (The
-  double-wrapping hazard §15.5 warns about belongs to render-stage work, not level
-  control.)
+- For every active override, compare the adapter's current `effectiveLevel` against the
+  override's level. On disagreement, re-apply via `OverrideApplier` and record a
+  `"verification-sweep"` mutation. Idempotent — an already-correct override is skipped, so
+  a quiet sweep writes nothing and produces no audit noise. Expired `FOR` overrides are
+  left to the expiry sweep.
+- `WildFlyContainer`'s single sweep thread runs it every N seconds (default 30) right
+  after the expiry sweep. `NoneContainer` runs it too, on the same schedule — §15.5 makes
+  it a core invariant, not a WildFly special case (belt-and-suspenders there, since
+  Logback fires its own reset event).
 
-This also means WildFly support works — if slightly late after a management change —
-before any WildFly-specific event hook is written, which is the point of §15.5's "adding a
-new container starts out working correctly, if slightly late".
+**A clean event hook was found (mechanism 1).**
+`org.jboss.logmanager.LogManager.addConfigurationListener(Runnable)` fires on
+`readConfiguration` / `updateConfiguration` — the path a `/subsystem=logging` change and an
+XML edit + `:reload` both take. `WildFlyContainerIntegration` registers the verification
+sweep against it (submitted to the sweep thread, never run on WildFly's config thread), so
+a management change is corrected promptly; the periodic sweep is the floor. This is better
+than §15.6's pessimistic "WildFly does not publish a clean event".
+
+## Installation mechanics
+
+- **Attach:** a line in `standalone.conf` (`JAVA_OPTS="$JAVA_OPTS -javaagent:/path/to/
+  logaperture-agent.jar"`). `WildFlyContainerIntegration.guidance()` carries this, plus
+  "the agent's overrides never touch `standalone.xml`".
+- **`jboss.modules.system.pkgs` — resolved analytically; to be confirmed on the Docker
+  shakeout.** The agent binds only the **system** `LogContext`, never a deployment
+  classloader. WildFly puts `jboss-logmanager` on the *system* classpath (it must, so
+  `java.util.logging` can load `org.jboss.logmanager.LogManager` from the
+  `java.util.logging.manager` property), so the agent — also on the system classpath —
+  already sees `org.jboss.logmanager.*` with **no `jboss.modules.system.pkgs` entry
+  needed**. Reaching deployment `LogContext`s *would* need one, but that's the deferred
+  config. The IT's boot assertion confirms the agent installs cleanly; if a
+  `ClassNotFoundException` surfaces on the shakeout, the required line goes into
+  `guidance()` and the README.
+- **Domain mode:** `detect()` returns false when `jboss.domain.base.dir` is set.
 
 ## Never touch `standalone.xml`
 
@@ -728,22 +738,6 @@ agent's overrides live only in its own store, expire on a timer, and touch no
 server-owned file. Slice 3 adds nothing that writes `standalone.xml`,
 `logging.properties`, or any deployment descriptor. The `logctl` confirmation and the
 README both say so explicitly.
-
-## Installation mechanics
-
-- **Attach:** a line in `standalone.conf` (`JAVA_OPTS="$JAVA_OPTS -javaagent:/path/to/
-  logaperture-agent.jar"`). `InstallGuidance` for the WildFly integration carries this.
-- **`jboss.modules.system.pkgs` — open question to resolve empirically in this slice.**
-  JBoss Modules isolates aggressively; if any agent class must be visible to deployment
-  classloaders, its package prefix must be appended to `jboss.modules.system.pkgs`
-  (§15.6). The M0 spike did **not** exercise this (no deployments). Slice 3's first
-  investigative task: with a real deployed app, determine whether `org.logaperture.bridge`
-  (the bootstrap-visible package) needs to be on `jboss.modules.system.pkgs` for the
-  agent to reach deployment `LogContext`s, document the exact required line, and if it is
-  needed, put it in `InstallGuidance` and the README. A wrong answer here presents as
-  baffling `ClassNotFoundException`s, so it is verified, not assumed.
-- **Domain mode:** out of scope for v1. The integration's `detect()` returns false (or a
-  clear "domain mode not supported" diagnostic) if it detects a domain-mode server.
 
 ## `logctl` changes
 
@@ -760,45 +754,50 @@ column (added by wildfly-support)" note rather than a rewrite.
 
 ## Testing
 
-Adapter-behaviour tests already covered the mechanism in Slice 2. Slice 3's tests are the
-**container** kind — few, shallow, real (§12) — plus the CLI addition:
+In-process (no Docker) — all run by `mvn verify`:
 
-- **Testcontainers, real WildFly 26.1.3.Final:**
-  - Boot with the agent attached; assert the installed `LogManager` is
-    `org.jboss.logmanager.LogManager` (the premain-gotcha regression test).
-  - `logctl levels` over the attach transport lists system-context loggers including
-    `org.jboss.*`.
-  - `logctl debug org.jboss.as.server for 1m` then observe the raised detail in
-    `server.log`; confirm it reverts after the window.
-  - Deploy a minimal WAR with a known logger; `logctl levels` shows it (under the CONTEXT
-    column if the deployment has its own `LogContext`, otherwise under `system`); `logctl
-    debug <appLogger> sticky`; **redeploy**; assert the override re-applied itself against
-    the freshly-registered `LogContext`, with a `resume` audit entry across the redeploy
-    boundary.
-  - Make a logging change through WildFly's management CLI that collides with an active
-    override; assert the verification sweep re-applies within its interval, with a
-    `verification-sweep` audit entry — closing the M0 gap "never exercised WildFly's
-    /subsystem=logging management API".
-  - Assert `standalone.xml` is byte-identical before and after a full session of overrides
-    and reverts.
-- **CLI unit tests:** the CONTEXT column appears iff >1 context is present and is absent
-  otherwise; column alignment with a mix of `system` and deployment-named rows.
-- **The M0 classloader gap:** the deployed-WAR test above is the first exercise of §4.4's
-  "no assumption of exactly one logging context" against a real deployment — assert no
-  leak of the deployment classloader after undeploy (weak-reference check, per §12).
+- `logaperture-container-wildfly`:
+  - `WildFlyContainerIntegrationTest` — `detect()` true only with both signals (the test
+    JVM sets `java.util.logging.manager` and has jboss-modules), false in domain mode,
+    false without the manager property; `guidance()` points at `standalone.conf` and
+    states `standalone.xml` is untouched.
+  - `WildFlyLogManagerReadinessTest` — the readiness gate runs its callback once the
+    manager is confirmed installed (the test JVM is the "already installed" case).
+  - `WildFlyContainerTest` — the composition root against a hand-built `LogContext`: the
+    full list/set/reset/resetAll loop with the level mapped exactly to `FINE`; the
+    verification sweep re-applies an override cleared out from under it and audits a
+    `"verification-sweep"` mutation; a quiet sweep is a no-op; `runVerificationSweepNow()`
+    (the config-listener path) lands the re-apply on the sweep thread; `--for` expiry;
+    `--sticky` resume across a simulated restart.
+- `logaperture-core`: `LevelControlService.verifyAndReapply` (drift re-applied + audited,
+  no-op when in force, expired `FOR` skipped) and `AggregateLevelControl.verificationSweep`
+  (fan-out + count).
+- `logaperture-cli` (`CommandsTest`): the CONTEXT column appears in `levels` / `status`
+  iff the result spans more than one distinct context, and is absent otherwise.
+
+**`logaperture-it` — Testcontainers, real WildFly 26.1.3.Final** (`WildFlyContainerIT`,
+`@Testcontainers(disabledWithoutDocker = true)` so `mvn verify` stays green without Docker;
+CI runs it on an ubuntu runner). **Written, not yet shaken out against a real Docker
+daemon.** Implemented:
+  - Boot with the agent attached; assert the WildFly integration installed and can see
+    `org.jboss.*` loggers, and `server.log` shows a clean start with no premature
+    `java.util.logging` access (the premain-gotcha regression signal).
+  - `listLoggers` lists the single `"system"` context.
+  - A `--for` override on `org.jboss.as.server` reverts on schedule.
+  - `standalone.xml` is `md5sum`-identical after a session of overrides + `resetAll`.
+
+  `@Disabled` pending the shakeout (each carries a TODO): the deployed-WAR
+  visibility/redeploy test (needs an in-test WAR build) and the management-CLI-collision →
+  verification-sweep test.
 
 ## Exit criterion — Slice 3
 
-Against a real standalone WildFly 26.1.3.Final with the agent attached via
-`standalone.conf`: WildFly boots with the correct `LogManager`; `logctl` discovers the
-server and lists the server's loggers (and any deployment loggers, under the CONTEXT
-column where a deployment has its own `LogContext`); a `--for` override on
-`org.jboss.as.server` raises boot detail in `server.log` and reverts on schedule; a
-`--sticky` override on a deployed app's logger survives a redeploy by re-applying itself
-against the freshly-registered `LogContext`; a management-CLI logging change that collides
-with an override is corrected by the verification sweep; and `standalone.xml` is never
-modified. This is the point at which manual acceptance testing — a generic WAR and the
-day-job application — can begin.
+Code complete and `mvn verify` green (in-process tests). The real-WildFly bar —
+`WildFlyContainerIT` passing against Docker, the two `@Disabled` sub-tests finished, and
+the `jboss.modules.system.pkgs` question confirmed — is **pending a Docker shakeout run**.
+That run, plus manual acceptance testing against a generic WAR and the day-job
+application, is the remaining Slice 3 work; it needs a Docker daemon (this dev environment
+has none).
 
 ---
 
@@ -852,12 +851,18 @@ rule:
   under §15.6 was added with the spec's WIP commit.
 - **Slice 2 (done):** §4.6 module list gains `logaperture-adapter-jboss-logmanager` (the
   list predated §15.6's JBoss-LogManager-is-its-own-backend point).
+- **Slice 3 (done):** no top-level spec change needed — §4.6 already lists
+  `logaperture-container-wildfly` and `logaperture-it`. The `logaperture-it` module is
+  created for real (Testcontainers), populating that line.
 
 ## Overall exit criterion
 
-The Slice 3 exit criterion is the overall one: a standalone WildFly 26.1.3.Final, agent
-attached via `standalone.conf`, controlled entirely through `logctl`, with server and
-deployment logger visibility, blanket redeploy-surviving overrides, timer-based revert,
-verification-sweep correction of external changes, and `standalone.xml` never touched —
-the state in which David can begin manual acceptance testing against a generic WAR and his
-day-job application.
+A standalone WildFly 26.1.3.Final, agent attached via `standalone.conf`, controlled through
+`logctl`, with server (and, under the deferred config, deployment) logger visibility,
+blanket overrides that survive a restart and a redeploy, timer-based revert,
+verification-sweep correction of external changes, and `standalone.xml` never touched.
+
+All of the code for this is landed and covered by in-process tests. What remains before it
+is *demonstrated* end to end: a shakeout run of `WildFlyContainerIT` against a real Docker
+daemon (finishing its two `@Disabled` sub-tests and confirming `jboss.modules.system.pkgs`),
+then David's manual acceptance testing against a generic WAR and the day-job application.

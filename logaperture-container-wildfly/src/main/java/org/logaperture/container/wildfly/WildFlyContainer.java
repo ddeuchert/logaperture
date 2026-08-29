@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.container.none;
+package org.logaperture.container.wildfly;
 
 import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.AggregateLevelControl;
@@ -37,23 +37,28 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Composition root for the plain {@code java -jar} container — "the
- * baseline, built first" (doc/logaperture-spec.md §4.6). Since
- * doc/specs/wildfly-support.md (Slice 1) it is multi-context aware: it owns
- * one {@link AggregateLevelControl}, the shared {@link StateStore}, and the
- * single expiry-sweep thread, and installs level control <em>per context</em>
- * ({@link #installContext}). For {@code none} there is only ever one context
- * ({@code "system"}); the machinery is shared with the container
- * integrations to come.
+ * Composition root for standalone WildFly — see doc/specs/wildfly-support.md
+ * Slice 3. Structurally parallels {@code NoneContainer}: it owns one
+ * {@link AggregateLevelControl}, the shared {@link StateStore}, and the
+ * single sweep thread, and installs level control per context via
+ * {@link #installContext}. For a stock standalone WildFly with no
+ * {@code use-deployment-logging-config} and no {@code <logging-profile>}
+ * there is exactly one context — the server's own system {@code LogContext},
+ * which every deployment's loggers route to as well (the M0 finding).
  *
- * <p>Per-context install does what it always did: capture baseline for every
- * known logger, resume this JVM's persisted state, wire the framework's own
- * reset event back into {@link LevelControlService#reapplyActiveOverrides},
- * and register the resulting service with the aggregate. Scheduling of the
- * expiry sweep lives here, not in {@code core} (per the spec, {@code core}
- * has no opinion about "when").
+ * <p>The sweep thread does two jobs each tick: expire timed overrides, then
+ * run the verification sweep (§15.5) that re-applies any override a
+ * {@code /subsystem=logging} change or an XML edit + {@code :reload}
+ * silently overwrote — JBoss LogManager has no reconfiguration event of its
+ * own (§4.3). A {@code LogManager} configuration-change listener drives the
+ * same verification sweep immediately when it can (see
+ * {@code WildFlyContainerIntegration}); the periodic sweep is the floor.
+ *
+ * <p>NOTE: the state-store / sweeper / {@code installContext} / {@code
+ * close} machinery is duplicated from {@code NoneContainer}. Extract a
+ * shared host if a third container integration lands.
  */
-public final class NoneContainer implements AutoCloseable {
+public final class WildFlyContainer implements AutoCloseable {
 
     static final Duration DEFAULT_SWEEP_INTERVAL = Duration.ofSeconds(30);
 
@@ -63,31 +68,19 @@ public final class NoneContainer implements AutoCloseable {
     private final AggregateLevelControl aggregate = new AggregateLevelControl();
     private final ScheduledExecutorService sweeper;
 
-    public NoneContainer(CapabilityPolicy policy, AuditLog auditLog) {
+    public WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog) {
         this(policy, auditLog, DEFAULT_SWEEP_INTERVAL);
     }
 
-    /** Package-visible so tests can use a short sweep interval instead of waiting on the real 30s one. */
-    NoneContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval) {
+    /** Package-visible so tests can use a short sweep interval instead of the real 30s one. */
+    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval) {
         this.policy = policy;
         this.auditLog = auditLog;
         this.stateStore = openStateStore();
 
-        this.sweeper = Executors.newSingleThreadScheduledExecutor(NoneContainer::newDaemonThread);
+        this.sweeper = Executors.newSingleThreadScheduledExecutor(WildFlyContainer::newDaemonThread);
         long intervalMillis = sweepInterval.toMillis();
         sweeper.scheduleAtFixedRate(this::sweepTick, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
-    }
-
-    /**
-     * One periodic tick: expire timed overrides, then re-apply any that a
-     * framework reconfiguration overwrote (§15.5). Logback fires its own
-     * reset event so the verification sweep is belt-and-suspenders here, but
-     * §15.5 makes it a core invariant, not a per-container special case.
-     */
-    private void sweepTick() {
-        Instant now = Instant.now();
-        aggregate.sweepExpiredOverrides(now);
-        aggregate.verificationSweep(now);
     }
 
     /** The surface a control plane (JMX) binds to. */
@@ -97,9 +90,9 @@ public final class NoneContainer implements AutoCloseable {
 
     /**
      * Builds, wires, and registers level control for one logging context:
-     * eager baseline capture, resume of this JVM's persisted state,
-     * reconfiguration re-application wiring, then {@link
-     * AggregateLevelControl#register}.
+     * eager baseline capture, resume of this JVM's persisted state, then
+     * {@link AggregateLevelControl#register}. No adapter reset wiring —
+     * JBoss LogManager has no reset event; the verification sweep covers it.
      */
     public void installContext(ContextHandle handle) {
         LoggingAdapter adapter = handle.adapter();
@@ -114,34 +107,35 @@ public final class NoneContainer implements AutoCloseable {
                 adapter, baselines, overrides, policy, auditLog, stateStore, principal(), "jmx");
 
         try {
-            // Per-entry failures are already isolated inside
-            // resumeFromStateStore; this outer guard is defense in depth
-            // against a StateStore whose loadAll() itself throws -- fail-open
-            // (doc/logaperture-spec.md §9).
             service.resumeFromStateStore(Instant.now());
         } catch (RuntimeException e) {
             Diagnostics.warn("LogAperture: failed to resume persisted overrides, continuing without them", e);
         }
 
-        // doc/specs/persistence.md "Reconfiguration re-application": Logback's
-        // own reset event (scan="true", JMXConfigurator, an explicit
-        // context.reset()) is independent of which container hosts it.
-        Runnable reapplyOnReset = () -> {
-            for (String name : adapter.knownLoggerNames()) {
-                baselines.captureIfAbsent(name, adapter);
-            }
-            service.reapplyActiveOverrides(adapter);
-        };
-        adapter.onReset(reapplyOnReset);
-
         aggregate.register(new ContextControl(handle, service));
     }
 
     /**
-     * Opens this JVM's {@link FileStateStore}, degrading to {@link
-     * StateStore#noOp()} for this JVM's entire lifetime on any failure to
-     * do so — fail-open, per doc/logaperture-spec.md §9.
+     * Runs the verification sweep off the sweep thread, now. Called from the
+     * {@code LogManager} configuration-change listener so a management change
+     * is corrected promptly rather than on the next periodic tick. Submitted
+     * (not run inline) so WildFly's own configuration thread is never
+     * blocked on our work.
      */
+    void runVerificationSweepNow() {
+        try {
+            sweeper.execute(() -> aggregate.verificationSweep(Instant.now()));
+        } catch (java.util.concurrent.RejectedExecutionException alreadyShutDown) {
+            // close() won -- nothing to do
+        }
+    }
+
+    private void sweepTick() {
+        Instant now = Instant.now();
+        aggregate.sweepExpiredOverrides(now);
+        aggregate.verificationSweep(now);
+    }
+
     private static StateStore openStateStore() {
         try {
             return FileStateStore.open();
@@ -160,43 +154,28 @@ public final class NoneContainer implements AutoCloseable {
     }
 
     private static Thread newDaemonThread(Runnable task) {
-        Thread thread = new Thread(task, "logaperture-expiry-sweep");
-        thread.setDaemon(true); // never blocks JVM shutdown -- production never explicitly stops this
+        Thread thread = new Thread(task, "logaperture-wildfly-sweep");
+        thread.setDaemon(true);
         return thread;
     }
 
-    /** §9.7's principal for this slice — the JVM's own account name, matching the audit-trail field this feeds. */
     private static String principal() {
         return System.getProperty("user.name", "unknown");
     }
 
-    /**
-     * Stops the expiry sweep, unregisters every context's reset listener,
-     * and releases the state store's lock. Production keeps a {@code
-     * NoneContainer} for the JVM's lifetime and never calls this; tests use
-     * it to tear down cleanly between cases.
-     */
     @Override
     public void close() {
-        // Plain shutdown(), not shutdownNow(): an in-flight sweep is left to
-        // finish its current persist() undisturbed rather than interrupted
-        // mid-write.
         sweeper.shutdown();
         try {
             sweeper.awaitTermination(5, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-
-        for (ContextControl context : aggregate.contexts()) {
-            context.handle().adapter().clearResetListener();
-        }
-
         if (stateStore instanceof Closeable closeable) {
             try {
                 closeable.close();
             } catch (IOException e) {
-                // Best effort -- the OS releases the lock at process exit regardless.
+                // best effort -- the OS releases the lock at process exit
             }
         }
     }

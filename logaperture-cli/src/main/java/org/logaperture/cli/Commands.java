@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * The four sub-commands, each a thin renderer over one (occasionally two)
@@ -47,23 +48,34 @@ final class Commands {
                 out.println(filter == null ? "No loggers known yet." : "No loggers match '" + filter + "'.");
                 return CliError.OK;
             }
+            boolean showContext = spansMultipleContexts(rows);
             List<List<String>> table = new ArrayList<>();
             for (LoggerInfoData row : rows) {
-                table.add(List.of(
-                        orDash(row.getName()),
-                        orDash(row.getConfiguredLevel()),
-                        orDash(row.getEffectiveLevel()),
-                        overrideCell(row)));
+                List<String> cells = new ArrayList<>();
+                if (showContext) {
+                    cells.add(orDash(row.getContext()));
+                }
+                cells.add(orDash(row.getName()));
+                cells.add(orDash(row.getConfiguredLevel()));
+                cells.add(orDash(row.getEffectiveLevel()));
+                cells.add(overrideCell(row));
+                table.add(cells);
             }
-            out.println(Format.table(List.of("LOGGER", "CONFIGURED", "EFFECTIVE", "OVERRIDE"), table));
+            List<String> headers = new ArrayList<>();
+            if (showContext) {
+                headers.add("CONTEXT");
+            }
+            headers.addAll(List.of("LOGGER", "CONFIGURED", "EFFECTIVE", "OVERRIDE"));
+            out.println(Format.table(headers, table));
             return CliError.OK;
         };
     }
 
     static Command status(boolean json) {
         return (mbean, out) -> {
+            List<LoggerInfoData> all = mbean.listLoggers(null);
             List<LoggerInfoData> active = new ArrayList<>();
-            for (LoggerInfoData row : mbean.listLoggers(null)) {
+            for (LoggerInfoData row : all) {
                 if (row.isOverrideActive()) {
                     active.add(row);
                 }
@@ -77,18 +89,43 @@ final class Commands {
                 out.println("No active overrides.");
                 return CliError.OK;
             }
+            boolean showContext = spansMultipleContexts(all);
             List<List<String>> table = new ArrayList<>();
             for (LoggerInfoData row : active) {
-                table.add(List.of(
-                        orDash(row.getName()),
-                        orDash(row.getEffectiveLevel()),
-                        orDash(row.getTier()),
-                        revertsCell(row),
-                        row.getOverrideReason() == null ? Format.NONE : '"' + row.getOverrideReason() + '"'));
+                List<String> cells = new ArrayList<>();
+                if (showContext) {
+                    cells.add(orDash(row.getContext()));
+                }
+                cells.add(orDash(row.getName()));
+                cells.add(orDash(row.getEffectiveLevel()));
+                cells.add(orDash(row.getTier()));
+                cells.add(revertsCell(row));
+                cells.add(row.getOverrideReason() == null ? Format.NONE : '"' + row.getOverrideReason() + '"');
+                table.add(cells);
             }
-            out.println(Format.table(List.of("LOGGER", "LEVEL", "TIER", "REVERTS", "REASON"), table));
+            List<String> headers = new ArrayList<>();
+            if (showContext) {
+                headers.add("CONTEXT");
+            }
+            headers.addAll(List.of("LOGGER", "LEVEL", "TIER", "REVERTS", "REASON"));
+            out.println(Format.table(headers, table));
             return CliError.OK;
         };
+    }
+
+    /**
+     * The CONTEXT column shows only when the result actually spans more than
+     * one logging context — a plain {@code java -jar} user, and a stock
+     * standalone WildFly (one shared system context), never see it
+     * (doc/specs/wildfly-support.md, Slice 3's "logctl changes").
+     */
+    private static boolean spansMultipleContexts(List<LoggerInfoData> rows) {
+        return rows.stream()
+                .map(LoggerInfoData::getContext)
+                .filter(Objects::nonNull)
+                .distinct()
+                .limit(2)
+                .count() > 1;
     }
 
     static Command setLevel(String logger, String level, boolean includeChildren, String reason,

@@ -343,6 +343,45 @@ class LevelControlServiceTest {
                         && r.action() == AuditRecord.Action.MUTATION));
     }
 
+    // --- verification sweep -----------------------------------------------------------------------
+
+    @Test
+    void verifyAndReapply_reAppliesAnOverrideThatDrifted_andAuditsIt() {
+        adapter.addKnownLogger("com.acme.Drift");
+        service.setLevel("com.acme.Drift", Level.DEBUG, SetLevelOptions.sticky());
+        adapter.applyLevel("com.acme.Drift", Level.INFO); // something reset it out from under us
+
+        int reapplied = service.verifyAndReapply(java.time.Instant.now());
+
+        assertEquals(1, reapplied);
+        assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme.Drift"));
+        assertTrue(auditLog.records().stream().anyMatch(r ->
+                r.source().equals("verification-sweep") && r.loggerName().equals("com.acme.Drift")
+                        && r.action() == AuditRecord.Action.MUTATION));
+    }
+
+    @Test
+    void verifyAndReapply_isANoOpWhenEveryOverrideIsStillInForce() {
+        adapter.addKnownLogger("com.acme.Steady");
+        service.setLevel("com.acme.Steady", Level.DEBUG, SetLevelOptions.sticky());
+        int auditBefore = auditLog.records().size();
+
+        assertEquals(0, service.verifyAndReapply(java.time.Instant.now()));
+        assertEquals(auditBefore, auditLog.records().size());
+    }
+
+    @Test
+    void verifyAndReapply_leavesExpiredForOverridesForTheExpirySweep() {
+        adapter.addKnownLogger("com.acme.Expired");
+        service.setLevel("com.acme.Expired", Level.DEBUG,
+                SetLevelOptions.forDuration(java.time.Duration.ofMillis(1)));
+        adapter.applyLevel("com.acme.Expired", Level.INFO); // drifted
+
+        int reapplied = service.verifyAndReapply(java.time.Instant.now().plusSeconds(60));
+
+        assertEquals(0, reapplied, "an already-expired FOR override is the expiry sweep's job, not this one");
+    }
+
     @Test
     void adoptOverride_doesNotWriteToTheStateStore() {
         LevelOverride fromAnotherContext = new LevelOverride(

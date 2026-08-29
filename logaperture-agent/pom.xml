@@ -57,6 +57,10 @@
     </dependency>
     <dependency>
       <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-container-wildfly</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.logaperture</groupId>
       <artifactId>logaperture-control-jmx</artifactId>
     </dependency>
 
@@ -91,16 +95,21 @@
             <configuration>
               <finalName>logaperture-agent</finalName>
               <!--
-                Belt-and-suspenders: logback-classic/slf4j-api are test-scope
-                here (never compile/runtime), so the shade plugin would
-                already exclude them—this makes that exclusion explicit
-                so a future scope mistake fails loudly (a duplicated Logback
-                inside the agent jar) rather than silently shipping one.
+                Belt-and-suspenders. logback-classic/slf4j-api are test-scope
+                here and jboss-logmanager (+ its jboss-modules / smallrye
+                transitives) is `provided` in the adapter and wildfly modules,
+                so the shade plugin already excludes all of them. Making it
+                explicit means a future scope mistake fails loudly (a duplicated
+                logging backend inside the agent jar) rather than silently
+                shipping one — the agent must never bundle a logging framework.
               -->
               <artifactSet>
                 <excludes>
                   <exclude>ch.qos.logback:*</exclude>
                   <exclude>org.slf4j:*</exclude>
+                  <exclude>org.jboss.logmanager:*</exclude>
+                  <exclude>org.jboss.modules:*</exclude>
+                  <exclude>io.smallrye.common:*</exclude>
                 </excludes>
               </artifactSet>
               <transformers>
