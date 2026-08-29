@@ -15,7 +15,6 @@
  */
 package org.logaperture.container.wildfly;
 
-import org.jboss.logmanager.LogContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,11 +28,13 @@ import org.logaperture.core.AuditRecord;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.InMemoryAuditLog;
 import org.logaperture.core.spi.ContextHandle;
-import org.logaperture.core.spi.LoggingAdapter;
 
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.UUID;
+import java.util.logging.LogManager;
+import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -41,28 +42,36 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * In-process, JBoss LogManager on the test classpath, no WildFly — the
- * container root, driven directly with a hand-built system {@code
- * LogContext}. See doc/specs/wildfly-support.md Slice 3.
+ * In-process, JBoss LogManager installed as the test JVM's
+ * {@code java.util.logging.manager} (see the pom) — the container root
+ * driven directly, against real JBoss LogManager logger nodes but with a
+ * unique-prefixed namespace per test. See doc/specs/wildfly-support.md
+ * Slice 3.
  */
 class WildFlyContainerTest {
 
     @TempDir
     private Path home;
 
-    private LogContext context;
+    private String logger;
     private InMemoryAuditLog auditLog;
+    private java.util.logging.Level originalRootLevel;
 
     @BeforeEach
     void setUp() {
+        assertEquals("org.jboss.logmanager.LogManager", LogManager.getLogManager().getClass().getName(),
+                "the pom installs JBoss LogManager for this test JVM");
         System.setProperty("logaperture.home", home.toString());
-        context = LogContext.create();
-        context.getLogger("").setLevel(java.util.logging.Level.INFO);
+        logger = "it." + UUID.randomUUID().toString().replace("-", "") + ".Worker";
         auditLog = new InMemoryAuditLog();
+        originalRootLevel = Logger.getLogger("").getLevel();
+        Logger.getLogger("").setLevel(java.util.logging.Level.INFO);
     }
 
     @AfterEach
-    void clearProperties() {
+    void tearDown() {
+        Logger.getLogger("").setLevel(originalRootLevel);
+        Logger.getLogger(logger).setLevel(null);
         System.clearProperty("logaperture.home");
         System.clearProperty("logaperture.instanceId");
     }
@@ -72,13 +81,13 @@ class WildFlyContainerTest {
     }
 
     private AggregateLevelControl install(WildFlyContainer host) {
-        LoggingAdapter adapter = JbossLogManagerAdapterFactory.forContext(context);
-        host.installContext(ContextHandle.of(ContextHandle.SYSTEM, "wildfly", adapter));
+        host.installContext(ContextHandle.of(
+                ContextHandle.SYSTEM, "wildfly", JbossLogManagerAdapterFactory.forCurrentContext()));
         return host.operations();
     }
 
-    private LoggerInfo row(AggregateLevelControl ops, String name) {
-        return ops.listLoggers(name).stream().filter(r -> r.name().equals(name)).findFirst().orElseThrow();
+    private LoggerInfo row(AggregateLevelControl ops) {
+        return ops.listLoggers(logger).stream().filter(r -> r.name().equals(logger)).findFirst().orElseThrow();
     }
 
     @Test
@@ -86,15 +95,15 @@ class WildFlyContainerTest {
         try (WildFlyContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
 
-            ops.setLevel("org.jboss.as.server", Level.DEBUG, SetLevelOptions.withReason("boot detail"));
-            LoggerInfo afterSet = row(ops, "org.jboss.as.server");
+            ops.setLevel(logger, Level.DEBUG, SetLevelOptions.withReason("boot detail"));
+            LoggerInfo afterSet = row(ops);
             assertEquals(Level.DEBUG, afterSet.effectiveLevel());
-            assertEquals("system", afterSet.context(), "the WildFly system context's stableKey");
-            assertEquals(java.util.logging.Level.FINE, context.getLogger("org.jboss.as.server").getLevel());
+            assertEquals("system", afterSet.context());
+            assertEquals(java.util.logging.Level.FINE, Logger.getLogger(logger).getLevel());
 
-            ops.resetLevel("org.jboss.as.server");
-            assertFalse(row(ops, "org.jboss.as.server").overrideActive());
-            assertEquals(Level.INFO, row(ops, "org.jboss.as.server").effectiveLevel());
+            ops.resetLevel(logger);
+            assertFalse(row(ops).overrideActive());
+            assertEquals(Level.INFO, row(ops).effectiveLevel());
 
             ops.resetAll();
         }
@@ -104,19 +113,17 @@ class WildFlyContainerTest {
     void verificationSweep_reAppliesAnOverrideThatWasResetOutFromUnderUs() {
         try (WildFlyContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
-            ops.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.sticky());
+            ops.setLevel(logger, Level.DEBUG, SetLevelOptions.sticky());
 
-            // Simulate a /subsystem=logging change / :reload wiping the runtime level.
-            context.getLogger("com.acme.Worker").setLevel(null);
-            assertNull(context.getLogger("com.acme.Worker").getLevel(), "the runtime level really was cleared");
+            Logger.getLogger(logger).setLevel(null); // a /subsystem=logging change / :reload
+            assertNull(Logger.getLogger(logger).getLevel(), "the runtime level really was cleared");
 
             int reapplied = ops.verificationSweep(Instant.now());
 
             assertEquals(1, reapplied);
-            assertEquals(java.util.logging.Level.FINE, context.getLogger("com.acme.Worker").getLevel());
+            assertEquals(java.util.logging.Level.FINE, Logger.getLogger(logger).getLevel());
             assertTrue(auditLog.records().stream().anyMatch(r ->
-                    r.source().equals("verification-sweep")
-                            && r.loggerName().equals("com.acme.Worker")
+                    r.source().equals("verification-sweep") && r.loggerName().equals(logger)
                             && r.action() == AuditRecord.Action.MUTATION));
         }
     }
@@ -125,28 +132,27 @@ class WildFlyContainerTest {
     void verificationSweep_isANoOpWhenNothingHasDrifted() {
         try (WildFlyContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
-            ops.setLevel("com.acme.Steady", Level.DEBUG, SetLevelOptions.sticky());
+            ops.setLevel(logger, Level.DEBUG, SetLevelOptions.sticky());
             int auditSizeBefore = auditLog.records().size();
 
             assertEquals(0, ops.verificationSweep(Instant.now()));
-            assertEquals(auditSizeBefore, auditLog.records().size(), "a quiet sweep writes no audit records");
+            assertEquals(auditSizeBefore, auditLog.records().size());
         }
     }
 
     @Test
-    void configurationChangeListener_pathTriggersAVerificationSweep() throws Exception {
+    void configurationChangeListenerPath_triggersAVerificationSweep() throws Exception {
         try (WildFlyContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
-            ops.setLevel("com.acme.Listened", Level.DEBUG, SetLevelOptions.sticky());
-            context.getLogger("com.acme.Listened").setLevel(null); // drift
+            ops.setLevel(logger, Level.DEBUG, SetLevelOptions.sticky());
+            Logger.getLogger(logger).setLevel(null); // drift
 
             host.runVerificationSweepNow(); // what the LogManager config listener calls
 
-            // runs on the sweep thread -- poll briefly for it to land
-            for (int i = 0; i < 50 && context.getLogger("com.acme.Listened").getLevel() == null; i++) {
+            for (int i = 0; i < 50 && Logger.getLogger(logger).getLevel() == null; i++) {
                 Thread.sleep(10);
             }
-            assertEquals(java.util.logging.Level.FINE, context.getLogger("com.acme.Listened").getLevel());
+            assertEquals(java.util.logging.Level.FINE, Logger.getLogger(logger).getLevel());
         }
     }
 
@@ -154,23 +160,23 @@ class WildFlyContainerTest {
     void forOverride_isRevertedByTheExpirySweep() {
         try (WildFlyContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
-            ops.setLevel("com.acme.Timed", Level.TRACE, SetLevelOptions.forDuration(Duration.ofMillis(1)));
+            ops.setLevel(logger, Level.TRACE, SetLevelOptions.forDuration(Duration.ofMillis(1)));
 
             ops.sweepExpiredOverrides(Instant.now().plusSeconds(60));
 
-            assertFalse(row(ops, "com.acme.Timed").overrideActive());
+            assertFalse(row(ops).overrideActive());
         }
     }
 
     @Test
-    void stickyOverride_resumesAfterASimulatedRestart() throws Exception {
+    void stickyOverride_resumesAfterASimulatedRestart() {
         try (WildFlyContainer first = newHost()) {
-            install(first).setLevel("com.acme.Sticky", Level.DEBUG, SetLevelOptions.sticky());
+            install(first).setLevel(logger, Level.DEBUG, SetLevelOptions.sticky());
         }
-        context.getLogger("com.acme.Sticky").setLevel(null); // "restart"
+        Logger.getLogger(logger).setLevel(null); // "restart"
 
         try (WildFlyContainer second = newHost()) {
-            LoggerInfo info = row(install(second), "com.acme.Sticky");
+            LoggerInfo info = row(install(second));
             assertEquals(Level.DEBUG, info.effectiveLevel());
             assertTrue(info.overrideActive());
         }

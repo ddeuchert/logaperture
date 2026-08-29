@@ -96,14 +96,6 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
 
         Runnable install = () -> {
             try {
-                if (!isClassPresent("org.jboss.logmanager.LogContext")) {
-                    Diagnostics.error("LogAperture: org.jboss.logmanager.LogContext is not visible to the agent. "
-                            + "On WildFly the -javaagent flag alone is not enough -- add, on the same line in "
-                            + "standalone.conf: -Xbootclasspath/a:$JBOSS_HOME/modules/system/layers/base/org/jboss/"
-                            + "logmanager/main/jboss-logmanager-<version>.jar and "
-                            + "-Djava.util.logging.manager=org.jboss.logmanager.LogManager. Level control not installed.");
-                    return;
-                }
                 LoggingAdapter adapter = JbossLogManagerAdapterFactory.forCurrentContext();
                 host.installContext(ContextHandle.of(ContextHandle.SYSTEM, "wildfly", adapter));
                 wireConfigurationListener(host);
@@ -126,35 +118,35 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
         return new InstallGuidance(
                 "Attach the agent in $JBOSS_HOME/bin/standalone.conf (standalone mode only)",
                 List.of(
-                        "In standalone.conf, append: JAVA_OPTS=\"$JAVA_OPTS "
-                                + "-javaagent:/path/to/logaperture-agent.jar "
-                                + "-Xbootclasspath/a:$JBOSS_HOME/modules/system/layers/base/org/jboss/logmanager/main/"
-                                + "jboss-logmanager-<version>.jar "
-                                + "-Djava.util.logging.manager=org.jboss.logmanager.LogManager\"",
-                        "Also add org.jboss.logmanager to the module system packages: "
-                                + "JBOSS_MODULES_SYSTEM_PKGS=\"org.jboss.byteman,org.jboss.logmanager\" "
-                                + "(env var, or -Djboss.modules.system.pkgs=... on the same JAVA_OPTS line)",
-                        "Why: WildFly exposes org.jboss.logmanager only through a JBoss Module. -Xbootclasspath/a "
-                                + "makes it visible to the agent; the system-pkgs entry makes every module use that "
-                                + "one copy, so WildFly's own \"is this my LogManager?\" check still passes.",
-                        "Restart WildFly. The agent's overrides live only in its own store and never touch "
-                                + "standalone.xml."));
+                        "Append one line to standalone.conf: "
+                                + "JAVA_OPTS=\"$JAVA_OPTS -javaagent:/path/to/logaperture-agent.jar\"",
+                        "Restart WildFly. The agent controls logging through java.util.logging (which JBoss "
+                                + "LogManager backs), so nothing else is needed.",
+                        "The agent's overrides live only in its own store and never touch standalone.xml."));
     }
 
     /**
-     * Mechanism 1 (doc/specs/wildfly-support.md, "LogContext discovery and
-     * lifecycle"): {@code org.jboss.logmanager.LogManager} exposes {@code
-     * addConfigurationListener(Runnable)}, fired on {@code readConfiguration}
-     * / {@code updateConfiguration} — which is the path a {@code
+     * Mechanism 1 (doc/specs/wildfly-support.md): JBoss LogManager exposes
+     * {@code addConfigurationListener(Runnable)}, fired on {@code
+     * readConfiguration} / {@code updateConfiguration} — the path a {@code
      * /subsystem=logging} change and an XML edit + {@code :reload} both take.
-     * Register the verification sweep against it so a management change is
-     * corrected promptly; the periodic sweep remains the floor.
+     * Wired reflectively (no compile-time reference to {@code
+     * org.jboss.logmanager}); absent that method, the periodic verification
+     * sweep is the only re-apply mechanism.
      */
     private static void wireConfigurationListener(WildFlyContainer host) {
         java.util.logging.LogManager logManager = java.util.logging.LogManager.getLogManager();
-        if (logManager instanceof org.jboss.logmanager.LogManager jbossLogManager) {
-            jbossLogManager.addConfigurationListener(host::runVerificationSweepNow);
+        if (!"org.jboss.logmanager.LogManager".equals(logManager.getClass().getName())) {
+            return;
+        }
+        try {
+            logManager.getClass()
+                    .getMethod("addConfigurationListener", Runnable.class)
+                    .invoke(logManager, (Runnable) host::runVerificationSweepNow);
             Diagnostics.debug("LogAperture: registered a JBoss LogManager configuration-change listener");
+        } catch (ReflectiveOperationException | RuntimeException noHook) {
+            Diagnostics.debug("LogAperture: no JBoss LogManager configuration-change hook; "
+                    + "relying on the periodic verification sweep (" + noHook + ")");
         }
     }
 

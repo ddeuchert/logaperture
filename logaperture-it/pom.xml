@@ -37,11 +37,10 @@
   </description>
 
   <dependencies>
-    <dependency>
-      <groupId>org.logaperture</groupId>
-      <artifactId>logaperture-control-jmx</artifactId>
-      <scope>test</scope>
-    </dependency>
+    <!--
+      No logaperture module deps: the IT drives the pre-built agent + logctl
+      jars (by path) against a real WildFly, and asserts on logctl's output.
+    -->
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>testcontainers</artifactId>
@@ -73,6 +72,7 @@
               so this path is stable.
             -->
             <logaperture.agent.jar>${maven.multiModuleProjectDirectory}/logaperture-agent/target/logaperture-agent.jar</logaperture.agent.jar>
+            <logaperture.cli.jar>${maven.multiModuleProjectDirectory}/logaperture-cli/target/logaperture-cli.jar</logaperture.cli.jar>
             <logaperture.wildfly.image>${wildfly.image}</logaperture.wildfly.image>
             <!--
               docker-java (via Testcontainers) otherwise defaults to Docker API

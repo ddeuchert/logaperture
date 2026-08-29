@@ -15,7 +15,6 @@
  */
 package org.logaperture.adapter.jbosslogmanager;
 
-import org.jboss.logmanager.LogContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +37,8 @@ import org.logaperture.core.spi.StateStore;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.UUID;
+import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -45,36 +46,38 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The Slice 2 exit criterion: {@code AggregateLevelControl} driving a
- * {@link JbossLogManagerAdapter} bound to a hand-built {@code LogContext}
- * performs the full Feature 1 + Feature 2 loop — list, set, reset, expiry,
- * resume — with correct level mapping. No WildFly.
+ * {@link JbossLogManagerAdapter} through the full Feature 1 + Feature 2
+ * loop — list, set, reset, expiry, resume — against the JVM's own
+ * {@code java.util.logging.LogManager}, with correct level mapping.
  */
 class JbossLogManagerLevelControlTest {
-
-    private static final String LOGGER = "acme.svc.Worker";
 
     @TempDir
     private Path home;
 
-    private LogContext context;
+    private String logger;
     private InMemoryAuditLog auditLog;
+    private java.util.logging.Level originalRootLevel;
 
     @BeforeEach
     void setUp() {
         System.setProperty("logaperture.home", home.toString());
-        context = LogContext.create();
-        context.getLogger("").setLevel(java.util.logging.Level.INFO);
+        logger = "it." + UUID.randomUUID().toString().replace("-", "") + ".Worker";
         auditLog = new InMemoryAuditLog();
+        originalRootLevel = Logger.getLogger("").getLevel();
+        Logger.getLogger("").setLevel(java.util.logging.Level.INFO);
     }
 
     @AfterEach
-    void clearProperties() {
+    void tearDown() {
+        Logger.getLogger("").setLevel(originalRootLevel);
+        Logger.getLogger(logger).setLevel(null);
         System.clearProperty("logaperture.home");
         System.clearProperty("logaperture.instanceId");
     }
 
     private AggregateLevelControl wire(StateStore store) {
-        LoggingAdapter adapter = JbossLogManagerAdapterFactory.forContext(context);
+        LoggingAdapter adapter = JbossLogManagerAdapterFactory.forCurrentContext();
         BaselineRegistry baselines = new BaselineRegistry();
         for (String name : adapter.knownLoggerNames()) {
             baselines.captureIfAbsent(name, adapter);
@@ -90,56 +93,64 @@ class JbossLogManagerLevelControlTest {
         return aggregate;
     }
 
+    private LoggerInfo row(AggregateLevelControl ops) {
+        return ops.listLoggers(logger).stream().filter(r -> r.name().equals(logger)).findFirst().orElseThrow();
+    }
+
     @Test
     void fullLoop_listSetResetResetAll() {
         AggregateLevelControl ops = wire(StateStore.noOp());
 
-        ops.setLevel(LOGGER, Level.DEBUG, SetLevelOptions.withReason("INC-1"));
-        LoggerInfo afterSet = row(ops, LOGGER);
+        ops.setLevel(logger, Level.DEBUG, SetLevelOptions.withReason("INC-1"));
+        LoggerInfo afterSet = row(ops);
         assertEquals(Level.DEBUG, afterSet.effectiveLevel());
         assertEquals("system", afterSet.context());
-        assertTrue(afterSet.overrideActive());
-        assertEquals(java.util.logging.Level.FINE, context.getLogger(LOGGER).getLevel(), "mapped exactly to FINE");
+        assertEquals(java.util.logging.Level.FINE, Logger.getLogger(logger).getLevel(), "mapped exactly to FINE");
 
-        ops.resetLevel(LOGGER);
-        assertFalse(row(ops, LOGGER).overrideActive());
-        assertEquals(Level.INFO, row(ops, LOGGER).effectiveLevel());
+        ops.resetLevel(logger);
+        assertFalse(row(ops).overrideActive());
+        assertEquals(Level.INFO, row(ops).effectiveLevel());
 
-        ops.resetAll(); // smoke -- must not throw with nothing active
+        ops.resetAll(); // smoke
     }
 
     @Test
     void forOverride_isRevertedByTheExpirySweep() {
         AggregateLevelControl ops = wire(StateStore.noOp());
 
-        ops.setLevel(LOGGER, Level.TRACE, SetLevelOptions.forDuration(Duration.ofMillis(1)));
-        assertEquals(Level.TRACE, row(ops, LOGGER).effectiveLevel());
+        ops.setLevel(logger, Level.TRACE, SetLevelOptions.forDuration(Duration.ofMillis(1)));
+        assertEquals(Level.TRACE, row(ops).effectiveLevel());
 
         ops.sweepExpiredOverrides(Instant.now().plusSeconds(60));
 
-        assertFalse(row(ops, LOGGER).overrideActive());
-        assertEquals(Level.INFO, row(ops, LOGGER).effectiveLevel());
+        assertFalse(row(ops).overrideActive());
+        assertEquals(Level.INFO, row(ops).effectiveLevel());
     }
 
     @Test
-    void stickyOverride_resumesOverTheSameContextAfterASimulatedRestart() throws Exception {
+    void stickyOverride_resumesAfterASimulatedRestart() throws Exception {
         try (FileStateStore first = FileStateStore.open()) {
-            wire(first).setLevel(LOGGER, Level.DEBUG, SetLevelOptions.sticky());
+            wire(first).setLevel(logger, Level.DEBUG, SetLevelOptions.sticky());
         }
-        context.getLogger(LOGGER).setLevel(null); // "restart": the framework cleared the runtime level
+        Logger.getLogger(logger).setLevel(null); // "restart": the framework cleared the runtime level
 
         try (FileStateStore second = FileStateStore.open()) {
-            AggregateLevelControl resumed = wire(second);
-            LoggerInfo info = row(resumed, LOGGER);
+            LoggerInfo info = row(wire(second));
             assertEquals(Level.DEBUG, info.effectiveLevel(), "the sticky override re-applied itself on resume");
             assertTrue(info.overrideActive());
         }
     }
 
-    private static LoggerInfo row(AggregateLevelControl ops, String name) {
-        return ops.listLoggers(name).stream()
-                .filter(r -> r.name().equals(name))
-                .findFirst()
-                .orElseThrow();
+    @Test
+    void verificationSweep_reAppliesAnOverrideResetOutFromUnderIt() {
+        AggregateLevelControl ops = wire(StateStore.noOp());
+        ops.setLevel(logger, Level.DEBUG, SetLevelOptions.sticky());
+
+        Logger.getLogger(logger).setLevel(null); // a /subsystem=logging change / :reload
+
+        int reapplied = ops.verificationSweep(Instant.now());
+
+        assertEquals(1, reapplied);
+        assertEquals(java.util.logging.Level.FINE, Logger.getLogger(logger).getLevel());
     }
 }

@@ -52,16 +52,17 @@
     </dependency>
 
     <!--
-      provided: compiled against, never bundled. Inside WildFly these calls
-      resolve against the server's own jboss-logmanager (on the system
-      classpath, since WildFly sets java.util.logging.manager to it). Also
-      on this module's test classpath, where the whole suite runs against a
-      hand-built LogContext (no WildFly).
+      test only. Main code has NO reference to org.jboss.logmanager (the
+      adapter is pure java.util.logging). The tests install JBoss LogManager
+      as the test JVM's java.util.logging.manager (see below) so they
+      exercise the real thing: the readiness gate, and level control against
+      JBoss LogManager's own logger nodes. jboss-modules comes along as a
+      transitive, which detect()'s class-presence probe needs.
     -->
     <dependency>
       <groupId>org.jboss.logmanager</groupId>
       <artifactId>jboss-logmanager</artifactId>
-      <scope>provided</scope>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 
@@ -71,7 +72,7 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
-          <!-- Match how these classes run inside WildFly (see the adapter module's pom). -->
+          <!-- The test JVM runs with JBoss LogManager installed, as WildFly does. -->
           <systemPropertyVariables>
             <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
           </systemPropertyVariables>
