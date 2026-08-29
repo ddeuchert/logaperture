@@ -15,7 +15,7 @@
  */
 package org.logaperture.container.wildfly;
 
-import org.logaperture.adapter.jbosslogmanager.JbossLogManagerAdapterFactory;
+import org.logaperture.adapter.jul.JulAdapterFactory;
 import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditLog;
@@ -38,7 +38,7 @@ import java.util.function.Consumer;
  * system properties and class presence (never {@code java.util.logging} —
  * the premain gotcha); {@link #activate} waits, off-thread and via a side
  * channel, until JBoss LogManager is genuinely installed, then binds one
- * {@link org.logaperture.adapter.jbosslogmanager.JbossLogManagerAdapter} to
+ * {@link org.logaperture.adapter.jul.JulLoggingAdapter} to
  * the server's system {@code LogContext} and installs level control for it.
  *
  * <p>Standalone only. Domain mode is out of scope for v1 (§15.6): a
@@ -97,7 +97,7 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
 
         Runnable install = () -> {
             try {
-                LoggingAdapter adapter = JbossLogManagerAdapterFactory.forCurrentContext();
+                LoggingAdapter adapter = JulAdapterFactory.forCurrentContext();
                 host.installContext(ContextHandle.of(ContextHandle.SYSTEM, "wildfly", adapter));
                 wireConfigurationListener(host);
                 onFirstContextReady.accept(host.operations());

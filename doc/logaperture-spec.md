@@ -185,9 +185,8 @@ logaperture-api             public rule/level model (also usable standalone)
 logaperture-core            rule engine, matcher compilation, state store, config parsing
 logaperture-agent           premain/agentmain, classloader plumbing, framework detection
 logaperture-adapter-logback
-logaperture-adapter-jboss-logmanager   JBoss LogManager — covers WildFly and Quarkus-JVM (§15.6)
 logaperture-adapter-log4j2
-logaperture-adapter-jul
+logaperture-adapter-jul                 java.util.logging — also covers JBoss LogManager: WildFly, Quarkus-JVM (§15.6)
 logaperture-adapter-log4j1
 logaperture-container-none      plain java -jar; the baseline, built first
 logaperture-container-wildfly
