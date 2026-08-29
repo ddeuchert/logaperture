@@ -17,18 +17,23 @@ package org.logaperture.it;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.io.TempDir;
 import org.testcontainers.containers.Container.ExecResult;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.MountableFile;
 
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -46,17 +51,30 @@ import static org.junit.jupiter.api.Assertions.fail;
  * JMX-over-Docker plumbing. Self-skips when Docker is absent; CI runs it on
  * an ubuntu runner.
  *
- * <p>Harness note from the shakeout: this image ignores {@code
- * JAVA_OPTS_APPEND}, so the container command appends a {@code JAVA_OPTS}
- * line to {@code standalone.conf} before boot.
+ * <p>Covers: clean boot with a bare {@code -javaagent}; {@code logctl}
+ * discovery; raise a boot logger + {@code reset}; {@code standalone.xml}
+ * untouched; a deployed WAR's logger visible under the one system context
+ * and its override surviving a redeploy; a {@code /subsystem=logging}
+ * management change being corrected by the verification sweep.
+ *
+ * <p>Harness notes from the shakeout: this image ignores {@code
+ * JAVA_OPTS_APPEND} (so the container command appends a {@code JAVA_OPTS}
+ * line to {@code standalone.conf}); and {@code -Dlogaperture.sweep.seconds=3}
+ * tightens the verification-sweep window so the management-change test is fast.
  */
 @Testcontainers(disabledWithoutDocker = true)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class WildFlyContainerIT {
 
+    private static final String DEPLOYMENTS = "/opt/jboss/wildfly/standalone/deployments";
     private static final String SERVER_LOG = "/opt/jboss/wildfly/standalone/log/server.log";
     private static final String STANDALONE_XML = "/opt/jboss/wildfly/standalone/configuration/standalone.xml";
+    private static final String JBOSS_CLI = "/opt/jboss/wildfly/bin/jboss-cli.sh";
     private static final String BOOT_LOGGER = "org.jboss.as.server";
+    private static final String APP_LOGGER = "com.myapp.probe.Worker";
+
+    @TempDir
+    private Path scratch;
 
     private GenericContainer<?> wildfly;
 
@@ -71,7 +89,10 @@ class WildFlyContainerIT {
 
         // This image ignores JAVA_OPTS_APPEND, and setting JAVA_OPTS would wipe
         // its --add-opens/--add-exports -- so append one line to standalone.conf.
-        String bootScript = "echo 'JAVA_OPTS=\"$JAVA_OPTS -javaagent:/opt/logaperture-agent.jar\"'"
+        // -Dlogaperture.sweep.seconds=3 tightens the verification-sweep window
+        // so the management-CLI-collision test does not wait 30s.
+        String bootScript = "echo 'JAVA_OPTS=\"$JAVA_OPTS -javaagent:/opt/logaperture-agent.jar"
+                + " -Dlogaperture.sweep.seconds=3\"'"
                 + " >> \"$JBOSS_HOME/bin/standalone.conf\" && exec \"$JBOSS_HOME/bin/standalone.sh\" -b 0.0.0.0";
 
         wildfly = new GenericContainer<>(image)
@@ -137,22 +158,142 @@ class WildFlyContainerIT {
     }
 
     @Test
-    @Disabled("Slice 3 follow-up: needs an in-test WAR build. Deploy a minimal WAR whose class "
-            + "logs to com.myapp.probe.*, assert `logctl levels` shows it under 'system', set it, "
-            + "redeploy, assert the override survived.")
-    void deployedWarLogger_isVisibleAndSurvivesRedeploy() {
+    void deployedWarLogger_isVisibleUnderSystem_andSurvivesRedeploy() throws Exception {
+        deployProbeWar();
+        try {
+            String levels = logctl("levels", "com.myapp.probe").stdout();
+            assertTrue(levels.contains(APP_LOGGER),
+                    "a deployed app's logger is visible:\n" + levels);
+            assertFalse(levels.contains("CONTEXT"),
+                    "stock WildFly routes the deployment to the one shared system context");
+
+            assertEquals(0, logctl("debug", APP_LOGGER, "sticky").exitCode());
+            assertTrue(logctl("levels", APP_LOGGER).stdout().contains("DEBUG"));
+
+            redeployProbeWar();
+
+            assertTrue(pollLogctl("levels", APP_LOGGER, out -> out.contains("DEBUG")),
+                    "the override is still in force after a redeploy");
+        } finally {
+            logctl("reset", APP_LOGGER);
+            undeployProbeWar();
+        }
     }
 
     @Test
-    @Disabled("Slice 3 follow-up: make a /subsystem=logging change via jboss-cli that collides with "
-            + "an active override; assert the verification sweep re-applies it within its interval, "
-            + "with a 'verification-sweep' audit entry.")
-    void managementCliLoggingChange_isCorrectedByTheVerificationSweep() {
+    void managementCliLoggingChange_isCorrectedByTheVerificationSweep() throws Exception {
+        assertEquals(0, logctl("debug", BOOT_LOGGER, "sticky").exitCode());
+        assertTrue(logctl("levels", BOOT_LOGGER).stdout().contains("DEBUG"));
+
+        // A /subsystem=logging change (as a management console does) clobbers the override.
+        ExecResult added = exec(JBOSS_CLI, "--connect",
+                "--command=/subsystem=logging/logger=" + BOOT_LOGGER + ":add(level=WARN)");
+        assertEquals(0, added.getExitCode(), added.getStdout() + added.getStderr());
+        try {
+            assertTrue(pollLogctl("levels", BOOT_LOGGER, out -> out.contains("DEBUG")),
+                    "the verification sweep re-applied the override after the management change");
+            assertTrue(wildfly.getLogs().contains("source=verification-sweep")
+                            && wildfly.getLogs().contains(BOOT_LOGGER),
+                    "a verification-sweep audit entry was recorded");
+        } finally {
+            logctl("reset", BOOT_LOGGER);
+            exec(JBOSS_CLI, "--connect", "--command=/subsystem=logging/logger=" + BOOT_LOGGER + ":remove");
+        }
+    }
+
+    // --- probe WAR ------------------------------------------------------------------------------
+
+    private void deployProbeWar() throws Exception {
+        Path war = buildProbeWar();
+        wildfly.copyFileToContainer(MountableFile.forHostPath(war), DEPLOYMENTS + "/probe.war");
+        assertTrue(awaitFile(DEPLOYMENTS + "/probe.war.deployed"), "probe.war deployed");
+        assertTrue(pollLogctl("levels", "com.myapp.probe", out -> out.contains(APP_LOGGER)),
+                "the app logger appeared after deploy");
+    }
+
+    private void redeployProbeWar() throws Exception {
+        // The deployment scanner redeploys on a content change; touch is enough.
+        exec("touch", DEPLOYMENTS + "/probe.war");
+        exec("rm", "-f", DEPLOYMENTS + "/probe.war.failed");
+        assertTrue(awaitFile(DEPLOYMENTS + "/probe.war.deployed"), "probe.war redeployed");
+    }
+
+    private void undeployProbeWar() {
+        exec("rm", "-f", DEPLOYMENTS + "/probe.war");
+        awaitFile(DEPLOYMENTS + "/probe.war.undeployed");
+    }
+
+    private Path buildProbeWar() throws IOException {
+        String source = """
+                package com.myapp.probe;
+                import javax.servlet.ServletContextEvent;
+                import javax.servlet.ServletContextListener;
+                import javax.servlet.annotation.WebListener;
+                import java.util.logging.Logger;
+                @WebListener
+                public class Probe implements ServletContextListener {
+                    @Override public void contextInitialized(ServletContextEvent e) {
+                        Logger.getLogger("com.myapp.probe.Worker").info("probe deployed");
+                    }
+                }
+                """;
+        Path src = scratch.resolve("com/myapp/probe/Probe.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, source);
+        Path classes = Files.createDirectories(scratch.resolve("classes"));
+
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        assertNotNull(compiler, "a JDK (not JRE) is required to build the probe WAR");
+        int rc = compiler.run(null, null, null,
+                "--release", "17", // the WildFly image runs JDK 17
+                "-classpath", System.getProperty("java.class.path"),
+                "-d", classes.toString(), src.toString());
+        assertEquals(0, rc, "probe compile failed");
+
+        Path war = scratch.resolve("probe.war");
+        Path probeClass = classes.resolve("com/myapp/probe/Probe.class");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(war))) {
+            zip.putNextEntry(new ZipEntry("WEB-INF/classes/com/myapp/probe/Probe.class"));
+            zip.write(Files.readAllBytes(probeClass));
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("WEB-INF/beans.xml"));
+            zip.write("<beans/>".getBytes());
+            zip.closeEntry();
+        }
+        return war;
+    }
+
+    private boolean awaitFile(String path) {
+        for (int i = 0; i < 60; i++) {
+            if ("ok".equals(exec("sh", "-c", "test -f " + path + " && echo ok").getStdout().trim())) {
+                return true;
+            }
+            sleep(1000);
+        }
+        return false;
     }
 
     // --- helpers ----------------------------------------------------------------------------------
 
     private record Logctl(int exitCode, String stdout, String stderr) {
+    }
+
+    private boolean pollLogctl(String arg1, String arg2, java.util.function.Predicate<String> until) {
+        for (int i = 0; i < 30; i++) {
+            if (until.test(logctl(arg1, arg2).stdout())) {
+                return true;
+            }
+            sleep(1000);
+        }
+        return false;
+    }
+
+    private static void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private Logctl logctl(String... args) {

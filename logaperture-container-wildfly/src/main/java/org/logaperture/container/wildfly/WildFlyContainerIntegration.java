@@ -20,6 +20,7 @@ import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.CapabilityPolicy;
+import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.spi.ContainerIntegration;
 import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.InstallGuidance;
@@ -52,7 +53,7 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
     private final Duration sweepInterval;
 
     public WildFlyContainerIntegration() {
-        this(WildFlyContainer.DEFAULT_SWEEP_INTERVAL);
+        this(SweepPolicy.interval());
     }
 
     /** Test seam: a short verification/expiry sweep interval. */

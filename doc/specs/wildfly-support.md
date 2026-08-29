@@ -697,10 +697,12 @@ Slice 3 adds the **verification sweep** as `LevelControlService.verifyAndReapply
   re-read the registry entry per iteration, and re-check it *after* applying — so a
   concurrent `resetLevel` that removed the override cannot be resurrected by a stale
   value, and a concurrent `setLevel` that replaced it is honoured, not shadowed.
-- `WildFlyContainer`'s single sweep thread runs it every N seconds (default 30) right
-  after the expiry sweep. `NoneContainer` runs it too, on the same schedule — §15.5 makes
-  it a core invariant, not a WildFly special case (belt-and-suspenders there, since
-  Logback fires its own reset event).
+- `WildFlyContainer`'s single sweep thread runs it every N seconds right after the expiry
+  sweep. N is `SweepPolicy.interval()` — 30s by default, `-Dlogaperture.sweep.seconds=<n>`
+  (clamped 1..3600) to tighten the window a management-console logging change sits in before
+  the sweep corrects it. `NoneContainer` runs it on the same schedule — §15.5 makes it a
+  core invariant, not a WildFly special case (belt-and-suspenders there, since Logback
+  fires its own reset event).
 
 **A clean event hook, wired reflectively (mechanism 1).** JBoss LogManager's
 `addConfigurationListener(Runnable)` fires on `readConfiguration` / `updateConfiguration` —
@@ -794,9 +796,14 @@ bare `-javaagent`:
     `logctl status` shows the override, `logctl reset` reverts it (audited REVERSION) — and
     the handler-floor warning fires for real against WildFly's `CONSOLE` handler.
   - `standalone.xml` is `md5sum`-identical after a session of overrides + `reset --all`.
-
-  Two sub-tests remain `@Disabled` with TODOs: the deployed-WAR visibility/redeploy test
-  (needs an in-test WAR build) and the management-CLI-collision → verification-sweep test.
+  - a probe WAR built and deployed in-test (a `@WebListener` that logs on
+    `contextInitialized`) surfaces its `com.myapp.probe.Worker` logger with no CONTEXT
+    column — stock standalone routes the deployment to the one shared system context — and a
+    `sticky` override on it survives a redeploy.
+  - a `/subsystem=logging/logger=…:add(level=WARN)` made through the management CLI, which
+    clobbers a live override, is corrected by the verification sweep within
+    `-Dlogaperture.sweep.seconds` (the IT sets `3`), which records a `source=verification`
+    `-sweep` MUTATION.
 
   Harness note from the shakeout: this image ignores `JAVA_OPTS_APPEND` (the container
   command appends a `JAVA_OPTS` line to `standalone.conf`), and `-Dcom.sun.management`
@@ -809,9 +816,11 @@ bare `-javaagent`:
 `-javaagent`, driven entirely through `logctl`: WildFly boots clean; `logctl` discovers the
 server and lists its loggers; a `--for` override on `org.jboss.as.server` raises it and
 `logctl reset` reverts it; the handler-floor warning fires against the real `CONSOLE`
-handler; `standalone.xml` is never modified. `WildFlyContainerIT` asserts all of this and
-passes. Remaining: the two `@Disabled` sub-tests (deployed-WAR redeploy, mgmt-CLI collision)
-and David's manual acceptance testing against a generic WAR and the day-job application.
+handler; `standalone.xml` is never modified; an in-test probe WAR's logger is visible and
+its `sticky` override survives a redeploy; and a management-CLI logging change that clobbers
+an override is corrected by the verification sweep (audited `source=verification-sweep`).
+`WildFlyContainerIT` asserts all of this and passes. Remaining: David's manual acceptance
+testing against a generic WAR and the day-job application.
 
 ---
 
@@ -877,7 +886,7 @@ server logger visibility, blanket overrides that survive a restart, timer-based 
 `reset` revert, verification-sweep correction of external changes, and `standalone.xml`
 never touched.
 
-`WildFlyContainerIT` demonstrates this against a real WildFly and passes. What remains:
-its two `@Disabled` sub-tests (deployed-WAR redeploy visibility, mgmt-CLI collision → the
-verification sweep), and David's manual acceptance testing against a generic WAR and the
-day-job application.
+`WildFlyContainerIT` demonstrates this against a real WildFly and passes — including a
+deployed probe WAR's logger visibility and redeploy survival, and a management-CLI logging
+change corrected by the verification sweep. What remains: David's manual acceptance testing
+against a generic WAR and the day-job application.
