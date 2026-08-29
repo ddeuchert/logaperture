@@ -65,8 +65,12 @@
     -->
     <jboss-logmanager.version>3.0.6.Final</jboss-logmanager.version>
 
-    <!-- Real-WildFly integration test (logaperture-it). Gated on Docker being available. -->
-    <testcontainers.version>1.19.8</testcontainers.version>
+    <!--
+      Real-WildFly integration test (logaperture-it). Gated on Docker being available.
+      1.21.x bundles a docker-java new enough to negotiate with Docker Engine 25+/29+
+      (older Testcontainers defaults to API 1.32, which Engine 29 refuses).
+    -->
+    <testcontainers.version>1.21.3</testcontainers.version>
     <wildfly.image>quay.io/wildfly/wildfly:26.1.3.Final-jdk17</wildfly.image>
 
     <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>

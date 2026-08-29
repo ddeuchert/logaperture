@@ -24,11 +24,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@code detect()} probes only system properties and class presence — never
- * {@code java.util.logging} (the premain gotcha). This module's test JVM
- * runs with {@code -Djava.util.logging.manager=org.jboss.logmanager.LogManager}
- * (see the pom) and jboss-modules on the classpath, so the positive case is
- * exercised for real here.
+ * {@code detect()} probes only cmdline {@code -D} properties and class
+ * presence — never {@code java.util.logging} (the premain gotcha), and not
+ * {@code java.util.logging.manager} either, since jboss-modules sets that
+ * one only later, at runtime. jboss-modules is on this module's test
+ * classpath (a `provided` transitive of jboss-logmanager), so the
+ * class-presence half is genuinely satisfied here; the tests drive the
+ * `jboss.home.dir` half.
  */
 class WildFlyContainerIntegrationTest {
 
@@ -36,31 +38,27 @@ class WildFlyContainerIntegrationTest {
 
     @AfterEach
     void clearProperties() {
+        System.clearProperty("jboss.home.dir");
         System.clearProperty("jboss.domain.base.dir");
     }
 
     @Test
-    void detect_trueWhenJBossLogManagerRequestedAndJBossModulesPresent() {
-        assertEquals("org.jboss.logmanager.LogManager", System.getProperty("java.util.logging.manager"),
-                "the pom sets this for the test JVM");
+    void detect_trueForAJBossModulesServerWithAJBossHome() {
+        System.setProperty("jboss.home.dir", "/opt/wildfly");
         assertTrue(integration.detect());
     }
 
     @Test
-    void detect_falseInDomainMode() {
-        System.setProperty("jboss.domain.base.dir", "/opt/wildfly/domain");
-        assertFalse(integration.detect(), "domain mode is out of scope for v1");
+    void detect_falseWithoutAJBossHomeOrAnOrgJBossAsMainClass() {
+        // no jboss.home.dir, and the surefire launch command is not org.jboss.as.*
+        assertFalse(integration.detect());
     }
 
     @Test
-    void detect_falseWhenJBossLogManagerNotRequested() {
-        String saved = System.getProperty("java.util.logging.manager");
-        System.clearProperty("java.util.logging.manager");
-        try {
-            assertFalse(integration.detect());
-        } finally {
-            System.setProperty("java.util.logging.manager", saved);
-        }
+    void detect_falseInDomainMode() {
+        System.setProperty("jboss.home.dir", "/opt/wildfly");
+        System.setProperty("jboss.domain.base.dir", "/opt/wildfly/domain");
+        assertFalse(integration.detect(), "domain mode is out of scope for v1");
     }
 
     @Test

@@ -47,6 +47,7 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
 
     private static final String JBOSS_MODULES_CLASS = "org.jboss.modules.Module";
     private static final String DOMAIN_BASE_DIR_PROPERTY = "jboss.domain.base.dir";
+    private static final String JBOSS_HOME_PROPERTY = "jboss.home.dir";
 
     private final Duration sweepInterval;
 
@@ -66,12 +67,21 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
 
     @Override
     public boolean detect() {
-        boolean jbossLogManagerRequested =
-                WildFlyLogManagerReadiness.JBOSS_LOG_MANAGER.equals(System.getProperty("java.util.logging.manager"));
-        if (!jbossLogManagerRequested || !isClassPresent(JBOSS_MODULES_CLASS)) {
+        // Runs at premain, before jboss-modules programmatically sets
+        // java.util.logging.manager -- so that property is NOT a usable
+        // signal here (it is checked later, in WildFlyLogManagerReadiness).
+        // Never touch java.util.logging. Use only cmdline -D properties and
+        // class presence: jboss-modules on the system classpath + a
+        // jboss.home.dir / an org.jboss.as.* main class.
+        String launchCommand = String.valueOf(System.getProperty("sun.java.command"));
+        boolean jbossModulesServer = isClassPresent(JBOSS_MODULES_CLASS)
+                && (System.getProperty(JBOSS_HOME_PROPERTY) != null || launchCommand.contains("org.jboss.as."));
+        if (!jbossModulesServer) {
             return false; // not a JBoss-Modules server (Quarkus-JVM is a separate integration)
         }
-        if (System.getProperty(DOMAIN_BASE_DIR_PROPERTY) != null) {
+        if (System.getProperty(DOMAIN_BASE_DIR_PROPERTY) != null
+                || launchCommand.contains("org.jboss.as.host-controller")
+                || launchCommand.contains("org.jboss.as.process-controller")) {
             Diagnostics.warn("LogAperture: WildFly domain mode is not supported (v1); level control not installed");
             return false;
         }
@@ -86,6 +96,14 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
 
         Runnable install = () -> {
             try {
+                if (!isClassPresent("org.jboss.logmanager.LogContext")) {
+                    Diagnostics.error("LogAperture: org.jboss.logmanager.LogContext is not visible to the agent. "
+                            + "On WildFly the -javaagent flag alone is not enough -- add, on the same line in "
+                            + "standalone.conf: -Xbootclasspath/a:$JBOSS_HOME/modules/system/layers/base/org/jboss/"
+                            + "logmanager/main/jboss-logmanager-<version>.jar and "
+                            + "-Djava.util.logging.manager=org.jboss.logmanager.LogManager. Level control not installed.");
+                    return;
+                }
                 LoggingAdapter adapter = JbossLogManagerAdapterFactory.forCurrentContext();
                 host.installContext(ContextHandle.of(ContextHandle.SYSTEM, "wildfly", adapter));
                 wireConfigurationListener(host);
@@ -106,10 +124,21 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
     @Override
     public InstallGuidance guidance() {
         return new InstallGuidance(
-                "Attach the agent in $WILDFLY_HOME/bin/standalone.conf",
-                List.of("Add to standalone.conf: JAVA_OPTS=\"$JAVA_OPTS -javaagent:/path/to/logaperture-agent.jar\"",
-                        "Restart WildFly in standalone mode",
-                        "The agent's overrides live only in its own store and never touch standalone.xml"));
+                "Attach the agent in $JBOSS_HOME/bin/standalone.conf (standalone mode only)",
+                List.of(
+                        "In standalone.conf, append: JAVA_OPTS=\"$JAVA_OPTS "
+                                + "-javaagent:/path/to/logaperture-agent.jar "
+                                + "-Xbootclasspath/a:$JBOSS_HOME/modules/system/layers/base/org/jboss/logmanager/main/"
+                                + "jboss-logmanager-<version>.jar "
+                                + "-Djava.util.logging.manager=org.jboss.logmanager.LogManager\"",
+                        "Also add org.jboss.logmanager to the module system packages: "
+                                + "JBOSS_MODULES_SYSTEM_PKGS=\"org.jboss.byteman,org.jboss.logmanager\" "
+                                + "(env var, or -Djboss.modules.system.pkgs=... on the same JAVA_OPTS line)",
+                        "Why: WildFly exposes org.jboss.logmanager only through a JBoss Module. -Xbootclasspath/a "
+                                + "makes it visible to the agent; the system-pkgs entry makes every module use that "
+                                + "one copy, so WildFly's own \"is this my LogManager?\" check still passes.",
+                        "Restart WildFly. The agent's overrides live only in its own store and never touch "
+                                + "standalone.xml."));
     }
 
     /**

@@ -1,8 +1,9 @@
 # WildFly Support — JBoss LogManager backend, multi-context core
 
-Status: Slices 1 & 2 merged. Slice 3 implemented; its real-WildFly Testcontainers IT is
-written and gated (self-skips without Docker) but has not yet had a shakeout run against a
-real Docker daemon.
+Status: Slices 1 & 2 merged. Slice 3 integration implemented and unit-tested; the
+real-WildFly Testcontainers IT had its Docker shakeout and is `@Disabled` on one open item
+— the agent needs to reach JBoss LogManager reflectively through the module classloader
+rather than via `-Xbootclasspath/a` (a dual-copy trap). See Slice 3's "Testing".
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §4.3 (per-framework
 mechanism map), §4.4 (classloader model), §4.6 (module layout), §15 (containers) — §15.1
 (the two orthogonal axes), §15.2 (the `ContainerIntegration` SPI), §15.4 (one JVM, several
@@ -626,14 +627,15 @@ premain gotcha that will cost you a day").
 
 Therefore:
 
-- **`detect()`** probes **only** system properties and class *presence*, never a
-  `java.util.logging` method and never a force-load of a JBoss LogManager class. It
-  requires **both** `System.getProperty("java.util.logging.manager")` ==
-  `org.jboss.logmanager.LogManager` **and** `org.jboss.modules.Module` loadable — the
-  second disambiguates a JBoss-Modules server (WildFly) from other JBoss-LogManager users
-  (Quarkus-JVM, a separate future integration). A domain-mode launch
-  (`jboss.domain.base.dir` set) is detected and declined with a diagnostic (§15.6: v1 is
-  standalone only).
+- **`detect()`** probes **only** `-D` system properties and class *presence*, never a
+  `java.util.logging` method and never a force-load of a JBoss LogManager class.
+  `java.util.logging.manager` is **not** a usable signal at premain — jboss-modules sets
+  it programmatically later, at runtime (confirmed on the shakeout). So `detect()` requires
+  `org.jboss.modules.Module` loadable **and** (`jboss.home.dir` set **or** the launch
+  command names an `org.jboss.as.*` main class) — enough to identify a standalone
+  JBoss-Modules server without touching JUL. Domain mode (`jboss.domain.base.dir`, or an
+  `org.jboss.as.host-controller` / `process-controller` launch) is declined with a
+  diagnostic (§15.6: v1 is standalone only).
 - **Discovery** (`WildFlyLogManagerReadiness`, driven on a daemon thread from `activate`)
   does the M0 spike point 2 discipline: poll `System.getProperty("java.util.logging.manager")`
   (a side channel — never `java.util.logging` itself) until it reads
@@ -715,20 +717,33 @@ than §15.6's pessimistic "WildFly does not publish a clean event".
 
 ## Installation mechanics
 
-- **Attach:** a line in `standalone.conf` (`JAVA_OPTS="$JAVA_OPTS -javaagent:/path/to/
-  logaperture-agent.jar"`). `WildFlyContainerIntegration.guidance()` carries this, plus
-  "the agent's overrides never touch `standalone.xml`".
-- **`jboss.modules.system.pkgs` — resolved analytically; to be confirmed on the Docker
-  shakeout.** The agent binds only the **system** `LogContext`, never a deployment
-  classloader. WildFly puts `jboss-logmanager` on the *system* classpath (it must, so
-  `java.util.logging` can load `org.jboss.logmanager.LogManager` from the
-  `java.util.logging.manager` property), so the agent — also on the system classpath —
-  already sees `org.jboss.logmanager.*` with **no `jboss.modules.system.pkgs` entry
-  needed**. Reaching deployment `LogContext`s *would* need one, but that's the deferred
-  config. The IT's boot assertion confirms the agent installs cleanly; if a
-  `ClassNotFoundException` surfaces on the shakeout, the required line goes into
-  `guidance()` and the README.
-- **Domain mode:** `detect()` returns false when `jboss.domain.base.dir` is set.
+- **Attach — four flags, not one (established on the Docker shakeout, iteratively).** The
+  earlier draft guessed `-javaagent` alone. It isn't: WildFly loads `org.jboss.logmanager`
+  only as a JBoss Module, invisible to the agent's app classloader (`-javaagent` alone →
+  `NoClassDefFoundError: org/jboss/logmanager/LogContext`, and the integration declines
+  with an actionable diagnostic). Adding just `-Xbootclasspath/a` + the manager property
+  then gives a *second* copy of `org.jboss.logmanager.LogManager` — WildFly's own module
+  loads its own, and its "is the installed LogManager one of mine?" check fails ("The
+  LogManager was not properly installed"). The working set, in `standalone.conf`:
+  ```
+  JAVA_OPTS="$JAVA_OPTS -javaagent:/path/to/logaperture-agent.jar \
+    -Xbootclasspath/a:$JBOSS_HOME/modules/system/layers/base/org/jboss/logmanager/main/jboss-logmanager-<version>.jar \
+    -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
+  # and, so every module resolves org.jboss.logmanager to that one boot copy:
+  JBOSS_MODULES_SYSTEM_PKGS="org.jboss.byteman,org.jboss.logmanager"
+  ```
+  `-Xbootclasspath/a` makes `org.jboss.logmanager.*` visible to the agent; the
+  `java.util.logging.manager` property makes that copy the installed manager; the
+  `jboss.modules.system.pkgs` entry makes WildFly's own modules delegate to it rather than
+  load a duplicate. `WildFlyContainerIntegration.guidance()` carries all of this.
+- **`jboss.modules.system.pkgs`** *is* needed (the earlier "not needed" note was wrong) —
+  it's what collapses the two `org.jboss.logmanager` copies into one.
+- **Domain mode:** `detect()` returns false when `jboss.domain.base.dir` is set, or the
+  launch command is an `org.jboss.as.host-controller` / `process-controller`.
+- **`detect()` cannot read `java.util.logging.manager` at premain** — jboss-modules sets
+  that property later, at runtime. So `detect()` keys on `org.jboss.modules.Module`
+  presence + a `jboss.home.dir` / `org.jboss.as.*` launch command instead; the
+  `java.util.logging.manager` confirmation moves into `WildFlyLogManagerReadiness`'s poll.
 
 ## Never touch `standalone.xml`
 
@@ -775,29 +790,34 @@ In-process (no Docker) — all run by `mvn verify`:
 - `logaperture-cli` (`CommandsTest`): the CONTEXT column appears in `levels` / `status`
   iff the result spans more than one distinct context, and is absent otherwise.
 
-**`logaperture-it` — Testcontainers, real WildFly 26.1.3.Final** (`WildFlyContainerIT`,
-`@Testcontainers(disabledWithoutDocker = true)` so `mvn verify` stays green without Docker;
-CI runs it on an ubuntu runner). **Written, not yet shaken out against a real Docker
-daemon.** Implemented:
-  - Boot with the agent attached; assert the WildFly integration installed and can see
-    `org.jboss.*` loggers, and `server.log` shows a clean start with no premature
-    `java.util.logging` access (the premain-gotcha regression signal).
-  - `listLoggers` lists the single `"system"` context.
-  - A `--for` override on `org.jboss.as.server` reverts on schedule.
-  - `standalone.xml` is `md5sum`-identical after a session of overrides + `resetAll`.
+**`logaperture-it` — Testcontainers, real WildFly 26.1.3.Final** (`WildFlyContainerIT`).
+**Shakeout run done against Docker; harness works; class `@Disabled` on one open item.**
+The run drove out every attach requirement (all now in `guidance()` + "Installation
+mechanics"): the docker-java `api.version`, this image ignoring `JAVA_OPTS_APPEND`, the
+early-`jmxremote.port` JUL init, and the `-Xbootclasspath/a` + `java.util.logging.manager`
++ `jboss.modules.system.pkgs` trio the agent needs to see JBoss LogManager at all. The
+container starts; the agent's own install logs "level control installed".
 
-  `@Disabled` pending the shakeout (each carries a TODO): the deployed-WAR
-  visibility/redeploy test (needs an in-test WAR build) and the management-CLI-collision →
-  verification-sweep test.
+**Open item blocking the IT:** with the boot-classpath jboss-logmanager, WildFly's own
+`org.jboss.logmanager.Logger` static initializer still sees a non-JBoss `LogManager` and
+aborts boot ("The LogManager was not properly installed"). This is the classic
+dual-`org.jboss.logmanager`-copy trap; the clean fix is to have the adapter reach JBoss
+LogManager **reflectively through the module classloader** (no boot-classpath jar), per
+§4.4 — a Slice-3-follow-up change, not a rush at the end of this one. The IT stays
+`@Disabled` (with the full status in its javadoc and every harness fix preserved) so `mvn
+verify` is green.
+
+Sub-tests still `@Disabled` with TODOs regardless: the deployed-WAR visibility/redeploy
+test (needs an in-test WAR build) and the management-CLI-collision → verification-sweep
+test.
 
 ## Exit criterion — Slice 3
 
-Code complete and `mvn verify` green (in-process tests). The real-WildFly bar —
-`WildFlyContainerIT` passing against Docker, the two `@Disabled` sub-tests finished, and
-the `jboss.modules.system.pkgs` question confirmed — is **pending a Docker shakeout run**.
-That run, plus manual acceptance testing against a generic WAR and the day-job
-application, is the remaining Slice 3 work; it needs a Docker daemon (this dev environment
-has none).
+Integration code complete, unit-tested, `mvn verify` green. **Not yet demonstrated end to
+end on a real server:** the Docker shakeout established the attach mechanics but surfaced a
+dual-`org.jboss.logmanager`-copy problem that needs the reflective-adapter change above.
+That change, finishing `WildFlyContainerIT`, and manual acceptance testing (a generic WAR
+and the day-job application) are the remaining Slice 3 work.
 
 ---
 

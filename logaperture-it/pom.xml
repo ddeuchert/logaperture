@@ -52,6 +52,12 @@
       <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>${slf4j.version}</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
@@ -68,6 +74,13 @@
             -->
             <logaperture.agent.jar>${maven.multiModuleProjectDirectory}/logaperture-agent/target/logaperture-agent.jar</logaperture.agent.jar>
             <logaperture.wildfly.image>${wildfly.image}</logaperture.wildfly.image>
+            <!--
+              docker-java (via Testcontainers) otherwise defaults to Docker API
+              1.32, which Docker Engine 25+ rejects ("client version 1.32 is too
+              old"). 1.44 is Engine 25.0 (early 2024), a reasonable floor for
+              anyone running this IT; bump it if your Engine is older.
+            -->
+            <api.version>1.44</api.version>
           </systemPropertyVariables>
         </configuration>
       </plugin>
