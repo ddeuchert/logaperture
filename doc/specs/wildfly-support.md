@@ -1,6 +1,6 @@
 # WildFly Support — JBoss LogManager backend, multi-context core
 
-Status: draft, not yet implemented.
+Status: Slices 1 & 2 implemented and merged; Slice 3 not yet started.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §4.3 (per-framework
 mechanism map), §4.4 (classloader model), §4.6 (module layout), §15 (containers) — §15.1
 (the two orthogonal axes), §15.2 (the `ContainerIntegration` SPI), §15.4 (one JVM, several
@@ -437,8 +437,18 @@ lossy-but-defined: JUL has two levels LogAperture doesn't model —
 
 The mapper lives in the adapter module (mirroring `logaperture-adapter-logback`'s
 `LevelMapper`), and `configuredLevel` / `effectiveLevel` return `Optional<Level>` / `Level`
-in LogAperture's enum, while the adapter privately retains the real captured
-`java.util.logging.Level` for exact reset.
+in LogAperture's enum. Read-back is resolved by `java.util.logging.Level.intValue()` against
+the canonical thresholds, so it is total over any level (JBoss LogManager's own
+`TRACE`/`DEBUG`/… aliases share intValues with JUL levels and fall out correctly).
+
+For exact reset the adapter keeps, per logger, the real `java.util.logging.Level` it first
+observed (`Optional.empty()` = "observed, no explicit level"). `applyLevel(name, L)`
+restores that captured object instead of `toJul(L)` **when `L` equals what the captured
+level reads back as** — so `resetLevel` on a `FINER`/`CONFIG` baseline lands on `FINER`/
+`CONFIG` exactly, even though the display only ever said `TRACE`/`INFO`. The one corner:
+a *deliberate* `setLevel(TRACE)` on a `FINER`-baselined logger also lands on `FINER`, not
+`FINEST` — a one-notch difference on an already-rare config, and the displays are identical
+either way.
 
 ## Adapter operations
 
@@ -451,8 +461,10 @@ Against a single `org.jboss.logmanager.LogContext`:
   table; `null` (JUL's "inherit") → `Optional.empty()`, matching Logback's semantics and
   `LoggingAdapter`'s contract. Like Logback, asking by name **creates** the logger if
   absent — the side-effecting "observe" the SPI already documents.
-- **`effectiveLevel(name)`** → walk parents until a non-null `getLevel()`, map it. This is
-  the *logger's* effective level, **not** accounting for handler floors — see below.
+- **`effectiveLevel(name)`** → walk parents until a non-null `getLevel()`, map it (falling
+  back to `getEffectiveLevel()`'s already-resolved int if no ancestor carries one — a real
+  WildFly root always does; this is the defensive path). This is the *logger's* effective
+  level, **not** accounting for handler floors — see below.
 - **`applyLevel(name, level)`** → `logger.setLevel(mapped)`; `null` → `logger.setLevel(null)`
   (back to inherited). Safely re-invokable (the SPI's requirement) — `setLevel` is
   idempotent.
@@ -460,6 +472,22 @@ Against a single `org.jboss.logmanager.LogContext`:
   reconfiguration-notification hook (§4.3: "none — poll"). Re-application after a WildFly
   logging-subsystem change is Slice 3's job, driven by the container's periodic
   verification sweep (§15.5), not by an adapter event.
+
+Three details the adapter handles that the Logback one doesn't have to:
+
+- **Root logger name.** JBoss LogManager (like JUL) names its root logger `""`, which
+  `core`/`NameFilter` would read as "match every logger". The adapter surfaces it — and
+  accepts it — as `"ROOT"`, matching the Logback adapter's convention, so `logctl levels
+  ROOT` means the same thing on both backends.
+- **Pinned loggers.** JBoss LogManager holds `Logger` facades through weak/phantom
+  references by default; a logger nothing else strongly references can be reaped and lose
+  its applied level. The adapter keeps a strong reference to every `Logger` it touches
+  (which pins the node chain up to the root), so an override stays applied without
+  depending on Slice 3's sweep.
+- **Create-on-observe applies to all read methods**, not just `configuredLevel` — same as
+  the Logback adapter, and `core` creates the logger during baseline capture first anyway.
+  `handlerFloorsBelow(name, null)` (a "back to inherited", not a raise) returns an empty
+  list rather than probing.
 
 ## Handler-level thresholds — the second gate
 
@@ -485,7 +513,9 @@ misleading to a support engineer whose actual sink is the console.
   is stricter than `target`, i.e. the ones that would swallow records the new level lets
   through. `HandlerFloor` is `{ String handlerName, Level floor }`.
 - On `applyLevel`, when `handlerFloorsBelow(name, level)` is non-empty and `level` is more
-  verbose than the previous, the adapter emits **one** diagnostic via `Diagnostics.warn`:
+  verbose than the logger's *previous effective* level (a genuine raise), the adapter emits
+  **one** diagnostic via `Diagnostics.warn`, naming the first offending handler (and, if
+  there is more than one, an `(and N more)` count):
   `"logaperture: <logger> set to <level>, but handler <H> has a level floor of <F> — <level>
   records will not reach it. Lower the handler in standalone.xml, or accept that this
   override only affects sinks without a stricter floor."`
@@ -502,11 +532,15 @@ change won't do what they expect" — not "the tool fixes it for them".
 
 ```
 logaperture-adapter-jboss-logmanager   NEW
-  Depends on: logaperture-api (Level), logaperture-core (LoggingAdapter SPI).
+  Depends on: logaperture-api (Level), logaperture-core (LoggingAdapter SPI),
+  logaperture-bridge (Diagnostics — for the handler-floor warning).
   org.jboss.logmanager:jboss-logmanager as `provided` scope — present at test
   time, present at runtime inside WildFly, never shaded into the agent jar
   (same discipline as logback-classic for the Logback adapter, §4.6 /
-  level-control.md's Can-Retransform-Classes note).
+  level-control.md's Can-Retransform-Classes note). Compiled against
+  3.0.6.Final (a `jboss-logmanager.version` property); the level-control API
+  subset used is stable back to WildFly 26.1.3's 2.1.x. The module's own
+  test JVM runs with `-Djava.util.logging.manager=org.jboss.logmanager.LogManager`.
 ```
 
 Add `logaperture-adapter-jboss-logmanager` to the top-level spec's §4.6 module list, which
@@ -515,22 +549,37 @@ that JBoss LogManager is its own backend covering WildFly and Quarkus-JVM.
 
 ## Testing
 
-In-process, JBoss LogManager on the test classpath, no container:
+In-process, JBoss LogManager on the test classpath (with
+`-Djava.util.logging.manager=org.jboss.logmanager.LogManager`), no container.
+
+`JbossLogManagerAdapterTest` — the adapter in isolation, against `LogContext.create()`:
 
 - Level mapping round-trips for all seven LogAperture levels; `FINER`→`TRACE` and
-  `CONFIG`→`INFO` read-back approximations are asserted explicitly, and `resetLevel` after
-  each restores the exact original `java.util.logging.Level`.
+  `CONFIG`→`INFO` read-back approximations are asserted explicitly, and the reset path
+  (`applyLevel` with the read-back level) restores the exact original
+  `java.util.logging.Level` (`assertSame`, not just equal).
 - `knownLoggerNames` / `configuredLevel` / `effectiveLevel` / `applyLevel` against a
-  freshly built `LogContext`, including: a logger with an explicit level, an inherited
-  logger (`configuredLevel` empty), a not-yet-created logger (pre-set then created), and
-  hierarchy resolution.
-- Two independent `LogContext`s: a level set in one is invisible in the other (the
-  isolation the multi-context aggregate is built on; broadcast re-applies to each).
-- Handler floor: a `LogContext` with a `ConsoleHandler` pinned at `INFO`; `applyLevel(x,
-  DEBUG)` emits exactly one floor diagnostic naming the console handler; `applyLevel(x,
-  WARN)` (not more verbose than the floor) emits none.
-- Re-appliability: `applyLevel` twice with the same value is a no-op-equivalent; the
-  adapter survives being handed a `LogContext` whose loggers were externally reset.
+  freshly built `LogContext`: an explicit level, an inherited logger (`configuredLevel`
+  empty), the side-effecting create-on-observe, a not-yet-created logger pre-set via
+  `applyLevel`, hierarchy resolution, and `applyLevel(name, null)` clearing back to
+  inherited.
+- Two independent `LogContext`s: a level set in one is invisible in the other.
+- The root logger is surfaced as `"ROOT"` (not `""`); `configuredLevel("ROOT")` /
+  `applyLevel("ROOT", …)` resolve to the real empty-string root and an inheriting child
+  sees the change.
+- Handler floor: a `ConsoleHandler` pinned at `INFO` on the context root;
+  `handlerFloorsBelow(x, DEBUG)` returns it, `handlerFloorsBelow(x, WARN)` does not;
+  `applyLevel(x, DEBUG)` emits exactly one `level floor` diagnostic naming
+  `ConsoleHandler`; `applyLevel(x, WARN)` (not a raise past the floor) emits none.
+- Re-appliability: `applyLevel` twice is a no-op-equivalent; the adapter survives a
+  `LogContext` whose loggers were externally reset.
+
+`JbossLogManagerLevelControlTest` — the Slice 2 exit criterion: `AggregateLevelControl` +
+`LevelControlService` driving `JbossLogManagerAdapterFactory.forContext(...)` through the
+full loop — `listLoggers`/`setLevel`/`resetLevel`/`resetAll` with the level mapped exactly
+to `FINE`, a `--for` reverted by `sweepExpiredOverrides`, and a `--sticky` override
+resuming over the same `LogContext` across a simulated restart (two `FileStateStore.open()`
+cycles, `logaperture.home` at a `@TempDir`).
 
 ## Exit criterion — Slice 2
 
@@ -801,8 +850,8 @@ rule:
   `discoverContexts` / `onContextAdded` / `onContextRemoved` sketch, and `stableKey` moved
   onto `ContextHandle`. The `> Implementation spec: doc/specs/wildfly-support.md` link
   under §15.6 was added with the spec's WIP commit.
-- **Slice 2:** §4.6 module list gains `logaperture-adapter-jboss-logmanager` (currently
-  absent; the list predates §15.6's JBoss-LogManager-is-its-own-backend point).
+- **Slice 2 (done):** §4.6 module list gains `logaperture-adapter-jboss-logmanager` (the
+  list predated §15.6's JBoss-LogManager-is-its-own-backend point).
 
 ## Overall exit criterion
 
