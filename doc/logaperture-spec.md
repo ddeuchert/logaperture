@@ -693,6 +693,7 @@ This will be the majority of the work, and the project's credibility rests on it
 - **Classloader isolation tests**: instantiate frameworks in child classloaders, verify per-context state, verify no leaks after classloader discard (weak-reference assertions).
 - **Reconfiguration tests**: trigger a framework config reload mid-test, assert overrides and filters survive and are not double-installed.
 - **Container smoke tests** for each `ContainerIntegration`, on real servers via Testcontainers, plus a modular JPMS app.
+- **Interactive/manual acceptance** — the automated smoke test has a committed hands-on counterpart: [`doc/specs/wildfly-dev-environment.md`](specs/wildfly-dev-environment.md) is a one-command, VSCode-integrated Docker Compose environment (same pinned image as the WildFly IT) for deploying a WAR, driving `logctl`, and attaching a debugger to the agent in a real server.
 - **Leak tests on Tomcat specifically** — its classloader-leak detection turns the weak-reference discipline of §4.4 into a pass/fail signal rather than a code-review opinion (§15.8).
 - **JMH benchmarks** in CI with a regression threshold.
 - **Chaos test**: a rule that throws on every evaluation must produce unmodified log output and a disabled rule.
@@ -871,6 +872,8 @@ Idempotence is the hard half. Double-wrapping a formatter on every reload is an 
 ### 15.6 WildFly
 
 > Implementation spec: [`doc/specs/wildfly-support.md`](specs/wildfly-support.md) — the JBoss LogManager adapter, the `ContainerIntegration` SPI, per-deployment contexts, and the redeploy loop, delivered in three slices.
+>
+> Dev environment: [`doc/specs/wildfly-dev-environment.md`](specs/wildfly-dev-environment.md) — a committed, VSCode-integrated Docker Compose environment for manual deploy/run/debug against a real WildFly (the interactive complement to `WildFlyContainerIT`).
 
 WildFly installs **JBoss LogManager** as the `java.util.logging.LogManager` and routes deployment logging — SLF4J, Log4j, commons-logging, JUL — into it through the logging subsystem. That is a significant simplification: **one backend adapter covers most of a WildFly estate**, rather than four. The exception is a deployment using `use-deployment-logging-config` with its own bundled configuration, which gets its own isolated setup.
 

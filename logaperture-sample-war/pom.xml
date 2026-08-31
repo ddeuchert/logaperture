@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ - Copyright 2026 David Deuchert
+ -
+ - Licensed under the Apache License, Version 2.0 (the "License");
+ - you may not use this file except in compliance with the License.
+ - You may obtain a copy of the License at
+ -
+ -     http://www.apache.org/licenses/LICENSE-2.0
+ -
+ - Unless required by applicable law or agreed to in writing, software
+ - distributed under the License is distributed on an "AS IS" BASIS,
+ - WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ - See the License for the specific language governing permissions and
+ - limitations under the License.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.logaperture</groupId>
+    <artifactId>logaperture-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>logaperture-sample-war</artifactId>
+  <packaging>war</packaging>
+
+  <description>
+    A deploy target for hands-on WildFly testing of the agent — NOT part of
+    the product. One @WebServlet logs the same line through java.util.logging,
+    SLF4J, and Log4j at every level; another starts/stops a background timer
+    thread that does the same on a schedule, so a `for` override can be
+    watched expiring and re-applying. No logaperture-* dependency: the agent
+    observes this app from outside. See doc/specs/wildfly-dev-environment.md.
+
+    WildFly 26.1.3.Final is Jakarta EE 8 (Servlet 4.0, javax.servlet
+    namespace); every dependency here is `provided` — the server supplies the
+    runtime copies.
+  </description>
+
+  <properties>
+    <!-- Servlet 4.0 API — WildFly 26.1.3 is javax.servlet, not jakarta. -->
+    <javax.servlet-api.version>4.0.1</javax.servlet-api.version>
+    <!--
+      Compiled against for the Log4j path. `provided`: WildFly's own log4j2
+      subsystem supplies the runtime copy (2.1x on WF 26.1.3). Only the
+      LogManager#getLogger / Logger#trace..error surface is used, stable
+      across 2.x.
+    -->
+    <log4j-api.version>2.17.1</log4j-api.version>
+    <maven-war-plugin.version>3.4.0</maven-war-plugin.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>javax.servlet</groupId>
+      <artifactId>javax.servlet-api</artifactId>
+      <version>${javax.servlet-api.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-api</artifactId>
+      <version>${log4j-api.version}</version>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <!--
+      Stable WAR name -> stable context path (/logaperture-sample-war),
+      independent of the reactor version.
+    -->
+    <finalName>logaperture-sample-war</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-war-plugin</artifactId>
+        <version>${maven-war-plugin.version}</version>
+      </plugin>
+    </plugins>
+  </build>
+</project>

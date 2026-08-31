@@ -1,0 +1,94 @@
+{
+  // Wrappers over dev/wildfly/wildflyctl.py — the committed WildFly deploy/run/
+  // debug environment. See doc/specs/wildfly-dev-environment.md. Every task just
+  // shells the driver; the driver needs Docker and Python 3 (both already
+  // required for `mvn verify`'s WildFly IT + this repo's tooling).
+  "version": "2.0.0",
+  "options": {
+    "cwd": "${workspaceFolder}"
+  },
+  "inputs": [
+    {
+      // Arguments passed straight through to `logctl` inside the container,
+      // e.g.  levels org.jboss   |   debug org.acme.Foo for 30m   |   status
+      "id": "logctlArgs",
+      "type": "promptString",
+      "description": "logctl arguments (no leading 'logctl')"
+    }
+  ],
+  "tasks": [
+    {
+      "label": "WildFly: up",
+      "detail": "Start WildFly with the agent attached; wait for a clean boot.",
+      "type": "shell",
+      "command": "python3 dev/wildfly/wildflyctl.py up",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
+    },
+    {
+      "label": "WildFly: up (debug-suspend)",
+      "detail": "Start WildFly with suspend=y so premain can be breakpointed. Attach 'Attach to WildFly (8787)' after this.",
+      "type": "shell",
+      "command": "python3 dev/wildfly/wildflyctl.py up --debug-suspend",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
+    },
+    {
+      "label": "WildFly: down",
+      "detail": "Stop and remove the WildFly container.",
+      "type": "shell",
+      "command": "python3 dev/wildfly/wildflyctl.py down",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "WildFly: rebuild agent + restart",
+      "detail": "Rebuild logaperture-agent, restart WildFly to pick it up.",
+      "type": "shell",
+      "command": "python3 dev/wildfly/wildflyctl.py restart-agent",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
+    },
+    {
+      "label": "WildFly: deploy sample",
+      "detail": "Build (if needed) and deploy logaperture-sample-war.",
+      "type": "shell",
+      "command": "python3 dev/wildfly/wildflyctl.py deploy",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "WildFly: undeploy sample",
+      "detail": "Undeploy logaperture-sample-war.",
+      "type": "shell",
+      "command": "python3 dev/wildfly/wildflyctl.py undeploy",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared" }
+    },
+    {
+      "label": "WildFly: logctl…",
+      "detail": "Run logctl inside the container with prompted arguments.",
+      "type": "shell",
+      "command": "python3 dev/wildfly/wildflyctl.py logctl -- ${input:logctlArgs}",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
+    },
+    {
+      "label": "WildFly: tail server.log",
+      "detail": "Follow the WildFly server log (Ctrl-C to stop).",
+      "type": "shell",
+      "command": "python3 dev/wildfly/wildflyctl.py tail",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "WildFly: status",
+      "detail": "Container state + logctl status + image-version drift check.",
+      "type": "shell",
+      "command": "python3 dev/wildfly/wildflyctl.py status",
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
+    }
+  ]
+}

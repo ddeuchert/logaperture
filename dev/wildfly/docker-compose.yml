@@ -1,0 +1,59 @@
+# Copyright 2026 David Deuchert
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Standalone WildFly with the LogAperture agent attached, for hands-on
+# deploy/run/debug. Driven by wildflyctl.py; see doc/specs/wildfly-dev-environment.md.
+#
+#   $WILDFLY_IMAGE                  from .env (kept in sync with pom wildfly.image)
+#   ${DEBUG_SUSPEND:-n}            wildflyctl passes 'y' for `up --debug-suspend`
+#   ${LOGAPERTURE_SWEEP_SECONDS:-5} wildflyctl passes `up --sweep-seconds N`
+#
+# $$ escapes a literal $ so the container shell — not Compose — expands
+# $JBOSS_HOME and $JAVA_OPTS. The echo content is single-quoted so $JAVA_OPTS is
+# written verbatim into standalone.conf and expanded later, when standalone.sh
+# sources it. This image ignores JAVA_OPTS_APPEND and a wholesale JAVA_OPTS wipes
+# its --add-opens, hence the append-one-line approach (as WildFlyContainerIT does).
+
+services:
+  wildfly:
+    image: ${WILDFLY_IMAGE:-quay.io/wildfly/wildfly:26.1.3.Final-jdk17}
+    container_name: logaperture-wildfly
+    command:
+      - sh
+      - -c
+      - >-
+        echo 'JAVA_OPTS="$$JAVA_OPTS
+        -javaagent:/opt/logaperture-agent.jar
+        -Dlogaperture.sweep.seconds=${LOGAPERTURE_SWEEP_SECONDS:-5}
+        -agentlib:jdwp=transport=dt_socket,server=y,suspend=${DEBUG_SUSPEND:-n},address=*:8787"'
+        >> "$$JBOSS_HOME/bin/standalone.conf"
+        && exec "$$JBOSS_HOME/bin/standalone.sh" -b 0.0.0.0 -bmanagement 0.0.0.0
+    ports:
+      - "8080:8080"   # application HTTP
+      - "9990:9990"   # management
+      - "8787:8787"   # JDWP — VSCode "Attach to WildFly (8787)"
+    volumes:
+      - ../../logaperture-agent/target/logaperture-agent.jar:/opt/logaperture-agent.jar:ro
+      - ../../logaperture-cli/target/logaperture-cli.jar:/opt/logctl.jar:ro
+      - ./deployments:/opt/jboss/wildfly/standalone/deployments
+    healthcheck:
+      # Passes once WildFly logs a clean start. Never passes under
+      # --debug-suspend until a debugger attaches — expected; wildflyctl skips
+      # the readiness wait in that mode.
+      test: ["CMD-SHELL", "grep -q 'WFLYSRV0025' /opt/jboss/wildfly/standalone/log/server.log"]
+      interval: 5s
+      timeout: 3s
+      retries: 48
+      start_period: 10s
+    stop_grace_period: 20s
