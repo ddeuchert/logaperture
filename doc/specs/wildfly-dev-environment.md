@@ -112,12 +112,28 @@ One service, `wildfly`:
 
   ```sh
   sh -c 'echo "JAVA_OPTS=\"\$JAVA_OPTS \
+      -agentlib:jdwp=transport=dt_socket,server=y,suspend=${DEBUG_SUSPEND:-n},address=*:8787 \
       -javaagent:/opt/logaperture-agent.jar \
       -Dlogaperture.sweep.seconds=${LOGAPERTURE_SWEEP_SECONDS:-5} \
-      -agentlib:jdwp=transport=dt_socket,server=y,suspend=${DEBUG_SUSPEND:-n},address=*:8787\"" \
+      -Dlogaperture.home=/opt/jboss/wildfly/standalone/tmp/logaperture\"" \
       >> "\$JBOSS_HOME/bin/standalone.conf" \
     && exec "\$JBOSS_HOME/bin/standalone.sh" -b 0.0.0.0 -bmanagement 0.0.0.0'
   ```
+
+  Two ordering/placement details that matter:
+
+  - **`-agentlib:jdwp` comes before `-javaagent`.** VM_INIT callbacks fire in
+    agent load order, and `libinstrument` invokes the agent's `premain` from
+    *its* VM_INIT callback. With jdwp first, `suspend=y` halts the VM before
+    `premain` runs, so a breakpoint in `AgentBootstrap` / `premain` can be set
+    before it executes. With `-javaagent` first (the intuitive order), `premain`
+    has already finished by the time the debugger can attach — the breakpoint
+    never binds in time.
+  - **`-Dlogaperture.home`** points the agent's state store at a
+    runtime-writable directory. The image's `$HOME` (`/opt/jboss`) is not
+    writable by the `jboss` user, so the default `${user.home}/.logaperture`
+    fails with `AccessDeniedException` and the agent degrades to session-only
+    persistence (no `--sticky` survival across a restart).
 
 - **Healthcheck:** poll `http://localhost:9990/health` (or grep `server.log` for
   `WFLYSRV0025`) so `wildflyctl status` and task ordering can wait on "ready".

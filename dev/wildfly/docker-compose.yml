@@ -24,6 +24,15 @@
 # written verbatim into standalone.conf and expanded later, when standalone.sh
 # sources it. This image ignores JAVA_OPTS_APPEND and a wholesale JAVA_OPTS wipes
 # its --add-opens, hence the append-one-line approach (as WildFlyContainerIT does).
+#
+# -agentlib:jdwp MUST come before -javaagent: VM_INIT callbacks fire in agent
+# load order, and libinstrument calls premain from its VM_INIT callback. With
+# jdwp first, suspend=y halts the VM before premain runs; with -javaagent first,
+# premain has already finished by the time the debugger can attach.
+#
+# -Dlogaperture.home points the agent's state store at a runtime-writable dir —
+# the image's $HOME (/opt/jboss) is not writable by the jboss user, so the
+# default ${user.home}/.logaperture fails with AccessDeniedException.
 
 services:
   wildfly:
@@ -34,9 +43,10 @@ services:
       - -c
       - >-
         echo 'JAVA_OPTS="$$JAVA_OPTS
+        -agentlib:jdwp=transport=dt_socket,server=y,suspend=${DEBUG_SUSPEND:-n},address=*:8787
         -javaagent:/opt/logaperture-agent.jar
         -Dlogaperture.sweep.seconds=${LOGAPERTURE_SWEEP_SECONDS:-5}
-        -agentlib:jdwp=transport=dt_socket,server=y,suspend=${DEBUG_SUSPEND:-n},address=*:8787"'
+        -Dlogaperture.home=/opt/jboss/wildfly/standalone/tmp/logaperture"'
         >> "$$JBOSS_HOME/bin/standalone.conf"
         && exec "$$JBOSS_HOME/bin/standalone.sh" -b 0.0.0.0 -bmanagement 0.0.0.0
     ports:
