@@ -37,8 +37,12 @@ It is not a product artifact — it exists only to assemble the zip.
   them as dependencies (see below).
 - **Build:** `maven-assembly-plugin` (version managed in the root
   `pluginManagement`), `single` goal bound to `package`, driven by
-  `src/assembly/dist.xml`, with `<finalName>logaperture-${project.version}</finalName>`
-  and `<appendAssemblyId>false</appendAssemblyId>`.
+  `src/assembly/dist.xml`, with `<finalName>logaperture-${project.version}</finalName>`,
+  `<appendAssemblyId>false</appendAssemblyId>`, and `<attach>false</attach>`. The
+  zip is a build output to hand out, not a Maven artifact — `attach=false` keeps
+  `mvn install` from putting it in the local repo next to the module's `.pom`
+  (and, on older plugin versions, from replacing the `.pom` because
+  `appendAssemblyId` is false). Maven Central / `deploy` is deferred.
 
 ## The assembly — `src/assembly/dist.xml`
 

@@ -69,6 +69,15 @@
             </goals>
             <configuration>
               <appendAssemblyId>false</appendAssemblyId>
+              <!--
+                The zip is a build output to hand out, not a Maven artifact.
+                attach=false keeps `mvn install` from installing it into the
+                local repo alongside this module's .pom (and, on older
+                assembly-plugin versions, from replacing the .pom file itself
+                because appendAssemblyId is false). Maven Central / deploy is
+                deferred anyway.
+              -->
+              <attach>false</attach>
               <descriptors>
                 <descriptor>src/assembly/dist.xml</descriptor>
               </descriptors>
