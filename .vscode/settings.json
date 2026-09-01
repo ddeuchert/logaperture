@@ -42,5 +42,13 @@
   },
   "files.watcherExclude": {
     "**/target/**": true
-  }
+  },
+
+  // --- Python extension ---
+  // dev/wildfly/.env is consumed by `docker compose` (auto-loaded next to
+  // docker-compose.yml), not by the Python extension. Stop it offering to
+  // inject that file's vars into integrated terminals / Python debug sessions —
+  // empty python.envFile removes the trigger; the second line is explicit.
+  "python.envFile": "",
+  "python.terminal.useEnvFile": false
 }
