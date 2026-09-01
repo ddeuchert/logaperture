@@ -199,6 +199,8 @@ logaperture-cli             attach-API client
 logaperture-dev             OPTIONAL ADD-ON — highlight/banner, baselining, runtime rule authoring.
                        Never packaged into a customer-facing distribution (§9.11)
 logaperture-it              integration test matrix
+logaperture-dist            hand-off evaluation zip (agent jar + logctl + WildFly install doc);
+                       not a product artifact — see doc/specs/distribution-bundle.md
 ```
 
 ---
@@ -1119,3 +1121,4 @@ On ordering: **IntelliJ IDEA is missing from the original list and probably has 
 3. A `README.md` whose opening example is a WildFly boot log reduced to five lines with the deployment result bannered. For this audience that image sells the project faster than the trimmed-stack-trace example does.
 4. A written threat model and compliance control mapping (§9.12), drafted *before* the capability enumeration is frozen — writing down the abuse cases is what reveals which capabilities need splitting.
 5. An honest "Related projects" section covering Arthas, Byteman, and the WildFly CLI. Projects that name their neighbours accurately get taken more seriously than ones that don't.
+6. An evaluation bundle — `logaperture-dist` produces `logaperture-<version>.zip` (agent jar, `logctl`, and a WildFly install guide) to hand to interested parties for **pre-production** trials. Implementation spec: [`doc/specs/distribution-bundle.md`](specs/distribution-bundle.md).

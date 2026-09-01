@@ -19,10 +19,19 @@
 # logaperture-cli package` first.
 
 here=$(cd "$(dirname "$0")" && pwd)
-jar="$here/../target/logaperture-cli.jar"
 
-if [ ! -f "$jar" ]; then
-  echo "logctl: $jar not found — run 'mvn -pl logaperture-cli package' first." >&2
+# The distribution zip puts the jar in ../lib; a source-tree build leaves it
+# in ../target. Try both.
+jar=""
+for candidate in "$here/../lib/logaperture-cli.jar" "$here/../target/logaperture-cli.jar"; do
+  if [ -f "$candidate" ]; then
+    jar="$candidate"
+    break
+  fi
+done
+
+if [ -z "$jar" ]; then
+  echo "logctl: logaperture-cli.jar not found in ../lib or ../target — in a source tree, run 'mvn -pl logaperture-cli package' first." >&2
   exit 1
 fi
 

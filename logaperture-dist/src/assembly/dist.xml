@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ - Copyright 2026 David Deuchert
+ -
+ - Licensed under the Apache License, Version 2.0 (the "License");
+ - you may not use this file except in compliance with the License.
+ - You may obtain a copy of the License at
+ -
+ -     http://www.apache.org/licenses/LICENSE-2.0
+ -
+ - Unless required by applicable law or agreed to in writing, software
+ - distributed under the License is distributed on an "AS IS" BASIS,
+ - WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ - See the License for the specific language governing permissions and
+ - limitations under the License.
+-->
+<assembly xmlns="http://maven.apache.org/ASSEMBLY/2.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/ASSEMBLY/2.2.0 http://maven.apache.org/xsd/assembly-2.2.0.xsd">
+  <id>bundle</id>
+
+  <formats>
+    <format>zip</format>
+  </formats>
+
+  <!-- Everything sits under logaperture-<version>/ inside the zip. -->
+  <includeBaseDirectory>true</includeBaseDirectory>
+
+  <fileSets>
+    <!-- The POSIX launcher: executable, LF endings. -->
+    <fileSet>
+      <directory>${project.basedir}/../logaperture-cli/bin</directory>
+      <outputDirectory>bin</outputDirectory>
+      <includes>
+        <include>logctl</include>
+      </includes>
+      <fileMode>0755</fileMode>
+      <lineEnding>unix</lineEnding>
+    </fileSet>
+    <!-- The Windows launcher: CRLF endings. -->
+    <fileSet>
+      <directory>${project.basedir}/../logaperture-cli/bin</directory>
+      <outputDirectory>bin</outputDirectory>
+      <includes>
+        <include>logctl.cmd</include>
+      </includes>
+      <fileMode>0644</fileMode>
+      <lineEnding>dos</lineEnding>
+    </fileSet>
+    <!-- Top-level README for the bundle. -->
+    <fileSet>
+      <directory>${project.basedir}/src/dist</directory>
+      <outputDirectory>.</outputDirectory>
+      <includes>
+        <include>README.md</include>
+      </includes>
+      <fileMode>0644</fileMode>
+    </fileSet>
+  </fileSets>
+
+  <files>
+    <!--
+      The shaded jars, by path. The shade plugin's custom finalName writes
+      target/logaperture-<x>.jar but does NOT replace the Maven artifact (which
+      stays the thin maven-jar-plugin output), so a dependencySet would grab the
+      wrong jar. This is the same path-based approach logaperture-it uses. The
+      dist pom still depends on both modules, for reactor build ordering.
+    -->
+    <file>
+      <source>${project.basedir}/../logaperture-agent/target/logaperture-agent.jar</source>
+      <outputDirectory>lib</outputDirectory>
+      <destName>logaperture-agent.jar</destName>
+      <fileMode>0644</fileMode>
+    </file>
+    <file>
+      <source>${project.basedir}/../logaperture-cli/target/logaperture-cli.jar</source>
+      <outputDirectory>lib</outputDirectory>
+      <destName>logaperture-cli.jar</destName>
+      <fileMode>0644</fileMode>
+    </file>
+    <file>
+      <source>${project.basedir}/../LICENSE</source>
+      <outputDirectory>.</outputDirectory>
+      <destName>LICENSE</destName>
+      <fileMode>0644</fileMode>
+    </file>
+    <file>
+      <source>${project.basedir}/src/dist/INSTALL-wildfly.md</source>
+      <outputDirectory>docs</outputDirectory>
+      <destName>INSTALL-wildfly.md</destName>
+      <fileMode>0644</fileMode>
+    </file>
+  </files>
+</assembly>

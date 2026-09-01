@@ -19,10 +19,14 @@ rem a JRE (it needs com.sun.tools.attach). Build the jar with
 rem `mvn -pl logaperture-cli package` first.
 
 setlocal
-set "JAR=%~dp0..\target\logaperture-cli.jar"
+
+rem The distribution zip puts the jar in ..\lib; a source-tree build leaves it
+rem in ..\target. Try both.
+set "JAR=%~dp0..\lib\logaperture-cli.jar"
+if not exist "%JAR%" set "JAR=%~dp0..\target\logaperture-cli.jar"
 
 if not exist "%JAR%" (
-  echo logctl: %JAR% not found - run "mvn -pl logaperture-cli package" first. 1>&2
+  echo logctl: logaperture-cli.jar not found in ..\lib or ..\target - in a source tree, run "mvn -pl logaperture-cli package" first. 1>&2
   exit /b 1
 )
 

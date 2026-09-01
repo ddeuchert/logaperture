@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ - Copyright 2026 David Deuchert
+ -
+ - Licensed under the Apache License, Version 2.0 (the "License");
+ - you may not use this file except in compliance with the License.
+ - You may obtain a copy of the License at
+ -
+ -     http://www.apache.org/licenses/LICENSE-2.0
+ -
+ - Unless required by applicable law or agreed to in writing, software
+ - distributed under the License is distributed on an "AS IS" BASIS,
+ - WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ - See the License for the specific language governing permissions and
+ - limitations under the License.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.logaperture</groupId>
+    <artifactId>logaperture-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>logaperture-dist</artifactId>
+  <packaging>pom</packaging>
+
+  <description>
+    The hand-off evaluation bundle — NOT a product artifact. `mvn package`
+    assembles target/logaperture-${project.version}.zip containing the agent
+    jar, the logctl CLI (jar + launchers), a WildFly install doc, and the
+    licence, for someone to try LogAperture in a PRE-PRODUCTION WildFly.
+    See doc/specs/distribution-bundle.md.
+
+    Depends on logaperture-agent and logaperture-cli for reactor build
+    ordering only (so their shaded jars exist before this module runs); the
+    assembly copies those jars in by path, not as dependencies — see
+    src/assembly/dist.xml.
+  </description>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-agent</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-cli</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>logaperture-${project.version}</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-assembly-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>evaluation-bundle</id>
+            <phase>package</phase>
+            <goals>
+              <goal>single</goal>
+            </goals>
+            <configuration>
+              <appendAssemblyId>false</appendAssemblyId>
+              <descriptors>
+                <descriptor>src/assembly/dist.xml</descriptor>
+              </descriptors>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
