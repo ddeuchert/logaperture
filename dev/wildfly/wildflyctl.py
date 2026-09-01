@@ -142,6 +142,13 @@ def ensure_sample_war():
 
 # --- readiness -------------------------------------------------------------
 
+def truncate_server_log():
+    """Clear server.log so booted()'s grep can't match a WFLYSRV0025 line from a
+    previous boot — WildFly opens it in append mode, so it survives a restart."""
+    compose("exec", "-T", SERVICE, "sh", "-c",
+            f": > {CONTAINER_LOG} 2>/dev/null || true", check=False, capture=True)
+
+
 def booted():
     r = compose("exec", "-T", SERVICE, "sh", "-c",
                 f"grep -q WFLYSRV0025 {CONTAINER_LOG}",
@@ -155,6 +162,20 @@ def wait_for_boot(timeout=180):
         if booted():
             return True
         time.sleep(3)
+    return False
+
+
+def rm_container_files(*paths):
+    compose("exec", "-T", SERVICE, "rm", "-f", *paths, check=False, capture=True)
+
+
+def await_container_file(path, timeout):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if compose("exec", "-T", SERVICE, "test", "-f", path,
+                   check=False, capture=True).returncode == 0:
+            return True
+        time.sleep(2)
     return False
 
 
@@ -179,10 +200,13 @@ def cmd_up(a):
     if a.debug_suspend:
         print(
             "\nWildFly started with suspend=y — the JVM is paused before premain.\n"
-            "Attach VSCode 'Attach to WildFly (8787)' now; the server proceeds once\n"
-            "the debugger connects.\n", file=sys.stderr)
+            "Attach VSCode 'Attach to WildFly — premain (8787)' now — NOT the plain\n"
+            "'Attach to WildFly (8787)', whose pre-launch task would recreate the\n"
+            "container without suspend. The server proceeds once the debugger connects.\n",
+            file=sys.stderr)
         return
 
+    truncate_server_log()
     print("\nwaiting for a clean boot (WFLYSRV0025)…", file=sys.stderr)
     if wait_for_boot():
         print("WildFly is up.\n"
@@ -203,9 +227,15 @@ def cmd_down(a):
 def cmd_restart_agent(a):
     require_docker()
     ensure_jars(build=True)
-    compose("restart", SERVICE)
+    # Recreate rather than `compose restart`: a plain restart re-runs the
+    # container command against the same filesystem, which (absent the compose
+    # file's grep guard) would append the JAVA_OPTS block to standalone.conf a
+    # second time. Recreate also gives a fresh server.log for wait_for_boot().
+    # Comes back in normal (non-suspend) mode.
+    compose("up", "-d", "--force-recreate", SERVICE)
+    truncate_server_log()
     if wait_for_boot():
-        print("WildFly restarted with the rebuilt agent.", file=sys.stderr)
+        print("WildFly recreated with the rebuilt agent (normal mode).", file=sys.stderr)
     else:
         sys.exit("error: WildFly did not come back cleanly — check `wildflyctl tail`.")
 
@@ -222,14 +252,25 @@ def cmd_deploy(a):
 
     DEPLOYMENTS.mkdir(exist_ok=True)
     dest = DEPLOYMENTS / src.name
+    base = f"{CONTAINER_DEPLOY_DIR}/{src.name}"
+    deployed, failed = f"{base}.deployed", f"{base}.failed"
+
+    # A redeploy of the same archive: undeploy the old content, then clear the
+    # scanner's status markers. Otherwise the poll below can match the previous
+    # deploy's `.deployed` (or a stale `.failed`) before the scanner has even
+    # noticed the new bytes. Mirrors WildFlyContainerIT.redeployProbeWar.
+    if dest.exists():
+        dest.unlink()
+        await_container_file(f"{base}.undeployed", 30)
+    rm_container_files(deployed, failed, f"{base}.undeployed",
+                       f"{base}.isdeploying", f"{base}.pending")
+
     shutil.copy2(src, dest)
     print(f"copied {src.name} -> dev/wildfly/deployments/", file=sys.stderr)
 
-    marker = f"{CONTAINER_DEPLOY_DIR}/{src.name}.deployed"
-    failed = f"{CONTAINER_DEPLOY_DIR}/{src.name}.failed"
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
-        if compose("exec", "-T", SERVICE, "test", "-f", marker,
+        if compose("exec", "-T", SERVICE, "test", "-f", deployed,
                    check=False, capture=True).returncode == 0:
             print(f"{src.name} deployed.", file=sys.stderr)
             return
@@ -249,16 +290,11 @@ def cmd_undeploy(a):
     if archive.exists():
         archive.unlink()
         print(f"removed dev/wildfly/deployments/{name}", file=sys.stderr)
-    marker = f"{CONTAINER_DEPLOY_DIR}/{name}.undeployed"
-    deadline = time.monotonic() + 60
-    while time.monotonic() < deadline:
-        if compose("exec", "-T", SERVICE, "test", "-f", marker,
-                   check=False, capture=True).returncode == 0:
-            print(f"{name} undeployed.", file=sys.stderr)
-            return
-        time.sleep(2)
-    print(f"note: no .undeployed marker for {name} — it may not have been deployed.",
-          file=sys.stderr)
+    if await_container_file(f"{CONTAINER_DEPLOY_DIR}/{name}.undeployed", 60):
+        print(f"{name} undeployed.", file=sys.stderr)
+    else:
+        print(f"note: no .undeployed marker for {name} — it may not have been deployed.",
+              file=sys.stderr)
 
 
 def cmd_logctl(a):

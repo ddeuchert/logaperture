@@ -79,7 +79,7 @@ The container publishes JDWP on **8787**. Two VSCode launch configs:
 |---|---|
 | `up [--debug-suspend] [--sweep-seconds N] [--build]` | start; builds the agent/CLI jars if missing |
 | `down` | stop and remove the container |
-| `restart-agent` | rebuild `logaperture-agent`, restart WildFly |
+| `restart-agent` | rebuild `logaperture-agent`, recreate WildFly (normal mode) to pick it up |
 | `deploy [PATH]` | deploy a WAR/EAR (default: the sample); waits for `.deployed` |
 | `undeploy [NAME]` | undeploy (default: the sample) |
 | `logctl -- ARG…` | run `logctl` inside the container |

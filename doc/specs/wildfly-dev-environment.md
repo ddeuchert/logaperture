@@ -112,7 +112,8 @@ One service, `wildfly`:
   `standalone.conf` and then execs the normal boot:
 
   ```sh
-  sh -c 'echo "JAVA_OPTS=\"\$JAVA_OPTS \
+  sh -c 'grep -qF -- "-javaagent:/opt/logaperture-agent.jar" "\$JBOSS_HOME/bin/standalone.conf" \
+    || echo "JAVA_OPTS=\"\$JAVA_OPTS \
       -agentlib:jdwp=transport=dt_socket,server=y,suspend=${DEBUG_SUSPEND:-n},address=*:8787 \
       -javaagent:/opt/logaperture-agent.jar \
       -Dlogaperture.sweep.seconds=${LOGAPERTURE_SWEEP_SECONDS:-5} \
@@ -121,7 +122,15 @@ One service, `wildfly`:
     && exec "\$JBOSS_HOME/bin/standalone.sh" -b 0.0.0.0 -bmanagement 0.0.0.0'
   ```
 
-  Two ordering/placement details that matter:
+  Three details that matter:
+
+  - **The `grep -qF … ||` guard** makes the append idempotent. `docker compose
+    restart` (and `docker restart`) re-run this command against the same
+    container filesystem; a second unguarded append would put `-javaagent` and
+    `-agentlib:jdwp` on the line twice and WildFly aborts at startup. `compose
+    up` with changed config recreates the container from the image, so
+    `standalone.conf` is clean and the (single) append goes through. `wildflyctl
+    restart-agent` uses `up -d --force-recreate` for the same reason.
 
   - **`-agentlib:jdwp` comes before `-javaagent`.** VM_INIT callbacks fire in
     agent load order, and `libinstrument` invokes the agent's `premain` from
@@ -157,8 +166,8 @@ Subcommands:
 |---|---|
 | `up [--debug-suspend] [--sweep-seconds N] [--build]` | Verify `logaperture-agent/target/logaperture-agent.jar` and `logaperture-cli/target/logaperture-cli.jar` exist; if missing (or `--build`), run `mvn -q -pl logaperture-agent,logaperture-cli -am package`. Then `docker compose -p logaperture up -d`, exporting `DEBUG_SUSPEND` / `LOGAPERTURE_SWEEP_SECONDS`. Print the attach hint and, with `--debug-suspend`, that the JVM is paused until the debugger connects. |
 | `down` | `docker compose -p logaperture down`. |
-| `restart-agent [--build]` | Rebuild the agent jar (default on), `docker compose -p logaperture restart wildfly`. |
-| `deploy [PATH]` | Copy `PATH` (default: the built `logaperture-sample-war/target/*.war`) into `dev/wildfly/deployments/`; poll for the `<name>.war.deployed` marker via `docker compose exec`; fail on `<name>.war.failed`. |
+| `restart-agent [--build]` | Rebuild the agent jar (default on), then `docker compose -p logaperture up -d --force-recreate wildfly` — a recreate, not a plain `restart`, so `standalone.conf` and `server.log` start fresh (a `restart` re-runs the container command against the same filesystem, re-appending the agent flags). Comes back in normal, non-suspend mode. |
+| `deploy [PATH]` | Copy `PATH` (default: the built `logaperture-sample-war/target/*.war`) into `dev/wildfly/deployments/`; poll for the `<name>.war.deployed` marker via `docker compose exec`; fail on `<name>.war.failed`. On a redeploy of the same archive, first removes it and waits for `.undeployed`, then clears the scanner's stale status markers — otherwise the poll can match the previous deploy's `.deployed` (or a stale `.failed`). |
 | `undeploy [NAME]` | Remove the archive from `deployments/`; wait for `.undeployed`. Default `NAME` = the sample. |
 | `logctl -- ARG...` | `docker compose -p logaperture exec -T wildfly java -jar /opt/logctl.jar ARG...`. The `--` separates driver args from `logctl` args. |
 | `tail [--lines N]` | Follow `server.log` (`docker compose exec wildfly tail -n N -f …`). |

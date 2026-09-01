@@ -136,7 +136,7 @@ Run from the repo root; the VSCode **WildFly: …** tasks wrap each subcommand.
 |---|---|
 | `up [--debug-suspend] [--sweep-seconds N] [--build]` | start; builds the agent/CLI jars if missing |
 | `down` | stop and remove the container |
-| `restart-agent` | rebuild `logaperture-agent`, restart WildFly to pick it up |
+| `restart-agent` | rebuild `logaperture-agent`, recreate WildFly (normal mode) to pick it up |
 | `deploy [PATH]` | deploy a WAR/EAR (default: the sample); waits for `.deployed` |
 | `undeploy [NAME]` | undeploy (default: the sample) |
 | `logctl -- ARG…` | run `logctl` inside the container |
