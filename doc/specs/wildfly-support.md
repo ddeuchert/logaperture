@@ -530,10 +530,13 @@ misleading to a support engineer whose actual sink is the console.
 **What Slice 2 deliberately does *not* do:** it does not lower handlers automatically, and
 it does not add a structured "warnings" channel to `setLevel`'s response. Automatically
 lowering a handler is a mutation with blast radius beyond the one logger the user named —
-it belongs behind an explicit opt-in (`setLevel` option, or a `logctl` flag), which is a
-later refinement. `doctor` (deferred) is where the full logger-vs-handler-vs-sink picture
-gets rendered. Slice 2's bar is "the user is told, in the agent's own diagnostics, when a
-change won't do what they expect" — not "the tool fixes it for them".
+it belongs behind an explicit opt-in. That opt-in is now its own spec,
+[`doc/specs/handler-floor-control.md`](handler-floor-control.md) (`--lower-handlers`,
+pulled forward per §17 as the first behaviour-modifying feature after M1 — the
+console-handler case is a primary developer workflow, not a support edge case). `doctor`
+(deferred) is where the full logger-vs-handler-vs-sink picture gets rendered. Slice 2's
+bar stays "the user is told, in the agent's own diagnostics, when a change won't do what
+they expect" — not "the tool fixes it for them".
 
 ## Module
 
