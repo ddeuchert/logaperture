@@ -26,3 +26,11 @@ replay_pid*
 # Maven build output
 target/
 dependency-reduced-pom.xml
+
+# --- dev/wildfly: deployed archives are local only ---
+dev/wildfly/deployments/*
+!dev/wildfly/deployments/.gitkeep
+
+# Python bytecode cache (dev/wildfly/wildflyctl.py is plain stdlib scripting)
+__pycache__/
+*.py[cod]

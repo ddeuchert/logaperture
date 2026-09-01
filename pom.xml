@@ -44,6 +44,7 @@
     <module>logaperture-agent</module>
     <module>logaperture-cli</module>
     <module>logaperture-it</module>
+    <module>logaperture-sample-war</module>
   </modules>
 
   <properties>

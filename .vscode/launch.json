@@ -30,6 +30,37 @@
       "name": "Attach to process",
       "request": "attach",
       "processId": "${command:PickJavaProcess}"
+    },
+    {
+      // Attach to the WildFly started by dev/wildfly (see
+      // doc/specs/wildfly-dev-environment.md). The container publishes JDWP on
+      // 8787. preLaunchTask brings the environment up first — `up -d` on an
+      // already-running project is a no-op, so this is safe to run repeatedly.
+      //
+      // Use this for breakpoints in code the agent runs AFTER boot (the
+      // verification sweep, adapter operations). For premain, use the config
+      // below instead.
+      "type": "java",
+      "name": "Attach to WildFly (8787)",
+      "request": "attach",
+      "hostName": "localhost",
+      "port": 8787,
+      "projectName": "logaperture-agent",
+      "preLaunchTask": "WildFly: up"
+    },
+    {
+      // The premain path. Run the "WildFly: up (debug-suspend)" task FIRST —
+      // the JVM boots suspended and waits for this attach before running a
+      // single line, so a breakpoint in LogApertureAgent.premain /
+      // AgentBootstrap.start / WildFlyContainerIntegration is guaranteed to be
+      // in place before premain fires. No preLaunchTask here: the plain "up"
+      // wait would never see a clean boot while the JVM is suspended.
+      "type": "java",
+      "name": "Attach to WildFly — premain (8787)",
+      "request": "attach",
+      "hostName": "localhost",
+      "port": 8787,
+      "projectName": "logaperture-agent"
     }
   ]
 }
