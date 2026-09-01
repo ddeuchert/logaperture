@@ -17,7 +17,9 @@ After this feature, the user will be able to:
   without opening `jconsole` or writing any JMX.
 - Do so **without naming a process** — when exactly one LogAperture-enabled JVM is
   running, `logctl` finds it; when several are, it lists them and asks for `--pid`.
-- List loggers and their levels: `logctl levels`, optionally filtered by a name prefix.
+- List loggers and their levels: `logctl levels`, optionally filtered by a name prefix
+  or a `*`/`?` glob — `logctl levels *infinispan*` when the log line shows only the
+  short category name.
 - Raise or lower a logger with a single dictatable command: `logctl debug com.acme.batch`,
   `logctl debug com.acme.batch for 30m`, `logctl warn com.acme.chatty sticky`,
   `logctl set com.acme.batch TRACE for 2h --reason INC-123`.
@@ -187,8 +189,12 @@ to stderr.
 
 ### `logctl levels [filter]`
 
-Calls `listLoggers(filter)`. `filter` is the same name-prefix/glob Feature 1 defined;
-omitted means "everything discovered so far." Default output is a table:
+Calls `listLoggers(filter)`. `filter` is the same name-prefix/glob Feature 1 defined:
+with no `*` or `?` it is a name prefix; with them it is a glob (`*` = any run of
+characters, `?` = exactly one, and `*` may lead), so `logctl levels '*infinispan*'`
+locates a logger from the abbreviated category a log line prints rather than its
+fully-qualified name. Omitted means "everything discovered so far." Default output is a
+table:
 
 ```
 LOGGER                              CONFIGURED  EFFECTIVE  OVERRIDE
@@ -487,6 +493,12 @@ shallow cross-process integration test.
 - Rendering: table columns align; `--json` output parses and carries the expected keys;
   `status` with no overrides, and `levels` with a non-matching filter, print their
   empty-state lines and exit 0.
+- Glob filter: a `levels` filter containing `*`/`?` is passed through to `listLoggers`
+  verbatim — the CLI does no name matching of its own. (The match itself is Feature 1's:
+  `NameFilter`'s unit tests cover mid-string `*x*` and a leading `*`; `level-control.md`'s
+  `LevelControlEndToEndIT` proves a leading-`*` glob survives the JMX boundary end-to-end.
+  The cross-process `CliEndToEndIT` below stubs the operations, so it asserts pass-through,
+  not matching.)
 - `reset` three-way outcome (stubbed transport): logger still listed &rarr; "→ level
   (baseline)"; unknown and never overridden &rarr; "nothing was overridden."; override
   cleared but logger drops out of `listLoggers` &rarr; the "not yet instantiated" line and,
@@ -530,7 +542,8 @@ From a plain shell, against a `java -jar` application started with
   PID argument, sets the level, and prints the local-time revert instant.
 - `logctl status` shows that override with its tier and countdown.
 - `logctl levels com.acme` lists the package's loggers with configured vs effective
-  levels.
+  levels; `logctl levels '*Worker'` finds the same logger from its suffix alone (the glob
+  match is Feature 1's `NameFilter`, reached unchanged through the CLI).
 - `logctl reset com.acme.batch.Worker` returns it to baseline; `logctl reset --all`
   is a safe no-op when nothing is active.
 - Two enabled JVMs make the un-`--pid`'d command exit 4 with both listed; zero make it

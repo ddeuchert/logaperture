@@ -60,6 +60,10 @@ final class HelpText {
         sb.append("A bare 'debug'/'set' with no tier defaults to 'for 4h' — a working\n");
         sb.append("session, gone by morning.\n");
         sb.append("\n");
+        sb.append("A [filter] for 'levels' is a logger-name prefix, or a glob using\n");
+        sb.append("* and ? — so 'logctl levels *infinispan*' finds a logger when the\n");
+        sb.append("log line shows only the short category name.\n");
+        sb.append("\n");
         sb.append("logctl finds the target JVM on its own when exactly one is running with\n");
         sb.append("the agent attached; otherwise pass --pid. It works only for a JVM you\n");
         sb.append("could already attach a debugger to — authorization is the OS's.\n");
