@@ -50,7 +50,8 @@ If you know of something that does, please say so. Finding out early is worth mo
 
 ## Documentation
 
-- [Design document](docs/design.md) — architecture, feature specification, security model, and roadmap.
+- [Design document](doc/logaperture-spec.md) — architecture, feature specification, security model, and roadmap.
+- [DEVELOPMENT.md](DEVELOPMENT.md) — building, testing, running `logctl`, and the WildFly dev environment.
 
 ## Contributing
 

@@ -303,6 +303,12 @@ shorthand.
     against a real WildFly.`
   - §12: one bullet noting the interactive complement to the container smoke
     test lives in `wildfly-dev-environment.md`.
+- **`DEVELOPMENT.md`** (repo-root developer guide, linked from `README.md`) — a
+  *WildFly integration* section carrying the developer-facing narrative: the
+  two-phase agent init model, the `-agentlib:jdwp`-before-`-javaagent` gotcha and
+  its symptom, the Docker-group session caveat, the `logctl` and `FixtureApp`
+  workflows, and a troubleshooting table. Points here and to
+  `dev/wildfly/README.md` for the exhaustive detail rather than duplicating it.
 
 ## `.gitignore`
 
