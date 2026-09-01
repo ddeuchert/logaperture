@@ -55,6 +55,10 @@ override target hits all three frameworks. The timer lets you watch a `for`
 override expire (and the verification sweep re-apply drift) without hitting an
 endpoint by hand.
 
+Fire the endpoints from `curl` (above), a browser (the `GET`s), or — with the
+**REST Client** extension — [`sample.http`](sample.http), which has a
+"Send Request" link above each one.
+
 ## Debugging the agent
 
 The container publishes JDWP on **8787**. Two VSCode launch configs:

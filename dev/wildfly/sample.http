@@ -1,0 +1,41 @@
+# Copyright 2026 David Deuchert
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# logaperture-sample-war endpoints — the dev/wildfly deploy target.
+#
+# Needs the "REST Client" extension (humao.rest-client): a "Send Request"
+# link appears above each request below. Bring the app up first:
+#
+#   python3 dev/wildfly/wildflyctl.py up
+#   python3 dev/wildfly/wildflyctl.py deploy
+#
+# The timer logs on a background thread — its output goes to the server,
+# not the response body. Watch it with `python3 dev/wildfly/wildflyctl.py tail`.
+
+@base = http://localhost:8080/logaperture-sample-war
+
+### One burst of log lines: TRACE..ERROR via java.util.logging, SLF4J and Log4j.
+GET {{base}}/log
+
+### Start the background timer — a burst every 2s.
+POST {{base}}/timer/start?periodMs=2000
+
+### Start it faster (min 500ms), replacing any timer already running.
+POST {{base}}/timer/start?periodMs=500&restart=true
+
+### Timer state: running?, period, tick count.
+GET {{base}}/timer/status
+
+### Stop the timer.
+POST {{base}}/timer/stop

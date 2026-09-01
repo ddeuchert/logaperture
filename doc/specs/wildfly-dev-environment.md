@@ -88,6 +88,7 @@ dev/wildfly/
   docker-compose.yml
   .env                     # WILDFLY_IMAGE=…  (kept in sync with pom wildfly.image)
   wildflyctl.py            # stdlib-only driver
+  sample.http              # REST Client requests for the sample app
   deployments/
     .gitkeep               # dir tracked; *.war contents ignored
   README.md
@@ -224,9 +225,23 @@ because there the ordering matters and should be explicit.
 
 ### `extensions.json`
 
-Add `ms-azuretools.vscode-docker` as a soft recommendation (decision #6) — it
-makes the container and its logs visible in the UI but nothing here depends on
-it. No `unwantedRecommendations` change.
+Add two soft recommendations; nothing here depends on either, and there is no
+`unwantedRecommendations` change:
+
+- `ms-azuretools.vscode-docker` (decision #6) — makes the container and its logs
+  visible in the UI.
+- `humao.rest-client` — gives a "Send Request" codelens for
+  `dev/wildfly/sample.http` (below).
+
+### `dev/wildfly/sample.http`
+
+A REST Client request file for the sample app's endpoints — `GET /log`,
+`POST /timer/start` (with a `periodMs` and a `restart=true` variant),
+`GET /timer/status`, `POST /timer/stop` — against a `@base` of
+`http://localhost:8080/logaperture-sample-war`. Header comment points at
+`wildflyctl up` / `deploy` and notes the timer's output lands in the server log,
+not the response. `curl` equivalents stay in the README for anyone without the
+extension.
 
 ## The sample application — `logaperture-sample-war`
 

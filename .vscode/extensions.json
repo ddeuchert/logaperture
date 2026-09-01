@@ -15,7 +15,10 @@
     // Docker — soft: makes the dev/wildfly container and its logs visible in
     // the UI. Nothing here depends on it; the WildFly tasks drive the CLI
     // directly (see doc/specs/wildfly-dev-environment.md).
-    "ms-azuretools.vscode-docker"
+    "ms-azuretools.vscode-docker",
+    // REST Client — soft: "Send Request" codelens for dev/wildfly/sample.http,
+    // to fire the sample app's endpoints from the editor.
+    "humao.rest-client"
   ],
   // Extensions that overlap or fight with the above for this project.
   "unwantedRecommendations": [
