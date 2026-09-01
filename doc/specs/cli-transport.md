@@ -80,6 +80,13 @@ code to the agent beyond a single marker system property (below).
   value — that's the difference `undo` would close).
 - **`logctl quiet` / `logctl loud` / `logctl new`** (§14.5). These drive rule packs and
   baseline modes that don't exist until Feature 3 / M4.
+- **A glob on the `set` / level-named forms** (`logctl error *.infinispan`), top-level
+  §18.7. `logctl levels` already takes a glob for *lookup*; applying a level to every
+  match is a fan-out layer over `setLevel` with its own decisions — one audit record per
+  matched logger, a capability check per match, `logctl reset <pattern>` symmetry, and
+  whether the match is a one-shot or a standing rule (the latter being Feature 3 / §7).
+  Until it lands, the workflow is `logctl levels *infinispan*` to find the category, then
+  `set` on the resolved name.
 - **Shell completion over live logger names** (§14.5). High-value, but it's a separate
   deliverable: completion scripts for bash/zsh/fish plus a fast name-only query path.
   `logctl levels --json` is the data source it will consume.

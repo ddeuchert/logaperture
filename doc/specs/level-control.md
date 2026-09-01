@@ -55,8 +55,11 @@ captured at baseline), effective level (post-override, following hierarchy), whe
 override is active, and if so its source and `reason`.
 
 `filter` is a name prefix or glob; `null`/empty returns everything discovered so far.
-Only **Live** and **Known** states apply in this slice (§8.5) — inferred/class-scanning
-discovery is a later enhancement (§8.6), out of scope here.
+The glob accepts `*` anywhere, **including leading** (`*.infinispan`, `*infinispan*`), so
+a logger can be found from the abbreviated category a log line prints rather than its
+fully-qualified name (top-level §18.7). Only **Live** and **Known** states apply in this
+slice (§8.5) — inferred/class-scanning discovery is a later enhancement (§8.6), out of
+scope here.
 
 ### `setLevel(name, level, options)`
 

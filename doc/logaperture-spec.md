@@ -1110,6 +1110,13 @@ On ordering: **IntelliJ IDEA is missing from the original list and probably has 
 - **A container and Kubernetes story.** Ephemeral filesystems break the §6.3 file-based state store, and logs go to stdout rather than to a disk that can fill — the volume concern survives but its symptom becomes cost rather than outage.
 - **Upstream contribution.** As noted in §3.2, if storm collapse belongs in Log4j 2 or Logback core, contributing it there reaches far more users than this project will.
 
+### 18.7 Pattern-based level targeting
+
+The rendered log line often shows only an abbreviated category — WildFly's default console pattern renders `%c{1}`, so a noisy line reads `infinispan`, not `org.jboss.as.clustering.infinispan`. Quieting that noise today means manually resolving the short name to its fully-qualified logger (cross-referencing message-id tables, or turning on a fuller pattern) before `setLevel` will accept it. Two complementary reductions:
+
+- **Glob on lookup** (`logctl levels *infinispan*`). Already implied by Feature 1's `listLoggers(filter)` contract ("a name prefix or glob") — this item is the commitment that the glob accepts `*` anywhere, including leading, so an abbreviated category can be found from what the log line actually printed. Low cost, no new operation; a near-term clarification to [`doc/specs/level-control.md`](specs/level-control.md) and [`doc/specs/cli-transport.md`](specs/cli-transport.md) rather than post-1.0 work.
+- **Glob on apply** (`logctl error *.infinispan`). A fan-out layer that resolves the pattern against known loggers and applies the level to each match. New surface, and it carries real decisions: one audit record per matched logger, a capability check per match, `logctl reset <pattern>` symmetry, and — the open question, deferred until this is specced — whether the match is a **one-shot** over loggers known at call time or a **standing rule** that also catches loggers registered afterward. The standing-rule form is the squelch engine (§7 / Feature 3) reached by a shorter path, so it should be designed with that model in view rather than bolted onto `setLevel`. Layer 2.
+
 ---
 
 ## 19. First deliverables
