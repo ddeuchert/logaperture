@@ -312,6 +312,20 @@ class LevelControlServiceTest {
         assertFalse(info.get().overrideActive());
     }
 
+    @Test
+    void listLoggers_honoursAGlobFilter() {
+        // A caller who only saw "infinispan" in a log line finds the real
+        // category with a leading-* glob, without knowing its prefix.
+        adapter.addKnownLogger("org.jboss.as.clustering.infinispan");
+        adapter.addKnownLogger("com.acme.Worker");
+        adapter.addKnownLogger("com.other.Thing");
+
+        List<LoggerInfo> matched = service.listLoggers("*infinispan");
+
+        assertEquals(1, matched.size());
+        assertEquals("org.jboss.as.clustering.infinispan", matched.get(0).name());
+    }
+
     // --- multi-context: activeOverrides / adoptOverride -------------------------------------------
 
     @Test

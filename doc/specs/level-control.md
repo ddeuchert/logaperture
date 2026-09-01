@@ -55,11 +55,13 @@ captured at baseline), effective level (post-override, following hierarchy), whe
 override is active, and if so its source and `reason`.
 
 `filter` is a name prefix or glob; `null`/empty returns everything discovered so far.
-The glob accepts `*` anywhere, **including leading** (`*.infinispan`, `*infinispan*`), so
-a logger can be found from the abbreviated category a log line prints rather than its
-fully-qualified name (top-level §18.7). Only **Live** and **Known** states apply in this
-slice (§8.5) — inferred/class-scanning discovery is a later enhancement (§8.6), out of
-scope here.
+A filter with no `*` or `?` is a name prefix. Otherwise it is a glob: `*` matches any run
+of characters (**including leading**, `*.infinispan` / `*infinispan*`, so a logger can be
+found from the abbreviated category a log line prints rather than its fully-qualified name
+— top-level §18.7), `?` matches exactly one character, and any regex metacharacter in the
+filter (`.` in particular) is matched literally. Only **Live** and **Known** states apply
+in this slice (§8.5) — inferred/class-scanning discovery is a later enhancement (§8.6),
+out of scope here.
 
 ### `setLevel(name, level, options)`
 
@@ -219,6 +221,11 @@ Minimum coverage before this slice is done:
   previous/new values.
 - Chaos case: an exception thrown mid-operation leaves the JVM's logging in a defined
   state (either fully applied or fully not — no partial override).
+- Filter matching: empty/`null` returns everything; a no-wildcard filter is a prefix; a
+  `*`/`?` glob matches, with `*` allowed to lead (`*infinispan`); `.` and other regex
+  metacharacters in the filter are literal, not wildcards. Unit-tested on the matcher and
+  at the `listLoggers` service seam; a leading-`*` filter is also driven across the JMX
+  boundary end-to-end in `LevelControlEndToEndIT`.
 
 ## Exit criterion
 

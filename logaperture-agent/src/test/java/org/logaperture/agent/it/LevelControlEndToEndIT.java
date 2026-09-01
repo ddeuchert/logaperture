@@ -94,6 +94,13 @@ class LevelControlEndToEndIT {
         assertEquals("INFO", before.get(0).getEffectiveLevel());
         assertFalse(before.get(0).isOverrideActive());
 
+        // A leading-* glob reaches the real NameFilter across the JMX
+        // boundary and every core hop — finds the logger from its suffix
+        // alone (doc/specs/level-control.md, listLoggers filter).
+        List<LoggerInfoData> byGlob = proxy.listLoggers("*.fixture.Worker");
+        assertTrue(byGlob.stream().anyMatch(li -> FIXTURE_LOGGER.equals(li.getName())),
+                "leading-* glob should have matched " + FIXTURE_LOGGER);
+
         LevelOverrideData override = proxy.setLevel(FIXTURE_LOGGER, "DEBUG", false, "e2e-test", "SESSION", 0);
         assertEquals("DEBUG", override.getLevel());
         assertEquals(FIXTURE_LOGGER, override.getLoggerName());

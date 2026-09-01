@@ -54,4 +54,22 @@ class NameFilterTest {
         assertTrue(NameFilter.matches("com.*", "com.acme.Worker"));
         assertFalse(NameFilter.matches("com.*", "comXacme"));
     }
+
+    @Test
+    void leadingStarMatchesFromASuffix() {
+        // The abbreviated-category case: a log line printed "infinispan", the
+        // real logger is org.jboss.as.clustering.infinispan.
+        String logger = "org.jboss.as.clustering.infinispan";
+        assertTrue(NameFilter.matches("*.infinispan", logger));
+        assertTrue(NameFilter.matches("*infinispan*", logger));
+        assertTrue(NameFilter.matches("*infinispan", logger));
+        // Anchored tail: "*.infinispan" must not match a longer name.
+        assertFalse(NameFilter.matches("*.infinispan", "org.infinispan.remoting"));
+    }
+
+    @Test
+    void bareStarMatchesEverything() {
+        assertTrue(NameFilter.matches("*", "com.acme.Worker"));
+        assertTrue(NameFilter.matches("*", "ROOT"));
+    }
 }
