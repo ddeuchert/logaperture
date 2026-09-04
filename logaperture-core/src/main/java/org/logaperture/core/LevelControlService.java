@@ -15,11 +15,13 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetLevelOptions;
+import org.logaperture.api.SetLevelResult;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
 
@@ -98,13 +100,16 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     @Override
-    public LevelOverride setLevel(String loggerName, Level level, SetLevelOptions options) {
+    public SetLevelResult setLevel(String loggerName, Level level, SetLevelOptions options) {
         Objects.requireNonNull(loggerName, "loggerName");
         Objects.requireNonNull(level, "level");
         SetLevelOptions opts = options == null ? SetLevelOptions.defaults() : options;
 
         List<String> targets = targetsFor(loggerName, opts);
         checkSetLevelPermitted(targets, level, opts);
+
+        baselines.captureIfAbsent(loggerName, adapter);
+        Level previousEffective = adapter.effectiveLevel(loggerName);
 
         LevelOverride primary = null;
         for (String target : targets) {
@@ -113,7 +118,15 @@ public final class LevelControlService implements LevelControlOperations {
                 primary = applied;
             }
         }
-        return primary;
+
+        // Actionable warning (doc/specs/handler-floor-control.md "Warning on
+        // level commands"): only for a genuine raise on the named logger --
+        // matches the JBoss LogManager adapter's own former guard, now done
+        // once here so every adapter gets it via the SPI default.
+        List<HandlerFloor> blockingHandlers = level.isMoreVerboseThan(previousEffective)
+                ? adapter.handlerFloorsBelow(loggerName, level)
+                : List.of();
+        return new SetLevelResult(primary, blockingHandlers);
     }
 
     /**

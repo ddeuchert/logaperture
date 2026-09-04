@@ -22,6 +22,9 @@ import org.logaperture.core.AuditLog;
 import org.logaperture.core.BaselineRegistry;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.FileStateStore;
+import org.logaperture.core.HandlerBaselineRegistry;
+import org.logaperture.core.HandlerLevelControlService;
+import org.logaperture.core.HandlerOverrideRegistry;
 import org.logaperture.core.LevelControlService;
 import org.logaperture.core.OverrideRegistry;
 import org.logaperture.core.SweepPolicy;
@@ -112,12 +115,18 @@ public final class NoneContainer implements AutoCloseable {
         LevelControlService service = new LevelControlService(
                 adapter, baselines, overrides, policy, auditLog, stateStore, principal(), "jmx");
 
+        HandlerBaselineRegistry handlerBaselines = new HandlerBaselineRegistry();
+        HandlerOverrideRegistry handlerOverrides = new HandlerOverrideRegistry();
+        HandlerLevelControlService handlerService = new HandlerLevelControlService(
+                adapter, handlerBaselines, handlerOverrides, policy, auditLog, stateStore, principal(), "jmx");
+
         try {
             // Per-entry failures are already isolated inside
             // resumeFromStateStore; this outer guard is defense in depth
             // against a StateStore whose loadAll() itself throws -- fail-open
             // (doc/logaperture-spec.md §9).
             service.resumeFromStateStore(Instant.now());
+            handlerService.resumeFromStateStore(Instant.now());
         } catch (RuntimeException e) {
             Diagnostics.warn("LogAperture: failed to resume persisted overrides, continuing without them", e);
         }
@@ -125,15 +134,18 @@ public final class NoneContainer implements AutoCloseable {
         // doc/specs/persistence.md "Reconfiguration re-application": Logback's
         // own reset event (scan="true", JMXConfigurator, an explicit
         // context.reset()) is independent of which container hosts it.
+        // doc/specs/handler-floor-control.md "Reconfiguration re-application"
+        // extends the same hook to handler overrides.
         Runnable reapplyOnReset = () -> {
             for (String name : adapter.knownLoggerNames()) {
                 baselines.captureIfAbsent(name, adapter);
             }
             service.reapplyActiveOverrides(adapter);
+            handlerService.reapplyActiveOverrides(adapter);
         };
         adapter.onReset(reapplyOnReset);
 
-        aggregate.register(new ContextControl(handle, service));
+        aggregate.register(new ContextControl(handle, service, handlerService));
     }
 
     /**

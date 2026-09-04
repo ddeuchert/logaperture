@@ -15,6 +15,8 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.HandlerLevelOverride;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.core.spi.StateStore;
 
@@ -30,6 +32,7 @@ import java.util.Map;
 final class InMemoryStateStore implements StateStore {
 
     private final Map<String, LevelOverride> saved = new LinkedHashMap<>();
+    private final Map<HandlerRef, HandlerLevelOverride> savedHandlers = new LinkedHashMap<>();
     private RuntimeException throwOnSave;
 
     /** Makes every subsequent {@link #save} call throw, to exercise chaos-case behavior. */
@@ -56,7 +59,26 @@ final class InMemoryStateStore implements StateStore {
     }
 
     @Override
+    public List<HandlerLevelOverride> loadAllHandlers() {
+        return List.copyOf(savedHandlers.values());
+    }
+
+    @Override
+    public void saveHandler(HandlerLevelOverride override) {
+        if (throwOnSave != null) {
+            throw throwOnSave;
+        }
+        savedHandlers.put(override.handlerRef(), override);
+    }
+
+    @Override
+    public void removeHandler(HandlerRef ref) {
+        savedHandlers.remove(ref);
+    }
+
+    @Override
     public void clear() {
         saved.clear();
+        savedHandlers.clear();
     }
 }

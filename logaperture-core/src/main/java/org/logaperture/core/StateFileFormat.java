@@ -15,6 +15,8 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.HandlerLevelOverride;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.PersistenceTier;
@@ -34,62 +36,102 @@ import java.util.Map;
  * project's first third-party {@code core} dependency for a problem this
  * constrained solves directly. Output is valid YAML -- the constraint is on
  * the reader's generality, not the writer's correctness.
+ *
+ * <p>Schema version 2 (doc/specs/handler-floor-control.md "Data model")
+ * adds a {@code handlerOverrides:} list alongside {@code overrides:}, same
+ * per-record shape convention. A version-1 file (no {@code handlerOverrides:}
+ * section at all) still parses: the section is simply absent, exactly like
+ * an empty list.
  */
 final class StateFileFormat {
 
-    private static final int SCHEMA_VERSION = 1;
+    private static final int SCHEMA_VERSION = 2;
 
     private StateFileFormat() {
     }
 
-    static String write(List<LevelOverride> overrides) {
+    static String write(List<LevelOverride> overrides, List<HandlerLevelOverride> handlerOverrides) {
         StringBuilder out = new StringBuilder();
         out.append("schemaVersion: ").append(SCHEMA_VERSION).append('\n');
+
         if (overrides.isEmpty()) {
             out.append("overrides: []\n");
-            return out.toString();
+        } else {
+            out.append("overrides:\n");
+            for (LevelOverride override : overrides) {
+                out.append("  - loggerName: ").append(quote(override.loggerName())).append('\n');
+                out.append("    level: ").append(override.level().name()).append('\n');
+                out.append("    includeChildren: ").append(override.includeChildren()).append('\n');
+                out.append("    reason: ").append(override.reason() == null ? "null" : quote(override.reason())).append('\n');
+                out.append("    appliedAt: ").append(override.appliedAt()).append('\n');
+                out.append("    source: ").append(quote(override.source())).append('\n');
+                out.append("    tier: ").append(override.tier().name()).append('\n');
+                out.append("    expiresAt: ").append(override.expiresAt() == null ? "null" : override.expiresAt()).append('\n');
+            }
         }
-        out.append("overrides:\n");
-        for (LevelOverride override : overrides) {
-            out.append("  - loggerName: ").append(quote(override.loggerName())).append('\n');
-            out.append("    level: ").append(override.level().name()).append('\n');
-            out.append("    includeChildren: ").append(override.includeChildren()).append('\n');
-            out.append("    reason: ").append(override.reason() == null ? "null" : quote(override.reason())).append('\n');
-            out.append("    appliedAt: ").append(override.appliedAt()).append('\n');
-            out.append("    source: ").append(quote(override.source())).append('\n');
-            out.append("    tier: ").append(override.tier().name()).append('\n');
-            out.append("    expiresAt: ").append(override.expiresAt() == null ? "null" : override.expiresAt()).append('\n');
+
+        if (handlerOverrides.isEmpty()) {
+            out.append("handlerOverrides: []\n");
+        } else {
+            out.append("handlerOverrides:\n");
+            for (HandlerLevelOverride override : handlerOverrides) {
+                out.append("  - handlerRef: ").append(quote(override.handlerRef().value())).append('\n');
+                out.append("    level: ").append(override.level().name()).append('\n');
+                out.append("    reason: ").append(override.reason() == null ? "null" : quote(override.reason())).append('\n');
+                out.append("    appliedAt: ").append(override.appliedAt()).append('\n');
+                out.append("    source: ").append(quote(override.source())).append('\n');
+                out.append("    tier: ").append(override.tier().name()).append('\n');
+                out.append("    expiresAt: ").append(override.expiresAt() == null ? "null" : override.expiresAt()).append('\n');
+            }
         }
         return out.toString();
+    }
+
+    /** Everything {@link #parse} recovered from one file: both lists. */
+    record Parsed(List<LevelOverride> overrides, List<HandlerLevelOverride> handlerOverrides) {
     }
 
     /**
      * Tolerant by design, per §6.3's "human-readable and hand-editable" bar
      * -- an unrecognized line is skipped rather than rejected. A missing or
-     * non-{@value #SCHEMA_VERSION} {@code schemaVersion} is the one thing
-     * treated as corrupt, since every field below is read positionally
-     * within that assumption.
+     * unsupported {@code schemaVersion} is the one thing treated as
+     * corrupt, since every field below is read positionally within that
+     * assumption. A version-1 file (no {@code handlerOverrides:} section)
+     * parses fine, with an empty handler-override list -- this reader
+     * doesn't require the section to be present.
      *
      * @throws IllegalStateException if {@code schemaVersion} is missing or unsupported
      */
-    static List<LevelOverride> parse(String content) {
+    static Parsed parse(String content) {
         int schemaVersion = extractSchemaVersion(content);
-        if (schemaVersion != SCHEMA_VERSION) {
+        if (schemaVersion != 1 && schemaVersion != SCHEMA_VERSION) {
             throw new IllegalStateException("unsupported or missing state file schemaVersion: " + schemaVersion);
         }
 
-        List<LevelOverride> result = new ArrayList<>();
+        List<LevelOverride> overrides = new ArrayList<>();
+        List<HandlerLevelOverride> handlerOverrides = new ArrayList<>();
         Map<String, String> current = null;
+        boolean inHandlerSection = false;
 
         for (String rawLine : content.split("\n", -1)) {
             String line = rawLine.strip();
-            if (line.isEmpty() || line.startsWith("schemaVersion:") || line.startsWith("overrides:")) {
+            if (line.isEmpty() || line.startsWith("schemaVersion:")) {
+                continue;
+            }
+            if (line.startsWith("overrides:")) {
+                flush(current, inHandlerSection, overrides, handlerOverrides);
+                current = null;
+                inHandlerSection = false;
                 continue; // "overrides:" header, or "overrides: []" for an empty list
             }
+            if (line.startsWith("handlerOverrides:")) {
+                flush(current, inHandlerSection, overrides, handlerOverrides);
+                current = null;
+                inHandlerSection = true;
+                continue;
+            }
             if (line.startsWith("- ")) {
-                if (current != null) {
-                    result.add(toOverride(current));
-                }
+                flush(current, inHandlerSection, overrides, handlerOverrides);
                 current = new LinkedHashMap<>();
                 line = line.substring(2);
             }
@@ -102,10 +144,20 @@ final class StateFileFormat {
             }
             current.put(line.substring(0, colon).trim(), line.substring(colon + 1).trim());
         }
-        if (current != null) {
-            result.add(toOverride(current));
+        flush(current, inHandlerSection, overrides, handlerOverrides);
+        return new Parsed(overrides, handlerOverrides);
+    }
+
+    private static void flush(Map<String, String> current, boolean inHandlerSection,
+            List<LevelOverride> overrides, List<HandlerLevelOverride> handlerOverrides) {
+        if (current == null) {
+            return;
         }
-        return result;
+        if (inHandlerSection) {
+            handlerOverrides.add(toHandlerOverride(current));
+        } else {
+            overrides.add(toOverride(current));
+        }
     }
 
     private static int extractSchemaVersion(String content) {
@@ -127,6 +179,17 @@ final class StateFileFormat {
                 unquote(fields.get("loggerName")),
                 Level.valueOf(fields.get("level")),
                 Boolean.parseBoolean(fields.get("includeChildren")),
+                nullable(fields.get("reason")) == null ? null : unquote(fields.get("reason")),
+                Instant.parse(fields.get("appliedAt")),
+                unquote(fields.get("source")),
+                PersistenceTier.valueOf(fields.get("tier")),
+                nullable(fields.get("expiresAt")) == null ? null : Instant.parse(fields.get("expiresAt")));
+    }
+
+    private static HandlerLevelOverride toHandlerOverride(Map<String, String> fields) {
+        return new HandlerLevelOverride(
+                new HandlerRef(unquote(fields.get("handlerRef"))),
+                Level.valueOf(fields.get("level")),
                 nullable(fields.get("reason")) == null ? null : unquote(fields.get("reason")),
                 Instant.parse(fields.get("appliedAt")),
                 unquote(fields.get("source")),

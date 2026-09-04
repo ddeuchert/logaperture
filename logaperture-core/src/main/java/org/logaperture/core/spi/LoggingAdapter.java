@@ -15,6 +15,8 @@
  */
 package org.logaperture.core.spi;
 
+import org.logaperture.api.HandlerFloor;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 
 import java.util.List;
@@ -24,13 +26,15 @@ import java.util.Optional;
  * The one extension point {@code core} defines into a real logging
  * framework — see doc/logaperture-spec.md §4.6. Everything in {@code
  * logaperture-core} is written and tested against this interface alone;
- * {@code logaperture-adapter-logback} is the only module allowed to
- * implement it with real framework calls.
+ * {@code logaperture-adapter-logback} and {@code logaperture-adapter-jul}
+ * are the modules allowed to implement it with real framework calls.
  *
- * <p>Deliberately four methods, no {@code includeChildren} parameter here:
- * fan-out to descendants is {@code core}'s job (pure string logic over
+ * <p>Deliberately four logger methods, no {@code includeChildren} parameter
+ * here: fan-out to descendants is {@code core}'s job (pure string logic over
  * already-known names via {@code LoggerHierarchy}), not the adapter's —
- * keeps the adapter a dumb per-logger getter/setter.
+ * keeps the adapter a dumb per-logger getter/setter. The handler methods
+ * below (doc/specs/handler-floor-control.md "Adapter SPI") follow the same
+ * discipline: no tier/reason/lifetime knowledge here, that's {@code core}'s.
  */
 public interface LoggingAdapter {
 
@@ -87,5 +91,45 @@ public interface LoggingAdapter {
      */
     default void clearResetListener() {
         // no-op by default
+    }
+
+    /**
+     * The handlers on {@code loggerName}'s path to the root whose own level
+     * is stricter than {@code target} — doc/specs/handler-floor-control.md
+     * "Adapter SPI". Default empty, for a framework whose handlers have no
+     * level of their own (Logback, {@code none}). A {@code null} {@code
+     * target} ("back to inherited") is not a raise, so it yields an empty
+     * list.
+     */
+    default List<HandlerFloor> handlerFloorsBelow(String loggerName, Level target) {
+        return List.of();
+    }
+
+    /**
+     * The identified handler's current level, or empty if this adapter's
+     * handlers have no level of their own, or {@code ref} no longer resolves
+     * to a live handler. Default empty.
+     */
+    default Optional<Level> handlerLevel(HandlerRef ref) {
+        return Optional.empty();
+    }
+
+    /**
+     * Sets the identified handler's level, returning its prior level —
+     * empty if it had none, or if this adapter's handlers have no level of
+     * their own (in which case nothing is changed). Default no-op.
+     *
+     * @throws UnknownHandlerException if {@code ref} does not resolve to a
+     *                                 live handler in any managed context,
+     *                                 for an adapter whose handlers do have
+     *                                 a level
+     */
+    default Optional<Level> setHandlerLevel(HandlerRef ref, Level level) {
+        return Optional.empty();
+    }
+
+    /** Every handler currently resolvable. Default empty. */
+    default List<HandlerRef> knownHandlers() {
+        return List.of();
     }
 }

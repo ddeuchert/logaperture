@@ -27,6 +27,9 @@ import org.logaperture.core.AggregateLevelControl.ContextControl;
 import org.logaperture.core.BaselineRegistry;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.FileStateStore;
+import org.logaperture.core.HandlerBaselineRegistry;
+import org.logaperture.core.HandlerLevelControlService;
+import org.logaperture.core.HandlerOverrideRegistry;
 import org.logaperture.core.InMemoryAuditLog;
 import org.logaperture.core.LevelControlService;
 import org.logaperture.core.OverrideRegistry;
@@ -86,10 +89,14 @@ class JulLevelControlTest {
                 adapter, baselines, new OverrideRegistry(), CapabilityPolicy.allowAll(),
                 auditLog, store, "alice", "jmx");
         service.resumeFromStateStore(Instant.now());
+        HandlerLevelControlService handlerService = new HandlerLevelControlService(
+                adapter, new HandlerBaselineRegistry(), new HandlerOverrideRegistry(), CapabilityPolicy.allowAll(),
+                auditLog, store, "alice", "jmx");
+        handlerService.resumeFromStateStore(Instant.now());
 
         AggregateLevelControl aggregate = new AggregateLevelControl();
         aggregate.register(new ContextControl(
-                ContextHandle.of(ContextHandle.SYSTEM, "system", adapter), service));
+                ContextHandle.of(ContextHandle.SYSTEM, "system", adapter), service, handlerService));
         return aggregate;
     }
 

@@ -15,9 +15,12 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.HandlerFloor;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.core.spi.LoggingAdapter;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -41,6 +44,11 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     private String throwOnApplyFor;
     private String runOnEffectiveLevelFor;
     private Runnable runOnEffectiveLevel;
+
+    // --- handler support (doc/specs/handler-floor-control.md) --------------------------------------
+    private final Map<HandlerRef, Level> handlerLevels = new LinkedHashMap<>();
+    private final Map<String, List<HandlerRef>> handlersOnPath = new LinkedHashMap<>();
+    private HandlerRef throwOnSetHandlerLevelFor;
 
     FakeLoggingAdapter(Level rootLevel) {
         knownNames.add("ROOT");
@@ -117,5 +125,60 @@ final class FakeLoggingAdapter implements LoggingAdapter {
         } else {
             explicitLevels.put(loggerName, level);
         }
+    }
+
+    // --- handler support (doc/specs/handler-floor-control.md) --------------------------------------
+
+    /** Registers {@code ref} at {@code level}, on the path of every logger listed. */
+    void addHandler(HandlerRef ref, Level level, String... loggerNamesOnItsPath) {
+        handlerLevels.put(ref, level);
+        for (String loggerName : loggerNamesOnItsPath) {
+            handlersOnPath.computeIfAbsent(loggerName, n -> new ArrayList<>()).add(ref);
+        }
+    }
+
+    /** Makes the next {@link #setHandlerLevel} call for this ref throw, to exercise chaos-case behavior. */
+    void throwOnSetHandlerLevel(HandlerRef ref) {
+        this.throwOnSetHandlerLevelFor = ref;
+    }
+
+    @Override
+    public List<HandlerFloor> handlerFloorsBelow(String loggerName, Level target) {
+        if (target == null) {
+            return List.of();
+        }
+        List<HandlerFloor> floors = new ArrayList<>();
+        for (HandlerRef ref : handlersOnPath.getOrDefault(loggerName, List.of())) {
+            Level current = handlerLevels.get(ref);
+            if (current != null && current.compareTo(target) > 0) {
+                floors.add(new HandlerFloor(ref, current));
+            }
+        }
+        return List.copyOf(floors);
+    }
+
+    @Override
+    public Optional<Level> handlerLevel(HandlerRef ref) {
+        return Optional.ofNullable(handlerLevels.get(ref));
+    }
+
+    @Override
+    public Optional<Level> setHandlerLevel(HandlerRef ref, Level level) {
+        if (ref.equals(throwOnSetHandlerLevelFor)) {
+            throwOnSetHandlerLevelFor = null; // one-shot
+            throw new RuntimeException("simulated adapter failure for " + ref);
+        }
+        Level previous = handlerLevels.get(ref);
+        if (level == null) {
+            handlerLevels.remove(ref);
+        } else {
+            handlerLevels.put(ref, level);
+        }
+        return Optional.ofNullable(previous);
+    }
+
+    @Override
+    public List<HandlerRef> knownHandlers() {
+        return List.copyOf(handlerLevels.keySet());
     }
 }

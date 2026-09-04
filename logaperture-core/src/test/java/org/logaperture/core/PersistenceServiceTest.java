@@ -271,7 +271,7 @@ class PersistenceServiceTest {
         stateStore.throwOnSave(new RuntimeException("disk full"));
 
         LevelOverride override = service.setLevel(
-                "com.acme.Worker", Level.DEBUG, SetLevelOptions.sticky()); // must not throw
+                "com.acme.Worker", Level.DEBUG, SetLevelOptions.sticky()).override(); // must not throw
 
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme.Worker"));
         assertTrue(overrides.get("com.acme.Worker").isPresent());

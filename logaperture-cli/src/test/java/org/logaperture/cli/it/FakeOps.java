@@ -20,6 +20,7 @@ import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetLevelOptions;
+import org.logaperture.api.SetLevelResult;
 import org.logaperture.core.LevelControlOperations;
 
 import java.time.Instant;
@@ -67,13 +68,14 @@ final class FakeOps implements LevelControlOperations {
     }
 
     @Override
-    public synchronized LevelOverride setLevel(String loggerName, Level level, SetLevelOptions options) {
+    public synchronized SetLevelResult setLevel(String loggerName, Level level, SetLevelOptions options) {
         Instant now = Instant.now();
         Instant expiresAt = options.tier() == PersistenceTier.FOR ? now.plus(options.expiresIn()) : null;
         state.put(loggerName, new LoggerInfo(
                 loggerName, BASELINE, level, true, "jmx", options.reason(), options.tier(), expiresAt));
-        return new LevelOverride(
+        LevelOverride override = new LevelOverride(
                 loggerName, level, options.includeChildren(), options.reason(), now, "jmx", options.tier(), expiresAt);
+        return new SetLevelResult(override, List.of());
     }
 
     @Override

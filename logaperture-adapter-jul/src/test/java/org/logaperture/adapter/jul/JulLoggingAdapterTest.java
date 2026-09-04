@@ -18,22 +18,20 @@ package org.logaperture.adapter.jul;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.logaperture.api.HandlerFloor;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
-import org.logaperture.bridge.DiagnosticLevel;
-import org.logaperture.bridge.Diagnostics;
 
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.ConsoleHandler;
-import java.util.logging.Handler;
 import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -68,7 +66,6 @@ class JulLoggingAdapterTest {
     @AfterEach
     void tearDown() {
         Logger.getLogger("").setLevel(originalRootLevel);
-        Diagnostics.resetToDefault();
         // each handler-floor test removes its own ConsoleHandler in a finally block
     }
 
@@ -204,35 +201,64 @@ class JulLoggingAdapterTest {
         }
     }
 
+    // handler-floor *warning* rendering moved to core (doc/specs/
+    // handler-floor-control.md "Warning on level commands") -- this
+    // adapter's job is only to report handlerFloorsBelow() correctly
+    // (covered above) and to let setHandlerLevel/handlerLevel act on a
+    // handler, covered below.
+
     @Test
-    void applyLevel_raiseBelowAHandlerFloor_emitsExactlyOneDiagnostic() {
+    void setHandlerLevel_lowersTheHandlerAndReturnsItsPriorLevel() {
         ConsoleHandler console = testConsoleAtInfo();
         Logger.getLogger("").addHandler(console);
-        ByteArrayOutputStream captured = new ByteArrayOutputStream();
-        Diagnostics.configure(new PrintStream(captured, true, StandardCharsets.UTF_8), DiagnosticLevel.DEBUG);
         try {
-            adapter.applyLevel(name("floor.Raised"), Level.DEBUG);
+            // The JVM's default root config may already carry its own
+            // ConsoleHandler -- find the ref for the one this test added,
+            // rather than assuming ours is the only floor (same reasoning
+            // as handlerFloor_belowATarget_isReported's before/after delta).
+            HandlerRef ref = adapter.handlerFloorsBelow(name("handler.Target"), Level.TRACE).stream()
+                    .map(HandlerFloor::handlerRef)
+                    .filter(candidate -> candidate.equals(HandlerRef.anonymous(console)))
+                    .findFirst()
+                    .orElseThrow();
 
-            String output = captured.toString(StandardCharsets.UTF_8);
-            assertEquals(1, output.lines().filter(l -> l.contains("level floor")).count());
-            assertTrue(output.contains("ConsoleHandler"));
-            assertTrue(output.contains("set to DEBUG"));
+            Optional<Level> previous = adapter.setHandlerLevel(ref, Level.TRACE);
+
+            assertEquals(Optional.of(Level.INFO), previous);
+            assertEquals(Optional.of(Level.TRACE), adapter.handlerLevel(ref));
+            assertSame(java.util.logging.Level.FINEST, console.getLevel());
         } finally {
             Logger.getLogger("").removeHandler(console);
         }
     }
 
     @Test
-    void applyLevel_notARaise_emitsNoHandlerFloorDiagnostic() {
+    void setHandlerLevel_unknownRef_throws() {
+        assertThrows(org.logaperture.core.spi.UnknownHandlerException.class,
+                () -> adapter.setHandlerLevel(new HandlerRef("NeverSeen"), Level.TRACE));
+    }
+
+    @Test
+    void knownHandlers_includesAHandlerAttachedToAKnownLogger() {
+        ConsoleHandler console = testConsoleAtInfo();
+        Logger.getLogger(name("handler.Known")).addHandler(console);
+        try {
+            List<HandlerRef> refs = adapter.knownHandlers();
+            assertTrue(refs.stream().anyMatch(ref -> ref.value().startsWith("ConsoleHandler@")));
+        } finally {
+            Logger.getLogger(name("handler.Known")).removeHandler(console);
+        }
+    }
+
+    @Test
+    void handlerRef_fallsBackToAnIdentityToken_noJBossLogManagerOnThisClasspath() {
         ConsoleHandler console = testConsoleAtInfo();
         Logger.getLogger("").addHandler(console);
-        Logger.getLogger("").setLevel(java.util.logging.Level.INFO);
-        ByteArrayOutputStream captured = new ByteArrayOutputStream();
-        Diagnostics.configure(new PrintStream(captured, true, StandardCharsets.UTF_8), DiagnosticLevel.DEBUG);
         try {
-            adapter.applyLevel(name("floor.Lowered"), Level.WARN); // INFO -> WARN is not more verbose
+            HandlerRef ref = adapter.handlerFloorsBelow(name("handler.Anon"), Level.TRACE).get(0).handlerRef();
 
-            assertFalse(captured.toString(StandardCharsets.UTF_8).contains("level floor"));
+            assertTrue(ref.value().startsWith("ConsoleHandler@"),
+                    "no org.jboss.logmanager on this test's classpath -- always the identity fallback");
         } finally {
             Logger.getLogger("").removeHandler(console);
         }
@@ -261,6 +287,6 @@ class JulLoggingAdapterTest {
     }
 
     private static long countConsoleFloors(List<HandlerFloor> floors) {
-        return floors.stream().filter(f -> f.handlerName().equals("ConsoleHandler")).count();
+        return floors.stream().filter(f -> f.handlerRef().value().startsWith("ConsoleHandler@")).count();
     }
 }

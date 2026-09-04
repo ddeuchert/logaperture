@@ -17,8 +17,10 @@ package org.logaperture.core;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LoggerInfo;
+import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.core.AggregateLevelControl.ContextControl;
 import org.logaperture.core.spi.ContextHandle;
@@ -54,6 +56,7 @@ class AggregateLevelControlTest {
     private final class Ctx {
         final FakeLoggingAdapter adapter = new FakeLoggingAdapter(Level.INFO);
         final LevelControlService service;
+        final HandlerLevelControlService handlerService;
         final ContextControl control;
 
         Ctx(String key) {
@@ -63,7 +66,9 @@ class AggregateLevelControlTest {
         Ctx(String key, CapabilityPolicy policy) {
             service = new LevelControlService(adapter, new BaselineRegistry(), new OverrideRegistry(),
                     policy, auditLog, sharedStore, "alice", "jmx");
-            control = new ContextControl(ContextHandle.of(key, key, adapter), service);
+            handlerService = new HandlerLevelControlService(adapter, new HandlerBaselineRegistry(),
+                    new HandlerOverrideRegistry(), policy, auditLog, sharedStore, "alice", "jmx");
+            control = new ContextControl(ContextHandle.of(key, key, adapter), service, handlerService);
         }
     }
 
@@ -246,5 +251,90 @@ class AggregateLevelControlTest {
 
         assertEquals(Level.INFO, system.adapter.effectiveLevel("com.shared.Util"));
         assertEquals(Level.INFO, app.adapter.effectiveLevel("com.shared.Util"));
+    }
+
+    // --- setHandlerLevel / resetHandler broadcast (doc/specs/handler-floor-control.md) -----------
+
+    @Test
+    void setHandlerLevel_broadcastsToEveryContext() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        HandlerRef console = new HandlerRef("CONSOLE");
+        system.adapter.addHandler(console, Level.INFO);
+        app.adapter.addHandler(console, Level.INFO);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        aggregate.setHandlerLevel(console, Level.TRACE, SetHandlerLevelOptions.defaults());
+
+        assertEquals(Level.TRACE, system.adapter.handlerLevel(console).orElseThrow());
+        assertEquals(Level.TRACE, app.adapter.handlerLevel(console).orElseThrow());
+    }
+
+    @Test
+    void resetHandler_revertsInEveryContext() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        HandlerRef console = new HandlerRef("CONSOLE");
+        system.adapter.addHandler(console, Level.INFO);
+        app.adapter.addHandler(console, Level.INFO);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+        aggregate.setHandlerLevel(console, Level.TRACE, SetHandlerLevelOptions.defaults());
+
+        aggregate.resetHandler(console);
+
+        assertEquals(Level.INFO, system.adapter.handlerLevel(console).orElseThrow());
+        assertEquals(Level.INFO, app.adapter.handlerLevel(console).orElseThrow());
+    }
+
+    @Test
+    void setHandlerLevel_oneContextThrows_theOtherStillSucceeds() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        HandlerRef console = new HandlerRef("CONSOLE");
+        system.adapter.addHandler(console, Level.INFO);
+        app.adapter.addHandler(console, Level.INFO);
+        app.adapter.throwOnSetHandlerLevel(console);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        aggregate.setHandlerLevel(console, Level.TRACE, SetHandlerLevelOptions.defaults());
+
+        assertEquals(Level.TRACE, system.adapter.handlerLevel(console).orElseThrow(), "unaffected context still applied");
+        assertEquals(Level.INFO, app.adapter.handlerLevel(console).orElseThrow(), "the failing context is left alone");
+    }
+
+    @Test
+    void addContext_reBroadcastsActiveHandlerOverridesOntoTheNewcomer() {
+        Ctx system = new Ctx("system");
+        HandlerRef console = new HandlerRef("CONSOLE");
+        system.adapter.addHandler(console, Level.INFO);
+        aggregate.register(system.control);
+        aggregate.setHandlerLevel(console, Level.TRACE, SetHandlerLevelOptions.sticky());
+
+        Ctx redeployed = new Ctx("myapp.war");
+        redeployed.adapter.addHandler(console, Level.INFO);
+        aggregate.addContext(redeployed.control);
+
+        assertEquals(Level.TRACE, redeployed.adapter.handlerLevel(console).orElseThrow(),
+                "a handler level set before this context existed is present immediately after it registers");
+    }
+
+    @Test
+    void sweepExpiredOverrides_fansOutToEveryContextForHandlersToo() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        HandlerRef console = new HandlerRef("CONSOLE");
+        system.adapter.addHandler(console, Level.INFO);
+        app.adapter.addHandler(console, Level.INFO);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+        aggregate.setHandlerLevel(console, Level.TRACE, SetHandlerLevelOptions.forDuration(Duration.ofMillis(1)));
+
+        aggregate.sweepExpiredOverrides(Instant.now().plusSeconds(60));
+
+        assertEquals(Level.INFO, system.adapter.handlerLevel(console).orElseThrow());
+        assertEquals(Level.INFO, app.adapter.handlerLevel(console).orElseThrow());
     }
 }

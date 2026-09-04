@@ -20,6 +20,7 @@ import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetLevelOptions;
+import org.logaperture.api.SetLevelResult;
 import org.logaperture.core.LevelControlOperations;
 
 import java.time.Instant;
@@ -44,13 +45,15 @@ final class FakeLevelControlOperations implements LevelControlOperations {
     }
 
     @Override
-    public LevelOverride setLevel(String loggerName, Level level, SetLevelOptions options) {
+    public SetLevelResult setLevel(String loggerName, Level level, SetLevelOptions options) {
         setLevelCalls.add(new Object[] {loggerName, level, options});
         if (throwOnSetLevel != null) {
             throw throwOnSetLevel;
         }
-        return new LevelOverride(loggerName, level, options.includeChildren(), options.reason(), Instant.now(), "jmx",
-                options.tier(), options.tier() == PersistenceTier.FOR ? Instant.now().plus(options.expiresIn()) : null);
+        LevelOverride override = new LevelOverride(loggerName, level, options.includeChildren(), options.reason(),
+                Instant.now(), "jmx", options.tier(),
+                options.tier() == PersistenceTier.FOR ? Instant.now().plus(options.expiresIn()) : null);
+        return new SetLevelResult(override, List.of());
     }
 
     @Override

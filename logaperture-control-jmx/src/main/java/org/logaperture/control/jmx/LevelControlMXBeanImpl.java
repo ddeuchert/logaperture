@@ -52,8 +52,12 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
             String tier, long forSeconds) {
         Level parsedLevel = parseLevel(level);
         SetLevelOptions options = toOptions(includeChildren, reason, tier, forSeconds);
-        var override = operations.setLevel(loggerName, parsedLevel, options);
-        return LevelOverrideData.from(override);
+        // blockingHandlers (doc/specs/handler-floor-control.md "Warning on
+        // level commands") isn't surfaced on this JMX operation yet -- that's
+        // logctl handler's own slice; this bean still returns exactly what it
+        // always did.
+        var result = operations.setLevel(loggerName, parsedLevel, options);
+        return LevelOverrideData.from(result.override());
     }
 
     @Override
