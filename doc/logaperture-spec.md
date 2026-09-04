@@ -208,7 +208,7 @@ logaperture-dist            hand-off evaluation zip (agent jar + logctl + WildFl
 ## 5. Feature 1 — Level control
 
 > Implementation spec for the first buildable slice: [`doc/specs/level-control.md`](specs/level-control.md).
-> Handler-floor lowering (`--lower-handlers`, so a raised level actually reaches a stricter sink): [`doc/specs/handler-floor-control.md`](specs/handler-floor-control.md).
+> Handler-level control (`logctl handler <name> <level>`, so a raised level actually reaches a stricter sink): [`doc/specs/handler-floor-control.md`](specs/handler-floor-control.md).
 
 ### Operations
 
@@ -1054,7 +1054,7 @@ The persona ordering has now shifted twice. Rather than reshuffle again, structu
 
 The important change from the previous draft: **M1 ships nothing that modifies behaviour.** A tool that only measures is dramatically easier to get installed — on a customer site, in a support process, and in your own build — and the data it produces tells you which of Layers 2 and 3 to build first, rather than guessing from here.
 
-**Pulled forward: handler-floor lowering (`--lower-handlers`).** The first behaviour-modifying feature after M1, ahead of the rest of Layer 2. The JBoss LogManager adapter already *detects* when a raised level can't reach a handler (WildFly's `CONSOLE` fixed at `INFO`) and warns; the fix — lowering that handler at runtime, coupled to the override that needed it — is a key developer workflow, not a support edge case: "make this class TRACE and let me actually see it on the console" is the interaction (§14.1) this project exists to make trivial, and today it still ends at a warning telling the developer to hand-edit `standalone.xml`. Small (one opt-in flag), high value, console handler first. Spec: [`doc/specs/handler-floor-control.md`](specs/handler-floor-control.md).
+**Pulled forward: handler-level control (`logctl handler <name> <level>`).** The first behaviour-modifying feature after M1, ahead of the rest of Layer 2. The JBoss LogManager adapter already *detects* when a raised level can't reach a handler (WildFly's `CONSOLE` fixed at `INFO`) and warns; the fix — a first-class command to set that handler's level at runtime, plus turning the detection into a warning that names the exact command — is a key developer workflow, not a support edge case: "make this class TRACE and let me actually see it on the console" is the interaction (§14.1) this project exists to make trivial, and today it still ends at a warning telling the developer to hand-edit `standalone.xml`. Small, high value, console handler first. Spec: [`doc/specs/handler-floor-control.md`](specs/handler-floor-control.md).
 
 ---
 
