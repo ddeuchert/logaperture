@@ -132,6 +132,9 @@ per handler, whether they want the sink widened.
   across a restart; see the Status note above and "Adapter SPI" below). Off
   WildFly it's purely additive: real handlers stay individually addressable,
   and `ALL_HANDLERS` is simply one more valid name alongside them.
+
+**Explicitly out of scope** (deferred, each with what it needs):
+
 - Formatter / filter changes on a handler (render-stage wrapping —
   `wildfly-support.md` "Out of scope").
 - Logback appender **filter** manipulation (`ThresholdFilter` / `LevelFilter`) to
@@ -148,6 +151,11 @@ per handler, whether they want the sink widened.
 - Real per-handler WildFly names (issue #14, deliberately sequenced after
   `ALL_HANDLERS` lands) — `ALL_HANDLERS` is the fix for *addressing* WildFly's
   handlers, not for naming each one individually.
+- A logical `AUTO` handler level that tracks the lowest currently-active
+  logger override, reverting to the handler's native floor once none remain
+  (issue #20) — every fixed-level override here is one-shot; `AUTO` is a
+  distinct, dynamically-recomputed mode, not a value of `<level>` this slice
+  needs to support.
 
 ## The operation
 
