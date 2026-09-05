@@ -47,11 +47,6 @@ public record SetHandlerLevelOptions(String reason, Duration expiresIn, Persiste
         return new SetHandlerLevelOptions(null, null, PersistenceTier.SESSION);
     }
 
-    /** Defaults, but with a reason attached. */
-    public static SetHandlerLevelOptions withReason(String reason) {
-        return new SetHandlerLevelOptions(reason, null, PersistenceTier.SESSION);
-    }
-
     /** {@code for <duration>}: no reason. */
     public static SetHandlerLevelOptions forDuration(Duration duration) {
         return new SetHandlerLevelOptions(null, duration, PersistenceTier.FOR);

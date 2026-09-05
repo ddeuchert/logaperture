@@ -88,6 +88,37 @@ class LevelControlServiceTest {
     }
 
     @Test
+    void setLevel_includeChildren_reportsBlockingHandlersOnADescendantsOwnPathToo() {
+        // A code-review finding: blockingHandlers used to be computed once
+        // for the named logger alone, so a descendant fanned out to by
+        // --include-children with its own, different handler on its own
+        // path lost its warning entirely.
+        adapter.addKnownLogger("com.acme");
+        adapter.addKnownLogger("com.acme.http");
+        HandlerRef fileOnChildOnly = new HandlerRef("FILE");
+        adapter.addHandler(fileOnChildOnly, Level.INFO, "com.acme.http"); // not on "com.acme"'s own path
+
+        SetLevelResult result = service.setLevel(
+                "com.acme", Level.TRACE, new SetLevelOptions(true, null, null, PersistenceTier.SESSION));
+
+        assertEquals(1, result.blockingHandlers().size());
+        assertEquals(fileOnChildOnly, result.blockingHandlers().get(0).handlerRef());
+    }
+
+    @Test
+    void setLevel_includeChildren_dedupesAHandlerSharedByParentAndChild() {
+        adapter.addKnownLogger("com.acme");
+        adapter.addKnownLogger("com.acme.http");
+        HandlerRef console = new HandlerRef("CONSOLE");
+        adapter.addHandler(console, Level.INFO, "com.acme", "com.acme.http"); // on both paths
+
+        SetLevelResult result = service.setLevel(
+                "com.acme", Level.TRACE, new SetLevelOptions(true, null, null, PersistenceTier.SESSION));
+
+        assertEquals(1, result.blockingHandlers().size(), "reported once, not once per target");
+    }
+
+    @Test
     void setLevel_raiseNotBelowAHandlerFloor_reportsNothing() {
         adapter.addKnownLogger("com.acme.Worker");
         adapter.addHandler(new HandlerRef("CONSOLE"), Level.TRACE, "com.acme.Worker");

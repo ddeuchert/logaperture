@@ -16,6 +16,7 @@
 package org.logaperture.core;
 
 import org.logaperture.api.HandlerFloor;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
@@ -27,6 +28,7 @@ import org.logaperture.core.spi.StateStore;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -108,8 +110,17 @@ public final class LevelControlService implements LevelControlOperations {
         List<String> targets = targetsFor(loggerName, opts);
         checkSetLevelPermitted(targets, level, opts);
 
-        baselines.captureIfAbsent(loggerName, adapter);
-        Level previousEffective = adapter.effectiveLevel(loggerName);
+        // Captured before any target is mutated -- --include-children fans
+        // the same level out to every descendant, each judged against its
+        // own pre-mutation effective level, not the named logger's (a
+        // code-review finding: a descendant with a stricter handler on only
+        // its own path used to lose its warning entirely because this was
+        // computed once for the named logger alone).
+        Map<String, Level> previousEffectiveByTarget = new LinkedHashMap<>();
+        for (String target : targets) {
+            baselines.captureIfAbsent(target, adapter);
+            previousEffectiveByTarget.put(target, adapter.effectiveLevel(target));
+        }
 
         LevelOverride primary = null;
         for (String target : targets) {
@@ -120,13 +131,18 @@ public final class LevelControlService implements LevelControlOperations {
         }
 
         // Actionable warning (doc/specs/handler-floor-control.md "Warning on
-        // level commands"): only for a genuine raise on the named logger --
-        // matches the JBoss LogManager adapter's own former guard, now done
-        // once here so every adapter gets it via the SPI default.
-        List<HandlerFloor> blockingHandlers = level.isMoreVerboseThan(previousEffective)
-                ? adapter.handlerFloorsBelow(loggerName, level)
-                : List.of();
-        return new SetLevelResult(primary, blockingHandlers);
+        // level commands"): union across every target this call actually
+        // raised, deduplicated by handler -- the same handler blocking two
+        // targets is still just one thing to fix.
+        Map<HandlerRef, HandlerFloor> blockingByRef = new LinkedHashMap<>();
+        for (String target : targets) {
+            if (level.isMoreVerboseThan(previousEffectiveByTarget.get(target))) {
+                for (HandlerFloor floor : adapter.handlerFloorsBelow(target, level)) {
+                    blockingByRef.putIfAbsent(floor.handlerRef(), floor);
+                }
+            }
+        }
+        return new SetLevelResult(primary, List.copyOf(blockingByRef.values()));
     }
 
     /**

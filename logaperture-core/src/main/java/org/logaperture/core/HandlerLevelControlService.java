@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * The handler-level-control engine — the {@link LevelControlService}
@@ -101,9 +102,12 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return;
         }
         SetHandlerLevelOptions opts = options == null ? SetHandlerLevelOptions.defaults() : options;
-        Capability required = requiredCapabilityFor(ref, level);
-        if (!policy.isGranted(required)) {
-            throw new CapabilityDeniedException(required);
+        // Empty means this context's adapter doesn't resolve ref at all --
+        // nothing to authorize here (the actual attempt will no-op/throw
+        // UnknownHandlerException on its own, caught by the broadcast).
+        Optional<Capability> required = requiredCapabilityFor(ref, level);
+        if (required.isPresent() && !policy.isGranted(required.get())) {
+            throw new CapabilityDeniedException(required.get());
         }
         if (opts.tier() != PersistenceTier.SESSION && !policy.isGranted(Capability.PERSIST)) {
             throw new CapabilityDeniedException(Capability.PERSIST);
@@ -121,7 +125,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         // every reset requires HANDLER_LOWER, regardless of whether reverting
         // to baseline happens to raise or lower this particular handler.
         requireCapability(Capability.HANDLER_LOWER);
-        applyReset(ref, existing.get(), source, null);
+        applyReset(ref, existing.get(), source);
     }
 
     /**
@@ -134,7 +138,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     public void resetAllHandlers() {
         requireCapability(Capability.HANDLER_LOWER);
         for (Map.Entry<HandlerRef, HandlerLevelOverride> entry : overrides.all().entrySet()) {
-            applyReset(entry.getKey(), entry.getValue(), source, null);
+            applyReset(entry.getKey(), entry.getValue(), source);
         }
     }
 
@@ -235,19 +239,32 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     }
 
     /** Every handler override this context currently tracks. */
-    public List<HandlerLevelOverride> activeOverrides() {
+    @Override
+    public List<HandlerLevelOverride> listHandlerOverrides() {
         return List.copyOf(overrides.all().values());
     }
 
     /**
      * Applies a handler override another context in the same aggregate
      * already holds, onto this context -- the {@link
-     * LevelControlService#adoptOverride} counterpart for handlers.
+     * LevelControlService#adoptOverride} counterpart for handlers. Unlike
+     * the logger version, this context's adapter may simply not have this
+     * handler at all (a per-app logging profile with a different handler
+     * set, say) -- a failure here is caught and logged rather than thrown,
+     * so it doesn't abort {@link AggregateLevelControl#addContext}'s
+     * rebroadcast of every other still-live override onto the same new
+     * context.
      */
     public void adoptOverride(HandlerLevelOverride override) {
         Objects.requireNonNull(override, "override");
         baselines.captureIfAbsent(override.handlerRef(), adapter);
-        HandlerOverrideApplier.apply(override, adapter);
+        try {
+            HandlerOverrideApplier.apply(override, adapter);
+        } catch (RuntimeException e) {
+            System.err.println("[logaperture-core] failed to adopt handler override for '"
+                    + override.handlerRef() + "' onto this context, skipping it: " + e);
+            return;
+        }
         overrides.put(override);
         auditLog.record(new AuditRecord(
                 Instant.now(), principal, "resume", override.handlerRef().value(), null,
@@ -295,18 +312,30 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      */
     public void sweepExpiredOverrides(Instant now) {
         for (HandlerRef ref : overrides.all().keySet()) {
-            overrides.get(ref).ifPresent(override -> {
+            Consumer<HandlerLevelOverride> revertIfExpired = override -> {
                 if (override.tier() == PersistenceTier.FOR && !override.expiresAt().isAfter(now)) {
-                    applyReset(ref, override, "expiry-sweep", null);
+                    applyReset(ref, override, "expiry-sweep");
                 }
-            });
+            };
+            overrides.get(ref).ifPresent(revertIfExpired);
         }
     }
 
-    private Capability requiredCapabilityFor(HandlerRef ref, Level newLevel) {
-        baselines.captureIfAbsent(ref, adapter);
-        Level current = adapter.handlerLevel(ref).orElse(newLevel);
-        return newLevel.isMoreVerboseThan(current) ? Capability.HANDLER_LOWER : Capability.HANDLER_RAISE;
+    /**
+     * @return the capability the requested change needs in this context, or
+     *         empty if the handler doesn't resolve here at all -- nothing to
+     *         authorize when there is nothing to mutate (doc/specs/
+     *         handler-floor-control.md "Multi-context (WildFly)"). Returning
+     *         a direction guessed from {@code newLevel} itself in that case
+     *         would silently demand the wrong capability for every other
+     *         context in a broadcast's pre-check.
+     */
+    private Optional<Capability> requiredCapabilityFor(HandlerRef ref, Level newLevel) {
+        Optional<Level> current = baselines.captureIfAbsent(ref, adapter);
+        if (current.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(newLevel.isMoreVerboseThan(current.get()) ? Capability.HANDLER_LOWER : Capability.HANDLER_RAISE);
     }
 
     private HandlerLevelOverride applyAndRecordMutation(HandlerRef ref, Level level, SetHandlerLevelOptions opts) {
@@ -332,21 +361,36 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         return override;
     }
 
-    private void applyReset(HandlerRef ref, HandlerLevelOverride toRevert, String auditSource, String reasonOverride) {
+    private void applyReset(HandlerRef ref, HandlerLevelOverride toRevert, String auditSource) {
         if (!overrides.removeIfCurrent(ref, toRevert)) {
             return; // a concurrent setHandlerLevel already replaced it
         }
 
         String previousValue = toRevert.level().toString();
-        Optional<Level> baseline = baselines.get(ref); // always captured -- setHandlerLevel/resume guarantees it
-
-        adapter.setHandlerLevel(ref, baseline.orElse(null)); // mutation
+        Level baseline;
+        try {
+            // Always captured -- applyAndRecordMutation/adoptOverride/resumeOne
+            // all capture a real baseline before an override is ever tracked,
+            // so this should never actually be empty. Guarded anyway: a
+            // handler that has since vanished, or any other adapter failure,
+            // must not abort whatever else is being reset or swept alongside
+            // it (doc/specs/handler-floor-control.md "Failure handling").
+            baseline = baselines.get(ref).orElse(null);
+            if (baseline != null) {
+                adapter.setHandlerLevel(ref, baseline); // mutation
+            }
+        } catch (RuntimeException e) {
+            System.err.println("[logaperture-core] failed to revert handler '" + ref
+                    + "', dropping it from tracking without reverting it: " + e);
+            safePersist(() -> stateStore.removeHandler(ref));
+            return;
+        }
 
         safePersist(() -> stateStore.removeHandler(ref));
 
-        String newValue = baseline.map(Level::toString).orElse("<none>");
+        String newValue = baseline == null ? "<none>" : baseline.toString();
         auditLog.record(new AuditRecord(
-                Instant.now(), principal, auditSource, ref.value(), previousValue, newValue, reasonOverride,
+                Instant.now(), principal, auditSource, ref.value(), previousValue, newValue, null,
                 AuditRecord.Action.REVERSION));
     }
 

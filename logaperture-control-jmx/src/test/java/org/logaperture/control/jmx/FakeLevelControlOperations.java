@@ -50,6 +50,7 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
 
     List<LoggerInfo> loggersToReturn = List.of();
     List<HandlerFloor> blockingHandlersToReturn = List.of();
+    List<HandlerLevelOverride> handlerOverridesToReturn = List.of();
     RuntimeException throwOnSetLevel;
     RuntimeException throwOnSetHandlerLevel;
     boolean noOpHandlerLevels;
@@ -99,5 +100,10 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     @Override
     public void resetHandler(HandlerRef ref) {
         resetHandlerCalls.add(ref);
+    }
+
+    @Override
+    public List<HandlerLevelOverride> listHandlerOverrides() {
+        return handlerOverridesToReturn;
     }
 }

@@ -17,6 +17,7 @@ package org.logaperture.control.jmx;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LoggerInfo;
@@ -267,5 +268,19 @@ class LevelControlMXBeanImplTest {
         LevelControlMXBeanImpl bean = bean(fake);
 
         assertThrows(RuntimeException.class, () -> bean.setHandlerLevel("CONSOLE", "TRACE", null, "SESSION", 0));
+    }
+
+    @Test
+    void listHandlerOverrides_convertsEveryEntryToADto() {
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+        fake.handlerOverridesToReturn = List.of(
+                new HandlerLevelOverride(new HandlerRef("CONSOLE"), Level.TRACE, "INC-1", Instant.now(), "jmx",
+                        PersistenceTier.STICKY, null));
+
+        List<HandlerLevelOverrideData> result = bean(fake).listHandlerOverrides();
+
+        assertEquals(1, result.size());
+        assertEquals("CONSOLE", result.get(0).getHandlerRef());
+        assertEquals("TRACE", result.get(0).getLevel());
     }
 }

@@ -61,4 +61,11 @@ public interface LevelControlMXBean {
 
     /** {@code logctl handler <name> reset}. A no-op, not an error, if {@code handlerRef} has no active override. */
     void resetHandler(String handlerRef);
+
+    /**
+     * Every handler override currently active, across every registered
+     * context — feeds {@code logctl status} (doc/specs/
+     * handler-floor-control.md "logctl status shows handler overrides too").
+     */
+    List<HandlerLevelOverrideData> listHandlerOverrides();
 }

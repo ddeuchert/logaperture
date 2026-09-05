@@ -49,6 +49,7 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
 
     private final Map<String, LoggerInfo> state = new LinkedHashMap<>();
     private final Map<HandlerRef, Level> handlerBaselines = new LinkedHashMap<>();
+    private final Map<HandlerRef, HandlerLevelOverride> handlerOverrides = new LinkedHashMap<>();
 
     FakeOps() {
         seed("com.acme.batch.Worker");
@@ -105,11 +106,20 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
         handlerBaselines.putIfAbsent(ref, BASELINE);
         Instant now = Instant.now();
         Instant expiresAt = options.tier() == PersistenceTier.FOR ? now.plus(options.expiresIn()) : null;
-        return Optional.of(new HandlerLevelOverride(ref, level, options.reason(), now, "jmx", options.tier(), expiresAt));
+        HandlerLevelOverride override = new HandlerLevelOverride(
+                ref, level, options.reason(), now, "jmx", options.tier(), expiresAt);
+        handlerOverrides.put(ref, override);
+        return Optional.of(override);
     }
 
     @Override
     public synchronized void resetHandler(HandlerRef ref) {
         handlerBaselines.remove(ref);
+        handlerOverrides.remove(ref);
+    }
+
+    @Override
+    public synchronized List<HandlerLevelOverride> listHandlerOverrides() {
+        return List.copyOf(handlerOverrides.values());
     }
 }

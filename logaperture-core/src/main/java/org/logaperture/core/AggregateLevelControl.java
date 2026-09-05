@@ -107,7 +107,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 .filter(override -> isStillLive(override.tier(), override.expiresAt(), now))
                 .toList();
         List<HandlerLevelOverride> handlersToRebroadcast = existingAny
-                .map(existing -> existing.handlerService().activeOverrides())
+                .map(existing -> existing.handlerService().listHandlerOverrides())
                 .orElseGet(List::of)
                 .stream()
                 .filter(override -> isStillLive(override.tier(), override.expiresAt(), now))
@@ -267,6 +267,27 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         for (ContextControl context : sortedByKey()) {
             context.handlerService().resetHandler(ref);
         }
+    }
+
+    /**
+     * Every handler override active anywhere in this aggregate — the {@link
+     * #listLoggers} counterpart for handlers, feeding {@code logctl status}
+     * (doc/specs/handler-floor-control.md "logctl status shows handler
+     * overrides too"). Unioned by ref rather than tagged per context, same
+     * as {@link #setLevel}'s blocking-handler union: a handler named e.g.
+     * CONSOLE in more than one context is still just "CONSOLE" to the
+     * operator reading the list, and {@link HandlerLevelOverride} carries no
+     * context of its own to tag rows with in the first place.
+     */
+    @Override
+    public List<HandlerLevelOverride> listHandlerOverrides() {
+        Map<HandlerRef, HandlerLevelOverride> byRef = new LinkedHashMap<>();
+        for (ContextControl context : sortedByKey()) {
+            for (HandlerLevelOverride override : context.handlerService().listHandlerOverrides()) {
+                byRef.putIfAbsent(override.handlerRef(), override);
+            }
+        }
+        return List.copyOf(byRef.values());
     }
 
     /**

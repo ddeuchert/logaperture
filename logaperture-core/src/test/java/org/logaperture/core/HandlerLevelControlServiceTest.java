@@ -104,6 +104,21 @@ class HandlerLevelControlServiceTest {
     }
 
     @Test
+    void listHandlerOverrides_reflectsSetAndResetHandler() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        assertTrue(service.listHandlerOverrides().isEmpty());
+
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
+        service.setHandlerLevel(file, Level.DEBUG, SetHandlerLevelOptions.defaults());
+        assertEquals(2, service.listHandlerOverrides().size());
+
+        service.resetHandler(CONSOLE);
+        HandlerLevelOverride remaining = service.listHandlerOverrides().get(0);
+        assertEquals(file, remaining.handlerRef());
+    }
+
+    @Test
     void resetHandler_noActiveOverride_isANoOp() {
         service.resetHandler(CONSOLE); // no-op, not an error
 
@@ -174,6 +189,32 @@ class HandlerLevelControlServiceTest {
 
         assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow(), "past deadline -- reverted");
         assertEquals(Level.DEBUG, adapter.handlerLevel(file).orElseThrow(), "still live -- untouched");
+    }
+
+    // --- capability direction when the handler is unresolvable (code-review finding) --------------
+
+    @Test
+    void checkSetHandlerLevelPermitted_handlerUnresolvableInThisContext_requiresNoCapability() {
+        HandlerRef notHere = new HandlerRef("NOT-HERE"); // never registered with `adapter`
+        HandlerLevelControlService denied = newService(CapabilityPolicy.denyAll());
+
+        // Must not throw for either direction -- a context that doesn't have
+        // the handler at all has nothing to authorize; the actual attempt
+        // will fail on its own (UnknownHandlerException), not on a wrongly
+        // defaulted capability requirement.
+        denied.checkSetHandlerLevelPermitted(notHere, Level.TRACE, SetHandlerLevelOptions.defaults());
+        denied.checkSetHandlerLevelPermitted(notHere, Level.WARN, SetHandlerLevelOptions.defaults());
+    }
+
+    @Test
+    void checkSetHandlerLevelPermitted_handlerUnresolvable_stillRequiresPersistForNonSessionTier() {
+        HandlerRef notHere = new HandlerRef("NOT-HERE");
+        HandlerLevelControlService noPersist = new HandlerLevelControlService(adapter, baselines, overrides,
+                c -> c == Capability.HANDLER_LOWER || c == Capability.HANDLER_RAISE, auditLog, stateStore,
+                "alice", "jmx");
+
+        assertThrows(CapabilityDeniedException.class, () -> noPersist.checkSetHandlerLevelPermitted(
+                notHere, Level.TRACE, SetHandlerLevelOptions.sticky()));
     }
 
     // --- verification sweep (doc/specs/handler-floor-control.md "Reconfiguration re-application") --
@@ -278,6 +319,21 @@ class HandlerLevelControlServiceTest {
         assertFalse(auditLog.records().isEmpty());
     }
 
+    @Test
+    void adoptOverride_handlerDoesNotExistInThisContext_doesNotThrow() {
+        // A per-app logging profile without this handler, say -- code-review
+        // finding: this must not throw, so AggregateLevelControl.addContext's
+        // rebroadcast of every OTHER still-live override onto the same new
+        // context isn't aborted by the one that doesn't apply here.
+        HandlerRef notHere = new HandlerRef("NOT-HERE"); // never registered with `adapter`
+        HandlerLevelOverride override = new HandlerLevelOverride(notHere, Level.TRACE, null,
+                Instant.now(), "jmx", PersistenceTier.SESSION, null);
+
+        service.adoptOverride(override); // must not throw
+
+        assertTrue(overrides.get(notHere).isEmpty(), "not tracked -- it was never actually applied");
+    }
+
     // --- no handler levels at all (Logback / none) --------------------------------------------------
 
     @Test
@@ -312,5 +368,44 @@ class HandlerLevelControlServiceTest {
 
         assertTrue(overrides.get(CONSOLE).isEmpty(), "no partial state");
         assertTrue(auditLog.records().isEmpty());
+    }
+
+    @Test
+    void resetHandler_handlerVanishedSinceSet_doesNotThrow_dropsTrackingInstead() {
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
+        adapter.vanishHandler(CONSOLE);
+
+        service.resetHandler(CONSOLE); // must not throw -- code-review finding
+
+        assertTrue(overrides.get(CONSOLE).isEmpty(), "dropped, not retried forever");
+    }
+
+    @Test
+    void resetAllHandlers_oneVanishedHandlerAmongSeveral_stillRevertsTheRest() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
+        service.setHandlerLevel(file, Level.DEBUG, SetHandlerLevelOptions.defaults());
+        adapter.vanishHandler(CONSOLE); // sorted-map iteration order isn't guaranteed, but this must not
+                                         // stop FILE from being reverted regardless of which comes first
+
+        service.resetAllHandlers(); // must not throw and must not abort partway through
+
+        assertTrue(overrides.get(CONSOLE).isEmpty());
+        assertTrue(overrides.get(file).isEmpty());
+    }
+
+    @Test
+    void sweepExpiredOverrides_oneVanishedHandlerAmongSeveral_stillRevertsTheRest() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.forDuration(Duration.ofMillis(1)));
+        service.setHandlerLevel(file, Level.DEBUG, SetHandlerLevelOptions.forDuration(Duration.ofMillis(1)));
+        adapter.vanishHandler(CONSOLE);
+
+        service.sweepExpiredOverrides(Instant.now().plusSeconds(1)); // must not throw or abort partway through
+
+        assertTrue(overrides.get(CONSOLE).isEmpty());
+        assertTrue(overrides.get(file).isEmpty());
     }
 }

@@ -10,7 +10,13 @@ WildFly's friendly names (`CONSOLE`, `FILE`) — every handler falls back to its
 what was tried and why it doesn't pan out. The token is still a fully usable
 identifier (stable, and exactly what every warning's suggested command
 names), so the feature works end to end regardless — just without the
-cosmetic friendly name.
+cosmetic friendly name. A code-review pass after the initial implementation
+found `logctl status` was not actually rendering active handler overrides
+despite this spec's own Functional summary promising it — fixed (`logctl
+status`/`--json` now list them; see "Testing" below) along with several other
+findings (a `Handler#setLevel(null)` NPE on a first-capture-fails baseline, a
+capability-direction default that silently demanded `handler.lower` even to
+raise, and a `--reason` parser gap on `handler <name> reset`).
 Priority: **high** — pulled forward in §17 as the first behaviour-modifying feature
 after M1. "Make this class TRACE and let me see it on the console" is a primary
 developer interaction (§14.1); today it dead-ends at a warning to hand-edit
@@ -458,6 +464,12 @@ shape), so a `--sticky` handler override survives an agent restart.
   note, no override recorded — confirmed both in-process and cross-process
   (`LevelControlEndToEndIT`, a real agent + real Logback process + real JMX null
   return for the composite result type).
+- `logctl status` (and `--json`) render active handler overrides — a
+  `HANDLER`/`LEVEL`/`TIER`/`REVERTS`/`REASON` table alongside (or, with no active
+  logger overrides, instead of) the existing logger table; `--json` wraps both
+  under `loggers`/`handlerOverrides` keys. `AggregateLevelControl.listHandlerOverrides`
+  unions a handler active in more than one context by ref, same as the
+  blocking-handlers union `setLevel` already does.
 
 **Cross-process (extends `LevelControlEndToEndIT` / `WildFlyContainerIT`):**
 

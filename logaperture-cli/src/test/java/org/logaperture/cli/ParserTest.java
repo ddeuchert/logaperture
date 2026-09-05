@@ -167,6 +167,13 @@ class ParserTest {
     }
 
     @Test
+    void handlerResetRejectsReason_sameAsResetLoggerDoes() {
+        // "handler <name> reset" is a revert, not a set -- a reason attached
+        // to it would be silently dropped, same as "reset <logger> --reason".
+        assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "reset", "--reason", "INC-1"}));
+    }
+
+    @Test
     void unknownLevelForHandlerIsAUsageError() {
         assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "LOUD"}));
     }

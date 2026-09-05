@@ -92,6 +92,18 @@ final class Json {
     }
 
     static String handlerOverride(HandlerLevelOverrideData data) {
+        return handlerOverrideObj(data).toString();
+    }
+
+    static String handlerOverrides(List<HandlerLevelOverrideData> rows) {
+        StringJoiner array = new StringJoiner(",", "[", "]");
+        for (HandlerLevelOverrideData row : rows) {
+            array.add(handlerOverride(row));
+        }
+        return array.toString();
+    }
+
+    private static Obj handlerOverrideObj(HandlerLevelOverrideData data) {
         return new Obj()
                 .str("handlerRef", data.getHandlerRef())
                 .str("level", data.getLevel())
@@ -99,7 +111,20 @@ final class Json {
                 .str("appliedAt", data.getAppliedAt())
                 .str("source", data.getSource())
                 .str("tier", data.getTier())
-                .str("expiresAt", data.getExpiresAt())
+                .str("expiresAt", data.getExpiresAt());
+    }
+
+    /**
+     * {@code logctl status --json}: active logger overrides plus active
+     * handler overrides, each an array under its own key — a plain array of
+     * loggers alone would have no room to also carry the handler overrides
+     * doc/specs/handler-floor-control.md's "logctl status shows handler
+     * overrides too" calls for.
+     */
+    static String status(List<LoggerInfoData> loggerOverrides, List<HandlerLevelOverrideData> handlerOverrides) {
+        return new Obj()
+                .raw("loggers", loggers(loggerOverrides))
+                .raw("handlerOverrides", handlerOverrides(handlerOverrides))
                 .toString();
     }
 

@@ -107,12 +107,17 @@ final class Parser {
         List<String> rest = positionals.subList(1, positionals.size());
         boolean isLevelMutation = command.equals("set") || LEVEL_SUBCOMMANDS.contains(command);
         boolean isHandlerCommand = command.equals("handler");
+        // "handler <name> reset" is a revert, same as "reset <logger>" -- a
+        // reason attached to it would be silently dropped, so it's rejected
+        // the same way "reset <logger> --reason ..." already is. Only the
+        // "handler <name> <level>" set-form takes --reason.
+        boolean isHandlerReset = isHandlerCommand && rest.size() >= 2 && rest.get(1).equals("reset");
 
         if (includeChildren && !isLevelMutation) {
             throw usage("--include-children applies only to set/debug/trace/info/warn/error.");
         }
-        if (reason != null && !isLevelMutation && !isHandlerCommand) {
-            throw usage("--reason applies only to set/debug/trace/info/warn/error/handler.");
+        if (reason != null && !isLevelMutation && !(isHandlerCommand && !isHandlerReset)) {
+            throw usage("--reason applies only to set/debug/trace/info/warn/error, or 'handler <name> <level>'.");
         }
         if (all && !command.equals("reset")) {
             throw usage("--all applies only to 'reset'.");

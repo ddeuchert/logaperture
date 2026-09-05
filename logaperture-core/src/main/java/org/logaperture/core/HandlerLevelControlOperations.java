@@ -20,6 +20,7 @@ import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.SetHandlerLevelOptions;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -39,4 +40,12 @@ public interface HandlerLevelControlOperations {
     Optional<HandlerLevelOverride> setHandlerLevel(HandlerRef ref, Level level, SetHandlerLevelOptions options);
 
     void resetHandler(HandlerRef ref);
+
+    /**
+     * Every handler override currently active — the {@link
+     * LevelControlOperations#listLoggers} counterpart for handlers, feeding
+     * {@code logctl status} (doc/specs/handler-floor-control.md "logctl
+     * status shows handler overrides too").
+     */
+    List<HandlerLevelOverride> listHandlerOverrides();
 }

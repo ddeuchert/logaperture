@@ -36,6 +36,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     int resetAllCalls;
 
     List<LoggerInfoData> loggers = new ArrayList<>();
+    List<HandlerLevelOverrideData> handlerOverrides = new ArrayList<>();
     SetLevelResultData setLevelResult;
     HandlerLevelOverrideData setHandlerLevelResult;
     RuntimeException throwOnNextCall;
@@ -91,6 +92,12 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     public void resetHandler(String handlerRef) {
         resetHandlerCalls.add(handlerRef);
         maybeThrow();
+    }
+
+    @Override
+    public List<HandlerLevelOverrideData> listHandlerOverrides() {
+        maybeThrow();
+        return handlerOverrides;
     }
 
     private void maybeThrow() {

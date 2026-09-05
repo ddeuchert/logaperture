@@ -86,34 +86,52 @@ final class Commands {
                 }
             }
             active.sort(Comparator.comparing(Commands::revertSortKey).thenComparing(LoggerInfoData::getName));
+            List<HandlerLevelOverrideData> handlerOverrides = mbean.listHandlerOverrides();
             if (json) {
-                out.println(Json.loggers(active));
+                out.println(Json.status(active, handlerOverrides));
                 return CliError.OK;
             }
-            if (active.isEmpty()) {
+            if (active.isEmpty() && handlerOverrides.isEmpty()) {
                 out.println("No active overrides.");
                 return CliError.OK;
             }
-            boolean showContext = spansMultipleContexts(all);
-            List<List<String>> table = new ArrayList<>();
-            for (LoggerInfoData row : active) {
-                List<String> cells = new ArrayList<>();
-                if (showContext) {
-                    cells.add(orDash(row.getContext()));
+            if (!active.isEmpty()) {
+                boolean showContext = spansMultipleContexts(all);
+                List<List<String>> table = new ArrayList<>();
+                for (LoggerInfoData row : active) {
+                    List<String> cells = new ArrayList<>();
+                    if (showContext) {
+                        cells.add(orDash(row.getContext()));
+                    }
+                    cells.add(orDash(row.getName()));
+                    cells.add(orDash(row.getEffectiveLevel()));
+                    cells.add(orDash(row.getTier()));
+                    cells.add(revertsCell(row));
+                    cells.add(row.getOverrideReason() == null ? Format.NONE : '"' + row.getOverrideReason() + '"');
+                    table.add(cells);
                 }
-                cells.add(orDash(row.getName()));
-                cells.add(orDash(row.getEffectiveLevel()));
-                cells.add(orDash(row.getTier()));
-                cells.add(revertsCell(row));
-                cells.add(row.getOverrideReason() == null ? Format.NONE : '"' + row.getOverrideReason() + '"');
-                table.add(cells);
+                List<String> headers = new ArrayList<>();
+                if (showContext) {
+                    headers.add("CONTEXT");
+                }
+                headers.addAll(List.of("LOGGER", "LEVEL", "TIER", "REVERTS", "REASON"));
+                out.println(Format.table(headers, table));
             }
-            List<String> headers = new ArrayList<>();
-            if (showContext) {
-                headers.add("CONTEXT");
+            if (!handlerOverrides.isEmpty()) {
+                if (!active.isEmpty()) {
+                    out.println();
+                }
+                List<List<String>> table = new ArrayList<>();
+                for (HandlerLevelOverrideData row : handlerOverrides) {
+                    table.add(List.of(
+                            orDash(row.getHandlerRef()),
+                            orDash(row.getLevel()),
+                            orDash(row.getTier()),
+                            handlerRevertsCell(row),
+                            row.getReason() == null ? Format.NONE : '"' + row.getReason() + '"'));
+                }
+                out.println(Format.table(List.of("HANDLER", "LEVEL", "TIER", "REVERTS", "REASON"), table));
             }
-            headers.addAll(List.of("LOGGER", "LEVEL", "TIER", "REVERTS", "REASON"));
-            out.println(Format.table(headers, table));
             return CliError.OK;
         };
     }
@@ -275,6 +293,16 @@ final class Commands {
     }
 
     private static String revertsCell(LoggerInfoData row) {
+        if ("FOR".equals(row.getTier()) && row.getExpiresAt() != null) {
+            return Format.clock(row.getExpiresAt()) + " (" + Format.relative(row.getExpiresAt()) + ")";
+        }
+        if ("SESSION".equals(row.getTier())) {
+            return "until restart";
+        }
+        return "until reset";
+    }
+
+    private static String handlerRevertsCell(HandlerLevelOverrideData row) {
         if ("FOR".equals(row.getTier()) && row.getExpiresAt() != null) {
             return Format.clock(row.getExpiresAt()) + " (" + Format.relative(row.getExpiresAt()) + ")";
         }

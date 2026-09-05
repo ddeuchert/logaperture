@@ -90,6 +90,11 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
         handlerOperations.resetHandler(new HandlerRef(handlerRef));
     }
 
+    @Override
+    public List<HandlerLevelOverrideData> listHandlerOverrides() {
+        return handlerOperations.listHandlerOverrides().stream().map(HandlerLevelOverrideData::from).toList();
+    }
+
     private static SetLevelOptions toOptions(boolean includeChildren, String reason, String tier, long forSeconds) {
         PersistenceTier parsedTier = parseTier(tier);
         Duration expiresIn = parsedTier == PersistenceTier.FOR ? Duration.ofSeconds(forSeconds) : null;

@@ -128,6 +128,44 @@ class CommandsTest {
     }
 
     @Test
+    void status_alsoRendersActiveHandlerOverrides() {
+        mbean.handlerOverrides = List.of(new HandlerLevelOverrideData(
+                "CONSOLE", "TRACE", "INC-1", Instant.now().toString(), "jmx", "STICKY", null));
+
+        assertEquals(CliError.OK, run(Commands.status(false)));
+
+        String text = output();
+        assertTrue(text.contains("HANDLER"));
+        assertTrue(text.contains("CONSOLE"));
+        assertTrue(text.contains("TRACE"));
+        assertTrue(text.contains("until reset"));
+    }
+
+    @Test
+    void status_handlerOverridesOnly_stillPrintsWithNoLoggerTable() {
+        mbean.handlerOverrides = List.of(new HandlerLevelOverrideData(
+                "CONSOLE", "TRACE", null, Instant.now().toString(), "jmx", "SESSION", null));
+
+        assertEquals(CliError.OK, run(Commands.status(false)));
+
+        assertFalse(output().contains("No active overrides."));
+    }
+
+    @Test
+    void status_jsonWrapsLoggersAndHandlerOverrides() {
+        mbean.loggers = List.of(
+                new LoggerInfoData("com.acme.Loud", "INFO", "DEBUG", true, "jmx", null, "STICKY", null));
+        mbean.handlerOverrides = List.of(new HandlerLevelOverrideData(
+                "CONSOLE", "TRACE", null, Instant.now().toString(), "jmx", "STICKY", null));
+
+        run(Commands.status(true));
+
+        String text = output().strip();
+        assertTrue(text.startsWith("{\"loggers\":[{"), text);
+        assertTrue(text.contains("\"handlerOverrides\":[{"), text);
+    }
+
+    @Test
     void setLevelForwardsEveryArgumentAndPrintsARevertTime() {
         String expiresAt = Instant.now().plus(30, ChronoUnit.MINUTES).toString();
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(

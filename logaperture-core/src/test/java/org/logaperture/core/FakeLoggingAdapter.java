@@ -48,6 +48,7 @@ final class FakeLoggingAdapter implements LoggingAdapter {
 
     // --- handler support (doc/specs/handler-floor-control.md) --------------------------------------
     private final Map<HandlerRef, Level> handlerLevels = new LinkedHashMap<>();
+    private final Set<HandlerRef> registeredHandlers = new LinkedHashSet<>();
     private final Map<String, List<HandlerRef>> handlersOnPath = new LinkedHashMap<>();
     private final Set<HandlerRef> vanishedHandlers = new LinkedHashSet<>();
     private HandlerRef throwOnSetHandlerLevelFor;
@@ -135,6 +136,7 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     /** Registers {@code ref} at {@code level}, on the path of every logger listed. */
     void addHandler(HandlerRef ref, Level level, String... loggerNamesOnItsPath) {
         handlerLevels.put(ref, level);
+        registeredHandlers.add(ref);
         for (String loggerName : loggerNamesOnItsPath) {
             handlersOnPath.computeIfAbsent(loggerName, n -> new ArrayList<>()).add(ref);
         }
@@ -182,15 +184,19 @@ final class FakeLoggingAdapter implements LoggingAdapter {
 
     @Override
     public Optional<Level> handlerLevel(HandlerRef ref) {
-        if (vanishedHandlers.contains(ref)) {
-            throw new UnknownHandlerException(ref);
+        // Mirrors JulLoggingAdapter's real contract: handlerLevel never
+        // throws for an unresolvable ref (vanished, or never registered) --
+        // it just returns empty, same as "don't know". Only setHandlerLevel
+        // throws UnknownHandlerException for that case.
+        if (!isResolvable(ref)) {
+            return Optional.empty();
         }
         return Optional.ofNullable(handlerLevels.get(ref));
     }
 
     @Override
     public Optional<Level> setHandlerLevel(HandlerRef ref, Level level) {
-        if (vanishedHandlers.contains(ref)) {
+        if (!isResolvable(ref)) {
             throw new UnknownHandlerException(ref);
         }
         if (ref.equals(throwOnSetHandlerLevelFor)) {
@@ -208,6 +214,13 @@ final class FakeLoggingAdapter implements LoggingAdapter {
 
     @Override
     public List<HandlerRef> knownHandlers() {
-        return List.copyOf(handlerLevels.keySet());
+        List<HandlerRef> known = new ArrayList<>(registeredHandlers);
+        known.removeAll(vanishedHandlers);
+        return List.copyOf(known);
+    }
+
+    /** Whether {@code ref} resolves to a live handler in this fake -- registered, and never vanished. */
+    private boolean isResolvable(HandlerRef ref) {
+        return registeredHandlers.contains(ref) && !vanishedHandlers.contains(ref);
     }
 }
