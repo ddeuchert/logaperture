@@ -18,6 +18,7 @@ package org.logaperture.adapter.jul;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
@@ -30,6 +31,7 @@ import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -287,6 +289,35 @@ class JulLoggingAdapterTest {
         } finally {
             Logger.getLogger("").removeHandler(console);
         }
+    }
+
+    // --- doctor (doc/specs/doctor.md) -- getFile()/isAutoFlush() are JBoss-LogManager-specific,
+    // not on this test's classpath (by design), so a plain JUL handler degrades to fully empty.
+
+    @Test
+    void handlerDiagnostics_plainJulHandler_degradesToEmpty() {
+        ConsoleHandler console = testConsoleAtInfo();
+        Logger.getLogger(name("handler.Diag")).addHandler(console);
+        try {
+            HandlerRef ref = adapter.realHandlers().stream()
+                    .filter(candidate -> candidate.equals(HandlerRef.anonymous(console)))
+                    .findFirst().orElseThrow();
+
+            HandlerDiagnostics diag = adapter.handlerDiagnostics(ref);
+
+            assertNull(diag.maxFileSizeBytes());
+            assertNull(diag.backupCount());
+            assertNull(diag.autoFlush());
+            assertNull(diag.targetPath());
+            assertFalse(diag.isPersistent());
+        } finally {
+            Logger.getLogger(name("handler.Diag")).removeHandler(console);
+        }
+    }
+
+    @Test
+    void handlerDiagnostics_unknownRef_returnsEmptyNotAnException() {
+        assertEquals(HandlerDiagnostics.EMPTY, adapter.handlerDiagnostics(new HandlerRef("NeverSeen")));
     }
 
     // --- ALL_HANDLERS (doc/specs/handler-floor-control.md, issue #13) -- the WildFly collapse

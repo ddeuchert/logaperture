@@ -15,6 +15,7 @@
  */
 package org.logaperture.cli;
 
+import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
@@ -24,8 +25,10 @@ import org.logaperture.control.jmx.SetLevelResultData;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * The sub-commands, each a thin renderer over one (occasionally two)
@@ -262,6 +265,63 @@ final class Commands {
             }
             return CliError.OK;
         };
+    }
+
+    /**
+     * {@code logctl doctor} — doc/specs/doctor.md "The operation". Read-only:
+     * no target, no tier, nothing to confirm.
+     */
+    static Command doctor(boolean json) {
+        return (mbean, out) -> {
+            List<DoctorFindingData> findings = mbean.diagnose();
+            if (json) {
+                out.println(Json.doctor(findings));
+                return CliError.OK;
+            }
+            if (findings.isEmpty()) {
+                out.println("No checks could run against this JVM.");
+                return CliError.OK;
+            }
+            boolean showContext = findings.stream().map(DoctorFindingData::getContext)
+                    .filter(Objects::nonNull).distinct().limit(2).count() > 1;
+            int critical = 0;
+            int warning = 0;
+            int info = 0;
+            int clean = 0;
+            Set<String> checksRun = new LinkedHashSet<>();
+            for (DoctorFindingData f : findings) {
+                checksRun.add(f.getCheck());
+                switch (f.getSeverity()) {
+                    case "CRITICAL" -> critical++;
+                    case "WARNING" -> warning++;
+                    case "INFO" -> info++;
+                    default -> clean++;
+                }
+                StringBuilder line = new StringBuilder();
+                if (showContext) {
+                    line.append('[').append(orDash(f.getContext())).append("] ");
+                }
+                String bracket = "[" + severityLabel(f.getSeverity()) + "]";
+                line.append(bracket.length() < 8 ? String.format("%-8s", bracket) : bracket + " ")
+                        .append(f.getSummary());
+                out.println(line);
+                if (f.getDetail() != null) {
+                    out.println("        " + f.getDetail());
+                }
+                if (f.getSuggestedFix() != null) {
+                    out.println("        suggested: " + f.getSuggestedFix());
+                }
+            }
+            out.println();
+            out.println(checksRun.size() + " checks run — " + critical + " critical, " + warning + " warning, "
+                    + info + " info, " + clean + " clean.");
+            return CliError.OK;
+        };
+    }
+
+    /** {@code WARNING} renders as {@code WARN} in text mode (matching the blocking-handler warning's own convention); {@code --json} keeps the full enum name. */
+    private static String severityLabel(String severity) {
+        return "WARNING".equals(severity) ? "WARN" : severity;
     }
 
     /** Sorts soonest-revert first; {@code FOR} entries by their deadline, {@code STICKY}/{@code SESSION} (no deadline) last. */

@@ -16,6 +16,7 @@
 package org.logaperture.cli;
 
 import org.junit.jupiter.api.Test;
+import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
@@ -163,6 +164,48 @@ class CommandsTest {
         String text = output().strip();
         assertTrue(text.startsWith("{\"loggers\":[{"), text);
         assertTrue(text.contains("\"handlerOverrides\":[{"), text);
+    }
+
+    // --- doctor (doc/specs/doctor.md) ------------------------------------------------------------
+
+    @Test
+    void doctor_rendersEachFindingWithASeverityBracketAndASummaryLine() {
+        mbean.findings = List.of(
+                new DoctorFindingData("handler.unbounded-growth", "WARNING", "FILE",
+                        "FILE has no size cap — writes are unbounded.", null,
+                        "configure a size-based rotation policy on FILE.", null),
+                new DoctorFindingData("handler.autoflush", "OK", "handlers",
+                        "no autoflush handlers found on a busy path.", null, null, null));
+
+        assertEquals(CliError.OK, run(Commands.doctor(false)));
+
+        String text = output();
+        assertTrue(text.contains("[WARN]"), text);
+        assertTrue(text.contains("FILE has no size cap"), text);
+        assertTrue(text.contains("suggested: configure a size-based rotation policy on FILE."), text);
+        assertTrue(text.contains("[OK]"), text);
+        assertTrue(text.contains("2 checks run — 0 critical, 1 warning, 0 info, 1 clean."), text);
+    }
+
+    @Test
+    void doctor_noFindings_printsANoteInsteadOfAnEmptySummary() {
+        mbean.findings = List.of();
+
+        assertEquals(CliError.OK, run(Commands.doctor(false)));
+
+        assertTrue(output().contains("No checks could run"));
+    }
+
+    @Test
+    void doctor_json_wrapsFindingsAndChecksRun() {
+        mbean.findings = List.of(new DoctorFindingData("logger.verbosity-left-on", "WARNING", "ROOT",
+                "root logger is at DEBUG.", null, null, null));
+
+        run(Commands.doctor(true));
+
+        String text = output().strip();
+        assertTrue(text.startsWith("{\"findings\":[{"), text);
+        assertTrue(text.contains("\"checksRun\":1"), text);
     }
 
     @Test

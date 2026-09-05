@@ -21,6 +21,7 @@ import org.logaperture.core.AggregateLevelControl.ContextControl;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.BaselineRegistry;
 import org.logaperture.core.CapabilityPolicy;
+import org.logaperture.core.DoctorService;
 import org.logaperture.core.FileStateStore;
 import org.logaperture.core.HandlerBaselineRegistry;
 import org.logaperture.core.HandlerLevelControlService;
@@ -145,7 +146,9 @@ public final class NoneContainer implements AutoCloseable {
         };
         adapter.onReset(reapplyOnReset);
 
-        aggregate.register(new ContextControl(handle, service, handlerService));
+        DoctorService doctorService = new DoctorService(adapter, policy);
+
+        aggregate.register(new ContextControl(handle, service, handlerService, doctorService));
     }
 
     /**

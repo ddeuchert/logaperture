@@ -15,6 +15,7 @@
  */
 package org.logaperture.control.jmx;
 
+import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
@@ -25,6 +26,7 @@ import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
+import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
 
@@ -39,7 +41,8 @@ import java.util.Optional;
  * module. One instance implements both, mirroring how {@code
  * AggregateLevelControl} does in production.
  */
-final class FakeLevelControlOperations implements LevelControlOperations, HandlerLevelControlOperations {
+final class FakeLevelControlOperations implements LevelControlOperations, HandlerLevelControlOperations,
+        DoctorOperations {
 
     final List<String> listLoggersCalls = new ArrayList<>();
     final List<Object[]> setLevelCalls = new ArrayList<>();
@@ -51,6 +54,8 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     List<LoggerInfo> loggersToReturn = List.of();
     List<HandlerFloor> blockingHandlersToReturn = List.of();
     List<HandlerLevelOverride> handlerOverridesToReturn = List.of();
+    List<DoctorFinding> findingsToReturn = List.of();
+    boolean diagnoseCalled;
     RuntimeException throwOnSetLevel;
     RuntimeException throwOnSetHandlerLevel;
     boolean noOpHandlerLevels;
@@ -105,5 +110,11 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     @Override
     public List<HandlerLevelOverride> listHandlerOverrides() {
         return handlerOverridesToReturn;
+    }
+
+    @Override
+    public List<DoctorFinding> diagnose() {
+        diagnoseCalled = true;
+        return findingsToReturn;
     }
 }

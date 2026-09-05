@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
@@ -241,5 +242,19 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     /** Whether {@code ref} resolves to a live handler in this fake -- registered, and never vanished. */
     private boolean isResolvable(HandlerRef ref) {
         return registeredHandlers.contains(ref) && !vanishedHandlers.contains(ref);
+    }
+
+    // --- doctor support (doc/specs/doctor.md) -------------------------------------------------
+
+    private final Map<HandlerRef, HandlerDiagnostics> handlerDiagnostics = new LinkedHashMap<>();
+
+    /** Registers static configuration facts for an already-{@link #addHandler}ed ref -- doc/specs/doctor.md "Adapter SPI". */
+    void setHandlerDiagnostics(HandlerRef ref, HandlerDiagnostics diagnostics) {
+        handlerDiagnostics.put(ref, diagnostics);
+    }
+
+    @Override
+    public HandlerDiagnostics handlerDiagnostics(HandlerRef ref) {
+        return handlerDiagnostics.getOrDefault(ref, HandlerDiagnostics.EMPTY);
     }
 }

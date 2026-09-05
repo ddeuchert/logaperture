@@ -29,6 +29,7 @@ final class HelpText {
     static final List<String> SYNOPSES = List.of(
             "logctl levels [filter]",
             "logctl status",
+            "logctl doctor",
             "logctl debug <logger> [session | for <duration> | sticky]",
             "logctl trace <logger> [session | for <duration> | sticky]",
             "logctl info <logger> [session | for <duration> | sticky]",
@@ -72,6 +73,11 @@ final class HelpText {
         sb.append("A [filter] for 'levels' is a logger-name prefix, or a glob using\n");
         sb.append("* and ? — so 'logctl levels *infinispan*' finds a logger when the\n");
         sb.append("log line shows only the short category name.\n");
+        sb.append("\n");
+        sb.append("'doctor' is read-only — it never changes anything. It flags common\n");
+        sb.append("misconfigurations (unbounded file handlers, DEBUG/TRACE left on,\n");
+        sb.append("duplicate output, autoflush, low disk headroom) with a severity and,\n");
+        sb.append("where there's an unambiguous one, the exact fix.\n");
         sb.append("\n");
         sb.append("logctl finds the target JVM on its own when exactly one is running with\n");
         sb.append("the agent attached; otherwise pass --pid. It works only for a JVM you\n");

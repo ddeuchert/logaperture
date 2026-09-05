@@ -15,6 +15,7 @@
  */
 package org.logaperture.core.spi;
 
+import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
@@ -164,5 +165,17 @@ public interface LoggingAdapter {
      */
     default List<HandlerRef> realHandlers() {
         return knownHandlers();
+    }
+
+    /**
+     * Best-effort static facts about {@code ref}'s own configuration — file
+     * size caps, backup counts, autoflush, target path — for {@code
+     * doctor}'s checks (doc/specs/doctor.md "Adapter SPI"). Never a level;
+     * only called when {@code ref} resolves to a live handler. Default:
+     * {@link HandlerDiagnostics#EMPTY}, for an adapter/handler this concept
+     * doesn't apply to at all.
+     */
+    default HandlerDiagnostics handlerDiagnostics(HandlerRef ref) {
+        return HandlerDiagnostics.EMPTY;
     }
 }

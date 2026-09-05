@@ -68,4 +68,11 @@ public interface LevelControlMXBean {
      * handler-floor-control.md "logctl status shows handler overrides too").
      */
     List<HandlerLevelOverrideData> listHandlerOverrides();
+
+    /**
+     * {@code logctl doctor} — a read-only configuration diagnosis, across
+     * every registered context (doc/specs/doctor.md). Never mutates
+     * anything; requires only the {@code VIEW} capability.
+     */
+    List<DoctorFindingData> diagnose();
 }

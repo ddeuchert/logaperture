@@ -1,6 +1,15 @@
 # `logctl doctor` — Diagnose the Configuration
 
-Status: spec signed off 2026-09-06 (all 6 decisions resolved); not yet implemented.
+Status: implemented and verified end-to-end, including against a real standalone
+WildFly (`WildFlyContainerIT`). One finding from that real-WildFly run confirmed a
+consequence of issue #13's own design, not a bug: findings name the real handler
+by its identity-hash token (`PeriodicRotatingFileHandler@...`,
+`ConsoleHandler@...`), never a friendly `FILE`/`CONSOLE` — `doctor` inspects
+`adapter.realHandlers()`, the same ungrouped truth that never resolves a
+WildFly-configured name (Decision #8 there). Also confirmed against real
+WildFly: `isAutoFlush()` and `getFile()` reflection into
+`org.jboss.logmanager.ExtHandler`/`FileHandler` both resolve correctly (real
+path, real autoflush state) — see "Adapter SPI" below.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §16.2 (`doctor`), §16.1
 (`top` — sibling read-only diagnostic, separate spec), §9.3 (capability model), §17
 (roadmap — M1, Layer 1: "a read-only diagnostic release").
@@ -152,14 +161,31 @@ HandlerDiagnostics {
 }
 ```
 
-**Likely needs reflection into JBoss-LogManager-specific handler subclasses** (e.g.
-`org.jboss.logmanager.handlers.PeriodicSizeRotatingFileHandler`'s `getRotateSize()` /
-`getMaxBackupIndex()`) — none of this is on the JDK's base `java.util.logging.Handler` /
-`FileHandler`, the same shape of problem `JulLoggingAdapter`'s retired `JbossHandlerNames`
-solved for names (`doc/specs/handler-floor-control.md` "Adapter SPI"). Unlike that attempt,
-this reflection target is real WildFly configuration WildFly itself populates, not something
-already confirmed absent — but it still needs the same wrong-classloader care documented
-there, and the same complete-degrade-to-empty discipline on any failure.
+**Implemented as `JulHandlerDiagnostics`, reflecting into JBoss-LogManager-specific
+handler classes** — none of this is on the JDK's base `java.util.logging.Handler`, the
+same shape of problem `JulLoggingAdapter`'s retired `JbossHandlerNames` solved for
+names (`doc/specs/handler-floor-control.md` "Adapter SPI"), and the same
+classloader-safe discipline (`handler.getClass()`, never `Class.forName` by name).
+Unlike that retired attempt, most of what's needed here resolved cleanly:
+
+- **`targetPath`** — `FileHandler.getFile()`, a **public** method. Confirmed against
+  real standalone WildFly 26.1.3.Final: resolves the handler's real file
+  (`/opt/jboss/wildfly/standalone/log/server.log`), no private-field reflection needed.
+- **`autoFlush`** — `ExtHandler.isAutoFlush()`, also **public**, on the common base
+  class of every JBoss LogManager handler. Confirmed against the same real WildFly:
+  resolves correctly on both the console and file handlers (both report `true` in the
+  stock config).
+- **`maxFileSizeBytes`/`backupCount`** — `SizeRotatingFileHandler`/
+  `PeriodicSizeRotatingFileHandler` keep `rotateSize`/`maxBackupIndex` as **private**
+  fields with no public getter, so this one genuinely needs `Field#setAccessible`.
+  **Not exercised by the real-WildFly run**: stock WildFly's `FILE` is a plain
+  `PeriodicRotatingFileHandler` (time-based rotation only), which has neither field at
+  all — every real handler encountered so far degrades to `null` deterministically, by
+  class shape, before reflection risk even enters the picture. Whether the
+  `setAccessible` path itself works against JBoss Modules remains unconfirmed until a
+  real `PeriodicSizeRotatingFileHandler` is exercised; degrades to `null` (the same
+  outcome as "no cap exists") on any failure either way, so the check still behaves
+  safely if it turns out not to work.
 
 ## Failure handling
 
@@ -209,16 +235,20 @@ added later without a spec change.
 ## Exit criterion
 
 Against a plain `java -jar` + JUL process and a standalone WildFly (Logback is a fast-follow,
-Decision #5 — not part of this exit criterion):
+Decision #5 — not part of this exit criterion) — **met**:
 
 - `logctl doctor` on WildFly's stock `standalone.xml` (no config changes) reports its actual
-  configuration accurately per the resolved checks above — notably: no false positive on the
-  `CONSOLE`/`FILE` overlap (Decision #3), and the unbounded-growth finding against `FILE`
-  escalates to `CRITICAL` only when disk headroom is also low (Decision #6), `WARNING`
-  otherwise.
-- `logctl doctor --json` output round-trips through a JSON parser with the documented shape.
+  configuration accurately — confirmed against real WildFly 26.1.3.Final
+  (`WildFlyContainerIT`): an unbounded-growth finding for the real `FILE`-equivalent handler
+  (no size cap), an autoflush finding for both real handlers (stock config's own
+  `autoflush="true"`), and no false positive from the `CONSOLE`/`FILE` overlap (Decision #3)
+  — that check doesn't run at all, since WildFly has exactly one persistent handler. The
+  unbounded-growth-escalates-to-`CRITICAL`-on-low-headroom path (Decision #6) is implemented
+  and unit-tested but not exercised for real — the test environment's disk had plenty of
+  headroom.
+- `logctl doctor --json` output round-trips through a JSON parser with the documented shape —
+  confirmed cross-process.
 - Every check that cannot run for an adapter/handler is skipped, never a `doctor` failure —
-  confirmed by disabling the JBoss-LogManager-specific reflection path (as `JulLoggingAdapterTest`
-  already does for name resolution) and re-running.
-- No capability beyond `VIEW` is required; `VIEW` withheld makes `logctl doctor` exit 6 the
-  same way `logctl levels` does today.
+  confirmed by `DoctorServiceTest` (a check with nothing to inspect contributes zero findings)
+  and by the real-WildFly run (`handler.duplicate-output` correctly absent).
+- No capability beyond `VIEW` is required; unit-tested (`DoctorServiceTest`).
