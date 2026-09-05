@@ -176,6 +176,55 @@ class HandlerLevelControlServiceTest {
         assertEquals(Level.DEBUG, adapter.handlerLevel(file).orElseThrow(), "still live -- untouched");
     }
 
+    // --- verification sweep (doc/specs/handler-floor-control.md "Reconfiguration re-application") --
+
+    @Test
+    void verifyAndReapply_driftedHandler_reappliedAndAudited() {
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
+        adapter.setHandlerLevel(CONSOLE, Level.INFO); // something else reconfigured it out from under us
+
+        int reapplied = service.verifyAndReapply(Instant.now());
+
+        assertEquals(1, reapplied);
+        assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
+        AuditRecord last = auditLog.records().get(auditLog.records().size() - 1);
+        assertEquals("verification-sweep", last.source());
+        assertEquals(AuditRecord.Action.MUTATION, last.action());
+    }
+
+    @Test
+    void verifyAndReapply_stillCorrect_isSkippedWithNoAuditNoise() {
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
+        int before = auditLog.records().size();
+
+        int reapplied = service.verifyAndReapply(Instant.now());
+
+        assertEquals(0, reapplied);
+        assertEquals(before, auditLog.records().size());
+    }
+
+    @Test
+    void verifyAndReapply_expiredForOverride_isLeftToTheExpirySweep() {
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.forDuration(Duration.ofMillis(1)));
+        adapter.setHandlerLevel(CONSOLE, Level.INFO); // drifted, but also expired
+
+        int reapplied = service.verifyAndReapply(Instant.now().plusSeconds(1));
+
+        assertEquals(0, reapplied, "an expired FOR override is the expiry sweep's job, not this one's");
+        assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow(), "left untouched, not re-applied");
+    }
+
+    @Test
+    void verifyAndReapply_vanishedHandler_isDroppedFromTracking() {
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
+        adapter.vanishHandler(CONSOLE);
+
+        int reapplied = service.verifyAndReapply(Instant.now());
+
+        assertEquals(0, reapplied);
+        assertTrue(overrides.get(CONSOLE).isEmpty(), "dropped, not retried forever");
+    }
+
     // --- persistence / resume --------------------------------------------------------------------
 
     @Test

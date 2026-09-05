@@ -1,10 +1,16 @@
 # Handler-Level Control — `logctl handler`
 
-Status: core engine, adapters, JMX, and `logctl` implemented and unit- and
-cross-process-tested (Logback path). Real-WildFly verification
-(`WildFlyContainerIT`) and the handler-level verification sweep are
-outstanding — see "Cross-process" under Testing and "Reconfiguration
-re-application" above.
+Status: implemented and verified end-to-end, including against a real
+standalone WildFly (`WildFlyContainerIT`) and the handler-level verification
+sweep (`AggregateLevelControl.verificationSweep`, shared with loggers' own).
+One finding from that real-WildFly run changed the shipped behavior: handler
+**name resolution** (Open decision #1) does not, in practice, produce
+WildFly's friendly names (`CONSOLE`, `FILE`) — every handler falls back to its
+`<class>@<idhash>` identity token. See the "Adapter SPI" section below for
+what was tried and why it doesn't pan out. The token is still a fully usable
+identifier (stable, and exactly what every warning's suggested command
+names), so the feature works end to end regardless — just without the
+cosmetic friendly name.
 Priority: **high** — pulled forward in §17 as the first behaviour-modifying feature
 after M1. "Make this class TRACE and let me see it on the console" is a primary
 developer interaction (§14.1); today it dead-ends at a warning to hand-edit
@@ -239,17 +245,59 @@ for that context.
 the stable `HandlerRef` (below) and the handler's current level, so core can build
 the warning without a second call.
 
-`HandlerRef` is **the configured handler name** when the framework exposes one
-(`org.jboss.logmanager` does — `CONSOLE`, `FILE`), falling back to a stable
-identity token (`<class-simple-name>@<identityHashCode-hex>`) for an anonymous
-handler. Core keys everything on `(contextKey, HandlerRef)`. *(Open decision #1,
-resolved: configured name, identity-token fallback.)*
+`HandlerRef` is **the configured handler name** when the framework exposes one,
+falling back to a stable identity token (`<class-simple-name>@
+<identityHashCode-hex>`) for an anonymous handler. Core keys everything on
+`(contextKey, HandlerRef)`. *(Open decision #1, resolved: configured name,
+identity-token fallback.)*
 
 The JBoss LogManager adapter implements these against `Logger.getHandlers()` /
-`Handler.getLevel()` / `Handler.setLevel()` (all JDK), resolving names from
-`org.jboss.logmanager`'s handler configuration, and reports `hasHandlerLevels()
-= true`. Logback and `none` keep the SPI's defaults (`false` / empty / empty) —
-they implement none of this.
+`Handler.getLevel()` / `Handler.setLevel()` (all JDK) and reports
+`hasHandlerLevels() = true`. Logback and `none` keep the SPI's defaults
+(`false` / empty / empty) — they implement none of this.
+
+**Name resolution against real WildFly: tried, doesn't work.** The adapter
+reflects into `org.jboss.logmanager.configuration.ContextConfiguration` (JBoss
+LogManager 3.x's own declarative-config API, attached to a `LogContext`'s root
+logger) to recover the configured name. Confirmed against a real standalone
+WildFly 26.1.3.Final (`WildFlyContainerIT`): the attachment is never present —
+WildFly's logging subsystem manages handlers entirely through its own
+management model (`/subsystem=logging/console-handler=CONSOLE`, an
+MSC-service-backed resource address), not through JBoss LogManager's
+declarative config API, so there is nothing there to reflect into. Every
+handler therefore resolves to its identity-token fallback in practice, not the
+friendly name — `CONSOLE`/`FILE` are never what a user actually types. The
+fallback is still fully functional (stable per agent lifetime, and named
+verbatim in every warning's suggested command, so it is copy-pasteable even
+though it isn't pretty), so the feature works end to end regardless; a real
+fix would mean teaching `logaperture-container-wildfly` (which already knows
+WildFly specifically, unlike this generic JUL adapter) to resolve names some
+other way — e.g. by correlating handler instances against the management
+model over the local management interface — which is real, separate,
+deferred work, not a follow-up to this reflection attempt.
+
+Two independent bugs surfaced by that same real-WildFly run, both fixed before
+the above finding was even reachable:
+
+- **Wrong classloader.** `Class.forName("org.jboss.logmanager.Logger")`
+  resolves against *this adapter's own* classloader. Under JBoss Modules that
+  is not the loader that actually has `org.jboss.logmanager` on its path, so
+  the lookup threw `ClassNotFoundException` even though `root` was plainly an
+  instance of exactly that class. Fixed by never asking for that class by
+  name: `root.getClass()` already *is* the correct runtime `Class`, and every
+  further reflective lookup (`ContextConfiguration`, its attachment key) goes
+  through `root.getClass().getClassLoader()` instead of the caller's own.
+- **Cold lookup.** `setHandlerLevel`/`handlerLevel` only ever consulted a
+  cache that `handlerFloorsBelow`/`knownHandlers` populated as a side effect
+  — so `logctl handler <name> <level>` typed as literally the first command
+  against a fresh agent (nothing yet triggered that populate step) always
+  threw `UnknownHandlerException`, for a real, resolvable handler. Fixed:
+  a cache miss now falls back to walking every known handler once (populating
+  the cache as it goes) before giving up.
+
+Both are exactly the kind of gap that in-process unit tests — which always
+called `handlerFloorsBelow` first to obtain a ref, then used that same ref —
+could not have caught; only the real cross-process, real-server run did.
 
 ## Semantics to pin down
 
@@ -281,17 +329,15 @@ they implement none of this.
   handler, capturing a baseline per `(contextKey, ref)`, following
   `wildfly-support.md`'s broadcast semantics. A context that reappears after
   redeploy has the override re-applied to it.
-- **Reconfiguration re-application.** `HandlerLevelControlService.reapplyActiveOverrides`
-  exists and does the same job `LevelControlService.reapplyActiveOverrides` does
-  for loggers, but WildFly's own composition root does not yet call it anywhere
-  — there is no reset event to hook it to (`WildFlyContainer`'s own doc: "no
-  adapter reset wiring — JBoss LogManager has no reset event; the verification
-  sweep covers it" — and there is no handler-level verification sweep in this
-  slice, unlike loggers' `verifyAndReapply`). A handler override still survives
+- **Reconfiguration re-application.** `HandlerLevelControlService.verifyAndReapply`
+  is the `LevelControlService.verifyAndReapply` counterpart for handlers, and
+  `AggregateLevelControl.verificationSweep` runs it across every context
+  alongside the logger sweep — so `WildFlyContainer`'s existing periodic sweep
+  and its `LogManager` configuration-change hook cover handler drift too, with
+  no changes needed in `WildFlyContainer` itself (it already just calls
+  `aggregate.verificationSweep(now)`). A handler override also survives
   **redeploy** (broadcast onto a newly-registered context, same as a logger
-  override) and **resume** (below); the gap is narrower than it sounds — a
-  drift-detection re-apply parallel to `verifyAndReapply`/`verificationSweep`,
-  left for a follow-up slice.
+  override) and **resume** (below).
 - **Resume.** A persisted `--for` / `--sticky` handler override is re-applied on
   agent startup like a logger override (`persistence.md` §6.5). A `--for` one
   whose `expiresAt` has passed is written straight to the audit as a `REVERSION`
@@ -370,10 +416,17 @@ shape), so a `--sticky` handler override survives an agent restart.
   `TRACE` is idempotent and still returns `INFO` as prior only on the first call.
 - `handlerFloorsBelow("x", TRACE)` returns a `HandlerFloor` carrying the `CONSOLE`
   ref and `currentLevel = INFO`.
-- Name resolution: a handler configured as `CONSOLE` resolves by that name; two
-  `ConsoleHandler`s with distinct configured names resolve and are mutated
-  independently; an anonymous handler resolves to `<class>@<idhash>` and is still
-  settable and revertible.
+- Name resolution: no `org.jboss.logmanager` on this test's classpath (by
+  design — see `JulLoggingAdapterTest`'s own class doc), so every handler here
+  resolves to its `<class>@<idhash>` identity-hash fallback, confirmed still
+  settable and revertible by that token. Resolving the real configured name is
+  JBoss-LogManager-specific and, per the real-WildFly finding above, doesn't
+  actually happen there either — so there is no environment, in-process or
+  real, where the friendly-name path is exercised today.
+- `setHandlerLevel`/`handlerLevel` resolve a ref **cold** — with nothing having
+  called `handlerFloorsBelow`/`knownHandlers` for that handler yet in this
+  adapter instance's lifetime — not only a ref freshly returned by one of
+  those calls (the cold-lookup bug above).
 - `knownHandlers()` lists them.
 
 **Unit — core / CLI:**
@@ -408,26 +461,35 @@ shape), so a `--sticky` handler override survives an agent restart.
 
 **Cross-process (extends `LevelControlEndToEndIT` / `WildFlyContainerIT`):**
 
-- Done: `LevelControlEndToEndIT` (Logback fixture) exercises `logctl handler`'s
+- `LevelControlEndToEndIT` (Logback fixture): exercises `logctl handler`'s
   no-op path end-to-end — real agent, real process, real JMX.
-- Still to do, against real standalone WildFly (`WildFlyContainerIT`): `logctl
-  trace <logger>` prints the `CONSOLE` warning; `logctl handler CONSOLE TRACE`
-  then makes a `TRACE` line reach the console; `logctl handler CONSOLE reset`
-  and it stops; whether the handler resolves to the name `CONSOLE` or falls back
-  to its identity token (`JbossHandlerNames`'s reflection into
-  `org.jboss.logmanager.configuration.ContextConfiguration` is unverified against
-  a real server — every failure mode degrades to the fallback, so the feature
-  works either way, but the friendlier name is unconfirmed).
-- Still to do: `logctl handler CONSOLE DEBUG sticky` surviving a redeploy — the
-  broadcast-onto-a-new-context path exists and is unit-tested with fake contexts,
-  but not yet exercised against a real WildFly redeploy. Surviving a
-  `/subsystem=logging` change or `:reload` (drift, not redeploy) is **not**
-  covered yet at all — see "Reconfiguration re-application" above.
+- `WildFlyContainerIT`, against real standalone WildFly 26.1.3.Final:
+  `logctl trace <logger>` prints the handler-floor warning; the handler it
+  names resolves to its identity-token fallback, not `CONSOLE` — confirmed,
+  not just "unverified" (see "Adapter SPI" above for what was tried and why it
+  doesn't pan out against WildFly's actual handler-management model), and the
+  warning's suggested command uses that same token, so it is still directly
+  copy-pasteable. `logctl handler <that-token> TRACE` then makes a real
+  `FINEST`/TRACE-level line actually reach the console's captured output
+  (previously invisible at the handler's default `INFO` floor, logger already
+  raised); `logctl handler <that-token> reset` reverts it, confirmed by a
+  further redeploy adding no new occurrence.
+- Not yet covered: `logctl handler <name> ... sticky` surviving a **redeploy**
+  specifically (the broadcast-onto-a-new-context path is unit-tested with fake
+  multi-context setups, not yet exercised against a real WildFly redeploy —
+  though note stock WildFly's single shared system context, per the M0
+  finding, means a WAR redeploy never actually creates a new context to
+  broadcast onto in practice). Surviving a `/subsystem=logging` change or
+  `:reload` (drift, not redeploy) now has the mechanism (`verificationSweep`
+  covers handlers, per "Reconfiguration re-application" above) but no
+  dedicated real-WildFly test exercising it yet, parallel to
+  `managementCliLoggingChange_isCorrectedByTheVerificationSweep`'s logger one.
 
 ## Open decisions (sign-off)
 
 *Resolved during review:* handler identity is the configured name with a
-`<class>@<idhash>` fallback (was #1); the handler is set to exactly the level the
+`<class>@<idhash>` fallback (was #1 — confirmed against real WildFly that the
+fallback is what actually fires in practice; see "Adapter SPI" above); the handler is set to exactly the level the
 user names (was #2 — the user names it directly now); capability follows the same
 tier rule as loggers — `handler.lower`/`handler.raise` plus `persist` when
 `tier != SESSION` (was #3); `includeChildren` does not apply (was #4 — no coupling
@@ -456,7 +518,10 @@ feature, not a cost.
 
 ## Exit criterion
 
-Against a plain `java -jar` + Logback process and a standalone WildFly:
+Against a plain `java -jar` + Logback process and a standalone WildFly — met,
+using whatever identifier the console handler actually resolves to (its
+identity-token fallback in practice, per the finding above — `CONSOLE` below
+stands for that):
 
 - `logctl trace <logger>` on WildFly raises the logger and prints a warning
   naming the `CONSOLE` handler and the command to clear it; the logger reverts on
@@ -467,8 +532,11 @@ Against a plain `java -jar` + Logback process and a standalone WildFly:
 - `logctl handler CONSOLE reset` reverts it immediately; `logctl reset --all`
   reverts a handler override alongside logger overrides.
 - `logctl handler CONSOLE DEBUG sticky` survives a WildFly redeploy with the
-  handler still lowered.
+  handler still lowered — the mechanism is unit-tested with fake multi-context
+  setups (`addContext` rebroadcast); not yet exercised as a real-WildFly
+  redeploy scenario (see "Cross-process" under Testing).
 - The same command on the Logback process succeeds with the "nothing to change"
-  note and changes no appender.
+  note and changes no appender — met, and confirmed cross-process
+  (`LevelControlEndToEndIT`).
 - `handler.lower` withheld makes `logctl handler CONSOLE TRACE` exit 6 naming the
   capability, with nothing changed.

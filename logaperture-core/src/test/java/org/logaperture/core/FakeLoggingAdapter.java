@@ -19,6 +19,7 @@ import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.core.spi.LoggingAdapter;
+import org.logaperture.core.spi.UnknownHandlerException;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -48,6 +49,7 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     // --- handler support (doc/specs/handler-floor-control.md) --------------------------------------
     private final Map<HandlerRef, Level> handlerLevels = new LinkedHashMap<>();
     private final Map<String, List<HandlerRef>> handlersOnPath = new LinkedHashMap<>();
+    private final Set<HandlerRef> vanishedHandlers = new LinkedHashSet<>();
     private HandlerRef throwOnSetHandlerLevelFor;
     private boolean hasHandlerLevels = true; // this fake models a JUL-like framework by default
 
@@ -168,13 +170,29 @@ final class FakeLoggingAdapter implements LoggingAdapter {
         return List.copyOf(floors);
     }
 
+    /**
+     * Simulates a handler that no longer exists (context torn down, config
+     * dropped it) -- persistently, unlike {@link #throwOnSetHandlerLevel},
+     * since a genuinely vanished handler doesn't come back on the next call.
+     */
+    void vanishHandler(HandlerRef ref) {
+        vanishedHandlers.add(ref);
+        handlerLevels.remove(ref);
+    }
+
     @Override
     public Optional<Level> handlerLevel(HandlerRef ref) {
+        if (vanishedHandlers.contains(ref)) {
+            throw new UnknownHandlerException(ref);
+        }
         return Optional.ofNullable(handlerLevels.get(ref));
     }
 
     @Override
     public Optional<Level> setHandlerLevel(HandlerRef ref, Level level) {
+        if (vanishedHandlers.contains(ref)) {
+            throw new UnknownHandlerException(ref);
+        }
         if (ref.equals(throwOnSetHandlerLevelFor)) {
             throwOnSetHandlerLevelFor = null; // one-shot
             throw new RuntimeException("simulated adapter failure for " + ref);

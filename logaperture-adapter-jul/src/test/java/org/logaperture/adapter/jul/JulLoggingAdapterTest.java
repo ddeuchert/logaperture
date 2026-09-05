@@ -239,6 +239,31 @@ class JulLoggingAdapterTest {
     }
 
     @Test
+    void setHandlerLevel_coldRef_resolvesWithoutAPriorHandlerFloorsBelowCall() {
+        // A code-review finding: setHandlerLevel/handlerLevel used to look up
+        // the ref only in the cache handlerFloorsBelow()/knownHandlers() had
+        // already populated -- so a `logctl handler <name> <level>` typed
+        // cold, before anything ever triggered that populate step in this
+        // agent's lifetime, always threw UnknownHandlerException even for a
+        // real, resolvable handler. Confirmed against real WildFly
+        // (WildFlyContainerIT) before this fix existed.
+        ConsoleHandler console = testConsoleAtInfo();
+        Logger.getLogger("").addHandler(console);
+        try {
+            // The ref this handler *would* resolve to, computed independently
+            // of any adapter call that might have cached it.
+            HandlerRef ref = HandlerRef.anonymous(console);
+
+            Optional<Level> previous = adapter.setHandlerLevel(ref, Level.TRACE);
+
+            assertEquals(Optional.of(Level.INFO), previous);
+            assertSame(java.util.logging.Level.FINEST, console.getLevel());
+        } finally {
+            Logger.getLogger("").removeHandler(console);
+        }
+    }
+
+    @Test
     void knownHandlers_includesAHandlerAttachedToAKnownLogger() {
         ConsoleHandler console = testConsoleAtInfo();
         Logger.getLogger(name("handler.Known")).addHandler(console);

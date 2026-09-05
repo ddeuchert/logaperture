@@ -255,6 +255,22 @@ class AggregateLevelControlTest {
     }
 
     @Test
+    void verificationSweep_coversHandlerOverridesToo() {
+        Ctx system = new Ctx("system");
+        HandlerRef console = new HandlerRef("CONSOLE");
+        system.adapter.addHandler(console, Level.INFO);
+        aggregate.register(system.control);
+        aggregate.setHandlerLevel(console, Level.TRACE, SetHandlerLevelOptions.sticky());
+
+        system.adapter.setHandlerLevel(console, Level.INFO); // drifted
+
+        int reapplied = aggregate.verificationSweep(Instant.now());
+
+        assertEquals(1, reapplied);
+        assertEquals(Level.TRACE, system.adapter.handlerLevel(console).orElseThrow());
+    }
+
+    @Test
     void sweepExpiredOverrides_fansOutToEveryContext() {
         Ctx system = new Ctx("system");
         Ctx app = new Ctx("myapp.war");

@@ -287,14 +287,17 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * (doc/specs/wildfly-support.md, §15.5) — re-applies any override a
      * framework reconfiguration has silently overwritten. Driven by the
      * composition root, from its periodic tick and (for WildFly) from a
-     * `LogManager` configuration-change event.
+     * `LogManager` configuration-change event. Covers handler overrides too
+     * (doc/specs/handler-floor-control.md "Reconfiguration re-application" —
+     * previously a documented gap: loggers had this, handlers didn't).
      *
-     * @return total overrides re-applied across all contexts
+     * @return total overrides re-applied across all contexts, loggers and handlers alike
      */
     public int verificationSweep(Instant now) {
         int reapplied = 0;
         for (ContextControl context : sortedByKey()) {
             reapplied += context.service().verifyAndReapply(now);
+            reapplied += context.handlerService().verifyAndReapply(now);
         }
         return reapplied;
     }

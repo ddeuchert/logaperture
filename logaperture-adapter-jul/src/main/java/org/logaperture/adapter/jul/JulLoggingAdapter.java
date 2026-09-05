@@ -167,7 +167,7 @@ public final class JulLoggingAdapter implements LoggingAdapter {
 
     @Override
     public Optional<Level> handlerLevel(HandlerRef ref) {
-        Handler handler = handlersByRef.get(ref);
+        Handler handler = resolveHandler(ref);
         if (handler == null) {
             return Optional.empty();
         }
@@ -176,13 +176,33 @@ public final class JulLoggingAdapter implements LoggingAdapter {
 
     @Override
     public Optional<Level> setHandlerLevel(HandlerRef ref, Level level) {
-        Handler handler = handlersByRef.get(ref);
+        Handler handler = resolveHandler(ref);
         if (handler == null) {
             throw new UnknownHandlerException(ref);
         }
         Optional<Level> previous = Optional.ofNullable(LevelMapper.toApi(handler.getLevel()));
         handler.setLevel(level == null ? null : LevelMapper.toJul(level));
         return previous;
+    }
+
+    /**
+     * Finds the live {@link Handler} {@code ref} names. {@code ref} usually
+     * arrives fresh from a {@link #handlerFloorsBelow} call that just
+     * populated {@link #handlersByRef} via {@link #refFor} — but {@code
+     * setHandlerLevel}/{@code handlerLevel} must also work as the very first
+     * call this adapter instance ever sees for that handler (a user typing
+     * {@code logctl handler CONSOLE TRACE} cold, with no prior warning in
+     * this session), when the cache is empty. In that case, fall back to
+     * walking every known handler once — which populates the cache as a
+     * side effect via {@link #refFor} — before giving up.
+     */
+    private Handler resolveHandler(HandlerRef ref) {
+        Handler cached = handlersByRef.get(ref);
+        if (cached != null) {
+            return cached;
+        }
+        knownHandlers(); // side effect: resolves and caches every handler's ref
+        return handlersByRef.get(ref);
     }
 
     @Override

@@ -22,6 +22,7 @@ import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
+import org.logaperture.core.spi.UnknownHandlerException;
 
 import java.time.Instant;
 import java.util.List;
@@ -149,6 +150,88 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         for (HandlerLevelOverride override : overrides.all().values()) {
             HandlerOverrideApplier.apply(override, targetAdapter);
         }
+    }
+
+    /**
+     * The verification sweep — the {@link LevelControlService#verifyAndReapply}
+     * counterpart for handlers, closing the gap doc/specs/
+     * handler-floor-control.md's "Reconfiguration re-application" flagged: for
+     * every active handler override, compare the adapter's current handler
+     * level against the override's level, and re-apply where they disagree —
+     * a WildFly {@code /subsystem=logging} change, an XML edit + {@code
+     * :reload}, JBoss LogManager having no reconfiguration event of its own
+     * (§4.3). Idempotent, and follows the same concurrency discipline: iterate
+     * a snapshot of refs, re-read the registry entry per iteration, and
+     * re-check it after applying so a concurrent reset or supersede is
+     * honoured rather than clobbered. Expired {@code FOR} overrides are left
+     * to {@link #sweepExpiredOverrides}. A handler that has vanished (adapter
+     * throws resolving it) is dropped from tracking with a diagnostic, same
+     * as {@link #sweepExpiredOverrides}'s failure-handling story.
+     *
+     * @return how many handler overrides had drifted and were re-applied
+     */
+    public int verifyAndReapply(Instant now) {
+        int reapplied = 0;
+        for (HandlerRef ref : List.copyOf(overrides.all().keySet())) {
+            HandlerLevelOverride override = overrides.get(ref).orElse(null);
+            if (override == null) {
+                continue; // reset out from under this sweep between snapshot and now
+            }
+            if (override.tier() == PersistenceTier.FOR && !override.expiresAt().isAfter(now)) {
+                continue; // expired -- the expiry sweep owns this one
+            }
+
+            Optional<Level> current;
+            try {
+                current = adapter.handlerLevel(ref);
+            } catch (UnknownHandlerException e) {
+                System.err.println("[logaperture-core] verification sweep: handler '" + ref
+                        + "' no longer resolves, dropping it from tracking: " + e);
+                overrides.removeIfCurrent(ref, override);
+                continue;
+            } catch (RuntimeException e) {
+                System.err.println("[logaperture-core] verification sweep: failed to read handler '"
+                        + ref + "', leaving it for the next tick: " + e);
+                continue;
+            }
+            if (current.isPresent() && current.get() == override.level()) {
+                continue; // still in force
+            }
+
+            try {
+                HandlerOverrideApplier.apply(override, adapter);
+            } catch (UnknownHandlerException e) {
+                // The handler itself is gone (context torn down, config
+                // dropped it) -- not a transient failure, so don't leave a
+                // permanently-undead override that fails every future tick.
+                System.err.println("[logaperture-core] verification sweep: handler '" + ref
+                        + "' no longer resolves, dropping it from tracking: " + e);
+                overrides.removeIfCurrent(ref, override);
+                continue;
+            } catch (RuntimeException e) {
+                System.err.println("[logaperture-core] verification sweep: failed to re-apply handler '"
+                        + ref + "', leaving it drifted for the next tick: " + e);
+                continue;
+            }
+
+            Optional<HandlerLevelOverride> afterApply = overrides.get(ref);
+            if (!afterApply.map(override::equals).orElse(false)) {
+                // A concurrent resetHandler/setHandlerLevel won the race
+                // between our read and our apply -- undo rather than leave
+                // the adapter disagreeing with the registry, no audit for a
+                // re-apply that did not stick.
+                afterApply.ifPresentOrElse(
+                        replacement -> HandlerOverrideApplier.apply(replacement, adapter),
+                        () -> adapter.setHandlerLevel(ref, baselines.get(ref).orElse(null)));
+                continue;
+            }
+
+            auditLog.record(new AuditRecord(now, principal, "verification-sweep", ref.value(),
+                    current.map(Level::toString).orElse("<none>"), override.level().toString(), override.reason(),
+                    AuditRecord.Action.MUTATION));
+            reapplied++;
+        }
+        return reapplied;
     }
 
     /** Every handler override this context currently tracks. */
