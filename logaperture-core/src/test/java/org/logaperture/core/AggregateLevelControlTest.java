@@ -113,6 +113,29 @@ class AggregateLevelControlTest {
     }
 
     @Test
+    void setLevel_blockingHandlers_keepsTheStricterFloorAcrossContextsSharingARef() {
+        // Code-review finding: two contexts collapsing to the same
+        // ALL_HANDLERS ref (doc/specs/handler-floor-control.md Decision #7)
+        // can legitimately report different currentLevels -- the old
+        // putIfAbsent-based union silently dropped whichever context wasn't
+        // first, understating the real block.
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        system.adapter.addKnownLogger("com.shared.Util");
+        app.adapter.addKnownLogger("com.shared.Util");
+        system.adapter.addHandlerWithPerTargetLevel(HandlerRef.ALL_HANDLERS, Level.INFO, "com.shared.Util");
+        app.adapter.addHandlerWithPerTargetLevel(HandlerRef.ALL_HANDLERS, Level.WARN, "com.shared.Util"); // stricter
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        var result = aggregate.setLevel("com.shared.Util", Level.TRACE, SetLevelOptions.defaults());
+
+        assertEquals(1, result.blockingHandlers().size());
+        assertEquals(Level.WARN, result.blockingHandlers().get(0).currentLevel(),
+                "the stricter of the two contexts' readings, not whichever was registered first");
+    }
+
+    @Test
     void resetLevel_revertsInEveryContext() {
         Ctx system = new Ctx("system");
         Ctx app = new Ctx("myapp.war");

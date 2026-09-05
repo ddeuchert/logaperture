@@ -26,6 +26,7 @@ import org.logaperture.core.spi.UnknownHandlerException;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -207,6 +208,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
 
             String currentDescription;
             boolean drifted;
+            Map<HandlerRef, String> groupPreviousValues = null;
             if (HandlerRef.ALL_HANDLERS.equals(ref)) {
                 // Decision #1/#2 (issue #13): ALL_HANDLERS isn't itself a
                 // live handler, so there is no single adapter.handlerLevel(ref)
@@ -215,6 +217,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                 DriftCheck check = checkGroupDrift(override.level());
                 drifted = check.drifted();
                 currentDescription = check.description();
+                groupPreviousValues = check.perRealCurrent();
             } else {
                 Optional<Level> current;
                 try {
@@ -268,35 +271,55 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                 continue;
             }
 
-            auditLog.record(new AuditRecord(now, principal, "verification-sweep", ref.value(),
-                    currentDescription, override.level().toString(), override.reason(),
-                    AuditRecord.Action.MUTATION));
+            if (HandlerRef.ALL_HANDLERS.equals(ref)) {
+                // Decision #3 (issue #13): the audit trail stays as granular
+                // as ever, one row per real handler re-applied -- never a
+                // single ALL_HANDLERS-keyed row standing in for the whole
+                // group (code-review finding: this used to write exactly
+                // one row here, unlike every other ALL_HANDLERS mutation
+                // path in this class).
+                for (Map.Entry<HandlerRef, String> entry : groupPreviousValues.entrySet()) {
+                    auditLog.record(new AuditRecord(now, principal, "verification-sweep", entry.getKey().value(),
+                            entry.getValue(), override.level().toString(), override.reason(),
+                            AuditRecord.Action.MUTATION));
+                }
+            } else {
+                auditLog.record(new AuditRecord(now, principal, "verification-sweep", ref.value(),
+                        currentDescription, override.level().toString(), override.reason(),
+                        AuditRecord.Action.MUTATION));
+            }
             reapplied++;
         }
         return reapplied;
     }
 
     /** One iteration's read of "what does the adapter say right now, and does it disagree with the tracked override". */
-    private record DriftCheck(boolean drifted, String description) {
+    private record DriftCheck(boolean drifted, String description, Map<HandlerRef, String> perRealCurrent) {
     }
 
     /**
      * ALL_HANDLERS has no single current level to compare -- drifted if
-     * *any* real handler disagrees with {@code overrideLevel}, and {@code
-     * description} joins every real handler's own current value for the
-     * audit record (issue #13, Decisions #1/#2).
+     * *any* real handler disagrees with {@code overrideLevel}. {@code
+     * description} joins every real handler's own current value for a
+     * single-ref-style log line; {@code perRealCurrent} is the same data,
+     * structured, so a successful re-apply can still audit one row per real
+     * handler (Decision #3) instead of one row for the whole group (issue
+     * #13, Decisions #1/#2).
      */
     private DriftCheck checkGroupDrift(Level overrideLevel) {
+        Map<HandlerRef, String> perReal = new LinkedHashMap<>();
         List<String> currentValues = new ArrayList<>();
         boolean drifted = false;
         for (HandlerRef real : adapter.realHandlers()) {
             Optional<Level> current = adapter.handlerLevel(real);
-            currentValues.add(real.value() + "=" + current.map(Level::toString).orElse("<none>"));
+            String value = current.map(Level::toString).orElse("<none>");
+            perReal.put(real, value);
+            currentValues.add(real.value() + "=" + value);
             if (current.isEmpty() || current.get() != overrideLevel) {
                 drifted = true;
             }
         }
-        return new DriftCheck(drifted, String.join(", ", currentValues));
+        return new DriftCheck(drifted, String.join(", ", currentValues), perReal);
     }
 
     /** Every handler override this context currently tracks. */
@@ -319,6 +342,9 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     public void adoptOverride(HandlerLevelOverride override) {
         Objects.requireNonNull(override, "override");
         captureBaselineFor(override.handlerRef());
+        boolean group = HandlerRef.ALL_HANDLERS.equals(override.handlerRef());
+        List<HandlerRef> reals = group ? adapter.realHandlers() : null;
+        List<String> previousValues = group ? previousValuesOf(reals) : null;
         try {
             HandlerOverrideApplier.apply(override, adapter);
         } catch (RuntimeException e) {
@@ -327,9 +353,16 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return;
         }
         overrides.put(override);
-        auditLog.record(new AuditRecord(
-                Instant.now(), principal, "resume", override.handlerRef().value(), null,
-                override.level().toString(), override.reason(), AuditRecord.Action.MUTATION));
+        if (group) {
+            // Decision #3 (issue #13): one audit row per real handler, not
+            // one for the group (code-review finding).
+            recordGroupMutationAudit("resume", reals, previousValues, override.level(), override.reason(),
+                    Instant.now());
+        } else {
+            auditLog.record(new AuditRecord(
+                    Instant.now(), principal, "resume", override.handlerRef().value(), null,
+                    override.level().toString(), override.reason(), AuditRecord.Action.MUTATION));
+        }
     }
 
     /**
@@ -359,11 +392,46 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return;
         }
 
+        if (HandlerRef.ALL_HANDLERS.equals(persisted.handlerRef())) {
+            List<HandlerRef> reals = adapter.realHandlers();
+            List<String> previousValues = previousValuesOf(reals);
+            HandlerOverrideApplier.apply(persisted, adapter);
+            overrides.put(persisted);
+            // Decision #3 (issue #13): one audit row per real handler, not
+            // one for the group (code-review finding).
+            recordGroupMutationAudit("resume", reals, previousValues, persisted.level(), persisted.reason(), now);
+            return;
+        }
+
         HandlerOverrideApplier.apply(persisted, adapter);
         overrides.put(persisted);
         auditLog.record(new AuditRecord(
                 now, principal, "resume", persisted.handlerRef().value(), null,
                 persisted.level().toString(), persisted.reason(), AuditRecord.Action.MUTATION));
+    }
+
+    /** Every real handler's own current level, right now, in the same order as {@code reals}. */
+    private List<String> previousValuesOf(List<HandlerRef> reals) {
+        List<String> values = new ArrayList<>(reals.size());
+        for (HandlerRef real : reals) {
+            values.add(adapter.handlerLevel(real).map(Level::toString).orElse("<none>"));
+        }
+        return values;
+    }
+
+    /**
+     * Writes one MUTATION audit row per real handler for an ALL_HANDLERS
+     * group override that was just applied elsewhere (resume, adopt) --
+     * {@code reals}/{@code previousValues} are the pre-mutation snapshot
+     * taken before {@link HandlerOverrideApplier#apply} ran, paired by
+     * index (issue #13, Decision #3).
+     */
+    private void recordGroupMutationAudit(String auditSource, List<HandlerRef> reals, List<String> previousValues,
+            Level newLevel, String reason, Instant now) {
+        for (int i = 0; i < reals.size(); i++) {
+            auditLog.record(new AuditRecord(now, principal, auditSource, reals.get(i).value(),
+                    previousValues.get(i), newLevel.toString(), reason, AuditRecord.Action.MUTATION));
+        }
     }
 
     /**
@@ -447,6 +515,21 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                 continue;
             }
             mutated++;
+            // An individually-tracked override on this same real handler
+            // (plain JUL, where a real ref stays addressable alongside
+            // ALL_HANDLERS) is now stale: the group mutation just applied a
+            // new value directly to it, and the row below already audits
+            // that change. Drop it so `logctl status` doesn't show two
+            // overrides disagreeing about the same handler's level
+            // (code-review finding). The reverse ordering -- an individual
+            // override set *after* ALL_HANDLERS, deliberately peeling one
+            // handler off the group -- is left alone; that override still
+            // wins and this class does not currently guard the group's own
+            // reset/reapply from also touching that handler.
+            if (overrides.get(real).isPresent()) {
+                overrides.remove(real);
+                safePersist(() -> stateStore.removeHandler(real));
+            }
             auditLog.record(new AuditRecord(
                     now, principal, source, real.value(), previousValue, level.toString(), opts.reason(),
                     AuditRecord.Action.MUTATION));
