@@ -17,11 +17,13 @@ package org.logaperture.core;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetLevelOptions;
+import org.logaperture.api.SetLevelResult;
 import org.logaperture.core.spi.StateStore;
 
 import java.util.List;
@@ -61,7 +63,7 @@ class LevelControlServiceTest {
     void setLevel_onExistingLogger_appliesAndRecordsOverride() {
         adapter.addKnownLogger("com.acme.Worker");
 
-        LevelOverride override = service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.withReason("INC-1"));
+        LevelOverride override = service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.withReason("INC-1")).override();
 
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme.Worker"));
         assertEquals("com.acme.Worker", override.loggerName());
@@ -70,10 +72,76 @@ class LevelControlServiceTest {
         assertTrue(overrides.get("com.acme.Worker").isPresent());
     }
 
+    // --- blockingHandlers (doc/specs/handler-floor-control.md "Warning on level commands") ----
+
+    @Test
+    void setLevel_raiseBelowAHandlerFloor_reportsIt() {
+        adapter.addKnownLogger("com.acme.Worker");
+        HandlerRef console = new HandlerRef("CONSOLE");
+        adapter.addHandler(console, Level.INFO, "com.acme.Worker");
+
+        SetLevelResult result = service.setLevel("com.acme.Worker", Level.TRACE, SetLevelOptions.defaults());
+
+        assertEquals(1, result.blockingHandlers().size());
+        assertEquals(console, result.blockingHandlers().get(0).handlerRef());
+        assertEquals(Level.INFO, result.blockingHandlers().get(0).currentLevel());
+    }
+
+    @Test
+    void setLevel_includeChildren_reportsBlockingHandlersOnADescendantsOwnPathToo() {
+        // A code-review finding: blockingHandlers used to be computed once
+        // for the named logger alone, so a descendant fanned out to by
+        // --include-children with its own, different handler on its own
+        // path lost its warning entirely.
+        adapter.addKnownLogger("com.acme");
+        adapter.addKnownLogger("com.acme.http");
+        HandlerRef fileOnChildOnly = new HandlerRef("FILE");
+        adapter.addHandler(fileOnChildOnly, Level.INFO, "com.acme.http"); // not on "com.acme"'s own path
+
+        SetLevelResult result = service.setLevel(
+                "com.acme", Level.TRACE, new SetLevelOptions(true, null, null, PersistenceTier.SESSION));
+
+        assertEquals(1, result.blockingHandlers().size());
+        assertEquals(fileOnChildOnly, result.blockingHandlers().get(0).handlerRef());
+    }
+
+    @Test
+    void setLevel_includeChildren_dedupesAHandlerSharedByParentAndChild() {
+        adapter.addKnownLogger("com.acme");
+        adapter.addKnownLogger("com.acme.http");
+        HandlerRef console = new HandlerRef("CONSOLE");
+        adapter.addHandler(console, Level.INFO, "com.acme", "com.acme.http"); // on both paths
+
+        SetLevelResult result = service.setLevel(
+                "com.acme", Level.TRACE, new SetLevelOptions(true, null, null, PersistenceTier.SESSION));
+
+        assertEquals(1, result.blockingHandlers().size(), "reported once, not once per target");
+    }
+
+    @Test
+    void setLevel_raiseNotBelowAHandlerFloor_reportsNothing() {
+        adapter.addKnownLogger("com.acme.Worker");
+        adapter.addHandler(new HandlerRef("CONSOLE"), Level.TRACE, "com.acme.Worker");
+
+        SetLevelResult result = service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
+
+        assertTrue(result.blockingHandlers().isEmpty());
+    }
+
+    @Test
+    void setLevel_notARaise_reportsNothingEvenBelowAHandlerFloor() {
+        adapter.setConfiguredLevel("com.acme.Worker", Level.DEBUG);
+        adapter.addHandler(new HandlerRef("CONSOLE"), Level.INFO, "com.acme.Worker");
+
+        SetLevelResult result = service.setLevel("com.acme.Worker", Level.WARN, SetLevelOptions.defaults());
+
+        assertTrue(result.blockingHandlers().isEmpty(), "WARN is less verbose than DEBUG -- not a raise");
+    }
+
     @Test
     void setLevel_onNotYetExistingLogger_stillWorks() {
         // "com.acme.Later" was never registered with the adapter beforehand.
-        LevelOverride override = service.setLevel("com.acme.Later", Level.TRACE, SetLevelOptions.defaults());
+        LevelOverride override = service.setLevel("com.acme.Later", Level.TRACE, SetLevelOptions.defaults()).override();
 
         assertEquals(Level.TRACE, adapter.effectiveLevel("com.acme.Later"));
         assertEquals(Level.TRACE, override.level());

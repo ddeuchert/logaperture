@@ -15,9 +15,13 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.HandlerFloor;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.core.spi.LoggingAdapter;
+import org.logaperture.core.spi.UnknownHandlerException;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -41,6 +45,14 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     private String throwOnApplyFor;
     private String runOnEffectiveLevelFor;
     private Runnable runOnEffectiveLevel;
+
+    // --- handler support (doc/specs/handler-floor-control.md) --------------------------------------
+    private final Map<HandlerRef, Level> handlerLevels = new LinkedHashMap<>();
+    private final Set<HandlerRef> registeredHandlers = new LinkedHashSet<>();
+    private final Map<String, List<HandlerRef>> handlersOnPath = new LinkedHashMap<>();
+    private final Set<HandlerRef> vanishedHandlers = new LinkedHashSet<>();
+    private HandlerRef throwOnSetHandlerLevelFor;
+    private boolean hasHandlerLevels = true; // this fake models a JUL-like framework by default
 
     FakeLoggingAdapter(Level rootLevel) {
         knownNames.add("ROOT");
@@ -117,5 +129,98 @@ final class FakeLoggingAdapter implements LoggingAdapter {
         } else {
             explicitLevels.put(loggerName, level);
         }
+    }
+
+    // --- handler support (doc/specs/handler-floor-control.md) --------------------------------------
+
+    /** Registers {@code ref} at {@code level}, on the path of every logger listed. */
+    void addHandler(HandlerRef ref, Level level, String... loggerNamesOnItsPath) {
+        handlerLevels.put(ref, level);
+        registeredHandlers.add(ref);
+        for (String loggerName : loggerNamesOnItsPath) {
+            handlersOnPath.computeIfAbsent(loggerName, n -> new ArrayList<>()).add(ref);
+        }
+    }
+
+    /** Makes the next {@link #setHandlerLevel} call for this ref throw, to exercise chaos-case behavior. */
+    void throwOnSetHandlerLevel(HandlerRef ref) {
+        this.throwOnSetHandlerLevelFor = ref;
+    }
+
+    /** Models a framework whose handlers have no level of their own (Logback, {@code none}). */
+    void disableHandlerLevels() {
+        this.hasHandlerLevels = false;
+    }
+
+    @Override
+    public boolean hasHandlerLevels() {
+        return hasHandlerLevels;
+    }
+
+    @Override
+    public List<HandlerFloor> handlerFloorsBelow(String loggerName, Level target) {
+        if (target == null) {
+            return List.of();
+        }
+        List<HandlerFloor> floors = new ArrayList<>();
+        for (HandlerRef ref : handlersOnPath.getOrDefault(loggerName, List.of())) {
+            Level current = handlerLevels.get(ref);
+            if (current != null && current.compareTo(target) > 0) {
+                floors.add(new HandlerFloor(ref, current));
+            }
+        }
+        return List.copyOf(floors);
+    }
+
+    /**
+     * Simulates a handler that no longer exists (context torn down, config
+     * dropped it) -- persistently, unlike {@link #throwOnSetHandlerLevel},
+     * since a genuinely vanished handler doesn't come back on the next call.
+     */
+    void vanishHandler(HandlerRef ref) {
+        vanishedHandlers.add(ref);
+        handlerLevels.remove(ref);
+    }
+
+    @Override
+    public Optional<Level> handlerLevel(HandlerRef ref) {
+        // Mirrors JulLoggingAdapter's real contract: handlerLevel never
+        // throws for an unresolvable ref (vanished, or never registered) --
+        // it just returns empty, same as "don't know". Only setHandlerLevel
+        // throws UnknownHandlerException for that case.
+        if (!isResolvable(ref)) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(handlerLevels.get(ref));
+    }
+
+    @Override
+    public Optional<Level> setHandlerLevel(HandlerRef ref, Level level) {
+        if (!isResolvable(ref)) {
+            throw new UnknownHandlerException(ref);
+        }
+        if (ref.equals(throwOnSetHandlerLevelFor)) {
+            throwOnSetHandlerLevelFor = null; // one-shot
+            throw new RuntimeException("simulated adapter failure for " + ref);
+        }
+        Level previous = handlerLevels.get(ref);
+        if (level == null) {
+            handlerLevels.remove(ref);
+        } else {
+            handlerLevels.put(ref, level);
+        }
+        return Optional.ofNullable(previous);
+    }
+
+    @Override
+    public List<HandlerRef> knownHandlers() {
+        List<HandlerRef> known = new ArrayList<>(registeredHandlers);
+        known.removeAll(vanishedHandlers);
+        return List.copyOf(known);
+    }
+
+    /** Whether {@code ref} resolves to a live handler in this fake -- registered, and never vanished. */
+    private boolean isResolvable(HandlerRef ref) {
+        return registeredHandlers.contains(ref) && !vanishedHandlers.contains(ref);
     }
 }

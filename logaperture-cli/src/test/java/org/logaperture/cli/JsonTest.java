@@ -16,6 +16,7 @@
 package org.logaperture.cli;
 
 import org.junit.jupiter.api.Test;
+import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerInfoData;
 
@@ -68,5 +69,22 @@ class JsonTest {
     @Test
     void revertedCountIsABareNumber() {
         assertEquals("{\"reverted\":3}", Json.revertedCount(3));
+    }
+
+    @Test
+    void statusWrapsLoggersAndHandlerOverridesUnderTheirOwnKeys() {
+        LoggerInfoData logger = new LoggerInfoData("a", "INFO", "DEBUG", true, "jmx", null, "STICKY", null);
+        HandlerLevelOverrideData handler = new HandlerLevelOverrideData(
+                "CONSOLE", "TRACE", null, "2026-08-25T00:00:00Z", "jmx", "STICKY", null);
+
+        String json = Json.status(List.of(logger), List.of(handler));
+
+        assertTrue(json.startsWith("{\"loggers\":[{"), json);
+        assertTrue(json.contains("\"handlerOverrides\":[{\"handlerRef\":\"CONSOLE\""), json);
+    }
+
+    @Test
+    void statusWithNothingActiveStillEmitsBothEmptyArrays() {
+        assertEquals("{\"loggers\":[],\"handlerOverrides\":[]}", Json.status(List.of(), List.of()));
     }
 }

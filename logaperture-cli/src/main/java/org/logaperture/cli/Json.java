@@ -15,8 +15,11 @@
  */
 package org.logaperture.cli;
 
+import org.logaperture.control.jmx.HandlerFloorData;
+import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerInfoData;
+import org.logaperture.control.jmx.SetLevelResultData;
 
 import java.util.List;
 import java.util.StringJoiner;
@@ -56,6 +59,10 @@ final class Json {
     }
 
     static String override(LevelOverrideData data) {
+        return overrideObj(data).toString();
+    }
+
+    private static Obj overrideObj(LevelOverrideData data) {
         return new Obj()
                 .str("loggerName", data.getLoggerName())
                 .str("level", data.getLevel())
@@ -64,7 +71,75 @@ final class Json {
                 .str("appliedAt", data.getAppliedAt())
                 .str("source", data.getSource())
                 .str("tier", data.getTier())
-                .str("expiresAt", data.getExpiresAt())
+                .str("expiresAt", data.getExpiresAt());
+    }
+
+    /**
+     * {@code setLevel}'s full JSON result: the override, plus {@code
+     * warnings} — one entry per handler that will still swallow records at
+     * the new level (doc/specs/handler-floor-control.md "Warning on level
+     * commands"), empty on the common case of no such handler.
+     */
+    static String setLevelResult(SetLevelResultData result) {
+        StringJoiner warnings = new StringJoiner(",", "[", "]");
+        for (HandlerFloorData floor : result.getBlockingHandlers()) {
+            warnings.add(new Obj()
+                    .str("handlerRef", floor.getHandlerRef())
+                    .str("currentLevel", floor.getCurrentLevel())
+                    .toString());
+        }
+        return overrideObj(result.getOverride()).raw("warnings", warnings.toString()).toString();
+    }
+
+    static String handlerOverride(HandlerLevelOverrideData data) {
+        return handlerOverrideObj(data).toString();
+    }
+
+    static String handlerOverrides(List<HandlerLevelOverrideData> rows) {
+        StringJoiner array = new StringJoiner(",", "[", "]");
+        for (HandlerLevelOverrideData row : rows) {
+            array.add(handlerOverride(row));
+        }
+        return array.toString();
+    }
+
+    private static Obj handlerOverrideObj(HandlerLevelOverrideData data) {
+        return new Obj()
+                .str("handlerRef", data.getHandlerRef())
+                .str("level", data.getLevel())
+                .str("reason", data.getReason())
+                .str("appliedAt", data.getAppliedAt())
+                .str("source", data.getSource())
+                .str("tier", data.getTier())
+                .str("expiresAt", data.getExpiresAt());
+    }
+
+    /**
+     * {@code logctl status --json}: active logger overrides plus active
+     * handler overrides, each an array under its own key — a plain array of
+     * loggers alone would have no room to also carry the handler overrides
+     * doc/specs/handler-floor-control.md's "logctl status shows handler
+     * overrides too" calls for.
+     */
+    static String status(List<LoggerInfoData> loggerOverrides, List<HandlerLevelOverrideData> handlerOverrides) {
+        return new Obj()
+                .raw("loggers", loggers(loggerOverrides))
+                .raw("handlerOverrides", handlerOverrides(handlerOverrides))
+                .toString();
+    }
+
+    /** {@code logctl handler} against a framework whose handlers have no level of their own (Logback, {@code none}). */
+    static String handlerNoOp(String handlerRef) {
+        return new Obj()
+                .str("handlerRef", handlerRef)
+                .bool("changed", false)
+                .toString();
+    }
+
+    static String handlerReset(String handlerRef) {
+        return new Obj()
+                .str("handlerRef", handlerRef)
+                .bool("reset", true)
                 .toString();
     }
 
@@ -97,6 +172,12 @@ final class Json {
 
         Obj bool(String key, boolean value) {
             body.add(quote(key) + ":" + value);
+            return this;
+        }
+
+        /** Embeds an already-serialized JSON value verbatim -- e.g. an array built from other {@link Obj}s. */
+        Obj raw(String key, String rawJsonValue) {
+            body.add(quote(key) + ":" + rawJsonValue);
             return this;
         }
 

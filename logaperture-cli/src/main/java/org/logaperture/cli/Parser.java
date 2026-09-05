@@ -105,10 +105,19 @@ final class Parser {
 
         String command = positionals.get(0);
         List<String> rest = positionals.subList(1, positionals.size());
-        boolean mutating = command.equals("set") || LEVEL_SUBCOMMANDS.contains(command);
+        boolean isLevelMutation = command.equals("set") || LEVEL_SUBCOMMANDS.contains(command);
+        boolean isHandlerCommand = command.equals("handler");
+        // "handler <name> reset" is a revert, same as "reset <logger>" -- a
+        // reason attached to it would be silently dropped, so it's rejected
+        // the same way "reset <logger> --reason ..." already is. Only the
+        // "handler <name> <level>" set-form takes --reason.
+        boolean isHandlerReset = isHandlerCommand && rest.size() >= 2 && rest.get(1).equals("reset");
 
-        if (!mutating && (includeChildren || reason != null)) {
-            throw usage("--reason and --include-children apply only to set/debug/trace/info/warn/error.");
+        if (includeChildren && !isLevelMutation) {
+            throw usage("--include-children applies only to set/debug/trace/info/warn/error.");
+        }
+        if (reason != null && !isLevelMutation && !(isHandlerCommand && !isHandlerReset)) {
+            throw usage("--reason applies only to set/debug/trace/info/warn/error, or 'handler <name> <level>'.");
         }
         if (all && !command.equals("reset")) {
             throw usage("--all applies only to 'reset'.");
@@ -145,6 +154,21 @@ final class Parser {
                 }
                 TierChoice tier = resolveTier(rest.subList(2, rest.size()));
                 yield Commands.setLevel(rest.get(0), parseLevel(rest.get(1)), includeChildren, reason,
+                        tier.tierName(), tier.forSeconds(), json);
+            }
+            case "handler" -> {
+                if (rest.size() < 2) {
+                    throw usage("'handler' needs <name> <level>, or <name> reset.");
+                }
+                String handlerRef = rest.get(0);
+                if (rest.get(1).equals("reset")) {
+                    if (rest.size() != 2) {
+                        throw usage("'handler <name> reset' takes no further arguments.");
+                    }
+                    yield Commands.resetHandler(handlerRef, json);
+                }
+                TierChoice tier = resolveTier(rest.subList(2, rest.size()));
+                yield Commands.setHandlerLevel(handlerRef, parseLevel(rest.get(1)), reason,
                         tier.tierName(), tier.forSeconds(), json);
             }
             default -> {

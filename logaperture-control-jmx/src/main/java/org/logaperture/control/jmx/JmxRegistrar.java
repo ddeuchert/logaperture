@@ -15,6 +15,7 @@
  */
 package org.logaperture.control.jmx;
 
+import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
 
 import javax.management.JMException;
@@ -38,8 +39,10 @@ public final class JmxRegistrar {
     private JmxRegistrar() {
     }
 
-    public static void register(LevelControlOperations service) throws JMException {
-        StandardMBean mbean = new StandardMBean(new LevelControlMXBeanImpl(service), LevelControlMXBean.class, true);
+    public static void register(LevelControlOperations service, HandlerLevelControlOperations handlerService)
+            throws JMException {
+        StandardMBean mbean = new StandardMBean(
+                new LevelControlMXBeanImpl(service, handlerService), LevelControlMXBean.class, true);
         ManagementFactory.getPlatformMBeanServer().registerMBean(mbean, OBJECT_NAME);
     }
 

@@ -15,9 +15,10 @@
  */
 package org.logaperture.cli;
 
+import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelControlMXBean;
-import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerInfoData;
+import org.logaperture.control.jmx.SetLevelResultData;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -28,12 +29,16 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     final List<String> listLoggersFilters = new ArrayList<>();
     final List<Object[]> setLevelCalls = new ArrayList<>();
     final List<String> resetLevelCalls = new ArrayList<>();
+    final List<Object[]> setHandlerLevelCalls = new ArrayList<>();
+    final List<String> resetHandlerCalls = new ArrayList<>();
     /** Names dropped from {@link #loggers} when {@link #resetLevel} clears them — a "Known" but not "Live" logger. */
     final List<String> forgetOnReset = new ArrayList<>();
     int resetAllCalls;
 
     List<LoggerInfoData> loggers = new ArrayList<>();
-    LevelOverrideData setLevelResult;
+    List<HandlerLevelOverrideData> handlerOverrides = new ArrayList<>();
+    SetLevelResultData setLevelResult;
+    HandlerLevelOverrideData setHandlerLevelResult;
     RuntimeException throwOnNextCall;
 
     @Override
@@ -53,7 +58,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     }
 
     @Override
-    public LevelOverrideData setLevel(String loggerName, String level, boolean includeChildren, String reason,
+    public SetLevelResultData setLevel(String loggerName, String level, boolean includeChildren, String reason,
             String tier, long forSeconds) {
         setLevelCalls.add(new Object[] {loggerName, level, includeChildren, reason, tier, forSeconds});
         maybeThrow();
@@ -73,6 +78,26 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     public void resetAll() {
         resetAllCalls++;
         maybeThrow();
+    }
+
+    @Override
+    public HandlerLevelOverrideData setHandlerLevel(String handlerRef, String level, String reason, String tier,
+            long forSeconds) {
+        setHandlerLevelCalls.add(new Object[] {handlerRef, level, reason, tier, forSeconds});
+        maybeThrow();
+        return setHandlerLevelResult;
+    }
+
+    @Override
+    public void resetHandler(String handlerRef) {
+        resetHandlerCalls.add(handlerRef);
+        maybeThrow();
+    }
+
+    @Override
+    public List<HandlerLevelOverrideData> listHandlerOverrides() {
+        maybeThrow();
+        return handlerOverrides;
     }
 
     private void maybeThrow() {

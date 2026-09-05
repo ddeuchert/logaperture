@@ -32,8 +32,20 @@ public enum Capability {
     /**
      * Making a change outlive the process, rather than expiring with it —
      * required in addition to {@link #LEVEL_RAISE}/{@link #LEVEL_LOWER}
-     * whenever a {@code setLevel} call's tier isn't {@code SESSION}
+     * (or {@link #HANDLER_RAISE}/{@link #HANDLER_LOWER}) whenever a {@code
+     * setLevel}/{@code setHandlerLevel} call's tier isn't {@code SESSION}
      * (doc/specs/persistence.md).
      */
-    PERSIST
+    PERSIST,
+    /**
+     * Making a handler's own level more permissive (revealing output) via
+     * {@code logctl handler <name> <level>} — granted independently of
+     * {@link #LEVEL_RAISE}/{@link #LEVEL_LOWER}: a handler floor governs
+     * every logger routing through it, a wider blast radius than one
+     * logger's level (doc/specs/handler-floor-control.md "Capability and
+     * audit").
+     */
+    HANDLER_LOWER,
+    /** Making a handler's own level stricter (squelching output). */
+    HANDLER_RAISE
 }

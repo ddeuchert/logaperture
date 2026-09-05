@@ -16,9 +16,9 @@
 package org.logaperture.core;
 
 import org.logaperture.api.Level;
-import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.SetLevelOptions;
+import org.logaperture.api.SetLevelResult;
 
 import java.util.List;
 
@@ -32,7 +32,12 @@ public interface LevelControlOperations {
 
     List<LoggerInfo> listLoggers(String filter);
 
-    LevelOverride setLevel(String loggerName, Level level, SetLevelOptions options);
+    /**
+     * @return the created override, plus any handler on {@code loggerName}'s
+     *         path that will still swallow records at {@code level} — doc/specs/
+     *         handler-floor-control.md "Warning on level commands"
+     */
+    SetLevelResult setLevel(String loggerName, Level level, SetLevelOptions options);
 
     void resetLevel(String loggerName);
 

@@ -22,6 +22,9 @@ import org.logaperture.core.AuditLog;
 import org.logaperture.core.BaselineRegistry;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.FileStateStore;
+import org.logaperture.core.HandlerBaselineRegistry;
+import org.logaperture.core.HandlerLevelControlService;
+import org.logaperture.core.HandlerOverrideRegistry;
 import org.logaperture.core.LevelControlService;
 import org.logaperture.core.OverrideRegistry;
 import org.logaperture.core.SweepPolicy;
@@ -105,13 +108,18 @@ public final class WildFlyContainer implements AutoCloseable {
         LevelControlService service = new LevelControlService(
                 adapter, baselines, overrides, policy, auditLog, stateStore, principal(), "jmx");
 
+        HandlerLevelControlService handlerService = new HandlerLevelControlService(adapter,
+                new HandlerBaselineRegistry(), new HandlerOverrideRegistry(), policy, auditLog, stateStore,
+                principal(), "jmx");
+
         try {
             service.resumeFromStateStore(Instant.now());
+            handlerService.resumeFromStateStore(Instant.now());
         } catch (RuntimeException e) {
             Diagnostics.warn("LogAperture: failed to resume persisted overrides, continuing without them", e);
         }
 
-        aggregate.register(new ContextControl(handle, service));
+        aggregate.register(new ContextControl(handle, service, handlerService));
     }
 
     /**

@@ -36,7 +36,9 @@ final class HelpText {
             "logctl error <logger> [session | for <duration> | sticky]",
             "logctl set <logger> <level> [session | for <duration> | sticky]",
             "logctl reset <logger>",
-            "logctl reset --all");
+            "logctl reset --all",
+            "logctl handler <name> <level> [session | for <duration> | sticky]",
+            "logctl handler <name> reset");
 
     private HelpText() {
     }
@@ -57,8 +59,13 @@ final class HelpText {
         sb.append("  -h, --help           this help\n");
         sb.append("\n");
         sb.append("A <duration> is <n>s, <n>m, <n>h or <n>d, for example: for 30m.\n");
-        sb.append("A bare 'debug'/'set' with no tier defaults to 'for 4h' — a working\n");
-        sb.append("session, gone by morning.\n");
+        sb.append("A bare 'debug'/'set'/'handler' with no tier defaults to 'for 4h' — a\n");
+        sb.append("working session, gone by morning.\n");
+        sb.append("\n");
+        sb.append("'handler' sets a handler's own level directly — the fix when raising a\n");
+        sb.append("logger still won't show output because a handler (WildFly's CONSOLE, say)\n");
+        sb.append("is set stricter. A raise that hits this prints which handler and the\n");
+        sb.append("exact command to lower it. 'handler <name> reset' reverts it on its own.\n");
         sb.append("\n");
         sb.append("A [filter] for 'levels' is a logger-name prefix, or a glob using\n");
         sb.append("* and ? — so 'logctl levels *infinispan*' finds a logger when the\n");

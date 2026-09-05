@@ -15,9 +15,11 @@
  */
 package org.logaperture.adapter.jul;
 
+import org.logaperture.api.HandlerFloor;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
-import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.spi.LoggingAdapter;
+import org.logaperture.core.spi.UnknownHandlerException;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -45,7 +47,10 @@ import java.util.logging.Logger;
  * {@code -Xbootclasspath/a}, no {@code jboss.modules.system.pkgs}. The M0
  * spike validated this exact path on WildFly 26.1.3.Final by observing real
  * {@code server.log} output change after a {@code Logger.getLogger(name)
- * .setLevel(FINE)}.
+ * .setLevel(FINE)}. Handler <em>name</em> resolution ({@link
+ * JbossHandlerNames}) is the one place this adapter reaches for {@code
+ * org.jboss.logmanager} at all, and it does so reflectively, for the same
+ * reason — see that class's doc.
  *
  * <p>It also works, unchanged, against the JDK's own default
  * {@code LogManager} (plain JUL apps).
@@ -72,6 +77,8 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     private final ConcurrentHashMap<String, Logger> loggers = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Optional<java.util.logging.Level>> capturedOriginals =
             new ConcurrentHashMap<>();
+    /** Handlers this adapter has resolved a {@link HandlerRef} for, keyed by that ref -- {@link #setHandlerLevel} needs it back. */
+    private final ConcurrentHashMap<HandlerRef, Handler> handlersByRef = new ConcurrentHashMap<>();
 
     /** Package-visible: constructed by {@link JulAdapterFactory}. */
     JulLoggingAdapter() {
@@ -116,21 +123,28 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     public void applyLevel(String loggerName, Level level) {
         String resolved = resolveName(loggerName);
         Logger logger = logger(loggerName);
-
-        Level previousEffective = effectiveLevel(loggerName);
         logger.setLevel(resolveTarget(resolved, level));
-        warnIfHandlerFloorWouldSwallow(loggerName, level, previousEffective);
+        // Handler-floor detection stays in handlerFloorsBelow(); the warning
+        // itself is core's job now (doc/specs/handler-floor-control.md
+        // "Warning on level commands"), not this adapter's -- it has strictly
+        // less information (no resolved HandlerRef, no --quiet/--json).
     }
 
     // onReset / clearResetListener: SPI no-op default -- see class doc.
 
+    @Override
+    public boolean hasHandlerLevels() {
+        return true;
+    }
+
     /**
      * The handlers on {@code loggerName}'s path to the root whose own level
-     * floor is stricter than {@code target} — the second, independent gate
-     * (doc/specs/wildfly-support.md, "Handler-level thresholds"). Not on the
-     * {@link LoggingAdapter} SPI. A {@code null} {@code target} ("back to
-     * inherited") is not a raise, so it yields an empty list.
+     * is stricter than {@code target} — the second, independent gate
+     * (doc/specs/wildfly-support.md, "Handler-level thresholds"). A {@code
+     * null} {@code target} ("back to inherited") is not a raise, so it
+     * yields an empty list.
      */
+    @Override
     public List<HandlerFloor> handlerFloorsBelow(String loggerName, Level target) {
         if (target == null) {
             return List.of();
@@ -141,7 +155,7 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             for (Handler handler : current.getHandlers()) {
                 java.util.logging.Level handlerLevel = handler.getLevel();
                 if (handlerLevel != null && handlerLevel.intValue() > targetValue) {
-                    floors.add(new HandlerFloor(handler.getClass().getSimpleName(), LevelMapper.toApi(handlerLevel)));
+                    floors.add(new HandlerFloor(refFor(handler), LevelMapper.toApi(handlerLevel)));
                 }
             }
             if (!current.getUseParentHandlers()) {
@@ -149,6 +163,74 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             }
         }
         return List.copyOf(floors);
+    }
+
+    @Override
+    public Optional<Level> handlerLevel(HandlerRef ref) {
+        Handler handler = resolveHandler(ref);
+        if (handler == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(LevelMapper.toApi(handler.getLevel()));
+    }
+
+    @Override
+    public Optional<Level> setHandlerLevel(HandlerRef ref, Level level) {
+        Handler handler = resolveHandler(ref);
+        if (handler == null) {
+            throw new UnknownHandlerException(ref);
+        }
+        Optional<Level> previous = Optional.ofNullable(LevelMapper.toApi(handler.getLevel()));
+        handler.setLevel(level == null ? null : LevelMapper.toJul(level));
+        return previous;
+    }
+
+    /**
+     * Finds the live {@link Handler} {@code ref} names. {@code ref} usually
+     * arrives fresh from a {@link #handlerFloorsBelow} call that just
+     * populated {@link #handlersByRef} via {@link #refFor} — but {@code
+     * setHandlerLevel}/{@code handlerLevel} must also work as the very first
+     * call this adapter instance ever sees for that handler (a user typing
+     * {@code logctl handler CONSOLE TRACE} cold, with no prior warning in
+     * this session), when the cache is empty. In that case, fall back to
+     * walking every known handler once — which populates the cache as a
+     * side effect via {@link #refFor} — before giving up.
+     */
+    private Handler resolveHandler(HandlerRef ref) {
+        Handler cached = handlersByRef.get(ref);
+        if (cached != null) {
+            return cached;
+        }
+        knownHandlers(); // side effect: resolves and caches every handler's ref
+        return handlersByRef.get(ref);
+    }
+
+    @Override
+    public List<HandlerRef> knownHandlers() {
+        // Walk every known logger's own (non-inherited) handler list --
+        // getHandlers() only returns handlers actually attached at that
+        // node, so this naturally dedupes via refFor's identity map without
+        // walking parent chains here.
+        List<HandlerRef> refs = new ArrayList<>();
+        for (String name : knownLoggerNames()) {
+            for (Handler handler : logger(name).getHandlers()) {
+                refs.add(refFor(handler));
+            }
+        }
+        return List.copyOf(refs);
+    }
+
+    /**
+     * Resolves (or reuses) the {@link HandlerRef} for {@code handler}: the
+     * real {@code org.jboss.logmanager} configured name when {@link
+     * JbossHandlerNames} can find one, else a stable identity-hash fallback
+     * — doc/specs/handler-floor-control.md, Open decision #1.
+     */
+    private HandlerRef refFor(Handler handler) {
+        Optional<String> configuredName = JbossHandlerNames.nameOf(logger(ROOT_ALIAS), handler);
+        HandlerRef ref = configuredName.map(HandlerRef::new).orElseGet(() -> HandlerRef.anonymous(handler));
+        handlersByRef.putIfAbsent(ref, handler);
+        return ref;
     }
 
     /**
@@ -180,21 +262,5 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             return original.get();
         }
         return LevelMapper.toJul(level);
-    }
-
-    private void warnIfHandlerFloorWouldSwallow(String loggerName, Level applied, Level previousEffective) {
-        if (applied == null || !applied.isMoreVerboseThan(previousEffective)) {
-            return; // not a raise -- nothing new to be swallowed
-        }
-        List<HandlerFloor> floors = handlerFloorsBelow(loggerName, applied);
-        if (floors.isEmpty()) {
-            return;
-        }
-        HandlerFloor first = floors.get(0);
-        String more = floors.size() > 1 ? " (and " + (floors.size() - 1) + " more)" : "";
-        Diagnostics.warn("logaperture: " + loggerName + " set to " + applied + ", but handler "
-                + first.handlerName() + " has a level floor of " + first.floor() + more + " — " + applied
-                + " records will not reach it. Lower the handler in standalone.xml, or accept that this "
-                + "override only affects sinks without a stricter floor.");
     }
 }

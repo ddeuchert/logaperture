@@ -41,7 +41,7 @@ class JmxRegistrarTest {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
         fake.loggersToReturn = List.of(new LoggerInfo("com.acme.Worker", null, Level.INFO, false, null, null, null, null));
 
-        JmxRegistrar.register(fake);
+        JmxRegistrar.register(fake, fake);
 
         MBeanServer server = ManagementFactory.getPlatformMBeanServer();
         assertTrue(server.isRegistered(JmxRegistrar.OBJECT_NAME));

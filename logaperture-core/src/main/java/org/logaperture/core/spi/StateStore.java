@@ -15,6 +15,8 @@
  */
 package org.logaperture.core.spi;
 
+import org.logaperture.api.HandlerLevelOverride;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.LevelOverride;
 
 import java.util.List;
@@ -25,10 +27,15 @@ import java.util.List;
  * implementation ({@code FileStateStore}); a shared/external store for
  * containerized or clustered deployments is a later implementation of this
  * same interface, per doc/logaperture-spec.md §18.6.
+ *
+ * <p>Handler-level overrides (doc/specs/handler-floor-control.md) are
+ * persisted through the same store, in their own namespace — one file per
+ * instance stays the unit of "everything this JVM has active", per
+ * persistence.md's "single hand-editable file" bar.
  */
 public interface StateStore {
 
-    /** Every persisted override, in no particular order. */
+    /** Every persisted logger override, in no particular order. */
     List<LevelOverride> loadAll();
 
     /** Upserts by {@code override.loggerName()} — one entry per logger, same as {@code OverrideRegistry}. */
@@ -37,7 +44,16 @@ public interface StateStore {
     /** No-op if {@code loggerName} was never persisted. */
     void remove(String loggerName);
 
-    /** Removes every persisted entry. */
+    /** Every persisted handler override, in no particular order. */
+    List<HandlerLevelOverride> loadAllHandlers();
+
+    /** Upserts by {@code override.handlerRef()} — one entry per handler, same as {@code HandlerOverrideRegistry}. */
+    void saveHandler(HandlerLevelOverride override);
+
+    /** No-op if {@code ref} was never persisted. */
+    void removeHandler(HandlerRef ref);
+
+    /** Removes every persisted entry, logger and handler alike. */
     void clear();
 
     /**
@@ -61,6 +77,21 @@ public interface StateStore {
 
             @Override
             public void remove(String loggerName) {
+                // nothing to remove
+            }
+
+            @Override
+            public List<HandlerLevelOverride> loadAllHandlers() {
+                return List.of();
+            }
+
+            @Override
+            public void saveHandler(HandlerLevelOverride override) {
+                // discarded, deliberately
+            }
+
+            @Override
+            public void removeHandler(HandlerRef ref) {
                 // nothing to remove
             }
 

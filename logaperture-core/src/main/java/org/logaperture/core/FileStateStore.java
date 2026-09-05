@@ -15,6 +15,8 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.HandlerLevelOverride;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.core.spi.StateStore;
 
@@ -56,11 +58,14 @@ public final class FileStateStore implements StateStore, Closeable {
     private final Path stateFile;
     private final FileLock lock;
     private final Map<String, LevelOverride> cache;
+    private final Map<HandlerRef, HandlerLevelOverride> handlerCache;
 
-    private FileStateStore(Path stateFile, FileLock lock, Map<String, LevelOverride> initial) {
+    private FileStateStore(Path stateFile, FileLock lock, Map<String, LevelOverride> initial,
+            Map<HandlerRef, HandlerLevelOverride> initialHandlers) {
         this.stateFile = stateFile;
         this.lock = lock;
         this.cache = new LinkedHashMap<>(initial);
+        this.handlerCache = new LinkedHashMap<>(initialHandlers);
     }
 
     /**
@@ -87,7 +92,16 @@ public final class FileStateStore implements StateStore, Closeable {
         FileLock lock = acquireLock(lockFile);
         try {
             writeOwnPid(lock);
-            return new FileStateStore(stateFile, lock, readExisting(stateFile));
+            StateFileFormat.Parsed existing = readExisting(stateFile);
+            Map<String, LevelOverride> initial = new LinkedHashMap<>();
+            for (LevelOverride override : existing.overrides()) {
+                initial.put(override.loggerName(), override);
+            }
+            Map<HandlerRef, HandlerLevelOverride> initialHandlers = new LinkedHashMap<>();
+            for (HandlerLevelOverride override : existing.handlerOverrides()) {
+                initialHandlers.put(override.handlerRef(), override);
+            }
+            return new FileStateStore(stateFile, lock, initial, initialHandlers);
         } catch (IOException | RuntimeException e) {
             // Don't leak the lock if anything after acquiring it fails --
             // otherwise this identity looks permanently held for the rest
@@ -125,9 +139,28 @@ public final class FileStateStore implements StateStore, Closeable {
     }
 
     @Override
+    public synchronized List<HandlerLevelOverride> loadAllHandlers() {
+        return List.copyOf(handlerCache.values());
+    }
+
+    @Override
+    public synchronized void saveHandler(HandlerLevelOverride override) {
+        handlerCache.put(override.handlerRef(), override);
+        persist();
+    }
+
+    @Override
+    public synchronized void removeHandler(HandlerRef ref) {
+        if (handlerCache.remove(ref) != null) {
+            persist();
+        }
+    }
+
+    @Override
     public synchronized void clear() {
-        if (!cache.isEmpty()) {
+        if (!cache.isEmpty() || !handlerCache.isEmpty()) {
             cache.clear();
+            handlerCache.clear();
             persist();
         }
     }
@@ -147,7 +180,7 @@ public final class FileStateStore implements StateStore, Closeable {
 
     private void persist() {
         try {
-            String content = StateFileFormat.write(List.copyOf(cache.values()));
+            String content = StateFileFormat.write(List.copyOf(cache.values()), List.copyOf(handlerCache.values()));
             Path tmp = Files.createTempFile(stateFile.getParent(), stateFile.getFileName().toString(), ".tmp");
             try {
                 Files.writeString(tmp, content, StandardCharsets.UTF_8);
@@ -168,22 +201,18 @@ public final class FileStateStore implements StateStore, Closeable {
         }
     }
 
-    private static Map<String, LevelOverride> readExisting(Path stateFile) {
+    private static StateFileFormat.Parsed readExisting(Path stateFile) {
         if (!Files.exists(stateFile)) {
-            return Map.of();
+            return new StateFileFormat.Parsed(List.of(), List.of());
         }
         try {
-            Map<String, LevelOverride> loaded = new LinkedHashMap<>();
-            for (LevelOverride override : StateFileFormat.parse(Files.readString(stateFile, StandardCharsets.UTF_8))) {
-                loaded.put(override.loggerName(), override);
-            }
-            return loaded;
+            return StateFileFormat.parse(Files.readString(stateFile, StandardCharsets.UTF_8));
         } catch (IOException | RuntimeException e) {
             // A JVM that can't read its own state starts clean rather than
             // refusing to start -- fail-open, per doc/logaperture-spec.md §9.
             System.err.println("[logaperture-state] failed to load state file '" + stateFile
                     + "', resuming with nothing persisted: " + e);
-            return Map.of();
+            return new StateFileFormat.Parsed(List.of(), List.of());
         }
     }
 

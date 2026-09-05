@@ -15,8 +15,11 @@
  */
 package org.logaperture.cli;
 
+import org.logaperture.control.jmx.HandlerFloorData;
+import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerInfoData;
+import org.logaperture.control.jmx.SetLevelResultData;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -25,12 +28,14 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * The four sub-commands, each a thin renderer over one (occasionally two)
+ * The sub-commands, each a thin renderer over one (occasionally two)
  * {@link org.logaperture.control.jmx.LevelControlMXBean} calls — see
- * doc/specs/cli-transport.md "Command surface". {@code reset} reads
- * {@code listLoggers} before and after only because {@code resetLevel}/{@code
- * resetAll} return {@code void} — the "before" read is what lets it tell
- * "reverted a not-yet-instantiated logger" from "nothing to do".
+ * doc/specs/cli-transport.md "Command surface" and doc/specs/
+ * handler-floor-control.md "The operation" for {@code handler}/{@code
+ * resetHandler}. {@code reset} reads {@code listLoggers} before and after
+ * only because {@code resetLevel}/{@code resetAll} return {@code void} —
+ * the "before" read is what lets it tell "reverted a not-yet-instantiated
+ * logger" from "nothing to do".
  */
 final class Commands {
 
@@ -81,34 +86,52 @@ final class Commands {
                 }
             }
             active.sort(Comparator.comparing(Commands::revertSortKey).thenComparing(LoggerInfoData::getName));
+            List<HandlerLevelOverrideData> handlerOverrides = mbean.listHandlerOverrides();
             if (json) {
-                out.println(Json.loggers(active));
+                out.println(Json.status(active, handlerOverrides));
                 return CliError.OK;
             }
-            if (active.isEmpty()) {
+            if (active.isEmpty() && handlerOverrides.isEmpty()) {
                 out.println("No active overrides.");
                 return CliError.OK;
             }
-            boolean showContext = spansMultipleContexts(all);
-            List<List<String>> table = new ArrayList<>();
-            for (LoggerInfoData row : active) {
-                List<String> cells = new ArrayList<>();
-                if (showContext) {
-                    cells.add(orDash(row.getContext()));
+            if (!active.isEmpty()) {
+                boolean showContext = spansMultipleContexts(all);
+                List<List<String>> table = new ArrayList<>();
+                for (LoggerInfoData row : active) {
+                    List<String> cells = new ArrayList<>();
+                    if (showContext) {
+                        cells.add(orDash(row.getContext()));
+                    }
+                    cells.add(orDash(row.getName()));
+                    cells.add(orDash(row.getEffectiveLevel()));
+                    cells.add(orDash(row.getTier()));
+                    cells.add(revertsCell(row));
+                    cells.add(row.getOverrideReason() == null ? Format.NONE : '"' + row.getOverrideReason() + '"');
+                    table.add(cells);
                 }
-                cells.add(orDash(row.getName()));
-                cells.add(orDash(row.getEffectiveLevel()));
-                cells.add(orDash(row.getTier()));
-                cells.add(revertsCell(row));
-                cells.add(row.getOverrideReason() == null ? Format.NONE : '"' + row.getOverrideReason() + '"');
-                table.add(cells);
+                List<String> headers = new ArrayList<>();
+                if (showContext) {
+                    headers.add("CONTEXT");
+                }
+                headers.addAll(List.of("LOGGER", "LEVEL", "TIER", "REVERTS", "REASON"));
+                out.println(Format.table(headers, table));
             }
-            List<String> headers = new ArrayList<>();
-            if (showContext) {
-                headers.add("CONTEXT");
+            if (!handlerOverrides.isEmpty()) {
+                if (!active.isEmpty()) {
+                    out.println();
+                }
+                List<List<String>> table = new ArrayList<>();
+                for (HandlerLevelOverrideData row : handlerOverrides) {
+                    table.add(List.of(
+                            orDash(row.getHandlerRef()),
+                            orDash(row.getLevel()),
+                            orDash(row.getTier()),
+                            handlerRevertsCell(row),
+                            row.getReason() == null ? Format.NONE : '"' + row.getReason() + '"'));
+                }
+                out.println(Format.table(List.of("HANDLER", "LEVEL", "TIER", "REVERTS", "REASON"), table));
             }
-            headers.addAll(List.of("LOGGER", "LEVEL", "TIER", "REVERTS", "REASON"));
-            out.println(Format.table(headers, table));
             return CliError.OK;
         };
     }
@@ -131,12 +154,78 @@ final class Commands {
     static Command setLevel(String logger, String level, boolean includeChildren, String reason,
             String tierName, long forSeconds, boolean json) {
         return (mbean, out) -> {
-            LevelOverrideData result = mbean.setLevel(logger, level, includeChildren, reason, tierName, forSeconds);
+            SetLevelResultData result = mbean.setLevel(logger, level, includeChildren, reason, tierName, forSeconds);
+            LevelOverrideData override = result.getOverride();
             if (json) {
-                out.println(Json.override(result));
+                out.println(Json.setLevelResult(result));
                 return CliError.OK;
             }
-            out.println(logger + " → " + result.getLevel() + "   (" + tierDetail(result) + ")");
+            out.println(logger + " → " + override.getLevel() + "   (" + tierDetail(override.getTier(), override.getExpiresAt()) + ")");
+            printBlockingHandlersWarning(out, override.getLevel(), result.getBlockingHandlers());
+            return CliError.OK;
+        };
+    }
+
+    /**
+     * The actionable warning doc/specs/handler-floor-control.md "Warning on
+     * level commands" calls for: names every handler that will still
+     * swallow records at the level just applied, and the exact {@code
+     * logctl handler} command to clear each one — one per handler, since a
+     * developer may only want the console lowered, not every sink.
+     */
+    private static void printBlockingHandlersWarning(java.io.PrintStream out, String level, List<HandlerFloorData> blocking) {
+        if (blocking.isEmpty()) {
+            return;
+        }
+        if (blocking.size() == 1) {
+            HandlerFloorData floor = blocking.get(0);
+            out.println("WARN: handler " + floor.getHandlerRef() + " is at " + floor.getCurrentLevel()
+                    + " and will drop " + level + " records from this logger.");
+            out.println("      To see them: logctl handler " + floor.getHandlerRef() + " " + level);
+        } else {
+            out.println("WARN: " + blocking.size() + " handlers are above " + level
+                    + " and will drop these records:");
+            for (HandlerFloorData floor : blocking) {
+                out.println("      logctl handler " + floor.getHandlerRef() + " " + level
+                        + "   (currently " + floor.getCurrentLevel() + ")");
+            }
+            out.println("      Run the ones you actually want -- you may only need one.");
+        }
+    }
+
+    static Command setHandlerLevel(String handlerRef, String level, String reason, String tierName, long forSeconds,
+            boolean json) {
+        return (mbean, out) -> {
+            HandlerLevelOverrideData result = mbean.setHandlerLevel(handlerRef, level, reason, tierName, forSeconds);
+            if (result == null) {
+                // doc/specs/handler-floor-control.md "Logback / none" -- this
+                // framework's handlers have no level of their own.
+                if (json) {
+                    out.println(Json.handlerNoOp(handlerRef));
+                } else {
+                    out.println("logctl handler: this framework's handlers have no level of their own; "
+                            + "nothing to change.");
+                }
+                return CliError.OK;
+            }
+            if (json) {
+                out.println(Json.handlerOverride(result));
+                return CliError.OK;
+            }
+            out.println("handler " + handlerRef + " → " + result.getLevel() + "   ("
+                    + tierDetail(result.getTier(), result.getExpiresAt()) + ")");
+            return CliError.OK;
+        };
+    }
+
+    static Command resetHandler(String handlerRef, boolean json) {
+        return (mbean, out) -> {
+            mbean.resetHandler(handlerRef);
+            if (json) {
+                out.println(Json.handlerReset(handlerRef));
+                return CliError.OK;
+            }
+            out.println("handler " + handlerRef + " → reset to its previous level.");
             return CliError.OK;
         };
     }
@@ -213,15 +302,25 @@ final class Commands {
         return "until reset";
     }
 
-    private static String tierDetail(LevelOverrideData result) {
-        return switch (result.getTier()) {
+    private static String handlerRevertsCell(HandlerLevelOverrideData row) {
+        if ("FOR".equals(row.getTier()) && row.getExpiresAt() != null) {
+            return Format.clock(row.getExpiresAt()) + " (" + Format.relative(row.getExpiresAt()) + ")";
+        }
+        if ("SESSION".equals(row.getTier())) {
+            return "until restart";
+        }
+        return "until reset";
+    }
+
+    private static String tierDetail(String tier, String expiresAt) {
+        return switch (tier) {
             case "SESSION" -> "SESSION — until the JVM stops";
             case "STICKY" -> "STICKY — until reset";
-            case "FOR" -> result.getExpiresAt() == null
+            case "FOR" -> expiresAt == null
                     ? "FOR"
-                    : "FOR, reverts " + Format.clock(result.getExpiresAt()) + " local — "
-                            + Format.relative(result.getExpiresAt());
-            default -> result.getTier();
+                    : "FOR, reverts " + Format.clock(expiresAt) + " local — "
+                            + Format.relative(expiresAt);
+            default -> tier;
         };
     }
 }

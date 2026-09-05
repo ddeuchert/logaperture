@@ -15,11 +15,16 @@
  */
 package org.logaperture.cli.it;
 
+import org.logaperture.api.HandlerLevelOverride;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
+import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
+import org.logaperture.api.SetLevelResult;
+import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
 
 import java.time.Instant;
@@ -27,20 +32,24 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
- * A small stateful {@link LevelControlOperations} for {@link CliFixtureApp}
- * — enough to make {@code listLoggers}/{@code setLevel}/{@code
- * resetLevel}/{@code resetAll} round-trip over a real cross-process JMX
- * connection so {@link CliEndToEndIT} can assert against real output. No
- * Logback, no agent — the CLI's transport is what's under test, not the
- * engine.
+ * A small stateful {@link LevelControlOperations} + {@link
+ * HandlerLevelControlOperations} for {@link CliFixtureApp} — enough to make
+ * {@code listLoggers}/{@code setLevel}/{@code resetLevel}/{@code resetAll}/
+ * {@code setHandlerLevel}/{@code resetHandler} round-trip over a real
+ * cross-process JMX connection so {@link CliEndToEndIT} can assert against
+ * real output. No Logback, no agent — the CLI's transport is what's under
+ * test, not the engine.
  */
-final class FakeOps implements LevelControlOperations {
+final class FakeOps implements LevelControlOperations, HandlerLevelControlOperations {
 
     private static final Level BASELINE = Level.INFO;
 
     private final Map<String, LoggerInfo> state = new LinkedHashMap<>();
+    private final Map<HandlerRef, Level> handlerBaselines = new LinkedHashMap<>();
+    private final Map<HandlerRef, HandlerLevelOverride> handlerOverrides = new LinkedHashMap<>();
 
     FakeOps() {
         seed("com.acme.batch.Worker");
@@ -67,13 +76,14 @@ final class FakeOps implements LevelControlOperations {
     }
 
     @Override
-    public synchronized LevelOverride setLevel(String loggerName, Level level, SetLevelOptions options) {
+    public synchronized SetLevelResult setLevel(String loggerName, Level level, SetLevelOptions options) {
         Instant now = Instant.now();
         Instant expiresAt = options.tier() == PersistenceTier.FOR ? now.plus(options.expiresIn()) : null;
         state.put(loggerName, new LoggerInfo(
                 loggerName, BASELINE, level, true, "jmx", options.reason(), options.tier(), expiresAt));
-        return new LevelOverride(
+        LevelOverride override = new LevelOverride(
                 loggerName, level, options.includeChildren(), options.reason(), now, "jmx", options.tier(), expiresAt);
+        return new SetLevelResult(override, List.of());
     }
 
     @Override
@@ -88,5 +98,28 @@ final class FakeOps implements LevelControlOperations {
         for (String name : List.copyOf(state.keySet())) {
             state.put(name, baseline(name));
         }
+    }
+
+    @Override
+    public synchronized Optional<HandlerLevelOverride> setHandlerLevel(HandlerRef ref, Level level,
+            SetHandlerLevelOptions options) {
+        handlerBaselines.putIfAbsent(ref, BASELINE);
+        Instant now = Instant.now();
+        Instant expiresAt = options.tier() == PersistenceTier.FOR ? now.plus(options.expiresIn()) : null;
+        HandlerLevelOverride override = new HandlerLevelOverride(
+                ref, level, options.reason(), now, "jmx", options.tier(), expiresAt);
+        handlerOverrides.put(ref, override);
+        return Optional.of(override);
+    }
+
+    @Override
+    public synchronized void resetHandler(HandlerRef ref) {
+        handlerBaselines.remove(ref);
+        handlerOverrides.remove(ref);
+    }
+
+    @Override
+    public synchronized List<HandlerLevelOverride> listHandlerOverrides() {
+        return List.copyOf(handlerOverrides.values());
     }
 }
