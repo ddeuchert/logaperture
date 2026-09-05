@@ -1,6 +1,6 @@
 # `logctl doctor` — Diagnose the Configuration
 
-Status: draft, not yet implemented.
+Status: spec signed off 2026-09-06 (all 6 decisions resolved); not yet implemented.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §16.2 (`doctor`), §16.1
 (`top` — sibling read-only diagnostic, separate spec), §9.3 (capability model), §17
 (roadmap — M1, Layer 1: "a read-only diagnostic release").
@@ -50,14 +50,16 @@ because it needs none of Feature 3's machinery.
      positive; the check only fires when duplicating the content genuinely duplicates disk
      usage. See "Adapter SPI" — `HandlerDiagnostics.targetPath` presence is exactly the
      persistent/non-persistent signal this reuses, no new SPI surface needed.
-  4. **Autoflush on a busy handler** — a handler with autoflush enabled where it's likely to
-     cost real throughput (Open decision #4).
+  4. **Autoflush on a busy handler** — a handler with autoflush enabled, flagged generically
+     for any handler with autoflush on (**Resolved: Option A** — no volume signal exists yet
+     to judge "busy" against, so this fires on autoflush alone until `top` can give it a real
+     threshold; revisit once it does).
   5. **Disk headroom** — usable space on the log volume vs. current write rate, rendered as
      a time-to-full estimate.
 - `--json` output, matching `cli-transport.md`'s existing per-command conventions.
-- JBoss LogManager / JUL adapter implementation (WildFly is the primary motivating
-  environment per §16 — "the customer runs on a box … no network path to your support
-  team"). Logback sequencing is Open decision #5.
+- JBoss LogManager / JUL adapter implementation only for this slice (**Resolved: Option A** —
+  WildFly is the primary motivating environment per §16 — "the customer runs on a box … no
+  network path to your support team"; Logback is a fast-follow, not bundled with this slice).
 - Read-only: requires only the `VIEW` capability (§9.3) already used by `listLoggers`; no
   new capability, no audit record (reads aren't audited, only mutations are — §9.7's own
   precedent).
@@ -79,6 +81,8 @@ because it needs none of Feature 3's machinery.
 - Tracking write rate as a metric over time — the disk-headroom estimate is a point-in-time
   sample (Resolved: Option A), not a maintained rate history.
 - `doctor --fix` or any interactive remediation — read-only means read-only.
+- The Logback adapter implementation (Resolved: Option A) — a fast-follow once the JBoss
+  LogManager / JUL slice ships, not bundled with it.
 
 ## The operation
 
@@ -171,7 +175,9 @@ there, and the same complete-degrade-to-empty discipline on any failure.
 - Unit — JBoss LogManager adapter: each check against a hand-built handler/logger
   configuration exercising both the flagged and the clean case.
 - Unit — core: `diagnose()` aggregates findings from every check; a throwing/empty adapter
-  fact degrades that one check to "skipped," not a failed call.
+  fact degrades that one check to "skipped," not a failed call; the unbounded-growth finding
+  escalates to `CRITICAL` when disk headroom is also low on the same handler's target path,
+  and stays `WARNING` when disk headroom is fine (Decision #6).
 - Cross-process (`logaperture-it`, mirroring `WildFlyContainerIT`'s pattern): run `logctl
   doctor` against real standalone WildFly's stock `standalone.xml` and confirm the known
   baseline findings (or their absence) against that real configuration.
@@ -186,25 +192,30 @@ both persist to disk — a `CONSOLE`/stdout handler is excluded from the check e
 merely down-weighted, since in a typical production deployment nothing captures stdout at all
 (no redirect, no aggregator, no terminal), so flagging it alongside a real `FILE` handler
 would be a false positive against a cost that isn't actually there (was #3, Option C — see
-"The five checks" above and the example's third line).
+"The five checks" above and the example's third line); the autoflush check fires generically
+for any handler with autoflush on, with no "busy" threshold to weigh it against until `top`
+exists (was #4, Option A); this slice implements the JBoss LogManager / JUL adapter only,
+Logback as a fast-follow (was #5, Option A); and severity is **not** scored independently
+per check (was #6, Option B) — see below for what that means concretely.
 
-4. **"Busy handler" threshold for the autoflush check.** Is there a volume signal available
-   yet to judge "busy" against, or does this check fire for autoflush-on-any-handler
-   generically until `top` exists to give it a real threshold?
-5. **Adapter sequencing.** JBoss LogManager / JUL only for this slice (mirrors
-   `handler-floor-control.md`'s own sequencing), with Logback as a fast-follow, or both
-   together?
-6. **Severity thresholds.** Is "no size cap" always `WARNING`, or does it escalate to
-   `CRITICAL` when the disk-headroom check is also low? Any cross-check severity
-   interaction, or are all five checks scored independently?
+**Cross-check severity escalation (Decision #6).** The one interaction this slice implements:
+the unbounded-growth finding escalates from `WARNING` to `CRITICAL` when the disk-headroom
+check *also* reports `WARNING` or `CRITICAL` for the same handler's target path — i.e. a
+handler is both writing without a cap **and** the volume it writes to is genuinely close to
+full. Every other check stays scored independently for this slice; severity computation is
+internal to `core`; not part of the CLI/JSON contract, so further cross-check rules can be
+added later without a spec change.
 
 ## Exit criterion
 
-Against a plain `java -jar` + Logback process and a standalone WildFly:
+Against a plain `java -jar` + JUL process and a standalone WildFly (Logback is a fast-follow,
+Decision #5 — not part of this exit criterion):
 
-- `logctl doctor` on WildFly's stock `standalone.xml` (no config changes) reports its actual,
-  known configuration accurately — including whatever the resolved open decisions above
-  determine should or shouldn't fire against the stock config.
+- `logctl doctor` on WildFly's stock `standalone.xml` (no config changes) reports its actual
+  configuration accurately per the resolved checks above — notably: no false positive on the
+  `CONSOLE`/`FILE` overlap (Decision #3), and the unbounded-growth finding against `FILE`
+  escalates to `CRITICAL` only when disk headroom is also low (Decision #6), `WARNING`
+  otherwise.
 - `logctl doctor --json` output round-trips through a JSON parser with the documented shape.
 - Every check that cannot run for an adapter/handler is skipped, never a `doctor` failure —
   confirmed by disabling the JBoss-LogManager-specific reflection path (as `JulLoggingAdapterTest`
