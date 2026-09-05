@@ -961,6 +961,8 @@ A generated rule stub the user can paste is worth more than a paragraph of docum
 
 ### 16.2 `logctl doctor` — diagnose the configuration
 
+> Implementation spec: [`doc/specs/doctor.md`](specs/doctor.md) — draft, sign-off pending.
+
 Multi-GB single files usually mean rotation is misconfigured, not that suppression is missing. Before building any of the rule engine, a read-only checker that flags the common causes would resolve a meaningful share of real incidents:
 
 - File handlers with no size cap, or a `max-backup-index` that permits unbounded total growth
