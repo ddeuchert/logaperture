@@ -34,6 +34,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -62,8 +63,8 @@ public final class DoctorService implements DoctorOperations {
     private final CapabilityPolicy policy;
 
     public DoctorService(LoggingAdapter adapter, CapabilityPolicy policy) {
-        this.adapter = adapter;
-        this.policy = policy;
+        this.adapter = Objects.requireNonNull(adapter, "adapter");
+        this.policy = Objects.requireNonNull(policy, "policy");
     }
 
     @Override
@@ -111,11 +112,14 @@ public final class DoctorService implements DoctorOperations {
             boolean noSizeCap = diag.maxFileSizeBytes() == null;
             boolean noBackupLimit = diag.backupCount() == null || diag.backupCount() <= 0;
             if (noSizeCap || noBackupLimit) {
+                String summary = noSizeCap
+                        ? ref + " has no size cap — writes are unbounded."
+                        : ref + " has no backup/retention limit — total size is unbounded.";
                 String detail = noSizeCap
                         ? "no size-based rotation is configured"
                         : "no backup/retention limit is configured (unlimited total size)";
                 flagged.add(new DoctorFinding("handler.unbounded-growth", Severity.WARNING, ref.value(),
-                        ref + " has no size cap — writes are unbounded.", detail,
+                        summary, detail,
                         "configure a size-based rotation policy on " + ref + "."));
             }
         }

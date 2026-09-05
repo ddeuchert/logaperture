@@ -61,8 +61,8 @@ final class JulHandlerDiagnostics {
     static HandlerDiagnostics of(Handler handler) {
         Path targetPath = targetPathOf(handler);
         Boolean autoFlush = autoFlushOf(handler);
-        Long maxFileSizeBytes = longFieldOf(handler, "rotateSize");
-        Integer backupCount = intFieldOf(handler, "maxBackupIndex");
+        Long maxFileSizeBytes = (Long) fieldOf(handler, "rotateSize");
+        Integer backupCount = (Integer) fieldOf(handler, "maxBackupIndex");
         return new HandlerDiagnostics(maxFileSizeBytes, backupCount, autoFlush, targetPath);
     }
 
@@ -86,23 +86,14 @@ final class JulHandlerDiagnostics {
         }
     }
 
-    private static Long longFieldOf(Handler handler, String fieldName) {
+    /** Reflection autoboxes a primitive field read, so one method covers both {@code long} and {@code int} fields. */
+    private static Object fieldOf(Handler handler, String fieldName) {
         try {
             Field field = declaredFieldSomewhereInHierarchy(handler.getClass(), fieldName);
             field.setAccessible(true);
-            return field.getLong(handler);
+            return field.get(handler);
         } catch (ReflectiveOperationException | RuntimeException e) {
             return null; // field doesn't exist on this handler type, or reflection was denied
-        }
-    }
-
-    private static Integer intFieldOf(Handler handler, String fieldName) {
-        try {
-            Field field = declaredFieldSomewhereInHierarchy(handler.getClass(), fieldName);
-            field.setAccessible(true);
-            return field.getInt(handler);
-        } catch (ReflectiveOperationException | RuntimeException e) {
-            return null;
         }
     }
 

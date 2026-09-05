@@ -122,6 +122,12 @@ nothing is actually reading.
 (`DoctorFindingData`, below); `suggestedFix` is `null` when a check has no unambiguous fix to
 name. Phone-test clean: no `--json` addition changes that.
 
+Each finding also carries `context`: `null` on a row produced by a single-context service
+directly, or the owning logging context's stable key once `AggregateLevelControl` stamps it on
+(mirroring `LoggerInfo.context()` — see `level-control.md`). The text renderer shows a
+`[context]` prefix, same as `logctl status`/`logctl levels`, only when the result actually
+spans more than one context.
+
 ## Data model
 
 ```
@@ -132,6 +138,7 @@ DoctorFinding {
     summary: String           // one line, what's rendered by default
     detail: String?           // optional longer explanation
     suggestedFix: String?     // an exact command/config change, when unambiguous
+    context: String?          // owning logging context's stable key, or null (see above)
 }
 ```
 

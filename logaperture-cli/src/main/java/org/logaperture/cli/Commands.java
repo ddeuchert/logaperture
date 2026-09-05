@@ -25,10 +25,9 @@ import org.logaperture.control.jmx.SetLevelResultData;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
+import java.util.function.Function;
 
 /**
  * The sub-commands, each a thin renderer over one (occasionally two)
@@ -56,7 +55,7 @@ final class Commands {
                 out.println(filter == null ? "No loggers known yet." : "No loggers match '" + filter + "'.");
                 return CliError.OK;
             }
-            boolean showContext = spansMultipleContexts(rows);
+            boolean showContext = spansMultipleContexts(rows, LoggerInfoData::getContext);
             List<List<String>> table = new ArrayList<>();
             for (LoggerInfoData row : rows) {
                 List<String> cells = new ArrayList<>();
@@ -99,7 +98,7 @@ final class Commands {
                 return CliError.OK;
             }
             if (!active.isEmpty()) {
-                boolean showContext = spansMultipleContexts(all);
+                boolean showContext = spansMultipleContexts(all, LoggerInfoData::getContext);
                 List<List<String>> table = new ArrayList<>();
                 for (LoggerInfoData row : active) {
                     List<String> cells = new ArrayList<>();
@@ -143,11 +142,13 @@ final class Commands {
      * The CONTEXT column shows only when the result actually spans more than
      * one logging context — a plain {@code java -jar} user, and a stock
      * standalone WildFly (one shared system context), never see it
-     * (doc/specs/wildfly-support.md, Slice 3's "logctl changes").
+     * (doc/specs/wildfly-support.md, Slice 3's "logctl changes"). Shared by
+     * every row type that carries a context key ({@link LoggerInfoData},
+     * {@link DoctorFindingData}).
      */
-    private static boolean spansMultipleContexts(List<LoggerInfoData> rows) {
+    private static <T> boolean spansMultipleContexts(List<T> rows, Function<T, String> context) {
         return rows.stream()
-                .map(LoggerInfoData::getContext)
+                .map(context)
                 .filter(Objects::nonNull)
                 .distinct()
                 .limit(2)
@@ -282,15 +283,12 @@ final class Commands {
                 out.println("No checks could run against this JVM.");
                 return CliError.OK;
             }
-            boolean showContext = findings.stream().map(DoctorFindingData::getContext)
-                    .filter(Objects::nonNull).distinct().limit(2).count() > 1;
+            boolean showContext = spansMultipleContexts(findings, DoctorFindingData::getContext);
             int critical = 0;
             int warning = 0;
             int info = 0;
             int clean = 0;
-            Set<String> checksRun = new LinkedHashSet<>();
             for (DoctorFindingData f : findings) {
-                checksRun.add(f.getCheck());
                 switch (f.getSeverity()) {
                     case "CRITICAL" -> critical++;
                     case "WARNING" -> warning++;
@@ -313,8 +311,8 @@ final class Commands {
                 }
             }
             out.println();
-            out.println(checksRun.size() + " checks run — " + critical + " critical, " + warning + " warning, "
-                    + info + " info, " + clean + " clean.");
+            out.println(Json.checksRun(findings) + " checks run — " + critical + " critical, " + warning
+                    + " warning, " + info + " info, " + clean + " clean.");
             return CliError.OK;
         };
     }

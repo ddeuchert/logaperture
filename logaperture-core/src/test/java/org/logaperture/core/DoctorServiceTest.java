@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -73,6 +74,7 @@ class DoctorServiceTest {
 
         DoctorFinding finding = findingFor(findings, "handler.unbounded-growth", Severity.WARNING);
         assertEquals("FILE", finding.subject());
+        assertTrue(finding.summary().contains("no size cap"), finding.summary());
         assertTrue(finding.suggestedFix().contains("FILE"));
     }
 
@@ -83,7 +85,11 @@ class DoctorServiceTest {
 
         List<DoctorFinding> findings = service.diagnose();
 
-        findingFor(findings, "handler.unbounded-growth", Severity.WARNING);
+        DoctorFinding finding = findingFor(findings, "handler.unbounded-growth", Severity.WARNING);
+        // The handler here has an explicit size cap -- only the backup/retention limit is
+        // missing, so the summary must not claim "no size cap" (the size cap isn't the problem).
+        assertTrue(finding.summary().contains("no backup/retention limit"), finding.summary());
+        assertFalse(finding.summary().contains("no size cap"), finding.summary());
     }
 
     @Test
