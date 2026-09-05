@@ -42,6 +42,18 @@ public record HandlerRef(String value) {
                 + Integer.toHexString(System.identityHashCode(handler)));
     }
 
+    /**
+     * The reserved ref meaning "every handler this context can log to" —
+     * doc/specs/handler-floor-control.md "Adapter SPI", issue #13 Decision
+     * #1. Unlike both forms above, it never refers to a handler instance,
+     * which is exactly why it's stable across a restart where they aren't.
+     * {@code core}'s {@code HandlerLevelControlService} recognizes this
+     * value as a target and fans out over the adapter's {@code
+     * realHandlers()} rather than passing it down to any adapter's
+     * per-handler methods.
+     */
+    public static final HandlerRef ALL_HANDLERS = new HandlerRef("ALL_HANDLERS");
+
     @Override
     public String toString() {
         return value;

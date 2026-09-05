@@ -172,6 +172,40 @@ python3 dev/wildfly/wildflyctl.py logctl -- status
 curl -X POST http://localhost:8080/logaperture-sample-war/timer/stop
 ```
 
+## Handler-floor regression check (`ALL_HANDLERS`)
+
+The stock image's `standalone.xml` ships a real handler floor, no config
+changes needed: `CONSOLE` is fixed at `INFO` (`FILE` has no explicit level, so
+it isn't a blocker). That floor is what `ALL_HANDLERS`
+([doc/specs/handler-floor-control.md](doc/specs/handler-floor-control.md))
+stands in for on WildFly, and it's exactly what `WildFlyContainerIT`'s
+handler-floor tests exercise automatically — this is the same check by hand:
+
+```sh
+python3 dev/wildfly/wildflyctl.py up
+python3 dev/wildfly/wildflyctl.py deploy
+python3 dev/wildfly/wildflyctl.py tail &        # stream the log + [logaperture-audit] lines
+
+# raise the logger past CONSOLE's INFO floor -- the warning names the
+# reserved ALL_HANDLERS ref, not an individual handler
+python3 dev/wildfly/wildflyctl.py logctl -- trace org.logaperture.sample.work.Worker
+#   WARN: handler ALL_HANDLERS is at INFO ... logctl handler ALL_HANDLERS TRACE
+
+curl http://localhost:8080/logaperture-sample-war/log      # TRACE/DEBUG lines still suppressed
+
+python3 dev/wildfly/wildflyctl.py logctl -- handler ALL_HANDLERS TRACE
+#   the tail shows one [logaperture-audit] line naming the REAL handler
+#   touched (logger=CONSOLE), never one literally named ALL_HANDLERS
+curl http://localhost:8080/logaperture-sample-war/log      # TRACE/DEBUG lines now appear in the tail
+
+python3 dev/wildfly/wildflyctl.py logctl -- status         # one ALL_HANDLERS row
+python3 dev/wildfly/wildflyctl.py logctl -- status --json | grep -A6 handlerOverrides
+
+python3 dev/wildfly/wildflyctl.py logctl -- handler ALL_HANDLERS reset
+python3 dev/wildfly/wildflyctl.py logctl -- reset org.logaperture.sample.work.Worker
+python3 dev/wildfly/wildflyctl.py down
+```
+
 ## Debugging the agent inside WildFly
 
 The container publishes JDWP on **8787**. Two attach configs in

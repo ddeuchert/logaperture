@@ -63,9 +63,11 @@ final class HelpText {
         sb.append("working session, gone by morning.\n");
         sb.append("\n");
         sb.append("'handler' sets a handler's own level directly — the fix when raising a\n");
-        sb.append("logger still won't show output because a handler (WildFly's CONSOLE, say)\n");
-        sb.append("is set stricter. A raise that hits this prints which handler and the\n");
-        sb.append("exact command to lower it. 'handler <name> reset' reverts it on its own.\n");
+        sb.append("logger still won't show output because a handler is set stricter. A raise\n");
+        sb.append("that hits this prints which handler and the exact command to lower it.\n");
+        sb.append("'handler <name> reset' reverts it on its own. On WildFly the name is\n");
+        sb.append("always ALL_HANDLERS, meaning every handler at once — individual WildFly\n");
+        sb.append("handlers cannot be named on their own.\n");
         sb.append("\n");
         sb.append("A [filter] for 'levels' is a logger-name prefix, or a glob using\n");
         sb.append("* and ? — so 'logctl levels *infinispan*' finds a logger when the\n");
