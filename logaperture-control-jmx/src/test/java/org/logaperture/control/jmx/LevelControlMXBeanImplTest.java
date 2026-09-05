@@ -17,12 +17,15 @@ package org.logaperture.control.jmx;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
+import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 
@@ -39,6 +42,10 @@ class LevelControlMXBeanImplTest {
         Locale.setDefault(originalDefaultLocale);
     }
 
+    private static LevelControlMXBeanImpl bean(FakeLevelControlOperations fake) {
+        return new LevelControlMXBeanImpl(fake, fake);
+    }
+
     @Test
     void setLevel_underTurkishDefaultLocale_stillParsesLowercaseTierAndLevel() {
         // The Turkish "dotted/dotless I" locale rule turns a naive
@@ -47,12 +54,12 @@ class LevelControlMXBeanImplTest {
         // against this PR.
         Locale.setDefault(Locale.forLanguageTag("tr-TR"));
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
-        LevelControlMXBeanImpl bean = new LevelControlMXBeanImpl(fake);
+        LevelControlMXBeanImpl bean = bean(fake);
 
-        LevelOverrideData result = bean.setLevel("com.acme.Worker", "debug", false, null, "sticky", 0);
+        SetLevelResultData result = bean.setLevel("com.acme.Worker", "debug", false, null, "sticky", 0);
 
-        assertEquals("DEBUG", result.getLevel());
-        assertEquals("STICKY", result.getTier());
+        assertEquals("DEBUG", result.getOverride().getLevel());
+        assertEquals("STICKY", result.getOverride().getTier());
     }
 
     @Test
@@ -61,7 +68,7 @@ class LevelControlMXBeanImplTest {
         fake.loggersToReturn = List.of(
                 new LoggerInfo("com.acme.Worker", Level.INFO, Level.DEBUG, true, "jmx", "why",
                         PersistenceTier.SESSION, null));
-        LevelControlMXBeanImpl bean = new LevelControlMXBeanImpl(fake);
+        LevelControlMXBeanImpl bean = bean(fake);
 
         List<LoggerInfoData> result = bean.listLoggers("com.acme");
 
@@ -80,7 +87,7 @@ class LevelControlMXBeanImplTest {
     void listLoggers_nullConfiguredLevel_mapsToNullString() {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
         fake.loggersToReturn = List.of(new LoggerInfo("ROOT", null, Level.INFO, false, null, null, null, null));
-        LevelControlMXBeanImpl bean = new LevelControlMXBeanImpl(fake);
+        LevelControlMXBeanImpl bean = bean(fake);
 
         assertEquals(null, bean.listLoggers(null).get(0).getConfiguredLevel());
     }
@@ -88,26 +95,41 @@ class LevelControlMXBeanImplTest {
     @Test
     void setLevel_parsesLevelStringAndReturnsOverrideDto() {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
-        LevelControlMXBeanImpl bean = new LevelControlMXBeanImpl(fake);
+        LevelControlMXBeanImpl bean = bean(fake);
 
-        LevelOverrideData result = bean.setLevel("com.acme.Worker", "debug", true, "INC-1", "SESSION", 0);
+        SetLevelResultData result = bean.setLevel("com.acme.Worker", "debug", true, "INC-1", "SESSION", 0);
 
-        assertEquals("com.acme.Worker", result.getLoggerName());
-        assertEquals("DEBUG", result.getLevel());
-        assertTrue(result.isIncludeChildren());
-        assertEquals("INC-1", result.getReason());
+        assertEquals("com.acme.Worker", result.getOverride().getLoggerName());
+        assertEquals("DEBUG", result.getOverride().getLevel());
+        assertTrue(result.getOverride().isIncludeChildren());
+        assertEquals("INC-1", result.getOverride().getReason());
+        assertTrue(result.getBlockingHandlers().isEmpty());
 
         Object[] call = fake.setLevelCalls.get(0);
         assertEquals(Level.DEBUG, call[1]);
     }
 
     @Test
+    void setLevel_blockingHandlers_mapToDtos() {
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+        fake.blockingHandlersToReturn = List.of(
+                new org.logaperture.api.HandlerFloor(new HandlerRef("CONSOLE"), Level.INFO));
+        LevelControlMXBeanImpl bean = bean(fake);
+
+        SetLevelResultData result = bean.setLevel("com.acme.Worker", "TRACE", false, null, "SESSION", 0);
+
+        assertEquals(1, result.getBlockingHandlers().size());
+        assertEquals("CONSOLE", result.getBlockingHandlers().get(0).getHandlerRef());
+        assertEquals("INFO", result.getBlockingHandlers().get(0).getCurrentLevel());
+    }
+
+    @Test
     void listLoggers_activeForOverride_mapsTierAndExpiresAt() {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
-        java.time.Instant expiresAt = java.time.Instant.parse("2026-08-21T03:44:02Z");
+        Instant expiresAt = Instant.parse("2026-08-21T03:44:02Z");
         fake.loggersToReturn = List.of(new LoggerInfo(
                 "com.acme.Worker", Level.INFO, Level.DEBUG, true, "jmx", "triage", PersistenceTier.FOR, expiresAt));
-        LevelControlMXBeanImpl bean = new LevelControlMXBeanImpl(fake);
+        LevelControlMXBeanImpl bean = bean(fake);
 
         LoggerInfoData data = bean.listLoggers(null).get(0);
 
@@ -119,7 +141,7 @@ class LevelControlMXBeanImplTest {
     void listLoggers_noOverride_tierAndExpiresAtAreNull() {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
         fake.loggersToReturn = List.of(new LoggerInfo("ROOT", null, Level.INFO, false, null, null, null, null));
-        LevelControlMXBeanImpl bean = new LevelControlMXBeanImpl(fake);
+        LevelControlMXBeanImpl bean = bean(fake);
 
         LoggerInfoData data = bean.listLoggers(null).get(0);
 
@@ -130,11 +152,11 @@ class LevelControlMXBeanImplTest {
     @Test
     void setLevel_forTier_parsesForSecondsIntoExpiresIn() {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
-        LevelControlMXBeanImpl bean = new LevelControlMXBeanImpl(fake);
+        LevelControlMXBeanImpl bean = bean(fake);
 
-        LevelOverrideData result = bean.setLevel("com.acme.Worker", "DEBUG", false, null, "FOR", 1800);
+        SetLevelResultData result = bean.setLevel("com.acme.Worker", "DEBUG", false, null, "FOR", 1800);
 
-        assertEquals("FOR", result.getTier());
+        assertEquals("FOR", result.getOverride().getTier());
         SetLevelOptions passedOptions = (SetLevelOptions) fake.setLevelCalls.get(0)[2];
         assertEquals(PersistenceTier.FOR, passedOptions.tier());
         assertEquals(Duration.ofSeconds(1800), passedOptions.expiresIn());
@@ -143,7 +165,7 @@ class LevelControlMXBeanImplTest {
     @Test
     void setLevel_stickyTier_ignoresForSeconds() {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
-        LevelControlMXBeanImpl bean = new LevelControlMXBeanImpl(fake);
+        LevelControlMXBeanImpl bean = bean(fake);
 
         bean.setLevel("com.acme.Worker", "DEBUG", false, null, "STICKY", 999);
 
@@ -154,7 +176,7 @@ class LevelControlMXBeanImplTest {
 
     @Test
     void setLevel_unknownTierString_throwsIllegalArgument() {
-        LevelControlMXBeanImpl bean = new LevelControlMXBeanImpl(new FakeLevelControlOperations());
+        LevelControlMXBeanImpl bean = bean(new FakeLevelControlOperations());
 
         assertThrows(IllegalArgumentException.class,
                 () -> bean.setLevel("com.acme.Worker", "DEBUG", false, null, "NOT_A_TIER", 0));
@@ -162,7 +184,7 @@ class LevelControlMXBeanImplTest {
 
     @Test
     void setLevel_unknownLevelString_throwsIllegalArgument() {
-        LevelControlMXBeanImpl bean = new LevelControlMXBeanImpl(new FakeLevelControlOperations());
+        LevelControlMXBeanImpl bean = bean(new FakeLevelControlOperations());
 
         assertThrows(IllegalArgumentException.class,
                 () -> bean.setLevel("com.acme.Worker", "NOT_A_LEVEL", false, null, "SESSION", 0));
@@ -172,7 +194,7 @@ class LevelControlMXBeanImplTest {
     void setLevel_operationsThrows_propagatesToCaller() {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
         fake.throwOnSetLevel = new RuntimeException("simulated denial");
-        LevelControlMXBeanImpl bean = new LevelControlMXBeanImpl(fake);
+        LevelControlMXBeanImpl bean = bean(fake);
 
         assertThrows(RuntimeException.class, () -> bean.setLevel("com.acme.Worker", "DEBUG", false, null, "SESSION", 0));
     }
@@ -180,7 +202,7 @@ class LevelControlMXBeanImplTest {
     @Test
     void resetLevel_delegatesToOperations() {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
-        new LevelControlMXBeanImpl(fake).resetLevel("com.acme.Worker");
+        bean(fake).resetLevel("com.acme.Worker");
 
         assertEquals(List.of("com.acme.Worker"), fake.resetLevelCalls);
     }
@@ -188,8 +210,62 @@ class LevelControlMXBeanImplTest {
     @Test
     void resetAll_delegatesToOperations() {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
-        new LevelControlMXBeanImpl(fake).resetAll();
+        bean(fake).resetAll();
 
         assertTrue(fake.resetAllCalled);
+    }
+
+    // --- handler operations (doc/specs/handler-floor-control.md) -----------------------------------
+
+    @Test
+    void setHandlerLevel_parsesArgumentsAndReturnsOverrideDto() {
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+        LevelControlMXBeanImpl bean = bean(fake);
+
+        HandlerLevelOverrideData result = bean.setHandlerLevel("CONSOLE", "trace", "INC-1", "session", 0);
+
+        assertEquals("CONSOLE", result.getHandlerRef());
+        assertEquals("TRACE", result.getLevel());
+        assertEquals("INC-1", result.getReason());
+        assertEquals(new HandlerRef("CONSOLE"), fake.setHandlerLevelCalls.get(0)[0]);
+        assertEquals(Level.TRACE, fake.setHandlerLevelCalls.get(0)[1]);
+    }
+
+    @Test
+    void setHandlerLevel_forTier_parsesForSecondsIntoExpiresIn() {
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+        LevelControlMXBeanImpl bean = bean(fake);
+
+        bean.setHandlerLevel("CONSOLE", "DEBUG", null, "FOR", 1800);
+
+        SetHandlerLevelOptions passedOptions = (SetHandlerLevelOptions) fake.setHandlerLevelCalls.get(0)[2];
+        assertEquals(PersistenceTier.FOR, passedOptions.tier());
+        assertEquals(Duration.ofSeconds(1800), passedOptions.expiresIn());
+    }
+
+    @Test
+    void resetHandler_delegatesToOperations() {
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+        bean(fake).resetHandler("CONSOLE");
+
+        assertEquals(List.of(new HandlerRef("CONSOLE")), fake.resetHandlerCalls);
+    }
+
+    @Test
+    void setHandlerLevel_adapterHasNoHandlerLevels_returnsNull() {
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+        fake.noOpHandlerLevels = true;
+        LevelControlMXBeanImpl bean = bean(fake);
+
+        assertEquals(null, bean.setHandlerLevel("CONSOLE", "TRACE", null, "SESSION", 0));
+    }
+
+    @Test
+    void setHandlerLevel_operationsThrows_propagatesToCaller() {
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+        fake.throwOnSetHandlerLevel = new RuntimeException("unknown handler: CONSOLE");
+        LevelControlMXBeanImpl bean = bean(fake);
+
+        assertThrows(RuntimeException.class, () -> bean.setHandlerLevel("CONSOLE", "TRACE", null, "SESSION", 0));
     }
 }

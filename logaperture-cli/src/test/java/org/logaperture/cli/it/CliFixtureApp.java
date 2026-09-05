@@ -38,7 +38,8 @@ public final class CliFixtureApp {
 
     public static void main(String[] args) throws Exception {
         System.setProperty("logaperture.version", "it-fixture");
-        JmxRegistrar.register(new FakeOps());
+        FakeOps ops = new FakeOps();
+        JmxRegistrar.register(ops, ops);
 
         System.out.println("FIXTURE-READY");
         System.out.flush();

@@ -94,6 +94,18 @@ public interface LoggingAdapter {
     }
 
     /**
+     * Whether this adapter's handlers have a level of their own at all —
+     * doc/specs/handler-floor-control.md "Logback / none": {@code false}
+     * (the default) makes {@code logctl handler} a documented no-op rather
+     * than silently tracking an override against a name that means nothing
+     * to this framework. {@code true} for the JBoss LogManager / JUL
+     * adapter; Logback and {@code none} keep the default.
+     */
+    default boolean hasHandlerLevels() {
+        return false;
+    }
+
+    /**
      * The handlers on {@code loggerName}'s path to the root whose own level
      * is stricter than {@code target} — doc/specs/handler-floor-control.md
      * "Adapter SPI". Default empty, for a framework whose handlers have no

@@ -1,6 +1,10 @@
 # Handler-Level Control — `logctl handler`
 
-Status: signed off, not yet implemented.
+Status: core engine, adapters, JMX, and `logctl` implemented and unit- and
+cross-process-tested (Logback path). Real-WildFly verification
+(`WildFlyContainerIT`) and the handler-level verification sweep are
+outstanding — see "Cross-process" under Testing and "Reconfiguration
+re-application" above.
 Priority: **high** — pulled forward in §17 as the first behaviour-modifying feature
 after M1. "Make this class TRACE and let me see it on the console" is a primary
 developer interaction (§14.1); today it dead-ends at a warning to hand-edit
@@ -111,11 +115,17 @@ logctl handler CONSOLE reset             # revert now
 
 - `<name>` is the configured handler name as the framework knows it — WildFly's
   `CONSOLE`, `FILE`. It is what the warning message prints, so a developer never
-  has to guess it. An unknown name is a usage error (exit 2) listing the handler
-  names currently visible.
+  has to guess it. An unknown name fails the way any unreachable adapter target
+  does — reported by the message the adapter's `UnknownHandlerException` carries
+  — rather than a dedicated exit code enumerating known names; that enumeration
+  needs the discovery listing Open decision A deferred, and revisits this when
+  it lands.
 - `<level>` is any LogAperture level, same grammar as `logctl set`.
-- Tier tokens are exactly Feature 1/2's: bare (`--session`, the default),
-  `for <duration>`, `sticky`. `--reason` is copied into the audit record.
+- Tier tokens are exactly Feature 1/2's, including the CLI's own bare-token
+  default: no token at all means `for 4h`, same as `logctl trace <logger>` —
+  not `--session` (`SetHandlerLevelOptions.defaults()`'s `SESSION` default is
+  the *operations*-level default for a caller that skips the CLI, e.g. JMX
+  directly). `--reason` is copied into the audit record.
 - Phone-test: `handler`, the name, and the level contain none of `: = ( ) /`; the
   `--help` topic for `handler` mirrors `set`.
 
@@ -152,8 +162,11 @@ WARN: org.perfmon4j is now TRACE, but 2 handlers on its path are above that
 
 The per-handler command uses the triggering level as its suggested argument, but
 the developer is free to pick another. The warning does **not** change any
-handler; it never fails the level command; it is suppressed by `--quiet` and
-rendered as a `warnings[]` array under `--json`.
+handler and never fails the level command — printed to stdout after the
+confirmation line in text mode, and as a `warnings[]` array alongside the
+override in `--json` (empty when there's nothing to warn about). No `--quiet`
+flag exists anywhere in `logctl` today to suppress it with; adding one is
+out of scope here.
 
 ## Operations impact
 
@@ -161,7 +174,7 @@ New operations on the core service (and the JMX surface, per `level-control.md`'
 "JMX first, `logctl` later" convention):
 
 ```
-setHandlerLevel(name: String, level: Level, options: SetHandlerLevelOptions) -> void
+setHandlerLevel(name: String, level: Level, options: SetHandlerLevelOptions) -> HandlerLevelOverride?
 resetHandler(name: String) -> void
 
 SetHandlerLevelOptions {
@@ -170,6 +183,11 @@ SetHandlerLevelOptions {
     tier: PersistenceTier = SESSION
 }
 ```
+
+`setHandlerLevel` returns the override it created, or nothing at all — not an
+error — when the adapter has no handler levels to set (see "Logback / none"
+below). That empty case is a first-class outcome, not a null slipping through:
+it means no capability check ran, nothing was mutated, tracked, or persisted.
 
 Validated at construction exactly as `SetLevelOptions`: `tier == FOR` iff
 `expiresIn` is non-null and positive.
@@ -189,20 +207,32 @@ past this slice — **Open decision A, resolved: defer.**
 The base `LoggingAdapter` SPI gains:
 
 ```
-/** The handler's current level, or null if this adapter's handlers have no
- *  level of their own (Logback, none). */
-Level handlerLevel(HandlerRef ref);
+/** Whether this adapter's handlers have a level of their own at all.
+ *  Default false. Gates every other method below: core checks this before
+ *  doing anything else, so "no handler levels" (Logback, none) and "a real
+ *  handler whose level happens to be unset" are never confused with each
+ *  other via a shared null/empty return. */
+boolean hasHandlerLevels();
 
-/** Set the identified handler's level, returning its prior level. Throws
- *  UnknownHandlerException if no handler resolves to ref in any managed
- *  context. No-op returning null for an adapter without handler levels. */
-Level setHandlerLevel(HandlerRef ref, Level level);
+/** The handler's current level, or empty if it has none set. Only
+ *  meaningful when hasHandlerLevels() is true. */
+Optional<Level> handlerLevel(HandlerRef ref);
+
+/** Set the identified handler's level, returning its prior level (empty if
+ *  it had none). Throws UnknownHandlerException if no handler resolves to
+ *  ref in any managed context. Only called when hasHandlerLevels() is true. */
+Optional<Level> setHandlerLevel(HandlerRef ref, Level level);
 
 /** Every handler currently resolvable. Used to validate a `logctl handler
  *  <name>` argument and list known names on a mismatch; the fuller
  *  status/discovery listing this could also back is deferred (Open decision A). */
 List<HandlerRef> knownHandlers();
 ```
+
+`hasHandlerLevels()` is the one core actually branches on — a handler-floor
+warning or a `setHandlerLevel` call short-circuits to "nothing to do" the
+moment it's false, before touching capability, baseline, or registry state
+for that context.
 
 `handlerFloorsBelow(String loggerName, Level target)` already exists
 (`wildfly-support.md` Slice 2); its returned `HandlerFloor` is extended to carry
@@ -217,17 +247,21 @@ resolved: configured name, identity-token fallback.)*
 
 The JBoss LogManager adapter implements these against `Logger.getHandlers()` /
 `Handler.getLevel()` / `Handler.setLevel()` (all JDK), resolving names from
-`org.jboss.logmanager`'s handler configuration. Logback and `none` return
-`null` / empty and do nothing.
+`org.jboss.logmanager`'s handler configuration, and reports `hasHandlerLevels()
+= true`. Logback and `none` keep the SPI's defaults (`false` / empty / empty) —
+they implement none of this.
 
 ## Semantics to pin down
 
-- **Baseline capture.** The first time a handler is set via `setHandlerLevel`,
-  capture its current level into the `HandlerLevelOverride`. `resetHandler`,
-  `resetAll`, and the expiry sweep restore from that baseline. A later
-  `setHandlerLevel` on the same `(contextKey, ref)` while an override is active
-  *supersedes* — it updates `level` and keeps the original `previousLevel`, so
-  reversion still lands on the pre-LogAperture value.
+- **Baseline capture.** Kept out of `HandlerLevelOverride` itself, mirroring how
+  a logger's baseline lives in `BaselineRegistry` rather than in `LevelOverride`:
+  a parallel `HandlerBaselineRegistry` captures each handler's pre-LogAperture
+  level, lazily, the first time `setHandlerLevel` touches it. `resetHandler`,
+  `resetAll`, and the expiry sweep restore from that registry, never from the
+  override. A later `setHandlerLevel` on the same `(contextKey, ref)` while an
+  override is active *supersedes* — the registry entry it was captured from
+  doesn't change on a second touch, so reversion still lands on the
+  pre-LogAperture value regardless of how many times the override was replaced.
 - **Independent lifetime.** A handler override is its own thing. Nothing about a
   logger override creates, extends, or reverts it, and vice versa. Its tier,
   `expiresAt`, reason and audit trail are its own.
@@ -247,47 +281,62 @@ The JBoss LogManager adapter implements these against `Logger.getHandlers()` /
   handler, capturing a baseline per `(contextKey, ref)`, following
   `wildfly-support.md`'s broadcast semantics. A context that reappears after
   redeploy has the override re-applied to it.
-- **Reconfiguration re-application.** `wildfly-support.md` §15.7 re-applies active
-  logger overrides after the server resets its logging; the same step re-applies
-  active handler overrides (re-resolving the `HandlerRef`, since the handler
-  instance may be new).
+- **Reconfiguration re-application.** `HandlerLevelControlService.reapplyActiveOverrides`
+  exists and does the same job `LevelControlService.reapplyActiveOverrides` does
+  for loggers, but WildFly's own composition root does not yet call it anywhere
+  — there is no reset event to hook it to (`WildFlyContainer`'s own doc: "no
+  adapter reset wiring — JBoss LogManager has no reset event; the verification
+  sweep covers it" — and there is no handler-level verification sweep in this
+  slice, unlike loggers' `verifyAndReapply`). A handler override still survives
+  **redeploy** (broadcast onto a newly-registered context, same as a logger
+  override) and **resume** (below); the gap is narrower than it sounds — a
+  drift-detection re-apply parallel to `verifyAndReapply`/`verificationSweep`,
+  left for a follow-up slice.
 - **Resume.** A persisted `--for` / `--sticky` handler override is re-applied on
   agent startup like a logger override (`persistence.md` §6.5). A `--for` one
   whose `expiresAt` has passed is written straight to the audit as a `REVERSION`
   and not applied. A handler that no longer exists is dropped with a diagnostic.
-- **Logback / `none`.** `setHandlerLevel` returns `null`; core emits one
-  diagnostic (`"logctl handler: <framework> appenders have no level of their own;
-  nothing to change"`) and the command exits 0 having changed nothing and written
-  no override.
+- **Logback / `none`.** `hasHandlerLevels()` is `false`; `setHandlerLevel`
+  returns nothing (no capability check, no mutation, no tracking, no persist)
+  and `logctl handler` reports "this framework's handlers have no level of
+  their own; nothing to change" and exits 0. Confirmed against a real
+  cross-process run (`LevelControlEndToEndIT`), not just in-process.
 
 ## Data model
 
 ```
 HandlerLevelOverride {
-    contextKey: String?       // null for single-context
     handlerRef: HandlerRef    // configured name, or <class>@<idhash> fallback
-    previousLevel: Level      // baseline, for reversion
     level: Level              // current target
     reason: String?
     appliedAt: Instant
     source: String
-    principal: String
     tier: PersistenceTier
     expiresAt: Instant?       // non-null iff tier == FOR
 }
 ```
 
-Tracked in `core` beside the `OverrideRegistry`, keyed by
-`(contextKey, handlerRef)`. Persisted to the state file when `tier != SESSION`,
-in its own section alongside the logger overrides (`persistence.md` state-file
+Exactly `LevelOverride`'s own field set with `loggerName`/`includeChildren`
+swapped for `handlerRef` (no children to include) — no `previousLevel` here
+either, for the same reason `LevelOverride` has none: the baseline lives in its
+own registry (`HandlerBaselineRegistry`), not on the override. One
+`HandlerOverrideRegistry` per logging context (mirroring `OverrideRegistry`)
+holds these, keyed by `handlerRef` — multi-context scoping is which
+context's registry an entry lives in, not a field on the record, same
+convention `LevelOverride`/`OverrideRegistry` already use. Persisted to the
+state file when `tier != SESSION`, in its own section alongside the logger
+overrides (`persistence.md` state-file
 shape), so a `--sticky` handler override survives an agent restart.
 
 ## Capability and audit
 
 - **New capabilities `handler.lower` and `handler.raise`** (§9.3), mirroring
   `level.lower` / `level.raise`. `setHandlerLevel` checks the one matching the
-  direction of the change **before** any mutation; `resetHandler` needs neither
-  (reversion to baseline is always allowed, as for loggers). `persist` is
+  direction of the change **before** any mutation. `resetHandler` always
+  requires `handler.lower` — the same simplification `resetLevel` makes
+  (`level-control.md`): every reset is treated as "get back to normal"
+  regardless of whether reverting to baseline happens to raise or lower this
+  particular handler, rather than judging direction per reset. `persist` is
   additionally required when `tier != SESSION`, exactly as for `setLevel`
   (`persistence.md` §9). Rationale for keeping these separate from `level.*`: a
   handler floor governs **every** logger that routes through that handler, so its
@@ -340,25 +389,40 @@ shape), so a `--sticky` handler override survives an agent restart.
   re-applies it; an expired `--for` one is not applied but is audited.
 - Capability: `handler.lower` withheld → `logctl handler CONSOLE TRACE` denied,
   exit 6, no handler change and no override recorded; `handler.raise` withheld →
-  `logctl handler CONSOLE WARN` denied; `resetHandler` allowed with neither.
+  `logctl handler CONSOLE WARN` denied; `resetHandler` needs `handler.lower` too
+  (withheld → denied, same as `resetLevel`).
 - `persist` withheld → `CONSOLE TRACE for 30m` denied (per `persistence.md` §9).
 - Warning: `logctl trace x` with a `CONSOLE` floor prints the single-handler
   warning and exits 0; with two floors prints the multi-handler form; `--json`
-  puts them in `warnings[]`; `--quiet` suppresses them; the level change happens
-  regardless.
-- Unknown handler name → exit 2 listing known names.
+  puts them in `warnings[]`; the level change happens regardless.
+- Unknown handler name → the command fails with the adapter's own message
+  (`unknown handler: <ref>`) and a non-specific exit code — `logctl` has no
+  dependency on `core` to catch `UnknownHandlerException` by type and hand it a
+  dedicated exit code the way `CapabilityDeniedException` gets one; naming every
+  known handler in that message needs the discovery listing Open decision A
+  deferred.
 - Logback adapter: `logctl handler CONSOLE TRACE` → exit 0, "nothing to change"
-  note, no override recorded.
+  note, no override recorded — confirmed both in-process and cross-process
+  (`LevelControlEndToEndIT`, a real agent + real Logback process + real JMX null
+  return for the composite result type).
 
 **Cross-process (extends `LevelControlEndToEndIT` / `WildFlyContainerIT`):**
 
-- Against real standalone WildFly: `logctl trace <logger>` prints the `CONSOLE`
-  warning; `logctl handler CONSOLE TRACE` then makes a `TRACE` line reach the
-  console; `logctl handler CONSOLE reset` and it stops.
-- `logctl handler CONSOLE DEBUG sticky` survives a redeploy with the handler still
-  at `DEBUG` (re-applied by the §15.7 reconfiguration hook).
-- The same commands on the plain `java -jar` + Logback process succeed with the
-  "nothing to change" note and touch no appender.
+- Done: `LevelControlEndToEndIT` (Logback fixture) exercises `logctl handler`'s
+  no-op path end-to-end — real agent, real process, real JMX.
+- Still to do, against real standalone WildFly (`WildFlyContainerIT`): `logctl
+  trace <logger>` prints the `CONSOLE` warning; `logctl handler CONSOLE TRACE`
+  then makes a `TRACE` line reach the console; `logctl handler CONSOLE reset`
+  and it stops; whether the handler resolves to the name `CONSOLE` or falls back
+  to its identity token (`JbossHandlerNames`'s reflection into
+  `org.jboss.logmanager.configuration.ContextConfiguration` is unverified against
+  a real server — every failure mode degrades to the fallback, so the feature
+  works either way, but the friendlier name is unconfirmed).
+- Still to do: `logctl handler CONSOLE DEBUG sticky` surviving a redeploy — the
+  broadcast-onto-a-new-context path exists and is unit-tested with fake contexts,
+  but not yet exercised against a real WildFly redeploy. Surviving a
+  `/subsystem=logging` change or `:reload` (drift, not redeploy) is **not**
+  covered yet at all — see "Reconfiguration re-application" above.
 
 ## Open decisions (sign-off)
 

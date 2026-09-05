@@ -70,7 +70,8 @@ class HandlerLevelControlServiceTest {
 
     @Test
     void setHandlerLevel_lowersAndRecordsTheOverride() {
-        HandlerLevelOverride override = service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
+        HandlerLevelOverride override = service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults())
+                .orElseThrow();
 
         assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
         assertEquals(CONSOLE, override.handlerRef());
@@ -87,6 +88,19 @@ class HandlerLevelControlServiceTest {
         assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow());
         assertTrue(overrides.get(CONSOLE).isEmpty());
         assertEquals(AuditRecord.Action.REVERSION, auditLog.records().get(auditLog.records().size() - 1).action());
+    }
+
+    @Test
+    void resetAllHandlers_revertsEveryActiveHandlerOverride() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
+        service.setHandlerLevel(file, Level.DEBUG, SetHandlerLevelOptions.defaults());
+
+        service.resetAllHandlers();
+
+        assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow());
+        assertEquals(Level.INFO, adapter.handlerLevel(file).orElseThrow());
     }
 
     @Test
@@ -213,6 +227,29 @@ class HandlerLevelControlServiceTest {
 
         assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
         assertFalse(auditLog.records().isEmpty());
+    }
+
+    // --- no handler levels at all (Logback / none) --------------------------------------------------
+
+    @Test
+    void setHandlerLevel_adapterHasNoHandlerLevels_isANoOpNotAnError() {
+        adapter.disableHandlerLevels();
+
+        var result = service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
+
+        assertTrue(result.isEmpty());
+        assertTrue(overrides.get(CONSOLE).isEmpty(), "nothing tracked");
+        assertTrue(auditLog.records().isEmpty(), "nothing audited");
+        assertTrue(stateStore.loadAllHandlers().isEmpty(), "nothing persisted");
+    }
+
+    @Test
+    void setHandlerLevel_adapterHasNoHandlerLevels_needsNoCapability() {
+        adapter.disableHandlerLevels();
+        HandlerLevelControlService denied = new HandlerLevelControlService(adapter, baselines, overrides,
+                CapabilityPolicy.denyAll(), auditLog, stateStore, "alice", "jmx");
+
+        assertTrue(denied.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults()).isEmpty());
     }
 
     // --- failure handling -------------------------------------------------------------------------

@@ -92,7 +92,7 @@ final class AgentBootstrap {
 
     private static void publishControlSurface(ContainerIntegration container, AggregateLevelControl operations) {
         try {
-            JmxRegistrar.register(operations);
+            JmxRegistrar.register(operations, operations); // AggregateLevelControl implements both interfaces
             System.setProperty(VERSION_PROPERTY, agentVersion());
             Diagnostics.info("LogAperture level control installed (" + container.id() + " container, JMX surface)");
         } catch (Throwable t) {

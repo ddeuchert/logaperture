@@ -20,6 +20,8 @@ import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.SetHandlerLevelOptions;
 
+import java.util.Optional;
+
 /**
  * {@code logctl handler}'s public contract — the {@link
  * LevelControlOperations} counterpart for handlers (doc/specs/
@@ -28,7 +30,13 @@ import org.logaperture.api.SetHandlerLevelOptions;
  */
 public interface HandlerLevelControlOperations {
 
-    HandlerLevelOverride setHandlerLevel(HandlerRef ref, Level level, SetHandlerLevelOptions options);
+    /**
+     * @return the created override, or empty if the underlying adapter's
+     *         handlers have no level of their own (doc/specs/
+     *         handler-floor-control.md "Logback / none") — a documented
+     *         no-op, not an error; nothing is tracked or persisted
+     */
+    Optional<HandlerLevelOverride> setHandlerLevel(HandlerRef ref, Level level, SetHandlerLevelOptions options);
 
     void resetHandler(HandlerRef ref);
 }

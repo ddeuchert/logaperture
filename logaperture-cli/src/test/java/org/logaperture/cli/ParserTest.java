@@ -138,6 +138,39 @@ class ParserTest {
         assertTrue(Parser.parse(new String[] {"--debug", "status"}).debug());
     }
 
+    // --- handler command (doc/specs/handler-floor-control.md) --------------------------------------
+
+    @Test
+    void handlerNeedsANameAndALevel() {
+        assertUsage(() -> Parser.parse(new String[] {"handler"}));
+        assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE"}));
+    }
+
+    @Test
+    void handlerParsesWithBareTierAndWithATierToken() {
+        Parser.parse(new String[] {"handler", "CONSOLE", "TRACE"}); // bare -- defaults to for 4h, same as levels
+        Parser.parse(new String[] {"handler", "CONSOLE", "TRACE", "session"});
+        Parser.parse(new String[] {"handler", "CONSOLE", "TRACE", "for", "30m"});
+        Parser.parse(new String[] {"handler", "CONSOLE", "TRACE", "sticky"});
+    }
+
+    @Test
+    void handlerResetTakesNoFurtherArguments() {
+        Parser.parse(new String[] {"handler", "CONSOLE", "reset"}); // fine
+        assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "reset", "extra"}));
+    }
+
+    @Test
+    void handlerAcceptsReasonButNotIncludeChildren() {
+        Parser.parse(new String[] {"handler", "CONSOLE", "TRACE", "--reason", "INC-1"}); // fine
+        assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "TRACE", "--include-children"}));
+    }
+
+    @Test
+    void unknownLevelForHandlerIsAUsageError() {
+        assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "LOUD"}));
+    }
+
     private static void assertUsage(Executable call) {
         CliError error = assertThrows(CliError.class, call);
         assertSame(CliError.class, error.getClass());

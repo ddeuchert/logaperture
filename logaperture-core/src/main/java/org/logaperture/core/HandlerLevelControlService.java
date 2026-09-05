@@ -25,6 +25,7 @@ import org.logaperture.core.spi.StateStore;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -73,13 +74,16 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     }
 
     @Override
-    public HandlerLevelOverride setHandlerLevel(HandlerRef ref, Level level, SetHandlerLevelOptions options) {
+    public Optional<HandlerLevelOverride> setHandlerLevel(HandlerRef ref, Level level, SetHandlerLevelOptions options) {
         Objects.requireNonNull(ref, "ref");
         Objects.requireNonNull(level, "level");
         SetHandlerLevelOptions opts = options == null ? SetHandlerLevelOptions.defaults() : options;
 
+        if (!adapter.hasHandlerLevels()) {
+            return Optional.empty(); // doc/specs/handler-floor-control.md "Logback / none" -- documented no-op
+        }
         checkSetHandlerLevelPermitted(ref, level, opts);
-        return applyAndRecordMutation(ref, level, opts);
+        return Optional.of(applyAndRecordMutation(ref, level, opts));
     }
 
     /**
@@ -87,9 +91,14 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      * anything — the {@link LevelControlService#checkSetLevelPermitted}
      * counterpart for handlers. {@link AggregateLevelControl} calls this
      * against every context before broadcasting a {@code setHandlerLevel},
-     * for the same "all pass or all fail" reason.
+     * for the same "all pass or all fail" reason. A context whose adapter
+     * has no handler levels never needs a grant -- there is nothing for it
+     * to authorize.
      */
     public void checkSetHandlerLevelPermitted(HandlerRef ref, Level level, SetHandlerLevelOptions options) {
+        if (!adapter.hasHandlerLevels()) {
+            return;
+        }
         SetHandlerLevelOptions opts = options == null ? SetHandlerLevelOptions.defaults() : options;
         Capability required = requiredCapabilityFor(ref, level);
         if (!policy.isGranted(required)) {
@@ -112,6 +121,20 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         // to baseline happens to raise or lower this particular handler.
         requireCapability(Capability.HANDLER_LOWER);
         applyReset(ref, existing.get(), source, null);
+    }
+
+    /**
+     * Reverts every active handler override — the {@link
+     * LevelControlService#resetAll} counterpart for handlers, called by
+     * {@link AggregateLevelControl#resetAll} alongside the logger reset so
+     * {@code logctl reset --all} covers both (doc/specs/
+     * handler-floor-control.md "The operation").
+     */
+    public void resetAllHandlers() {
+        requireCapability(Capability.HANDLER_LOWER);
+        for (Map.Entry<HandlerRef, HandlerLevelOverride> entry : overrides.all().entrySet()) {
+            applyReset(entry.getKey(), entry.getValue(), source, null);
+        }
     }
 
     /**

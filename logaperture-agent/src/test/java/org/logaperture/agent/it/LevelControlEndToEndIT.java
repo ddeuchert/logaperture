@@ -19,10 +19,11 @@ import com.sun.tools.attach.VirtualMachine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.JmxRegistrar;
 import org.logaperture.control.jmx.LevelControlMXBean;
-import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerInfoData;
+import org.logaperture.control.jmx.SetLevelResultData;
 
 import javax.management.JMX;
 import javax.management.MBeanServerConnection;
@@ -101,9 +102,10 @@ class LevelControlEndToEndIT {
         assertTrue(byGlob.stream().anyMatch(li -> FIXTURE_LOGGER.equals(li.getName())),
                 "leading-* glob should have matched " + FIXTURE_LOGGER);
 
-        LevelOverrideData override = proxy.setLevel(FIXTURE_LOGGER, "DEBUG", false, "e2e-test", "SESSION", 0);
-        assertEquals("DEBUG", override.getLevel());
-        assertEquals(FIXTURE_LOGGER, override.getLoggerName());
+        SetLevelResultData result = proxy.setLevel(FIXTURE_LOGGER, "DEBUG", false, "e2e-test", "SESSION", 0);
+        assertEquals("DEBUG", result.getOverride().getLevel());
+        assertEquals(FIXTURE_LOGGER, result.getOverride().getLoggerName());
+        assertTrue(result.getBlockingHandlers().isEmpty(), "Logback has no handler floors to report");
 
         List<LoggerInfoData> afterSet = proxy.listLoggers(FIXTURE_LOGGER);
         assertEquals("DEBUG", afterSet.get(0).getEffectiveLevel());
@@ -115,6 +117,13 @@ class LevelControlEndToEndIT {
         assertFalse(afterReset.get(0).isOverrideActive());
 
         proxy.resetAll(); // smoke: must not throw even with nothing active
+
+        // doc/specs/handler-floor-control.md "Logback / none": this fixture
+        // runs Logback, whose appenders have no level of their own -- the
+        // real cross-process JMX null return, not just the in-process fake.
+        HandlerLevelOverrideData handlerResult = proxy.setHandlerLevel("CONSOLE", "TRACE", null, "SESSION", 0);
+        assertEquals(null, handlerResult);
+        proxy.resetHandler("CONSOLE"); // smoke: must not throw even though nothing was ever set
 
         // The install also publishes the marker logaperture-cli's discovery
         // filters candidate JVMs on (doc/specs/cli-transport.md "Discovery").

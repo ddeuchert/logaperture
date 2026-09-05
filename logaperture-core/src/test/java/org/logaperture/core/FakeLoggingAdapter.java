@@ -49,6 +49,7 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     private final Map<HandlerRef, Level> handlerLevels = new LinkedHashMap<>();
     private final Map<String, List<HandlerRef>> handlersOnPath = new LinkedHashMap<>();
     private HandlerRef throwOnSetHandlerLevelFor;
+    private boolean hasHandlerLevels = true; // this fake models a JUL-like framework by default
 
     FakeLoggingAdapter(Level rootLevel) {
         knownNames.add("ROOT");
@@ -140,6 +141,16 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     /** Makes the next {@link #setHandlerLevel} call for this ref throw, to exercise chaos-case behavior. */
     void throwOnSetHandlerLevel(HandlerRef ref) {
         this.throwOnSetHandlerLevelFor = ref;
+    }
+
+    /** Models a framework whose handlers have no level of their own (Logback, {@code none}). */
+    void disableHandlerLevels() {
+        this.hasHandlerLevels = false;
+    }
+
+    @Override
+    public boolean hasHandlerLevels() {
+        return hasHandlerLevels;
     }
 
     @Override

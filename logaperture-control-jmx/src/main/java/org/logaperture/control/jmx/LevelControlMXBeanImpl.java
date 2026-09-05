@@ -15,9 +15,12 @@
  */
 package org.logaperture.control.jmx;
 
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.PersistenceTier;
+import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
+import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
 
 import java.time.Duration;
@@ -26,20 +29,26 @@ import java.util.Locale;
 import java.util.Objects;
 
 /**
- * Wraps a {@link LevelControlOperations}, converting between the {@code
- * String}-based JMX boundary and {@code api} types. Any {@code
- * RuntimeException} thrown by the wrapped operations (a {@code
- * CapabilityDeniedException}, an adapter failure) is left to propagate --
- * JMX wraps these in a {@code RuntimeMBeanException} for the remote caller
- * automatically, satisfying "surfaces to the JMX caller as a failed
- * operation" (doc/specs/level-control.md's failure handling).
+ * Wraps a {@link LevelControlOperations} and a {@link
+ * HandlerLevelControlOperations} — in production the same {@code
+ * AggregateLevelControl} instance implements both, but this bean depends on
+ * the two narrow interfaces rather than that concrete type, same as {@code
+ * core} itself does. Converts between the {@code String}-based JMX boundary
+ * and {@code api} types. Any {@code RuntimeException} thrown by the wrapped
+ * operations (a {@code CapabilityDeniedException}, an adapter failure, an
+ * {@code UnknownHandlerException}) is left to propagate -- JMX wraps these
+ * in a {@code RuntimeMBeanException} for the remote caller automatically,
+ * satisfying "surfaces to the JMX caller as a failed operation" (doc/specs/
+ * level-control.md's failure handling).
  */
 public final class LevelControlMXBeanImpl implements LevelControlMXBean {
 
     private final LevelControlOperations operations;
+    private final HandlerLevelControlOperations handlerOperations;
 
-    public LevelControlMXBeanImpl(LevelControlOperations operations) {
+    public LevelControlMXBeanImpl(LevelControlOperations operations, HandlerLevelControlOperations handlerOperations) {
         this.operations = Objects.requireNonNull(operations, "operations");
+        this.handlerOperations = Objects.requireNonNull(handlerOperations, "handlerOperations");
     }
 
     @Override
@@ -48,16 +57,12 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
-    public LevelOverrideData setLevel(String loggerName, String level, boolean includeChildren, String reason,
+    public SetLevelResultData setLevel(String loggerName, String level, boolean includeChildren, String reason,
             String tier, long forSeconds) {
         Level parsedLevel = parseLevel(level);
         SetLevelOptions options = toOptions(includeChildren, reason, tier, forSeconds);
-        // blockingHandlers (doc/specs/handler-floor-control.md "Warning on
-        // level commands") isn't surfaced on this JMX operation yet -- that's
-        // logctl handler's own slice; this bean still returns exactly what it
-        // always did.
         var result = operations.setLevel(loggerName, parsedLevel, options);
-        return LevelOverrideData.from(result.override());
+        return SetLevelResultData.from(result);
     }
 
     @Override
@@ -70,10 +75,31 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
         operations.resetAll();
     }
 
+    @Override
+    public HandlerLevelOverrideData setHandlerLevel(String handlerRef, String level, String reason, String tier,
+            long forSeconds) {
+        Level parsedLevel = parseLevel(level);
+        SetHandlerLevelOptions options = toHandlerOptions(reason, tier, forSeconds);
+        return handlerOperations.setHandlerLevel(new HandlerRef(handlerRef), parsedLevel, options)
+                .map(HandlerLevelOverrideData::from)
+                .orElse(null); // this framework's handlers have no level of their own -- documented no-op
+    }
+
+    @Override
+    public void resetHandler(String handlerRef) {
+        handlerOperations.resetHandler(new HandlerRef(handlerRef));
+    }
+
     private static SetLevelOptions toOptions(boolean includeChildren, String reason, String tier, long forSeconds) {
         PersistenceTier parsedTier = parseTier(tier);
         Duration expiresIn = parsedTier == PersistenceTier.FOR ? Duration.ofSeconds(forSeconds) : null;
         return new SetLevelOptions(includeChildren, reason, expiresIn, parsedTier);
+    }
+
+    private static SetHandlerLevelOptions toHandlerOptions(String reason, String tier, long forSeconds) {
+        PersistenceTier parsedTier = parseTier(tier);
+        Duration expiresIn = parsedTier == PersistenceTier.FOR ? Duration.ofSeconds(forSeconds) : null;
+        return new SetHandlerLevelOptions(reason, expiresIn, parsedTier);
     }
 
     private static PersistenceTier parseTier(String tier) {

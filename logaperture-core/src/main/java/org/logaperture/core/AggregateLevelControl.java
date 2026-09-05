@@ -213,6 +213,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     public void resetAll() {
         for (ContextControl context : sortedByKey()) {
             context.service().resetAll();
+            context.handlerService().resetAllHandlers();
         }
     }
 
@@ -226,7 +227,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * handling") -- there is no handler verification sweep in this slice.
      */
     @Override
-    public HandlerLevelOverride setHandlerLevel(HandlerRef ref, Level level, SetHandlerLevelOptions options) {
+    public Optional<HandlerLevelOverride> setHandlerLevel(HandlerRef ref, Level level, SetHandlerLevelOptions options) {
         List<ContextControl> contexts = sortedByKey();
         if (contexts.isEmpty()) {
             throw new IllegalStateException("no logging context is registered yet");
@@ -236,22 +237,29 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         }
         HandlerLevelOverride fromSystem = null;
         HandlerLevelOverride fromAny = null;
+        int succeeded = 0;
         for (ContextControl context : contexts) {
             try {
-                HandlerLevelOverride applied = context.handlerService().setHandlerLevel(ref, level, options);
-                fromAny = applied;
-                if (ContextHandle.SYSTEM.equals(context.stableKey())) {
-                    fromSystem = applied;
+                Optional<HandlerLevelOverride> applied = context.handlerService().setHandlerLevel(ref, level, options);
+                succeeded++;
+                if (applied.isPresent()) {
+                    fromAny = applied.get();
+                    if (ContextHandle.SYSTEM.equals(context.stableKey())) {
+                        fromSystem = applied.get();
+                    }
                 }
             } catch (RuntimeException e) {
                 System.err.println("[logaperture-core] setHandlerLevel(" + ref + ") failed in context '"
                         + context.stableKey() + "', that context is unchanged: " + e);
             }
         }
-        if (fromSystem == null && fromAny == null) {
+        if (succeeded == 0) {
             throw new IllegalStateException("setHandlerLevel(" + ref + ") failed in every context");
         }
-        return fromSystem != null ? fromSystem : fromAny;
+        // Every context succeeding as a no-op (no handler levels anywhere,
+        // e.g. Logback) is not a failure -- doc/specs/handler-floor-control.md
+        // "Logback / none".
+        return Optional.ofNullable(fromSystem != null ? fromSystem : fromAny);
     }
 
     @Override

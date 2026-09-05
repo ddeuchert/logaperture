@@ -16,8 +16,11 @@
 package org.logaperture.cli;
 
 import org.junit.jupiter.api.Test;
+import org.logaperture.control.jmx.HandlerFloorData;
+import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerInfoData;
+import org.logaperture.control.jmx.SetLevelResultData;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -43,6 +46,10 @@ class CommandsTest {
 
     private int run(Command command) {
         return command.run(mbean, out);
+    }
+
+    private static SetLevelResultData setLevelResult(LevelOverrideData override, List<HandlerFloorData> blocking) {
+        return new SetLevelResultData(override, blocking);
     }
 
     @Test
@@ -123,8 +130,8 @@ class CommandsTest {
     @Test
     void setLevelForwardsEveryArgumentAndPrintsARevertTime() {
         String expiresAt = Instant.now().plus(30, ChronoUnit.MINUTES).toString();
-        mbean.setLevelResult = new LevelOverrideData(
-                "com.acme", "DEBUG", true, "INC-1", Instant.now().toString(), "jmx", "FOR", expiresAt);
+        mbean.setLevelResult = setLevelResult(new LevelOverrideData(
+                "com.acme", "DEBUG", true, "INC-1", Instant.now().toString(), "jmx", "FOR", expiresAt), List.of());
 
         run(Commands.setLevel("com.acme", "DEBUG", true, "INC-1", "FOR", 1800L, false));
 
@@ -144,28 +151,137 @@ class CommandsTest {
 
     @Test
     void setLevelStickyAndSessionConfirmationsReadPlainly() {
-        mbean.setLevelResult = new LevelOverrideData(
-                "com.acme", "WARN", false, null, Instant.now().toString(), "jmx", "STICKY", null);
+        mbean.setLevelResult = setLevelResult(new LevelOverrideData(
+                "com.acme", "WARN", false, null, Instant.now().toString(), "jmx", "STICKY", null), List.of());
         run(Commands.setLevel("com.acme", "WARN", false, null, "STICKY", 0L, false));
         assertTrue(output().contains("(STICKY — until reset)"));
 
         captured.reset();
-        mbean.setLevelResult = new LevelOverrideData(
-                "com.acme", "WARN", false, null, Instant.now().toString(), "jmx", "SESSION", null);
+        mbean.setLevelResult = setLevelResult(new LevelOverrideData(
+                "com.acme", "WARN", false, null, Instant.now().toString(), "jmx", "SESSION", null), List.of());
         run(Commands.setLevel("com.acme", "WARN", false, null, "SESSION", 0L, false));
         assertTrue(output().contains("(SESSION — until the JVM stops)"));
     }
 
     @Test
     void setLevelJsonEmitsTheOverrideObject() {
-        mbean.setLevelResult = new LevelOverrideData(
-                "com.acme", "DEBUG", false, null, "2026-08-25T00:00:00Z", "jmx", "SESSION", null);
+        mbean.setLevelResult = setLevelResult(new LevelOverrideData(
+                "com.acme", "DEBUG", false, null, "2026-08-25T00:00:00Z", "jmx", "SESSION", null), List.of());
         run(Commands.setLevel("com.acme", "DEBUG", false, null, "SESSION", 0L, true));
         assertEquals(
                 "{\"loggerName\":\"com.acme\",\"level\":\"DEBUG\",\"includeChildren\":false,\"reason\":null,"
                         + "\"appliedAt\":\"2026-08-25T00:00:00Z\",\"source\":\"jmx\",\"tier\":\"SESSION\","
+                        + "\"expiresAt\":null,\"warnings\":[]}",
+                output().strip());
+    }
+
+    @Test
+    void setLevel_oneBlockingHandler_printsTheActionableWarning() {
+        mbean.setLevelResult = setLevelResult(new LevelOverrideData(
+                        "com.acme", "TRACE", false, null, Instant.now().toString(), "jmx", "SESSION", null),
+                List.of(new HandlerFloorData("CONSOLE", "INFO")));
+
+        run(Commands.setLevel("com.acme", "TRACE", false, null, "SESSION", 0L, false));
+
+        String text = output();
+        assertTrue(text.contains("WARN: handler CONSOLE is at INFO"));
+        assertTrue(text.contains("logctl handler CONSOLE TRACE"));
+    }
+
+    @Test
+    void setLevel_multipleBlockingHandlers_printsOneCommandEach() {
+        mbean.setLevelResult = setLevelResult(new LevelOverrideData(
+                        "com.acme", "TRACE", false, null, Instant.now().toString(), "jmx", "SESSION", null),
+                List.of(new HandlerFloorData("CONSOLE", "INFO"), new HandlerFloorData("FILE", "DEBUG")));
+
+        run(Commands.setLevel("com.acme", "TRACE", false, null, "SESSION", 0L, false));
+
+        String text = output();
+        assertTrue(text.contains("2 handlers"));
+        assertTrue(text.contains("logctl handler CONSOLE TRACE"));
+        assertTrue(text.contains("logctl handler FILE TRACE"));
+    }
+
+    @Test
+    void setLevel_noBlockingHandlers_printsNoWarning() {
+        mbean.setLevelResult = setLevelResult(new LevelOverrideData(
+                "com.acme", "DEBUG", false, null, Instant.now().toString(), "jmx", "SESSION", null), List.of());
+
+        run(Commands.setLevel("com.acme", "DEBUG", false, null, "SESSION", 0L, false));
+
+        assertFalse(output().contains("WARN"));
+    }
+
+    @Test
+    void setLevelJson_withBlockingHandlers_emitsWarningsArray() {
+        mbean.setLevelResult = setLevelResult(new LevelOverrideData(
+                        "com.acme", "TRACE", false, null, "2026-08-25T00:00:00Z", "jmx", "SESSION", null),
+                List.of(new HandlerFloorData("CONSOLE", "INFO")));
+
+        run(Commands.setLevel("com.acme", "TRACE", false, null, "SESSION", 0L, true));
+
+        assertTrue(output().contains("\"warnings\":[{\"handlerRef\":\"CONSOLE\",\"currentLevel\":\"INFO\"}]"));
+    }
+
+    // --- handler (doc/specs/handler-floor-control.md) -----------------------------------------
+
+    @Test
+    void handlerSetForwardsEveryArgumentAndPrintsAConfirmation() {
+        mbean.setHandlerLevelResult = new HandlerLevelOverrideData(
+                "CONSOLE", "TRACE", "INC-1", Instant.now().toString(), "jmx", "SESSION", null);
+
+        run(Commands.setHandlerLevel("CONSOLE", "TRACE", "INC-1", "SESSION", 0L, false));
+
+        Object[] call = mbean.setHandlerLevelCalls.get(0);
+        assertEquals("CONSOLE", call[0]);
+        assertEquals("TRACE", call[1]);
+        assertEquals("INC-1", call[2]);
+        assertEquals("SESSION", call[3]);
+        assertEquals("handler CONSOLE → TRACE   (SESSION — until the JVM stops)", output().strip());
+    }
+
+    @Test
+    void handlerSetJsonEmitsTheOverrideObject() {
+        mbean.setHandlerLevelResult = new HandlerLevelOverrideData(
+                "CONSOLE", "TRACE", null, "2026-08-25T00:00:00Z", "jmx", "STICKY", null);
+
+        run(Commands.setHandlerLevel("CONSOLE", "TRACE", null, "STICKY", 0L, true));
+
+        assertEquals(
+                "{\"handlerRef\":\"CONSOLE\",\"level\":\"TRACE\",\"reason\":null,"
+                        + "\"appliedAt\":\"2026-08-25T00:00:00Z\",\"source\":\"jmx\",\"tier\":\"STICKY\","
                         + "\"expiresAt\":null}",
                 output().strip());
+    }
+
+    @Test
+    void handlerSet_adapterHasNoHandlerLevels_printsTheNoOpNote() {
+        mbean.setHandlerLevelResult = null; // Logback / none: no level of its own
+
+        assertEquals(CliError.OK, run(Commands.setHandlerLevel("CONSOLE", "TRACE", null, "SESSION", 0L, false)));
+        assertTrue(output().contains("nothing to change"));
+    }
+
+    @Test
+    void handlerSetJson_adapterHasNoHandlerLevels_emitsAChangedFalseObject() {
+        mbean.setHandlerLevelResult = null;
+
+        run(Commands.setHandlerLevel("CONSOLE", "TRACE", null, "SESSION", 0L, true));
+
+        assertEquals("{\"handlerRef\":\"CONSOLE\",\"changed\":false}", output().strip());
+    }
+
+    @Test
+    void handlerResetCallsResetHandler() {
+        assertEquals(CliError.OK, run(Commands.resetHandler("CONSOLE", false)));
+        assertEquals(List.of("CONSOLE"), mbean.resetHandlerCalls);
+        assertEquals("handler CONSOLE → reset to its previous level.", output().strip());
+    }
+
+    @Test
+    void handlerResetJsonEmitsAnObject() {
+        assertEquals(CliError.OK, run(Commands.resetHandler("CONSOLE", true)));
+        assertEquals("{\"handlerRef\":\"CONSOLE\",\"reset\":true}", output().strip());
     }
 
     @Test

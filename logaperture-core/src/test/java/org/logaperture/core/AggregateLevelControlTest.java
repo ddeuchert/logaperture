@@ -143,6 +143,21 @@ class AggregateLevelControlTest {
     }
 
     @Test
+    void resetAll_revertsHandlerOverridesToo() {
+        Ctx system = new Ctx("system");
+        HandlerRef console = new HandlerRef("CONSOLE");
+        system.adapter.addHandler(console, Level.INFO);
+        aggregate.register(system.control);
+        aggregate.setLevel("com.a.One", Level.DEBUG, SetLevelOptions.defaults());
+        aggregate.setHandlerLevel(console, Level.TRACE, SetHandlerLevelOptions.defaults());
+
+        aggregate.resetAll();
+
+        assertEquals(Level.INFO, system.adapter.effectiveLevel("com.a.One"));
+        assertEquals(Level.INFO, system.adapter.handlerLevel(console).orElseThrow());
+    }
+
+    @Test
     void setLevel_withNoContextRegistered_throws() {
         assertThrows(IllegalStateException.class,
                 () -> aggregate.setLevel("com.x.Y", Level.DEBUG, SetLevelOptions.defaults()));

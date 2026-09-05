@@ -132,6 +132,11 @@ public final class JulLoggingAdapter implements LoggingAdapter {
 
     // onReset / clearResetListener: SPI no-op default -- see class doc.
 
+    @Override
+    public boolean hasHandlerLevels() {
+        return true;
+    }
+
     /**
      * The handlers on {@code loggerName}'s path to the root whose own level
      * is stricter than {@code target} — the second, independent gate
