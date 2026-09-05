@@ -17,6 +17,18 @@ status`/`--json` now list them; see "Testing" below) along with several other
 findings (a `Handler#setLevel(null)` NPE on a first-capture-fails baseline, a
 capability-direction default that silently demanded `handler.lower` even to
 raise, and a `--reason` parser gap on `handler <name> reset`).
+
+**Follow-up (issue [#13](https://github.com/ddeuchert/logaperture/issues/13),
+not yet implemented — branch `feature/13-all-handlers`):** the identity-token
+fallback above is stable per agent lifetime but not across a WildFly restart,
+since a JVM identity hash carries no such guarantee. `ALL_HANDLERS`, a
+reserved `HandlerRef` meaning "every handler this context can log to,"
+replaces per-handler addressing on WildFly with a target that's stable by
+construction. Design reviewed and signed off 2026-09-05 (all 8 decisions);
+folded into "Adapter SPI", "Semantics to pin down", "Capability and audit",
+and "Open decisions" below. Real per-handler WildFly names remain future work
+([#14](https://github.com/ddeuchert/logaperture/issues/14), sequenced after
+this lands).
 Priority: **high** — pulled forward in §17 as the first behaviour-modifying feature
 after M1. "Make this class TRACE and let me see it on the console" is a primary
 developer interaction (§14.1); today it dead-ends at a warning to hand-edit
@@ -61,6 +73,13 @@ After this feature, the user will be able to:
 - Run `logctl handler` harmlessly on a framework whose handlers have no level of
   their own (plain Logback appenders): it is a no-op with a one-line note, not an
   error.
+- On WildFly, where individual handlers can't be named at all (see the Status
+  note above), target every handler at once with the reserved name
+  `ALL_HANDLERS` — `logctl handler ALL_HANDLERS TRACE` lowers every real
+  handler in one command, and `logctl handler ALL_HANDLERS reset` reverts each
+  one to its own prior level, not to a single shared value. The blocking-handler
+  warning on WildFly now names `ALL_HANDLERS` with one command to run, instead
+  of one unstable per-handler token per blocker.
 
 ## Scope of this slice
 
@@ -99,11 +118,13 @@ per handler, whether they want the sink widened.
   that has one; the change broadcasts to all of them, baseline per context.
 - JBoss LogManager / JUL adapter implementation; Logback + `none` treat the
   operation as a no-op with a diagnostic.
-
-**Explicitly out of scope** (deferred, each with what it needs):
-
-- Naming handlers that are **not** on any logger's resolved path, or bulk
-  operations over "all handlers" — `logctl handler` takes one name at a time.
+- A reserved handler target `ALL_HANDLERS` (issue #13) that fans out
+  `setHandlerLevel` / `resetHandler` over every real handler an adapter can
+  act on right now — the mechanism WildFly needs, since individual handler
+  names aren't reliably addressable there (identity-hash tokens, unstable
+  across a restart; see the Status note above and "Adapter SPI" below). Off
+  WildFly it's purely additive: real handlers stay individually addressable,
+  and `ALL_HANDLERS` is simply one more valid name alongside them.
 - Formatter / filter changes on a handler (render-stage wrapping —
   `wildfly-support.md` "Out of scope").
 - Logback appender **filter** manipulation (`ThresholdFilter` / `LevelFilter`) to
@@ -112,6 +133,14 @@ per handler, whether they want the sink widened.
 - A precedence model between a handler override and a logging-config reload that
   *changes* the handler's configured level (as opposed to resetting it) — beyond
   what `persistence.md` §6.6 already says for loggers.
+- Naming handlers that are **not** on any logger's resolved path — `logctl
+  handler` addresses only what a logger can reach, individually or via
+  `ALL_HANDLERS`.
+- Generalized named handler groups beyond the one reserved `ALL_HANDLERS`
+  name — revisit only if a real second grouping shows up.
+- Real per-handler WildFly names (issue #14, deliberately sequenced after
+  `ALL_HANDLERS` lands) — `ALL_HANDLERS` is the fix for *addressing* WildFly's
+  handlers, not for naming each one individually.
 
 ## The operation
 
@@ -123,15 +152,24 @@ logctl handler CONSOLE DEBUG for 30m --reason INC-42
 logctl handler CONSOLE ALL sticky
 logctl handler FILE WARN                 # squelch: raise the FILE handler's floor
 logctl handler CONSOLE reset             # revert now
+logctl handler ALL_HANDLERS TRACE        # every real handler at once (WildFly)
+logctl handler ALL_HANDLERS reset        # each reverts to its own baseline, not one shared value
 ```
 
 - `<name>` is the configured handler name as the framework knows it — WildFly's
-  `CONSOLE`, `FILE`. It is what the warning message prints, so a developer never
+  `CONSOLE`, `FILE` — or the reserved name `ALL_HANDLERS`, which fans out over
+  every handler `adapter.realHandlers()` returns (see "Adapter SPI"). It is
+  what the warning message prints, so a developer never
   has to guess it. An unknown name fails the way any unreachable adapter target
   does — reported by the message the adapter's `UnknownHandlerException` carries
   — rather than a dedicated exit code enumerating known names; that enumeration
   needs the discovery listing Open decision A deferred, and revisits this when
-  it lands.
+  it lands. On WildFly, where `knownHandlers()` advertises only
+  `ALL_HANDLERS`, addressing a real handler's own token directly (e.g. one
+  copied from an old log line or audit record) hits this exact same
+  unknown-handler error — no dedicated exception type for "used to be known";
+  from the addressable surface's point of view it genuinely isn't known
+  anymore (Decision #6).
 - `<level>` is any LogAperture level, same grammar as `logctl set`.
 - Tier tokens are exactly Feature 1/2's, including the CLI's own bare-token
   default: no token at all means `for 4h`, same as `logctl trace <logger>` —
@@ -179,6 +217,27 @@ confirmation line in text mode, and as a `warnings[]` array alongside the
 override in `--json` (empty when there's nothing to warn about). No `--quiet`
 flag exists anywhere in `logctl` today to suppress it with; adding one is
 out of scope here.
+
+**On WildFly, the multi-handler form collapses to one `ALL_HANDLERS` line**
+(Decision #7). Today's per-handler warning is deliberately granular so a
+developer can lower just `CONSOLE` and leave `FILE` alone — but once
+`knownHandlers()` advertises only `ALL_HANDLERS`, that per-name granularity
+no longer exists to offer. `handlerFloorsBelow` is already computed
+per-adapter; the WildFly adapter's implementation collapses its own answer to
+one `HandlerFloor` naming `ALL_HANDLERS`, at the strictest level among the
+real handlers actually blocking:
+
+```
+WARN: org.perfmon4j is now TRACE, but handler ALL_HANDLERS is at INFO — TRACE
+      and DEBUG records from this logger will not reach any sink.
+      To see them, also lower the handler:
+          logctl handler ALL_HANDLERS TRACE
+```
+
+Zero changes to core, the JMX surface, or `Commands` — the collapsing is
+entirely the WildFly adapter's own answer to a question it already answers.
+The known cost: the "just lower CONSOLE, leave FILE alone" granularity is
+genuinely lost on WildFly until issue #14 lands real per-handler names.
 
 ## Operations impact
 
@@ -235,10 +294,20 @@ Optional<Level> handlerLevel(HandlerRef ref);
  *  ref in any managed context. Only called when hasHandlerLevels() is true. */
 Optional<Level> setHandlerLevel(HandlerRef ref, Level level);
 
-/** Every handler currently resolvable. Used to validate a `logctl handler
- *  <name>` argument and list known names on a mismatch; the fuller
- *  status/discovery listing this could also back is deferred (Open decision A). */
+/** Every handler currently *addressable* by a user. Used to validate a
+ *  `logctl handler <name>` argument and list known names on a mismatch; the
+ *  fuller status/discovery listing this could also back is deferred (Open
+ *  decision A). May include the reserved HandlerRef.ALL_HANDLERS as a
+ *  member, or — WildFly under JBoss LogManager — return List.of(ALL_HANDLERS)
+ *  alone, suppressing the real handlers entirely (issue #13, Decision #1). */
 List<HandlerRef> knownHandlers();
+
+/** Every real handler this adapter can act on right now — what
+ *  ALL_HANDLERS fans out over, and what a per-handler baseline is captured
+ *  against. Unlike knownHandlers(), never collapsed or suppressed: an
+ *  adapter that hides its reals from the user still needs this list
+ *  internally. Default: same as knownHandlers(). (issue #13, Decision #1) */
+List<HandlerRef> realHandlers();
 ```
 
 `hasHandlerLevels()` is the one core actually branches on — a handler-floor
@@ -257,10 +326,27 @@ falling back to a stable identity token (`<class-simple-name>@
 `(contextKey, HandlerRef)`. *(Open decision #1, resolved: configured name,
 identity-token fallback.)*
 
+**`ALL_HANDLERS` is a third, reserved `HandlerRef` value** (issue #13), distinct
+from both the configured-name and identity-token forms above — it never
+refers to a handler instance, which is exactly why it's stable across a
+restart where the other two forms aren't. `HandlerLevelControlService`
+recognizes it as a target and fans out over `adapter.realHandlers()`,
+running the existing single-ref path (capability check, baseline capture,
+apply, audit) once per real handler — reusing `LevelControlService.setLevel`'s
+own `includeChildren` fan-out pattern rather than inventing a second mutation
+path. **The fan-out lives in core, not the adapter** (Decision #2): an
+adapter that looped internally could only report one before/after `Level`
+pair for the whole group, which breaks the moment two real handlers start at
+different levels and need their *own* baselines restored on reset. Core
+instead reuses `HandlerBaselineRegistry`'s existing per-ref semantics
+directly.
+
 The JBoss LogManager adapter implements these against `Logger.getHandlers()` /
 `Handler.getLevel()` / `Handler.setLevel()` (all JDK) and reports
 `hasHandlerLevels() = true`. Logback and `none` keep the SPI's defaults
-(`false` / empty / empty) — they implement none of this.
+(`false` / empty / empty) — they implement none of this. `WildFlyContainer`'s
+adapter reports `knownHandlers() = List.of(ALL_HANDLERS)` while
+`realHandlers()` still lists every actual handler underneath, unchanged.
 
 **Name resolution against real WildFly: tried, doesn't work.** The adapter
 reflects into `org.jboss.logmanager.configuration.ContextConfiguration` (JBoss
@@ -281,6 +367,14 @@ WildFly specifically, unlike this generic JUL adapter) to resolve names some
 other way — e.g. by correlating handler instances against the management
 model over the local management interface — which is real, separate,
 deferred work, not a follow-up to this reflection attempt.
+
+**This reflection path is retired outright, not patched (Decision #8,
+issue #13).** Its entire purpose was resolving a real WildFly handler's
+friendly name — no longer attempted anywhere once WildFly's
+`knownHandlers()` stops advertising real refs at all and returns
+`List.of(ALL_HANDLERS)`. `JbossHandlerNames` is deleted rather than adapted
+to a dangling `invalidate()` caller; issue #14's real fix will be built
+fresh against WildFly's management API, not by resurrecting this class.
 
 Two independent bugs surfaced by that same real-WildFly run, both fixed before
 the above finding was even reachable:
@@ -322,9 +416,29 @@ could not have caught; only the real cross-process, real-server run did.
 - **No overlap recomputation.** Because there is exactly one override per
   `(contextKey, ref)`, there is no "two overrides need this handler" case and no
   reference counting — superseding replaces, resetting restores the baseline.
+- **`ALL_HANDLERS`: one tracked override, N audit rows (Decision #3,
+  issue #13).** `logctl status` shows one row for an `ALL_HANDLERS` override,
+  not one per real handler it happened to touch — a single
+  `HandlerLevelOverride` is tracked under the `ALL_HANDLERS` key (status,
+  resume, and the expiry sweep all key off it). The audit trail's existing
+  granularity is unchanged: one audit record per real handler actually
+  mutated, exactly as if each had been set individually. Only the
+  status/tracking row consolidates.
+- **`ALL_HANDLERS` reset restores per-handler, not to one value (Decision #4,
+  issue #13).** `logctl handler ALL_HANDLERS reset` reverts every handler in
+  `realHandlers()` to its own captured baseline in `HandlerBaselineRegistry`
+  — never to the override's single `level` field. If `CONSOLE` started at
+  `INFO` and `FILE` at `DEBUG`, both revert to their own prior value, not to
+  a shared one. Consistent with baseline living outside the override record,
+  above.
 - **Direction.** `level` below the handler's current level is a *lower* (needs
   `handler.lower`); above it is a *raise* (needs `handler.raise`). Equal is a
-  no-op with a note. `ALL` / `OFF` are valid targets.
+  no-op with a note. `ALL` / `OFF` are valid targets. For `ALL_HANDLERS`
+  (Decision #5, issue #13), there is no invented aggregate "current level" for
+  the group: direction is judged **per real handler** with this exact,
+  unchanged logic, and the operation requires the **union** of whichever
+  capabilities the individual reals need — the same "all pass or all fail"
+  principle multi-context prechecks already use.
 - **Squelch warning (raise direction).** Raising a handler's floor above the
   level of one or more **currently-active logger overrides** that route through it
   would silence output the operator explicitly asked for. Whether `logctl handler
@@ -358,7 +472,7 @@ could not have caught; only the real cross-process, real-server run did.
 
 ```
 HandlerLevelOverride {
-    handlerRef: HandlerRef    // configured name, or <class>@<idhash> fallback
+    handlerRef: HandlerRef    // configured name, <class>@<idhash> fallback, or ALL_HANDLERS
     level: Level              // current target
     reason: String?
     appliedAt: Instant
@@ -380,6 +494,14 @@ state file when `tier != SESSION`, in its own section alongside the logger
 overrides (`persistence.md` state-file
 shape), so a `--sticky` handler override survives an agent restart.
 
+`ALL_HANDLERS` is a valid `handlerRef` value on the override record itself —
+the group is tracked as a single entry keyed by the reserved ref, same
+registry, same persistence path, no new record shape (Decision #3,
+issue #13). `HandlerBaselineRegistry`, by contrast, is never keyed by
+`ALL_HANDLERS` — it only ever holds entries for real refs, one per handler in
+`realHandlers()`, which is exactly what lets reset restore each handler to
+its own prior value (Decision #4).
+
 ## Capability and audit
 
 - **New capabilities `handler.lower` and `handler.raise`** (§9.3), mirroring
@@ -398,7 +520,12 @@ shape), so a `--sticky` handler override survives an agent restart.
 - **Audit** (§9.7 fields) on every `setHandlerLevel` and every reversion:
   principal, source, `contextKey`, `handlerRef`, previous level, new level,
   `reason`, `tier`, `expiresAt`. One record per handler per context. Reversions
-  carry `source` = `reset` / `expiry` / `resetAll` / `resume`.
+  carry `source` = `reset` / `expiry` / `resetAll` / `resume`. For
+  `ALL_HANDLERS` (Decision #3, issue #13), "one record per handler" means one
+  per **real** handler actually mutated, `handlerRef` set to that real ref —
+  never a single `ALL_HANDLERS`-keyed row standing in for the whole group; the
+  audit trail's granularity doesn't change just because the tracked override
+  does.
 
 ## Failure handling
 
@@ -528,6 +655,54 @@ feature, not a cost.
   identically to `--session` loggers** — no special-cased louder confirmation
   line. Revisit only if this proves confusing in practice.
 
+**`ALL_HANDLERS` (issue [#13](https://github.com/ddeuchert/logaperture/issues/13),
+resolved during follow-up review, signed off 2026-09-05 — see the Status note
+at the top of this doc):**
+
+1. **SPI: two lists, not one.** `knownHandlers()` keeps its existing job —
+   what's addressable/advertised, and may collapse to `[ALL_HANDLERS]` on
+   WildFly. A new `realHandlers()` is always the true, ungrouped list, used
+   internally for fan-out and per-handler baseline capture. Off WildFly the
+   two are identical apart from the extra `ALL_HANDLERS` entry. See "Adapter
+   SPI".
+2. **Fan-out lives in core, not the adapter.** `HandlerLevelControlService`
+   loops over `realHandlers()` itself, reusing `HandlerBaselineRegistry`'s
+   existing per-ref semantics — an adapter that looped internally could only
+   report one before/after pair for the whole group, which breaks once two
+   reals start at different levels. See "Adapter SPI".
+3. **One tracked override, N audit rows.** A single `HandlerLevelOverride` is
+   tracked under the `ALL_HANDLERS` key; the audit trail still writes one
+   record per real handler actually mutated. See "Semantics to pin down" and
+   "Capability and audit".
+4. **Reset restores per-handler, not to one value.** `ALL_HANDLERS reset`
+   reverts every real handler to its own captured baseline, never to the
+   override's single `level` field. See "Semantics to pin down".
+5. **Capability direction, judged per handler.** No invented aggregate
+   "current level" for the group — direction is judged per real handler with
+   the existing logic, and the operation requires the union of whichever
+   capabilities the reals need. See "Semantics to pin down".
+6. **Addressing a suppressed real ref directly falls through to the existing
+   unknown-handler error.** No new exception type — from the addressable
+   surface's point of view it genuinely isn't known anymore once WildFly's
+   `knownHandlers()` stops listing it. See "The operation".
+7. **The blocking-handler warning collapses in the adapter.** WildFly's
+   `handlerFloorsBelow` implementation returns one collapsed `HandlerFloor`
+   naming `ALL_HANDLERS` at the strictest real level among the actual
+   blockers — zero changes to core, the JMX surface, or `Commands`. Known
+   cost: the "just lower CONSOLE" granularity is lost on WildFly until
+   issue #14 lands real names. See "Warning on level commands".
+8. **`JbossHandlerNames` is retired outright, not patched.** Its entire
+   purpose — resolving a real WildFly handler's friendly name — is no longer
+   attempted anywhere once WildFly's `knownHandlers()` stops advertising real
+   refs. Deleted rather than adapted; issue #14's real fix is built fresh
+   against WildFly's management API. See "Adapter SPI".
+
+Non-goals (explicitly not this story): generalized named handler groups
+beyond the one reserved `ALL_HANDLERS` name (revisit only if a real second
+grouping shows up); the squelch-direction warning (issue #16) and the full
+handler catalog listing (issue #15), both unrelated and unchanged by this
+story; real WildFly handler names (issue #14, deliberately sequenced after).
+
 ## Exit criterion
 
 Against a plain `java -jar` + Logback process and a standalone WildFly — met,
@@ -552,3 +727,8 @@ stands for that):
   (`LevelControlEndToEndIT`).
 - `handler.lower` withheld makes `logctl handler CONSOLE TRACE` exit 6 naming the
   capability, with nothing changed.
+- `logctl handler ALL_HANDLERS TRACE` against real WildFly lowers every real
+  handler in one command, with one audit record per real handler and one
+  `ALL_HANDLERS`-keyed row in `logctl status`; `logctl handler ALL_HANDLERS
+  reset` reverts each to its own prior level (not implemented yet — tracked as
+  issue #13).
