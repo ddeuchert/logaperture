@@ -31,9 +31,9 @@ and "Open decisions" below, then implemented the same day: `knownHandlers()`/
 `HandlerLevelControlService`, the collapsed blocking-handler warning in the
 JUL adapter's `handlerFloorsBelow`, and `JbossHandlerNames`'s removal.
 Verified by unit tests (`HandlerLevelControlServiceTest`,
-`JulLoggingAdapterTest`) and `WildFlyContainerIT`'s assertions updated to
-match; not yet re-run against a live WildFly container. Real per-handler
-WildFly names remain future work
+`JulLoggingAdapterTest`) and confirmed against a real standalone WildFly
+26.1.3.Final (`WildFlyContainerIT`, 7/7 passing, including both rewritten
+`ALL_HANDLERS` tests). Real per-handler WildFly names remain future work
 ([#14](https://github.com/ddeuchert/logaperture/issues/14), sequenced after
 this lands).
 Priority: **high** — pulled forward in §17 as the first behaviour-modifying feature
@@ -737,7 +737,6 @@ stands for that):
 - `logctl handler ALL_HANDLERS TRACE` against real WildFly lowers every real
   handler in one command, with one audit record per real handler and one
   `ALL_HANDLERS`-keyed row in `logctl status`; `logctl handler ALL_HANDLERS
-  reset` reverts each to its own prior level. Implemented and unit-tested
-  (issue #13); not yet re-confirmed against a live WildFly container
-  (`WildFlyContainerIT`'s assertions were updated to match but need a real
-  run).
+  reset` reverts each to its own prior level. Implemented, unit-tested, and
+  confirmed against a real standalone WildFly 26.1.3.Final (issue #13,
+  `WildFlyContainerIT`).
