@@ -26,6 +26,7 @@ import org.logaperture.core.spi.StateStore;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -407,5 +408,226 @@ class HandlerLevelControlServiceTest {
 
         assertTrue(overrides.get(CONSOLE).isEmpty());
         assertTrue(overrides.get(file).isEmpty());
+    }
+
+    // --- ALL_HANDLERS (doc/specs/handler-floor-control.md, issue #13) -----------------------------
+
+    @Test
+    void setHandlerLevel_allHandlers_fansOutOverEveryRealHandler() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+
+        assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
+        assertEquals(Level.TRACE, adapter.handlerLevel(file).orElseThrow());
+    }
+
+    @Test
+    void setHandlerLevel_allHandlers_oneTrackedOverride_butNAuditRowsNamingEachReal() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+
+        // Decision #3: one tracked entry for logctl status/resume/expiry...
+        assertEquals(1, overrides.all().size());
+        assertTrue(overrides.get(HandlerRef.ALL_HANDLERS).isPresent());
+        assertTrue(overrides.get(CONSOLE).isEmpty(), "the reals are not separately tracked");
+        // ...but the audit trail stays as granular as ever, one row per real handler.
+        assertEquals(2, auditLog.records().size());
+        assertTrue(auditLog.records().stream().anyMatch(r -> r.loggerName().equals("CONSOLE")));
+        assertTrue(auditLog.records().stream().anyMatch(r -> r.loggerName().equals("FILE")));
+        assertTrue(auditLog.records().stream().noneMatch(r -> r.loggerName().equals("ALL_HANDLERS")),
+                "audit rows name the real handler, never the group ref");
+    }
+
+    @Test
+    void resetHandler_allHandlers_revertsEachRealHandlerToItsOwnBaseline() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.DEBUG); // a different starting level than CONSOLE's INFO
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+
+        service.resetHandler(HandlerRef.ALL_HANDLERS);
+
+        assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow(), "back to its own baseline");
+        assertEquals(Level.DEBUG, adapter.handlerLevel(file).orElseThrow(), "back to ITS own baseline, not CONSOLE's");
+        assertTrue(overrides.get(HandlerRef.ALL_HANDLERS).isEmpty());
+    }
+
+    @Test
+    void checkSetHandlerLevelPermitted_allHandlers_requiresTheUnionOfWhicheverCapabilitiesTheRealsNeed() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter = new FakeLoggingAdapter(Level.INFO);
+        adapter.addHandler(CONSOLE, Level.WARN); // target DEBUG is more verbose -- CONSOLE needs a lower
+        adapter.addHandler(file, Level.TRACE); // target DEBUG is less verbose -- FILE needs a raise
+        HandlerLevelControlService onlyLower = new HandlerLevelControlService(adapter, new HandlerBaselineRegistry(),
+                new HandlerOverrideRegistry(), c -> c == Capability.HANDLER_LOWER, auditLog, stateStore, "alice", "jmx");
+        HandlerLevelControlService onlyRaise = new HandlerLevelControlService(adapter, new HandlerBaselineRegistry(),
+                new HandlerOverrideRegistry(), c -> c == Capability.HANDLER_RAISE, auditLog, stateStore, "alice", "jmx");
+        HandlerLevelControlService both = new HandlerLevelControlService(adapter, new HandlerBaselineRegistry(),
+                new HandlerOverrideRegistry(),
+                c -> c == Capability.HANDLER_LOWER || c == Capability.HANDLER_RAISE, auditLog, stateStore, "alice", "jmx");
+
+        assertThrows(CapabilityDeniedException.class, () -> onlyLower.checkSetHandlerLevelPermitted(
+                HandlerRef.ALL_HANDLERS, Level.DEBUG, SetHandlerLevelOptions.defaults()));
+        assertThrows(CapabilityDeniedException.class, () -> onlyRaise.checkSetHandlerLevelPermitted(
+                HandlerRef.ALL_HANDLERS, Level.DEBUG, SetHandlerLevelOptions.defaults()));
+        both.checkSetHandlerLevelPermitted(HandlerRef.ALL_HANDLERS, Level.DEBUG, SetHandlerLevelOptions.defaults());
+    }
+
+    @Test
+    void verifyAndReapply_allHandlers_anyDriftedRealHandler_reappliesTheWholeGroupOnce() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+        adapter.setHandlerLevel(file, Level.INFO); // something else reconfigured just FILE out from under us
+
+        int reapplied = service.verifyAndReapply(Instant.now());
+
+        assertEquals(1, reapplied, "one group override re-applied, not one per real handler");
+        assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
+        assertEquals(Level.TRACE, adapter.handlerLevel(file).orElseThrow());
+    }
+
+    @Test
+    void verifyAndReapply_allHandlers_auditsOneRowPerRealHandler_notOneForTheGroup() {
+        // Code-review finding: this used to write exactly one ALL_HANDLERS-
+        // keyed audit row here, unlike every other ALL_HANDLERS mutation
+        // path (Decision #3).
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+        adapter.setHandlerLevel(file, Level.INFO); // something else reconfigured just FILE out from under us
+        int before = auditLog.records().size();
+
+        service.verifyAndReapply(Instant.now());
+
+        List<AuditRecord> newRecords = auditLog.records().subList(before, auditLog.records().size());
+        assertEquals(2, newRecords.size(), "one row per real handler, not one for the group");
+        assertTrue(newRecords.stream().anyMatch(r -> r.loggerName().equals("CONSOLE")));
+        assertTrue(newRecords.stream().anyMatch(r -> r.loggerName().equals("FILE")));
+        assertTrue(newRecords.stream().noneMatch(r -> r.loggerName().equals("ALL_HANDLERS")));
+    }
+
+    @Test
+    void verifyAndReapply_allHandlers_stillCorrect_isSkippedWithNoAuditNoise() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+        int before = auditLog.records().size();
+
+        int reapplied = service.verifyAndReapply(Instant.now());
+
+        assertEquals(0, reapplied);
+        assertEquals(before, auditLog.records().size());
+    }
+
+    @Test
+    void setHandlerLevel_allHandlers_stickyTier_persistsAndResumeReappliesEveryRealHandler() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.DEBUG);
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.sticky());
+        assertEquals(1, stateStore.loadAllHandlers().size());
+
+        FakeLoggingAdapter freshAdapter = new FakeLoggingAdapter(Level.INFO);
+        freshAdapter.addHandler(CONSOLE, Level.INFO);
+        freshAdapter.addHandler(file, Level.DEBUG);
+        HandlerLevelControlService resumed = new HandlerLevelControlService(freshAdapter,
+                new HandlerBaselineRegistry(), new HandlerOverrideRegistry(),
+                CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
+
+        resumed.resumeFromStateStore(Instant.now());
+
+        assertEquals(Level.TRACE, freshAdapter.handlerLevel(CONSOLE).orElseThrow());
+        assertEquals(Level.TRACE, freshAdapter.handlerLevel(file).orElseThrow());
+    }
+
+    @Test
+    void resetAllHandlers_coversBothAGroupOverrideAndAnIndividualOne() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        HandlerRef other = new HandlerRef("OTHER");
+        adapter.addHandler(other, Level.INFO);
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+        service.setHandlerLevel(other, Level.DEBUG, SetHandlerLevelOptions.defaults());
+
+        service.resetAllHandlers();
+
+        assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow());
+        assertEquals(Level.INFO, adapter.handlerLevel(file).orElseThrow());
+        assertEquals(Level.INFO, adapter.handlerLevel(other).orElseThrow());
+        assertTrue(service.listHandlerOverrides().isEmpty());
+    }
+
+    @Test
+    void resetHandler_allHandlers_oneVanishedRealAmongSeveral_stillRevertsTheRest() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+        adapter.vanishHandler(CONSOLE);
+
+        service.resetHandler(HandlerRef.ALL_HANDLERS); // must not throw or abort partway through
+
+        assertEquals(Level.INFO, adapter.handlerLevel(file).orElseThrow());
+        assertTrue(overrides.get(HandlerRef.ALL_HANDLERS).isEmpty());
+    }
+
+    @Test
+    void resumeFromStateStore_allHandlers_auditsOneRowPerRealHandler_notOneForTheGroup() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.DEBUG);
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.sticky());
+
+        FakeLoggingAdapter freshAdapter = new FakeLoggingAdapter(Level.INFO);
+        freshAdapter.addHandler(CONSOLE, Level.INFO);
+        freshAdapter.addHandler(file, Level.DEBUG);
+        InMemoryAuditLog resumeAuditLog = new InMemoryAuditLog();
+        HandlerLevelControlService resumed = new HandlerLevelControlService(freshAdapter,
+                new HandlerBaselineRegistry(), new HandlerOverrideRegistry(),
+                CapabilityPolicy.allowAll(), resumeAuditLog, stateStore, "alice", "resume");
+
+        resumed.resumeFromStateStore(Instant.now());
+
+        assertEquals(2, resumeAuditLog.records().size(), "one row per real handler, not one for the group");
+        assertTrue(resumeAuditLog.records().stream().anyMatch(r -> r.loggerName().equals("CONSOLE")));
+        assertTrue(resumeAuditLog.records().stream().anyMatch(r -> r.loggerName().equals("FILE")));
+        assertTrue(resumeAuditLog.records().stream().noneMatch(r -> r.loggerName().equals("ALL_HANDLERS")));
+    }
+
+    @Test
+    void adoptOverride_allHandlers_auditsOneRowPerRealHandler_notOneForTheGroup() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        HandlerLevelOverride groupOverride = new HandlerLevelOverride(HandlerRef.ALL_HANDLERS, Level.TRACE, null,
+                Instant.now(), "jmx", PersistenceTier.SESSION, null);
+
+        service.adoptOverride(groupOverride);
+
+        assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
+        assertEquals(Level.TRACE, adapter.handlerLevel(file).orElseThrow());
+        assertEquals(2, auditLog.records().size(), "one row per real handler, not one for the group");
+        assertTrue(auditLog.records().stream().anyMatch(r -> r.loggerName().equals("CONSOLE")));
+        assertTrue(auditLog.records().stream().anyMatch(r -> r.loggerName().equals("FILE")));
+        assertTrue(auditLog.records().stream().noneMatch(r -> r.loggerName().equals("ALL_HANDLERS")));
+    }
+
+    @Test
+    void setHandlerLevel_allHandlers_supersedesAStaleIndividualOverrideOnTheSameRealHandler() {
+        // Code-review finding: CONSOLE set individually (sticky, so its
+        // persisted state is exercised too), then ALL_HANDLERS also touches
+        // CONSOLE -- the individual entry must not linger and disagree with
+        // reality in `logctl status`.
+        service.setHandlerLevel(CONSOLE, Level.DEBUG, SetHandlerLevelOptions.sticky());
+        assertEquals(1, stateStore.loadAllHandlers().size());
+
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+
+        assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
+        assertTrue(overrides.get(CONSOLE).isEmpty(), "the stale individual override is gone");
+        assertTrue(overrides.get(HandlerRef.ALL_HANDLERS).isPresent());
+        assertEquals(1, service.listHandlerOverrides().size(), "exactly one override governs CONSOLE now");
+        assertTrue(stateStore.loadAllHandlers().stream().noneMatch(o -> o.handlerRef().equals(CONSOLE)),
+                "the stale individual override's persisted state is cleared too");
     }
 }

@@ -51,6 +51,8 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     private final Set<HandlerRef> registeredHandlers = new LinkedHashSet<>();
     private final Map<String, List<HandlerRef>> handlersOnPath = new LinkedHashMap<>();
     private final Set<HandlerRef> vanishedHandlers = new LinkedHashSet<>();
+    /** Per-(loggerName, ref) level, checked before the shared handlerLevels entry -- see addHandlerWithPerTargetLevel. */
+    private final Map<String, Map<HandlerRef, Level>> perTargetHandlerLevel = new LinkedHashMap<>();
     private HandlerRef throwOnSetHandlerLevelFor;
     private boolean hasHandlerLevels = true; // this fake models a JUL-like framework by default
 
@@ -142,6 +144,23 @@ final class FakeLoggingAdapter implements LoggingAdapter {
         }
     }
 
+    /**
+     * Registers {@code ref} on {@code loggerName}'s path with a level that's
+     * only in force for <em>that</em> logger, distinct from {@code ref}'s
+     * shared {@link #addHandler} entry (if any) or another logger's own
+     * per-target level for the same ref -- models WildFly's ALL_HANDLERS
+     * collapse, where the same ref can legitimately report a different
+     * {@code currentLevel} depending on which logger's real handlers backed
+     * a particular {@code handlerFloorsBelow} call (issue #13 code-review
+     * finding: the merge that used to dedupe these by ref alone silently
+     * kept whichever level was seen first).
+     */
+    void addHandlerWithPerTargetLevel(HandlerRef ref, Level level, String loggerName) {
+        registeredHandlers.add(ref);
+        handlersOnPath.computeIfAbsent(loggerName, n -> new ArrayList<>()).add(ref);
+        perTargetHandlerLevel.computeIfAbsent(loggerName, n -> new LinkedHashMap<>()).put(ref, level);
+    }
+
     /** Makes the next {@link #setHandlerLevel} call for this ref throw, to exercise chaos-case behavior. */
     void throwOnSetHandlerLevel(HandlerRef ref) {
         this.throwOnSetHandlerLevelFor = ref;
@@ -164,7 +183,7 @@ final class FakeLoggingAdapter implements LoggingAdapter {
         }
         List<HandlerFloor> floors = new ArrayList<>();
         for (HandlerRef ref : handlersOnPath.getOrDefault(loggerName, List.of())) {
-            Level current = handlerLevels.get(ref);
+            Level current = perTargetHandlerLevel.getOrDefault(loggerName, Map.of()).getOrDefault(ref, handlerLevels.get(ref));
             if (current != null && current.compareTo(target) > 0) {
                 floors.add(new HandlerFloor(ref, current));
             }

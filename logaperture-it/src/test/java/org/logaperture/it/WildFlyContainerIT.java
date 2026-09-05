@@ -205,29 +205,27 @@ class WildFlyContainerIT {
     // --- handler-floor control (doc/specs/handler-floor-control.md) --------------------------------
 
     @Test
-    void handlerFloorWarning_namesAResolvableHandlerAndACopyPasteableCommand() {
-        // The open empirical question the spec flagged: does JbossHandlerNames's
-        // reflection into org.jboss.logmanager.configuration.ContextConfiguration
-        // resolve WildFly's actual configured name ("CONSOLE") for its console
+    void handlerFloorWarning_namesAllHandlersAndACopyPasteableCommand() {
+        // The open empirical question the original spec flagged: does
+        // JbossHandlerNames's reflection into
+        // org.jboss.logmanager.configuration.ContextConfiguration resolve
+        // WildFly's actual configured name ("CONSOLE") for its console
         // handler? Settled, against real WildFly 26.1.3.Final: no -- the
         // attachment is never populated (WildFly's logging subsystem manages
         // handlers entirely through its own management model, not JBoss
-        // LogManager's declarative config API), so every handler here falls
-        // back to its <class>@<idhash> identity token. That fallback is exactly
-        // what doc/specs/handler-floor-control.md's Open decision #1 exists
-        // for: this test asserts the fallback is still a *usable* identifier
-        // (stable, and exactly what --lower-handlers's suggested command
-        // names), not the friendly name the spec's aspiration was.
+        // LogManager's declarative config API). Rather than keep naming
+        // individual, restart-unstable identity-hash tokens, ALL_HANDLERS
+        // (issue #13) replaces per-handler addressing on WildFly outright:
+        // this test asserts the warning collapses to that one reserved name
+        // (doc/specs/handler-floor-control.md "Adapter SPI", Decision #7).
         String freshLogger = "com.myapp.probe.HandlerWarningHarness";
         try {
             Logctl raised = logctl("trace", freshLogger);
             assertEquals(0, raised.exitCode(), raised.stderr());
-            assertTrue(raised.stdout().contains("WARN: handler ConsoleHandler@"),
-                    "falls back to the identity token, confirmed against real WildFly:\n" + raised.stdout());
-            String handlerRef = handlerRefFromWarning(raised.stdout());
-            assertTrue(raised.stdout().contains("logctl handler " + handlerRef + " TRACE"),
-                    "the warning's suggested command uses that same token, so it is directly copy-pasteable:\n"
-                            + raised.stdout());
+            assertTrue(raised.stdout().contains("WARN: handler ALL_HANDLERS is at"),
+                    "WildFly has only one addressable lever now, per issue #13:\n" + raised.stdout());
+            assertTrue(raised.stdout().contains("logctl handler ALL_HANDLERS TRACE"),
+                    "the warning's suggested command is directly copy-pasteable:\n" + raised.stdout());
         } finally {
             logctl("reset", freshLogger);
         }
@@ -236,16 +234,11 @@ class WildFlyContainerIT {
     @Test
     void handlerLower_makesATraceLineReachTheConsole_thenResetStopsIt() throws Exception {
         String traceMarker = "probe trace marker";
-        String[] handlerRefHolder = new String[1];
         deployProbeWar();
         try {
             Logctl raised = logctl("trace", APP_LOGGER);
             assertEquals(0, raised.exitCode(), raised.stderr());
-            // The handler's own resolved ref -- read from the warning rather
-            // than assumed, since it falls back to an identity token against
-            // real WildFly (see handlerFloorWarning_... above).
-            String handlerRef = handlerRefFromWarning(raised.stdout());
-            handlerRefHolder[0] = handlerRef;
+            assertTrue(raised.stdout().contains("ALL_HANDLERS"), raised.stdout());
 
             // Redeploy with the logger already at TRACE but the console
             // handler still at its default INFO floor: the marker line must
@@ -254,45 +247,28 @@ class WildFlyContainerIT {
             assertFalse(wildfly.getLogs().contains(traceMarker),
                     "the console handler is still at INFO -- the TRACE marker must not reach it yet");
 
-            Logctl lowered = logctl("handler", handlerRef, "TRACE");
+            Logctl lowered = logctl("handler", "ALL_HANDLERS", "TRACE");
             assertEquals(0, lowered.exitCode(), lowered.stderr());
-            assertTrue(lowered.stdout().contains(handlerRef) && lowered.stdout().contains("TRACE"),
+            assertTrue(lowered.stdout().contains("ALL_HANDLERS") && lowered.stdout().contains("TRACE"),
                     lowered.stdout());
 
             redeployProbeWar();
             assertTrue(pollUntil(() -> wildfly.getLogs().contains(traceMarker)),
-                    "lowering the console handler to TRACE made the marker line actually reach the console");
+                    "lowering every real handler to TRACE made the marker line actually reach the console");
 
             // Reset genuinely took effect, not just returned exit 0: a further
-            // redeploy's marker must not add a new occurrence once the
-            // handler is back at its default floor.
-            assertEquals(0, logctl("handler", handlerRef, "reset").exitCode());
+            // redeploy's marker must not add a new occurrence once every real
+            // handler is back at its own default floor.
+            assertEquals(0, logctl("handler", "ALL_HANDLERS", "reset").exitCode());
             long before = wildfly.getLogs().lines().filter(l -> l.contains(traceMarker)).count();
             redeployProbeWar();
             assertEquals(before, wildfly.getLogs().lines().filter(l -> l.contains(traceMarker)).count(),
                     "the console handler is back at INFO after reset -- no new marker line");
         } finally {
-            if (handlerRefHolder[0] != null) {
-                logctl("handler", handlerRefHolder[0], "reset"); // no-op if the test already reset it
-            }
+            logctl("handler", "ALL_HANDLERS", "reset"); // no-op if the test already reset it
             logctl("reset", APP_LOGGER);
             undeployProbeWar();
         }
-    }
-
-    /**
-     * Pulls the handler identifier out of a {@code logctl trace}/{@code debug}
-     * confirmation's warning line ({@code "WARN: handler <ref> is at ..."}) --
-     * whatever it actually resolved to, friendly name or identity-token
-     * fallback, rather than a test assuming one or the other.
-     */
-    private static String handlerRefFromWarning(String stdout) {
-        String marker = "WARN: handler ";
-        int start = stdout.indexOf(marker);
-        assertTrue(start >= 0, "expected a handler-floor warning in:\n" + stdout);
-        int refStart = start + marker.length();
-        int refEnd = stdout.indexOf(' ', refStart);
-        return stdout.substring(refStart, refEnd);
     }
 
     // --- probe WAR ------------------------------------------------------------------------------

@@ -133,12 +133,18 @@ public final class LevelControlService implements LevelControlOperations {
         // Actionable warning (doc/specs/handler-floor-control.md "Warning on
         // level commands"): union across every target this call actually
         // raised, deduplicated by handler -- the same handler blocking two
-        // targets is still just one thing to fix.
+        // targets is still just one thing to fix. Keep the STRICTEST
+        // currentLevel seen for a given ref, not merely the first: on
+        // WildFly every target's handlerFloorsBelow collapses to the same
+        // ALL_HANDLERS ref (doc/specs/handler-floor-control.md Decision
+        // #7), so --include-children can report two different targets'
+        // floors under one key -- putIfAbsent silently dropped whichever
+        // wasn't first, understating the real block (code-review finding).
         Map<HandlerRef, HandlerFloor> blockingByRef = new LinkedHashMap<>();
         for (String target : targets) {
             if (level.isMoreVerboseThan(previousEffectiveByTarget.get(target))) {
                 for (HandlerFloor floor : adapter.handlerFloorsBelow(target, level)) {
-                    blockingByRef.putIfAbsent(floor.handlerRef(), floor);
+                    blockingByRef.merge(floor.handlerRef(), floor, LevelControlService::stricterFloor);
                 }
             }
         }
@@ -472,5 +478,16 @@ public final class LevelControlService implements LevelControlOperations {
         if (!policy.isGranted(capability)) {
             throw new CapabilityDeniedException(capability);
         }
+    }
+
+    /**
+     * The stricter (higher-ordinal, less verbose) of two {@link HandlerFloor}
+     * readings for what turned out to be the same {@link HandlerRef} --
+     * used to merge two targets' blocking-handler results without losing
+     * whichever one actually needs the stricter fix (code-review finding;
+     * see the merge call site above).
+     */
+    static HandlerFloor stricterFloor(HandlerFloor a, HandlerFloor b) {
+        return a.currentLevel().compareTo(b.currentLevel()) >= 0 ? a : b;
     }
 }

@@ -196,7 +196,13 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 fromSystem = result.override();
             }
             for (HandlerFloor floor : result.blockingHandlers()) {
-                blockingByRef.putIfAbsent(floor.handlerRef(), floor);
+                // Keep the stricter reading for a ref shared across
+                // contexts, not merely the first seen -- same fix as
+                // LevelControlService.setLevel's own merge, and for the
+                // same reason: WildFly's collapsed ALL_HANDLERS ref can
+                // legitimately report different levels from different
+                // contexts (code-review finding).
+                blockingByRef.merge(floor.handlerRef(), floor, LevelControlService::stricterFloor);
             }
         }
         return new SetLevelResult(fromSystem != null ? fromSystem : fromAny, List.copyOf(blockingByRef.values()));

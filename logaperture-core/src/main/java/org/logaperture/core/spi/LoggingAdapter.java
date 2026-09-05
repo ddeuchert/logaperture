@@ -140,8 +140,29 @@ public interface LoggingAdapter {
         return Optional.empty();
     }
 
-    /** Every handler currently resolvable. Default empty. */
+    /**
+     * Every handler currently <em>addressable</em> by a user. Used to
+     * validate a {@code logctl handler <name>} argument and list known
+     * names on a mismatch. Default empty. May include the reserved {@link
+     * HandlerRef#ALL_HANDLERS} as a member, or — WildFly under JBoss
+     * LogManager — return {@code List.of(HandlerRef.ALL_HANDLERS)} alone,
+     * suppressing the real handlers entirely (doc/specs/
+     * handler-floor-control.md "Adapter SPI", issue #13 Decision #1).
+     */
     default List<HandlerRef> knownHandlers() {
         return List.of();
+    }
+
+    /**
+     * Every real handler this adapter can act on right now — what {@link
+     * HandlerRef#ALL_HANDLERS} fans out over, and what a per-handler
+     * baseline is captured against (doc/specs/handler-floor-control.md
+     * "Adapter SPI", issue #13 Decision #1). Unlike {@link
+     * #knownHandlers()}, never collapsed or suppressed: an adapter that
+     * hides its reals from the user still needs this list internally.
+     * Default: same as {@link #knownHandlers()}.
+     */
+    default List<HandlerRef> realHandlers() {
+        return knownHandlers();
     }
 }

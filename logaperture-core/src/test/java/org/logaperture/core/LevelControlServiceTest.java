@@ -119,6 +119,28 @@ class LevelControlServiceTest {
     }
 
     @Test
+    void setLevel_includeChildren_keepsTheStricterFloorWhenTwoTargetsShareARef() {
+        // Code-review finding: on WildFly, handlerFloorsBelow collapses to
+        // one shared ALL_HANDLERS ref (Decision #7) -- two different
+        // targets under --include-children can each report a *different*
+        // currentLevel for that same ref, and the old putIfAbsent-based
+        // dedup silently dropped whichever wasn't seen first, understating
+        // the real block.
+        adapter.addKnownLogger("com.acme");
+        adapter.addKnownLogger("com.acme.http");
+        HandlerRef allHandlers = HandlerRef.ALL_HANDLERS;
+        adapter.addHandlerWithPerTargetLevel(allHandlers, Level.INFO, "com.acme");
+        adapter.addHandlerWithPerTargetLevel(allHandlers, Level.WARN, "com.acme.http"); // stricter
+
+        SetLevelResult result = service.setLevel(
+                "com.acme", Level.TRACE, new SetLevelOptions(true, null, null, PersistenceTier.SESSION));
+
+        assertEquals(1, result.blockingHandlers().size());
+        assertEquals(Level.WARN, result.blockingHandlers().get(0).currentLevel(),
+                "the stricter of the two targets' readings, not whichever was seen first");
+    }
+
+    @Test
     void setLevel_raiseNotBelowAHandlerFloor_reportsNothing() {
         adapter.addKnownLogger("com.acme.Worker");
         adapter.addHandler(new HandlerRef("CONSOLE"), Level.TRACE, "com.acme.Worker");
