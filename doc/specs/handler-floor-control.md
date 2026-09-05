@@ -19,14 +19,21 @@ capability-direction default that silently demanded `handler.lower` even to
 raise, and a `--reason` parser gap on `handler <name> reset`).
 
 **Follow-up (issue [#13](https://github.com/ddeuchert/logaperture/issues/13),
-not yet implemented — branch `feature/13-all-handlers`):** the identity-token
+implemented on branch `feature/13-all-handlers`):** the identity-token
 fallback above is stable per agent lifetime but not across a WildFly restart,
 since a JVM identity hash carries no such guarantee. `ALL_HANDLERS`, a
 reserved `HandlerRef` meaning "every handler this context can log to,"
 replaces per-handler addressing on WildFly with a target that's stable by
-construction. Design reviewed and signed off 2026-09-05 (all 8 decisions);
+construction — design reviewed and signed off 2026-09-05 (all 8 decisions),
 folded into "Adapter SPI", "Semantics to pin down", "Capability and audit",
-and "Open decisions" below. Real per-handler WildFly names remain future work
+and "Open decisions" below, then implemented the same day: `knownHandlers()`/
+`realHandlers()` split, the core-side fan-out in
+`HandlerLevelControlService`, the collapsed blocking-handler warning in the
+JUL adapter's `handlerFloorsBelow`, and `JbossHandlerNames`'s removal.
+Verified by unit tests (`HandlerLevelControlServiceTest`,
+`JulLoggingAdapterTest`) and `WildFlyContainerIT`'s assertions updated to
+match; not yet re-run against a live WildFly container. Real per-handler
+WildFly names remain future work
 ([#14](https://github.com/ddeuchert/logaperture/issues/14), sequenced after
 this lands).
 Priority: **high** — pulled forward in §17 as the first behaviour-modifying feature
@@ -730,5 +737,7 @@ stands for that):
 - `logctl handler ALL_HANDLERS TRACE` against real WildFly lowers every real
   handler in one command, with one audit record per real handler and one
   `ALL_HANDLERS`-keyed row in `logctl status`; `logctl handler ALL_HANDLERS
-  reset` reverts each to its own prior level (not implemented yet — tracked as
-  issue #13).
+  reset` reverts each to its own prior level. Implemented and unit-tested
+  (issue #13); not yet re-confirmed against a live WildFly container
+  (`WildFlyContainerIT`'s assertions were updated to match but need a real
+  run).

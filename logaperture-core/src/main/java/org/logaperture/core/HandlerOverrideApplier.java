@@ -16,6 +16,7 @@
 package org.logaperture.core;
 
 import org.logaperture.api.HandlerLevelOverride;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.core.spi.LoggingAdapter;
 
 /**
@@ -30,7 +31,27 @@ public final class HandlerOverrideApplier {
     private HandlerOverrideApplier() {
     }
 
+    /**
+     * A single-ref override applies exactly as before. An {@link
+     * HandlerRef#ALL_HANDLERS}-keyed override (issue #13, Decision #2) fans
+     * out over {@code adapter.realHandlers()} instead, applying to each one
+     * in turn — best-effort: a real handler that fails (vanished, adapter
+     * fault) is logged and skipped rather than aborting the whole group, so
+     * one bad handler never takes down every other override this method is
+     * applying for elsewhere in a resume/re-application loop.
+     */
     public static void apply(HandlerLevelOverride override, LoggingAdapter adapter) {
+        if (HandlerRef.ALL_HANDLERS.equals(override.handlerRef())) {
+            for (HandlerRef real : adapter.realHandlers()) {
+                try {
+                    adapter.setHandlerLevel(real, override.level());
+                } catch (RuntimeException e) {
+                    System.err.println("[logaperture-core] ALL_HANDLERS: failed to apply to handler '"
+                            + real + "', leaving it unchanged: " + e);
+                }
+            }
+            return;
+        }
         adapter.setHandlerLevel(override.handlerRef(), override.level());
     }
 }

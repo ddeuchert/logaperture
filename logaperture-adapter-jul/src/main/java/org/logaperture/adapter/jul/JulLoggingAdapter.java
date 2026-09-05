@@ -23,6 +23,7 @@ import org.logaperture.core.spi.UnknownHandlerException;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,10 +48,14 @@ import java.util.logging.Logger;
  * {@code -Xbootclasspath/a}, no {@code jboss.modules.system.pkgs}. The M0
  * spike validated this exact path on WildFly 26.1.3.Final by observing real
  * {@code server.log} output change after a {@code Logger.getLogger(name)
- * .setLevel(FINE)}. Handler <em>name</em> resolution ({@link
- * JbossHandlerNames}) is the one place this adapter reaches for {@code
- * org.jboss.logmanager} at all, and it does so reflectively, for the same
- * reason — see that class's doc.
+ * .setLevel(FINE)}. {@link #isJBossLogManager()} is the one place this
+ * adapter looks at {@code org.jboss.logmanager} at all, and it does so by
+ * comparing a class name, not by reflecting into anything — the reflective
+ * attempt at recovering WildFly's own configured handler names ({@code
+ * JbossHandlerNames}, doc/specs/handler-floor-control.md's "Name resolution
+ * against real WildFly: tried, doesn't work") never actually resolved a
+ * name against real WildFly and was retired outright (issue #13, Decision
+ * #8) in favor of the reserved {@link HandlerRef#ALL_HANDLERS} target.
  *
  * <p>It also works, unchanged, against the JDK's own default
  * {@code LogManager} (plain JUL apps).
@@ -162,7 +167,20 @@ public final class JulLoggingAdapter implements LoggingAdapter {
                 break; // records stop propagating upward here (JUL semantics)
             }
         }
-        return List.copyOf(floors);
+        if (floors.isEmpty() || !isJBossLogManager()) {
+            return List.copyOf(floors);
+        }
+        // Decision #7 (issue #13): WildFly has only one addressable lever
+        // now -- collapse to a single HandlerFloor naming ALL_HANDLERS, at
+        // the strictest (least verbose) level among the actual blockers.
+        // Zero changes to core, the JMX surface, or Commands -- collapsing
+        // is entirely this adapter's own answer to a question it already
+        // answers.
+        Level strictest = floors.stream()
+                .map(HandlerFloor::currentLevel)
+                .max(Comparator.naturalOrder())
+                .orElseThrow();
+        return List.of(new HandlerFloor(HandlerRef.ALL_HANDLERS, strictest));
     }
 
     @Override
@@ -201,16 +219,45 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         if (cached != null) {
             return cached;
         }
-        knownHandlers(); // side effect: resolves and caches every handler's ref
+        knownHandlers(); // side effect: resolves and caches every advertised handler's ref
         return handlersByRef.get(ref);
     }
 
+    /**
+     * Every handler currently <em>addressable</em> by a user (issue #13,
+     * Decision #1). Plain JUL: every real handler, plus the reserved {@link
+     * HandlerRef#ALL_HANDLERS} as one more valid name alongside them.
+     * WildFly (JBoss LogManager): {@code ALL_HANDLERS} alone -- the reals
+     * still exist and still get mutated (see {@link #realHandlers()}), just
+     * not advertised or individually addressable any more, since this
+     * adapter can't reliably name one (the class doc's retired-reflection
+     * note). This is also why {@link #resolveHandler}'s cold-lookup
+     * fallback calls this method rather than {@link #realHandlers()}
+     * directly: on WildFly it must <em>not</em> re-discover a real ref that
+     * isn't on the addressable surface any more.
+     */
     @Override
     public List<HandlerRef> knownHandlers() {
-        // Walk every known logger's own (non-inherited) handler list --
-        // getHandlers() only returns handlers actually attached at that
-        // node, so this naturally dedupes via refFor's identity map without
-        // walking parent chains here.
+        if (isJBossLogManager()) {
+            return List.of(HandlerRef.ALL_HANDLERS);
+        }
+        List<HandlerRef> combined = new ArrayList<>(realHandlers());
+        combined.add(HandlerRef.ALL_HANDLERS);
+        return List.copyOf(combined);
+    }
+
+    /**
+     * Every real handler this adapter can act on right now — what {@link
+     * HandlerRef#ALL_HANDLERS} fans out over (issue #13, Decision #1).
+     * Walks every known logger's own (non-inherited) handler list --
+     * getHandlers() only returns handlers actually attached at that node,
+     * so this naturally dedupes via refFor's identity map without walking
+     * parent chains here. Unlike {@link #knownHandlers()}, never collapsed
+     * or suppressed: WildFly's fan-out needs the true list regardless of
+     * what's advertised.
+     */
+    @Override
+    public List<HandlerRef> realHandlers() {
         List<HandlerRef> refs = new ArrayList<>();
         for (String name : knownLoggerNames()) {
             for (Handler handler : logger(name).getHandlers()) {
@@ -221,14 +268,31 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     }
 
     /**
-     * Resolves (or reuses) the {@link HandlerRef} for {@code handler}: the
-     * real {@code org.jboss.logmanager} configured name when {@link
-     * JbossHandlerNames} can find one, else a stable identity-hash fallback
-     * — doc/specs/handler-floor-control.md, Open decision #1.
+     * Whether this adapter's root logger is JBoss LogManager's {@code
+     * org.jboss.logmanager.Logger} rather than the JDK's own — distinguishes
+     * "plain JUL" from "WildFly / JBoss LogManager" for {@link
+     * #knownHandlers()}'s ALL_HANDLERS collapse (Decision #1) and {@link
+     * #handlerFloorsBelow}'s warning collapse (Decision #7), issue #13. Just
+     * a runtime class-name comparison — {@code root.getClass()} is already
+     * the real runtime class (see the class doc's classloader note), so no
+     * reflective lookup is needed to answer this, unlike the retired
+     * friendly-name attempt.
+     */
+    private boolean isJBossLogManager() {
+        return "org.jboss.logmanager.Logger".equals(logger(ROOT_ALIAS).getClass().getName());
+    }
+
+    /**
+     * Resolves (or reuses) the {@link HandlerRef} for {@code handler}:
+     * always the stable identity-hash fallback (issue #13, Decision #8) —
+     * the reflective attempt at WildFly's own configured name (the retired
+     * {@code JbossHandlerNames}) never actually resolved one against real
+     * WildFly (see the class doc), so {@link HandlerRef#ALL_HANDLERS}
+     * replaces per-handler addressing there instead of patching that
+     * lookup.
      */
     private HandlerRef refFor(Handler handler) {
-        Optional<String> configuredName = JbossHandlerNames.nameOf(logger(ROOT_ALIAS), handler);
-        HandlerRef ref = configuredName.map(HandlerRef::new).orElseGet(() -> HandlerRef.anonymous(handler));
+        HandlerRef ref = HandlerRef.anonymous(handler);
         handlersByRef.putIfAbsent(ref, handler);
         return ref;
     }

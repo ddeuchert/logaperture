@@ -289,6 +289,36 @@ class JulLoggingAdapterTest {
         }
     }
 
+    // --- ALL_HANDLERS (doc/specs/handler-floor-control.md, issue #13) -- the WildFly collapse
+    // itself only triggers against a real org.jboss.logmanager.Logger root, not present on this
+    // test's classpath (by design, see the class doc); that path is exercised by WildFlyContainerIT.
+
+    @Test
+    void knownHandlers_includesTheAllHandlersMarker_additiveOnPlainJul() {
+        ConsoleHandler console = testConsoleAtInfo();
+        Logger.getLogger(name("handler.AllMarker")).addHandler(console);
+        try {
+            List<HandlerRef> refs = adapter.knownHandlers();
+
+            assertTrue(refs.contains(HandlerRef.ALL_HANDLERS));
+            assertTrue(refs.stream().anyMatch(ref -> ref.value().startsWith("ConsoleHandler@")),
+                    "plain JUL: ALL_HANDLERS is additive, the reals stay individually addressable");
+        } finally {
+            Logger.getLogger(name("handler.AllMarker")).removeHandler(console);
+        }
+    }
+
+    @Test
+    void realHandlers_neverIncludesTheAllHandlersMarker() {
+        ConsoleHandler console = testConsoleAtInfo();
+        Logger.getLogger(name("handler.Real")).addHandler(console);
+        try {
+            assertFalse(adapter.realHandlers().contains(HandlerRef.ALL_HANDLERS));
+        } finally {
+            Logger.getLogger(name("handler.Real")).removeHandler(console);
+        }
+    }
+
     // --- re-appliability ----------------------------------------------------------------------
 
     @Test
