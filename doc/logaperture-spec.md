@@ -293,6 +293,12 @@ Define and document, highest to lowest:
 
 ### 7.1 Automatic storm collapse — the case declarative rules cannot cover
 
+> Implementation spec (report-only detection, M1): [`doc/specs/storm-detection.md`](specs/storm-detection.md).
+> This section describes the full engine including suppression. The M1 slice
+> **detects and reports** storms — `logctl storms` — without collapsing them
+> (see "Detection is valuable even without suppression" below); it changes no
+> behaviour. Automatic collapse is M2.
+
 **The primary source of runaway log volume is a bug you have not seen yet.** Unexpected errors from unexpected usage patterns; a defect that drops into a tight loop throwing exceptions. By definition nobody wrote a squelch rule for it in advance, and nobody will be watching when it starts.
 
 This is a significant qualification on everything else in this section. The declarative rule engine is the right tool for *known* noise — the Apache connection-retry chatter you have lived with for two years. It is structurally the wrong tool for the failure mode that actually fills customers' disks, because authoring a rule requires already knowing the shape of the problem.
