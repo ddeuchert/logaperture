@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
@@ -58,18 +59,21 @@ import java.util.concurrent.ConcurrentHashMap;
  * ({@code "system"}), so every fan-out here collapses to a single delegate
  * call. The multi-context paths are exercised by tests with fake contexts.
  */
-public final class AggregateLevelControl implements LevelControlOperations, HandlerLevelControlOperations {
+public final class AggregateLevelControl implements LevelControlOperations, HandlerLevelControlOperations,
+        DoctorOperations {
 
     /**
      * One context: its {@link ContextHandle}, the single-context logger
-     * service, and the single-context handler service that drive it.
+     * service, the single-context handler service, and the single-context
+     * doctor service that drive it.
      */
     public record ContextControl(ContextHandle handle, LevelControlService service,
-            HandlerLevelControlService handlerService) {
+            HandlerLevelControlService handlerService, DoctorService doctorService) {
         public ContextControl {
             Objects.requireNonNull(handle, "handle");
             Objects.requireNonNull(service, "service");
             Objects.requireNonNull(handlerService, "handlerService");
+            Objects.requireNonNull(doctorService, "doctorService");
         }
 
         String stableKey() {
@@ -163,6 +167,26 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             String key = context.stableKey();
             for (LoggerInfo info : context.service().listLoggers(filter)) {
                 result.add(info.withContext(key));
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    /**
+     * {@code logctl doctor} across every registered context — the {@link
+     * #listLoggers} counterpart for diagnosis (doc/specs/doctor.md). Every
+     * context's findings are concatenated, each tagged with its context's
+     * {@code stableKey}; unlike {@code listHandlerOverrides}, findings are
+     * never unioned/deduped across contexts, since two contexts can
+     * legitimately have different underlying configuration to report on.
+     */
+    @Override
+    public List<DoctorFinding> diagnose() {
+        List<DoctorFinding> result = new ArrayList<>();
+        for (ContextControl context : sortedByKey()) {
+            String key = context.stableKey();
+            for (DoctorFinding finding : context.doctorService().diagnose()) {
+                result.add(finding.withContext(key));
             }
         }
         return List.copyOf(result);

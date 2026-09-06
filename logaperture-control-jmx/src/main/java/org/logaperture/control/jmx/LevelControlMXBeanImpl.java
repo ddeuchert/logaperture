@@ -20,6 +20,7 @@ import org.logaperture.api.Level;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
+import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
 
@@ -45,10 +46,13 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
 
     private final LevelControlOperations operations;
     private final HandlerLevelControlOperations handlerOperations;
+    private final DoctorOperations doctorOperations;
 
-    public LevelControlMXBeanImpl(LevelControlOperations operations, HandlerLevelControlOperations handlerOperations) {
+    public LevelControlMXBeanImpl(LevelControlOperations operations, HandlerLevelControlOperations handlerOperations,
+            DoctorOperations doctorOperations) {
         this.operations = Objects.requireNonNull(operations, "operations");
         this.handlerOperations = Objects.requireNonNull(handlerOperations, "handlerOperations");
+        this.doctorOperations = Objects.requireNonNull(doctorOperations, "doctorOperations");
     }
 
     @Override
@@ -93,6 +97,11 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     @Override
     public List<HandlerLevelOverrideData> listHandlerOverrides() {
         return handlerOperations.listHandlerOverrides().stream().map(HandlerLevelOverrideData::from).toList();
+    }
+
+    @Override
+    public List<DoctorFindingData> diagnose() {
+        return doctorOperations.diagnose().stream().map(DoctorFindingData::from).toList();
     }
 
     private static SetLevelOptions toOptions(boolean includeChildren, String reason, String tier, long forSeconds) {

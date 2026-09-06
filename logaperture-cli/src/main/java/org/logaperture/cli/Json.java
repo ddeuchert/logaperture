@@ -15,13 +15,16 @@
  */
 package org.logaperture.cli;
 
+import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.SetLevelResultData;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.StringJoiner;
 
 /**
@@ -145,6 +148,44 @@ final class Json {
 
     static String revertedCount(long count) {
         return "{\"reverted\":" + count + "}";
+    }
+
+    /**
+     * {@code logctl doctor --json} — doc/specs/doctor.md "The operation".
+     * {@code checksRun} is the count of distinct {@code check} ids among
+     * {@code findings}, same figure the text renderer's summary line uses
+     * ({@link #checksRun}).
+     */
+    static String doctor(List<DoctorFindingData> findings) {
+        StringJoiner array = new StringJoiner(",", "[", "]");
+        for (DoctorFindingData finding : findings) {
+            array.add(new Obj()
+                    .str("check", finding.getCheck())
+                    .str("severity", finding.getSeverity())
+                    .str("subject", finding.getSubject())
+                    .str("summary", finding.getSummary())
+                    .str("detail", finding.getDetail())
+                    .str("suggestedFix", finding.getSuggestedFix())
+                    .str("context", finding.getContext())
+                    .toString());
+        }
+        return new Obj().raw("findings", array.toString()).raw("checksRun", String.valueOf(checksRun(findings)))
+                .toString();
+    }
+
+    /**
+     * The count of distinct {@code check} ids among {@code findings} — one
+     * check can flag more than one subject (e.g. two misconfigured handlers),
+     * so this is not the same as {@code findings.size()}. Shared by both the
+     * {@code --json} {@code checksRun} field and the text renderer's "N
+     * checks run" summary line.
+     */
+    static int checksRun(List<DoctorFindingData> findings) {
+        Set<String> checks = new LinkedHashSet<>();
+        for (DoctorFindingData finding : findings) {
+            checks.add(finding.getCheck());
+        }
+        return checks.size();
     }
 
     /**

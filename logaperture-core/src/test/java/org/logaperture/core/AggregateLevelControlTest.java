@@ -17,6 +17,7 @@ package org.logaperture.core;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
@@ -58,6 +59,7 @@ class AggregateLevelControlTest {
         final FakeLoggingAdapter adapter = new FakeLoggingAdapter(Level.INFO);
         final LevelControlService service;
         final HandlerLevelControlService handlerService;
+        final DoctorService doctorService;
         final ContextControl control;
 
         Ctx(String key) {
@@ -69,7 +71,8 @@ class AggregateLevelControlTest {
                     policy, auditLog, sharedStore, "alice", "jmx");
             handlerService = new HandlerLevelControlService(adapter, new HandlerBaselineRegistry(),
                     new HandlerOverrideRegistry(), policy, auditLog, sharedStore, "alice", "jmx");
-            control = new ContextControl(ContextHandle.of(key, key, adapter), service, handlerService);
+            doctorService = new DoctorService(adapter, policy);
+            control = new ContextControl(ContextHandle.of(key, key, adapter), service, handlerService, doctorService);
         }
     }
 
@@ -179,6 +182,22 @@ class AggregateLevelControlTest {
 
         assertEquals(Level.INFO, system.adapter.effectiveLevel("com.a.One"));
         assertEquals(Level.INFO, system.adapter.handlerLevel(console).orElseThrow());
+    }
+
+    // --- diagnose (doc/specs/doctor.md) --------------------------------------------------------
+
+    @Test
+    void diagnose_concatenatesEveryContext_taggedWithItsContext() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        List<DoctorFinding> findings = aggregate.diagnose();
+
+        assertTrue(findings.stream().anyMatch(f -> "system".equals(f.context())));
+        assertTrue(findings.stream().anyMatch(f -> "myapp.war".equals(f.context())));
+        assertTrue(findings.stream().allMatch(f -> f.context() != null), "every row is tagged with its context");
     }
 
     @Test

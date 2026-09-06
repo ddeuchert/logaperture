@@ -15,6 +15,7 @@
  */
 package org.logaperture.cli;
 
+import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelControlMXBean;
 import org.logaperture.control.jmx.LoggerInfoData;
@@ -37,6 +38,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
 
     List<LoggerInfoData> loggers = new ArrayList<>();
     List<HandlerLevelOverrideData> handlerOverrides = new ArrayList<>();
+    List<DoctorFindingData> findings = new ArrayList<>();
     SetLevelResultData setLevelResult;
     HandlerLevelOverrideData setHandlerLevelResult;
     RuntimeException throwOnNextCall;
@@ -98,6 +100,12 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     public List<HandlerLevelOverrideData> listHandlerOverrides() {
         maybeThrow();
         return handlerOverrides;
+    }
+
+    @Override
+    public List<DoctorFindingData> diagnose() {
+        maybeThrow();
+        return findings;
     }
 
     private void maybeThrow() {

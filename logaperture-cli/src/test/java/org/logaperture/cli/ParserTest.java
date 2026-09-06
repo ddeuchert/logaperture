@@ -134,6 +134,15 @@ class ParserTest {
     }
 
     @Test
+    void doctorTakesNoArguments() {
+        Parser.parse(new String[] {"doctor"});
+        Parser.parse(new String[] {"doctor", "--json"});
+        assertUsage(() -> Parser.parse(new String[] {"doctor", "com.acme"}));
+        assertUsage(() -> Parser.parse(new String[] {"doctor", "--include-children"}));
+        assertUsage(() -> Parser.parse(new String[] {"doctor", "--reason", "x"}));
+    }
+
+    @Test
     void debugFlagIsCarried() {
         assertTrue(Parser.parse(new String[] {"--debug", "status"}).debug());
     }

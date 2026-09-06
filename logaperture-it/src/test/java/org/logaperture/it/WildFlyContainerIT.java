@@ -271,6 +271,42 @@ class WildFlyContainerIT {
         }
     }
 
+    // --- doctor (doc/specs/doctor.md) ------------------------------------------------------------
+
+    @Test
+    void doctor_reportsStockWildFlyConfigAccurately() {
+        // Confirmed against real WildFly 26.1.3.Final: findings name the real
+        // handler by its identity-hash token (e.g. "PeriodicRotatingFileHandler@...",
+        // "ConsoleHandler@..."), never a friendly "FILE"/"CONSOLE" -- doctor
+        // inspects adapter.realHandlers(), the same ungrouped truth issue #13
+        // established never resolves a WildFly-configured name (Decision #8).
+        Logctl result = logctl("doctor");
+        assertEquals(0, result.exitCode(), result.stderr());
+        String out = result.stdout();
+
+        // The FILE-equivalent handler is a PeriodicRotatingFileHandler -- no
+        // size-based rotation cap at all.
+        assertTrue(out.contains("has no size cap — writes are unbounded."),
+                "expected an unbounded-growth finding:\n" + out);
+        // Confirmed: stock WildFly's handlers report autoflush=true (isAutoFlush()
+        // reflection against the real org.jboss.logmanager.ExtHandler base class).
+        assertTrue(out.contains("has autoflush enabled — every record forces a flush."),
+                "expected an autoflush finding:\n" + out);
+        // Decision #3: a non-persistent handler (no targetPath -- the console
+        // handler, concretely) never appears in a duplicate-output finding.
+        // Stock WildFly has exactly one persistent handler, so this check
+        // doesn't run at all.
+        assertFalse(out.contains("duplicate"), "no duplicate-output finding should fire:\n" + out);
+    }
+
+    @Test
+    void doctorJson_roundTripsWithFindingsAndChecksRun() {
+        Logctl result = logctl("doctor", "--json");
+        assertEquals(0, result.exitCode(), result.stderr());
+        assertTrue(result.stdout().contains("\"findings\":["), result.stdout());
+        assertTrue(result.stdout().contains("\"checksRun\":"), result.stdout());
+    }
+
     // --- probe WAR ------------------------------------------------------------------------------
 
     private void deployProbeWar() throws Exception {

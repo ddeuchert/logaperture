@@ -15,6 +15,7 @@
  */
 package org.logaperture.cli;
 
+import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
@@ -26,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Function;
 
 /**
  * The sub-commands, each a thin renderer over one (occasionally two)
@@ -53,7 +55,7 @@ final class Commands {
                 out.println(filter == null ? "No loggers known yet." : "No loggers match '" + filter + "'.");
                 return CliError.OK;
             }
-            boolean showContext = spansMultipleContexts(rows);
+            boolean showContext = spansMultipleContexts(rows, LoggerInfoData::getContext);
             List<List<String>> table = new ArrayList<>();
             for (LoggerInfoData row : rows) {
                 List<String> cells = new ArrayList<>();
@@ -96,7 +98,7 @@ final class Commands {
                 return CliError.OK;
             }
             if (!active.isEmpty()) {
-                boolean showContext = spansMultipleContexts(all);
+                boolean showContext = spansMultipleContexts(all, LoggerInfoData::getContext);
                 List<List<String>> table = new ArrayList<>();
                 for (LoggerInfoData row : active) {
                     List<String> cells = new ArrayList<>();
@@ -140,11 +142,13 @@ final class Commands {
      * The CONTEXT column shows only when the result actually spans more than
      * one logging context — a plain {@code java -jar} user, and a stock
      * standalone WildFly (one shared system context), never see it
-     * (doc/specs/wildfly-support.md, Slice 3's "logctl changes").
+     * (doc/specs/wildfly-support.md, Slice 3's "logctl changes"). Shared by
+     * every row type that carries a context key ({@link LoggerInfoData},
+     * {@link DoctorFindingData}).
      */
-    private static boolean spansMultipleContexts(List<LoggerInfoData> rows) {
+    private static <T> boolean spansMultipleContexts(List<T> rows, Function<T, String> context) {
         return rows.stream()
-                .map(LoggerInfoData::getContext)
+                .map(context)
                 .filter(Objects::nonNull)
                 .distinct()
                 .limit(2)
@@ -262,6 +266,60 @@ final class Commands {
             }
             return CliError.OK;
         };
+    }
+
+    /**
+     * {@code logctl doctor} — doc/specs/doctor.md "The operation". Read-only:
+     * no target, no tier, nothing to confirm.
+     */
+    static Command doctor(boolean json) {
+        return (mbean, out) -> {
+            List<DoctorFindingData> findings = mbean.diagnose();
+            if (json) {
+                out.println(Json.doctor(findings));
+                return CliError.OK;
+            }
+            if (findings.isEmpty()) {
+                out.println("No checks could run against this JVM.");
+                return CliError.OK;
+            }
+            boolean showContext = spansMultipleContexts(findings, DoctorFindingData::getContext);
+            int critical = 0;
+            int warning = 0;
+            int info = 0;
+            int clean = 0;
+            for (DoctorFindingData f : findings) {
+                switch (f.getSeverity()) {
+                    case "CRITICAL" -> critical++;
+                    case "WARNING" -> warning++;
+                    case "INFO" -> info++;
+                    default -> clean++;
+                }
+                StringBuilder line = new StringBuilder();
+                if (showContext) {
+                    line.append('[').append(orDash(f.getContext())).append("] ");
+                }
+                String bracket = "[" + severityLabel(f.getSeverity()) + "]";
+                line.append(bracket.length() < 8 ? String.format("%-8s", bracket) : bracket + " ")
+                        .append(f.getSummary());
+                out.println(line);
+                if (f.getDetail() != null) {
+                    out.println("        " + f.getDetail());
+                }
+                if (f.getSuggestedFix() != null) {
+                    out.println("        suggested: " + f.getSuggestedFix());
+                }
+            }
+            out.println();
+            out.println(Json.checksRun(findings) + " checks run — " + critical + " critical, " + warning
+                    + " warning, " + info + " info, " + clean + " clean.");
+            return CliError.OK;
+        };
+    }
+
+    /** {@code WARNING} renders as {@code WARN} in text mode (matching the blocking-handler warning's own convention); {@code --json} keeps the full enum name. */
+    private static String severityLabel(String severity) {
+        return "WARNING".equals(severity) ? "WARN" : severity;
     }
 
     /** Sorts soonest-revert first; {@code FOR} entries by their deadline, {@code STICKY}/{@code SESSION} (no deadline) last. */

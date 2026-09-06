@@ -136,6 +136,12 @@ final class Parser {
                 }
                 yield Commands.status(json);
             }
+            case "doctor" -> {
+                if (!rest.isEmpty()) {
+                    throw usage("'doctor' takes no arguments.");
+                }
+                yield Commands.doctor(json);
+            }
             case "reset" -> {
                 if (all) {
                     if (!rest.isEmpty()) {

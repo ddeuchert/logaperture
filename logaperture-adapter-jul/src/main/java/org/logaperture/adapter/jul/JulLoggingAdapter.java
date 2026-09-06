@@ -15,6 +15,7 @@
  */
 package org.logaperture.adapter.jul;
 
+import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
@@ -201,6 +202,21 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         Optional<Level> previous = Optional.ofNullable(LevelMapper.toApi(handler.getLevel()));
         handler.setLevel(level == null ? null : LevelMapper.toJul(level));
         return previous;
+    }
+
+    /**
+     * doc/specs/doctor.md "Adapter SPI". {@code ref} always arrives via
+     * {@link #realHandlers}, which already populated {@link #handlersByRef}
+     * as a side effect, so this resolves via cache without ever needing
+     * {@code knownHandlers()}'s WildFly-collapsed fallback.
+     */
+    @Override
+    public HandlerDiagnostics handlerDiagnostics(HandlerRef ref) {
+        Handler handler = resolveHandler(ref);
+        if (handler == null) {
+            return HandlerDiagnostics.EMPTY;
+        }
+        return JulHandlerDiagnostics.of(handler);
     }
 
     /**
