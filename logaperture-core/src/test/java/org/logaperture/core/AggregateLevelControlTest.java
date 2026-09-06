@@ -232,9 +232,10 @@ class AggregateLevelControlTest {
         aggregate.register(system.control);
         aggregate.register(app.control);
 
-        List<LoggerByteCount> rows = aggregate.topLoggers(2).loggers();
+        TopReport report = aggregate.topLoggers(2);
 
-        assertEquals(List.of("a", "c"), rows.stream().map(LoggerByteCount::loggerName).toList());
+        assertEquals(List.of("a", "c"), report.loggers().stream().map(LoggerByteCount::loggerName).toList());
+        assertEquals(3, report.trackedCount(), "the true count across both contexts, unaffected by --limit");
     }
 
     @Test

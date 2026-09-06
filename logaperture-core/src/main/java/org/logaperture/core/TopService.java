@@ -70,7 +70,7 @@ public final class TopService implements TopOperations {
                 .sorted(Comparator.comparingLong(LoggerByteCount::totalBytes).reversed())
                 .toList();
         List<LoggerByteCount> limited = limit > 0 && sorted.size() > limit ? sorted.subList(0, limit) : sorted;
-        return new TopReport(List.copyOf(limited), measurementStartedAt);
+        return new TopReport(List.copyOf(limited), measurementStartedAt, sorted.size());
     }
 
     private void requireCapability(Capability capability) {

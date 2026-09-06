@@ -196,8 +196,9 @@ final class Json {
      * and the stack-trace percentage are the text renderer's own derivation
      * (doc/specs/top.md "Data model"); a script wanting them computes from
      * {@code totalBytes}/{@code stackTraceBytes} and {@code
-     * measurementStartedAt} the same way. {@code trackedCount} is the number
-     * of rows in this response, i.e. after {@code --limit} is applied.
+     * measurementStartedAt} the same way. {@code trackedCount} is the true
+     * count of tracked loggers, independent of {@code --limit} -- it can
+     * exceed {@code loggers}' own size once the limit has truncated it.
      */
     static String top(TopReportData report) {
         StringJoiner array = new StringJoiner(",", "[", "]");
@@ -212,7 +213,7 @@ final class Json {
         return new Obj()
                 .raw("loggers", array.toString())
                 .str("measurementStartedAt", report.getMeasurementStartedAt())
-                .raw("trackedCount", String.valueOf(report.getLoggers().size()))
+                .raw("trackedCount", String.valueOf(report.getTrackedCount()))
                 .toString();
     }
 

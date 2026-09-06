@@ -226,7 +226,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         }
         merged.sort(Comparator.comparingLong(LoggerByteCount::totalBytes).reversed());
         List<LoggerByteCount> limited = limit > 0 && merged.size() > limit ? merged.subList(0, limit) : merged;
-        return new TopReport(List.copyOf(limited), earliest);
+        return new TopReport(List.copyOf(limited), earliest, merged.size());
     }
 
     @Override

@@ -36,6 +36,10 @@ import java.util.logging.LogRecord;
  * record's total measured bytes: the real formatter may render the
  * throwable differently (or not at all), so the two measurements are only
  * ever combined defensively, never assumed consistent.
+ *
+ * <p>Known limitation (issue #23): when {@code delegate} already renders the
+ * same trace internally (e.g. {@link java.util.logging.SimpleFormatter}),
+ * this still formats it a second time to measure it.
  */
 final class ByteCountingFormatter extends Formatter {
 

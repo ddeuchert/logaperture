@@ -334,44 +334,34 @@ final class Commands {
                 return CliError.OK;
             }
             List<LoggerByteCountData> loggers = report.getLoggers();
-            if (loggers.isEmpty()) {
+            String startedAtRaw = report.getMeasurementStartedAt();
+            if (loggers.isEmpty() || startedAtRaw == null) {
                 out.println("No byte-volume measurements available yet.");
                 return CliError.OK;
             }
             boolean showContext = spansMultipleContexts(loggers, LoggerByteCountData::getContext);
-            Instant startedAt = Instant.parse(report.getMeasurementStartedAt());
+            Instant startedAt = Instant.parse(startedAtRaw);
             double hoursElapsed = Math.max(1.0 / 3_600, Duration.between(startedAt, Instant.now()).toMillis() / 3_600_000.0);
 
-            List<String> rates = new ArrayList<>();
-            List<String> projections = new ArrayList<>();
-            List<String> names = new ArrayList<>();
+            List<List<String>> table = new ArrayList<>();
             for (LoggerByteCountData row : loggers) {
                 double bytesPerHour = row.getTotalBytes() / hoursElapsed;
-                names.add(row.getLoggerName());
-                rates.add(Format.bytes(bytesPerHour) + "/h");
-                projections.add("(" + Format.bytes(bytesPerHour * 24) + "/day)");
-            }
-            int nameWidth = names.stream().mapToInt(String::length).max().orElse(0);
-            int rateWidth = rates.stream().mapToInt(String::length).max().orElse(0);
-            int projectionWidth = projections.stream().mapToInt(String::length).max().orElse(0);
-
-            for (int i = 0; i < loggers.size(); i++) {
-                LoggerByteCountData row = loggers.get(i);
                 long pct = row.getTotalBytes() == 0 ? 0 : Math.round(100.0 * row.getStackTraceBytes() / row.getTotalBytes());
-                StringBuilder line = new StringBuilder();
+                List<String> cells = new ArrayList<>();
                 if (showContext) {
-                    line.append('[').append(orDash(row.getContext())).append("] ");
+                    cells.add('[' + orDash(row.getContext()) + ']');
                 }
-                line.append(Format.padded(names.get(i), nameWidth)).append("  ")
-                        .append(Format.padded(rates.get(i), rateWidth)).append("  ")
-                        .append(Format.padded(projections.get(i), projectionWidth)).append("  ")
-                        .append(pct).append("% stack traces");
-                out.println(line.toString().stripTrailing());
+                cells.add(row.getLoggerName());
+                cells.add(Format.bytes(bytesPerHour) + "/h");
+                cells.add("(" + Format.bytes(bytesPerHour * 24) + "/day)");
+                cells.add(pct + "% stack traces");
+                table.add(cells);
             }
+            out.println(Format.table(table));
             out.println();
             out.println("measured over " + Format.elapsed(Duration.between(startedAt, Instant.now()))
-                    + " (since agent start, " + startedAt + ") — " + loggers.size()
-                    + (loggers.size() == 1 ? " logger" : " loggers") + " tracked.");
+                    + " (since agent start, " + startedAt + ") — " + report.getTrackedCount()
+                    + (report.getTrackedCount() == 1 ? " logger" : " loggers") + " tracked.");
             return CliError.OK;
         };
     }

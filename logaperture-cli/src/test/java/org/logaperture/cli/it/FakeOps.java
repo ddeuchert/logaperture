@@ -141,6 +141,6 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     public synchronized TopReport topLoggers(int limit) {
         List<LoggerByteCount> loggers = List.of(new LoggerByteCount("com.acme.web.RequestFilter", 4_096L, 0L));
         List<LoggerByteCount> limited = limit > 0 && loggers.size() > limit ? loggers.subList(0, limit) : loggers;
-        return new TopReport(limited, measurementStartedAt);
+        return new TopReport(limited, measurementStartedAt, loggers.size());
     }
 }

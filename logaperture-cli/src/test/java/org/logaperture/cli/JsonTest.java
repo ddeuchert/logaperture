@@ -96,7 +96,7 @@ class JsonTest {
     void topEmitsRawCountsKeyOrderAndTrackedCount() {
         TopReportData report = new TopReportData(
                 List.of(new LoggerByteCountData("org.apache.http", 1_000L, 980L, null)),
-                "2026-09-05T14:02:11Z");
+                "2026-09-05T14:02:11Z", 1);
 
         assertEquals(
                 "{\"loggers\":[{\"loggerName\":\"org.apache.http\",\"totalBytes\":1000,\"stackTraceBytes\":980,"
@@ -106,8 +106,19 @@ class JsonTest {
 
     @Test
     void topWithNoTrackedLoggers_emitsAnEmptyArrayAndNullStartedAt() {
-        TopReportData report = new TopReportData(List.of(), null);
+        TopReportData report = new TopReportData(List.of(), null, 0);
 
         assertEquals("{\"loggers\":[],\"measurementStartedAt\":null,\"trackedCount\":0}", Json.top(report));
+    }
+
+    @Test
+    void topEmitsTheTrueTrackedCount_notTheLimitTruncatedRowCount() {
+        // --limit already truncated "loggers" to one row server-side; trackedCount
+        // must still report every logger actually being tracked (doc/specs/top.md).
+        TopReportData report = new TopReportData(
+                List.of(new LoggerByteCountData("org.apache.http", 1_000L, 980L, null)),
+                "2026-09-05T14:02:11Z", 200);
+
+        assertTrue(Json.top(report).contains("\"trackedCount\":200"), Json.top(report));
     }
 }

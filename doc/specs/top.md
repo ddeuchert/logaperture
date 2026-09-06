@@ -133,7 +133,10 @@ large and is `logctl levels`'s job, not this one's).
 
 `--json` emits `{"loggers": [...], "measurementStartedAt": "...", "trackedCount": N}`, one
 object per logger (`LoggerByteCountData`, below), already sorted worst-first; `--limit` applies
-identically to `--json`.
+identically to `--json`. `trackedCount` is the true number of tracked loggers -- the same figure
+the text renderer's "N loggers tracked" line reports -- independent of `--limit`: it can exceed
+`loggers.length` once the limit has truncated the array, since "tracked" is defined above by
+emitted bytes, not by how many rows a caller asked to see.
 
 ## Data model
 
@@ -185,6 +188,12 @@ just `record.getThrown()`'s trace separately with a throwaway `PrintWriter`/`Str
 diffing lengths — cheap relative to the I/O the record is about to cause regardless, and never
 double-invokes the handler's actual formatter.
 
+**Known limitation (issue [#23](https://github.com/ddeuchert/logaperture/issues/23)):** when the
+delegate formatter already renders the same trace internally (e.g. `SimpleFormatter`), this still
+formats it a second time to measure it — doubling the cost of exactly the pathological case (a
+huge trace) the metric exists to surface. Left as-is for this slice; revisit if it shows up in a
+real workload.
+
 Persistent-handler selection reuses `handlerDiagnostics(ref).isPersistent()`, the same signal
 `doctor`'s duplicate-output check already keys on — no new SPI surface needed for "which
 handlers count."
@@ -214,6 +223,14 @@ logger name is exactly the memory-leak shape §16.7 calls out by name. Configura
 `-Dlogaperture.top.maxTrackedLoggers=N`, matching the existing `-Dlogaperture.sweep.seconds=`
 convention for a tunable with a sane default.
 
+The counter map is one instance shared by every persistent handler on a context, guarded by a
+single `synchronized` lock rather than a `ConcurrentHashMap`, since every write also needs to
+reorder the entry for LRU purposes. **Known limitation (issue
+[#24](https://github.com/ddeuchert/logaperture/issues/24)):** this means two different loggers
+backed by two different handlers, logged concurrently from two different threads, now contend on
+this one lock — contention JUL's own per-handler locking didn't previously create between them.
+Left as-is for this slice, pending a real workload showing it matters.
+
 ## Failure handling
 
 - A framework/handler this can't instrument (Logback and `none` this slice; any handler with no
@@ -233,7 +250,14 @@ convention for a tunable with a sane default.
   and `--limit` truncates correctly (zero/negative meaning "every tracked logger"); a second
   `startMeasuring()` call re-installs without moving `measurementStartedAt` forward; a
   multi-context merge tags every row with its context and re-sorts/truncates over the merged
-  set, not per context.
+  set, not per context; `trackedCount` reports the pre-truncation count even when `--limit`
+  truncates `loggers` below it.
+- Unit — CLI (`CommandsTest`, `JsonTest`): the text renderer's "N loggers tracked" line and
+  `--json`'s `trackedCount` both use the true tracked count, not `loggers.size()`, when a test
+  wires a `TopReportData` whose two numbers deliberately differ; a report with a non-empty
+  `loggers` list but a `null` `measurementStartedAt` (a shape no shipped container produces today,
+  but one the contract in `TopReport`'s own javadoc allows) falls back to the same "No
+  byte-volume measurements available yet." message as an empty list, rather than throwing.
 - Cross-process (`logaperture-it`'s `WildFlyContainerIT`): `logctl top` against real standalone
   WildFly reports plausible byte volume from the server's own boot-time logging — no probe
   deployment needed, since byte counting installs before WildFly's `main()` runs — and

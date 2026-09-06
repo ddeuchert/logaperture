@@ -221,7 +221,7 @@ class CommandsTest {
         mbean.topReport = new TopReportData(List.of(
                 new LoggerByteCountData("org.apache.http", 20L * 1024 * 1024 * 1024, 0L, null),
                 new LoggerByteCountData("com.acme.Half", 100L, 50L, null)),
-                startedAt);
+                startedAt, 2);
 
         assertEquals(CliError.OK, run(Commands.top(0, false)));
 
@@ -237,7 +237,7 @@ class CommandsTest {
 
     @Test
     void top_noTrackedLoggers_printsANoteInsteadOfATable() {
-        mbean.topReport = new TopReportData(List.of(), null);
+        mbean.topReport = new TopReportData(List.of(), null, 0);
 
         assertEquals(CliError.OK, run(Commands.top(10, false)));
 
@@ -245,9 +245,34 @@ class CommandsTest {
     }
 
     @Test
+    void top_measurementStartedAtNull_printsANoteEvenIfLoggersIsNonEmpty() {
+        // TopReport's own contract allows this combination (doc/specs/top.md);
+        // no shipped container produces it today, but Commands.top() must not
+        // NPE on Instant.parse(null) if a future one does.
+        mbean.topReport = new TopReportData(
+                List.of(new LoggerByteCountData("a", 10L, 0L, null)), null, 1);
+
+        assertEquals(CliError.OK, run(Commands.top(0, false)));
+
+        assertTrue(output().contains("No byte-volume measurements available yet."));
+    }
+
+    @Test
+    void top_trackedCountReflectsTheTrueTotal_notTheLimitTruncatedRowCount() {
+        // --limit truncated "loggers" to 1 row, but 200 loggers are actually
+        // tracked -- the footer must report the true count, not loggers.size().
+        mbean.topReport = new TopReportData(
+                List.of(new LoggerByteCountData("a", 10L, 0L, null)), Instant.now().toString(), 200);
+
+        run(Commands.top(1, false));
+
+        assertTrue(output().contains("200 loggers tracked."), output());
+    }
+
+    @Test
     void top_json_wrapsLoggersAndPassesTheLimitThrough() {
         mbean.topReport = new TopReportData(
-                List.of(new LoggerByteCountData("a", 10L, 0L, null)), Instant.now().toString());
+                List.of(new LoggerByteCountData("a", 10L, 0L, null)), Instant.now().toString(), 1);
 
         run(Commands.top(5, true));
 
@@ -261,7 +286,7 @@ class CommandsTest {
         mbean.topReport = new TopReportData(List.of(
                 new LoggerByteCountData("a", 10L, 0L, "system"),
                 new LoggerByteCountData("b", 10L, 0L, "myapp.war")),
-                Instant.now().toString());
+                Instant.now().toString(), 2);
 
         run(Commands.top(0, false));
 

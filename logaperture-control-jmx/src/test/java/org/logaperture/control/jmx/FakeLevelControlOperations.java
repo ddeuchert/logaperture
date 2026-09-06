@@ -127,6 +127,6 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     @Override
     public TopReport topLoggers(int limit) {
         topLoggersLimitRequested = limit;
-        return new TopReport(topLoggersToReturn, measurementStartedAt);
+        return new TopReport(topLoggersToReturn, measurementStartedAt, topLoggersToReturn.size());
     }
 }

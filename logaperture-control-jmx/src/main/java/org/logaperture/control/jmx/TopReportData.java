@@ -24,23 +24,28 @@ import java.util.List;
  * MXBean-friendly mirror of {@link TopReport} — {@code measurementStartedAt}
  * is ISO-8601, or {@code null} if measurement hasn't started (no persistent
  * handler exists anywhere to count against), same nullable-timestamp
- * convention as {@link LevelOverrideData#getExpiresAt()}.
+ * convention as {@link LevelOverrideData#getExpiresAt()}. {@code
+ * trackedCount} is the true number of tracked loggers, independent of
+ * {@code loggers}' own size once {@code --limit} has truncated it — see
+ * {@link TopReport#trackedCount()}.
  */
 public final class TopReportData {
 
     private final List<LoggerByteCountData> loggers;
     private final String measurementStartedAt;
+    private final int trackedCount;
 
-    @ConstructorProperties({"loggers", "measurementStartedAt"})
-    public TopReportData(List<LoggerByteCountData> loggers, String measurementStartedAt) {
+    @ConstructorProperties({"loggers", "measurementStartedAt", "trackedCount"})
+    public TopReportData(List<LoggerByteCountData> loggers, String measurementStartedAt, int trackedCount) {
         this.loggers = loggers;
         this.measurementStartedAt = measurementStartedAt;
+        this.trackedCount = trackedCount;
     }
 
     public static TopReportData from(TopReport report) {
         List<LoggerByteCountData> loggers = report.loggers().stream().map(LoggerByteCountData::from).toList();
         String startedAt = report.measurementStartedAt() == null ? null : report.measurementStartedAt().toString();
-        return new TopReportData(loggers, startedAt);
+        return new TopReportData(loggers, startedAt, report.trackedCount());
     }
 
     public List<LoggerByteCountData> getLoggers() {
@@ -49,5 +54,9 @@ public final class TopReportData {
 
     public String getMeasurementStartedAt() {
         return measurementStartedAt;
+    }
+
+    public int getTrackedCount() {
+        return trackedCount;
     }
 }

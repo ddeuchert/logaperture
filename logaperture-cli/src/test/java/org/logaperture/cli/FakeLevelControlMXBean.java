@@ -40,7 +40,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     List<LoggerInfoData> loggers = new ArrayList<>();
     List<HandlerLevelOverrideData> handlerOverrides = new ArrayList<>();
     List<DoctorFindingData> findings = new ArrayList<>();
-    TopReportData topReport = new TopReportData(new ArrayList<>(), null);
+    TopReportData topReport = new TopReportData(new ArrayList<>(), null, 0);
     final List<Integer> topLoggersLimits = new ArrayList<>();
     SetLevelResultData setLevelResult;
     HandlerLevelOverrideData setHandlerLevelResult;

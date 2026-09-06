@@ -35,7 +35,11 @@ import java.util.Map;
  * doesn't support atomically. This runs on the same thread already doing the
  * handler's actual (synchronous, I/O-bound) {@code publish()} — {@code
  * java.util.logging}'s own handlers already serialize on their own instance
- * lock, so this adds no contention beyond what every JUL handler already has.
+ * lock, so a single handler's byte counting adds no contention beyond what
+ * it already has. Known limitation (issue #24): since one {@code
+ * TopCounters} instance is shared across every persistent handler on a
+ * context, this lock does add contention <em>between</em> otherwise
+ * independent handlers that JUL itself never serialized against each other.
  */
 final class TopCounters {
 

@@ -328,12 +328,7 @@ public final class DoctorService implements DoctorOperations {
     }
 
     private static String formatBytes(long bytes) {
-        double gb = bytes / (1024.0 * 1024.0 * 1024.0);
-        if (gb >= 1.0) {
-            return String.format(Locale.ROOT, "%.1f GB", gb);
-        }
-        double mb = bytes / (1024.0 * 1024.0);
-        return String.format(Locale.ROOT, "%.0f MB", mb);
+        return ByteFormat.humanReadable(bytes);
     }
 
     private static String formatDuration(double hours) {

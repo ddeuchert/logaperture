@@ -69,6 +69,13 @@ class FormatTest {
     }
 
     @Test
+    void bytesJustBelowAGigabyte_roundsUpToGbRatherThanShowing1024Mb() {
+        // 1024 * 1024^2 - 1 bytes: mb rounds to 1024, so this must switch to
+        // the GB branch instead of rendering the stale "1024 MB".
+        assertEquals("1.0 GB", Format.bytes(1024.0 * 1024 * 1024 - 1));
+    }
+
+    @Test
     void elapsedIsCoarseLikeRelativeButWithoutTheInPrefix() {
         assertEquals("6h 12m", Format.elapsed(Duration.ofMinutes(372)));
         assertEquals("27m", Format.elapsed(Duration.ofMinutes(27)));
@@ -77,9 +84,14 @@ class FormatTest {
     }
 
     @Test
-    void paddedLeftAlignsToTheGivenWidth() {
-        assertEquals("abc  ", Format.padded("abc", 5));
-        assertEquals("abcde", Format.padded("abcde", 5));
-        assertEquals("abcdef", Format.padded("abcdef", 5), "never truncates -- just doesn't pad further");
+    void headerlessTableAlignsColumnsTheSameWayAsTheHeaderedOne() {
+        List<String> lines = Format.table(List.of(
+                List.of("com.acme.batch.Worker", "2.0 GB/h"),
+                List.of("a", "88 MB/h"))).lines().toList();
+
+        assertEquals(2, lines.size());
+        int secondColumn = lines.get(0).indexOf("2.0 GB/h");
+        assertEquals(secondColumn, lines.get(1).indexOf("88 MB/h"));
+        assertTrue(lines.get(1).startsWith("a "));
     }
 }

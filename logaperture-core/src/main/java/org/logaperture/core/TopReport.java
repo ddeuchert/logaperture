@@ -35,10 +35,21 @@ import java.util.Objects;
  * @param measurementStartedAt when this window's counting began, or {@code
  *                              null} if measurement hasn't started yet (no
  *                              persistent handler exists to count against)
+ * @param trackedCount          the true count of loggers being tracked --
+ *                              i.e. {@code loggers.size()} <em>before</em>
+ *                              {@code limit} truncated it. "Tracked" means
+ *                              "has emitted at least one byte through a
+ *                              counted handler" (doc/specs/top.md "The
+ *                              operation"), a fact independent of how many
+ *                              rows a caller asked to see.
  */
-public record TopReport(List<LoggerByteCount> loggers, Instant measurementStartedAt) {
+public record TopReport(List<LoggerByteCount> loggers, Instant measurementStartedAt, int trackedCount) {
 
     public TopReport {
         Objects.requireNonNull(loggers, "loggers");
+        if (trackedCount < loggers.size()) {
+            throw new IllegalArgumentException(
+                    "trackedCount (" + trackedCount + ") cannot be less than loggers.size() (" + loggers.size() + ")");
+        }
     }
 }

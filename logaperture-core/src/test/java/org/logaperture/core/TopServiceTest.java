@@ -113,4 +113,18 @@ class TopServiceTest {
 
         assertTrue(service.topLoggers(0).loggers().isEmpty());
     }
+
+    @Test
+    void topLoggers_trackedCount_isTheFullCountEvenWhenLimitTruncatesLoggers() {
+        service.startMeasuring();
+        adapter.setByteCounts(List.of(
+                new LoggerByteCount("a", 300L, 0L),
+                new LoggerByteCount("b", 200L, 0L),
+                new LoggerByteCount("c", 100L, 0L)));
+
+        TopReport report = service.topLoggers(2);
+
+        assertEquals(2, report.loggers().size(), "limit truncated the rows");
+        assertEquals(3, report.trackedCount(), "but the true tracked count is unaffected");
+    }
 }
