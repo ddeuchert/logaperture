@@ -946,6 +946,8 @@ The developer runs on a workstation with a terminal and disposable state. The cu
 
 ### 16.1 Measure before you suppress
 
+> Implementation spec: [`doc/specs/top.md`](specs/top.md) — signed off, not yet implemented.
+
 The first question when a customer says "my disk filled up" is *what generated the volume*, and today nobody can answer it without parsing the file. The agent is uniquely positioned to answer it precisely, and this is probably the single most valuable operations feature.
 
 `logctl top` — bytes emitted per logger over a window, sorted, with a projected daily total. Extend to per-throwable-type and per-rule. Byte counting happens at render stage, where you are already wrapping the formatter or encoder, so it is nearly free.
@@ -961,7 +963,7 @@ A generated rule stub the user can paste is worth more than a paragraph of docum
 
 ### 16.2 `logctl doctor` — diagnose the configuration
 
-> Implementation spec: [`doc/specs/doctor.md`](specs/doctor.md) — draft, sign-off pending.
+> Implementation spec: [`doc/specs/doctor.md`](specs/doctor.md) — implemented and verified end-to-end.
 
 Multi-GB single files usually mean rotation is misconfigured, not that suppression is missing. Before building any of the rule engine, a read-only checker that flags the common causes would resolve a meaningful share of real incidents:
 
