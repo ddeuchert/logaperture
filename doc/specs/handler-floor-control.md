@@ -35,7 +35,7 @@ Verified by unit tests (`HandlerLevelControlServiceTest`,
 26.1.3.Final (`WildFlyContainerIT`, 7/7 passing, including both rewritten
 `ALL_HANDLERS` tests). Real per-handler WildFly names
 ([#14](https://github.com/ddeuchert/logaperture/issues/14), alpha-1) are
-**in sign-off review** — see "WildFly handler name resolution" below.
+**signed off, not yet implemented** — see "WildFly handler name resolution" below.
 
 **Planned extension (issue [#28](https://github.com/ddeuchert/logaperture/issues/28),
 alpha-2 — spec section not yet written).** A well-known `DEFAULT_HANDLERS`
@@ -167,9 +167,10 @@ per handler, whether they want the sink widened.
   `ALL_HANDLERS`.
 - Generalized named handler groups beyond the one reserved `ALL_HANDLERS`
   name — revisit only if a real second grouping shows up.
-- Real per-handler WildFly names (issue #14, deliberately sequenced after
-  `ALL_HANDLERS` lands) — `ALL_HANDLERS` is the fix for *addressing* WildFly's
-  handlers, not for naming each one individually.
+- Real per-handler WildFly names (issue #14, sequenced after `ALL_HANDLERS`
+  lands; **now signed off** — see "WildFly handler name resolution" below) —
+  `ALL_HANDLERS` is this slice's fix for *addressing* WildFly's handlers, not
+  for naming each one individually.
 - A logical `AUTO` handler level that tracks the lowest currently-active
   logger override, reverting to the handler's native floor once none remain
   (issue #20) — every fixed-level override here is one-shot; `AUTO` is a
@@ -435,8 +436,8 @@ could not have caught; only the real cross-process, real-server run did.
 
 ## WildFly handler name resolution (issue [#14](https://github.com/ddeuchert/logaperture/issues/14))
 
-Status: **sign-off review in progress** (alpha-1). Open decisions below are
-enumerated for review, not yet resolved; nothing is implemented.
+Status: **sign-off complete** (alpha-1) — all nine decisions resolved and
+folded into the prose below. Not yet implemented.
 
 The retired reflection path (see "Adapter SPI" above) failed because WildFly
 does not drive JBoss LogManager through its declarative `ContextConfiguration`
@@ -513,36 +514,34 @@ public interface HandlerNameResolver {
   else `HandlerRef.anonymous(handler)` — today's exact behaviour when the
   resolver is `NONE`.
 
-### Resolution mechanism (Decision #1)
+### Resolution mechanism
 
-`WildFlyHandlerNameResolver` runs entirely in-VM. Two candidate mechanisms,
-both reflective and classloader-anchored:
+`WildFlyHandlerNameResolver` runs entirely in-VM. The mechanism is a **hybrid**
+of two reflective, classloader-anchored halves:
 
-- **A — in-VM `ModelController` read.** Obtain the server's `ModelController`
-  from the MSC `ServiceContainer` (a well-known service name), `createClient()`
-  (in-VM, no socket, no auth), and execute `read-children-names` under
-  `/subsystem=logging` for each handler resource type
-  (`console-handler`, `periodic-rotating-file-handler`,
+- **Names — in-VM `ModelController` read.** Obtain the server's
+  `ModelController` from the MSC `ServiceContainer` (a well-known service
+  name), `createClient()` (in-VM, no socket, no auth), and execute
+  `read-children-names` under `/subsystem=logging` for each handler resource
+  type (`console-handler`, `periodic-rotating-file-handler`,
   `size-rotating-file-handler`, `periodic-size-rotating-file-handler`,
   `file-handler`, `syslog-handler`, `async-handler`, `custom-handler`). The
-  model is authoritative for names; instances are then bound via the
-  per-name handler MSC service, or by matching type + target path against
-  `handlerDiagnostics`.
-- **B — MSC `ServiceContainer` walk.** Enumerate service names, filter to the
-  logging subsystem's handler services, pull each service's value, keep those
-  whose value is (or wraps) a `java.util.logging.Handler`, and take the
-  service-name leaf as the configured name. One step, no management-op
-  machinery, but leans on service-name conventions that have shifted across
-  WildFly versions.
+  model is the authoritative source of the configured name.
+- **Instance binding — MSC `ServiceContainer`.** For each name from the model,
+  resolve the live `java.util.logging.Handler` via the per-name handler MSC
+  service (falling back to matching type + target path against
+  `handlerDiagnostics` when the service value can't be read).
 
-Leaning **A for names + B for instance binding** (a hybrid): the model is the
-stable source of truth for the name, MSC is the reliable source of the live
-instance. The final mechanism is **validated in `WildFlyContainerIT` against
-real WildFly 26.1.3.Final** and documented there the way the retired attempt
-was — the spec commits to the *contract* (in-VM, best-effort, degrade
-gracefully, resolver in the container), not to which internal API wins.
+A pure MSC service-name walk was the considered alternative for names; it was
+rejected as the primary because the logging subsystem's service-name
+conventions have shifted across WildFly versions, whereas the management model
+resource names have not. The exact internal API on each half is **validated in
+`WildFlyContainerIT` against real WildFly 26.1.3.Final** and documented there
+the way the retired reflection attempt was — the spec commits to the *contract*
+(in-VM, hybrid model-then-MSC, best-effort, resolver in the container), and the
+IT is where a version-specific surprise surfaces.
 
-### `knownHandlers()` on WildFly (Decision #2)
+### `knownHandlers()` on WildFly
 
 Today: `List.of(ALL_HANDLERS)`. After this feature: `ALL_HANDLERS` **plus every
 real handler whose name resolved** to a configured name. A real handler still
@@ -552,7 +551,7 @@ advertising it would reintroduce the bug #13 fixed. `realHandlers()` is
 unchanged — it still lists every real handler for fan-out and baseline capture,
 by resolved name where available and identity token otherwise.
 
-### Lifecycle: when it runs, caching, re-resolution (Decision #4)
+### Lifecycle: when it runs, caching, re-resolution
 
 - **Readiness.** The LogManager-ready gate
   (`WildFlyLogManagerReadiness`) fires *before* the server reaches `running`;
@@ -569,7 +568,7 @@ by resolved name where available and identity token otherwise.
   `:reload`; the resolver cache is invalidated on the same signal, so a
   handler renamed or added via the management CLI is picked up.
 
-### Ref stability across a late resolution (Decision #5)
+### Ref stability across a late resolution
 
 A `HandlerRef`'s `value` must not change under a user who has already captured
 it (overrides are keyed on `(contextKey, HandlerRef)`). So: **no real ref is
@@ -580,7 +579,7 @@ friendly refs appear and stay put. There is no identity-token→friendly-name
 migration path to build because the identity token is never advertised as
 addressable on WildFly in the first place.
 
-### Downstream: `doctor` and `top` (Decision #6)
+### Downstream: `doctor` and `top`
 
 Both iterate the same refs (`realHandlers()` / `handlerDiagnostics`). Once
 names resolve they render `FILE` / `CONSOLE` / `SIF` instead of
@@ -600,41 +599,34 @@ and a visible payoff for `doctor`'s customer-facing output.
   thread — resolution is lazy and on the caller's thread (a `logctl` request,
   the sweep), like every other adapter call.
 
-### Version claim (Decision #8)
+### Version claim
 
 Verified on **WildFly 26.1.3.Final** (`WildFlyContainerIT`). The spec claims
 "best-effort, and degrades cleanly to `ALL_HANDLERS`-only elsewhere" — it does
 not claim EAP or pre-26 coverage without a real run on them.
 
-### Open decisions — sign-off (issue #14)
+### Sign-off — resolved
 
-1. **Resolution mechanism** — in-VM `ModelController` read (A) vs MSC service
-   walk (B) vs hybrid (A for names, B for instances). Contract is fixed; the
-   mechanism is validated in `WildFlyContainerIT`. Leaning hybrid.
-2. **`knownHandlers()` on WildFly** — `ALL_HANDLERS` + resolved-name reals
-   (identity-token reals stay non-addressable), vs names for display only with
-   `ALL_HANDLERS` still the sole lever. Leaning the former — individual
-   addressing is the point (`logctl handler SIF INFO`).
-3. **Resolver seam shape** — bulk `Map<Handler,String> resolve(List<Handler>)`
-   injected via the factory (leaning), vs per-handler `Optional<String>
-   nameFor(Handler)`, vs a `core.spi` interface rather than one in
-   `adapter-jul`.
-4. **When resolution runs** — lazy on first `knownHandlers()`/`realHandlers()`
-   with retry-until-first-success + cache-invalidation on the config-change
-   signal (leaning), vs eager at a later server-`running` gate.
-5. **Ref stability** — never advertise a real ref until its name resolves
-   (leaning; no migration path needed), vs advertise identity tokens
-   immediately and migrate tracked overrides' keys when names arrive.
-6. **`doctor` / `top` output** — pick up friendly names as part of this feature
-   (leaning), vs leave them on tokens until a separate pass.
-7. **Partial resolution** — per-handler best-effort, unresolved handlers keep
-   tokens and stay non-addressable (leaning), vs all-or-nothing (advertise
-   friendly names only if *every* real handler resolved).
-8. **Version claim** — "verified 26.1.3.Final, best-effort elsewhere" (leaning)
-   vs a broader asserted range.
-9. **Relationship to `logctl status --handlers` (#15)** — #14 unblocks a
-   meaningful catalog; keep #15 a separate follow-up (leaning) vs fold a basic
-   listing in here.
+*All nine review decisions resolved to their leaning, and folded into the
+prose above:* the mechanism is a **hybrid** — in-VM `ModelController` read for
+the authoritative name, MSC for the live instance — with the exact internal API
+on each half validated in `WildFlyContainerIT` (was #1). `knownHandlers()` on
+WildFly returns `ALL_HANDLERS` **plus** every real handler whose name resolved;
+a real handler still on an identity token is not advertised, since its token is
+unstable across a restart (was #2). The seam is a **bulk**
+`Map<Handler,String> resolve(List<Handler>)` on a `HandlerNameResolver`
+interface in `adapter-jul`, injected through `JulAdapterFactory` (was #3).
+Resolution is **lazy** — attempted on the first `knownHandlers()` /
+`realHandlers()` call, retried on later calls until it succeeds once, cache
+invalidated on the existing config-change signal (was #4). **No real ref is
+advertised until its name resolves**, so there is no identity-token→name
+migration path (was #5). `doctor` and `top` **pick up friendly names** as part
+of this feature, through the same `realHandlers()` path (was #6). Resolution is
+**per-handler best-effort** — an unresolved handler keeps its token and stays
+non-addressable, never an error, `ALL_HANDLERS` unaffected (was #7). The
+version claim is **"verified on 26.1.3.Final, best-effort and cleanly degrading
+elsewhere"** (was #8). `logctl status --handlers` (#15) stays a **separate
+alpha-1 follow-up** — #14 only makes its catalog meaningful (was #9).
 
 ## Semantics to pin down
 
