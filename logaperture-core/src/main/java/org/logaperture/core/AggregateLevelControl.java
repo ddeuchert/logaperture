@@ -21,6 +21,7 @@ import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
+import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetHandlerLevelOptions;
@@ -60,20 +61,21 @@ import java.util.concurrent.ConcurrentHashMap;
  * call. The multi-context paths are exercised by tests with fake contexts.
  */
 public final class AggregateLevelControl implements LevelControlOperations, HandlerLevelControlOperations,
-        DoctorOperations {
+        DoctorOperations, TopOperations {
 
     /**
      * One context: its {@link ContextHandle}, the single-context logger
-     * service, the single-context handler service, and the single-context
-     * doctor service that drive it.
+     * service, the single-context handler service, the single-context
+     * doctor service, and the single-context top service that drive it.
      */
     public record ContextControl(ContextHandle handle, LevelControlService service,
-            HandlerLevelControlService handlerService, DoctorService doctorService) {
+            HandlerLevelControlService handlerService, DoctorService doctorService, TopService topService) {
         public ContextControl {
             Objects.requireNonNull(handle, "handle");
             Objects.requireNonNull(service, "service");
             Objects.requireNonNull(handlerService, "handlerService");
             Objects.requireNonNull(doctorService, "doctorService");
+            Objects.requireNonNull(topService, "topService");
         }
 
         String stableKey() {
@@ -190,6 +192,41 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             }
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * {@code logctl top} across every registered context — the {@link
+     * #diagnose} counterpart for byte-volume measurement (doc/specs/top.md).
+     * Every context's rows are merged, each tagged with its context's {@code
+     * stableKey}, then re-sorted worst-first and truncated to {@code limit}
+     * over the merged set (not per context) so a global top-10 is genuinely
+     * the ten worst loggers, not the worst ten-per-context.
+     *
+     * <p>{@code measurementStartedAt} reports the <em>earliest</em> window
+     * among registered contexts. A context installed later than that instant
+     * under-reports its own rate for as long as its own window is shorter
+     * than the merged one shown — the same "give it time" caveat as any
+     * freshly-started measurement, not a defect; doc/specs/top.md's own
+     * "On interpretation" section covers the broader limits of this number.
+     */
+    @Override
+    public TopReport topLoggers(int limit) {
+        List<LoggerByteCount> merged = new ArrayList<>();
+        Instant earliest = null;
+        for (ContextControl context : sortedByKey()) {
+            String key = context.stableKey();
+            TopReport report = context.topService().topLoggers(0); // unlimited -- limit applies after merging
+            for (LoggerByteCount row : report.loggers()) {
+                merged.add(row.withContext(key));
+            }
+            Instant started = report.measurementStartedAt();
+            if (started != null && (earliest == null || started.isBefore(earliest))) {
+                earliest = started;
+            }
+        }
+        merged.sort(Comparator.comparingLong(LoggerByteCount::totalBytes).reversed());
+        List<LoggerByteCount> limited = limit > 0 && merged.size() > limit ? merged.subList(0, limit) : merged;
+        return new TopReport(List.copyOf(limited), earliest);
     }
 
     @Override
@@ -342,6 +379,12 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * (doc/specs/handler-floor-control.md "Reconfiguration re-application" —
      * previously a documented gap: loggers had this, handlers didn't).
      *
+     * <p>Also re-confirms every context's byte-counting wrap is still in
+     * place (doc/specs/top.md "Reconfiguration and lifecycle") — {@code top}
+     * has no reconfiguration event of its own to hook, so this periodic tick
+     * is the mechanism that re-wraps a handler a framework silently replaced,
+     * the same floor level-control overrides already rely on here.
+     *
      * @return total overrides re-applied across all contexts, loggers and handlers alike
      */
     public int verificationSweep(Instant now) {
@@ -349,6 +392,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         for (ContextControl context : sortedByKey()) {
             reapplied += context.service().verifyAndReapply(now);
             reapplied += context.handlerService().verifyAndReapply(now);
+            context.topService().startMeasuring();
         }
         return reapplied;
     }

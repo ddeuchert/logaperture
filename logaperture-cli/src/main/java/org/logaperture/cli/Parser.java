@@ -38,6 +38,9 @@ final class Parser {
      */
     static final Duration DEFAULT_FOR = Duration.ofHours(4);
 
+    /** doc/specs/top.md Decision #9: worst-10 by default; {@code --limit 0} shows every tracked logger. */
+    static final int DEFAULT_TOP_LIMIT = 10;
+
     private static final Set<String> LEVEL_SUBCOMMANDS = Set.of("debug", "trace", "info", "warn", "error");
 
     private Parser() {
@@ -53,6 +56,7 @@ final class Parser {
         boolean debug = false;
         boolean all = false;
         String reason = null;
+        Integer limit = null;
 
         for (int i = 0; i < argv.length; i++) {
             String arg = argv[i];
@@ -83,6 +87,17 @@ final class Parser {
                         throw usage("--reason needs a value.");
                     }
                     reason = argv[i];
+                }
+                case "--limit" -> {
+                    i++;
+                    if (i >= argv.length) {
+                        throw usage("--limit needs a value.");
+                    }
+                    try {
+                        limit = Integer.parseInt(argv[i]);
+                    } catch (NumberFormatException e) {
+                        throw usage("--limit value '" + argv[i] + "' is not a number.");
+                    }
                 }
                 default -> {
                     if (arg.startsWith("--")) {
@@ -122,6 +137,9 @@ final class Parser {
         if (all && !command.equals("reset")) {
             throw usage("--all applies only to 'reset'.");
         }
+        if (limit != null && !command.equals("top")) {
+            throw usage("--limit applies only to 'top'.");
+        }
 
         Command resolved = switch (command) {
             case "levels" -> {
@@ -135,6 +153,12 @@ final class Parser {
                     throw usage("'status' takes no arguments.");
                 }
                 yield Commands.status(json);
+            }
+            case "top" -> {
+                if (!rest.isEmpty()) {
+                    throw usage("'top' takes no arguments.");
+                }
+                yield Commands.top(limit == null ? DEFAULT_TOP_LIMIT : limit, json);
             }
             case "doctor" -> {
                 if (!rest.isEmpty()) {

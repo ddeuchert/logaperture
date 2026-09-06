@@ -29,6 +29,7 @@ import org.logaperture.core.HandlerOverrideRegistry;
 import org.logaperture.core.LevelControlService;
 import org.logaperture.core.OverrideRegistry;
 import org.logaperture.core.SweepPolicy;
+import org.logaperture.core.TopService;
 import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
@@ -122,7 +123,14 @@ public final class WildFlyContainer implements AutoCloseable {
 
         DoctorService doctorService = new DoctorService(adapter, policy);
 
-        aggregate.register(new ContextControl(handle, service, handlerService, doctorService));
+        TopService topService = new TopService(adapter, policy);
+        // doc/specs/top.md: always-on from the moment this context comes up.
+        // No adapter reset wiring here either -- same reasoning as above, the
+        // periodic verification sweep (AggregateLevelControl.verificationSweep)
+        // re-confirms the byte-counting wrap on every tick regardless.
+        topService.startMeasuring();
+
+        aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService));
     }
 
     /**

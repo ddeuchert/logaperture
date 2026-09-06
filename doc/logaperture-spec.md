@@ -946,7 +946,7 @@ The developer runs on a workstation with a terminal and disposable state. The cu
 
 ### 16.1 Measure before you suppress
 
-> Implementation spec: [`doc/specs/top.md`](specs/top.md) — signed off, not yet implemented.
+> Implementation spec: [`doc/specs/top.md`](specs/top.md) — implemented and verified end-to-end.
 
 The first question when a customer says "my disk filled up" is *what generated the volume*, and today nobody can answer it without parsing the file. The agent is uniquely positioned to answer it precisely, and this is probably the single most valuable operations feature.
 

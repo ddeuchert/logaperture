@@ -143,6 +143,28 @@ class ParserTest {
     }
 
     @Test
+    void topTakesNoArguments() {
+        Parser.parse(new String[] {"top"});
+        Parser.parse(new String[] {"top", "--json"});
+        Parser.parse(new String[] {"top", "--limit", "5"});
+        assertUsage(() -> Parser.parse(new String[] {"top", "com.acme"}));
+        assertUsage(() -> Parser.parse(new String[] {"top", "--include-children"}));
+        assertUsage(() -> Parser.parse(new String[] {"top", "--reason", "x"}));
+    }
+
+    @Test
+    void limitAppliesOnlyToTop() {
+        assertUsage(() -> Parser.parse(new String[] {"doctor", "--limit", "5"}));
+        assertUsage(() -> Parser.parse(new String[] {"status", "--limit", "5"}));
+    }
+
+    @Test
+    void limitNeedsANumericValue() {
+        assertUsage(() -> Parser.parse(new String[] {"top", "--limit", "soon"}));
+        assertUsage(() -> Parser.parse(new String[] {"top", "--limit"}));
+    }
+
+    @Test
     void debugFlagIsCarried() {
         assertTrue(Parser.parse(new String[] {"--debug", "status"}).debug());
     }

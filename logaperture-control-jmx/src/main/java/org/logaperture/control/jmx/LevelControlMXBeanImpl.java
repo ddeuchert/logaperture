@@ -23,6 +23,7 @@ import org.logaperture.api.SetLevelOptions;
 import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
+import org.logaperture.core.TopOperations;
 
 import java.time.Duration;
 import java.util.List;
@@ -47,12 +48,14 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     private final LevelControlOperations operations;
     private final HandlerLevelControlOperations handlerOperations;
     private final DoctorOperations doctorOperations;
+    private final TopOperations topOperations;
 
     public LevelControlMXBeanImpl(LevelControlOperations operations, HandlerLevelControlOperations handlerOperations,
-            DoctorOperations doctorOperations) {
+            DoctorOperations doctorOperations, TopOperations topOperations) {
         this.operations = Objects.requireNonNull(operations, "operations");
         this.handlerOperations = Objects.requireNonNull(handlerOperations, "handlerOperations");
         this.doctorOperations = Objects.requireNonNull(doctorOperations, "doctorOperations");
+        this.topOperations = Objects.requireNonNull(topOperations, "topOperations");
     }
 
     @Override
@@ -102,6 +105,11 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     @Override
     public List<DoctorFindingData> diagnose() {
         return doctorOperations.diagnose().stream().map(DoctorFindingData::from).toList();
+    }
+
+    @Override
+    public TopReportData topLoggers(int limit) {
+        return TopReportData.from(topOperations.topLoggers(limit));
     }
 
     private static SetLevelOptions toOptions(boolean includeChildren, String reason, String tier, long forSeconds) {

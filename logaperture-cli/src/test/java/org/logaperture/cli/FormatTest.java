@@ -58,4 +58,28 @@ class FormatTest {
         assertEquals("in 1d 6h", Format.relative(Duration.ofHours(30)));
         assertEquals("now", Format.relative(Duration.ofSeconds(-5)));
     }
+
+    // --- top (doc/specs/top.md) ------------------------------------------------------------------
+
+    @Test
+    void bytesScalesToTheNearestSensibleUnit() {
+        assertEquals("412 MB", Format.bytes(412.0 * 1024 * 1024));
+        assertEquals("9.6 GB", Format.bytes(9.6 * 1024 * 1024 * 1024));
+        assertEquals("0 MB", Format.bytes(0));
+    }
+
+    @Test
+    void elapsedIsCoarseLikeRelativeButWithoutTheInPrefix() {
+        assertEquals("6h 12m", Format.elapsed(Duration.ofMinutes(372)));
+        assertEquals("27m", Format.elapsed(Duration.ofMinutes(27)));
+        assertEquals("under a minute", Format.elapsed(Duration.ofSeconds(8)));
+        assertEquals("4h", Format.elapsed(Duration.ofHours(4)));
+    }
+
+    @Test
+    void paddedLeftAlignsToTheGivenWidth() {
+        assertEquals("abc  ", Format.padded("abc", 5));
+        assertEquals("abcde", Format.padded("abcde", 5));
+        assertEquals("abcdef", Format.padded("abcdef", 5), "never truncates -- just doesn't pad further");
+    }
 }

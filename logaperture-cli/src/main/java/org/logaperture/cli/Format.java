@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Plain-text rendering helpers: column-aligned tables, and the wall-clock
@@ -70,6 +71,35 @@ final class Format {
     /** Local wall-clock time of an ISO-8601 instant, e.g. {@code 15:42:00}. */
     static String clock(String isoInstant) {
         return Instant.parse(isoInstant).atZone(ZoneId.systemDefault()).format(CLOCK);
+    }
+
+    /** Human-scaled byte count, e.g. {@code 9.6 GB}, {@code 412 MB} -- doc/specs/top.md. */
+    static String bytes(double byteCount) {
+        double gb = byteCount / (1024.0 * 1024.0 * 1024.0);
+        if (gb >= 1.0) {
+            return String.format(Locale.ROOT, "%.1f GB", gb);
+        }
+        double mb = byteCount / (1024.0 * 1024.0);
+        return String.format(Locale.ROOT, "%.0f MB", mb);
+    }
+
+    /** A coarse "how long", e.g. {@code 6h 12m}, {@code 27m}, {@code under a minute} -- doc/specs/top.md's "measured over" line. */
+    static String elapsed(Duration duration) {
+        long totalMinutes = Math.max(0, duration.toMinutes());
+        long hours = totalMinutes / 60;
+        long minutes = totalMinutes % 60;
+        if (hours > 0) {
+            return hours + "h" + (minutes > 0 ? " " + minutes + "m" : "");
+        }
+        if (minutes > 0) {
+            return minutes + "m";
+        }
+        return "under a minute";
+    }
+
+    /** Left-aligns {@code cell} to {@code width}, same padding style as {@link #table}'s columns. */
+    static String padded(String cell, int width) {
+        return cell + " ".repeat(Math.max(0, width - cell.length()));
     }
 
     /** A coarse "how far from now", e.g. {@code in 27m}, {@code in 3h 59m}, {@code in 8s}, or {@code now}. */

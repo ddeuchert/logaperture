@@ -21,6 +21,7 @@ import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
+import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
@@ -60,6 +61,7 @@ class AggregateLevelControlTest {
         final LevelControlService service;
         final HandlerLevelControlService handlerService;
         final DoctorService doctorService;
+        final TopService topService;
         final ContextControl control;
 
         Ctx(String key) {
@@ -72,7 +74,9 @@ class AggregateLevelControlTest {
             handlerService = new HandlerLevelControlService(adapter, new HandlerBaselineRegistry(),
                     new HandlerOverrideRegistry(), policy, auditLog, sharedStore, "alice", "jmx");
             doctorService = new DoctorService(adapter, policy);
-            control = new ContextControl(ContextHandle.of(key, key, adapter), service, handlerService, doctorService);
+            topService = new TopService(adapter, policy);
+            control = new ContextControl(
+                    ContextHandle.of(key, key, adapter), service, handlerService, doctorService, topService);
         }
     }
 
@@ -198,6 +202,53 @@ class AggregateLevelControlTest {
         assertTrue(findings.stream().anyMatch(f -> "system".equals(f.context())));
         assertTrue(findings.stream().anyMatch(f -> "myapp.war".equals(f.context())));
         assertTrue(findings.stream().allMatch(f -> f.context() != null), "every row is tagged with its context");
+    }
+
+    // --- topLoggers (doc/specs/top.md) -----------------------------------------------------------
+
+    @Test
+    void topLoggers_mergesEveryContext_taggedWithItsContext_sortedWorstFirst() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        system.adapter.setByteCounts(List.of(new LoggerByteCount("org.apache.http", 1_000L, 0L)));
+        app.adapter.setByteCounts(List.of(new LoggerByteCount("com.myapp.Worker", 5_000L, 0L)));
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        List<LoggerByteCount> rows = aggregate.topLoggers(0).loggers();
+
+        assertEquals(2, rows.size());
+        assertEquals("com.myapp.Worker", rows.get(0).loggerName(), "worst offender across every context comes first");
+        assertEquals("myapp.war", rows.get(0).context());
+        assertEquals("system", rows.get(1).context());
+    }
+
+    @Test
+    void topLoggers_limitAppliesToTheMergedSet_notPerContext() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        system.adapter.setByteCounts(List.of(new LoggerByteCount("a", 300L, 0L), new LoggerByteCount("b", 100L, 0L)));
+        app.adapter.setByteCounts(List.of(new LoggerByteCount("c", 200L, 0L)));
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        List<LoggerByteCount> rows = aggregate.topLoggers(2).loggers();
+
+        assertEquals(List.of("a", "c"), rows.stream().map(LoggerByteCount::loggerName).toList());
+    }
+
+    @Test
+    void topLoggers_measurementStartedAt_isTheEarliestAcrossContexts() throws InterruptedException {
+        Ctx early = new Ctx("system");
+        early.topService.startMeasuring();
+        Thread.sleep(5);
+        Ctx late = new Ctx("myapp.war");
+        late.topService.startMeasuring();
+        aggregate.register(early.control);
+        aggregate.register(late.control);
+
+        assertEquals(early.topService.topLoggers(0).measurementStartedAt(),
+                aggregate.topLoggers(0).measurementStartedAt());
     }
 
     @Test

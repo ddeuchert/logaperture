@@ -19,8 +19,10 @@ import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
+import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.SetLevelResultData;
+import org.logaperture.control.jmx.TopReportData;
 
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -186,6 +188,32 @@ final class Json {
             checks.add(finding.getCheck());
         }
         return checks.size();
+    }
+
+    /**
+     * {@code logctl top --json} — doc/specs/top.md "The operation". Raw
+     * counts only, same as the wire {@link LoggerByteCountData} shape — rate
+     * and the stack-trace percentage are the text renderer's own derivation
+     * (doc/specs/top.md "Data model"); a script wanting them computes from
+     * {@code totalBytes}/{@code stackTraceBytes} and {@code
+     * measurementStartedAt} the same way. {@code trackedCount} is the number
+     * of rows in this response, i.e. after {@code --limit} is applied.
+     */
+    static String top(TopReportData report) {
+        StringJoiner array = new StringJoiner(",", "[", "]");
+        for (LoggerByteCountData logger : report.getLoggers()) {
+            array.add(new Obj()
+                    .str("loggerName", logger.getLoggerName())
+                    .raw("totalBytes", String.valueOf(logger.getTotalBytes()))
+                    .raw("stackTraceBytes", String.valueOf(logger.getStackTraceBytes()))
+                    .str("context", logger.getContext())
+                    .toString());
+        }
+        return new Obj()
+                .raw("loggers", array.toString())
+                .str("measurementStartedAt", report.getMeasurementStartedAt())
+                .raw("trackedCount", String.valueOf(report.getLoggers().size()))
+                .toString();
     }
 
     /**

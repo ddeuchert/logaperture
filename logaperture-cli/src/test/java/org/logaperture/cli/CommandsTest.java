@@ -20,8 +20,10 @@ import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
+import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.SetLevelResultData;
+import org.logaperture.control.jmx.TopReportData;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -206,6 +208,66 @@ class CommandsTest {
         String text = output().strip();
         assertTrue(text.startsWith("{\"findings\":[{"), text);
         assertTrue(text.contains("\"checksRun\":1"), text);
+    }
+
+    // --- top (doc/specs/top.md) ------------------------------------------------------------------
+
+    @Test
+    void top_rendersRatesProjectionsAndStackTracePercentage() {
+        // 20 GiB over 10h => 2.0 GB/h -- comfortably clear of the GB/MB
+        // rounding boundary so this test isn't sensitive to how many
+        // milliseconds elapse between computing startedAt and rendering.
+        String startedAt = Instant.now().minus(10, ChronoUnit.HOURS).toString();
+        mbean.topReport = new TopReportData(List.of(
+                new LoggerByteCountData("org.apache.http", 20L * 1024 * 1024 * 1024, 0L, null),
+                new LoggerByteCountData("com.acme.Half", 100L, 50L, null)),
+                startedAt);
+
+        assertEquals(CliError.OK, run(Commands.top(0, false)));
+
+        String text = output();
+        assertTrue(text.contains("org.apache.http"), text);
+        assertTrue(text.contains("2.0 GB/h"), text);
+        assertTrue(text.contains("(48.0 GB/day)"), text);
+        assertTrue(text.contains("0% stack traces"), text);
+        assertTrue(text.contains("50% stack traces"), text);
+        assertTrue(text.contains("2 loggers tracked."), text);
+        assertEquals(List.of(0), mbean.topLoggersLimits);
+    }
+
+    @Test
+    void top_noTrackedLoggers_printsANoteInsteadOfATable() {
+        mbean.topReport = new TopReportData(List.of(), null);
+
+        assertEquals(CliError.OK, run(Commands.top(10, false)));
+
+        assertTrue(output().contains("No byte-volume measurements available yet."));
+    }
+
+    @Test
+    void top_json_wrapsLoggersAndPassesTheLimitThrough() {
+        mbean.topReport = new TopReportData(
+                List.of(new LoggerByteCountData("a", 10L, 0L, null)), Instant.now().toString());
+
+        run(Commands.top(5, true));
+
+        String text = output().strip();
+        assertTrue(text.startsWith("{\"loggers\":[{"), text);
+        assertEquals(List.of(5), mbean.topLoggersLimits);
+    }
+
+    @Test
+    void top_showsContextPrefixOnlyWhenResultSpansMultipleContexts() {
+        mbean.topReport = new TopReportData(List.of(
+                new LoggerByteCountData("a", 10L, 0L, "system"),
+                new LoggerByteCountData("b", 10L, 0L, "myapp.war")),
+                Instant.now().toString());
+
+        run(Commands.top(0, false));
+
+        String text = output();
+        assertTrue(text.contains("[system]"), text);
+        assertTrue(text.contains("[myapp.war]"), text);
     }
 
     @Test

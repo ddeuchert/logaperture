@@ -30,6 +30,7 @@ final class HelpText {
             "logctl levels [filter]",
             "logctl status",
             "logctl doctor",
+            "logctl top [--limit n]",
             "logctl debug <logger> [session | for <duration> | sticky]",
             "logctl trace <logger> [session | for <duration> | sticky]",
             "logctl info <logger> [session | for <duration> | sticky]",
@@ -55,6 +56,7 @@ final class HelpText {
         sb.append("  --pid <n>            target this JVM instead of discovering one\n");
         sb.append("  --reason <text>      why — shown in status, kept in the audit trail\n");
         sb.append("  --include-children   also apply to loggers below this one\n");
+        sb.append("  --limit <n>          for 'top' — worst N offenders, 0 for every one tracked\n");
         sb.append("  --json               machine-readable output\n");
         sb.append("  --version            print version and exit\n");
         sb.append("  -h, --help           this help\n");
@@ -78,6 +80,10 @@ final class HelpText {
         sb.append("misconfigurations (unbounded file handlers, DEBUG/TRACE left on,\n");
         sb.append("duplicate output, autoflush, low disk headroom) with a severity and,\n");
         sb.append("where there's an unambiguous one, the exact fix.\n");
+        sb.append("\n");
+        sb.append("'top' is also read-only. It shows which loggers have written the most\n");
+        sb.append("bytes since the agent started, worst first, with a rate, a projected\n");
+        sb.append("daily total, and what share of that volume is stack traces.\n");
         sb.append("\n");
         sb.append("logctl finds the target JVM on its own when exactly one is running with\n");
         sb.append("the agent attached; otherwise pass --pid. It works only for a JVM you\n");

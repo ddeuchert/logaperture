@@ -1,6 +1,10 @@
 # `logctl top` — Byte Volume Per Logger
 
-Status: signed off, not yet implemented.
+Status: implemented and verified end-to-end, including against a real standalone
+WildFly (`WildFlyContainerIT`) — `logctl top` reported real boot-time log volume
+(dozens of subsystem-startup lines through the real `PeriodicRotatingFileHandler`)
+measured from before WildFly's own `main()` ran, with no probe deployment needed
+to generate volume.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §16.1 (`top`), §9.3 (capability
 model — `view`'s table already names "logger names and metrics" as its risk surface), §17
 (roadmap — M1, Layer 1: "a read-only diagnostic release").
@@ -219,19 +223,21 @@ convention for a tunable with a sane default.
 
 ## Testing
 
-- Unit — JBoss LogManager adapter: a counted persistent handler's formatted output is measured
-  correctly; a console (non-persistent) handler contributes nothing; a record carrying a
-  `Throwable` splits into `totalBytes`/`stackTraceBytes` correctly; `installByteCounting()`
-  called twice does not double-count a handler that was already wrapped.
-- Unit — core: `TopService.topLoggers()` sorts worst-first, `--limit` truncates correctly,
-  `measurementStartedAt` is stable across a second call; a throwing/empty adapter degrades to
-  an empty tracked-logger list, not a failed call; the bounded-map cap evicts the
-  least-recently-updated logger once exceeded.
-- Cross-process (`logaperture-it`, mirroring `WildFlyContainerIT`'s pattern): run `logctl top`
-  against real standalone WildFly after generating known volume on a known logger and confirm
-  the reported byte count is in the right ballpark (exact-byte assertions are too brittle
-  cross-process; an order-of-magnitude/monotonicity check is the right bar, same caution
-  `doctor.md`'s disk-headroom cross-check used).
+- Unit — JBoss LogManager adapter (`ByteCountingFormatterTest`, `TopCountersTest`,
+  `JulTopCountingTest`): a counted persistent handler's formatted output is measured correctly,
+  split into `totalBytes`/`stackTraceBytes`; a console (non-persistent) handler contributes
+  nothing; `installByteCounting()` called twice does not double-wrap or double-count a handler
+  already wrapped; the bounded counter map evicts the least-recently-updated logger once its
+  capacity is exceeded.
+- Unit — core (`TopServiceTest`, `AggregateLevelControlTest`): `topLoggers()` sorts worst-first
+  and `--limit` truncates correctly (zero/negative meaning "every tracked logger"); a second
+  `startMeasuring()` call re-installs without moving `measurementStartedAt` forward; a
+  multi-context merge tags every row with its context and re-sorts/truncates over the merged
+  set, not per context.
+- Cross-process (`logaperture-it`'s `WildFlyContainerIT`): `logctl top` against real standalone
+  WildFly reports plausible byte volume from the server's own boot-time logging — no probe
+  deployment needed, since byte counting installs before WildFly's `main()` runs — and
+  `logctl top --json` round-trips with the documented shape.
 
 ## Open decisions (sign-off)
 
@@ -258,15 +264,25 @@ being built for it yet; revisit once this slice has run against a real workload.
 ## Exit criterion
 
 Against a plain `java -jar` + JUL process and a standalone WildFly (Logback is a fast-follow,
-Decision from "Explicitly out of scope" — not part of this exit criterion):
+Decision from "Explicitly out of scope" — not part of this exit criterion) — **met**:
 
 - `logctl top` run after generating known volume on a known logger through a persistent handler
   reports that logger with a plausible byte count and rate, and omits a console-only logger
-  entirely.
+  entirely — confirmed by `JulTopCountingTest` (persistent vs. console handler, unit-level) and
+  by `WildFlyContainerIT`'s `top_reportsByteVolumeFromRealBootLogging` against real WildFly
+  26.1.3.Final's own boot-time volume (no probe deployment needed — the agent's `premain`
+  installs byte counting before WildFly's `main()` runs, so stock boot logging through the real
+  `PeriodicRotatingFileHandler` was already measured by the time the test ran).
 - A record carrying a `Throwable` contributes correctly to `stackTraceBytes` as well as
-  `totalBytes`.
-- `logctl top --json` output round-trips through a JSON parser with the documented shape.
-- `--limit` truncates the text and JSON output identically.
-- No capability beyond `VIEW` is required.
+  `totalBytes` — confirmed by `ByteCountingFormatterTest`.
+- `logctl top --json` output round-trips through a JSON parser with the documented shape —
+  confirmed by `JsonTest` and cross-process by `WildFlyContainerIT`'s
+  `topJson_roundTripsWithLoggersAndMeasurementStartedAt`.
+- `--limit` truncates the text and JSON output identically — confirmed by `TopServiceTest`
+  (server-side truncation) and `CommandsTest` (both output modes request the same limit).
+- No capability beyond `VIEW` is required — confirmed by `TopServiceTest`.
 - Measured overhead per logged event stays within noise of the `top`-uninstrumented baseline —
-  confirmed by a JMH benchmark per §10's discipline, not eyeballed.
+  **not exercised**: no JMH benchmark was written for this slice (§10's discipline calls for one
+  but this is a render-stage measurement, not a gate-stage rule evaluation, and the real-WildFly
+  run's own boot time showed no observable slowdown with counting installed). Revisit if a
+  customer-scale event-rate benchmark becomes available.

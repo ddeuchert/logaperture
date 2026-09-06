@@ -29,6 +29,7 @@ import org.logaperture.core.HandlerOverrideRegistry;
 import org.logaperture.core.LevelControlService;
 import org.logaperture.core.OverrideRegistry;
 import org.logaperture.core.SweepPolicy;
+import org.logaperture.core.TopService;
 import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
@@ -132,23 +133,32 @@ public final class NoneContainer implements AutoCloseable {
             Diagnostics.warn("LogAperture: failed to resume persisted overrides, continuing without them", e);
         }
 
+        DoctorService doctorService = new DoctorService(adapter, policy);
+        TopService topService = new TopService(adapter, policy);
+
         // doc/specs/persistence.md "Reconfiguration re-application": Logback's
         // own reset event (scan="true", JMXConfigurator, an explicit
         // context.reset()) is independent of which container hosts it.
         // doc/specs/handler-floor-control.md "Reconfiguration re-application"
-        // extends the same hook to handler overrides.
+        // extends the same hook to handler overrides. doc/specs/top.md
+        // "Reconfiguration and lifecycle" extends it again, to re-confirm the
+        // byte-counting wrap on whatever handler now exists.
         Runnable reapplyOnReset = () -> {
             for (String name : adapter.knownLoggerNames()) {
                 baselines.captureIfAbsent(name, adapter);
             }
             service.reapplyActiveOverrides(adapter);
             handlerService.reapplyActiveOverrides(adapter);
+            topService.startMeasuring();
         };
         adapter.onReset(reapplyOnReset);
 
-        DoctorService doctorService = new DoctorService(adapter, policy);
+        // doc/specs/top.md: always-on from the moment this context comes up --
+        // by the time an operator runs `logctl top`, the volume that mattered
+        // already happened, so measurement can't start on demand.
+        topService.startMeasuring();
 
-        aggregate.register(new ContextControl(handle, service, handlerService, doctorService));
+        aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService));
     }
 
     /**

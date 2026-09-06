@@ -19,9 +19,12 @@ import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
+import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.SetLevelResultData;
+import org.logaperture.control.jmx.TopReportData;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -313,6 +316,62 @@ final class Commands {
             out.println();
             out.println(Json.checksRun(findings) + " checks run — " + critical + " critical, " + warning
                     + " warning, " + info + " info, " + clean + " clean.");
+            return CliError.OK;
+        };
+    }
+
+    /**
+     * {@code logctl top} — doc/specs/top.md "The operation". Read-only, like
+     * {@code doctor}; unlike it, rate and the stack-trace percentage are
+     * computed here from the raw counts plus how long measurement has been
+     * running, not carried on the wire (doc/specs/top.md "Data model").
+     */
+    static Command top(int limit, boolean json) {
+        return (mbean, out) -> {
+            TopReportData report = mbean.topLoggers(limit);
+            if (json) {
+                out.println(Json.top(report));
+                return CliError.OK;
+            }
+            List<LoggerByteCountData> loggers = report.getLoggers();
+            if (loggers.isEmpty()) {
+                out.println("No byte-volume measurements available yet.");
+                return CliError.OK;
+            }
+            boolean showContext = spansMultipleContexts(loggers, LoggerByteCountData::getContext);
+            Instant startedAt = Instant.parse(report.getMeasurementStartedAt());
+            double hoursElapsed = Math.max(1.0 / 3_600, Duration.between(startedAt, Instant.now()).toMillis() / 3_600_000.0);
+
+            List<String> rates = new ArrayList<>();
+            List<String> projections = new ArrayList<>();
+            List<String> names = new ArrayList<>();
+            for (LoggerByteCountData row : loggers) {
+                double bytesPerHour = row.getTotalBytes() / hoursElapsed;
+                names.add(row.getLoggerName());
+                rates.add(Format.bytes(bytesPerHour) + "/h");
+                projections.add("(" + Format.bytes(bytesPerHour * 24) + "/day)");
+            }
+            int nameWidth = names.stream().mapToInt(String::length).max().orElse(0);
+            int rateWidth = rates.stream().mapToInt(String::length).max().orElse(0);
+            int projectionWidth = projections.stream().mapToInt(String::length).max().orElse(0);
+
+            for (int i = 0; i < loggers.size(); i++) {
+                LoggerByteCountData row = loggers.get(i);
+                long pct = row.getTotalBytes() == 0 ? 0 : Math.round(100.0 * row.getStackTraceBytes() / row.getTotalBytes());
+                StringBuilder line = new StringBuilder();
+                if (showContext) {
+                    line.append('[').append(orDash(row.getContext())).append("] ");
+                }
+                line.append(Format.padded(names.get(i), nameWidth)).append("  ")
+                        .append(Format.padded(rates.get(i), rateWidth)).append("  ")
+                        .append(Format.padded(projections.get(i), projectionWidth)).append("  ")
+                        .append(pct).append("% stack traces");
+                out.println(line.toString().stripTrailing());
+            }
+            out.println();
+            out.println("measured over " + Format.elapsed(Duration.between(startedAt, Instant.now()))
+                    + " (since agent start, " + startedAt + ") — " + loggers.size()
+                    + (loggers.size() == 1 ? " logger" : " loggers") + " tracked.");
             return CliError.OK;
         };
     }

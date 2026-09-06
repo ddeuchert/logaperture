@@ -19,6 +19,7 @@ import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
+import org.logaperture.api.LoggerByteCount;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.UnknownHandlerException;
 
@@ -256,5 +257,29 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     @Override
     public HandlerDiagnostics handlerDiagnostics(HandlerRef ref) {
         return handlerDiagnostics.getOrDefault(ref, HandlerDiagnostics.EMPTY);
+    }
+
+    // --- top support (doc/specs/top.md) -------------------------------------------------------
+
+    private List<LoggerByteCount> byteCountsToReturn = List.of();
+    private int installByteCountingCalls;
+
+    /** What {@link #byteCounts()} returns from now on -- doc/specs/top.md "Adapter SPI". */
+    void setByteCounts(List<LoggerByteCount> counts) {
+        this.byteCountsToReturn = counts;
+    }
+
+    int installByteCountingCallCount() {
+        return installByteCountingCalls;
+    }
+
+    @Override
+    public void installByteCounting() {
+        installByteCountingCalls++;
+    }
+
+    @Override
+    public List<LoggerByteCount> byteCounts() {
+        return byteCountsToReturn;
     }
 }

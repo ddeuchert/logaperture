@@ -21,6 +21,7 @@ import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
+import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetHandlerLevelOptions;
@@ -29,6 +30,8 @@ import org.logaperture.api.SetLevelResult;
 import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
+import org.logaperture.core.TopOperations;
+import org.logaperture.core.TopReport;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -42,7 +45,7 @@ import java.util.Optional;
  * AggregateLevelControl} does in production.
  */
 final class FakeLevelControlOperations implements LevelControlOperations, HandlerLevelControlOperations,
-        DoctorOperations {
+        DoctorOperations, TopOperations {
 
     final List<String> listLoggersCalls = new ArrayList<>();
     final List<Object[]> setLevelCalls = new ArrayList<>();
@@ -56,6 +59,9 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     List<HandlerLevelOverride> handlerOverridesToReturn = List.of();
     List<DoctorFinding> findingsToReturn = List.of();
     boolean diagnoseCalled;
+    List<LoggerByteCount> topLoggersToReturn = List.of();
+    Instant measurementStartedAt;
+    Integer topLoggersLimitRequested;
     RuntimeException throwOnSetLevel;
     RuntimeException throwOnSetHandlerLevel;
     boolean noOpHandlerLevels;
@@ -116,5 +122,11 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     public List<DoctorFinding> diagnose() {
         diagnoseCalled = true;
         return findingsToReturn;
+    }
+
+    @Override
+    public TopReport topLoggers(int limit) {
+        topLoggersLimitRequested = limit;
+        return new TopReport(topLoggersToReturn, measurementStartedAt);
     }
 }

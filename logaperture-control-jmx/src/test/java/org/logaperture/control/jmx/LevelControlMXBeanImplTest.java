@@ -44,7 +44,7 @@ class LevelControlMXBeanImplTest {
     }
 
     private static LevelControlMXBeanImpl bean(FakeLevelControlOperations fake) {
-        return new LevelControlMXBeanImpl(fake, fake, fake);
+        return new LevelControlMXBeanImpl(fake, fake, fake, fake);
     }
 
     @Test

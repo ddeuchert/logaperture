@@ -18,7 +18,9 @@ package org.logaperture.cli;
 import org.junit.jupiter.api.Test;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
+import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
+import org.logaperture.control.jmx.TopReportData;
 
 import java.util.List;
 
@@ -86,5 +88,26 @@ class JsonTest {
     @Test
     void statusWithNothingActiveStillEmitsBothEmptyArrays() {
         assertEquals("{\"loggers\":[],\"handlerOverrides\":[]}", Json.status(List.of(), List.of()));
+    }
+
+    // --- top (doc/specs/top.md) -----------------------------------------------------------------
+
+    @Test
+    void topEmitsRawCountsKeyOrderAndTrackedCount() {
+        TopReportData report = new TopReportData(
+                List.of(new LoggerByteCountData("org.apache.http", 1_000L, 980L, null)),
+                "2026-09-05T14:02:11Z");
+
+        assertEquals(
+                "{\"loggers\":[{\"loggerName\":\"org.apache.http\",\"totalBytes\":1000,\"stackTraceBytes\":980,"
+                        + "\"context\":null}],\"measurementStartedAt\":\"2026-09-05T14:02:11Z\",\"trackedCount\":1}",
+                Json.top(report));
+    }
+
+    @Test
+    void topWithNoTrackedLoggers_emitsAnEmptyArrayAndNullStartedAt() {
+        TopReportData report = new TopReportData(List.of(), null);
+
+        assertEquals("{\"loggers\":[],\"measurementStartedAt\":null,\"trackedCount\":0}", Json.top(report));
     }
 }

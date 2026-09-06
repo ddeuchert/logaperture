@@ -20,6 +20,7 @@ import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelControlMXBean;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.SetLevelResultData;
+import org.logaperture.control.jmx.TopReportData;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,6 +40,8 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     List<LoggerInfoData> loggers = new ArrayList<>();
     List<HandlerLevelOverrideData> handlerOverrides = new ArrayList<>();
     List<DoctorFindingData> findings = new ArrayList<>();
+    TopReportData topReport = new TopReportData(new ArrayList<>(), null);
+    final List<Integer> topLoggersLimits = new ArrayList<>();
     SetLevelResultData setLevelResult;
     HandlerLevelOverrideData setHandlerLevelResult;
     RuntimeException throwOnNextCall;
@@ -106,6 +109,13 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     public List<DoctorFindingData> diagnose() {
         maybeThrow();
         return findings;
+    }
+
+    @Override
+    public TopReportData topLoggers(int limit) {
+        topLoggersLimits.add(limit);
+        maybeThrow();
+        return topReport;
     }
 
     private void maybeThrow() {

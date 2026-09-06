@@ -307,6 +307,37 @@ class WildFlyContainerIT {
         assertTrue(result.stdout().contains("\"checksRun\":"), result.stdout());
     }
 
+    // --- top (doc/specs/top.md) --------------------------------------------------------------------
+
+    @Test
+    void top_reportsByteVolumeFromRealBootLogging() {
+        // No probe deployment needed to generate volume: the agent's premain
+        // installs byte counting before WildFly's own main() ever starts, so
+        // by the time this test runs, stock WildFly's own boot logging (which
+        // is substantial -- dozens of subsystem-startup lines through the
+        // real FILE-equivalent handler) has already been measured.
+        Logctl result = logctl("top");
+        assertEquals(0, result.exitCode(), result.stderr());
+        String out = result.stdout();
+
+        assertFalse(out.contains("No byte-volume measurements available yet."), out);
+        assertTrue(out.contains("/h"), "expected at least one rendered rate:\n" + out);
+        assertTrue(out.contains("stack traces"), out);
+        assertTrue(out.contains("measured over"), out);
+    }
+
+    @Test
+    void topJson_roundTripsWithLoggersAndMeasurementStartedAt() {
+        Logctl result = logctl("top", "--json");
+        assertEquals(0, result.exitCode(), result.stderr());
+        String out = result.stdout();
+
+        assertTrue(out.contains("\"loggers\":["), out);
+        assertTrue(out.contains("\"measurementStartedAt\":\""), out);
+        assertTrue(out.contains("\"trackedCount\":"), out);
+        assertFalse(out.contains("\"measurementStartedAt\":null"), "measurement must already be running by now");
+    }
+
     // --- probe WAR ------------------------------------------------------------------------------
 
     private void deployProbeWar() throws Exception {
