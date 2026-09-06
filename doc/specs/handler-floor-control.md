@@ -36,6 +36,25 @@ Verified by unit tests (`HandlerLevelControlServiceTest`,
 `ALL_HANDLERS` tests). Real per-handler WildFly names remain future work
 ([#14](https://github.com/ddeuchert/logaperture/issues/14), sequenced after
 this lands).
+
+**Planned extension (issue [#28](https://github.com/ddeuchert/logaperture/issues/28),
+alpha-2 — spec section not yet written).** A well-known `DEFAULT_HANDLERS`
+logical ref alongside `ALL_HANDLERS` (user-assigned members, persisted sticky),
+an **`AUTO` handler level** ([#20](https://github.com/ddeuchert/logaperture/issues/20))
+whose effective level tracks the lowest active `logctl` logger override so a
+highlighted category is guaranteed to reach the default handlers (no active
+overrides → the captured baseline), and an additive `logctl debug <logger> --to
+<group>` delivery target (default `DEFAULT_HANDLERS`; ensures the target's level
+lets the record through — *not* routing or restriction, which stays M2). Together
+these make the "define your default handlers, set them `AUTO` sticky, then just
+highlight categories" workflow turnkey, and keep dedicated handlers (an audit
+log, a per-integration log) clean by simply leaving them out of the group. A
+section here will fold in [#20](https://github.com/ddeuchert/logaperture/issues/20)
+before that work starts; open questions include `AUTO` vs. a manual `logctl
+handler <name> <level>` on the same handler, the persistence tier for the group
+definition and the `AUTO` setting, and the reactive recompute cost on every
+`setLevel` / expiry / reset.
+
 Priority: **high** — pulled forward in §17 as the first behaviour-modifying feature
 after M1. "Make this class TRACE and let me see it on the console" is a primary
 developer interaction (§14.1); today it dead-ends at a warning to hand-edit
