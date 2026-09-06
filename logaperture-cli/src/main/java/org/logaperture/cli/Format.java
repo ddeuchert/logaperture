@@ -15,6 +15,8 @@
  */
 package org.logaperture.cli;
 
+import org.logaperture.core.ByteFormat;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -37,22 +39,42 @@ final class Format {
 
     /** Left-aligned, two-space gutter, trailing padding trimmed. {@code rows} cells must be non-null. */
     static String table(List<String> headers, List<List<String>> rows) {
-        int columns = headers.size();
-        int[] width = new int[columns];
-        for (int c = 0; c < columns; c++) {
-            width[c] = headers.get(c).length();
-        }
-        for (List<String> row : rows) {
-            for (int c = 0; c < columns; c++) {
-                width[c] = Math.max(width[c], row.get(c).length());
-            }
-        }
+        int[] width = columnWidths(headers.size(), rows, headers);
         StringBuilder out = new StringBuilder();
         appendRow(out, headers, width);
         for (List<String> row : rows) {
             appendRow(out, row, width);
         }
         return out.toString().stripTrailing();
+    }
+
+    /**
+     * Same left-aligned, gutter-padded rendering as {@link #table(List, List)},
+     * without a header row -- {@code top}'s table (doc/specs/top.md) has none.
+     * {@code rows} must be non-empty and every row the same width.
+     */
+    static String table(List<List<String>> rows) {
+        int[] width = columnWidths(rows.get(0).size(), rows, null);
+        StringBuilder out = new StringBuilder();
+        for (List<String> row : rows) {
+            appendRow(out, row, width);
+        }
+        return out.toString().stripTrailing();
+    }
+
+    private static int[] columnWidths(int columns, List<List<String>> rows, List<String> headers) {
+        int[] width = new int[columns];
+        if (headers != null) {
+            for (int c = 0; c < columns; c++) {
+                width[c] = headers.get(c).length();
+            }
+        }
+        for (List<String> row : rows) {
+            for (int c = 0; c < columns; c++) {
+                width[c] = Math.max(width[c], row.get(c).length());
+            }
+        }
+        return width;
     }
 
     private static void appendRow(StringBuilder out, List<String> cells, int[] width) {
@@ -70,6 +92,30 @@ final class Format {
     /** Local wall-clock time of an ISO-8601 instant, e.g. {@code 15:42:00}. */
     static String clock(String isoInstant) {
         return Instant.parse(isoInstant).atZone(ZoneId.systemDefault()).format(CLOCK);
+    }
+
+    /**
+     * Human-scaled byte count, e.g. {@code 9.6 GB}, {@code 412 MB} --
+     * doc/specs/top.md. Delegates to {@link ByteFormat} -- the same
+     * threshold-and-round logic {@code doctor}'s disk-headroom summaries
+     * use, kept in one place so the two never drift apart.
+     */
+    static String bytes(double byteCount) {
+        return ByteFormat.humanReadable(byteCount);
+    }
+
+    /** A coarse "how long", e.g. {@code 6h 12m}, {@code 27m}, {@code under a minute} -- doc/specs/top.md's "measured over" line. */
+    static String elapsed(Duration duration) {
+        long totalMinutes = Math.max(0, duration.toMinutes());
+        long hours = totalMinutes / 60;
+        long minutes = totalMinutes % 60;
+        if (hours > 0) {
+            return hours + "h" + (minutes > 0 ? " " + minutes + "m" : "");
+        }
+        if (minutes > 0) {
+            return minutes + "m";
+        }
+        return "under a minute";
     }
 
     /** A coarse "how far from now", e.g. {@code in 27m}, {@code in 3h 59m}, {@code in 8s}, or {@code now}. */

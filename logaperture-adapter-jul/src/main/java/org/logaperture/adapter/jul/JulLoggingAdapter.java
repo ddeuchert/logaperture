@@ -19,6 +19,7 @@ import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
+import org.logaperture.api.LoggerByteCount;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.UnknownHandlerException;
 
@@ -28,6 +29,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Formatter;
 import java.util.logging.Handler;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
@@ -85,6 +87,8 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             new ConcurrentHashMap<>();
     /** Handlers this adapter has resolved a {@link HandlerRef} for, keyed by that ref -- {@link #setHandlerLevel} needs it back. */
     private final ConcurrentHashMap<HandlerRef, Handler> handlersByRef = new ConcurrentHashMap<>();
+    /** doc/specs/top.md -- shared across every {@link ByteCountingFormatter} this adapter installs. */
+    private final TopCounters topCounters = new TopCounters();
 
     /** Package-visible: constructed by {@link JulAdapterFactory}. */
     JulLoggingAdapter() {
@@ -217,6 +221,39 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             return HandlerDiagnostics.EMPTY;
         }
         return JulHandlerDiagnostics.of(handler);
+    }
+
+    /**
+     * doc/specs/top.md "Adapter SPI". Wraps every persistent handler's
+     * {@link Formatter} in a {@link ByteCountingFormatter} — a console-only
+     * handler is skipped entirely (doc/specs/top.md Decision #1, same
+     * persistent-handler signal {@link #handlerDiagnostics} already
+     * exposes). Idempotent: a handler whose formatter is already a {@link
+     * ByteCountingFormatter} is left alone, so a re-invocation (this
+     * adapter's periodic re-verification standing in for a reconfiguration
+     * event JUL doesn't have) never double-wraps or double-counts. A handler
+     * the framework has silently replaced with a fresh instance, or handed a
+     * fresh formatter, gets (re-)wrapped exactly like a handler seen for the
+     * first time.
+     */
+    @Override
+    public void installByteCounting() {
+        for (HandlerRef ref : realHandlers()) {
+            Handler handler = handlersByRef.get(ref);
+            if (handler == null || !JulHandlerDiagnostics.of(handler).isPersistent()) {
+                continue;
+            }
+            Formatter current = handler.getFormatter();
+            if (current instanceof ByteCountingFormatter || current == null) {
+                continue; // already wrapped, or nothing to wrap around
+            }
+            handler.setFormatter(new ByteCountingFormatter(current, topCounters));
+        }
+    }
+
+    @Override
+    public List<LoggerByteCount> byteCounts() {
+        return topCounters.snapshot();
     }
 
     /**

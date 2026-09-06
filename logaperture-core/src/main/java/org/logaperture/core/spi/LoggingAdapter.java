@@ -19,6 +19,7 @@ import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
+import org.logaperture.api.LoggerByteCount;
 
 import java.util.List;
 import java.util.Optional;
@@ -177,5 +178,29 @@ public interface LoggingAdapter {
      */
     default HandlerDiagnostics handlerDiagnostics(HandlerRef ref) {
         return HandlerDiagnostics.EMPTY;
+    }
+
+    /**
+     * Installs render-stage byte counting on every persistent handler this
+     * adapter can act on right now, attributing each counted record's bytes
+     * to its originating logger name — doc/specs/top.md "Adapter SPI".
+     * Idempotent: safe to call again (a context-install retry, or {@code
+     * core}'s periodic re-verification standing in for a reconfiguration
+     * hook this framework doesn't have — doc/specs/top.md "Reconfiguration
+     * and lifecycle") without double-counting or losing prior totals for a
+     * handler that's already wrapped. Default no-op, for a framework this
+     * slice doesn't instrument (Logback, {@code none}).
+     */
+    default void installByteCounting() {
+        // no-op by default
+    }
+
+    /**
+     * Byte-count totals accumulated since {@link #installByteCounting()} was
+     * first called, one entry per logger name that has emitted at least one
+     * counted byte. Default empty.
+     */
+    default List<LoggerByteCount> byteCounts() {
+        return List.of();
     }
 }

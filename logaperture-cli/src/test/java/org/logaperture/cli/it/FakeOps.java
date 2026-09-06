@@ -25,10 +25,13 @@ import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
+import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.Severity;
 import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
+import org.logaperture.core.TopOperations;
+import org.logaperture.core.TopReport;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -46,13 +49,15 @@ import java.util.Optional;
  * real output. No Logback, no agent — the CLI's transport is what's under
  * test, not the engine.
  */
-final class FakeOps implements LevelControlOperations, HandlerLevelControlOperations, DoctorOperations {
+final class FakeOps implements LevelControlOperations, HandlerLevelControlOperations, DoctorOperations,
+        TopOperations {
 
     private static final Level BASELINE = Level.INFO;
 
     private final Map<String, LoggerInfo> state = new LinkedHashMap<>();
     private final Map<HandlerRef, Level> handlerBaselines = new LinkedHashMap<>();
     private final Map<HandlerRef, HandlerLevelOverride> handlerOverrides = new LinkedHashMap<>();
+    private final Instant measurementStartedAt = Instant.now();
 
     FakeOps() {
         seed("com.acme.batch.Worker");
@@ -130,5 +135,12 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     public synchronized List<DoctorFinding> diagnose() {
         return List.of(new DoctorFinding("logger.verbosity-left-on", Severity.OK, "ROOT",
                 "no excess verbosity found at root or on a known-chatty logger.", null, null));
+    }
+
+    @Override
+    public synchronized TopReport topLoggers(int limit) {
+        List<LoggerByteCount> loggers = List.of(new LoggerByteCount("com.acme.web.RequestFilter", 4_096L, 0L));
+        List<LoggerByteCount> limited = limit > 0 && loggers.size() > limit ? loggers.subList(0, limit) : loggers;
+        return new TopReport(limited, measurementStartedAt, loggers.size());
     }
 }

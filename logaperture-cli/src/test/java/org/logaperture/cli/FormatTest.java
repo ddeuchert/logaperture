@@ -58,4 +58,40 @@ class FormatTest {
         assertEquals("in 1d 6h", Format.relative(Duration.ofHours(30)));
         assertEquals("now", Format.relative(Duration.ofSeconds(-5)));
     }
+
+    // --- top (doc/specs/top.md) ------------------------------------------------------------------
+
+    @Test
+    void bytesScalesToTheNearestSensibleUnit() {
+        assertEquals("412 MB", Format.bytes(412.0 * 1024 * 1024));
+        assertEquals("9.6 GB", Format.bytes(9.6 * 1024 * 1024 * 1024));
+        assertEquals("0 MB", Format.bytes(0));
+    }
+
+    @Test
+    void bytesJustBelowAGigabyte_roundsUpToGbRatherThanShowing1024Mb() {
+        // 1024 * 1024^2 - 1 bytes: mb rounds to 1024, so this must switch to
+        // the GB branch instead of rendering the stale "1024 MB".
+        assertEquals("1.0 GB", Format.bytes(1024.0 * 1024 * 1024 - 1));
+    }
+
+    @Test
+    void elapsedIsCoarseLikeRelativeButWithoutTheInPrefix() {
+        assertEquals("6h 12m", Format.elapsed(Duration.ofMinutes(372)));
+        assertEquals("27m", Format.elapsed(Duration.ofMinutes(27)));
+        assertEquals("under a minute", Format.elapsed(Duration.ofSeconds(8)));
+        assertEquals("4h", Format.elapsed(Duration.ofHours(4)));
+    }
+
+    @Test
+    void headerlessTableAlignsColumnsTheSameWayAsTheHeaderedOne() {
+        List<String> lines = Format.table(List.of(
+                List.of("com.acme.batch.Worker", "2.0 GB/h"),
+                List.of("a", "88 MB/h"))).lines().toList();
+
+        assertEquals(2, lines.size());
+        int secondColumn = lines.get(0).indexOf("2.0 GB/h");
+        assertEquals(secondColumn, lines.get(1).indexOf("88 MB/h"));
+        assertTrue(lines.get(1).startsWith("a "));
+    }
 }

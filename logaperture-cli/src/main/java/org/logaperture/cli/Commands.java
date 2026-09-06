@@ -19,9 +19,12 @@ import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
+import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.SetLevelResultData;
+import org.logaperture.control.jmx.TopReportData;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -313,6 +316,52 @@ final class Commands {
             out.println();
             out.println(Json.checksRun(findings) + " checks run — " + critical + " critical, " + warning
                     + " warning, " + info + " info, " + clean + " clean.");
+            return CliError.OK;
+        };
+    }
+
+    /**
+     * {@code logctl top} — doc/specs/top.md "The operation". Read-only, like
+     * {@code doctor}; unlike it, rate and the stack-trace percentage are
+     * computed here from the raw counts plus how long measurement has been
+     * running, not carried on the wire (doc/specs/top.md "Data model").
+     */
+    static Command top(int limit, boolean json) {
+        return (mbean, out) -> {
+            TopReportData report = mbean.topLoggers(limit);
+            if (json) {
+                out.println(Json.top(report));
+                return CliError.OK;
+            }
+            List<LoggerByteCountData> loggers = report.getLoggers();
+            String startedAtRaw = report.getMeasurementStartedAt();
+            if (loggers.isEmpty() || startedAtRaw == null) {
+                out.println("No byte-volume measurements available yet.");
+                return CliError.OK;
+            }
+            boolean showContext = spansMultipleContexts(loggers, LoggerByteCountData::getContext);
+            Instant startedAt = Instant.parse(startedAtRaw);
+            double hoursElapsed = Math.max(1.0 / 3_600, Duration.between(startedAt, Instant.now()).toMillis() / 3_600_000.0);
+
+            List<List<String>> table = new ArrayList<>();
+            for (LoggerByteCountData row : loggers) {
+                double bytesPerHour = row.getTotalBytes() / hoursElapsed;
+                long pct = row.getTotalBytes() == 0 ? 0 : Math.round(100.0 * row.getStackTraceBytes() / row.getTotalBytes());
+                List<String> cells = new ArrayList<>();
+                if (showContext) {
+                    cells.add('[' + orDash(row.getContext()) + ']');
+                }
+                cells.add(row.getLoggerName());
+                cells.add(Format.bytes(bytesPerHour) + "/h");
+                cells.add("(" + Format.bytes(bytesPerHour * 24) + "/day)");
+                cells.add(pct + "% stack traces");
+                table.add(cells);
+            }
+            out.println(Format.table(table));
+            out.println();
+            out.println("measured over " + Format.elapsed(Duration.between(startedAt, Instant.now()))
+                    + " (since agent start, " + startedAt + ") — " + report.getTrackedCount()
+                    + (report.getTrackedCount() == 1 ? " logger" : " loggers") + " tracked.");
             return CliError.OK;
         };
     }

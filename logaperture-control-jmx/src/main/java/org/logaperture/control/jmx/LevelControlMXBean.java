@@ -75,4 +75,14 @@ public interface LevelControlMXBean {
      * anything; requires only the {@code VIEW} capability.
      */
     List<DoctorFindingData> diagnose();
+
+    /**
+     * {@code logctl top} — byte volume per logger, across every registered
+     * context (doc/specs/top.md). Never mutates anything; requires only the
+     * {@code VIEW} capability.
+     *
+     * @param limit keep only the {@code limit} worst offenders; {@code limit
+     *              <= 0} means "every tracked logger"
+     */
+    TopReportData topLoggers(int limit);
 }
