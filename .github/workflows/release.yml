@@ -1,0 +1,83 @@
+# Copyright 2026 David Deuchert
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Release
+
+# Cut a release by pushing a tag: `git tag -a v0.1.0-alpha.1 -m ... && git push origin v0.1.0-alpha.1`
+# (from `main`). This builds the evaluation bundle and publishes a GitHub Release
+# with the zip attached. See issue #25.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # create the release and upload the asset
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Derive and check the version
+        id: v
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          pom_version="$(mvn -B -q --no-transfer-progress help:evaluate \
+            -Dexpression=project.version -DforceStdout | tail -1 | tr -d '[:space:]')"
+          if [ "$version" != "$pom_version" ]; then
+            echo "::error::tag $tag implies version '$version' but the pom is '$pom_version'"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          case "$version" in
+            *-alpha*|*-beta*|*-rc*) echo "prerelease=true"  >> "$GITHUB_OUTPUT" ;;
+            *)                      echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Build the evaluation bundle
+        # -am pulls in the agent/cli and their deps; it does NOT pull in
+        # logaperture-it, so the WildFly Testcontainers IT (already run on the
+        # develop merge) doesn't re-run here.
+        run: mvn -B --no-transfer-progress -pl logaperture-dist -am verify
+
+      - name: Extract the changelog section
+        run: |
+          awk -v v="${{ steps.v.outputs.version }}" '
+            $0 ~ "^## \\[" v "\\]" { grab=1; next }
+            grab && /^## \[/       { exit }
+            grab                   { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "See CHANGELOG.md." > release-notes.md
+          fi
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${{ steps.v.outputs.version }}" \
+            --notes-file release-notes.md \
+            --prerelease="${{ steps.v.outputs.prerelease }}" \
+            "logaperture-dist/target/logaperture-${{ steps.v.outputs.version }}.zip"

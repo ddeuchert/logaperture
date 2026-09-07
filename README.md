@@ -2,11 +2,11 @@
 
 **Runtime logging control for the JVM.** See, tune, and bound what your application logs — without restarting it, editing its configuration, or knowing in advance what will go wrong.
 
-> ### ⚠️ Status: design phase
+> ### Status: 0.1.0-alpha.1 — early, evaluation only
 >
-> **There is no code here yet.** This repository currently holds a design document and nothing else. It is public early so the design can be argued with before it is implemented.
+> **Not for production.** This is the first tagged build. It does real work on a running JVM — see [Try the alpha](#try-the-alpha) — but the feature set is partial, the override store's on-disk format may still change between builds with no migration, and there is no support commitment.
 >
-> If any of the problems below are ones you have, [open an issue](../../issues) — particularly if you have tried to solve them another way, or if you know of an existing project that already does this. Both would be genuinely useful.
+> Bug reports from an alpha run, prior-art pointers, and war stories about log volume in constrained environments are all useful — [open an issue](../../issues).
 
 ---
 
@@ -26,13 +26,32 @@
 - **Suppress precisely when you do know the shape of the noise** — by category, keyword, exception type, or cause chain, including trimming a stack trace without losing the line it came from.
 - **Stay governable.** Suppressing logs means hiding activity, and raising verbosity means writing secrets to disk. Both need a capability model, an audit trail, and categories that can never be silenced or made more verbose.
 
+## Try the alpha
+
+`0.1.0-alpha.1` is a **measure-and-control** slice — it reads what your app logs, and it changes log levels. It does not suppress anything yet.
+
+Working today, on plain `java -jar` and standalone WildFly:
+
+- **`logctl levels [glob]`** — every logger and its effective level; the glob finds a logger from the abbreviated name a log line actually printed.
+- **`logctl debug <logger> for 30m`** / `trace` / `set <logger> <level> sticky` — change a level at runtime. It reverts on its own timer, survives a restart if you ask (`sticky`), and never touches `standalone.xml`, `logback-spring.xml`, or anything your application owns.
+- **`logctl handler <name> <level>`** / **`logctl handlers`** — set a handler's own level (the fix when a raised logger still shows nothing because a handler is pinned stricter) and list the handler catalogue. On WildFly the handlers resolve to their real configured names (`CONSOLE`, `FILE`, …), read in-VM from the server's own model.
+- **`logctl doctor`** — flag common logging-config problems: unbounded file-handler growth, verbosity left on, the same content written twice, autoflush on a busy handler, disk headroom vs. write rate.
+- **`logctl top`** — bytes written per logger, worst-first, with a projected daily total and the stack-trace-byte fraction.
+- **`logctl status`** / **`logctl reset --all`** — what LogAperture has changed, and undo all of it.
+
+Every change is capability-checked and written to a tamper-evident audit trail. The agent opens no sockets; `logctl` reaches it over the local attach API, UID-gated by the OS.
+
+Not yet: automatic storm collapse or any suppression, per-rule squelching, the Log4j 2 adapter, Spring Boot / Tomcat / Quarkus JVM at depth.
+
+**Getting it:** download `logaperture-<version>.zip` from the [latest release](../../releases) and follow the bundled `INSTALL-wildfly.md`. [DEVELOPMENT.md](DEVELOPMENT.md) covers a plain-JVM setup and running `logctl`.
+
 ## Design principles
 
 - **The agent opens no network connections**, inbound or outbound, ever. Interfaces are clients of the local attach API, not servers inside your JVM.
 - **Never mutate configuration the container or application owns.**
 - **Fail open on rule evaluation** — a bug here must never silence your logs. The one deliberate exception is the disk guard, which fails closed, loudly, and says so in the log.
 - **Suppression is never silent.** Counts are always visible, so a log never contains an undetectable hole.
-- **Measure before suppressing.** The first release is read-only.
+- **Measure before suppressing.** No suppression ships until the measurement tools (`doctor`, `top`, storm *detection*) are proven; the first suppression release runs dry-run first.
 
 ## Scope
 
@@ -55,7 +74,7 @@ If you know of something that does, please say so. Finding out early is worth mo
 
 ## Contributing
 
-Too early for code contributions. Design feedback, prior-art pointers, and war stories about log volume in constrained environments are all welcome in [issues](../../issues).
+Code contributions are welcome once the alpha stabilises — the internals are still moving. For now the most useful things are bug reports from an actual alpha run, design feedback on [the spec](doc/logaperture-spec.md), prior-art pointers, and war stories about log volume in constrained environments, all in [issues](../../issues).
 
 ## License
 
