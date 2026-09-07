@@ -205,29 +205,39 @@ class WildFlyContainerIT {
     // --- handler-floor control (doc/specs/handler-floor-control.md) --------------------------------
 
     @Test
-    void handlerFloorWarning_namesAllHandlersAndACopyPasteableCommand() {
-        // The open empirical question the original spec flagged: does
-        // JbossHandlerNames's reflection into
-        // org.jboss.logmanager.configuration.ContextConfiguration resolve
-        // WildFly's actual configured name ("CONSOLE") for its console
-        // handler? Settled, against real WildFly 26.1.3.Final: no -- the
-        // attachment is never populated (WildFly's logging subsystem manages
-        // handlers entirely through its own management model, not JBoss
-        // LogManager's declarative config API). Rather than keep naming
-        // individual, restart-unstable identity-hash tokens, ALL_HANDLERS
-        // (issue #13) replaces per-handler addressing on WildFly outright:
-        // this test asserts the warning collapses to that one reserved name
-        // (doc/specs/handler-floor-control.md "Adapter SPI", Decision #7).
+    void handlerFloorWarning_namesTheConsoleHandlerByItsConfiguredName() {
+        // Issue #14: WildFlyHandlerNameResolver reads the running server's own
+        // /subsystem=logging model in-VM (via the ModelController, no socket,
+        // no credentials) and recovers the configured name "CONSOLE". So the
+        // blocking-handler warning names CONSOLE directly again -- per-handler
+        // granularity, one actionable command -- instead of collapsing to the
+        // reserved ALL_HANDLERS (issue #13, which stays the fallback while a
+        // handler is still on an identity token). Confirmed against real
+        // WildFly 26.1.3.Final.
         String freshLogger = "com.myapp.probe.HandlerWarningHarness";
         try {
             Logctl raised = logctl("trace", freshLogger);
             assertEquals(0, raised.exitCode(), raised.stderr());
-            assertTrue(raised.stdout().contains("WARN: handler ALL_HANDLERS is at"),
-                    "WildFly has only one addressable lever now, per issue #13:\n" + raised.stdout());
-            assertTrue(raised.stdout().contains("logctl handler ALL_HANDLERS TRACE"),
+            assertTrue(raised.stdout().contains("handler CONSOLE is at"),
+                    "the warning names the resolved handler, not a token or ALL_HANDLERS:\n" + raised.stdout());
+            assertTrue(raised.stdout().contains("logctl handler CONSOLE TRACE"),
                     "the warning's suggested command is directly copy-pasteable:\n" + raised.stdout());
         } finally {
             logctl("reset", freshLogger);
+        }
+    }
+
+    @Test
+    void handler_isAddressableByItsConfiguredName_andRevertsCleanly() {
+        // Issue #14: `logctl handler CONSOLE <level>` works by the name an
+        // operator reads in standalone.xml -- no identity-hash token typed.
+        try {
+            Logctl raised = logctl("handler", "CONSOLE", "DEBUG", "for", "30m");
+            assertEquals(0, raised.exitCode(), raised.stderr());
+            assertTrue(raised.stdout().contains("CONSOLE") && raised.stdout().contains("DEBUG"), raised.stdout());
+            assertTrue(logctl("status").stdout().contains("CONSOLE"), "status shows the override under its real name");
+        } finally {
+            assertEquals(0, logctl("handler", "CONSOLE", "reset").exitCode());
         }
     }
 
@@ -238,7 +248,10 @@ class WildFlyContainerIT {
         try {
             Logctl raised = logctl("trace", APP_LOGGER);
             assertEquals(0, raised.exitCode(), raised.stderr());
-            assertTrue(raised.stdout().contains("ALL_HANDLERS"), raised.stdout());
+            // Post issue #14 the blocking-handler warning names CONSOLE; the
+            // lower/reset below still go through ALL_HANDLERS to keep the real
+            // WildFly fan-out exercised (it now fans out over CONSOLE + FILE).
+            assertTrue(raised.stdout().contains("CONSOLE"), raised.stdout());
 
             // Redeploy with the logger already at TRACE but the console
             // handler still at its default INFO floor: the marker line must
@@ -275,19 +288,23 @@ class WildFlyContainerIT {
 
     @Test
     void doctor_reportsStockWildFlyConfigAccurately() {
-        // Confirmed against real WildFly 26.1.3.Final: findings name the real
-        // handler by its identity-hash token (e.g. "PeriodicRotatingFileHandler@...",
-        // "ConsoleHandler@..."), never a friendly "FILE"/"CONSOLE" -- doctor
-        // inspects adapter.realHandlers(), the same ungrouped truth issue #13
-        // established never resolves a WildFly-configured name (Decision #8).
+        // Confirmed against real WildFly 26.1.3.Final. Post issue #14, findings
+        // name handlers by their configured name -- doctor inspects
+        // adapter.realHandlers(), which now resolves "CONSOLE"/"FILE" from the
+        // running server's own /subsystem=logging model instead of an
+        // identity-hash token.
         Logctl result = logctl("doctor");
         assertEquals(0, result.exitCode(), result.stderr());
         String out = result.stdout();
 
         // The FILE-equivalent handler is a PeriodicRotatingFileHandler -- no
-        // size-based rotation cap at all.
+        // size-based rotation cap at all -- and is named "FILE" now.
         assertTrue(out.contains("has no size cap — writes are unbounded."),
                 "expected an unbounded-growth finding:\n" + out);
+        assertTrue(out.contains("FILE has no size cap") || out.contains("FILE has autoflush"),
+                "issue #14: the finding names the FILE handler, not a token:\n" + out);
+        assertFalse(out.matches("(?s).*(PeriodicRotatingFileHandler|ConsoleHandler)@[0-9a-f]+.*"),
+                "issue #14: no identity-hash tokens once resolution succeeds:\n" + out);
         // Confirmed: stock WildFly's handlers report autoflush=true (isAutoFlush()
         // reflection against the real org.jboss.logmanager.ExtHandler base class).
         assertTrue(out.contains("has autoflush enabled — every record forces a flush."),

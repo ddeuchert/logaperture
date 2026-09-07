@@ -18,10 +18,13 @@ package org.logaperture.container.wildfly;
 import org.logaperture.adapter.jul.HandlerNameResolver;
 import org.logaperture.bridge.Diagnostics;
 
+import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.logging.Handler;
 
 /**
@@ -30,40 +33,56 @@ import java.util.logging.Handler;
  * server itself — doc/specs/handler-floor-control.md "WildFly handler name
  * resolution" (issue #14).
  *
- * <p><b>In-VM only.</b> The agent already runs inside the WildFly JVM, so
- * this reaches the server's own MSC {@code ServiceContainer} directly: no
- * socket, no management credentials, no {@code wildfly-controller-client} on
- * the classpath. Every reflective handle is loaded through a WildFly module's
- * own class loader (obtained via {@code org.jboss.modules}, the one WildFly
- * API on the system class path), never this module's — the same
- * classloader-anchored discipline the retired {@code JbossHandlerNames}
- * attempt got wrong (doc/specs/handler-floor-control.md "Adapter SPI").
+ * <p><b>In-VM only.</b> The agent already runs inside the WildFly JVM. It
+ * obtains the server's own {@code ModelController} from the MSC {@code
+ * ServiceContainer} and runs a local, in-process {@code ModelControllerClient}
+ * ({@code createClient} — no socket, no {@code $local} handshake, no
+ * management credentials, no {@code wildfly-controller-client} on the compile
+ * path). Every reflective handle is loaded through a WildFly module's own
+ * class loader (via {@code org.jboss.modules}, the one WildFly API on the
+ * system class path) and invoked through public interfaces, never the
+ * module-private {@code *Impl} classes — the classloader-and-access
+ * discipline the retired {@code JbossHandlerNames} attempt got wrong
+ * (doc/specs/handler-floor-control.md "Adapter SPI").
  *
- * <p><b>Best-effort.</b> Every failure path — MSC not reachable, an
- * unexpected server version, a handler with no service — returns whatever
- * subset resolved (possibly nothing). The adapter keeps every unresolved
- * handler on its {@code <class>@<idhash>} identity token, and {@code
- * ALL_HANDLERS} control is unaffected. This class never throws.
+ * <p>Names come from {@code read-children-resources} under {@code
+ * /subsystem=logging} for each handler resource type; each name is then bound
+ * to one of the live {@link Handler} instances the adapter asked about — a
+ * {@code console-handler} to the sole console instance, a file-type handler to
+ * the sole file instance, or by matching the model's configured file name
+ * against {@code FileHandler.getFile()} when there is more than one.
  *
- * <p>Mechanism: walk the {@code ServiceContainer}'s services, keep those
- * whose value is a live {@link Handler} that is one of the instances the
- * adapter asked about, and take the configured name from the service name.
- * The intended hybrid (doc/specs/handler-floor-control.md Decision #1) also
- * cross-checks names against an in-VM {@code ModelController} read of {@code
- * /subsystem=logging}; that half is added if {@code WildFlyContainerIT}
- * shows the service-name walk alone is not enough on real WildFly.
+ * <p><b>Best-effort.</b> Every failure path — the model not reachable yet, an
+ * unexpected server version, a handler the model doesn't describe — returns
+ * whatever subset resolved (possibly nothing). The adapter keeps every
+ * unresolved handler on its {@code <class>@<idhash>} identity token, and
+ * {@code ALL_HANDLERS} control is unaffected. This class never throws.
  */
 final class WildFlyHandlerNameResolver implements HandlerNameResolver {
 
     private static final String MODULES_CLASS = "org.jboss.modules.Module";
-    /** Modules that transitively expose {@code org.jboss.msc}; first one that loads wins. */
-    private static final List<String> CANDIDATE_MODULES = List.of("org.jboss.msc", "org.jboss.as.controller");
+    /** Modules that transitively expose MSC + the AS controller + client API; broadest first. */
+    private static final List<String> CANDIDATE_MODULES =
+            List.of("org.jboss.as.server", "org.jboss.as.controller", "org.jboss.as.controller-client");
+    /** {@code CurrentServiceContainer}-style holders, WildFly's own first (it keeps that one current). */
+    private static final List<String> CURRENT_CONTAINER_CLASSES = List.of(
+            "org.jboss.as.server.CurrentServiceContainer",
+            "org.jboss.msc.service.CurrentServiceContainer");
+    private static final String MODEL_CONTROLLER_SERVICE = "jboss.as.server-controller";
+    /** The logging subsystem's handler resource types (WildFly Core, stable across 18–2x). */
+    private static final List<String> HANDLER_RESOURCE_TYPES = List.of(
+            "console-handler", "file-handler", "periodic-rotating-file-handler",
+            "size-rotating-file-handler", "periodic-size-rotating-file-handler",
+            "syslog-handler", "custom-handler");
+
+    private static final boolean DEBUG = Boolean.getBoolean("logaperture.wildfly.handlerNames.debug");
 
     @Override
     public Map<Handler, String> resolve(List<Handler> handlers) {
         try {
             return resolveInternal(handlers);
         } catch (Throwable failure) {
+            dbg("resolveInternal threw: " + failure);
             Diagnostics.debug("LogAperture: WildFly handler name resolution failed this pass (" + failure + ")");
             return Map.of();
         }
@@ -73,76 +92,213 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
         if (handlers.isEmpty()) {
             return Map.of();
         }
-        ClassLoader mscLoader = firstLoadableModuleLoader();
-        if (mscLoader == null) {
+        ClassLoader loader = firstLoadableModuleLoader();
+        dbg("moduleLoader=" + loader);
+        if (loader == null) {
             return Map.of();
         }
-        Object serviceContainer = currentServiceContainer(mscLoader);
+        Object serviceContainer = currentServiceContainer(loader);
+        dbg("serviceContainer=" + serviceContainer);
         if (serviceContainer == null) {
             return Map.of();
         }
-
-        Set<Handler> wanted = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
-        wanted.addAll(handlers);
-        Map<Handler, String> resolved = new IdentityHashMap<>();
-
-        @SuppressWarnings("unchecked")
-        List<Object> serviceNames =
-                (List<Object>) serviceContainer.getClass().getMethod("getServiceNames").invoke(serviceContainer);
-        java.lang.reflect.Method getService =
-                serviceContainer.getClass().getMethod("getService", loadClass(mscLoader, "org.jboss.msc.service.ServiceName"));
-
-        for (Object serviceName : serviceNames) {
-            String canonical = String.valueOf(serviceName);
-            if (!looksLikeLoggingHandlerService(canonical)) {
-                continue;
-            }
-            Object controller = getService.invoke(serviceContainer, serviceName);
-            if (controller == null) {
-                continue;
-            }
-            Object value = serviceValueOrNull(controller);
-            if (!(value instanceof Handler handler) || !wanted.contains(handler)) {
-                continue;
-            }
-            String name = configuredNameFrom(canonical);
-            if (name != null && !name.isEmpty()) {
-                resolved.putIfAbsent(handler, name);
-            }
+        Object modelController = modelController(loader, serviceContainer);
+        dbg("modelController=" + modelController);
+        if (modelController == null) {
+            return Map.of();
         }
 
-        if (!resolved.isEmpty()) {
-            Diagnostics.debug("LogAperture: resolved " + resolved.size() + " of " + handlers.size()
-                    + " WildFly handler name(s) via MSC");
+        // Resolve every method through its public declaring interface, not the
+        // module-private *Impl the instance actually is.
+        Class<?> modelControllerIface = Class.forName("org.jboss.as.controller.ModelController", false, loader);
+        Class<?> clientIface = Class.forName("org.jboss.as.controller.client.ModelControllerClient", false, loader);
+        Object client = modelControllerIface.getMethod("createClient", java.util.concurrent.Executor.class)
+                .invoke(modelController, (java.util.concurrent.Executor) Runnable::run);
+        try {
+            Map<String, String> nameToType = readLoggingHandlerNames(loader, clientIface, client);
+            dbg("model handler names=" + nameToType);
+            Map<String, String> fileNameByHandlerName = readFileNames(loader, clientIface, client, nameToType);
+            Map<Handler, String> bound = bind(handlers, nameToType, fileNameByHandlerName);
+            dbg("bound " + bound.size() + " of " + handlers.size());
+            if (!bound.isEmpty()) {
+                Diagnostics.debug("LogAperture: resolved " + bound.size() + " of " + handlers.size()
+                        + " WildFly handler name(s) from /subsystem=logging");
+            }
+            return bound;
+        } finally {
+            closeQuietly(clientIface, client);
         }
-        return resolved;
     }
 
-    /** {@code ServiceController#getValue()} throws if the service is not UP — that is a skip, not a failure. */
-    private static Object serviceValueOrNull(Object serviceController) {
+    // --- model reads --------------------------------------------------------------------------------
+
+    /** {@code read-children-names} per handler resource type; returns name -> resource type. */
+    private static Map<String, String> readLoggingHandlerNames(ClassLoader loader, Class<?> clientIface, Object client)
+            throws Exception {
+        Class<?> modelNode = Class.forName("org.jboss.dmr.ModelNode", false, loader);
+        Method mnGet = modelNode.getMethod("get", String.class);
+        Method mnGetPath = modelNode.getMethod("get", String[].class);
+        Method mnSetString = modelNode.getMethod("set", String.class);
+        Method mnAdd2 = modelNode.getMethod("add", String.class, String.class);
+        Method mnAsString = modelNode.getMethod("asString");
+        Method mnAsList = modelNode.getMethod("asList");
+        Method mnHasDefined = modelNode.getMethod("hasDefined", String.class);
+        Method execute = clientIface.getMethod("execute", modelNode);
+
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String type : HANDLER_RESOURCE_TYPES) {
+            Object op = modelNode.getConstructor().newInstance();
+            mnSetString.invoke(mnGet.invoke(op, "operation"), "read-children-names");
+            mnSetString.invoke(mnGet.invoke(op, "child-type"), type);
+            mnAdd2.invoke(mnGet.invoke(op, "address"), "subsystem", "logging");
+
+            Object result = execute.invoke(client, op);
+            if (!(boolean) mnHasDefined.invoke(result, "result")) {
+                continue;
+            }
+            Object names = mnGetPath.invoke(result, (Object) new String[] {"result"});
+            for (Object nameNode : (List<?>) mnAsList.invoke(names)) {
+                out.put((String) mnAsString.invoke(nameNode), type);
+            }
+        }
+        return out;
+    }
+
+    /** For file-type handlers, the configured file's leaf name (for disambiguating &gt;1 file handler). */
+    private static Map<String, String> readFileNames(
+            ClassLoader loader, Class<?> clientIface, Object client, Map<String, String> nameToType) throws Exception {
+        Class<?> modelNode = Class.forName("org.jboss.dmr.ModelNode", false, loader);
+        Method mnGet = modelNode.getMethod("get", String.class);
+        Method mnGetPath = modelNode.getMethod("get", String[].class);
+        Method mnSetString = modelNode.getMethod("set", String.class);
+        Method mnAdd2 = modelNode.getMethod("add", String.class, String.class);
+        Method mnAsString = modelNode.getMethod("asString");
+        Method mnHasDefined = modelNode.getMethod("hasDefined", String.class);
+        Method execute = clientIface.getMethod("execute", modelNode);
+
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : nameToType.entrySet()) {
+            if (e.getValue().equals("console-handler") || e.getValue().equals("syslog-handler")
+                    || e.getValue().equals("custom-handler")) {
+                continue;
+            }
+            Object op = modelNode.getConstructor().newInstance();
+            mnSetString.invoke(mnGet.invoke(op, "operation"), "read-attribute");
+            mnSetString.invoke(mnGet.invoke(op, "name"), "file");
+            Object address = mnGet.invoke(op, "address");
+            mnAdd2.invoke(address, "subsystem", "logging");
+            mnAdd2.invoke(address, e.getValue(), e.getKey());
+
+            Object result = execute.invoke(client, op);
+            if (!(boolean) mnHasDefined.invoke(result, "result")) {
+                continue;
+            }
+            Object file = mnGetPath.invoke(result, (Object) new String[] {"result"});
+            if ((boolean) mnHasDefined.invoke(file, "path")) {
+                String path = (String) mnAsString.invoke(mnGet.invoke(file, "path"));
+                out.put(e.getKey(), leaf(path));
+            }
+        }
+        return out;
+    }
+
+    // --- binding ------------------------------------------------------------------------------------
+
+    private static Map<Handler, String> bind(
+            List<Handler> handlers, Map<String, String> nameToType, Map<String, String> fileNameByHandlerName) {
+        List<Handler> consoles = new ArrayList<>();
+        List<Handler> files = new ArrayList<>();
+        for (Handler h : handlers) {
+            (isConsole(h) ? consoles : files).add(h);
+        }
+        Map<Handler, String> out = new IdentityHashMap<>();
+        for (Map.Entry<String, String> e : nameToType.entrySet()) {
+            String name = e.getKey();
+            boolean console = e.getValue().equals("console-handler");
+            List<Handler> candidates = console ? consoles : files;
+            if (candidates.size() == 1) {
+                out.putIfAbsent(candidates.get(0), name);
+                continue;
+            }
+            String wantFile = fileNameByHandlerName.get(name);
+            if (wantFile != null) {
+                for (Handler h : candidates) {
+                    String actual = fileNameOf(h);
+                    if (wantFile.equalsIgnoreCase(actual) && !out.containsKey(h)) {
+                        out.put(h, name);
+                        break;
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    private static boolean isConsole(Handler handler) {
+        return handler.getClass().getSimpleName().toLowerCase(Locale.ROOT).contains("console");
+    }
+
+    /** {@code org.jboss.logmanager.handlers.FileHandler#getFile()} is public — the retired attempt confirmed it resolves. */
+    private static String fileNameOf(Handler handler) {
         try {
-            return serviceController.getClass().getMethod("getValue").invoke(serviceController);
-        } catch (ReflectiveOperationException | RuntimeException notUp) {
+            Object file = handler.getClass().getMethod("getFile").invoke(handler);
+            return file == null ? null : leaf(String.valueOf(file));
+        } catch (ReflectiveOperationException | RuntimeException notAFileHandler) {
             return null;
         }
     }
 
-    /** {@code CurrentServiceContainer.getServiceContainer()} — the running server's MSC container. */
-    private static Object currentServiceContainer(ClassLoader loader) {
+    private static String leaf(String path) {
+        int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        return slash < 0 ? path : path.substring(slash + 1);
+    }
+
+    // --- WildFly-internal handles -----------------------------------------------------------------
+
+    private static Object modelController(ClassLoader loader, Object serviceContainer) {
         try {
-            Class<?> current = loadClass(loader, "org.jboss.msc.service.CurrentServiceContainer");
-            return current.getMethod("getServiceContainer").invoke(null);
+            Class<?> serviceName = Class.forName("org.jboss.msc.service.ServiceName", false, loader);
+            Class<?> registry = Class.forName("org.jboss.msc.service.ServiceRegistry", false, loader);
+            Class<?> controller = Class.forName("org.jboss.msc.service.ServiceController", false, loader);
+            Object name = serviceName.getMethod("parse", String.class).invoke(null, MODEL_CONTROLLER_SERVICE);
+            Object svc = registry.getMethod("getService", serviceName).invoke(serviceContainer, name);
+            if (svc == null) {
+                dbg("no service " + MODEL_CONTROLLER_SERVICE);
+                return null;
+            }
+            try {
+                return controller.getMethod("getValue").invoke(svc);
+            } catch (ReflectiveOperationException | RuntimeException notUp) {
+                dbg(MODEL_CONTROLLER_SERVICE + " not UP yet: " + notUp);
+                return null;
+            }
         } catch (ReflectiveOperationException | RuntimeException absent) {
-            Diagnostics.debug("LogAperture: no MSC CurrentServiceContainer (" + absent + ")");
+            dbg("modelController lookup failed: " + absent);
             return null;
         }
+    }
+
+    /** The running server's MSC {@code ServiceContainer}, via whichever {@code CurrentServiceContainer} holder answers. */
+    private static Object currentServiceContainer(ClassLoader loader) {
+        for (String holder : CURRENT_CONTAINER_CLASSES) {
+            try {
+                Class<?> current = Class.forName(holder, false, loader);
+                Object container = current.getMethod("getServiceContainer").invoke(null);
+                dbg(holder + ".getServiceContainer() -> " + container);
+                if (container != null) {
+                    return container;
+                }
+            } catch (ReflectiveOperationException | RuntimeException tryNext) {
+                dbg(holder + " unusable: " + tryNext);
+            }
+        }
+        return null;
     }
 
     private static ClassLoader firstLoadableModuleLoader() {
-        Class<?> moduleClass;
         Object bootLoader;
         try {
-            moduleClass = Class.forName(MODULES_CLASS, false, ClassLoader.getSystemClassLoader());
+            Class<?> moduleClass = Class.forName(MODULES_CLASS, false, ClassLoader.getSystemClassLoader());
             bootLoader = moduleClass.getMethod("getBootModuleLoader").invoke(null);
         } catch (ReflectiveOperationException | RuntimeException noModules) {
             return null; // not a JBoss-Modules server after all
@@ -158,38 +314,17 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
         return null;
     }
 
-    private static Class<?> loadClass(ClassLoader loader, String name) throws ClassNotFoundException {
-        return Class.forName(name, false, loader);
-    }
-
-    /**
-     * A cheap pre-filter so the common non-logging services are skipped
-     * before the (throwing) {@code getValue()} probe. WildFly's logging
-     * handler services carry both tokens somewhere in the name across the
-     * versions seen so far; a false negative here just means a handler stays
-     * on its identity token, never an error.
-     */
-    private static boolean looksLikeLoggingHandlerService(String canonicalServiceName) {
-        String lower = canonicalServiceName.toLowerCase(java.util.Locale.ROOT);
-        return lower.contains("log") && lower.contains("handler");
-    }
-
-    /**
-     * The configured name is the service-name segment after a {@code handler}
-     * segment, or failing that the last segment. WildFly logging handler
-     * service names have taken forms like {@code
-     * org.wildfly.logging.handler.CONSOLE} and {@code
-     * jboss.logging.handler."CONSOLE"} — both yield {@code CONSOLE} here.
-     */
-    private static String configuredNameFrom(String canonicalServiceName) {
-        String[] segments = canonicalServiceName.split("\\.");
-        String candidate = segments.length == 0 ? null : segments[segments.length - 1];
-        for (int i = 0; i < segments.length - 1; i++) {
-            if (segments[i].equalsIgnoreCase("handler")) {
-                candidate = segments[i + 1];
-                break;
-            }
+    private static void closeQuietly(Class<?> clientIface, Object client) {
+        try {
+            clientIface.getMethod("close").invoke(client);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // best effort -- ModelControllerClient extends Closeable
         }
-        return candidate == null ? null : candidate.replace("\"", "").trim();
+    }
+
+    private static void dbg(String message) {
+        if (DEBUG) {
+            System.err.println("[#14 resolver] " + message);
+        }
     }
 }
