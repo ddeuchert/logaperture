@@ -48,7 +48,7 @@ Working today:
 
 **Not in this build:** automatic storm collapse or any suppression, per-rule squelching, the Log4j 2 adapter, and any Spring Boot / Tomcat / Quarkus-JVM integration (a Spring Boot fat-jar attaches as a plain JVM, so level control *may* work against its Logback, but it is untested).
 
-**Getting it:** download `logaperture-<version>.zip` from the [latest release](../../releases) and follow the bundled `INSTALL-wildfly.md`. [DEVELOPMENT.md](DEVELOPMENT.md) covers a plain-JVM setup and running `logctl`.
+**Getting it:** download [`logaperture-0.1.0-alpha.1.zip`](https://github.com/ddeuchert/logaperture/releases/download/v0.1.0-alpha.1/logaperture-0.1.0-alpha.1.zip) (or browse [all releases](../../releases)), unzip, and follow the bundled `INSTALL-wildfly.md`. [DEVELOPMENT.md](DEVELOPMENT.md) covers a plain-JVM setup and running `logctl`.
 
 ## Design principles
 

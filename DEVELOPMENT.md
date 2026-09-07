@@ -6,6 +6,19 @@ For contribution policy — the spec-driven workflow, gitflow branching, copyrig
 headers — see [CLAUDE.md](CLAUDE.md); it is written for agents but the rules
 apply to everyone.
 
+## Branches and releases
+
+- **`develop` is the working trunk.** All feature branches merge here, and it is
+  where day-to-day work lands. **Target your pull requests at `develop`**, not
+  `main` (the repo's default branch is `main`, so the PR base needs changing).
+- **`main` is the release line.** It only ever fast-forwards from `develop`, and
+  it carries the release tags. It is the default branch so a clone, the landing
+  page, and tooling point at the released state.
+- **A release is cut by pushing a tag** (`v0.1.0-alpha.1`, `v0.1.0-alpha.2`, …)
+  on `main`. `.github/workflows/release.yml` then builds the evaluation bundle
+  and publishes a GitHub prerelease with the zip attached. After a release,
+  `develop` bumps to the next `-SNAPSHOT`.
+
 ## Prerequisites
 
 | Tool | For |
