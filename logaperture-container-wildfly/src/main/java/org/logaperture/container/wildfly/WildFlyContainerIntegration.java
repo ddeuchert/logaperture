@@ -16,6 +16,7 @@
 package org.logaperture.container.wildfly;
 
 import org.logaperture.adapter.jul.JulAdapterFactory;
+import org.logaperture.adapter.jul.JulLoggingAdapter;
 import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditLog;
@@ -24,7 +25,6 @@ import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.spi.ContainerIntegration;
 import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.InstallGuidance;
-import org.logaperture.core.spi.LoggingAdapter;
 
 import java.lang.instrument.Instrumentation;
 import java.time.Duration;
@@ -97,9 +97,9 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
 
         Runnable install = () -> {
             try {
-                LoggingAdapter adapter = JulAdapterFactory.forCurrentContext();
+                JulLoggingAdapter adapter = JulAdapterFactory.forCurrentContext(new WildFlyHandlerNameResolver());
                 host.installContext(ContextHandle.of(ContextHandle.SYSTEM, "wildfly", adapter));
-                wireConfigurationListener(host);
+                wireConfigurationListener(host, adapter);
                 onFirstContextReady.accept(host.operations());
                 Diagnostics.info("LogAperture level control installed (wildfly container, system LogContext)");
             } catch (Throwable t) {
@@ -134,9 +134,18 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
      * Wired reflectively (no compile-time reference to {@code
      * org.jboss.logmanager}); absent that method, the periodic verification
      * sweep is the only re-apply mechanism.
+     *
+     * <p>The callback first drops {@code adapter}'s cached handler-name
+     * resolution (issue #14) so a renamed or newly-added {@code
+     * /subsystem=logging} handler is re-resolved, then runs the verification
+     * sweep that re-applies any override the change overwrote.
      */
-    private static void wireConfigurationListener(WildFlyContainer host) {
-        if (registerConfigurationListener(java.util.logging.LogManager.getLogManager(), host::runVerificationSweepNow)) {
+    private static void wireConfigurationListener(WildFlyContainer host, JulLoggingAdapter adapter) {
+        Runnable onConfigChange = () -> {
+            adapter.invalidateNameCache();
+            host.runVerificationSweepNow();
+        };
+        if (registerConfigurationListener(java.util.logging.LogManager.getLogManager(), onConfigChange)) {
             Diagnostics.debug("LogAperture: registered a JBoss LogManager configuration-change listener");
         } else {
             Diagnostics.debug("LogAperture: no JBoss LogManager configuration-change hook; "

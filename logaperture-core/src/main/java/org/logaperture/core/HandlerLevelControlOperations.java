@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.HandlerInfo;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
@@ -48,4 +49,13 @@ public interface HandlerLevelControlOperations {
      * status shows handler overrides too").
      */
     List<HandlerLevelOverride> listHandlerOverrides();
+
+    /**
+     * The full addressable handler catalog — one row per {@code
+     * knownHandlers()} entry (doc/specs/handler-floor-control.md "The handler
+     * catalog", issue #15), feeding {@code logctl handlers}. Read-only.
+     * Empty for an adapter whose handlers have no level of their own
+     * (Logback, {@code none}).
+     */
+    List<HandlerInfo> listHandlers();
 }

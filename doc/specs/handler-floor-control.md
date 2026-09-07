@@ -33,9 +33,9 @@ JUL adapter's `handlerFloorsBelow`, and `JbossHandlerNames`'s removal.
 Verified by unit tests (`HandlerLevelControlServiceTest`,
 `JulLoggingAdapterTest`) and confirmed against a real standalone WildFly
 26.1.3.Final (`WildFlyContainerIT`, 7/7 passing, including both rewritten
-`ALL_HANDLERS` tests). Real per-handler WildFly names remain future work
-([#14](https://github.com/ddeuchert/logaperture/issues/14), sequenced after
-this lands).
+`ALL_HANDLERS` tests). Real per-handler WildFly names
+([#14](https://github.com/ddeuchert/logaperture/issues/14), alpha-1) are
+**signed off, not yet implemented** — see "WildFly handler name resolution" below.
 
 **Planned extension (issue [#28](https://github.com/ddeuchert/logaperture/issues/28),
 alpha-2 — spec section not yet written).** A well-known `DEFAULT_HANDLERS`
@@ -167,9 +167,10 @@ per handler, whether they want the sink widened.
   `ALL_HANDLERS`.
 - Generalized named handler groups beyond the one reserved `ALL_HANDLERS`
   name — revisit only if a real second grouping shows up.
-- Real per-handler WildFly names (issue #14, deliberately sequenced after
-  `ALL_HANDLERS` lands) — `ALL_HANDLERS` is the fix for *addressing* WildFly's
-  handlers, not for naming each one individually.
+- Real per-handler WildFly names (issue #14, sequenced after `ALL_HANDLERS`
+  lands; **now signed off** — see "WildFly handler name resolution" below) —
+  `ALL_HANDLERS` is this slice's fix for *addressing* WildFly's handlers, not
+  for naming each one individually.
 - A logical `AUTO` handler level that tracks the lowest currently-active
   logger override, reverting to the handler's native floor once none remain
   (issue #20) — every fixed-level override here is one-shot; `AUTO` is a
@@ -302,10 +303,49 @@ active handler override.
 
 `logctl status` / `--json` shows active handler overrides (name, level, tier,
 expiry) straight from the `HandlerLevelOverride` registry — no new adapter call
-needed, since only overridden handlers are tracked. A full `logctl status
---handlers` listing of *every* handler (overridden or not, with baseline/current
-level) and a `blockingHandlers` echo of the warning on `LoggerInfo` are deferred
-past this slice — **Open decision A, resolved: defer.**
+needed, since only overridden handlers are tracked. The full catalog of *every*
+handler is **`logctl handlers`** — see "The handler catalog" below (this is
+Open decision A, originally deferred, delivered with issue #14 since #14 is what
+makes the names on it worth reading). A `blockingHandlers` echo of the warning
+on `LoggerInfo` is still deferred.
+
+## The handler catalog
+
+`logctl handlers` (issue [#15](https://github.com/ddeuchert/logaperture/issues/15))
+— the read-only counterpart to `logctl levels`, for handlers. One row per name
+the adapter advertises as addressable (`knownHandlers()`): on WildFly
+`ALL_HANDLERS` plus every handler whose configured name has resolved (issue #14);
+on plain JUL every real handler plus `ALL_HANDLERS`.
+
+```
+$ logctl handlers
+HANDLER       LEVEL  PERSISTS  TARGET                                        OVERRIDE
+ALL_HANDLERS  —      —         —                                             —
+CONSOLE       INFO   no        —                                             —
+FILE          DEBUG  file      /opt/jboss/wildfly/standalone/log/server.log  DEBUG (FOR, reverts in 27m)
+```
+
+No target, no tier, nothing to confirm; `--json` mirrors the rows. `VIEW` only,
+no audit — same shape as `doctor` / `top` / `levels`. It answers a different
+question from `logctl status`: `status` is "what has LogAperture changed";
+`handlers` is "what handlers exist and what are they set to."
+
+**Data model** — `HandlerInfo` in `api` (the `LoggerInfo` counterpart), one per
+`knownHandlers()` entry: `ref`, current `level` (reflecting any active override;
+`null` for `ALL_HANDLERS`, which is not a live handler), the static facts
+`doctor` already reads via `handlerDiagnostics` (`persistent`, `targetPath`,
+`autoFlush`), and the active override's `level` / `tier` / `expiresAt` if any.
+`AggregateLevelControl.listHandlers()` merges every context's rows and stamps
+each with its context key; `logctl handlers` shows a `[context]` prefix only
+when the result spans more than one, exactly like `levels` / `doctor`.
+
+On an adapter whose handlers have no level of their own (Logback, `none`),
+`listHandlers()` is empty and `logctl handlers` prints a one-line note.
+
+**On WildFly during boot** — before name resolution succeeds, `knownHandlers()`
+is `[ALL_HANDLERS]` only, so `logctl handlers` shows just that one row; run again
+a second or two later and `CONSOLE` / `FILE` appear. That transition is itself
+the quickest way to confirm #14's resolution is working.
 
 ## Adapter SPI
 
@@ -432,6 +472,263 @@ the above finding was even reachable:
 Both are exactly the kind of gap that in-process unit tests — which always
 called `handlerFloorsBelow` first to obtain a ref, then used that same ref —
 could not have caught; only the real cross-process, real-server run did.
+
+## WildFly handler name resolution (issue [#14](https://github.com/ddeuchert/logaperture/issues/14))
+
+Status: **sign-off complete** (alpha-1) — all nine decisions resolved and
+folded into the prose below. Not yet implemented.
+
+The retired reflection path (see "Adapter SPI" above) failed because WildFly
+does not drive JBoss LogManager through its declarative `ContextConfiguration`
+— it manages every handler as its own MSC-service-backed management resource
+(`/subsystem=logging/console-handler=CONSOLE`). This section resolves names
+from *that* model instead, so `logctl handler CONSOLE TRACE`,
+`logctl handler SIF INFO`, and the blocking-handler warning's per-handler
+granularity all work on WildFly by the name an operator reads in
+`standalone.xml`.
+
+**After this feature, on WildFly the user will be able to:**
+
+- Address an individual handler by its configured name — `logctl handler FILE`,
+  `logctl handler API-REQUESTS`, `logctl handler SIF` — not only `ALL_HANDLERS`.
+- See friendly names, not `PeriodicRotatingFileHandler@1a2b3c` tokens, in the
+  blocking-handler warning, in `logctl status`, and in `doctor` / `top` output.
+- Floor a dedicated handler (`logctl handler SIF INFO`) so an eval-time level
+  bump on some category can't leak into that log.
+
+`ALL_HANDLERS` (issue #13) stays exactly as-is — this is an **addition** on top
+of a working baseline, not a replacement.
+
+### The hard constraint: in-VM only
+
+The agent already runs *inside* the WildFly JVM. Name resolution uses that and
+nothing else:
+
+- **No socket.** The management port (`9990` / native) is never opened or
+  connected to. §8.2's "opens no network connections" property is preserved
+  verbatim — unlike the Hawtio case (§18.3) there isn't even someone else's
+  port involved.
+- **No credentials.** No `$local` auth handshake, no management user. An
+  in-process caller of the server's own `ModelController` / MSC registry is
+  already inside the trust boundary the OS UID gate (§9.8) defines.
+- **No new runtime dependency.** Everything is reflective, `root.getClass()
+  .getClassLoader()`-anchored, exactly like the existing config-change-listener
+  wiring in `WildFlyContainerIntegration` — no `wildfly-controller-client` or
+  `jboss-msc` on the compile path.
+- **Best-effort.** Any handler that doesn't resolve keeps its identity-token
+  ref and stays non-addressable; a total failure degrades to today's
+  `ALL_HANDLERS`-only behaviour with a diagnostic, never an error.
+
+### Architecture: a resolver seam, generic adapter unchanged
+
+`JulLoggingAdapter` stays the *generic* JUL adapter — no `org.jboss.msc` /
+`org.jboss.as.*` knowledge, mirroring its existing "no compile-time reference
+to any `org.jboss.logmanager` class" discipline.
+
+A new SPI type — `HandlerNameResolver` — is injected into the adapter by its
+factory:
+
+```
+/** Resolves live handler instances to their framework-configured names.
+ *  doc/specs/handler-floor-control.md, issue #14. */
+public interface HandlerNameResolver {
+    /** Configured names for as many of `handlers` as can be resolved right
+     *  now; absent entries keep the caller's identity-token fallback. A
+     *  bulk call so an implementation can do one model read, not one per
+     *  handler. Never throws — an implementation that can't resolve
+     *  anything returns an empty map. */
+    Map<Handler, String> resolve(List<Handler> handlers);
+
+    /** The no-op resolver: resolves nothing. The default for plain JUL. */
+    HandlerNameResolver NONE = handlers -> Map.of();
+}
+```
+
+- `JulAdapterFactory.forCurrentContext()` gains an overload taking a
+  `HandlerNameResolver`; the no-arg form passes `NONE`. `NoneContainer` uses
+  `NONE`; `WildFlyContainerIntegration` passes a `WildFlyHandlerNameResolver`
+  from `logaperture-container-wildfly`.
+- `JulLoggingAdapter.refFor(Handler)` becomes: consult a cached
+  name-by-instance map; on a miss, `HandlerRef` is the resolved name if present
+  else `HandlerRef.anonymous(handler)` — today's exact behaviour when the
+  resolver is `NONE`.
+
+### Resolution mechanism
+
+`WildFlyHandlerNameResolver` runs entirely in-VM. As-built and verified against
+real WildFly 26.1.3.Final (`WildFlyContainerIT`):
+
+- **Names — in-VM `ModelController` read.** Obtain the server's
+  `ModelController` from the MSC `ServiceContainer` (service `jboss.as.server-controller`),
+  `createClient()` (in-VM, no socket, no `$local` handshake, no credentials),
+  and execute `read-children-names` under `/subsystem=logging` for each handler
+  resource type (`console-handler`, `file-handler`, `periodic-rotating-file-handler`,
+  `size-rotating-file-handler`, `periodic-size-rotating-file-handler`,
+  `syslog-handler`, `custom-handler`). The model is the sole source of the
+  configured name.
+- **Instance binding — by handler shape, then configured file name.** A
+  `console-handler` name binds to the sole console `Handler` instance; a
+  file-type name binds to the sole file instance, or — with more than one — by
+  matching the model's `file.path` leaf against `FileHandler.getFile()`.
+
+**The MSC service-name walk that Decision #1's "hybrid" first proposed for
+instance binding was dropped: real WildFly 26.1.3 registers no
+logging-*handler* MSC services at all** (the logging subsystem drives the
+`LogContext` directly), so there was nothing to walk. Names come purely from
+the management model; instances are matched by shape as above. This is the
+"version-specific surprise" the sign-off explicitly left the IT to surface.
+
+Two reflection disciplines the IT forced, both classic JBoss-Modules traps:
+
+- **Load through the boot module loader.** `org.jboss.modules.Module` is the
+  one WildFly class on the system class path; `getBootModuleLoader()
+  .loadModule("org.jboss.as.server").getClassLoader()` is the loader that can
+  then see `CurrentServiceContainer`, `ModelController`, `ModelControllerClient`
+  and `org.jboss.dmr.ModelNode`. The agent's own loader cannot (the retired
+  attempt's first bug).
+- **Invoke through the public interface, never `getClass()`.** `ModelControllerImpl`,
+  `ServiceContainerImpl`, `ModelControllerClientImpl` are all module-private —
+  `instance.getClass().getMethod(…)` resolves the method on the inaccessible
+  class and throws `IllegalAccessException`. Every call resolves its `Method`
+  on the public interface (`ModelController`, `ServiceRegistry`,
+  `ModelControllerClient`) and invokes it on the impl instance.
+
+### `knownHandlers()` on WildFly
+
+Today: `List.of(ALL_HANDLERS)`. After this feature: `ALL_HANDLERS` **plus every
+real handler whose name resolved** to a configured name. A real handler still
+stuck on an identity token is **not** added to `knownHandlers()` — its token is
+unstable across a restart (issue #13's whole reason for `ALL_HANDLERS`), so
+advertising it would reintroduce the bug #13 fixed. `realHandlers()` is
+unchanged — it still lists every real handler for fan-out and baseline capture,
+by resolved name where available and identity token otherwise.
+
+### Lifecycle: when it runs, caching, re-resolution
+
+- **Readiness.** The LogManager-ready gate
+  (`WildFlyLogManagerReadiness`) fires *before* the server reaches `running`;
+  the management model may not be queryable yet at `installContext`.
+  Resolution is therefore **lazy** — attempted on the first
+  `knownHandlers()` / `realHandlers()` call, and again on every later call
+  while it keeps coming back empty, until it succeeds once. No permanent
+  give-up (a slow-booting server still gets its names; a `resolve()` that
+  can't reach the model returns fast). The attempt is serialised on a lock so
+  concurrent first-callers make one attempt between them, not one each.
+- **Caching.** A resolved name↔instance map is cached on the adapter. `refFor`
+  reads it; once `resolution == DONE` no further model reads happen on the
+  hot-ish `realHandlers()` path (`doctor`/`top`/the sweep all call it). The
+  per-handler ref maps are not pruned when a handler instance is discarded —
+  slow, reconfiguration-count-bounded growth, tracked as issue
+  [#31](https://github.com/ddeuchert/logaperture/issues/31).
+- **Re-resolution.** The `LogManager` configuration-change listener
+  (`WildFlyContainerIntegration.wireConfigurationListener`) and the periodic
+  verification sweep re-run on a `/subsystem=logging` change or `:reload`; the
+  resolver cache is invalidated on the same signal. A **newly added** handler
+  is picked up (a fresh `Handler` instance → named straight away on the next
+  `realHandlers()`). A handler **renamed in place** (same instance, new
+  configured name) keeps its existing ref — ref stability wins, and the old
+  name still resolves to the live handler; chasing the rename would orphan any
+  baseline/override keyed on the old ref (the same hazard as #29).
+
+### Ref stability across a late resolution
+
+A `HandlerRef`'s `value` must not change under a user who has already captured
+it (overrides are keyed on `(contextKey, HandlerRef)`). So: **no real ref is
+advertised on WildFly until its name has resolved.** Before resolution
+succeeds, `knownHandlers()` is `[ALL_HANDLERS]` exactly as today, and the
+blocking-handler warning names `ALL_HANDLERS`. Once resolution succeeds the
+friendly refs appear and stay put. There is no identity-token→friendly-name
+migration path to build because the identity token is never advertised as
+addressable on WildFly in the first place.
+
+### Downstream: `doctor` and `top`
+
+Both iterate the same refs (`realHandlers()` / `handlerDiagnostics`). Once
+names resolve they render `FILE` / `CONSOLE` / `SIF` instead of
+`PeriodicRotatingFileHandler@…` with no change of their own — in scope for this
+feature as the confirmation that resolution is wired through the one code path,
+and a visible payoff for `doctor`'s customer-facing output.
+
+### Failure handling
+
+- A handler with no model entry (added programmatically, or a deployment's own
+  handler) → identity token, not addressable, no error.
+- MSC / `ModelController` unreachable (a security manager, an unexpected
+  WildFly version, domain mode already declined earlier) → resolver returns an
+  empty map, `knownHandlers()` stays `[ALL_HANDLERS]`, one diagnostic line, the
+  feature is simply absent. `ALL_HANDLERS` control is completely unaffected.
+- Never blocks `installContext` and never runs on WildFly's own configuration
+  thread — resolution is lazy and on the caller's thread (a `logctl` request,
+  the sweep), like every other adapter call.
+
+### Version claim
+
+Verified on **WildFly 26.1.3.Final** (`WildFlyContainerIT`). The spec claims
+"best-effort, and degrades cleanly to `ALL_HANDLERS`-only elsewhere" — it does
+not claim EAP or pre-26 coverage without a real run on them.
+
+### Known limitation — handler-override resume races name resolution (issue [#29](https://github.com/ddeuchert/logaperture/issues/29))
+
+`resumeFromStateStore` runs at `installContext`, before WildFly's management
+model is queryable, so name resolution hasn't happened and `realHandlers()`
+still returns identity tokens. Two consequences, deferred to #29:
+
+- **A persisted per-handler sticky override is dropped on restart.**
+  `logctl handler CONSOLE INFO sticky` — possible now that #14 makes per-handler
+  addressing work — fails to re-apply on the next restart (`CONSOLE` doesn't
+  resolve yet → `UnknownHandlerException` → "failed to resume … skipping it"),
+  and isn't re-tried by the verification sweep because it was never tracked.
+  The state-store entry survives, so it fails identically every restart until
+  re-issued.
+- **A sticky `ALL_HANDLERS` override orphans its per-real baseline.** It's
+  fanned out over token refs and baselines are captured under those tokens;
+  once `upgradeTokenRefs()` promotes the instances to `CONSOLE` / `FILE`, the
+  next sweep re-captures a baseline against the friendly ref that reads back
+  the already-applied override level. `logctl handler ALL_HANDLERS reset` then
+  reverts to the override level, not the true original.
+
+Unaffected: a live `logctl handler CONSOLE …` / `ALL_HANDLERS …`, an
+`ALL_HANDLERS reset` / `reset --all` issued before the upgrade, and every
+non-WildFly adapter.
+
+**Not fixed by delaying resume** (a considered option, rejected): resume runs
+at the earliest point the agent can set a level at all, and the ~10 s until the
+management model is up is full of subsystem/deployment boot logging a sticky
+*logger* override exists to capture — the agent can't pause the JVM, and
+widening that hole to close a rare baseline bug is the wrong trade. The
+direction in #29 keeps resume early and instead (a) keeps an un-resolvable-yet
+handler override tracked as *pending* so the verification sweep applies it once
+resolution catches up, and (b) migrates the `HandlerBaselineRegistry` /
+`HandlerOverrideRegistry` key when `upgradeTokenRefs()` renames a ref.
+
+### Sign-off — resolved
+
+*All nine review decisions resolved to their leaning, and folded into the
+prose above:* the mechanism is an **in-VM `ModelController` read** of
+`/subsystem=logging` for names, with instances bound by handler shape /
+configured file name — the "hybrid"'s MSC service walk was dropped when
+`WildFlyContainerIT` showed real WildFly 26.1.3 registers no logging-handler
+MSC services (was #1; contract held, mechanism adjusted to what real WildFly
+does, per CLAUDE.md). `knownHandlers()` on
+WildFly returns `ALL_HANDLERS` **plus** every real handler whose name resolved;
+a real handler still on an identity token is not advertised, since its token is
+unstable across a restart (was #2). The seam is a **bulk**
+`Map<Handler,String> resolve(List<Handler>)` on a `HandlerNameResolver`
+interface in `adapter-jul`, injected through `JulAdapterFactory` (was #3).
+Resolution is **lazy** — attempted on the first `knownHandlers()` /
+`realHandlers()` call, retried on later calls until it succeeds once, cache
+invalidated on the existing config-change signal (was #4). **No real ref is
+advertised until its name resolves**, so there is no identity-token→name
+migration path (was #5). `doctor` and `top` **pick up friendly names** as part
+of this feature, through the same `realHandlers()` path (was #6). Resolution is
+**per-handler best-effort** — an unresolved handler keeps its token and stays
+non-addressable, never an error, `ALL_HANDLERS` unaffected (was #7). The
+version claim is **"verified on 26.1.3.Final, best-effort and cleanly degrading
+elsewhere"** (was #8). The handler catalog (#15) — reframed as **`logctl
+handlers`**, the `logctl levels` counterpart — is **delivered in the same PR**
+rather than kept separate (was #9, reversed): #14 is what makes the names on it
+worth reading, and the catalog is what makes #14 testable. See "The handler
+catalog".
 
 ## Semantics to pin down
 
@@ -631,6 +928,13 @@ its own prior value (Decision #4).
   under `loggers`/`handlerOverrides` keys. `AggregateLevelControl.listHandlerOverrides`
   unions a handler active in more than one context by ref, same as the
   blocking-handlers union `setLevel` already does.
+- `logctl handlers` (issue #15): `listHandlers()` returns one `HandlerInfo` per
+  `knownHandlers()` entry with its current level, `handlerDiagnostics` facts, and
+  any active override's level/tier/expiry; a row's level reflects an active
+  override; an adapter with `hasHandlerLevels() == false` yields an empty list
+  and the command prints a note. The text renderer shows the `PERSISTS`/`TARGET`
+  columns and an `OVERRIDE` cell; `--json` wraps the rows under a `handlers`
+  key with `null` where a field doesn't apply. The parser rejects arguments.
 
 **Cross-process (extends `LevelControlEndToEndIT` / `WildFlyContainerIT`):**
 
@@ -670,12 +974,11 @@ to a logger override); the confirmation/warning names every blocking handler
 inline, one actionable command each (was #5), which the user called out as a
 feature, not a cost.
 
-- **A. `logctl status --handlers` / `listHandlers()`.** Resolved: **defer.** The
-  warning message already gives a developer every handler name they need to act;
-  ship without a standalone listing and pick it up in a follow-up (possibly
-  alongside `doctor`'s fuller rendering). `knownHandlers()` stays in the adapter
-  SPI — it backs `logctl handler`'s unknown-name error, independent of any status
-  listing.
+- **A. `logctl status --handlers` / `listHandlers()`.** Originally resolved
+  *defer*; **delivered with issue #14** as `logctl handlers` (a standalone
+  command, the `logctl levels` counterpart — not a `status` flag), because the
+  catalog is what makes #14's resolved names visible and testable. See "The
+  handler catalog".
 - **D. Ship both directions now, or lower-only first?** Resolved: **both.** The
   user's own framing of this feature ("reset the level of an appender up or
   down") settles it — `handler.lower` and `handler.raise` both ship this slice, as

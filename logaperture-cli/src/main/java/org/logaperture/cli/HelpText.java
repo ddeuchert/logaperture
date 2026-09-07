@@ -28,6 +28,7 @@ final class HelpText {
     /** One synopsis per invocation form. Kept punctuation-free on purpose. */
     static final List<String> SYNOPSES = List.of(
             "logctl levels [filter]",
+            "logctl handlers",
             "logctl status",
             "logctl doctor",
             "logctl top [--limit n]",
@@ -68,9 +69,10 @@ final class HelpText {
         sb.append("'handler' sets a handler's own level directly — the fix when raising a\n");
         sb.append("logger still won't show output because a handler is set stricter. A raise\n");
         sb.append("that hits this prints which handler and the exact command to lower it.\n");
-        sb.append("'handler <name> reset' reverts it on its own. On WildFly the name is\n");
-        sb.append("always ALL_HANDLERS, meaning every handler at once — individual WildFly\n");
-        sb.append("handlers cannot be named on their own.\n");
+        sb.append("'handler <name> reset' reverts it on its own. 'logctl handlers' lists\n");
+        sb.append("every handler you can name, its level, and any active override — on\n");
+        sb.append("WildFly the individual names (CONSOLE, FILE, …) appear once the server\n");
+        sb.append("is up; before that, and always, ALL_HANDLERS means every handler at once.\n");
         sb.append("\n");
         sb.append("A [filter] for 'levels' is a logger-name prefix, or a glob using\n");
         sb.append("* and ? — so 'logctl levels *infinispan*' finds a logger when the\n");

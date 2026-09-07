@@ -15,6 +15,8 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.HandlerDiagnostics;
+import org.logaperture.api.HandlerInfo;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
@@ -326,6 +328,37 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     @Override
     public List<HandlerLevelOverride> listHandlerOverrides() {
         return List.copyOf(overrides.all().values());
+    }
+
+    /**
+     * doc/specs/handler-floor-control.md "The handler catalog" (issue #15).
+     * One row per addressable handler ({@code adapter.knownHandlers()}), each
+     * with its own current level, the static facts {@code doctor} already
+     * reads ({@code handlerDiagnostics}), and any active override. {@code
+     * ALL_HANDLERS} is included as a row with no level of its own.
+     */
+    @Override
+    public List<HandlerInfo> listHandlers() {
+        if (!adapter.hasHandlerLevels()) {
+            return List.of(); // Logback / none: handlers have no level -- nothing to catalogue
+        }
+        List<HandlerInfo> rows = new ArrayList<>();
+        for (HandlerRef ref : adapter.knownHandlers()) {
+            Level current = adapter.handlerLevel(ref).orElse(null);
+            HandlerDiagnostics diag = adapter.handlerDiagnostics(ref);
+            HandlerLevelOverride override = overrides.get(ref).orElse(null);
+            rows.add(new HandlerInfo(
+                    ref.value(),
+                    current,
+                    diag.isPersistent(),
+                    diag.targetPath() == null ? null : diag.targetPath().toString(),
+                    diag.autoFlush(),
+                    override != null,
+                    override == null ? null : override.level(),
+                    override == null ? null : override.tier(),
+                    override == null ? null : override.expiresAt()));
+        }
+        return List.copyOf(rows);
     }
 
     /**

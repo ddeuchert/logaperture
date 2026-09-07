@@ -103,6 +103,11 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
+    public List<HandlerInfoData> listHandlers() {
+        return handlerOperations.listHandlers().stream().map(HandlerInfoData::from).toList();
+    }
+
+    @Override
     public List<DoctorFindingData> diagnose() {
         return doctorOperations.diagnose().stream().map(DoctorFindingData::from).toList();
     }

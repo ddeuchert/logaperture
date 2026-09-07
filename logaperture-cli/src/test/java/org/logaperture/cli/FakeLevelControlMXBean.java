@@ -105,6 +105,14 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         return handlerOverrides;
     }
 
+    List<org.logaperture.control.jmx.HandlerInfoData> handlerCatalog = new ArrayList<>();
+
+    @Override
+    public List<org.logaperture.control.jmx.HandlerInfoData> listHandlers() {
+        maybeThrow();
+        return handlerCatalog;
+    }
+
     @Override
     public List<DoctorFindingData> diagnose() {
         maybeThrow();

@@ -210,6 +210,46 @@ class CommandsTest {
         assertTrue(text.contains("\"checksRun\":1"), text);
     }
 
+    @Test
+    void handlers_rendersATableWithLevelSinkTargetAndOverride() {
+        mbean.handlerCatalog = List.of(
+                new org.logaperture.control.jmx.HandlerInfoData(
+                        "ALL_HANDLERS", null, false, null, null, false, null, null, null, null),
+                new org.logaperture.control.jmx.HandlerInfoData(
+                        "CONSOLE", "INFO", false, null, Boolean.TRUE, false, null, null, null, null),
+                new org.logaperture.control.jmx.HandlerInfoData(
+                        "FILE", "DEBUG", true, "/opt/server.log", Boolean.TRUE, true, "DEBUG", "FOR",
+                        Instant.now().plus(30, ChronoUnit.MINUTES).toString(), null));
+
+        assertEquals(CliError.OK, run(Commands.handlers(false)));
+
+        String text = output();
+        assertTrue(text.contains("HANDLER") && text.contains("LEVEL") && text.contains("TARGET"), text);
+        assertTrue(text.contains("ALL_HANDLERS"), text);
+        assertTrue(text.contains("CONSOLE") && text.contains("INFO"), text);
+        assertTrue(text.contains("FILE") && text.contains("/opt/server.log"), text);
+        assertTrue(text.contains("DEBUG (FOR"), "the override cell shows level + tier: " + text);
+    }
+
+    @Test
+    void handlers_nothingToList_printsANote() {
+        mbean.handlerCatalog = List.of();
+        assertEquals(CliError.OK, run(Commands.handlers(false)));
+        assertTrue(output().contains("no level of their own"), output());
+    }
+
+    @Test
+    void handlers_json_wrapsTheCatalog() {
+        mbean.handlerCatalog = List.of(new org.logaperture.control.jmx.HandlerInfoData(
+                "CONSOLE", "INFO", false, null, Boolean.TRUE, false, null, null, null, null));
+
+        run(Commands.handlers(true));
+
+        String text = output().strip();
+        assertTrue(text.startsWith("{\"handlers\":[{"), text);
+        assertTrue(text.contains("\"ref\":\"CONSOLE\""), text);
+    }
+
     // --- top (doc/specs/top.md) ------------------------------------------------------------------
 
     @Test

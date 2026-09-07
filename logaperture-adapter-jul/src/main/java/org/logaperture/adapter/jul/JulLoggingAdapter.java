@@ -26,8 +26,12 @@ import org.logaperture.core.spi.UnknownHandlerException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Formatter;
 import java.util.logging.Handler;
@@ -59,6 +63,12 @@ import java.util.logging.Logger;
  * against real WildFly: tried, doesn't work") never actually resolved a
  * name against real WildFly and was retired outright (issue #13, Decision
  * #8) in favor of the reserved {@link HandlerRef#ALL_HANDLERS} target.
+ * Real per-handler names come back via an injected {@link
+ * HandlerNameResolver} instead (issue #14) — this adapter stays generic
+ * (the resolver, and its reflective read of WildFly's management model,
+ * lives in {@code logaperture-container-wildfly}); with {@link
+ * HandlerNameResolver#NONE} (plain JUL) every handler keeps its identity
+ * token exactly as before.
  *
  * <p>It also works, unchanged, against the JDK's own default
  * {@code LogManager} (plain JUL apps).
@@ -90,8 +100,41 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     /** doc/specs/top.md -- shared across every {@link ByteCountingFormatter} this adapter installs. */
     private final TopCounters topCounters = new TopCounters();
 
+    /**
+     * doc/specs/handler-floor-control.md "WildFly handler name resolution"
+     * (issue #14). {@link HandlerNameResolver#NONE} for plain JUL — every
+     * handler then keeps its {@code <class>@<idhash>} identity token, exactly
+     * as before this feature.
+     */
+    private final HandlerNameResolver nameResolver;
+
+    /**
+     * Each live {@link Handler} instance's {@link HandlerRef}, memoised for
+     * this adapter's lifetime so a ref never changes under a captured
+     * baseline/override (doc/specs/handler-floor-control.md "Ref stability
+     * across a late resolution"). {@link Handler} has no {@code
+     * equals}/{@code hashCode} override, so this keys by identity.
+     */
+    private final Map<Handler, HandlerRef> refByHandler = new ConcurrentHashMap<>();
+    /** The subset of {@link #refByHandler} values that are identity-token fallbacks, not resolved names. */
+    private final Set<HandlerRef> tokenRefs = ConcurrentHashMap.newKeySet();
+    /** Resolved configured-name-by-instance, populated once {@link HandlerNameResolver#resolve} first returns non-empty. */
+    private final Map<Handler, String> resolvedNames = new ConcurrentHashMap<>();
+
+    private enum Resolution { PENDING, DONE }
+
+    private volatile Resolution resolution = Resolution.PENDING;
+    /** Serialises the resolution attempt + {@link #upgradeTokenRefs()} so concurrent first-callers don't race. */
+    private final Object resolutionLock = new Object();
+
     /** Package-visible: constructed by {@link JulAdapterFactory}. */
     JulLoggingAdapter() {
+        this(HandlerNameResolver.NONE);
+    }
+
+    /** Package-visible: constructed by {@link JulAdapterFactory} on WildFly with a real resolver. */
+    JulLoggingAdapter(HandlerNameResolver nameResolver) {
+        this.nameResolver = Objects.requireNonNull(nameResolver, "nameResolver");
     }
 
     @Override
@@ -159,6 +202,7 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         if (target == null) {
             return List.of();
         }
+        ensureNamesResolved();
         int targetValue = LevelMapper.toJul(target).intValue();
         List<HandlerFloor> floors = new ArrayList<>();
         for (Logger current = logger(loggerName); current != null; current = current.getParent()) {
@@ -172,15 +216,20 @@ public final class JulLoggingAdapter implements LoggingAdapter {
                 break; // records stop propagating upward here (JUL semantics)
             }
         }
-        if (floors.isEmpty() || !isJBossLogManager()) {
+        if (floors.isEmpty()) {
             return List.copyOf(floors);
         }
-        // Decision #7 (issue #13): WildFly has only one addressable lever
-        // now -- collapse to a single HandlerFloor naming ALL_HANDLERS, at
-        // the strictest (least verbose) level among the actual blockers.
-        // Zero changes to core, the JMX surface, or Commands -- collapsing
-        // is entirely this adapter's own answer to a question it already
-        // answers.
+        boolean anyTokenBlocker = floors.stream().anyMatch(f -> tokenRefs.contains(f.handlerRef()));
+        if (!isJBossLogManager() || !anyTokenBlocker) {
+            // Plain JUL, or every blocking handler resolved to a configured
+            // name (issue #14) -- keep the per-handler warning, one actionable
+            // `logctl handler <name>` command each.
+            return List.copyOf(floors);
+        }
+        // At least one blocking handler still can't be named individually
+        // (issue #13, Decision #7): collapse to a single HandlerFloor naming
+        // ALL_HANDLERS, at the strictest (least verbose) level among the
+        // actual blockers. Zero changes to core, the JMX surface, or Commands.
         Level strictest = floors.stream()
                 .map(HandlerFloor::currentLevel)
                 .max(Comparator.naturalOrder())
@@ -265,7 +314,10 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      * {@code logctl handler CONSOLE TRACE} cold, with no prior warning in
      * this session), when the cache is empty. In that case, fall back to
      * walking every known handler once — which populates the cache as a
-     * side effect via {@link #refFor} — before giving up.
+     * side effect via {@link #refFor} — before giving up. On WildFly the
+     * walk goes through {@link #knownHandlers()} (not {@link #realHandlers()}):
+     * a name that resolved (issue #14) is re-discoverable this way, a handler
+     * still on an unstable identity token deliberately is not.
      */
     private Handler resolveHandler(HandlerRef ref) {
         Handler cached = handlersByRef.get(ref);
@@ -273,6 +325,15 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             return cached;
         }
         knownHandlers(); // side effect: resolves and caches every advertised handler's ref
+        if (isJBossLogManager() && tokenRefs.contains(ref)) {
+            // The cold walk (via realHandlers()) just cached an identity-token
+            // ref for ALL_HANDLERS fan-out -- but a user must not be able to
+            // name it (issue #13/#14: an unstable token is not on WildFly's
+            // addressable surface). A warm token ref (already in handlersByRef
+            // before this call, i.e. handed straight back from realHandlers()
+            // inside a fan-out) still resolves via the fast path above.
+            return null;
+        }
         return handlersByRef.get(ref);
     }
 
@@ -280,19 +341,28 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      * Every handler currently <em>addressable</em> by a user (issue #13,
      * Decision #1). Plain JUL: every real handler, plus the reserved {@link
      * HandlerRef#ALL_HANDLERS} as one more valid name alongside them.
-     * WildFly (JBoss LogManager): {@code ALL_HANDLERS} alone -- the reals
-     * still exist and still get mutated (see {@link #realHandlers()}), just
-     * not advertised or individually addressable any more, since this
-     * adapter can't reliably name one (the class doc's retired-reflection
-     * note). This is also why {@link #resolveHandler}'s cold-lookup
-     * fallback calls this method rather than {@link #realHandlers()}
-     * directly: on WildFly it must <em>not</em> re-discover a real ref that
-     * isn't on the addressable surface any more.
+     * WildFly (JBoss LogManager): {@code ALL_HANDLERS} <em>plus</em> every
+     * real handler whose configured name has resolved (issue #14, Decision
+     * #2). A real handler still on an identity-token ref is <b>not</b>
+     * advertised here — the token is unstable across a restart (issue #13's
+     * whole reason for {@code ALL_HANDLERS}), so advertising it would
+     * reintroduce the bug #13 fixed. It still exists and still gets mutated
+     * via {@link #realHandlers()}, just isn't individually addressable.
      */
     @Override
     public List<HandlerRef> knownHandlers() {
+        // realHandlers() runs ensureNamesResolved() itself -- don't call it
+        // again here or a single knownHandlers() would consume two resolve
+        // attempts (and two in-VM ModelController reads) while pending.
         if (isJBossLogManager()) {
-            return List.of(HandlerRef.ALL_HANDLERS);
+            List<HandlerRef> advertised = new ArrayList<>();
+            advertised.add(HandlerRef.ALL_HANDLERS);
+            for (HandlerRef ref : realHandlers()) {
+                if (!tokenRefs.contains(ref)) {
+                    advertised.add(ref);
+                }
+            }
+            return List.copyOf(advertised);
         }
         List<HandlerRef> combined = new ArrayList<>(realHandlers());
         combined.add(HandlerRef.ALL_HANDLERS);
@@ -301,21 +371,19 @@ public final class JulLoggingAdapter implements LoggingAdapter {
 
     /**
      * Every real handler this adapter can act on right now — what {@link
-     * HandlerRef#ALL_HANDLERS} fans out over (issue #13, Decision #1).
-     * Walks every known logger's own (non-inherited) handler list --
-     * getHandlers() only returns handlers actually attached at that node,
-     * so this naturally dedupes via refFor's identity map without walking
-     * parent chains here. Unlike {@link #knownHandlers()}, never collapsed
-     * or suppressed: WildFly's fan-out needs the true list regardless of
-     * what's advertised.
+     * HandlerRef#ALL_HANDLERS} fans out over (issue #13, Decision #1). One
+     * ref per live {@link Handler} instance, deduped by identity, by resolved
+     * configured name where available (issue #14) and identity token
+     * otherwise. Unlike {@link #knownHandlers()}, never collapsed or
+     * suppressed: WildFly's fan-out needs the true list regardless of what's
+     * advertised.
      */
     @Override
     public List<HandlerRef> realHandlers() {
+        ensureNamesResolved();
         List<HandlerRef> refs = new ArrayList<>();
-        for (String name : knownLoggerNames()) {
-            for (Handler handler : logger(name).getHandlers()) {
-                refs.add(refFor(handler));
-            }
+        for (Handler handler : liveHandlers()) {
+            refs.add(refFor(handler));
         }
         return List.copyOf(refs);
     }
@@ -336,18 +404,131 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     }
 
     /**
-     * Resolves (or reuses) the {@link HandlerRef} for {@code handler}:
-     * always the stable identity-hash fallback (issue #13, Decision #8) —
-     * the reflective attempt at WildFly's own configured name (the retired
-     * {@code JbossHandlerNames}) never actually resolved one against real
-     * WildFly (see the class doc), so {@link HandlerRef#ALL_HANDLERS}
-     * replaces per-handler addressing there instead of patching that
-     * lookup.
+     * The {@link HandlerRef} for {@code handler}, minted once per instance and
+     * memoised in {@link #refByHandler} for the adapter's lifetime — a ref
+     * must never change under a captured baseline/override (doc/specs/
+     * handler-floor-control.md "Ref stability across a late resolution").
+     * {@link #upgradeTokenRefs()} is the one exception: a token minted before
+     * name resolution succeeded is re-minted to its resolved name, once.
      */
     private HandlerRef refFor(Handler handler) {
-        HandlerRef ref = HandlerRef.anonymous(handler);
+        return refByHandler.computeIfAbsent(handler, this::mintRef);
+    }
+
+    private HandlerRef mintRef(Handler handler) {
+        String resolved = resolvedNames.get(handler);
+        HandlerRef ref = resolved != null ? new HandlerRef(resolved) : HandlerRef.anonymous(handler);
+        if (resolved == null) {
+            tokenRefs.add(ref);
+        }
         handlersByRef.putIfAbsent(ref, handler);
         return ref;
+    }
+
+    /** Every {@link Handler} attached to any known logger, deduped by identity. */
+    private List<Handler> liveHandlers() {
+        List<Handler> out = new ArrayList<>();
+        Set<Handler> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (String name : knownLoggerNames()) {
+            for (Handler handler : logger(name).getHandlers()) {
+                if (seen.add(handler)) {
+                    out.add(handler);
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * doc/specs/handler-floor-control.md "Lifecycle: when it runs, caching,
+     * re-resolution" (issue #14). Lazy: attempted the first time an
+     * addressable-surface method needs it, and again on every later call while
+     * still pending (the WildFly container's LogManager-ready gate fires before
+     * the management model is queryable, so the first attempts come back empty)
+     * — until it succeeds once. No permanent give-up: a server whose model only
+     * becomes queryable minutes in still gets its names, and a {@link
+     * HandlerNameResolver#resolve} that can't reach the model returns fast and
+     * cheap. A no-op for the {@link HandlerNameResolver#NONE} resolver (plain
+     * JUL) and once {@code resolution == DONE}, so the steady state costs
+     * nothing.
+     *
+     * <p>The attempt and {@link #upgradeTokenRefs()} run under {@link
+     * #resolutionLock}: while pending, concurrent callers serialise here (each
+     * makes at most one resolve attempt) rather than both resolving and racing
+     * the ref promotion.
+     */
+    private void ensureNamesResolved() {
+        if (resolution == Resolution.DONE || nameResolver == HandlerNameResolver.NONE) {
+            return;
+        }
+        synchronized (resolutionLock) {
+            if (resolution == Resolution.DONE) {
+                return;
+            }
+            List<Handler> handlers = liveHandlers();
+            if (handlers.isEmpty()) {
+                return; // no handlers to resolve yet -- try again on the next call
+            }
+            Map<Handler, String> names;
+            try {
+                names = nameResolver.resolve(handlers);
+            } catch (RuntimeException unexpected) { // the contract says it won't throw; never trust that
+                names = Map.of();
+            }
+            if (names.isEmpty()) {
+                return; // model not queryable yet -- the next call retries
+            }
+            resolvedNames.putAll(names);
+            resolution = Resolution.DONE;
+            upgradeTokenRefs();
+        }
+    }
+
+    /**
+     * The "friendly refs appear" moment (doc/specs/handler-floor-control.md,
+     * issue #14 Decision #5): any instance still on a token ref that now has a
+     * resolved name is re-minted to that name, exactly once. Only ever called
+     * under {@link #resolutionLock}. Deliberately promotes token&rarr;name only,
+     * never name&rarr;name: an already-resolved handler renamed in place keeps
+     * its ref (ref stability — the old name still resolves to the live
+     * instance); a genuinely new handler instance is named by {@link #mintRef}
+     * directly once {@code resolution == DONE}.
+     */
+    private void upgradeTokenRefs() {
+        for (Map.Entry<Handler, HandlerRef> entry : refByHandler.entrySet()) {
+            String name = resolvedNames.get(entry.getKey());
+            if (name == null || !tokenRefs.contains(entry.getValue())) {
+                continue;
+            }
+            HandlerRef friendly = new HandlerRef(name);
+            HandlerRef old = entry.setValue(friendly);
+            tokenRefs.remove(old);
+            handlersByRef.remove(old);
+            handlersByRef.putIfAbsent(friendly, entry.getKey());
+        }
+    }
+
+    /**
+     * doc/specs/handler-floor-control.md "Lifecycle" (issue #14): the WildFly
+     * container calls this on a {@code /subsystem=logging} change so a
+     * <em>newly-added</em> handler is picked up on the next {@link
+     * #realHandlers()} (it's a fresh {@link Handler} instance, so {@link
+     * #mintRef} names it straight away once resolution re-runs). Existing
+     * instance&rarr;ref bindings are kept — a ref must stay stable under a
+     * captured baseline/override — so a handler <em>renamed in place</em>
+     * (same instance, new configured name) keeps its old ref; the old name
+     * still resolves to the live handler.
+     *
+     * <p>Public for exactly one collaborator — {@code
+     * logaperture-container-wildfly}'s configuration-change hook, which is the
+     * whole reason a resolver is injected. No-op unless a real resolver is in
+     * play.
+     */
+    public void invalidateNameCache() {
+        synchronized (resolutionLock) {
+            resolvedNames.clear();
+            resolution = Resolution.PENDING;
+        }
     }
 
     /**

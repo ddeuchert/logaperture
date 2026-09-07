@@ -121,4 +121,29 @@ class JsonTest {
 
         assertTrue(Json.top(report).contains("\"trackedCount\":200"), Json.top(report));
     }
+
+    // --- handlers (doc/specs/handler-floor-control.md "The handler catalog") -------------------
+
+    @Test
+    void handlersEmitsNullsWhereFieldsDoNotApply() {
+        org.logaperture.control.jmx.HandlerInfoData allHandlers = new org.logaperture.control.jmx.HandlerInfoData(
+                "ALL_HANDLERS", null, false, null, null, false, null, null, null, "system");
+        org.logaperture.control.jmx.HandlerInfoData file = new org.logaperture.control.jmx.HandlerInfoData(
+                "FILE", "INFO", true, "/var/log/server.log", Boolean.TRUE, true, "DEBUG", "FOR",
+                "2026-09-07T14:32:00Z", "system");
+
+        assertEquals(
+                "{\"handlers\":[{\"ref\":\"ALL_HANDLERS\",\"level\":null,\"persistent\":false,\"targetPath\":null,"
+                        + "\"autoFlush\":null,\"overrideActive\":false,\"overrideLevel\":null,\"overrideTier\":null,"
+                        + "\"overrideExpiresAt\":null,\"context\":\"system\"},"
+                        + "{\"ref\":\"FILE\",\"level\":\"INFO\",\"persistent\":true,\"targetPath\":\"/var/log/server.log\","
+                        + "\"autoFlush\":true,\"overrideActive\":true,\"overrideLevel\":\"DEBUG\",\"overrideTier\":\"FOR\","
+                        + "\"overrideExpiresAt\":\"2026-09-07T14:32:00Z\",\"context\":\"system\"}]}",
+                Json.handlers(List.of(allHandlers, file)));
+    }
+
+    @Test
+    void handlersWithNothingToList_emitsAnEmptyArray() {
+        assertEquals("{\"handlers\":[]}", Json.handlers(List.of()));
+    }
 }

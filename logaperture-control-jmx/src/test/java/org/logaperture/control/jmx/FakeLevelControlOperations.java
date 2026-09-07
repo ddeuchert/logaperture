@@ -118,6 +118,13 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
         return handlerOverridesToReturn;
     }
 
+    java.util.List<org.logaperture.api.HandlerInfo> handlersToReturn = java.util.List.of();
+
+    @Override
+    public List<org.logaperture.api.HandlerInfo> listHandlers() {
+        return handlersToReturn;
+    }
+
     @Override
     public List<DoctorFinding> diagnose() {
         diagnoseCalled = true;

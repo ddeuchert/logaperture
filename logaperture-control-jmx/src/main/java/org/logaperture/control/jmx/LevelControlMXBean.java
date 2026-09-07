@@ -70,6 +70,13 @@ public interface LevelControlMXBean {
     List<HandlerLevelOverrideData> listHandlerOverrides();
 
     /**
+     * {@code logctl handlers} — the full addressable handler catalog across
+     * every registered context (doc/specs/handler-floor-control.md "The
+     * handler catalog", issue #15). Read-only; requires only {@code VIEW}.
+     */
+    List<HandlerInfoData> listHandlers();
+
+    /**
      * {@code logctl doctor} — a read-only configuration diagnosis, across
      * every registered context (doc/specs/doctor.md). Never mutates
      * anything; requires only the {@code VIEW} capability.

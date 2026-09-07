@@ -84,6 +84,13 @@ class ParserTest {
     }
 
     @Test
+    void handlersTakesNoArguments() {
+        Parser.parse(new String[] {"handlers"});                       // OK
+        Parser.parse(new String[] {"handlers", "--json"});             // OK
+        assertUsage(() -> Parser.parse(new String[] {"handlers", "CONSOLE"}));
+    }
+
+    @Test
     void levelNamedFormNeedsALogger() {
         assertUsage(() -> Parser.parse(new String[] {"debug"}));
     }
