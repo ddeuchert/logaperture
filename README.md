@@ -30,7 +30,12 @@
 
 `0.1.0-alpha.1` is a **measure-and-control** slice — it reads what your app logs, and it changes log levels. It does not suppress anything yet.
 
-Working today, on plain `java -jar` and standalone WildFly:
+**Tested on:**
+
+- **Standalone WildFly** (26.x, JBoss LogManager) — the full command set, end to end in a real server.
+- **Plain `java -jar`** with **Logback** or **`java.util.logging`** — runtime level changes, enforced expiry, and persistence (a `sticky` override survives a real restart), verified cross-process.
+
+Working today:
 
 - **`logctl levels [glob]`** — every logger and its effective level; the glob finds a logger from the abbreviated name a log line actually printed.
 - **`logctl debug <logger> for 30m`** / `trace` / `set <logger> <level> sticky` — change a level at runtime. It reverts on its own timer, survives a restart if you ask (`sticky`), and never touches `standalone.xml`, `logback-spring.xml`, or anything your application owns.
@@ -39,9 +44,9 @@ Working today, on plain `java -jar` and standalone WildFly:
 - **`logctl top`** — bytes written per logger, worst-first, with a projected daily total and the stack-trace-byte fraction.
 - **`logctl status`** / **`logctl reset --all`** — what LogAperture has changed, and undo all of it.
 
-Every change is capability-checked and written to a tamper-evident audit trail. The agent opens no sockets; `logctl` reaches it over the local attach API, UID-gated by the OS.
+`doctor`, `top`, and `logctl handlers` currently inspect `java.util.logging` / JBoss LogManager only — on a Logback application they report nothing yet (a Logback pass is on the roadmap). Every change is capability-checked and written to a tamper-evident audit trail. The agent opens no sockets; `logctl` reaches it over the local attach API, UID-gated by the OS.
 
-Not yet: automatic storm collapse or any suppression, per-rule squelching, the Log4j 2 adapter, Spring Boot / Tomcat / Quarkus JVM at depth.
+**Not in this build:** automatic storm collapse or any suppression, per-rule squelching, the Log4j 2 adapter, and any Spring Boot / Tomcat / Quarkus-JVM integration (a Spring Boot fat-jar attaches as a plain JVM, so level control *may* work against its Logback, but it is untested).
 
 **Getting it:** download `logaperture-<version>.zip` from the [latest release](../../releases) and follow the bundled `INSTALL-wildfly.md`. [DEVELOPMENT.md](DEVELOPMENT.md) covers a plain-JVM setup and running `logctl`.
 
