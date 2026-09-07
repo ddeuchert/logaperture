@@ -618,26 +618,39 @@ Verified on **WildFly 26.1.3.Final** (`WildFlyContainerIT`). The spec claims
 "best-effort, and degrades cleanly to `ALL_HANDLERS`-only elsewhere" — it does
 not claim EAP or pre-26 coverage without a real run on them.
 
-### Known limitation — sticky `ALL_HANDLERS` across a restart that loses the resolution race (issue [#29](https://github.com/ddeuchert/logaperture/issues/29))
+### Known limitation — handler-override resume races name resolution (issue [#29](https://github.com/ddeuchert/logaperture/issues/29))
 
-`resumeFromStateStore` runs at `installContext`, before the management model is
-queryable, so a persisted **sticky `ALL_HANDLERS`** override is re-applied while
-`realHandlers()` still returns identity-token refs — baselines are captured
-against those tokens. When resolution later succeeds, `upgradeTokenRefs()`
-promotes those same instances to their configured-name refs; the next
-`ALL_HANDLERS` verification sweep then captures a *fresh* baseline against the
-friendly ref, which by that point reads back the already-applied override
-level. Net effect: after such a restart, `logctl handler ALL_HANDLERS reset`
-may leave those handlers at the override level rather than their true
-pre-LogAperture level.
+`resumeFromStateStore` runs at `installContext`, before WildFly's management
+model is queryable, so name resolution hasn't happened and `realHandlers()`
+still returns identity tokens. Two consequences, deferred to #29:
 
-Scope: only the sticky-`ALL_HANDLERS`-across-restart case on WildFly, and only
-when resolution loses the race with resume. Everything else is unaffected —
-`logctl handler CONSOLE …`, a live `logctl handler ALL_HANDLERS …`, per-handler
-sticky overrides, `logctl reset --all` or `logctl handler ALL_HANDLERS reset`
-issued before the upgrade, and every non-WildFly adapter. Fix options (deferred):
-a short bounded synchronous resolution attempt before `resumeFromStateStore`, or
-carrying the token-keyed baseline across the ref upgrade.
+- **A persisted per-handler sticky override is dropped on restart.**
+  `logctl handler CONSOLE INFO sticky` — possible now that #14 makes per-handler
+  addressing work — fails to re-apply on the next restart (`CONSOLE` doesn't
+  resolve yet → `UnknownHandlerException` → "failed to resume … skipping it"),
+  and isn't re-tried by the verification sweep because it was never tracked.
+  The state-store entry survives, so it fails identically every restart until
+  re-issued.
+- **A sticky `ALL_HANDLERS` override orphans its per-real baseline.** It's
+  fanned out over token refs and baselines are captured under those tokens;
+  once `upgradeTokenRefs()` promotes the instances to `CONSOLE` / `FILE`, the
+  next sweep re-captures a baseline against the friendly ref that reads back
+  the already-applied override level. `logctl handler ALL_HANDLERS reset` then
+  reverts to the override level, not the true original.
+
+Unaffected: a live `logctl handler CONSOLE …` / `ALL_HANDLERS …`, an
+`ALL_HANDLERS reset` / `reset --all` issued before the upgrade, and every
+non-WildFly adapter.
+
+**Not fixed by delaying resume** (a considered option, rejected): resume runs
+at the earliest point the agent can set a level at all, and the ~10 s until the
+management model is up is full of subsystem/deployment boot logging a sticky
+*logger* override exists to capture — the agent can't pause the JVM, and
+widening that hole to close a rare baseline bug is the wrong trade. The
+direction in #29 keeps resume early and instead (a) keeps an un-resolvable-yet
+handler override tracked as *pending* so the verification sweep applies it once
+resolution catches up, and (b) migrates the `HandlerBaselineRegistry` /
+`HandlerOverrideRegistry` key when `upgradeTokenRefs()` renames a ref.
 
 ### Sign-off — resolved
 
