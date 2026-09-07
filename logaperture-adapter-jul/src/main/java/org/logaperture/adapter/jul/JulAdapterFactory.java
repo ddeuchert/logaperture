@@ -17,6 +17,8 @@ package org.logaperture.adapter.jul;
 
 import org.logaperture.core.spi.LoggingAdapter;
 
+import java.util.Objects;
+
 /**
  * Builds a {@link JulLoggingAdapter} — mirrors {@code
  * logaperture-adapter-logback}'s {@code LogbackAdapterFactory}. The adapter
@@ -30,8 +32,27 @@ public final class JulAdapterFactory {
     private JulAdapterFactory() {
     }
 
-    /** An adapter over the installed {@code java.util.logging.LogManager}. */
+    /**
+     * An adapter over the installed {@code java.util.logging.LogManager},
+     * with no handler-name resolution — every handler keeps its {@code
+     * <class>@<idhash>} identity token. Plain JUL, or WildFly before issue
+     * #14 wires a resolver in.
+     */
     public static LoggingAdapter forCurrentContext() {
         return new JulLoggingAdapter();
+    }
+
+    /**
+     * An adapter over the installed {@code java.util.logging.LogManager} that
+     * resolves real handler names through {@code resolver} — doc/specs/
+     * handler-floor-control.md "WildFly handler name resolution" (issue #14).
+     * {@code logaperture-container-wildfly} passes a resolver backed by
+     * WildFly's own management model, and holds the returned {@link
+     * JulLoggingAdapter} (not just {@link LoggingAdapter}) so it can call
+     * {@link JulLoggingAdapter#invalidateNameCache()} from its
+     * configuration-change hook.
+     */
+    public static JulLoggingAdapter forCurrentContext(HandlerNameResolver resolver) {
+        return new JulLoggingAdapter(Objects.requireNonNull(resolver, "resolver"));
     }
 }
