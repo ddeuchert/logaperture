@@ -11,13 +11,16 @@ apply to everyone.
 - **`develop` is the working trunk.** All feature branches merge here, and it is
   where day-to-day work lands. **Target your pull requests at `develop`**, not
   `main` (the repo's default branch is `main`, so the PR base needs changing).
-- **`main` is the release line.** It only ever fast-forwards from `develop`, and
-  it carries the release tags. It is the default branch so a clone, the landing
-  page, and tooling point at the released state.
-- **A release is cut by pushing a tag** (`v0.1.0-alpha.1`, `v0.1.0-alpha.2`, …)
-  on `main`. `.github/workflows/release.yml` then builds the evaluation bundle
-  and publishes a GitHub prerelease with the zip attached. After a release,
-  `develop` bumps to the next `-SNAPSHOT`.
+- **`main` matches the most recent release.** It sits exactly on the last
+  release tag and advances *only* when a release is cut — a fast-forward from
+  `develop` to the commit that gets tagged. Between releases it does not move,
+  so a clone, the landing page, and tooling always show the last shipped state
+  (not in-progress work on `develop`). It is the default branch.
+- **Cutting a release:** fast-forward `main` to the release commit on `develop`,
+  push `main`, then push a tag (`v0.1.0-alpha.1`, `v0.1.0-alpha.2`, …).
+  `.github/workflows/release.yml` builds the evaluation bundle and publishes a
+  GitHub prerelease with the zip attached. Afterwards, bump `develop` to the
+  next `-SNAPSHOT`.
 
 ## Prerequisites
 
