@@ -33,7 +33,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Formatter;
 import java.util.logging.Handler;
 import java.util.logging.LogManager;
@@ -122,11 +121,11 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     /** Resolved configured-name-by-instance, populated once {@link HandlerNameResolver#resolve} first returns non-empty. */
     private final Map<Handler, String> resolvedNames = new ConcurrentHashMap<>();
 
-    private enum Resolution { PENDING, DONE, UNAVAILABLE }
+    private enum Resolution { PENDING, DONE }
 
     private volatile Resolution resolution = Resolution.PENDING;
-    private final AtomicInteger emptyResolveAttempts = new AtomicInteger();
-    private static final int MAX_RESOLVE_ATTEMPTS = 20;
+    /** Serialises the resolution attempt + {@link #upgradeTokenRefs()} so concurrent first-callers don't race. */
+    private final Object resolutionLock = new Object();
 
     /** Package-visible: constructed by {@link JulAdapterFactory}. */
     JulLoggingAdapter() {
@@ -326,6 +325,15 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             return cached;
         }
         knownHandlers(); // side effect: resolves and caches every advertised handler's ref
+        if (isJBossLogManager() && tokenRefs.contains(ref)) {
+            // The cold walk (via realHandlers()) just cached an identity-token
+            // ref for ALL_HANDLERS fan-out -- but a user must not be able to
+            // name it (issue #13/#14: an unstable token is not on WildFly's
+            // addressable surface). A warm token ref (already in handlersByRef
+            // before this call, i.e. handed straight back from realHandlers()
+            // inside a fan-out) still resolves via the fast path above.
+            return null;
+        }
         return handlersByRef.get(ref);
     }
 
@@ -343,7 +351,9 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      */
     @Override
     public List<HandlerRef> knownHandlers() {
-        ensureNamesResolved();
+        // realHandlers() runs ensureNamesResolved() itself -- don't call it
+        // again here or a single knownHandlers() would consume two resolve
+        // attempts (and two in-VM ModelController reads) while pending.
         if (isJBossLogManager()) {
             List<HandlerRef> advertised = new ArrayList<>();
             advertised.add(HandlerRef.ALL_HANDLERS);
@@ -432,45 +442,57 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     /**
      * doc/specs/handler-floor-control.md "Lifecycle: when it runs, caching,
      * re-resolution" (issue #14). Lazy: attempted the first time an
-     * addressable-surface method needs it, retried while {@link
-     * HandlerNameResolver#resolve} keeps coming back empty (the WildFly
-     * container's LogManager-ready gate fires before the management model is
-     * queryable), and given up on — identity tokens forever, one diagnostic —
-     * after {@link #MAX_RESOLVE_ATTEMPTS} empty tries. A no-op for the {@link
-     * HandlerNameResolver#NONE} resolver (plain JUL).
+     * addressable-surface method needs it, and again on every later call while
+     * still pending (the WildFly container's LogManager-ready gate fires before
+     * the management model is queryable, so the first attempts come back empty)
+     * — until it succeeds once. No permanent give-up: a server whose model only
+     * becomes queryable minutes in still gets its names, and a {@link
+     * HandlerNameResolver#resolve} that can't reach the model returns fast and
+     * cheap. A no-op for the {@link HandlerNameResolver#NONE} resolver (plain
+     * JUL) and once {@code resolution == DONE}, so the steady state costs
+     * nothing.
+     *
+     * <p>The attempt and {@link #upgradeTokenRefs()} run under {@link
+     * #resolutionLock}: while pending, concurrent callers serialise here (each
+     * makes at most one resolve attempt) rather than both resolving and racing
+     * the ref promotion.
      */
     private void ensureNamesResolved() {
-        if (resolution != Resolution.PENDING || nameResolver == HandlerNameResolver.NONE) {
+        if (resolution == Resolution.DONE || nameResolver == HandlerNameResolver.NONE) {
             return;
         }
-        List<Handler> handlers = liveHandlers();
-        if (handlers.isEmpty()) {
-            return; // no handlers to resolve yet -- try again on the next call
-        }
-        Map<Handler, String> names;
-        try {
-            names = nameResolver.resolve(handlers);
-        } catch (RuntimeException unexpected) { // the contract says it won't throw; never trust that
-            names = Map.of();
-        }
-        if (names.isEmpty()) {
-            if (emptyResolveAttempts.incrementAndGet() >= MAX_RESOLVE_ATTEMPTS) {
-                resolution = Resolution.UNAVAILABLE;
-                System.err.println("[logaperture-jul] WildFly handler name resolution unavailable after "
-                        + MAX_RESOLVE_ATTEMPTS + " attempts; handlers keep their identity-token refs "
-                        + "and only ALL_HANDLERS is individually addressable");
+        synchronized (resolutionLock) {
+            if (resolution == Resolution.DONE) {
+                return;
             }
-            return;
+            List<Handler> handlers = liveHandlers();
+            if (handlers.isEmpty()) {
+                return; // no handlers to resolve yet -- try again on the next call
+            }
+            Map<Handler, String> names;
+            try {
+                names = nameResolver.resolve(handlers);
+            } catch (RuntimeException unexpected) { // the contract says it won't throw; never trust that
+                names = Map.of();
+            }
+            if (names.isEmpty()) {
+                return; // model not queryable yet -- the next call retries
+            }
+            resolvedNames.putAll(names);
+            resolution = Resolution.DONE;
+            upgradeTokenRefs();
         }
-        resolvedNames.putAll(names);
-        resolution = Resolution.DONE;
-        upgradeTokenRefs();
     }
 
     /**
      * The "friendly refs appear" moment (doc/specs/handler-floor-control.md,
      * issue #14 Decision #5): any instance still on a token ref that now has a
-     * resolved name is re-minted to that name, exactly once.
+     * resolved name is re-minted to that name, exactly once. Only ever called
+     * under {@link #resolutionLock}. Deliberately promotes token&rarr;name only,
+     * never name&rarr;name: an already-resolved handler renamed in place keeps
+     * its ref (ref stability — the old name still resolves to the live
+     * instance); a genuinely new handler instance is named by {@link #mintRef}
+     * directly once {@code resolution == DONE}.
      */
     private void upgradeTokenRefs() {
         for (Map.Entry<Handler, HandlerRef> entry : refByHandler.entrySet()) {
@@ -489,10 +511,13 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     /**
      * doc/specs/handler-floor-control.md "Lifecycle" (issue #14): the WildFly
      * container calls this on a {@code /subsystem=logging} change so a
-     * renamed or newly-added handler is picked up. Re-arms the lazy attempt;
-     * existing instance&rarr;ref bindings are kept (a ref must stay stable
-     * under a captured baseline), but a fresh handler instance created by the
-     * reconfiguration resolves normally on the next {@link #realHandlers()}.
+     * <em>newly-added</em> handler is picked up on the next {@link
+     * #realHandlers()} (it's a fresh {@link Handler} instance, so {@link
+     * #mintRef} names it straight away once resolution re-runs). Existing
+     * instance&rarr;ref bindings are kept — a ref must stay stable under a
+     * captured baseline/override — so a handler <em>renamed in place</em>
+     * (same instance, new configured name) keeps its old ref; the old name
+     * still resolves to the live handler.
      *
      * <p>Public for exactly one collaborator — {@code
      * logaperture-container-wildfly}'s configuration-change hook, which is the
@@ -500,9 +525,10 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      * play.
      */
     public void invalidateNameCache() {
-        resolvedNames.clear();
-        emptyResolveAttempts.set(0);
-        resolution = Resolution.PENDING;
+        synchronized (resolutionLock) {
+            resolvedNames.clear();
+            resolution = Resolution.PENDING;
+        }
     }
 
     /**

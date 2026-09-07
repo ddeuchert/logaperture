@@ -154,18 +154,71 @@ class JulHandlerNameResolutionTest {
     }
 
     @Test
-    void resolution_givesUpAfterMaxAttempts_andStopsCallingTheResolver() {
+    void resolution_hasNoPermanentGiveUp_andRetriesEveryCallWhilePending() {
         ConsoleHandler console = consoleAtInfo();
         Logger logger = isolatedLoggerWith(console);
         try {
-            FakeResolver resolver = new FakeResolver(); // never returns a name
+            FakeResolver resolver = new FakeResolver();
+            resolver.emptyFirst = 30; // far more than any old fixed cap
+            resolver.names.put(console, "EVENTUAL");
             JulLoggingAdapter adapter = new JulLoggingAdapter(resolver);
 
-            for (int i = 0; i < 40; i++) {
-                adapter.realHandlers();
+            for (int i = 0; i < 30; i++) {
+                assertTrue(soleFloorRef(adapter, logger).value().startsWith("ConsoleHandler@"), "still pending at " + i);
             }
-            assertEquals(20, resolver.calls.get(),
-                    "after MAX_RESOLVE_ATTEMPTS empty passes the adapter must stop consulting the resolver");
+            assertEquals(new HandlerRef("EVENTUAL"), soleFloorRef(adapter, logger),
+                    "resolution still runs on the 31st call -- no permanent give-up");
+        } finally {
+            logger.removeHandler(console);
+        }
+    }
+
+    @Test
+    void concurrentFirstResolution_consultsTheResolverOnce_thenAddressingNeverRaces() throws Exception {
+        ConsoleHandler console = consoleAtInfo();
+        Logger logger = isolatedLoggerWith(console);
+        try {
+            FakeResolver resolver = new FakeResolver();
+            resolver.names.put(console, "CONSOLE");
+            resolver.resolveDelayMillis = 25; // widen the window for concurrent first-callers
+            JulLoggingAdapter adapter = new JulLoggingAdapter(resolver);
+
+            int threads = 8;
+            var pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
+            var start = new java.util.concurrent.CountDownLatch(1);
+            var done = new java.util.concurrent.CountDownLatch(threads);
+            var errors = new java.util.concurrent.ConcurrentLinkedQueue<Throwable>();
+            for (int i = 0; i < threads; i++) {
+                pool.execute(() -> {
+                    try {
+                        start.await();
+                        // Race the first resolution.
+                        for (int j = 0; j < 20; j++) {
+                            adapter.realHandlers();
+                            adapter.knownHandlers();
+                        }
+                        // Once every thread has observed the name, addressing it
+                        // must never transiently fail -- that is the #14-review
+                        // race in upgradeTokenRefs()/handlersByRef.
+                        for (int j = 0; j < 200; j++) {
+                            if (adapter.realHandlers().contains(new HandlerRef("CONSOLE"))) {
+                                adapter.setHandlerLevel(new HandlerRef("CONSOLE"), Level.DEBUG);
+                            }
+                        }
+                    } catch (Throwable t) {
+                        errors.add(t);
+                    } finally {
+                        done.countDown();
+                    }
+                });
+            }
+            start.countDown();
+            assertTrue(done.await(15, java.util.concurrent.TimeUnit.SECONDS), "threads finished");
+            pool.shutdownNow();
+
+            assertTrue(errors.isEmpty(), "addressing CONSOLE after it resolved must never throw: " + errors);
+            assertEquals(1, resolver.calls.get(), "concurrent first-callers serialise -- resolver consulted once");
+            assertTrue(adapter.realHandlers().contains(new HandlerRef("CONSOLE")));
         } finally {
             logger.removeHandler(console);
         }
@@ -234,12 +287,20 @@ class JulHandlerNameResolutionTest {
     /** A resolver that answers from a fixed identity map, countable, optionally empty for its first N calls. */
     private static final class FakeResolver implements HandlerNameResolver {
         final AtomicInteger calls = new AtomicInteger();
-        final Map<Handler, String> names = new IdentityHashMap<>();
+        final Map<Handler, String> names = java.util.Collections.synchronizedMap(new IdentityHashMap<>());
         volatile int emptyFirst = 0;
+        volatile long resolveDelayMillis = 0;
 
         @Override
         public Map<Handler, String> resolve(List<Handler> handlers) {
             int call = calls.incrementAndGet();
+            if (resolveDelayMillis > 0) {
+                try {
+                    Thread.sleep(resolveDelayMillis);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
             if (call <= emptyFirst) {
                 return Map.of();
             }

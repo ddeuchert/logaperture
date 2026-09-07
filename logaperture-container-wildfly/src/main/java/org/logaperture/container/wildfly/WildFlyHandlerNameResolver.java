@@ -204,28 +204,41 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
 
     // --- binding ------------------------------------------------------------------------------------
 
-    private static Map<Handler, String> bind(
+    /** Package-visible for {@code WildFlyHandlerNameResolverTest}. */
+    static Map<Handler, String> bind(
             List<Handler> handlers, Map<String, String> nameToType, Map<String, String> fileNameByHandlerName) {
         List<Handler> consoles = new ArrayList<>();
         List<Handler> files = new ArrayList<>();
         for (Handler h : handlers) {
             (isConsole(h) ? consoles : files).add(h);
         }
-        Map<Handler, String> out = new IdentityHashMap<>();
+        List<String> consoleNames = new ArrayList<>();
+        List<String> fileNames = new ArrayList<>();
         for (Map.Entry<String, String> e : nameToType.entrySet()) {
-            String name = e.getKey();
-            boolean console = e.getValue().equals("console-handler");
-            List<Handler> candidates = console ? consoles : files;
-            if (candidates.size() == 1) {
-                out.putIfAbsent(candidates.get(0), name);
-                continue;
-            }
-            String wantFile = fileNameByHandlerName.get(name);
-            if (wantFile != null) {
-                for (Handler h : candidates) {
-                    String actual = fileNameOf(h);
-                    if (wantFile.equalsIgnoreCase(actual) && !out.containsKey(h)) {
-                        out.put(h, name);
+            (e.getValue().equals("console-handler") ? consoleNames : fileNames).add(e.getKey());
+        }
+
+        Map<Handler, String> out = new IdentityHashMap<>();
+
+        // The 1<->1 shortcut is only safe when the *model* also defines exactly
+        // one handler of that kind. A model can define more handlers than are
+        // currently attached (a `file-handler=AUDIT` declared but not assigned
+        // to any logger), and blindly taking `candidates.size() == 1` would
+        // bind the live handler to the wrong name.
+        if (consoleNames.size() == 1 && consoles.size() == 1) {
+            out.put(consoles.get(0), consoleNames.get(0));
+        }
+        if (fileNames.size() == 1 && files.size() == 1) {
+            out.put(files.get(0), fileNames.get(0));
+        } else {
+            for (String fileName : fileNames) {
+                String wantLeaf = fileNameByHandlerName.get(fileName);
+                if (wantLeaf == null) {
+                    continue; // no configured path to match on -- leave it on its token
+                }
+                for (Handler h : files) {
+                    if (!out.containsKey(h) && wantLeaf.equalsIgnoreCase(fileNameOf(h))) {
+                        out.put(h, fileName);
                         break;
                     }
                 }

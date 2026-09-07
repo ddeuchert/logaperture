@@ -570,16 +570,26 @@ by resolved name where available and identity token otherwise.
   (`WildFlyLogManagerReadiness`) fires *before* the server reaches `running`;
   the management model may not be queryable yet at `installContext`.
   Resolution is therefore **lazy** — attempted on the first
-  `knownHandlers()` / `realHandlers()` call, and retried on later calls if it
-  came back empty, until it succeeds once.
+  `knownHandlers()` / `realHandlers()` call, and again on every later call
+  while it keeps coming back empty, until it succeeds once. No permanent
+  give-up (a slow-booting server still gets its names; a `resolve()` that
+  can't reach the model returns fast). The attempt is serialised on a lock so
+  concurrent first-callers make one attempt between them, not one each.
 - **Caching.** A resolved name↔instance map is cached on the adapter. `refFor`
-  reads it; no repeated model reads on the hot-ish `realHandlers()` path
-  (`doctor`/`top`/the sweep all call it).
-- **Re-resolution.** The existing `LogManager` configuration-change listener
+  reads it; once `resolution == DONE` no further model reads happen on the
+  hot-ish `realHandlers()` path (`doctor`/`top`/the sweep all call it). The
+  per-handler ref maps are not pruned when a handler instance is discarded —
+  slow, reconfiguration-count-bounded growth, tracked as issue
+  [#31](https://github.com/ddeuchert/logaperture/issues/31).
+- **Re-resolution.** The `LogManager` configuration-change listener
   (`WildFlyContainerIntegration.wireConfigurationListener`) and the periodic
-  verification sweep already re-run on a `/subsystem=logging` change or
-  `:reload`; the resolver cache is invalidated on the same signal, so a
-  handler renamed or added via the management CLI is picked up.
+  verification sweep re-run on a `/subsystem=logging` change or `:reload`; the
+  resolver cache is invalidated on the same signal. A **newly added** handler
+  is picked up (a fresh `Handler` instance → named straight away on the next
+  `realHandlers()`). A handler **renamed in place** (same instance, new
+  configured name) keeps its existing ref — ref stability wins, and the old
+  name still resolves to the live handler; chasing the rename would orphan any
+  baseline/override keyed on the old ref (the same hazard as #29).
 
 ### Ref stability across a late resolution
 
