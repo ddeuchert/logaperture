@@ -17,6 +17,7 @@ package org.logaperture.cli;
 
 import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.HandlerFloorData;
+import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
@@ -215,6 +216,32 @@ final class Json {
                 .str("measurementStartedAt", report.getMeasurementStartedAt())
                 .raw("trackedCount", String.valueOf(report.getTrackedCount()))
                 .toString();
+    }
+
+    /**
+     * {@code logctl handlers --json} — the addressable handler catalog
+     * (doc/specs/handler-floor-control.md "The handler catalog", issue #15).
+     * {@code level} / {@code autoFlush} / the override fields are {@code null}
+     * where they don't apply (the {@code ALL_HANDLERS} row, a console
+     * handler's {@code targetPath}, a handler with no override).
+     */
+    static String handlers(List<HandlerInfoData> rows) {
+        StringJoiner array = new StringJoiner(",", "[", "]");
+        for (HandlerInfoData row : rows) {
+            array.add(new Obj()
+                    .str("ref", row.getRef())
+                    .str("level", row.getLevel())
+                    .bool("persistent", row.isPersistent())
+                    .str("targetPath", row.getTargetPath())
+                    .raw("autoFlush", row.getAutoFlush() == null ? "null" : String.valueOf(row.getAutoFlush()))
+                    .bool("overrideActive", row.isOverrideActive())
+                    .str("overrideLevel", row.getOverrideLevel())
+                    .str("overrideTier", row.getOverrideTier())
+                    .str("overrideExpiresAt", row.getOverrideExpiresAt())
+                    .str("context", row.getContext())
+                    .toString());
+        }
+        return new Obj().raw("handlers", array.toString()).toString();
     }
 
     /**

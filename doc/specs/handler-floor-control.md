@@ -303,10 +303,49 @@ active handler override.
 
 `logctl status` / `--json` shows active handler overrides (name, level, tier,
 expiry) straight from the `HandlerLevelOverride` registry — no new adapter call
-needed, since only overridden handlers are tracked. A full `logctl status
---handlers` listing of *every* handler (overridden or not, with baseline/current
-level) and a `blockingHandlers` echo of the warning on `LoggerInfo` are deferred
-past this slice — **Open decision A, resolved: defer.**
+needed, since only overridden handlers are tracked. The full catalog of *every*
+handler is **`logctl handlers`** — see "The handler catalog" below (this is
+Open decision A, originally deferred, delivered with issue #14 since #14 is what
+makes the names on it worth reading). A `blockingHandlers` echo of the warning
+on `LoggerInfo` is still deferred.
+
+## The handler catalog
+
+`logctl handlers` (issue [#15](https://github.com/ddeuchert/logaperture/issues/15))
+— the read-only counterpart to `logctl levels`, for handlers. One row per name
+the adapter advertises as addressable (`knownHandlers()`): on WildFly
+`ALL_HANDLERS` plus every handler whose configured name has resolved (issue #14);
+on plain JUL every real handler plus `ALL_HANDLERS`.
+
+```
+$ logctl handlers
+HANDLER       LEVEL  PERSISTS  TARGET                                        OVERRIDE
+ALL_HANDLERS  —      —         —                                             —
+CONSOLE       INFO   no        —                                             —
+FILE          DEBUG  file      /opt/jboss/wildfly/standalone/log/server.log  DEBUG (FOR, reverts in 27m)
+```
+
+No target, no tier, nothing to confirm; `--json` mirrors the rows. `VIEW` only,
+no audit — same shape as `doctor` / `top` / `levels`. It answers a different
+question from `logctl status`: `status` is "what has LogAperture changed";
+`handlers` is "what handlers exist and what are they set to."
+
+**Data model** — `HandlerInfo` in `api` (the `LoggerInfo` counterpart), one per
+`knownHandlers()` entry: `ref`, current `level` (reflecting any active override;
+`null` for `ALL_HANDLERS`, which is not a live handler), the static facts
+`doctor` already reads via `handlerDiagnostics` (`persistent`, `targetPath`,
+`autoFlush`), and the active override's `level` / `tier` / `expiresAt` if any.
+`AggregateLevelControl.listHandlers()` merges every context's rows and stamps
+each with its context key; `logctl handlers` shows a `[context]` prefix only
+when the result spans more than one, exactly like `levels` / `doctor`.
+
+On an adapter whose handlers have no level of their own (Logback, `none`),
+`listHandlers()` is empty and `logctl handlers` prints a one-line note.
+
+**On WildFly during boot** — before name resolution succeeds, `knownHandlers()`
+is `[ALL_HANDLERS]` only, so `logctl handlers` shows just that one row; run again
+a second or two later and `CONSOLE` / `FILE` appear. That transition is itself
+the quickest way to confirm #14's resolution is working.
 
 ## Adapter SPI
 
@@ -685,8 +724,11 @@ of this feature, through the same `realHandlers()` path (was #6). Resolution is
 **per-handler best-effort** — an unresolved handler keeps its token and stays
 non-addressable, never an error, `ALL_HANDLERS` unaffected (was #7). The
 version claim is **"verified on 26.1.3.Final, best-effort and cleanly degrading
-elsewhere"** (was #8). `logctl status --handlers` (#15) stays a **separate
-alpha-1 follow-up** — #14 only makes its catalog meaningful (was #9).
+elsewhere"** (was #8). The handler catalog (#15) — reframed as **`logctl
+handlers`**, the `logctl levels` counterpart — is **delivered in the same PR**
+rather than kept separate (was #9, reversed): #14 is what makes the names on it
+worth reading, and the catalog is what makes #14 testable. See "The handler
+catalog".
 
 ## Semantics to pin down
 
@@ -886,6 +928,13 @@ its own prior value (Decision #4).
   under `loggers`/`handlerOverrides` keys. `AggregateLevelControl.listHandlerOverrides`
   unions a handler active in more than one context by ref, same as the
   blocking-handlers union `setLevel` already does.
+- `logctl handlers` (issue #15): `listHandlers()` returns one `HandlerInfo` per
+  `knownHandlers()` entry with its current level, `handlerDiagnostics` facts, and
+  any active override's level/tier/expiry; a row's level reflects an active
+  override; an adapter with `hasHandlerLevels() == false` yields an empty list
+  and the command prints a note. The text renderer shows the `PERSISTS`/`TARGET`
+  columns and an `OVERRIDE` cell; `--json` wraps the rows under a `handlers`
+  key with `null` where a field doesn't apply. The parser rejects arguments.
 
 **Cross-process (extends `LevelControlEndToEndIT` / `WildFlyContainerIT`):**
 
@@ -925,12 +974,11 @@ to a logger override); the confirmation/warning names every blocking handler
 inline, one actionable command each (was #5), which the user called out as a
 feature, not a cost.
 
-- **A. `logctl status --handlers` / `listHandlers()`.** Resolved: **defer.** The
-  warning message already gives a developer every handler name they need to act;
-  ship without a standalone listing and pick it up in a follow-up (possibly
-  alongside `doctor`'s fuller rendering). `knownHandlers()` stays in the adapter
-  SPI — it backs `logctl handler`'s unknown-name error, independent of any status
-  listing.
+- **A. `logctl status --handlers` / `listHandlers()`.** Originally resolved
+  *defer*; **delivered with issue #14** as `logctl handlers` (a standalone
+  command, the `logctl levels` counterpart — not a `status` flag), because the
+  catalog is what makes #14's resolved names visible and testable. See "The
+  handler catalog".
 - **D. Ship both directions now, or lower-only first?** Resolved: **both.** The
   user's own framing of this feature ("reset the level of an appender up or
   down") settles it — `handler.lower` and `handler.raise` both ship this slice, as

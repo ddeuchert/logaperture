@@ -242,6 +242,36 @@ class WildFlyContainerIT {
     }
 
     @Test
+    void handlers_listsTheResolvedCatalog_withLevelsAndAnActiveOverride() {
+        // Issue #15: `logctl handlers` enumerates every addressable handler.
+        // On real WildFly that is ALL_HANDLERS + the resolved CONSOLE / FILE.
+        Logctl catalog = logctl("handlers");
+        assertEquals(0, catalog.exitCode(), catalog.stderr());
+        String out = catalog.stdout();
+        assertTrue(out.contains("HANDLER") && out.contains("LEVEL") && out.contains("TARGET"), out);
+        assertTrue(out.contains("ALL_HANDLERS"), out);
+        assertTrue(out.contains("CONSOLE"), out);
+        assertTrue(out.contains("FILE") && out.contains("server.log"),
+                "the FILE row shows its real rotating-log target:\n" + out);
+        assertFalse(out.matches("(?s).*(PeriodicRotatingFileHandler|ConsoleHandler)@[0-9a-f]+.*"),
+                "no identity-hash tokens once #14 resolution succeeds:\n" + out);
+
+        try {
+            assertEquals(0, logctl("handler", "CONSOLE", "TRACE", "for", "10m").exitCode());
+            String withOverride = logctl("handlers").stdout();
+            assertTrue(withOverride.contains("CONSOLE") && withOverride.contains("TRACE"),
+                    "the CONSOLE row reflects the active override:\n" + withOverride);
+        } finally {
+            logctl("handler", "CONSOLE", "reset");
+        }
+
+        Logctl json = logctl("handlers", "--json");
+        assertEquals(0, json.exitCode(), json.stderr());
+        assertTrue(json.stdout().contains("\"handlers\":[{") && json.stdout().contains("\"ref\":\"CONSOLE\""),
+                json.stdout());
+    }
+
+    @Test
     void handlerLower_makesATraceLineReachTheConsole_thenResetStopsIt() throws Exception {
         String traceMarker = "probe trace marker";
         deployProbeWar();

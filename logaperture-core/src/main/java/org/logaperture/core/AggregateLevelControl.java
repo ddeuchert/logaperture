@@ -17,6 +17,7 @@ package org.logaperture.core;
 
 import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.HandlerFloor;
+import org.logaperture.api.HandlerInfo;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
@@ -355,6 +356,27 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             }
         }
         return List.copyOf(byRef.values());
+    }
+
+    /**
+     * The addressable handler catalog across every registered context — the
+     * {@link #listLoggers} counterpart for handlers (doc/specs/
+     * handler-floor-control.md "The handler catalog", issue #15). Every row
+     * carries its owning context's {@code stableKey}; unlike {@link
+     * #listHandlerOverrides} it is <em>not</em> unioned by ref, since a
+     * catalog is per context (a handler named {@code CONSOLE} in two
+     * contexts is two real handlers). {@code logctl handlers} shows the
+     * {@code [context]} prefix only when the result spans more than one.
+     */
+    @Override
+    public List<HandlerInfo> listHandlers() {
+        List<HandlerInfo> rows = new ArrayList<>();
+        for (ContextControl context : sortedByKey()) {
+            for (HandlerInfo info : context.handlerService().listHandlers()) {
+                rows.add(info.withContext(context.stableKey()));
+            }
+        }
+        return List.copyOf(rows);
     }
 
     /**

@@ -17,6 +17,7 @@ package org.logaperture.cli;
 
 import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.HandlerFloorData;
+import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
@@ -321,6 +322,49 @@ final class Commands {
     }
 
     /**
+     * {@code logctl handlers} — the addressable handler catalog (doc/specs/
+     * handler-floor-control.md "The handler catalog", issue #15). Read-only,
+     * no target, nothing to confirm — the counterpart to {@code logctl
+     * levels} for handlers.
+     */
+    static Command handlers(boolean json) {
+        return (mbean, out) -> {
+            List<HandlerInfoData> rows = mbean.listHandlers();
+            if (json) {
+                out.println(Json.handlers(rows));
+                return CliError.OK;
+            }
+            if (rows.isEmpty()) {
+                out.println("This framework's handlers have no level of their own — nothing to list.");
+                return CliError.OK;
+            }
+            boolean showContext = spansMultipleContexts(rows, HandlerInfoData::getContext);
+            List<List<String>> table = new ArrayList<>();
+            for (HandlerInfoData row : rows) {
+                boolean notALiveHandler = row.getLevel() == null && !row.isPersistent()
+                        && row.getTargetPath() == null && row.getAutoFlush() == null;
+                List<String> cells = new ArrayList<>();
+                if (showContext) {
+                    cells.add(orDash(row.getContext()));
+                }
+                cells.add(orDash(row.getRef()));
+                cells.add(orDash(row.getLevel()));
+                cells.add(notALiveHandler ? Format.NONE : (row.isPersistent() ? "file" : "no"));
+                cells.add(orDash(row.getTargetPath()));
+                cells.add(handlerCatalogOverrideCell(row));
+                table.add(cells);
+            }
+            List<String> headers = new ArrayList<>();
+            if (showContext) {
+                headers.add("CONTEXT");
+            }
+            headers.addAll(List.of("HANDLER", "LEVEL", "PERSISTS", "TARGET", "OVERRIDE"));
+            out.println(Format.table(headers, table));
+            return CliError.OK;
+        };
+    }
+
+    /**
      * {@code logctl top} — doc/specs/top.md "The operation". Read-only, like
      * {@code doctor}; unlike it, rate and the stack-trace percentage are
      * computed here from the raw counts plus how long measurement has been
@@ -407,6 +451,18 @@ final class Commands {
             return "until restart";
         }
         return "until reset";
+    }
+
+    private static String handlerCatalogOverrideCell(HandlerInfoData row) {
+        if (!row.isOverrideActive()) {
+            return Format.NONE;
+        }
+        StringBuilder cell = new StringBuilder(orDash(row.getOverrideLevel()))
+                .append(" (").append(orDash(row.getOverrideTier()));
+        if ("FOR".equals(row.getOverrideTier()) && row.getOverrideExpiresAt() != null) {
+            cell.append(", reverts ").append(Format.relative(row.getOverrideExpiresAt()));
+        }
+        return cell.append(')').toString();
     }
 
     private static String handlerRevertsCell(HandlerLevelOverrideData row) {

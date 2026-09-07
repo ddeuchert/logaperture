@@ -120,6 +120,39 @@ class HandlerLevelControlServiceTest {
     }
 
     @Test
+    void listHandlers_oneRowPerKnownHandler_withLevelDiagnosticsAndAnyOverride() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        adapter.setHandlerDiagnostics(file, new org.logaperture.api.HandlerDiagnostics(
+                null, null, Boolean.TRUE, java.nio.file.Path.of("/var/log/server.log")));
+        service.setHandlerLevel(file, Level.DEBUG, SetHandlerLevelOptions.defaults());
+
+        List<org.logaperture.api.HandlerInfo> rows = service.listHandlers();
+        assertEquals(2, rows.size());
+
+        org.logaperture.api.HandlerInfo consoleRow = rows.stream()
+                .filter(r -> r.ref().equals("CONSOLE")).findFirst().orElseThrow();
+        assertEquals(Level.INFO, consoleRow.level());
+        assertFalse(consoleRow.persistent());
+        assertFalse(consoleRow.overrideActive());
+
+        org.logaperture.api.HandlerInfo fileRow = rows.stream()
+                .filter(r -> r.ref().equals("FILE")).findFirst().orElseThrow();
+        assertEquals(Level.DEBUG, fileRow.level(), "level reflects the active override");
+        assertTrue(fileRow.persistent());
+        assertEquals("/var/log/server.log", fileRow.targetPath());
+        assertEquals(Boolean.TRUE, fileRow.autoFlush());
+        assertTrue(fileRow.overrideActive());
+        assertEquals(Level.DEBUG, fileRow.overrideLevel());
+    }
+
+    @Test
+    void listHandlers_adapterHasNoHandlerLevels_isEmpty() {
+        adapter.disableHandlerLevels();
+        assertTrue(service.listHandlers().isEmpty());
+    }
+
+    @Test
     void resetHandler_noActiveOverride_isANoOp() {
         service.resetHandler(CONSOLE); // no-op, not an error
 

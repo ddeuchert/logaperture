@@ -132,6 +132,11 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     }
 
     @Override
+    public synchronized List<org.logaperture.api.HandlerInfo> listHandlers() {
+        return List.of();
+    }
+
+    @Override
     public synchronized List<DoctorFinding> diagnose() {
         return List.of(new DoctorFinding("logger.verbosity-left-on", Severity.OK, "ROOT",
                 "no excess verbosity found at root or on a known-chatty logger.", null, null));
