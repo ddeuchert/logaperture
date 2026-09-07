@@ -516,30 +516,43 @@ public interface HandlerNameResolver {
 
 ### Resolution mechanism
 
-`WildFlyHandlerNameResolver` runs entirely in-VM. The mechanism is a **hybrid**
-of two reflective, classloader-anchored halves:
+`WildFlyHandlerNameResolver` runs entirely in-VM. As-built and verified against
+real WildFly 26.1.3.Final (`WildFlyContainerIT`):
 
 - **Names — in-VM `ModelController` read.** Obtain the server's
-  `ModelController` from the MSC `ServiceContainer` (a well-known service
-  name), `createClient()` (in-VM, no socket, no auth), and execute
-  `read-children-names` under `/subsystem=logging` for each handler resource
-  type (`console-handler`, `periodic-rotating-file-handler`,
+  `ModelController` from the MSC `ServiceContainer` (service `jboss.as.server-controller`),
+  `createClient()` (in-VM, no socket, no `$local` handshake, no credentials),
+  and execute `read-children-names` under `/subsystem=logging` for each handler
+  resource type (`console-handler`, `file-handler`, `periodic-rotating-file-handler`,
   `size-rotating-file-handler`, `periodic-size-rotating-file-handler`,
-  `file-handler`, `syslog-handler`, `async-handler`, `custom-handler`). The
-  model is the authoritative source of the configured name.
-- **Instance binding — MSC `ServiceContainer`.** For each name from the model,
-  resolve the live `java.util.logging.Handler` via the per-name handler MSC
-  service (falling back to matching type + target path against
-  `handlerDiagnostics` when the service value can't be read).
+  `syslog-handler`, `custom-handler`). The model is the sole source of the
+  configured name.
+- **Instance binding — by handler shape, then configured file name.** A
+  `console-handler` name binds to the sole console `Handler` instance; a
+  file-type name binds to the sole file instance, or — with more than one — by
+  matching the model's `file.path` leaf against `FileHandler.getFile()`.
 
-A pure MSC service-name walk was the considered alternative for names; it was
-rejected as the primary because the logging subsystem's service-name
-conventions have shifted across WildFly versions, whereas the management model
-resource names have not. The exact internal API on each half is **validated in
-`WildFlyContainerIT` against real WildFly 26.1.3.Final** and documented there
-the way the retired reflection attempt was — the spec commits to the *contract*
-(in-VM, hybrid model-then-MSC, best-effort, resolver in the container), and the
-IT is where a version-specific surprise surfaces.
+**The MSC service-name walk that Decision #1's "hybrid" first proposed for
+instance binding was dropped: real WildFly 26.1.3 registers no
+logging-*handler* MSC services at all** (the logging subsystem drives the
+`LogContext` directly), so there was nothing to walk. Names come purely from
+the management model; instances are matched by shape as above. This is the
+"version-specific surprise" the sign-off explicitly left the IT to surface.
+
+Two reflection disciplines the IT forced, both classic JBoss-Modules traps:
+
+- **Load through the boot module loader.** `org.jboss.modules.Module` is the
+  one WildFly class on the system class path; `getBootModuleLoader()
+  .loadModule("org.jboss.as.server").getClassLoader()` is the loader that can
+  then see `CurrentServiceContainer`, `ModelController`, `ModelControllerClient`
+  and `org.jboss.dmr.ModelNode`. The agent's own loader cannot (the retired
+  attempt's first bug).
+- **Invoke through the public interface, never `getClass()`.** `ModelControllerImpl`,
+  `ServiceContainerImpl`, `ModelControllerClientImpl` are all module-private —
+  `instance.getClass().getMethod(…)` resolves the method on the inaccessible
+  class and throws `IllegalAccessException`. Every call resolves its `Method`
+  on the public interface (`ModelController`, `ServiceRegistry`,
+  `ModelControllerClient`) and invokes it on the impl instance.
 
 ### `knownHandlers()` on WildFly
 
@@ -605,12 +618,36 @@ Verified on **WildFly 26.1.3.Final** (`WildFlyContainerIT`). The spec claims
 "best-effort, and degrades cleanly to `ALL_HANDLERS`-only elsewhere" — it does
 not claim EAP or pre-26 coverage without a real run on them.
 
+### Known limitation — sticky `ALL_HANDLERS` across a restart that loses the resolution race (issue [#29](https://github.com/ddeuchert/logaperture/issues/29))
+
+`resumeFromStateStore` runs at `installContext`, before the management model is
+queryable, so a persisted **sticky `ALL_HANDLERS`** override is re-applied while
+`realHandlers()` still returns identity-token refs — baselines are captured
+against those tokens. When resolution later succeeds, `upgradeTokenRefs()`
+promotes those same instances to their configured-name refs; the next
+`ALL_HANDLERS` verification sweep then captures a *fresh* baseline against the
+friendly ref, which by that point reads back the already-applied override
+level. Net effect: after such a restart, `logctl handler ALL_HANDLERS reset`
+may leave those handlers at the override level rather than their true
+pre-LogAperture level.
+
+Scope: only the sticky-`ALL_HANDLERS`-across-restart case on WildFly, and only
+when resolution loses the race with resume. Everything else is unaffected —
+`logctl handler CONSOLE …`, a live `logctl handler ALL_HANDLERS …`, per-handler
+sticky overrides, `logctl reset --all` or `logctl handler ALL_HANDLERS reset`
+issued before the upgrade, and every non-WildFly adapter. Fix options (deferred):
+a short bounded synchronous resolution attempt before `resumeFromStateStore`, or
+carrying the token-keyed baseline across the ref upgrade.
+
 ### Sign-off — resolved
 
 *All nine review decisions resolved to their leaning, and folded into the
-prose above:* the mechanism is a **hybrid** — in-VM `ModelController` read for
-the authoritative name, MSC for the live instance — with the exact internal API
-on each half validated in `WildFlyContainerIT` (was #1). `knownHandlers()` on
+prose above:* the mechanism is an **in-VM `ModelController` read** of
+`/subsystem=logging` for names, with instances bound by handler shape /
+configured file name — the "hybrid"'s MSC service walk was dropped when
+`WildFlyContainerIT` showed real WildFly 26.1.3 registers no logging-handler
+MSC services (was #1; contract held, mechanism adjusted to what real WildFly
+does, per CLAUDE.md). `knownHandlers()` on
 WildFly returns `ALL_HANDLERS` **plus** every real handler whose name resolved;
 a real handler still on an identity token is not advertised, since its token is
 unstable across a restart (was #2). The seam is a **bulk**
