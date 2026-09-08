@@ -78,6 +78,12 @@ The version is carried by the archive name, each jar's `Implementation-Version`
 manifest entry (already set from `${project.version}` by the shade config), and
 `README.md`'s prose. No build-time filtering of the doc files.
 
+The agent jar and the CLI jar in a bundle always share a version — the bundle *is*
+the matched, recommended pairing (top-level §11.1). Post-1.0, a `logctl` from one
+bundle also works against an agent from any other same-major bundle (that is the
+whole point of §11.1's skew tolerance); the bundled pair is just the combination
+that needs no thought.
+
 ## Launcher change
 
 `logaperture-cli/bin/logctl` and `logctl.cmd` resolved the CLI jar from

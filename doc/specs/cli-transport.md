@@ -100,7 +100,9 @@ code to the agent beyond a single marker system property (below).
   that point.
 - **The TUI (§8.3) and browser UI (§8.4).** Both are later renderers over this exact
   transport; §8.2's "UIs are clients of the attach transport, exactly like the CLI" is the
-  whole point. This slice is the client they reuse.
+  whole point. This slice is the client they reuse. The TUI has since been named
+  `logctl console` and pulled forward to alpha-2 — capture and open questions in
+  [`console.md`](console.md); it adds no transport surface beyond what this slice builds.
 - **The HTTP control plane (§8.1).** M6.
 - **A distinct `"cli"` audit source.** In this slice the CLI reaches the operations *as a
   JMX client*, so the server records `source = "jmx"` — which is truthful. A separate
@@ -357,10 +359,19 @@ semantics"). `--json` output is unchanged.
 | 4 | Ambiguous — several candidates; `--pid` required. |
 | 5 | Attach denied — wrong OS user. |
 | 6 | Operation refused by policy — a capability the operation needs is not granted. |
+| 7 | Operation or option not supported by the connected agent's version — see §11.1. |
 
 Exit 6 is distinct from exit 1 because "you're not allowed to do that" and "it broke" are
 different answers for a support engineer, and the capability model (§9.3) is the whole
 reason to tell them apart.
+
+Exit 7 is the graceful-degradation path of the component-versioning contract (top-level
+§11.1): a newer `logctl` invoked an operation, or passed an option, that the older
+same-major agent it connected to does not implement. `logctl` maps the JMX
+"no such operation / attribute" outcome to this code with a message naming the minimum
+agent version required, rather than surfacing exit 1 with a raw `ReflectionException`. No
+mutation has occurred. It is distinct from exit 2 (a usage error is wrong on *every* agent;
+exit 7 would succeed against a newer one).
 
 ## Naming reconciliation
 

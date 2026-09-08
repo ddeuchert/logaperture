@@ -36,6 +36,11 @@ before it gets wide.
   `logctl` comes later as a client of the same operations.
 - `snapshot()` / `restore(snapshot)` — useful, but not required to prove the core loop.
 - Signed rule packs, vendor/customer policy layering beyond a single local policy file.
+- A second per-logger threshold besides `level` — the exception-detail threshold of
+  top-level §18.8 (at which level a logged throwable renders its full stack trace vs. a
+  one-line summary). It reuses this feature's override/expiry/persistence surface but its
+  rendering belongs to Feature 3 (`trimStackTrace`, §7.2) and it cannot function before
+  render-stage interception (M2).
 
 ## Operations
 

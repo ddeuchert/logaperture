@@ -350,7 +350,7 @@ A rule is `{ id, description, enabled, when, then, terminal, dryRun }`.
 | `rateLimit` | gate | `max`, `per`, `onExceed: DROP\|TRIM`, `emitSummary` |
 | `dedupe` | gate | Key derived from logger + normalized message + throwable type; `window`, `emitSummary` |
 | `sample` | gate | `oneIn: N` or `every: duration` |
-| `trimStackTrace` | render | `frames: N` (0 = message line only), `collapseCauses`, `appendSummary` (e.g. `... 47 frames omitted by rule apache-connect-noise`) |
+| `trimStackTrace` | render | `frames: N` (0 = message line only), `collapseCauses`, `appendSummary` (e.g. `... 47 frames omitted by rule apache-connect-noise`). A per-category, level-conditional form of this — set like a level override, no rule authored — is planned as §18.8. |
 | `redact` | render | `pattern` → `replacement`; applies to message and throwable messages |
 | `summarize` | render | Replace multi-line output with a single line |
 | `tag` | gate | Add an MDC key — useful for downstream routing |
@@ -441,9 +441,11 @@ So the rule is: **UIs are clients of the attach transport, exactly like the CLI.
 
 ### 8.3 Terminal UI — the recommended first interface
 
-A full-screen interactive TUI over the same attach transport (JLine or Lanterna). No network, no browser, no new attack surface, no packaging problem, and it costs nothing security-wise because it is the CLI with a different renderer.
+A full-screen interactive TUI, `logctl console`, over the same attach transport (JLine or Lanterna). No network, no browser, no new attack surface, no packaging problem, and it costs nothing security-wise because it is the CLI with a different renderer.
 
 It also fits the deployment reality better than a browser would: a support engineer on a customer site is usually inside an SSH session, where a TUI works and a browser does not.
+
+Pulled forward to alpha-2 (§17). Capture and open questions: [`doc/specs/console.md`](specs/console.md).
 
 ### 8.4 Browser UI — hosted by the CLI, not the agent
 
@@ -681,6 +683,43 @@ Every gate-stage evaluation happens on the caller's thread inside the logging ca
 | Not supported | Quarkus/GraalVM native image — no JVM, no `-javaagent`. OSGi and Karaf are out of scope for 1.0 |
 
 JPMS on 9+ requires the correct manifest attributes (`Premain-Class`, `Agent-Class`, `Can-Retransform-Classes`, `Can-Redefine-Classes`) and possibly `Add-Opens`. Test on a modular application early — it is a common late surprise.
+
+### 11.1 Component versioning (`logctl` ↔ agent)
+
+The project follows [Semantic Versioning](https://semver.org). This section fixes what a *major* version means for the two shipped components — the **agent** and the **`logctl`** CLI — and what compatibility a user can rely on when their versions do not match.
+
+**One version number, released together.** The agent and `logctl` share a single project version and are released as a pair (they build from one Maven reactor and ship together in `logaperture-<version>.zip`, §19). Matched versions are the **recommended pairing**. The skew tolerance below exists so a staged rollout — upgrade the agent across a fleet, then the CLIs, or the reverse — is safe, not so that a `1.0` CLI is expected to drive a `1.9` agent indefinitely.
+
+**The contract surface is the agent's control surface, not the CLI.** Per §8.1, `logctl` "adds no operation, changes no operation signature"; it is one client of the operations the agent exposes over JMX. So the compatibility promise is a promise about **the agent's MXBean interfaces, their operation semantics, and the `--json` output shapes** — with `logctl` as a consumer of them, alongside JConsole, a future TUI (§8.3), and any other client.
+
+**Within a major version, that surface is additive only.** Permitted in a minor or patch release:
+
+- new MXBean operations and attributes;
+- new *optional* parameters on an existing operation (a new overload, or a parameter object with defaulted fields);
+- new members on an enum (levels, capabilities, audit sources);
+- new fields in a `--json` object.
+
+Not permitted until the next major:
+
+- removing or renaming an operation, attribute, or `--json` field;
+- changing a method signature, or the meaning of an existing parameter;
+- narrowing or retyping a return value or `--json` field;
+- removing an enum member.
+
+Every client must tolerate an **unknown enum member** (a newer agent returning a capability or audit source the client has not heard of) by degrading, not failing — this applies to `--json` consumers too.
+
+**Three guarantees follow:**
+
+1. **Newer `logctl` → older agent (backward).** A `logctl` connects to any older same-major agent. Operations present on both behave identically. An operation or option the older agent does not implement fails with a specific, actionable message that names the required agent version, a dedicated exit code (see [`doc/specs/cli-transport.md`](specs/cli-transport.md) — distinct from a usage error), no stack trace, and no partial mutation.
+2. **Older `logctl` → newer agent (forward).** A `logctl` connects to any newer same-major agent and drives the subset of operations it knows; operations added later are simply invisible to it. This is safe precisely because of the additive-only rule.
+3. **Neither side assumes the other's version** beyond the probe below.
+
+**Detecting the mismatch.** The agent already publishes `-Dlogaperture.version` on successful install (cli-transport.md — "the version probe for any future client"). Degradation has two levels:
+
+- **Floor (required):** `logctl` maps a JMX "no such operation / attribute" outcome (`ReflectionException`, `AttributeNotFoundException`, and equivalents) to the friendly "this agent version does not support X" error and the dedicated exit code, rather than surfacing the raw JMX failure.
+- **Better (deferred — open question):** a single `describeOperations()` / `capabilities()` probe on a stable MBean returning a contract version and the supported-operation set, so `logctl` can refuse *before* invoking and state the minimum agent version. New surface; to be designed if and when the floor proves insufficient.
+
+**No guarantee before 1.0.** Alpha and beta releases make **no skew promise**. The only supported pairing pre-1.0 is an agent and a `logctl` from the *same build*. The contract in this section takes effect at 1.0.0.
 
 ---
 
@@ -1060,6 +1099,12 @@ The important change from the previous draft: **M1 ships nothing that modifies b
 
 **Pulled forward: handler-level control (`logctl handler <name> <level>`).** The first behaviour-modifying feature after M1, ahead of the rest of Layer 2. The JBoss LogManager adapter already *detects* when a raised level can't reach a handler (WildFly's `CONSOLE` fixed at `INFO`) and warns; the fix — a first-class command to set that handler's level at runtime, plus turning the detection into a warning that names the exact command — is a key developer workflow, not a support edge case: "make this class TRACE and let me actually see it on the console" is the interaction (§14.1) this project exists to make trivial, and today it still ends at a warning telling the developer to hand-edit `standalone.xml`. Small, high value, console handler first. Spec: [`doc/specs/handler-floor-control.md`](specs/handler-floor-control.md).
 
+**Pulled forward: an environment report for bug reports (new command, name TBD — `logctl env` / `logctl about` / `logctl info`).** A read-only command that prints the facts a good issue report needs, so a user filing one can paste a single block instead of being asked follow-up questions: Java version and vendor, OS and architecture, the active logging backend and its version (Log4j 2 / Logback / JBoss LogManager / JUL), the detected application framework or container and its version (Quarkus / WildFly / Tomcat / Spring Boot / …), and the LogAperture agent and `logctl` build versions themselves. Sibling to `top` and `doctor` in Layer 1 — read-only, no rule engine, only the `VIEW` capability (§9.3) — but aimed at *"paste this into the issue"* rather than at diagnosing configuration, so it stays a separate command rather than a `doctor` finding. Scheduled for alpha-2; tracked as [#32](https://github.com/ddeuchert/logaperture/issues/32). Open questions, deferred until it is specced: the command name; whether one invocation reports both the target JVM's environment (via the agent) and the `logctl` process's own environment, or only the JVM's; how framework/container version is obtained per environment (manifest attribute, a well-known version class, container API) and what a "framework not recognised" line looks like; whether `--json` is in the first slice; and whether the agent's self-diagnostics settings (§4.5) belong in the same report.
+
+**Pulled forward: the full-screen terminal UI (`logctl console`).** §8.3 already nominates a full-screen interactive TUI as *"the recommended first interface"*, and §8.5 describes what it is for — the logger tree, the four discovery states, configured-vs-effective level, byte volume in the tree, a permanent active-overrides panel. Alpha-1 regression testing confirmed the need from the other direction: the one-shot `logctl` command line is right for scripting but cumbersome for the interactive "find a logger, see its level, change it" loop (§14.1) this project exists to make trivial. `console` is Layer 3 work pulled into alpha-2 (the developer turnkey release); it is a renderer over the same attach transport and command model as the CLI (§8.1–8.2), adds nothing to the agent, and does not replace the scripting verbs. Capture and open questions: [`doc/specs/console.md`](specs/console.md); tracked as [#33](https://github.com/ddeuchert/logaperture/issues/33). Full spec goes through a sign-off review before implementation.
+
+**Pulled toward the alpha line (blocked on M2): per-category exception-detail threshold.** A second per-logger threshold — set, expired, and persisted like a level override — that decides at which level a logged exception is expanded to a full stack trace versus collapsed to a one-line summary, so an operator can *always record that something threw without paying disk for the trace* and change that later without a redeploy. The control surface (`logctl hello.Worker level=TRACE exceptionDetail=WARN`, a `logctl console` field) is level-control-shaped and worth designing alongside those surfaces; the rendering reuses §7.2's `trimStackTrace` and so cannot function before render-stage interception lands in M2. Full write-up and open questions: §18.8; tracked as [#34](https://github.com/ddeuchert/logaperture/issues/34).
+
 ---
 
 ## 18. Future enhancements
@@ -1125,6 +1170,35 @@ The rendered log line often shows only an abbreviated category — WildFly's def
 
 - **Glob on lookup** (`logctl levels *infinispan*`). **Done.** The `listLoggers(filter)` glob accepts `*` anywhere including leading, plus `?` for a single character, so an abbreviated category can be found from what the log line actually printed; specified in [`doc/specs/level-control.md`](specs/level-control.md) and [`doc/specs/cli-transport.md`](specs/cli-transport.md), documented in `logctl --help`, and covered end-to-end by tests. No new operation.
 - **Glob on apply** (`logctl error *.infinispan`). A fan-out layer that resolves the pattern against known loggers and applies the level to each match. New surface, and it carries real decisions: one audit record per matched logger, a capability check per match, `logctl reset <pattern>` symmetry, and — the open question, deferred until this is specced — whether the match is a **one-shot** over loggers known at call time or a **standing rule** that also catches loggers registered afterward. The standing-rule form is the squelch engine (§7 / Feature 3) reached by a shorter path, so it should be designed with that model in view rather than bolted onto `setLevel`. Layer 2.
+
+### 18.8 Per-category exception-detail threshold
+
+A second per-logger threshold, set and expired exactly like a level override, that controls **at which level a logged exception is expanded to its full stack trace** versus reduced to a one-line summary. The event itself is still emitted at its own level — only the throwable's rendering changes.
+
+The motivation is a real gap in every framework: today "does this exception get logged" and "does its stack trace get rendered" are the same decision. An operator often wants the first without the second — *always record that `com.acme.Worker` threw, never spend the disk on the trace unless I ask for it* — and wants to change their mind later without a redeploy. A `logger.error("...", e)` in a retry loop is the canonical disk-filler, and lowering the logger's level to hide it also hides the fact that anything went wrong.
+
+**The control.** Alongside `level`, a logger carries an optional `exceptionDetail` level (name deferred — see below):
+
+```
+logctl hello.LoggerExample level=TRACE exceptionDetail=WARN
+```
+
+Every event from that logger is emitted (down to `TRACE`), but an attached throwable renders in full only at `WARN` and above; below it the throwable collapses to `class: message` plus a marker naming the threshold (`— stack trace suppressed below WARN`). Default threshold is the logger's own level, i.e. unchanged from today. Cleared, reset, and persisted through the same tiers and `logctl status` / `logctl reset` surface as a level override, and exposed as a field in `logctl console` (§8.3).
+
+**Relationship to Feature 3.** The *rendering* is exactly §7.2's `trimStackTrace { frames: 0, appendSummary: true }`, made conditional on the event's level relative to the threshold. Feature 3 owns that render action and the encoder/formatter wrapping it needs; this item owns only the per-category control that drives it **without an authored rule** — a level-shaped knob, reusing Feature 1's override/expiry/persistence machinery (`doc/specs/level-control.md`).
+
+**Dependency and placement.** The control surface (the `logctl` syntax, the `console` field, persistence, audit) is level-control-shaped and could be built early; it produces no visible effect until render-stage interception exists, which the roadmap lands in **M2** (Layer 2). Pulled toward the alpha line because exposing the option in `logctl` and `logctl console` is worth designing alongside those surfaces rather than retrofitting — but it cannot *function* before M2's render wrap.
+
+**Open questions, deferred until this is specced:**
+
+- **Name** — `exceptionDetail`, `--exception-detail`, "stack-trace level", "throwable verbosity"; the user who proposed it did not have one.
+- **Binary or graded** — full trace vs. one line only, or an intermediate "N frames" band between the two thresholds.
+- **Summary-line text** — a fixed string, or reuse `trimStackTrace`'s `appendSummary` wording; what it says exactly.
+- **Cause chain** — threshold applies to the whole throwable, or causes can be treated separately; interaction with `collapseCauses`.
+- **Composition with authored `trimStackTrace` rules** on the same event — which wins, and whether §7.3's last-write-wins or a most-verbose-wins rule applies here.
+- **Suppression floor (§9.5)** — protected categories (security, audit) may not have their traces suppressed; likely the floor must forbid raising this threshold on them, the same way it forbids `drop`.
+- **Absolute level vs. offset** from the logger's own level.
+- **`top` / `doctor` integration** — surface "suppressing traces below `WARN` on `org.apache.http` would save ~9 GB/day" as a suggestion, alongside the existing `trimStackTrace` hint (§16.1).
 
 ---
 

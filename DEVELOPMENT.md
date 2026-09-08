@@ -22,6 +22,25 @@ apply to everyone.
   GitHub prerelease with the zip attached. Afterwards, bump `develop` to the
   next `-SNAPSHOT`.
 
+### Versioning ([SemVer](https://semver.org)) and what forces a major bump
+
+The agent and `logctl` share one version and release together. The compatibility
+contract — post-1.0, any same-major `logctl` works with any same-major agent — is
+[spec §11.1](doc/logaperture-spec.md#111-component-versioning-logctl--agent);
+read it before changing anything on the control surface. In short, a change needs
+a **major** bump if it is anything other than *additive* to the agent's MXBean
+interfaces or the `--json` output:
+
+- **Minor/patch (allowed):** new MXBean operation or attribute; a new *optional*
+  parameter (new overload or a defaulted field); a new enum member (level,
+  capability, audit source); a new field in a `--json` object.
+- **Major (breaking):** removing or renaming an operation, attribute, or `--json`
+  field; changing a method signature or a parameter's meaning; narrowing or
+  retyping a return value or `--json` field; removing an enum member.
+
+Pre-1.0 (alpha/beta) there is no skew guarantee: only an agent and `logctl` from
+the same build are a supported pair.
+
 ## Prerequisites
 
 | Tool | For |
