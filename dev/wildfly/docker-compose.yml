@@ -40,6 +40,14 @@
 # agents twice — WildFly then aborts at startup. `compose up` with changed
 # config recreates the container from the image, so standalone.conf starts clean
 # and the guard lets the (single) append through.
+#
+# The `:z` suffix on every bind mount relabels the host path with an SELinux
+# context the container is allowed to read (and write, for ./deployments) under
+# an SELinux-enforcing engine (stock on Fedora/RHEL, including rootless Podman
+# running as `docker`). Without it, the mounted files keep their host label
+# (typically user_tmp_t) and the container's -javaagent read fails with "Error
+# opening zip file or JAR manifest missing" even though Unix permissions look
+# fine. `:z` is a harmless no-op where SELinux isn't enforcing.
 
 services:
   wildfly:
@@ -62,9 +70,9 @@ services:
       - "9990:9990"   # management
       - "8787:8787"   # JDWP — VSCode "Attach to WildFly (8787)"
     volumes:
-      - ../../logaperture-agent/target/logaperture-agent.jar:/opt/logaperture-agent.jar:ro
-      - ../../logaperture-cli/target/logaperture-cli.jar:/opt/logctl.jar:ro
-      - ./deployments:/opt/jboss/wildfly/standalone/deployments
+      - ../../logaperture-agent/target/logaperture-agent.jar:/opt/logaperture-agent.jar:ro,z
+      - ../../logaperture-cli/target/logaperture-cli.jar:/opt/logctl.jar:ro,z
+      - ./deployments:/opt/jboss/wildfly/standalone/deployments:z
     healthcheck:
       # Passes once WildFly logs a clean start. Never passes under
       # --debug-suspend until a debugger attaches — expected; wildflyctl skips
