@@ -39,5 +39,8 @@ __pycache__/
 daves-cheatsheet.txt
 .claude/skills/git-side/
 
+# Personal dev convenience wrapper - tracked via git-side, not this repo
+logctl-wildfly
+
 # git-side's own bookkeeping file (lists tracked paths) - not part of this repo
 .side-tracked
