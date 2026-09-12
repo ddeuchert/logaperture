@@ -38,3 +38,6 @@ __pycache__/
 # Personal, uncommitted notes
 daves-cheatsheet.txt
 .claude/skills/git-side/
+
+# git-side's own bookkeeping file (lists tracked paths) - not part of this repo
+.side-tracked
