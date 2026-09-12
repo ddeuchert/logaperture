@@ -28,16 +28,18 @@ public final class HandlerLevelOverrideData {
 
     private final String handlerRef;
     private final String level;
+    private final String mode;
     private final String reason;
     private final String appliedAt;
     private final String source;
     private final String tier;
     private final String expiresAt;
 
-    @ConstructorProperties({"handlerRef", "level", "reason", "appliedAt", "source", "tier", "expiresAt"})
+    @ConstructorProperties({"handlerRef", "level", "mode", "reason", "appliedAt", "source", "tier", "expiresAt"})
     public HandlerLevelOverrideData(
             String handlerRef,
             String level,
+            String mode,
             String reason,
             String appliedAt,
             String source,
@@ -45,6 +47,7 @@ public final class HandlerLevelOverrideData {
             String expiresAt) {
         this.handlerRef = handlerRef;
         this.level = level;
+        this.mode = mode;
         this.reason = reason;
         this.appliedAt = appliedAt;
         this.source = source;
@@ -56,6 +59,7 @@ public final class HandlerLevelOverrideData {
         return new HandlerLevelOverrideData(
                 override.handlerRef().value(),
                 override.level().name(),
+                override.mode().name(),
                 override.reason(),
                 override.appliedAt().toString(),
                 override.source(),
@@ -69,6 +73,11 @@ public final class HandlerLevelOverrideData {
 
     public String getLevel() {
         return level;
+    }
+
+    /** {@code "FIXED"} or {@code "AUTO"} — doc/specs/handler-floor-control.md "AUTO handler level", issue #20. */
+    public String getMode() {
+        return mode;
     }
 
     public String getReason() {

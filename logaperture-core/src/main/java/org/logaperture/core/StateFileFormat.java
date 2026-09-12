@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.HandlerLevelMode;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
@@ -42,10 +43,16 @@ import java.util.Map;
  * per-record shape convention. A version-1 file (no {@code handlerOverrides:}
  * section at all) still parses: the section is simply absent, exactly like
  * an empty list.
+ *
+ * <p>Schema version 3 (doc/specs/handler-floor-control.md "AUTO handler
+ * level", issue #20) adds a {@code mode:} field to each {@code
+ * handlerOverrides} record. A version-2 record (no {@code mode:} line) still
+ * parses, defaulting to {@link HandlerLevelMode#FIXED} — every override
+ * written before this schema bump was, by construction, a fixed one.
  */
 final class StateFileFormat {
 
-    private static final int SCHEMA_VERSION = 2;
+    private static final int SCHEMA_VERSION = 3;
 
     private StateFileFormat() {
     }
@@ -77,6 +84,7 @@ final class StateFileFormat {
             for (HandlerLevelOverride override : handlerOverrides) {
                 out.append("  - handlerRef: ").append(quote(override.handlerRef().value())).append('\n');
                 out.append("    level: ").append(override.level().name()).append('\n');
+                out.append("    mode: ").append(override.mode().name()).append('\n');
                 out.append("    reason: ").append(override.reason() == null ? "null" : quote(override.reason())).append('\n');
                 out.append("    appliedAt: ").append(override.appliedAt()).append('\n');
                 out.append("    source: ").append(quote(override.source())).append('\n');
@@ -104,7 +112,7 @@ final class StateFileFormat {
      */
     static Parsed parse(String content) {
         int schemaVersion = extractSchemaVersion(content);
-        if (schemaVersion != 1 && schemaVersion != SCHEMA_VERSION) {
+        if (schemaVersion != 1 && schemaVersion != 2 && schemaVersion != SCHEMA_VERSION) {
             throw new IllegalStateException("unsupported or missing state file schemaVersion: " + schemaVersion);
         }
 
@@ -187,9 +195,13 @@ final class StateFileFormat {
     }
 
     private static HandlerLevelOverride toHandlerOverride(Map<String, String> fields) {
+        // A schema-version-2 record has no "mode:" line at all -- every
+        // override written before AUTO existed was, by construction, fixed.
+        String mode = fields.get("mode");
         return new HandlerLevelOverride(
                 new HandlerRef(unquote(fields.get("handlerRef"))),
                 Level.valueOf(fields.get("level")),
+                mode == null ? HandlerLevelMode.FIXED : HandlerLevelMode.valueOf(mode),
                 nullable(fields.get("reason")) == null ? null : unquote(fields.get("reason")),
                 Instant.parse(fields.get("appliedAt")),
                 unquote(fields.get("source")),

@@ -28,18 +28,30 @@ import java.time.Instant;
  * shape, which does the same for logger baselines.
  *
  * @param handlerRef the handler this override targets
- * @param level      the level applied
+ * @param level      the level applied — for {@link HandlerLevelMode#FIXED}
+ *                   the level the user set; for {@link HandlerLevelMode#AUTO}
+ *                   the level last computed for it (doc/specs/
+ *                   handler-floor-control.md "AUTO handler level", issue
+ *                   #20) — always present, never {@code null}, so every
+ *                   other reader of this record needs no AUTO-specific null
+ *                   handling
+ * @param mode       whether {@code level} was set directly or is being
+ *                   tracked automatically
  * @param reason     human-readable justification; {@code null} if none was given
  * @param appliedAt  when this override was created
  * @param source     the control surface that created it, or the internal
  *                   source that reinstated it (e.g. {@code "resume"})
- * @param tier       the durability tier this override was set at
+ * @param tier       the durability tier this override was set at — for
+ *                   {@code AUTO} this governs how long the AUTO mode itself
+ *                   lasts, independent of how often {@code level} moves
+ *                   during that time
  * @param expiresAt  the absolute deadline this override reverts at; {@code
  *                   null} unless {@code tier} is {@link PersistenceTier#FOR}
  */
 public record HandlerLevelOverride(
         HandlerRef handlerRef,
         Level level,
+        HandlerLevelMode mode,
         String reason,
         Instant appliedAt,
         String source,
@@ -52,6 +64,9 @@ public record HandlerLevelOverride(
         }
         if (level == null) {
             throw new IllegalArgumentException("level must not be null");
+        }
+        if (mode == null) {
+            throw new IllegalArgumentException("mode must not be null");
         }
         if (appliedAt == null) {
             throw new IllegalArgumentException("appliedAt must not be null");
@@ -69,5 +84,12 @@ public record HandlerLevelOverride(
         } else if (expiresAt != null) {
             throw new IllegalArgumentException("expiresAt must be null unless tier is FOR");
         }
+    }
+
+    /** A {@link HandlerLevelMode#FIXED} override — the pre-AUTO constructor shape, kept as a named factory for readability at call sites that only ever set a fixed level. */
+    public static HandlerLevelOverride fixed(
+            HandlerRef handlerRef, Level level, String reason, Instant appliedAt, String source,
+            PersistenceTier tier, Instant expiresAt) {
+        return new HandlerLevelOverride(handlerRef, level, HandlerLevelMode.FIXED, reason, appliedAt, source, tier, expiresAt);
     }
 }

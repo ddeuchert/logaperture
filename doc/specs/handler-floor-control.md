@@ -47,8 +47,8 @@ piece is specced below ("AUTO handler level"), scoped deliberately narrower
 than #28's own framing: AUTO works on any `HandlerRef` you can already name
 (a real handler, or `ALL_HANDLERS`) with no dependency on `DEFAULT_HANDLERS`
 existing yet — a named group is simply one more valid `HandlerRef` once #28
-lands, so nothing here needs rework when it does. **Status: spec drafted,
-sign-off in progress.**
+lands, so nothing here needs rework when it does. **Status: implemented,
+unit-tested** — see "AUTO handler level" below for the full account.
 
 Priority: **high** — pulled forward in §17 as the first behaviour-modifying feature
 after M1. "Make this class TRACE and let me see it on the console" is a primary
@@ -745,14 +745,23 @@ catalog".
 
 ## AUTO handler level (issue [#20](https://github.com/ddeuchert/logaperture/issues/20))
 
-Status: **sign-off complete** (all 7 decisions, AUTO-1 through AUTO-7 below).
-Not yet implemented. Scoped narrower than issue #28's own framing (see the
-"Planned extension" note at the top of this doc) — a distinct, self-contained
-slice of #20, not folded into #28 as #28 originally proposed: AUTO applies to
-any `HandlerRef` already addressable today — a real handler, or
-`ALL_HANDLERS` — with no dependency on `DEFAULT_HANDLERS` existing first.
-`DEFAULT_HANDLERS` and `logctl debug … --to <group>` delivery targeting
-stayed behind in #28, trimmed of the AUTO material this section now owns.
+Status: **implemented** — all 7 decisions (AUTO-1 through AUTO-7 below)
+resolved and built as drafted, with two mechanism refinements folded back in
+during implementation (see "Recompute trigger" and "Persistence and resume
+ordering" below, each marked "As implemented"): the reactive listener is
+wired by each container at construction time rather than by
+`AggregateLevelControl`, and resume/redeploy ordering resolves per context
+with no new aggregate-level method needed. Scoped narrower than issue #28's
+own framing (see the "Planned extension" note at the top of this doc) — a
+distinct, self-contained slice of #20, not folded into #28 as #28 originally
+proposed: AUTO applies to any `HandlerRef` already addressable today — a real
+handler, or `ALL_HANDLERS` — with no dependency on `DEFAULT_HANDLERS`
+existing first. `DEFAULT_HANDLERS` and `logctl debug … --to <group>` delivery
+targeting stayed behind in #28, trimmed of the AUTO material this section now
+owns. Unit-tested in `LevelControlServiceTest` (the listener seam),
+`HandlerLevelControlServiceTest` (activation, recompute, `ALL_HANDLERS`
+fan-out, precedence, capability), and `AggregateLevelControlTest` (the
+`setHandlerAuto` broadcast). Not yet exercised against real WildFly.
 
 **After this feature, the user will be able to:**
 
@@ -823,7 +832,28 @@ same grammar position as `<level>` in `logctl handler <name> <level>`, same
 tier tokens, same `--reason`. Empty return has the same meaning as
 `setHandlerLevel`'s: `hasHandlerLevels() == false` (Logback, `none`), no-op.
 
-### Recompute trigger: reactive, wired through `AggregateLevelControl`
+### Recompute trigger: reactive, wired by each container at construction time
+
+**As implemented** (adjusted from the sign-off's "`AggregateLevelControl` is
+the only class that wires the two together", below — the mechanism, not the
+contract): `LevelControlService`'s `LoggerOverrideChangeListener` is a
+constructor-injected, immutable field, so it has to be supplied at
+construction time, before `AggregateLevelControl.register` ever sees the
+`ContextControl`. Each container's `installContext` — the one place that
+already builds *both* services for a context — builds
+`HandlerLevelControlService` first, then a listener closing over it
+(`handlerService::recomputeAuto`), then passes that listener into
+`LevelControlService`'s own constructor. `AggregateLevelControl` still owns
+the two places recompute needs a one-off *pull* rather than the reactive
+*push* above (see "Persistence and resume ordering" below), but the live
+per-mutation wiring itself is a composition-root concern, not something
+`AggregateLevelControl` can retrofit onto an already-constructed service.
+`HandlerLevelControlService` also gained a second constructor-injected seam,
+`ActiveLoggerFloor` (`Optional<Level> lowestActive()`), so `recomputeAuto()`
+takes no arguments — it asks its own supplier, which each container wires as
+`() -> ActiveLoggerFloor.lowestOf(overrides.all().values())`, closing over
+the same `OverrideRegistry` instance handed to `LevelControlService`. Neither
+service class ends up referencing the other's type.
 
 Per issue #28: **reactive**, not swept — recomputed synchronously as part of
 the same call that changed the logger-override set, not on the next periodic
@@ -861,24 +891,21 @@ halves for the same context. Putting the wiring there means:
   listener knowing nothing about handlers, `AUTO`, or `core`'s own handler
   classes — it is exactly as decoupled from `HandlerLevelControlService` as
   before, just no longer silent about "my tracked state changed".
-- **`HandlerLevelControlService` gains `recomputeAuto(Optional<Level>
-  lowestActive)`** — for every tracked override in this context whose `mode`
-  is `AUTO`, computes the target (`lowestActive`, or the handler's own
-  captured baseline if empty) and, if it differs from the override's current
-  `level`, applies it and replaces the registry entry with an updated
-  `level` (same `appliedAt`/`tier`/`expiresAt`/`reason` — a recompute is not
-  a new override, just an updated one). For `ALL_HANDLERS` in `AUTO`, this
-  fans out over `realHandlers()` exactly like a fixed `ALL_HANDLERS`
-  mutation, skipping any real handler that has its own more-specific
-  override superseding it (the same carve-out `applyAndRecordGroupMutation`
-  already makes).
-- **`AggregateLevelControl` is the only class that wires the two together**:
-  each `ContextControl`'s `LevelControlService` is constructed with a
-  listener that calls `context.handlerService().recomputeAuto(lowestActiveOf(context))`,
-  where `lowestActiveOf` reads `context.service().activeOverrides()` fresh
-  each time (already a public method, used today for redeploy rebroadcast)
-  and reduces it to the most verbose `level` among them. Neither service
-  class references the other's type.
+- **`HandlerLevelControlService` gains `recomputeAuto()`** — for every
+  tracked override in this context whose `mode` is `AUTO`, computes the
+  target (`activeLoggerFloor.lowestActive()`, or the handler's own captured
+  baseline if empty) and, if it differs from the override's current `level`,
+  applies it and replaces the registry entry with an updated `level` (same
+  `appliedAt`/`tier`/`expiresAt`/`reason` — a recompute is not a new
+  override, just an updated one). For `ALL_HANDLERS` in `AUTO`, this fans out
+  over `realHandlers()`, skipping any real handler that has its own
+  more-specific override superseding it (the same carve-out
+  `applyAndRecordGroupMutation` already makes) — every real moves to the same
+  explicit target when one is active; with none active, each real reverts to
+  its *own* baseline (they can genuinely disagree, same as a `FIXED`
+  `ALL_HANDLERS` reset), and the group's single displayed `level` becomes the
+  strictest of those baselines (a display-only summary, the same "no
+  invented aggregate level" gap Decision #5 already lives with).
 - **`resumeFromStateStore` and `adoptOverride` do *not* fire the live
   listener** — seeing why is the next section.
 
@@ -916,14 +943,18 @@ no ordering guarantee between them):
   persisted entry / once per rebroadcast override during startup or a
   redeploy, and firing a full recompute after every single one is wasted
   work computing against a partially-resumed world.
-- Instead, the composition root calls a new `AggregateLevelControl.recomputeAllAuto()`
-  exactly once, **after** both logger and handler resume phases have
-  finished for every context (mirroring the existing "resume loggers, then
-  resume handlers" ordering already implicit in each container's
-  `installContext`), and again at the end of `addContext`'s redeploy
-  rebroadcast, after both the logger and handler `adoptOverride` loops have
-  run against the new context. One pass, correct final state, no
-  intermediate recomputes against half-resumed data.
+- **As implemented**, this needs no cross-context barrier: `AUTO`'s scope is
+  strictly per context (the "Scope" note above), so it's enough for each
+  context's own resume to finish both halves before that context's own
+  recompute runs — no dependency on any *other* context. Each container's
+  `installContext` calls `handlerService.recomputeAuto()` once, right after
+  `service.resumeFromStateStore(...)` and `handlerService.resumeFromStateStore(...)`
+  have both returned for that context. `AggregateLevelControl.addContext`
+  does the same for a redeploy: `control.handlerService().recomputeAuto()`
+  once, after both the logger and handler `adoptOverride` loops have run
+  against the new context. One pass per context, correct final state, no
+  intermediate recomputes against half-resumed data, and no new
+  aggregate-level method needed.
 
 ### Capability
 
@@ -996,10 +1027,12 @@ leaning as drafted — no changes requested:*
   `<level>` parse.
 - **AUTO-2 (was #20 "Recompute trigger").** Reactive (settled by #28 already)
   — the seam is a `LoggerOverrideChangeListener` on `LevelControlService`,
-  wired only inside `AggregateLevelControl`, firing *inside* `setLevel`
-  before the blocking-handler floor check so the warning never fires against
-  a stale pre-recompute level. This ordering is a correctness requirement,
-  not a preference.
+  firing *inside* `setLevel` before the blocking-handler floor check so the
+  warning never fires against a stale pre-recompute level. This ordering is
+  a correctness requirement, not a preference. As implemented, the listener
+  is wired by each container at construction time (not by
+  `AggregateLevelControl`, which can't reach an already-constructed
+  service's constructor-injected field) — see "Recompute trigger" above.
 - **AUTO-3 (was #20 "Scope of lowest active override").** Per logging
   context, every active override, no path-relevance filtering — matches
   today's architecture (no routing model exists); `DEFAULT_HANDLERS` (#28)
@@ -1008,10 +1041,12 @@ leaning as drafted — no changes requested:*
   `handler.lower` once; every reactive recompute thereafter checks nothing,
   matching how resume/reapply/the verification sweep already behave.
 - **AUTO-5 (was #20 "Persistence / resume ordering").** Persist `mode` +
-  the override's own tier/expiry + a last-known `level` cache; one explicit
-  `AggregateLevelControl.recomputeAllAuto()` pass after all resume (and after
-  each redeploy rebroadcast) rather than firing the live listener during
-  either.
+  the override's own tier/expiry + a last-known `level` cache; one
+  `recomputeAuto()` pull per context after that context's own resume (and
+  after its own redeploy rebroadcast) rather than firing the live listener
+  during either. As implemented this needs no cross-context barrier — `AUTO`
+  is scoped per context (AUTO-3), so no new aggregate-level method was
+  needed; see "Persistence and resume ordering" above.
 - **AUTO-6 (was #20 "Interaction with the blocking-handler warning").**
   No special-casing needed in the warning path at all, given AUTO-2's
   ordering — an already-tracked-down handler simply stops appearing in

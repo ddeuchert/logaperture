@@ -274,7 +274,7 @@ class LevelControlMXBeanImplTest {
     void listHandlerOverrides_convertsEveryEntryToADto() {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
         fake.handlerOverridesToReturn = List.of(
-                new HandlerLevelOverride(new HandlerRef("CONSOLE"), Level.TRACE, "INC-1", Instant.now(), "jmx",
+                HandlerLevelOverride.fixed(new HandlerRef("CONSOLE"), Level.TRACE, "INC-1", Instant.now(), "jmx",
                         PersistenceTier.STICKY, null));
 
         List<HandlerLevelOverrideData> result = bean(fake).listHandlerOverrides();

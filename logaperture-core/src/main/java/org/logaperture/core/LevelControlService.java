@@ -53,7 +53,9 @@ public final class LevelControlService implements LevelControlOperations {
     private final StateStore stateStore;
     private final String principal;
     private final String source;
+    private final LoggerOverrideChangeListener changeListener;
 
+    /** Convenience overload for every context that doesn't need to react to logger-override changes (doc/specs/handler-floor-control.md "AUTO handler level"). */
     public LevelControlService(
             LoggingAdapter adapter,
             BaselineRegistry baselines,
@@ -63,6 +65,20 @@ public final class LevelControlService implements LevelControlOperations {
             StateStore stateStore,
             String principal,
             String source) {
+        this(adapter, baselines, overrides, policy, auditLog, stateStore, principal, source,
+                LoggerOverrideChangeListener.NONE);
+    }
+
+    public LevelControlService(
+            LoggingAdapter adapter,
+            BaselineRegistry baselines,
+            OverrideRegistry overrides,
+            CapabilityPolicy policy,
+            AuditLog auditLog,
+            StateStore stateStore,
+            String principal,
+            String source,
+            LoggerOverrideChangeListener changeListener) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.baselines = Objects.requireNonNull(baselines, "baselines");
         this.overrides = Objects.requireNonNull(overrides, "overrides");
@@ -71,6 +87,7 @@ public final class LevelControlService implements LevelControlOperations {
         this.stateStore = Objects.requireNonNull(stateStore, "stateStore");
         this.principal = Objects.requireNonNull(principal, "principal");
         this.source = Objects.requireNonNull(source, "source");
+        this.changeListener = Objects.requireNonNull(changeListener, "changeListener");
     }
 
     @Override
@@ -129,6 +146,12 @@ public final class LevelControlService implements LevelControlOperations {
                 primary = applied;
             }
         }
+
+        // AUTO handler recompute (doc/specs/handler-floor-control.md "AUTO
+        // handler level", "Recompute trigger") -- must run before the
+        // blocking-handler floor check below, so an AUTO handler that just
+        // tracked down to this new level doesn't show up in that answer.
+        changeListener.onChange();
 
         // Actionable warning (doc/specs/handler-floor-control.md "Warning on
         // level commands"): union across every target this call actually
@@ -211,6 +234,7 @@ public final class LevelControlService implements LevelControlOperations {
         // resolved by the spec, not addressed here.
         requireCapability(Capability.LEVEL_LOWER);
         applyReset(loggerName, existing.get(), source, null);
+        changeListener.onChange(); // this logger's override just went away -- an AUTO handler tracking it needs to know
     }
 
     @Override
@@ -219,6 +243,7 @@ public final class LevelControlService implements LevelControlOperations {
         for (Map.Entry<String, LevelOverride> entry : overrides.all().entrySet()) {
             applyReset(entry.getKey(), entry.getValue(), source, null);
         }
+        changeListener.onChange();
     }
 
     /**
@@ -312,7 +337,13 @@ public final class LevelControlService implements LevelControlOperations {
      * mutation, registry commit, and a {@code "resume"} audit record; no
      * capability check (this reinstates state an already-authorized action
      * established) and no state-store write (the originating context
-     * already persisted it to the shared store).
+     * already persisted it to the shared store). Deliberately does not fire
+     * {@link #changeListener} — this runs once per rebroadcast override
+     * during a redeploy, and firing a full AUTO recompute after each one
+     * would compute against a partially-rebroadcast context; the caller
+     * (doc/specs/handler-floor-control.md "Persistence and resume ordering")
+     * does one recompute pass after every override for the new context has
+     * been adopted instead.
      */
     public void adoptOverride(LevelOverride override) {
         Objects.requireNonNull(override, "override");
@@ -330,7 +361,12 @@ public final class LevelControlService implements LevelControlOperations {
      * and before this service is handed back to its caller (doc/specs/
      * persistence.md "Resume on restart"). Bypasses capability checks
      * deliberately -- this reinstates state a previous, already-authorized
-     * session persisted; it is not a new operator action.
+     * session persisted; it is not a new operator action. Deliberately does
+     * not fire {@link #changeListener} per entry, for the same reason {@link
+     * #adoptOverride} doesn't (doc/specs/handler-floor-control.md
+     * "Persistence and resume ordering") — the composition root does one
+     * recompute pass after both this and the handler service's own resume
+     * have finished.
      *
      * @param now injected so tests can simulate "time has passed since the
      *            override was persisted" without a real sleep
@@ -384,12 +420,20 @@ public final class LevelControlService implements LevelControlOperations {
         // by the time this loop reaches an entry (a concurrent setLevel may
         // have already replaced it), and applyReset's compare-and-remove
         // uses this same fresh value, not the (possibly stale) one below.
+        boolean[] anyReverted = {false};
         for (String loggerName : overrides.all().keySet()) {
             overrides.get(loggerName).ifPresent(override -> {
                 if (override.tier() == PersistenceTier.FOR && !override.expiresAt().isAfter(now)) {
                     applyReset(loggerName, override, "expiry-sweep", null);
+                    anyReverted[0] = true;
                 }
             });
+        }
+        if (anyReverted[0]) {
+            // Only when something actually expired -- a quiet sweep tick
+            // triggers no AUTO recompute, matching this method's own
+            // "idempotent, no audit noise" bar for a system with nothing to do.
+            changeListener.onChange();
         }
     }
 

@@ -17,6 +17,7 @@ package org.logaperture.core;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.logaperture.api.HandlerLevelMode;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
@@ -27,7 +28,9 @@ import org.logaperture.core.spi.StateStore;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -327,7 +330,7 @@ class HandlerLevelControlServiceTest {
 
     @Test
     void resumeFromStateStore_expiredWhileStopped_isRecordedNotApplied() {
-        HandlerLevelOverride expired = new HandlerLevelOverride(CONSOLE, Level.TRACE, null,
+        HandlerLevelOverride expired = HandlerLevelOverride.fixed(CONSOLE, Level.TRACE, null,
                 Instant.now().minus(Duration.ofHours(1)), "jmx", PersistenceTier.FOR,
                 Instant.now().minus(Duration.ofMinutes(30)));
         ((InMemoryStateStore) stateStore).saveHandler(expired);
@@ -343,7 +346,7 @@ class HandlerLevelControlServiceTest {
 
     @Test
     void adoptOverride_appliesAndTracksWithoutACapabilityCheck() {
-        HandlerLevelOverride override = new HandlerLevelOverride(CONSOLE, Level.TRACE, null,
+        HandlerLevelOverride override = HandlerLevelOverride.fixed(CONSOLE, Level.TRACE, null,
                 Instant.now(), "jmx", PersistenceTier.SESSION, null);
         HandlerLevelControlService noCapabilities = newService(CapabilityPolicy.denyAll());
 
@@ -360,7 +363,7 @@ class HandlerLevelControlServiceTest {
         // rebroadcast of every OTHER still-live override onto the same new
         // context isn't aborted by the one that doesn't apply here.
         HandlerRef notHere = new HandlerRef("NOT-HERE"); // never registered with `adapter`
-        HandlerLevelOverride override = new HandlerLevelOverride(notHere, Level.TRACE, null,
+        HandlerLevelOverride override = HandlerLevelOverride.fixed(notHere, Level.TRACE, null,
                 Instant.now(), "jmx", PersistenceTier.SESSION, null);
 
         service.adoptOverride(override); // must not throw
@@ -632,7 +635,7 @@ class HandlerLevelControlServiceTest {
     void adoptOverride_allHandlers_auditsOneRowPerRealHandler_notOneForTheGroup() {
         HandlerRef file = new HandlerRef("FILE");
         adapter.addHandler(file, Level.INFO);
-        HandlerLevelOverride groupOverride = new HandlerLevelOverride(HandlerRef.ALL_HANDLERS, Level.TRACE, null,
+        HandlerLevelOverride groupOverride = HandlerLevelOverride.fixed(HandlerRef.ALL_HANDLERS, Level.TRACE, null,
                 Instant.now(), "jmx", PersistenceTier.SESSION, null);
 
         service.adoptOverride(groupOverride);
@@ -662,5 +665,185 @@ class HandlerLevelControlServiceTest {
         assertEquals(1, service.listHandlerOverrides().size(), "exactly one override governs CONSOLE now");
         assertTrue(stateStore.loadAllHandlers().stream().noneMatch(o -> o.handlerRef().equals(CONSOLE)),
                 "the stale individual override's persisted state is cleared too");
+    }
+
+    // --- AUTO handler level (doc/specs/handler-floor-control.md "AUTO handler level", issue #20) --------------
+
+    /** A settable {@link ActiveLoggerFloor} test double -- production wires the real thing from an {@code OverrideRegistry}. */
+    private static final class FakeActiveLoggerFloor implements ActiveLoggerFloor {
+        private Optional<Level> current = Optional.empty();
+
+        @Override
+        public Optional<Level> lowestActive() {
+            return current;
+        }
+
+        void set(Level level) {
+            current = Optional.ofNullable(level);
+        }
+    }
+
+    private FakeActiveLoggerFloor activeLoggerFloor;
+    private HandlerLevelControlService autoService;
+
+    private void setUpAutoService() {
+        activeLoggerFloor = new FakeActiveLoggerFloor();
+        autoService = new HandlerLevelControlService(
+                adapter, baselines, overrides, CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
+                activeLoggerFloor);
+    }
+
+    @Test
+    void setHandlerAuto_withNoActiveFloor_staysAtBaseline() {
+        setUpAutoService();
+
+        HandlerLevelOverride override = autoService.setHandlerAuto(CONSOLE, SetHandlerLevelOptions.defaults())
+                .orElseThrow();
+
+        assertEquals(HandlerLevelMode.AUTO, override.mode());
+        assertEquals(Level.INFO, override.level(), "CONSOLE's own baseline -- nothing active to track");
+        assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow());
+    }
+
+    @Test
+    void setHandlerAuto_withAnActiveFloorAlreadyRunning_picksItUpImmediately() {
+        setUpAutoService();
+        activeLoggerFloor.set(Level.TRACE);
+
+        HandlerLevelOverride override = autoService.setHandlerAuto(CONSOLE, SetHandlerLevelOptions.defaults())
+                .orElseThrow();
+
+        assertEquals(Level.TRACE, override.level());
+        assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
+    }
+
+    @Test
+    void recomputeAuto_followsTheFloorDownAndBackUp() {
+        setUpAutoService();
+        autoService.setHandlerAuto(CONSOLE, SetHandlerLevelOptions.defaults());
+        int before = auditLog.records().size();
+
+        activeLoggerFloor.set(Level.DEBUG);
+        autoService.recomputeAuto();
+        assertEquals(Level.DEBUG, adapter.handlerLevel(CONSOLE).orElseThrow());
+        assertEquals(Level.DEBUG, overrides.get(CONSOLE).orElseThrow().level());
+        assertEquals(before + 1, auditLog.records().size());
+        assertEquals("auto-recompute", auditLog.records().get(auditLog.records().size() - 1).source());
+
+        activeLoggerFloor.set(Level.TRACE); // a stricter override starts alongside -- overall floor gets more verbose
+        autoService.recomputeAuto();
+        assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
+
+        activeLoggerFloor.set(null); // every override cleared
+        autoService.recomputeAuto();
+        assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow(), "back to CONSOLE's own baseline");
+        assertEquals(HandlerLevelMode.AUTO, overrides.get(CONSOLE).orElseThrow().mode(), "still tracked, just at baseline");
+    }
+
+    @Test
+    void recomputeAuto_whenNothingChanges_writesNoAuditRecordAndDoesNotTouchTheAdapter() {
+        setUpAutoService();
+        activeLoggerFloor.set(Level.DEBUG);
+        autoService.setHandlerAuto(CONSOLE, SetHandlerLevelOptions.defaults());
+        int before = auditLog.records().size();
+
+        autoService.recomputeAuto(); // floor unchanged since activation
+
+        assertEquals(before, auditLog.records().size());
+        assertEquals(Level.DEBUG, adapter.handlerLevel(CONSOLE).orElseThrow());
+    }
+
+    @Test
+    void recomputeAuto_ignoresFixedOverrides() {
+        setUpAutoService();
+        autoService.setHandlerLevel(CONSOLE, Level.WARN, SetHandlerLevelOptions.defaults());
+
+        activeLoggerFloor.set(Level.TRACE);
+        autoService.recomputeAuto();
+
+        assertEquals(Level.WARN, adapter.handlerLevel(CONSOLE).orElseThrow(), "FIXED is untouched by recompute");
+    }
+
+    @Test
+    void allHandlersAuto_fansOutAndSkipsARealHandlerWithItsOwnOverride() {
+        setUpAutoService();
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.DEBUG);
+        autoService.setHandlerLevel(file, Level.ERROR, SetHandlerLevelOptions.defaults()); // more-specific, wins
+
+        activeLoggerFloor.set(Level.TRACE);
+        HandlerLevelOverride group = autoService.setHandlerAuto(HandlerRef.ALL_HANDLERS, SetHandlerLevelOptions.defaults())
+                .orElseThrow();
+
+        assertEquals(HandlerLevelMode.AUTO, group.mode());
+        assertEquals(Level.TRACE, group.level());
+        assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
+        assertEquals(Level.ERROR, adapter.handlerLevel(file).orElseThrow(), "the individual override on FILE wins");
+    }
+
+    @Test
+    void allHandlersAuto_withNoActiveFloor_revertsEachRealToItsOwnBaseline() {
+        setUpAutoService();
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.DEBUG);
+        activeLoggerFloor.set(Level.TRACE);
+        autoService.setHandlerAuto(HandlerRef.ALL_HANDLERS, SetHandlerLevelOptions.defaults());
+
+        activeLoggerFloor.set(null);
+        autoService.recomputeAuto();
+
+        assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow());
+        assertEquals(Level.DEBUG, adapter.handlerLevel(file).orElseThrow(), "FILE's own baseline, not CONSOLE's");
+    }
+
+    @Test
+    void precedence_fixedThenAuto_supersedesAndRecomputesImmediately() {
+        setUpAutoService();
+        autoService.setHandlerLevel(CONSOLE, Level.DEBUG, SetHandlerLevelOptions.defaults());
+
+        autoService.setHandlerAuto(CONSOLE, SetHandlerLevelOptions.defaults()); // no active floor
+
+        assertEquals(HandlerLevelMode.AUTO, overrides.get(CONSOLE).orElseThrow().mode());
+        assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow(), "reverted to baseline, not left at DEBUG");
+    }
+
+    @Test
+    void precedence_autoThenFixed_supersedesAndStopsTracking() {
+        setUpAutoService();
+        activeLoggerFloor.set(Level.TRACE);
+        autoService.setHandlerAuto(CONSOLE, SetHandlerLevelOptions.defaults());
+
+        autoService.setHandlerLevel(CONSOLE, Level.WARN, SetHandlerLevelOptions.defaults());
+        activeLoggerFloor.set(Level.DEBUG);
+        autoService.recomputeAuto();
+
+        assertEquals(HandlerLevelMode.FIXED, overrides.get(CONSOLE).orElseThrow().mode());
+        assertEquals(Level.WARN, adapter.handlerLevel(CONSOLE).orElseThrow(), "no longer tracked -- recompute left it alone");
+    }
+
+    @Test
+    void setHandlerAuto_capabilityWithheld_deniesActivation() {
+        setUpAutoService();
+        HandlerLevelControlService restricted = new HandlerLevelControlService(
+                adapter, baselines, overrides, CapabilityPolicy.denyAll(), auditLog, stateStore, "alice", "jmx",
+                activeLoggerFloor);
+
+        assertThrows(CapabilityDeniedException.class,
+                () -> restricted.setHandlerAuto(CONSOLE, SetHandlerLevelOptions.defaults()));
+        assertTrue(overrides.get(CONSOLE).isEmpty());
+    }
+
+    @Test
+    void setHandlerAuto_onceActive_recomputeNeedsNoFurtherCapability() {
+        setUpAutoService();
+        autoService.setHandlerAuto(CONSOLE, SetHandlerLevelOptions.defaults());
+        HandlerLevelControlService restricted = new HandlerLevelControlService(
+                adapter, baselines, overrides, CapabilityPolicy.denyAll(), auditLog, stateStore, "alice", "jmx",
+                activeLoggerFloor);
+
+        activeLoggerFloor.set(Level.TRACE);
+        assertDoesNotThrow(restricted::recomputeAuto, "a reactive recompute is not a new operator action");
+
+        assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
     }
 }
