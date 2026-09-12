@@ -834,6 +834,40 @@ class HandlerLevelControlServiceTest {
     }
 
     @Test
+    void recomputeAuto_losesARaceMidCompute_undoesTheAdapterMutationRatherThanLeaveItStale() {
+        // Code-review finding: applyAutoTarget mutates the adapter and
+        // writes its audit record before recomputeOne's own registry
+        // compare-check runs, so a concurrent write landing in that exact
+        // window must be undone, not merely left uncommitted in the
+        // registry -- otherwise the adapter and the registry/status
+        // permanently disagree until an unrelated verification-sweep tick.
+        setUpAutoService();
+        autoService.setHandlerAuto(CONSOLE, SetHandlerLevelOptions.defaults()); // AUTO at baseline INFO
+        activeLoggerFloor.set(Level.DEBUG); // this recompute wants to move CONSOLE to DEBUG
+        int auditBefore = auditLog.records().size();
+
+        // Fires exactly between applyAutoTarget's read and its own
+        // adapter.setHandlerLevel(CONSOLE, DEBUG) call below -- simulating a
+        // concurrent `logctl handler CONSOLE WARN` landing in that window.
+        adapter.runOnHandlerLevel(CONSOLE, () ->
+                autoService.setHandlerLevel(CONSOLE, Level.WARN, SetHandlerLevelOptions.defaults()));
+
+        autoService.recomputeAuto();
+
+        assertEquals(Level.WARN, adapter.handlerLevel(CONSOLE).orElseThrow(),
+                "the adapter must end up matching the winner, not the stale AUTO recompute");
+        HandlerLevelOverride winning = overrides.get(CONSOLE).orElseThrow();
+        assertEquals(HandlerLevelMode.FIXED, winning.mode(), "the concurrent FIXED write is untouched");
+        assertEquals(Level.WARN, winning.level());
+        // Two audit rows: the concurrent FIXED write's own, and the
+        // recompute's own record of the mutation it attempted -- the undo
+        // step itself adds no further row (silent, same as
+        // verifyAndReapply's own undo), so the trail honestly shows what
+        // each side did rather than erasing the recompute's attempt.
+        assertEquals(auditBefore + 2, auditLog.records().size());
+    }
+
+    @Test
     void setHandlerAuto_onceActive_recomputeNeedsNoFurtherCapability() {
         setUpAutoService();
         autoService.setHandlerAuto(CONSOLE, SetHandlerLevelOptions.defaults());

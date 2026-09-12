@@ -179,10 +179,13 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
 
         if (HandlerRef.ALL_HANDLERS.equals(ref)) {
-            Level tracked = applyAutoToGroup(explicit, source, opts.reason());
+            Optional<Level> tracked = applyAutoToGroup(explicit, source, opts.reason());
+            if (tracked.isEmpty()) {
+                return Optional.empty(); // no real handler resolved anything to track -- nothing to activate
+            }
             HandlerLevelOverride override = new HandlerLevelOverride(
-                    HandlerRef.ALL_HANDLERS, tracked, HandlerLevelMode.AUTO, opts.reason(), now, source, opts.tier(),
-                    expiresAt);
+                    HandlerRef.ALL_HANDLERS, tracked.get(), HandlerLevelMode.AUTO, opts.reason(), now, source,
+                    opts.tier(), expiresAt);
             return Optional.of(trackAutoOverride(override));
         }
 
@@ -242,30 +245,69 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (!adapter.hasHandlerLevels()) {
             return;
         }
+        // Cheap short-circuit before touching activeLoggerFloor at all: that
+        // supplier does its own defensive-copy-and-reduce over the logger
+        // OverrideRegistry (a bigger, busier map than this one), and every
+        // setLevel/resetLevel/resetAll/sweep-with-reverts calls this
+        // unconditionally whether or not AUTO is even in use.
+        Map<HandlerRef, HandlerLevelOverride> tracked = overrides.all();
+        if (tracked.values().stream().noneMatch(o -> o.mode() == HandlerLevelMode.AUTO)) {
+            return;
+        }
         Optional<Level> explicit = activeLoggerFloor.lowestActive();
-        for (Map.Entry<HandlerRef, HandlerLevelOverride> entry : overrides.all().entrySet()) {
-            HandlerLevelOverride current = entry.getValue();
-            if (current.mode() != HandlerLevelMode.AUTO) {
-                continue;
+        for (Map.Entry<HandlerRef, HandlerLevelOverride> entry : tracked.entrySet()) {
+            if (entry.getValue().mode() == HandlerLevelMode.AUTO) {
+                recomputeOne(entry.getKey(), entry.getValue(), explicit);
             }
-            HandlerRef ref = entry.getKey();
-            Level tracked = HandlerRef.ALL_HANDLERS.equals(ref)
-                    ? applyAutoToGroup(explicit, "auto-recompute", current.reason())
-                    : applyAutoTarget(ref, explicit, "auto-recompute", current.reason()).orElse(current.level());
-            if (tracked == current.level()) {
-                continue; // nothing moved -- registry entry stays exactly as it was
+        }
+    }
+
+    /**
+     * Recomputes one tracked {@code AUTO} override. Races a concurrent
+     * {@code setHandlerLevel}/{@code resetHandler}/another {@code
+     * recomputeAuto} tick on both ends: skipped outright if {@code current}
+     * (the caller's own point-in-time snapshot) has already been superseded
+     * before this call even starts, and -- since {@link #applyAutoTarget}/
+     * {@link #applyAutoToGroup} mutate the adapter and write an audit record
+     * as one step, before the registry can be re-checked -- <em>undone</em>
+     * if the race is lost between starting and finishing, so the adapter
+     * never ends up disagreeing with whatever won. This is exactly {@link
+     * #verifyAndReapply}'s own "undo a re-apply that did not stick"
+     * discipline, reused here for the same reason.
+     */
+    private void recomputeOne(HandlerRef ref, HandlerLevelOverride current, Optional<Level> explicit) {
+        if (!overrides.get(ref).map(current::equals).orElse(false)) {
+            return; // already superseded before this tick started
+        }
+
+        Optional<Level> resolved = HandlerRef.ALL_HANDLERS.equals(ref)
+                ? applyAutoToGroup(explicit, "auto-recompute", current.reason())
+                : applyAutoTarget(ref, explicit, "auto-recompute", current.reason());
+        Level tracked = resolved.orElse(current.level()); // nothing resolvable this tick -- keep displaying the last known value
+        if (tracked == current.level()) {
+            return; // nothing moved -- registry entry stays exactly as it was
+        }
+        HandlerLevelOverride updated = new HandlerLevelOverride(ref, tracked, HandlerLevelMode.AUTO,
+                current.reason(), current.appliedAt(), current.source(), current.tier(), current.expiresAt());
+
+        Optional<HandlerLevelOverride> afterApply = overrides.get(ref);
+        if (!afterApply.map(current::equals).orElse(false)) {
+            // Lost the race while applying -- undo rather than leave the
+            // adapter disagreeing with whatever won; no audit for an apply
+            // that did not stick, same as verifyAndReapply's own undo.
+            if (afterApply.isPresent()) {
+                HandlerOverrideApplier.apply(afterApply.get(), adapter);
+            } else if (HandlerRef.ALL_HANDLERS.equals(ref)) {
+                restoreGroupToBaselinesSilently();
+            } else {
+                trySetHandlerLevel(ref, baselines.get(ref).orElse(null), "undo");
             }
-            HandlerLevelOverride updated = new HandlerLevelOverride(ref, tracked, HandlerLevelMode.AUTO,
-                    current.reason(), current.appliedAt(), current.source(), current.tier(), current.expiresAt());
-            // A concurrent reset/setHandlerLevel/supersede may have already
-            // replaced this entry since the snapshot above -- only commit
-            // our recomputed level if it's still exactly the entry we read.
-            if (overrides.get(ref).map(current::equals).orElse(false)) {
-                overrides.put(updated);
-                if (updated.tier() != PersistenceTier.SESSION) {
-                    safePersist(() -> stateStore.saveHandler(updated));
-                }
-            }
+            return;
+        }
+
+        overrides.put(updated);
+        if (updated.tier() != PersistenceTier.SESSION) {
+            safePersist(() -> stateStore.saveHandler(updated));
         }
     }
 
@@ -303,11 +345,20 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
 
     /**
      * {@code applyAutoTarget}'s {@code ALL_HANDLERS} counterpart: every real
-     * handler with no more-specific individual override of its own (same
-     * carve-out {@link #applyAndRecordGroupMutation} makes) is moved to
-     * {@code explicitTarget} when present, or its own captured baseline
+     * handler with no more-specific individual override of its own is moved
+     * to {@code explicitTarget} when present, or its own captured baseline
      * otherwise -- reals can genuinely disagree in the baseline case, same
      * as a {@code FIXED} {@code ALL_HANDLERS} reset already allows.
+     *
+     * <p><strong>Not the same carve-out {@link #applyAndRecordGroupMutation}
+     * makes</strong> for a real with its own individual override -- that
+     * method (an explicit, one-shot "set everything to X" command)
+     * overwrites such a real and then drops its now-stale individual
+     * override; this method (a passive, ambient recompute) leaves it alone
+     * entirely, deliberately not clobbering an override the operator set on
+     * purpose. The two {@code ALL_HANDLERS} paths differ here by design, not
+     * by omission -- see {@code allHandlersAuto_fansOutAndSkipsARealHandlerWithItsOwnOverride}
+     * for the behavior this locks in.
      *
      * @return the level to display for the group's single tracked-override
      *         row: {@code explicitTarget} when present (every real really is
@@ -316,13 +367,16 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      *         summary for the one case where there is no single true value,
      *         the same "no invented aggregate level" gap {@code FIXED}
      *         {@code ALL_HANDLERS} already lives with (doc/specs/
-     *         handler-floor-control.md "Semantics to pin down", Decision #5)
+     *         handler-floor-control.md "Semantics to pin down", Decision #5).
+     *         Empty if no real handler resolved anything at all (every real
+     *         individually overridden, or none known yet) -- never a
+     *         fabricated placeholder value.
      */
-    private Level applyAutoToGroup(Optional<Level> explicitTarget, String auditSource, String reason) {
+    private Optional<Level> applyAutoToGroup(Optional<Level> explicitTarget, String auditSource, String reason) {
         Level summary = null;
         for (HandlerRef real : adapter.realHandlers()) {
             if (overrides.get(real).isPresent()) {
-                continue; // a more-specific individual override wins
+                continue; // a more-specific individual override wins -- see the javadoc above
             }
             Optional<Level> applied = applyAutoTarget(real, explicitTarget, auditSource, reason);
             if (applied.isEmpty()) {
@@ -330,7 +384,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             }
             summary = (summary == null || applied.get().compareTo(summary) > 0) ? applied.get() : summary;
         }
-        return summary == null ? Level.OFF : summary;
+        return Optional.ofNullable(summary);
     }
 
     @Override
@@ -769,8 +823,8 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         }
 
         Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
-        HandlerLevelOverride override = new HandlerLevelOverride(
-                HandlerRef.ALL_HANDLERS, level, HandlerLevelMode.FIXED, opts.reason(), now, source, opts.tier(), expiresAt);
+        HandlerLevelOverride override = HandlerLevelOverride.fixed(
+                HandlerRef.ALL_HANDLERS, level, opts.reason(), now, source, opts.tier(), expiresAt);
         overrides.put(override); // one tracked entry for the whole group
         if (opts.tier() != PersistenceTier.SESSION) {
             safePersist(() -> stateStore.saveHandler(override));
@@ -786,8 +840,8 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
 
         Instant now = Instant.now();
         Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
-        HandlerLevelOverride override = new HandlerLevelOverride(
-                ref, level, HandlerLevelMode.FIXED, opts.reason(), now, source, opts.tier(), expiresAt);
+        HandlerLevelOverride override = HandlerLevelOverride.fixed(
+                ref, level, opts.reason(), now, source, opts.tier(), expiresAt);
         HandlerOverrideApplier.apply(override, adapter); // mutation: the point of no return
 
         overrides.put(override); // commit

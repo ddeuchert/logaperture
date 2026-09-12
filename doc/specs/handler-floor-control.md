@@ -899,13 +899,23 @@ halves for the same context. Putting the wiring there means:
   `appliedAt`/`tier`/`expiresAt`/`reason` — a recompute is not a new
   override, just an updated one). For `ALL_HANDLERS` in `AUTO`, this fans out
   over `realHandlers()`, skipping any real handler that has its own
-  more-specific override superseding it (the same carve-out
-  `applyAndRecordGroupMutation` already makes) — every real moves to the same
-  explicit target when one is active; with none active, each real reverts to
-  its *own* baseline (they can genuinely disagree, same as a `FIXED`
-  `ALL_HANDLERS` reset), and the group's single displayed `level` becomes the
-  strictest of those baselines (a display-only summary, the same "no
-  invented aggregate level" gap Decision #5 already lives with).
+  more-specific override superseding it — **not** the same carve-out
+  `applyAndRecordGroupMutation` makes for `FIXED`, which does the opposite:
+  it overwrites such a real unconditionally and only afterward drops its
+  now-stale individual override. The divergence is deliberate — a `FIXED`
+  `ALL_HANDLERS` command is an explicit, one-shot "set everything to X"; a
+  reactive `AUTO` recompute is ambient and shouldn't clobber an override an
+  operator set on purpose. Every real moves to the same explicit target when
+  one is active; with none active, each real reverts to its *own* baseline
+  (they can genuinely disagree, same as a `FIXED` `ALL_HANDLERS` reset), and
+  the group's single displayed `level` becomes the strictest of those
+  baselines (a display-only summary, the same "no invented aggregate level"
+  gap Decision #5 already lives with) — or stays at its last-known value,
+  never a fabricated one, on a tick where no real resolved anything at all.
+  A recompute that starts against a still-current entry but loses a race to
+  a concurrent write before it finishes is undone — the adapter is
+  re-applied to whatever won — exactly like `verifyAndReapply`'s own "undo a
+  re-apply that did not stick" discipline.
 - **`resumeFromStateStore` and `adoptOverride` do *not* fire the live
   listener** — seeing why is the next section.
 
@@ -1287,7 +1297,14 @@ its own prior value (Decision #4).
   writes no audit record and leaves the handler untouched.
 - `ALL_HANDLERS AUTO`: fans out over `realHandlers()` on recompute, one audit
   row per real handler that actually changed level this tick, skipping a real
-  handler with its own more-specific `FIXED` override.
+  handler with its own more-specific `FIXED` override — and, unlike `FIXED`
+  `ALL_HANDLERS`, leaving that real completely untouched rather than
+  overwriting it (a deliberate divergence; see "Recompute trigger" above).
+- `ALL_HANDLERS AUTO` with every real individually overridden (all skipped)
+  or with no reals known yet: activation returns empty (nothing to track)
+  rather than fabricating a placeholder level; a recompute in the same
+  situation leaves the tracked `level` exactly as it was, never a
+  fabricated one.
 - Precedence: `CONSOLE AUTO` then `CONSOLE DEBUG` — `mode` flips to `FIXED`,
   no further recompute touches it until re-activated; and the reverse
   (`CONSOLE DEBUG` then `CONSOLE AUTO`) immediately recomputes.
@@ -1296,11 +1313,18 @@ its own prior value (Decision #4).
   **not** block a later recompute (no capability re-check on the reactive
   path).
 - Resume ordering: a persisted `sticky AUTO` override and a persisted
-  `sticky` logger override both resume; `AggregateLevelControl.recomputeAllAuto()`
-  run once after both resume phases complete lands on the correct tracked
-  level — not whatever stale `level` was persisted.
+  `sticky` logger override both resume; the per-context `recomputeAuto()`
+  pull each container runs once both halves finish resuming lands on the
+  correct tracked level — not whatever stale `level` was persisted.
+- Race: a recompute that starts against a still-current entry but loses a
+  race to a concurrent `setHandlerLevel` before it finishes is undone — the
+  adapter ends up matching the winner, not the stale recomputed value —
+  exactly `verifyAndReapply`'s own "undo a re-apply that did not stick"
+  discipline, reused here.
 - `logctl status` / `--json` / `logctl handlers` show `mode = AUTO` and the
-  currently-tracked `level` for an `AUTO` handler.
+  currently-tracked `level` for an `AUTO` handler, including the `MODE`
+  column in `logctl status`'s text table and the `AUTO → <level>` form in
+  `logctl handlers`' `OVERRIDE` cell.
 
 **Cross-process (extends `LevelControlEndToEndIT` / `WildFlyContainerIT`):**
 

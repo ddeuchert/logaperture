@@ -420,16 +420,16 @@ public final class LevelControlService implements LevelControlOperations {
         // by the time this loop reaches an entry (a concurrent setLevel may
         // have already replaced it), and applyReset's compare-and-remove
         // uses this same fresh value, not the (possibly stale) one below.
-        boolean[] anyReverted = {false};
+        boolean anyReverted = false;
         for (String loggerName : overrides.all().keySet()) {
-            overrides.get(loggerName).ifPresent(override -> {
-                if (override.tier() == PersistenceTier.FOR && !override.expiresAt().isAfter(now)) {
-                    applyReset(loggerName, override, "expiry-sweep", null);
-                    anyReverted[0] = true;
-                }
-            });
+            Optional<LevelOverride> current = overrides.get(loggerName);
+            if (current.isPresent() && current.get().tier() == PersistenceTier.FOR
+                    && !current.get().expiresAt().isAfter(now)) {
+                applyReset(loggerName, current.get(), "expiry-sweep", null);
+                anyReverted = true;
+            }
         }
-        if (anyReverted[0]) {
+        if (anyReverted) {
             // Only when something actually expired -- a quiet sweep tick
             // triggers no AUTO recompute, matching this method's own
             // "idempotent, no audit noise" bar for a system with nothing to do.

@@ -479,6 +479,70 @@ class CommandsTest {
         assertEquals("{\"handlerRef\":\"CONSOLE\",\"changed\":false}", output().strip());
     }
 
+    // --- handler AUTO (doc/specs/handler-floor-control.md "AUTO handler level", issue #20) ----
+
+    @Test
+    void handlerAutoForwardsEveryArgumentAndPrintsAConfirmation() {
+        mbean.setHandlerAutoResult = new HandlerLevelOverrideData(
+                "CONSOLE", "DEBUG", "AUTO", "INC-1", Instant.now().toString(), "jmx", "SESSION", null);
+
+        run(Commands.setHandlerAuto("CONSOLE", "INC-1", "SESSION", 0L, false));
+
+        Object[] call = mbean.setHandlerAutoCalls.get(0);
+        assertEquals("CONSOLE", call[0]);
+        assertEquals("INC-1", call[1]);
+        assertEquals("SESSION", call[2]);
+        assertEquals("handler CONSOLE → AUTO, currently DEBUG   (SESSION — until the JVM stops)", output().strip());
+    }
+
+    @Test
+    void handlerAutoJsonEmitsTheOverrideObjectWithMode() {
+        mbean.setHandlerAutoResult = new HandlerLevelOverrideData(
+                "CONSOLE", "TRACE", "AUTO", null, "2026-08-25T00:00:00Z", "jmx", "STICKY", null);
+
+        run(Commands.setHandlerAuto("CONSOLE", null, "STICKY", 0L, true));
+
+        assertEquals(
+                "{\"handlerRef\":\"CONSOLE\",\"level\":\"TRACE\",\"mode\":\"AUTO\",\"reason\":null,"
+                        + "\"appliedAt\":\"2026-08-25T00:00:00Z\",\"source\":\"jmx\",\"tier\":\"STICKY\","
+                        + "\"expiresAt\":null}",
+                output().strip());
+    }
+
+    @Test
+    void handlerAuto_nothingToTrack_printsTheNoOpNote() {
+        mbean.setHandlerAutoResult = null; // no level of its own, or no active floor and no baseline yet
+
+        assertEquals(CliError.OK, run(Commands.setHandlerAuto("CONSOLE", null, "SESSION", 0L, false)));
+        assertTrue(output().contains("nothing to change"));
+    }
+
+    @Test
+    void status_rendersAModeColumnDistinguishingAutoFromFixed() {
+        mbean.handlerOverrides = List.of(
+                new HandlerLevelOverrideData("CONSOLE", "DEBUG", "AUTO", null, Instant.now().toString(), "jmx",
+                        "STICKY", null),
+                new HandlerLevelOverrideData("FILE", "WARN", "FIXED", null, Instant.now().toString(), "jmx",
+                        "STICKY", null));
+
+        assertEquals(CliError.OK, run(Commands.status(false)));
+
+        String text = output();
+        assertTrue(text.contains("MODE"), text);
+        assertTrue(text.contains("AUTO"), text);
+        assertTrue(text.contains("FIXED"), text);
+    }
+
+    @Test
+    void handlers_catalogRowInAutoMode_showsTheTrackedLevelPrefixed() {
+        mbean.handlerCatalog = List.of(new org.logaperture.control.jmx.HandlerInfoData(
+                "CONSOLE", "DEBUG", false, null, Boolean.TRUE, true, "DEBUG", "AUTO", "STICKY", null, null));
+
+        assertEquals(CliError.OK, run(Commands.handlers(false)));
+
+        assertTrue(output().contains("AUTO → DEBUG"), output());
+    }
+
     @Test
     void handlerResetCallsResetHandler() {
         assertEquals(CliError.OK, run(Commands.resetHandler("CONSOLE", false)));
