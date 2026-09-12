@@ -414,6 +414,40 @@ class AggregateLevelControlTest {
         assertEquals(Level.INFO, app.adapter.handlerLevel(console).orElseThrow());
     }
 
+    // --- setHandlerAuto (doc/specs/handler-floor-control.md "AUTO handler level", issue #20) -------
+
+    @Test
+    void setHandlerAuto_broadcastsToEveryContext() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        HandlerRef console = new HandlerRef("CONSOLE");
+        system.adapter.addHandler(console, Level.INFO);
+        app.adapter.addHandler(console, Level.INFO);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        HandlerLevelOverride result = aggregate.setHandlerAuto(console, SetHandlerLevelOptions.defaults())
+                .orElseThrow();
+
+        assertEquals(org.logaperture.api.HandlerLevelMode.AUTO, result.mode());
+        assertTrue(system.handlerService.listHandlerOverrides().stream()
+                .anyMatch(o -> o.handlerRef().equals(console) && o.mode() == org.logaperture.api.HandlerLevelMode.AUTO));
+        assertTrue(app.handlerService.listHandlerOverrides().stream()
+                .anyMatch(o -> o.handlerRef().equals(console) && o.mode() == org.logaperture.api.HandlerLevelMode.AUTO));
+    }
+
+    @Test
+    void setHandlerAuto_capabilityWithheld_deniesInEveryContextBeforeMutatingAny() {
+        Ctx system = new Ctx("system", CapabilityPolicy.denyAll());
+        HandlerRef console = new HandlerRef("CONSOLE");
+        system.adapter.addHandler(console, Level.INFO);
+        aggregate.register(system.control);
+
+        assertThrows(CapabilityDeniedException.class,
+                () -> aggregate.setHandlerAuto(console, SetHandlerLevelOptions.defaults()));
+        assertEquals(Level.INFO, system.adapter.handlerLevel(console).orElseThrow());
+    }
+
     @Test
     void listHandlerOverrides_unionsAcrossContexts_dedupingASharedRef() {
         Ctx system = new Ctx("system");

@@ -32,6 +32,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     final List<Object[]> setLevelCalls = new ArrayList<>();
     final List<String> resetLevelCalls = new ArrayList<>();
     final List<Object[]> setHandlerLevelCalls = new ArrayList<>();
+    final List<Object[]> setHandlerAutoCalls = new ArrayList<>();
     final List<String> resetHandlerCalls = new ArrayList<>();
     /** Names dropped from {@link #loggers} when {@link #resetLevel} clears them — a "Known" but not "Live" logger. */
     final List<String> forgetOnReset = new ArrayList<>();
@@ -44,6 +45,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     final List<Integer> topLoggersLimits = new ArrayList<>();
     SetLevelResultData setLevelResult;
     HandlerLevelOverrideData setHandlerLevelResult;
+    HandlerLevelOverrideData setHandlerAutoResult;
     RuntimeException throwOnNextCall;
 
     @Override
@@ -91,6 +93,13 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         setHandlerLevelCalls.add(new Object[] {handlerRef, level, reason, tier, forSeconds});
         maybeThrow();
         return setHandlerLevelResult;
+    }
+
+    @Override
+    public HandlerLevelOverrideData setHandlerAuto(String handlerRef, String reason, String tier, long forSeconds) {
+        setHandlerAutoCalls.add(new Object[] {handlerRef, reason, tier, forSeconds});
+        maybeThrow();
+        return setHandlerAutoResult;
     }
 
     @Override

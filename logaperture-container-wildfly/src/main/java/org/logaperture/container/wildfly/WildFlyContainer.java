@@ -16,6 +16,7 @@
 package org.logaperture.container.wildfly;
 
 import org.logaperture.bridge.Diagnostics;
+import org.logaperture.core.ActiveLoggerFloor;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AggregateLevelControl.ContextControl;
 import org.logaperture.core.AuditLog;
@@ -27,6 +28,7 @@ import org.logaperture.core.HandlerBaselineRegistry;
 import org.logaperture.core.HandlerLevelControlService;
 import org.logaperture.core.HandlerOverrideRegistry;
 import org.logaperture.core.LevelControlService;
+import org.logaperture.core.LoggerOverrideChangeListener;
 import org.logaperture.core.OverrideRegistry;
 import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.TopService;
@@ -106,17 +108,27 @@ public final class WildFlyContainer implements AutoCloseable {
             baselines.captureIfAbsent(name, adapter);
         }
 
+        // Handler service first, so a LoggerOverrideChangeListener closing
+        // over it can be built before LevelControlService needs one --
+        // doc/specs/handler-floor-control.md "AUTO handler level",
+        // "Recompute trigger" (this container is the composition root that
+        // wires the two services together).
         OverrideRegistry overrides = new OverrideRegistry();
-        LevelControlService service = new LevelControlService(
-                adapter, baselines, overrides, policy, auditLog, stateStore, principal(), "jmx");
-
+        ActiveLoggerFloor activeLoggerFloor = () -> ActiveLoggerFloor.lowestOf(overrides.all().values());
         HandlerLevelControlService handlerService = new HandlerLevelControlService(adapter,
                 new HandlerBaselineRegistry(), new HandlerOverrideRegistry(), policy, auditLog, stateStore,
-                principal(), "jmx");
+                principal(), "jmx", activeLoggerFloor);
+
+        LoggerOverrideChangeListener autoRecomputeListener = handlerService::recomputeAuto;
+        LevelControlService service = new LevelControlService(
+                adapter, baselines, overrides, policy, auditLog, stateStore, principal(), "jmx",
+                autoRecomputeListener);
 
         try {
             service.resumeFromStateStore(Instant.now());
             handlerService.resumeFromStateStore(Instant.now());
+            // doc/specs/handler-floor-control.md "AUTO handler level", AUTO-5.
+            handlerService.recomputeAuto();
         } catch (RuntimeException e) {
             Diagnostics.warn("LogAperture: failed to resume persisted overrides, continuing without them", e);
         }

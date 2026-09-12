@@ -16,6 +16,7 @@
 package org.logaperture.container.none;
 
 import org.logaperture.bridge.Diagnostics;
+import org.logaperture.core.ActiveLoggerFloor;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AggregateLevelControl.ContextControl;
 import org.logaperture.core.AuditLog;
@@ -27,6 +28,7 @@ import org.logaperture.core.HandlerBaselineRegistry;
 import org.logaperture.core.HandlerLevelControlService;
 import org.logaperture.core.HandlerOverrideRegistry;
 import org.logaperture.core.LevelControlService;
+import org.logaperture.core.LoggerOverrideChangeListener;
 import org.logaperture.core.OverrideRegistry;
 import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.TopService;
@@ -113,14 +115,26 @@ public final class NoneContainer implements AutoCloseable {
             baselines.captureIfAbsent(name, adapter);
         }
 
+        // Handler-side registries and service are built first, and the
+        // logger-side OverrideRegistry before the LevelControlService that
+        // owns it, so a LoggerOverrideChangeListener closing over both can
+        // be constructed before LevelControlService itself needs one
+        // (doc/specs/handler-floor-control.md "AUTO handler level",
+        // "Recompute trigger" -- this container is the composition root that
+        // wires the two services together; neither references the other's
+        // type).
         OverrideRegistry overrides = new OverrideRegistry();
-        LevelControlService service = new LevelControlService(
-                adapter, baselines, overrides, policy, auditLog, stateStore, principal(), "jmx");
-
         HandlerBaselineRegistry handlerBaselines = new HandlerBaselineRegistry();
         HandlerOverrideRegistry handlerOverrides = new HandlerOverrideRegistry();
+        ActiveLoggerFloor activeLoggerFloor = () -> ActiveLoggerFloor.lowestOf(overrides.all().values());
         HandlerLevelControlService handlerService = new HandlerLevelControlService(
-                adapter, handlerBaselines, handlerOverrides, policy, auditLog, stateStore, principal(), "jmx");
+                adapter, handlerBaselines, handlerOverrides, policy, auditLog, stateStore, principal(), "jmx",
+                activeLoggerFloor);
+
+        LoggerOverrideChangeListener autoRecomputeListener = handlerService::recomputeAuto;
+        LevelControlService service = new LevelControlService(
+                adapter, baselines, overrides, policy, auditLog, stateStore, principal(), "jmx",
+                autoRecomputeListener);
 
         try {
             // Per-entry failures are already isolated inside
@@ -129,6 +143,12 @@ public final class NoneContainer implements AutoCloseable {
             // (doc/logaperture-spec.md §9).
             service.resumeFromStateStore(Instant.now());
             handlerService.resumeFromStateStore(Instant.now());
+            // One AUTO recompute pass now that both halves have resumed --
+            // doc/specs/handler-floor-control.md "AUTO handler level",
+            // AUTO-5: an AUTO override's persisted level is a cache, never
+            // trusted as current until this runs against the also-just-resumed
+            // logger overrides.
+            handlerService.recomputeAuto();
         } catch (RuntimeException e) {
             Diagnostics.warn("LogAperture: failed to resume persisted overrides, continuing without them", e);
         }

@@ -93,6 +93,14 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
+    public HandlerLevelOverrideData setHandlerAuto(String handlerRef, String reason, String tier, long forSeconds) {
+        SetHandlerLevelOptions options = toHandlerOptions(reason, tier, forSeconds);
+        return handlerOperations.setHandlerAuto(new HandlerRef(handlerRef), options)
+                .map(HandlerLevelOverrideData::from)
+                .orElse(null); // no level of its own, or (single-handler) nothing to track yet
+    }
+
+    @Override
     public void resetHandler(String handlerRef) {
         handlerOperations.resetHandler(new HandlerRef(handlerRef));
     }

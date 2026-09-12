@@ -216,6 +216,27 @@ class ParserTest {
         assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "LOUD"}));
     }
 
+    // --- handler AUTO (doc/specs/handler-floor-control.md "AUTO handler level", issue #20) ----
+
+    @Test
+    void handlerAutoParsesWithBareTierAndWithATierToken() {
+        Parser.parse(new String[] {"handler", "CONSOLE", "AUTO"}); // bare -- defaults to for 4h, same as levels
+        Parser.parse(new String[] {"handler", "CONSOLE", "AUTO", "session"});
+        Parser.parse(new String[] {"handler", "CONSOLE", "AUTO", "for", "30m"});
+        Parser.parse(new String[] {"handler", "CONSOLE", "AUTO", "sticky"});
+    }
+
+    @Test
+    void handlerAutoIsCaseInsensitive() {
+        Parser.parse(new String[] {"handler", "CONSOLE", "auto"});
+        Parser.parse(new String[] {"handler", "CONSOLE", "Auto"});
+    }
+
+    @Test
+    void handlerAutoAcceptsReason() {
+        Parser.parse(new String[] {"handler", "CONSOLE", "AUTO", "--reason", "INC-1"}); // fine
+    }
+
     private static void assertUsage(Executable call) {
         CliError error = assertThrows(CliError.class, call);
         assertSame(CliError.class, error.getClass());

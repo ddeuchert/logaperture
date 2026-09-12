@@ -57,6 +57,8 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     private final Map<String, Map<HandlerRef, Level>> perTargetHandlerLevel = new LinkedHashMap<>();
     private HandlerRef throwOnSetHandlerLevelFor;
     private boolean hasHandlerLevels = true; // this fake models a JUL-like framework by default
+    private HandlerRef runOnHandlerLevelFor;
+    private Runnable runOnHandlerLevel;
 
     FakeLoggingAdapter(Level rootLevel) {
         knownNames.add("ROOT");
@@ -203,8 +205,26 @@ final class FakeLoggingAdapter implements LoggingAdapter {
         handlerLevels.remove(ref);
     }
 
+    /**
+     * Runs {@code action} once, the next time {@link #handlerLevel} is
+     * called for {@code ref} — the handler-side counterpart to {@link
+     * #runOnEffectiveLevel}, a deterministic seam for simulating a
+     * concurrent write (e.g. a competing {@code setHandlerLevel}) landing
+     * between {@code recomputeAuto}'s own read and its adapter mutation.
+     */
+    void runOnHandlerLevel(HandlerRef ref, Runnable action) {
+        this.runOnHandlerLevelFor = ref;
+        this.runOnHandlerLevel = action;
+    }
+
     @Override
     public Optional<Level> handlerLevel(HandlerRef ref) {
+        if (ref.equals(runOnHandlerLevelFor)) {
+            Runnable action = runOnHandlerLevel;
+            runOnHandlerLevelFor = null; // one-shot
+            runOnHandlerLevel = null;
+            action.run();
+        }
         // Mirrors JulLoggingAdapter's real contract: handlerLevel never
         // throws for an unresolvable ref (vanished, or never registered) --
         // it just returns empty, same as "don't know". Only setHandlerLevel

@@ -17,6 +17,7 @@ package org.logaperture.core;
 
 import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerInfo;
+import org.logaperture.api.HandlerLevelMode;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
@@ -59,7 +60,9 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     private final StateStore stateStore;
     private final String principal;
     private final String source;
+    private final ActiveLoggerFloor activeLoggerFloor;
 
+    /** Convenience overload for every context that doesn't need {@code AUTO} (doc/specs/handler-floor-control.md "AUTO handler level"). */
     public HandlerLevelControlService(
             LoggingAdapter adapter,
             HandlerBaselineRegistry baselines,
@@ -69,6 +72,19 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             StateStore stateStore,
             String principal,
             String source) {
+        this(adapter, baselines, overrides, policy, auditLog, stateStore, principal, source, ActiveLoggerFloor.NONE);
+    }
+
+    public HandlerLevelControlService(
+            LoggingAdapter adapter,
+            HandlerBaselineRegistry baselines,
+            HandlerOverrideRegistry overrides,
+            CapabilityPolicy policy,
+            AuditLog auditLog,
+            StateStore stateStore,
+            String principal,
+            String source,
+            ActiveLoggerFloor activeLoggerFloor) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.baselines = Objects.requireNonNull(baselines, "baselines");
         this.overrides = Objects.requireNonNull(overrides, "overrides");
@@ -77,6 +93,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         this.stateStore = Objects.requireNonNull(stateStore, "stateStore");
         this.principal = Objects.requireNonNull(principal, "principal");
         this.source = Objects.requireNonNull(source, "source");
+        this.activeLoggerFloor = Objects.requireNonNull(activeLoggerFloor, "activeLoggerFloor");
     }
 
     @Override
@@ -135,6 +152,239 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (required.isPresent() && !policy.isGranted(required.get())) {
             throw new CapabilityDeniedException(required.get());
         }
+    }
+
+    // --- AUTO handler level (doc/specs/handler-floor-control.md "AUTO handler level", issue #20) ---------------
+
+    /**
+     * {@code logctl handler <name> AUTO} — puts {@code ref} into a
+     * self-tracking mode instead of a fixed level: its applied level tracks
+     * {@link #activeLoggerFloor} from here on, reactively, until reset or
+     * superseded by a fixed {@link #setHandlerLevel}. The initial level is
+     * resolved immediately (AUTO-1), exactly as a later {@link
+     * #recomputeAuto} tick would.
+     */
+    @Override
+    public Optional<HandlerLevelOverride> setHandlerAuto(HandlerRef ref, SetHandlerLevelOptions options) {
+        Objects.requireNonNull(ref, "ref");
+        SetHandlerLevelOptions opts = options == null ? SetHandlerLevelOptions.defaults() : options;
+
+        if (!adapter.hasHandlerLevels()) {
+            return Optional.empty(); // doc/specs/handler-floor-control.md "Logback / none" -- same documented no-op
+        }
+        checkSetHandlerAutoPermitted(opts);
+
+        Optional<Level> explicit = activeLoggerFloor.lowestActive();
+        Instant now = Instant.now();
+        Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
+
+        if (HandlerRef.ALL_HANDLERS.equals(ref)) {
+            Optional<Level> tracked = applyAutoToGroup(explicit, source, opts.reason());
+            if (tracked.isEmpty()) {
+                return Optional.empty(); // no real handler resolved anything to track -- nothing to activate
+            }
+            HandlerLevelOverride override = new HandlerLevelOverride(
+                    HandlerRef.ALL_HANDLERS, tracked.get(), HandlerLevelMode.AUTO, opts.reason(), now, source,
+                    opts.tier(), expiresAt);
+            return Optional.of(trackAutoOverride(override));
+        }
+
+        Optional<Level> target = applyAutoTarget(ref, explicit, source, opts.reason());
+        if (target.isEmpty()) {
+            return Optional.empty(); // no active floor and no baseline to fall back to -- nothing to track
+        }
+        HandlerLevelOverride override = new HandlerLevelOverride(
+                ref, target.get(), HandlerLevelMode.AUTO, opts.reason(), now, source, opts.tier(), expiresAt);
+        return Optional.of(trackAutoOverride(override));
+    }
+
+    /**
+     * {@code setHandlerAuto}'s capability pre-flight (AUTO-4): activation
+     * always needs {@code handler.lower}, direction-independent -- the same
+     * simplification {@link #resetHandler} already makes for reverting to
+     * baseline, since AUTO's entire purpose is letting the floor drop to
+     * follow a raised logger. Every later reactive {@link #recomputeAuto}
+     * checks nothing further, in either direction (doc/specs/
+     * handler-floor-control.md "AUTO handler level", "Capability").
+     */
+    public void checkSetHandlerAutoPermitted(SetHandlerLevelOptions options) {
+        if (!adapter.hasHandlerLevels()) {
+            return;
+        }
+        SetHandlerLevelOptions opts = options == null ? SetHandlerLevelOptions.defaults() : options;
+        requireCapability(Capability.HANDLER_LOWER);
+        if (opts.tier() != PersistenceTier.SESSION && !policy.isGranted(Capability.PERSIST)) {
+            throw new CapabilityDeniedException(Capability.PERSIST);
+        }
+    }
+
+    private HandlerLevelOverride trackAutoOverride(HandlerLevelOverride override) {
+        overrides.put(override);
+        if (override.tier() != PersistenceTier.SESSION) {
+            safePersist(() -> stateStore.saveHandler(override));
+        } else {
+            safePersist(() -> stateStore.removeHandler(override.handlerRef()));
+        }
+        return override;
+    }
+
+    /**
+     * Recomputes every {@code AUTO} override this context tracks against
+     * {@link #activeLoggerFloor}'s current answer — the reactive seam
+     * (doc/specs/handler-floor-control.md "AUTO handler level", "Recompute
+     * trigger") that {@link LevelControlService}'s {@link
+     * LoggerOverrideChangeListener} drives on every {@code setLevel} /
+     * {@code resetLevel} / {@code resetAll} / expiry, and that each
+     * container's {@code installContext} / {@link
+     * AggregateLevelControl#addContext} drives once after resume /
+     * redeploy rebroadcast (AUTO-5). A tick that finds nothing to change
+     * mutates nothing and writes no audit record — a quiet system produces
+     * no noise, same bar {@link #verifyAndReapply} already holds itself to.
+     */
+    public void recomputeAuto() {
+        if (!adapter.hasHandlerLevels()) {
+            return;
+        }
+        // Cheap short-circuit before touching activeLoggerFloor at all: that
+        // supplier does its own defensive-copy-and-reduce over the logger
+        // OverrideRegistry (a bigger, busier map than this one), and every
+        // setLevel/resetLevel/resetAll/sweep-with-reverts calls this
+        // unconditionally whether or not AUTO is even in use.
+        Map<HandlerRef, HandlerLevelOverride> tracked = overrides.all();
+        if (tracked.values().stream().noneMatch(o -> o.mode() == HandlerLevelMode.AUTO)) {
+            return;
+        }
+        Optional<Level> explicit = activeLoggerFloor.lowestActive();
+        for (Map.Entry<HandlerRef, HandlerLevelOverride> entry : tracked.entrySet()) {
+            if (entry.getValue().mode() == HandlerLevelMode.AUTO) {
+                recomputeOne(entry.getKey(), entry.getValue(), explicit);
+            }
+        }
+    }
+
+    /**
+     * Recomputes one tracked {@code AUTO} override. Races a concurrent
+     * {@code setHandlerLevel}/{@code resetHandler}/another {@code
+     * recomputeAuto} tick on both ends: skipped outright if {@code current}
+     * (the caller's own point-in-time snapshot) has already been superseded
+     * before this call even starts, and -- since {@link #applyAutoTarget}/
+     * {@link #applyAutoToGroup} mutate the adapter and write an audit record
+     * as one step, before the registry can be re-checked -- <em>undone</em>
+     * if the race is lost between starting and finishing, so the adapter
+     * never ends up disagreeing with whatever won. This is exactly {@link
+     * #verifyAndReapply}'s own "undo a re-apply that did not stick"
+     * discipline, reused here for the same reason.
+     */
+    private void recomputeOne(HandlerRef ref, HandlerLevelOverride current, Optional<Level> explicit) {
+        if (!overrides.get(ref).map(current::equals).orElse(false)) {
+            return; // already superseded before this tick started
+        }
+
+        Optional<Level> resolved = HandlerRef.ALL_HANDLERS.equals(ref)
+                ? applyAutoToGroup(explicit, "auto-recompute", current.reason())
+                : applyAutoTarget(ref, explicit, "auto-recompute", current.reason());
+        Level tracked = resolved.orElse(current.level()); // nothing resolvable this tick -- keep displaying the last known value
+        if (tracked == current.level()) {
+            return; // nothing moved -- registry entry stays exactly as it was
+        }
+        HandlerLevelOverride updated = new HandlerLevelOverride(ref, tracked, HandlerLevelMode.AUTO,
+                current.reason(), current.appliedAt(), current.source(), current.tier(), current.expiresAt());
+
+        Optional<HandlerLevelOverride> afterApply = overrides.get(ref);
+        if (!afterApply.map(current::equals).orElse(false)) {
+            // Lost the race while applying -- undo rather than leave the
+            // adapter disagreeing with whatever won; no audit for an apply
+            // that did not stick, same as verifyAndReapply's own undo.
+            if (afterApply.isPresent()) {
+                HandlerOverrideApplier.apply(afterApply.get(), adapter);
+            } else if (HandlerRef.ALL_HANDLERS.equals(ref)) {
+                restoreGroupToBaselinesSilently();
+            } else {
+                trySetHandlerLevel(ref, baselines.get(ref).orElse(null), "undo");
+            }
+            return;
+        }
+
+        overrides.put(updated);
+        if (updated.tier() != PersistenceTier.SESSION) {
+            safePersist(() -> stateStore.saveHandler(updated));
+        }
+    }
+
+    /**
+     * Resolves and, if needed, applies {@code ref}'s AUTO target: {@code
+     * explicitTarget} if present, else {@code ref}'s own captured baseline.
+     * A no-op (no adapter call, no audit) when {@code ref} is already at
+     * that level. Empty means neither an explicit target nor a captured
+     * baseline exists -- nothing to set.
+     */
+    private Optional<Level> applyAutoTarget(HandlerRef ref, Optional<Level> explicitTarget, String auditSource,
+            String reason) {
+        baselines.captureIfAbsent(ref, adapter);
+        Optional<Level> target = explicitTarget.isPresent() ? explicitTarget
+                : baselines.isCaptured(ref) ? baselines.get(ref) : Optional.empty();
+        if (target.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<Level> current = adapter.handlerLevel(ref);
+        if (current.isPresent() && current.get() == target.get()) {
+            return target; // already there
+        }
+        String previousValue = current.map(Level::toString).orElse("<none>");
+        try {
+            adapter.setHandlerLevel(ref, target.get());
+        } catch (RuntimeException e) {
+            System.err.println("[logaperture-core] AUTO: failed to set handler '" + ref
+                    + "', leaving it unchanged: " + e);
+            return Optional.empty();
+        }
+        auditLog.record(new AuditRecord(Instant.now(), principal, auditSource, ref.value(), previousValue,
+                target.get().toString(), reason, AuditRecord.Action.MUTATION));
+        return target;
+    }
+
+    /**
+     * {@code applyAutoTarget}'s {@code ALL_HANDLERS} counterpart: every real
+     * handler with no more-specific individual override of its own is moved
+     * to {@code explicitTarget} when present, or its own captured baseline
+     * otherwise -- reals can genuinely disagree in the baseline case, same
+     * as a {@code FIXED} {@code ALL_HANDLERS} reset already allows.
+     *
+     * <p><strong>Not the same carve-out {@link #applyAndRecordGroupMutation}
+     * makes</strong> for a real with its own individual override -- that
+     * method (an explicit, one-shot "set everything to X" command)
+     * overwrites such a real and then drops its now-stale individual
+     * override; this method (a passive, ambient recompute) leaves it alone
+     * entirely, deliberately not clobbering an override the operator set on
+     * purpose. The two {@code ALL_HANDLERS} paths differ here by design, not
+     * by omission -- see {@code allHandlersAuto_fansOutAndSkipsARealHandlerWithItsOwnOverride}
+     * for the behavior this locks in.
+     *
+     * @return the level to display for the group's single tracked-override
+     *         row: {@code explicitTarget} when present (every real really is
+     *         at that one value); otherwise the <em>strictest</em> (least
+     *         verbose) among the reals' own baselines -- a display-only
+     *         summary for the one case where there is no single true value,
+     *         the same "no invented aggregate level" gap {@code FIXED}
+     *         {@code ALL_HANDLERS} already lives with (doc/specs/
+     *         handler-floor-control.md "Semantics to pin down", Decision #5).
+     *         Empty if no real handler resolved anything at all (every real
+     *         individually overridden, or none known yet) -- never a
+     *         fabricated placeholder value.
+     */
+    private Optional<Level> applyAutoToGroup(Optional<Level> explicitTarget, String auditSource, String reason) {
+        Level summary = null;
+        for (HandlerRef real : adapter.realHandlers()) {
+            if (overrides.get(real).isPresent()) {
+                continue; // a more-specific individual override wins -- see the javadoc above
+            }
+            Optional<Level> applied = applyAutoTarget(real, explicitTarget, auditSource, reason);
+            if (applied.isEmpty()) {
+                continue;
+            }
+            summary = (summary == null || applied.get().compareTo(summary) > 0) ? applied.get() : summary;
+        }
+        return Optional.ofNullable(summary);
     }
 
     @Override
@@ -355,6 +605,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                     diag.autoFlush(),
                     override != null,
                     override == null ? null : override.level(),
+                    override == null ? null : override.mode(),
                     override == null ? null : override.tier(),
                     override == null ? null : override.expiresAt()));
         }
@@ -572,7 +823,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         }
 
         Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
-        HandlerLevelOverride override = new HandlerLevelOverride(
+        HandlerLevelOverride override = HandlerLevelOverride.fixed(
                 HandlerRef.ALL_HANDLERS, level, opts.reason(), now, source, opts.tier(), expiresAt);
         overrides.put(override); // one tracked entry for the whole group
         if (opts.tier() != PersistenceTier.SESSION) {
@@ -589,7 +840,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
 
         Instant now = Instant.now();
         Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
-        HandlerLevelOverride override = new HandlerLevelOverride(
+        HandlerLevelOverride override = HandlerLevelOverride.fixed(
                 ref, level, opts.reason(), now, source, opts.tier(), expiresAt);
         HandlerOverrideApplier.apply(override, adapter); // mutation: the point of no return
 
