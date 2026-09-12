@@ -3,12 +3,10 @@
   // pom.xml pins maven.compiler.release to 17. Point java.configuration.runtimes
   // at your own JDK 17 install in user/global settings -- the path is
   // machine-specific so it isn't committed here.
-
   // --- Maven multi-module reactor ---
   // Re-import the reactor automatically when a pom.xml changes, instead of
   // requiring a manual "Reload Projects".
   "java.configuration.updateBuildConfiguration": "automatic",
-
   // --- Formatting ---
   // The default redhat.java formatter (Eclipse-style: 4-space indent,
   // opening brace on the same line) already matches this codebase's
@@ -25,12 +23,10 @@
   },
   "files.trimTrailingWhitespace": true,
   "files.insertFinalNewline": true,
-
   // Never collapse imports into a wildcard — this codebase spells them out
   // (see e.g. logaperture-agent/.../it/LevelControlEndToEndIT.java).
   "java.sources.organizeImports.starThreshold": 999,
   "java.sources.organizeImports.staticStarThreshold": 999,
-
   // --- Workspace hygiene ---
   // Every module has its own target/; keep build output out of search,
   // the file explorer, and file-watcher churn.
@@ -43,12 +39,12 @@
   "files.watcherExclude": {
     "**/target/**": true
   },
-
   // --- Python extension ---
   // dev/wildfly/.env is consumed by `docker compose` (auto-loaded next to
   // docker-compose.yml), not by the Python extension. Stop it offering to
   // inject that file's vars into integrated terminals / Python debug sessions —
   // empty python.envFile removes the trigger; the second line is explicit.
   "python.envFile": "",
-  "python.terminal.useEnvFile": false
+  "python.terminal.useEnvFile": false,
+  "maven.view": "hierarchical"
 }

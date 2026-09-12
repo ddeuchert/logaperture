@@ -140,6 +140,41 @@ def ensure_sample_war():
         sys.exit(f"error: expected {SAMPLE_WAR} after build")
 
 
+def ensure_deployments_dir():
+    """Create dev/wildfly/deployments and make it world-writable.
+
+    The WildFly image runs as a non-root user (uid 1000 in-container). Under
+    rootless Podman (e.g. Docker-via-Podman on Fedora) that uid is remapped to
+    a subordinate host uid via /etc/subuid, so it won't match the host user who
+    owns this checkout — the container's deployment scanner then fails boot
+    with WFLYDS0039 "... is not writable", even though the bind mount itself
+    succeeded. Under plain Docker the container uid usually *does* match the
+    host user, so this is a no-op in effect there. Making the directory
+    world-writable covers both cases without having to know which uid the
+    container will run — or be remapped — as.
+    """
+    DEPLOYMENTS.mkdir(exist_ok=True)
+    if os.name != "nt":
+        DEPLOYMENTS.chmod(0o777)
+
+
+def relabel_for_container(path):
+    """Give a freshly-copied deployment archive the SELinux label the `:z`-
+    mounted deployments dir expects the container to see.
+
+    `:z` on the compose volume relabels the *directory* to container_file_t at
+    mount time, but that doesn't make it a type-transition default — a file we
+    (a host process) copy in afterward still gets the ambient user_tmp_t label,
+    and the container's deployment scanner then fails with a plain
+    java.io.FileNotFoundException: ... (Permission denied) reading it, distinct
+    from the directory-level WFLYDS0039 "not writable" that ensure_deployments_dir
+    covers. No-op where `chcon` isn't on PATH (SELinux not in play).
+    """
+    if os.name == "nt" or shutil.which("chcon") is None:
+        return
+    subprocess.run(["chcon", "-t", "container_file_t", str(path)], check=False)
+
+
 # --- readiness -------------------------------------------------------------
 
 def truncate_server_log():
@@ -190,6 +225,7 @@ def cmd_up(a):
     require_docker()
     warn_on_image_drift()
     ensure_jars(a.build)
+    ensure_deployments_dir()
 
     env = dict(os.environ)
     env["DEBUG_SUSPEND"] = "y" if a.debug_suspend else "n"
@@ -250,7 +286,7 @@ def cmd_deploy(a):
         ensure_sample_war()
         src = SAMPLE_WAR
 
-    DEPLOYMENTS.mkdir(exist_ok=True)
+    ensure_deployments_dir()
     dest = DEPLOYMENTS / src.name
     base = f"{CONTAINER_DEPLOY_DIR}/{src.name}"
     deployed, failed = f"{base}.deployed", f"{base}.failed"
@@ -266,6 +302,7 @@ def cmd_deploy(a):
                        f"{base}.isdeploying", f"{base}.pending")
 
     shutil.copy2(src, dest)
+    relabel_for_container(dest)
     print(f"copied {src.name} -> dev/wildfly/deployments/", file=sys.stderr)
 
     deadline = time.monotonic() + 90
