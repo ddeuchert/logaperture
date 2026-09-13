@@ -322,8 +322,10 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         if (!isJBossLogManager()) {
             return new BackendInfo("java.util.logging (JUL)", null);
         }
-        String version = logger(ROOT_ALIAS).getClass().getPackage().getImplementationVersion();
-        return new BackendInfo("JBoss LogManager", version);
+        // getPackage() is null for a class with no package info available (an
+        // unusual classloader/module setup) -- best-effort, never NPE.
+        Package pkg = logger(ROOT_ALIAS).getClass().getPackage();
+        return new BackendInfo("JBoss LogManager", pkg == null ? null : pkg.getImplementationVersion());
     }
 
     /**

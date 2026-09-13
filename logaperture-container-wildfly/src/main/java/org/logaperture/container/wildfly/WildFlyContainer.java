@@ -75,33 +75,28 @@ public final class WildFlyContainer implements AutoCloseable {
     private final AggregateLevelControl aggregate;
     private final ScheduledExecutorService sweeper;
 
+    /** This class only ever represents WildFly, so {@link AggregateLevelControl}'s container name is always {@code "WildFly"} -- never left null by a constructor that doesn't happen to know a version. */
+    private static final String CONTAINER_NAME = "WildFly";
+
     public WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog) {
         this(policy, auditLog, SweepPolicy.interval());
     }
 
-    /** Package-visible so tests can use a short sweep interval instead of the real 30s one. */
+    /** Package-visible so tests can use a short sweep interval instead of the real 30s one; no known WildFly version. */
     WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval) {
-        this(policy, auditLog, sweepInterval, null, null);
+        this(policy, auditLog, sweepInterval, null);
     }
 
     /**
      * @param containerVersion best-effort WildFly version for {@code logctl
      *                         env} (doc/specs/environment-report.md); {@code
-     *                         null} if not resolvable. The container name
-     *                         itself is always {@code "WildFly"} — this is
-     *                         the one integration that ever constructs this
-     *                         class.
+     *                         null} if not resolvable.
      */
     WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval, String containerVersion) {
-        this(policy, auditLog, sweepInterval, "WildFly", containerVersion);
-    }
-
-    private WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
-            String containerName, String containerVersion) {
         this.policy = policy;
         this.auditLog = auditLog;
         this.stateStore = openStateStore();
-        this.aggregate = new AggregateLevelControl(containerName, containerVersion);
+        this.aggregate = new AggregateLevelControl(CONTAINER_NAME, containerVersion);
 
         this.sweeper = Executors.newSingleThreadScheduledExecutor(WildFlyContainer::newDaemonThread);
         long intervalMillis = sweepInterval.toMillis();

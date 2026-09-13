@@ -287,10 +287,19 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     public EnvironmentReport environmentReport() {
         BackendInfo backend = BackendInfo.EMPTY;
         for (ContextControl context : sortedByKey()) {
-            BackendInfo candidate = context.environmentReportService().backendInfo();
-            if (candidate.name() != null) {
-                backend = candidate;
-                break;
+            try {
+                BackendInfo candidate = context.environmentReportService().backendInfo();
+                if (candidate.name() != null) {
+                    backend = candidate;
+                    break;
+                }
+            } catch (RuntimeException e) {
+                // A misbehaving adapter must not fail the whole report -- doc/specs/
+                // environment-report.md "Failure handling": an unresolved fact is left
+                // out, never a command failure. Same per-context isolation as
+                // setHandlerLevel/setHandlerAuto's own broadcast loops.
+                System.err.println("[logaperture-core] backendInfo() failed in context '"
+                        + context.stableKey() + "', treating its backend as unresolved: " + e);
             }
         }
         return new EnvironmentReport(

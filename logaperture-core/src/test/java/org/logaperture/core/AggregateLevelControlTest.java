@@ -249,6 +249,38 @@ class AggregateLevelControlTest {
     }
 
     @Test
+    void environmentReport_oneContextThrowsOnBackendInfo_stillReturnsUsingTheOtherContext() {
+        // doc/specs/environment-report.md "Failure handling": a misbehaving
+        // adapter must degrade that one fact, never fail the whole command.
+        // Keys chosen so the throwing context sorts (and so is tried) first --
+        // sortedByKey() is alphabetical -- genuinely exercising the catch,
+        // rather than the healthy context's break short-circuiting first.
+        Ctx broken = new Ctx("a-broken");
+        Ctx healthy = new Ctx("z-healthy");
+        broken.adapter.throwOnBackendInfo();
+        healthy.adapter.setBackendInfo(new BackendInfo("JBoss LogManager", "3.1.1.Final"));
+        aggregate.register(broken.control);
+        aggregate.register(healthy.control);
+
+        EnvironmentReport report = aggregate.environmentReport();
+
+        assertEquals("JBoss LogManager", report.backendName());
+        assertEquals("3.1.1.Final", report.backendVersion());
+    }
+
+    @Test
+    void environmentReport_everyContextThrowsOnBackendInfo_backendIsAbsentNotAFailure() {
+        Ctx broken = new Ctx("system");
+        broken.adapter.throwOnBackendInfo();
+        aggregate.register(broken.control);
+
+        EnvironmentReport report = aggregate.environmentReport();
+
+        assertNull(report.backendName());
+        assertNull(report.backendVersion());
+    }
+
+    @Test
     void environmentReport_diagnosticsLevelProperty_surfacedWhenSet() {
         System.setProperty("logaperture.diagnostics.level", "DEBUG");
         try {
