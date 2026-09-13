@@ -34,6 +34,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * The one {@link StateStore} implementation this slice ships — a single
@@ -163,6 +164,12 @@ public final class FileStateStore implements StateStore, Closeable {
             handlerCache.clear();
             persist();
         }
+    }
+
+    /** {@code stateFile} is already absolute -- resolved from {@link #resolveHome()}, itself absolute either way. */
+    @Override
+    public Optional<Path> location() {
+        return Optional.of(stateFile.toAbsolutePath());
     }
 
     /**

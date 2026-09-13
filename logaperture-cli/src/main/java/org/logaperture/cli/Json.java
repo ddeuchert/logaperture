@@ -284,6 +284,7 @@ final class Json {
                 .str("containerName", report.getContainerName())
                 .str("containerVersion", report.getContainerVersion())
                 .str("diagnosticsLevel", report.getDiagnosticsLevel())
+                .str("stateFilePath", report.getStateFilePath())
                 .toString();
     }
 

@@ -156,7 +156,7 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     }
 
     EnvironmentReport environmentReportToReturn = new EnvironmentReport("0.1.0-alpha.2", "21.0.4",
-            "Eclipse Adoptium", "Linux", "6.10.3", "x86_64", null, null, null, null, null);
+            "Eclipse Adoptium", "Linux", "6.10.3", "x86_64", null, null, null, null, null, null);
 
     @Override
     public EnvironmentReport environmentReport() {

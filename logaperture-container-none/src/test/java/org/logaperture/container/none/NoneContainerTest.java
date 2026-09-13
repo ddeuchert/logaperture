@@ -98,6 +98,22 @@ class NoneContainerTest {
     }
 
     @Test
+    void environmentReport_stateFilePath_isTheRealFullyQualifiedStateFile() {
+        // doc/specs/environment-report.md "State file" -- none has no
+        // container to name, but the state file fact is universal.
+        try (NoneContainer root = newRoot()) {
+            AggregateLevelControl ops = install(root);
+
+            String stateFilePath = ops.environmentReport().stateFilePath();
+
+            assertNotNull(stateFilePath);
+            assertTrue(Path.of(stateFilePath).isAbsolute(), stateFilePath);
+            assertTrue(stateFilePath.startsWith(home.resolve("instances").toString()), stateFilePath);
+            assertTrue(stateFilePath.endsWith(".state.yaml"), stateFilePath);
+        }
+    }
+
+    @Test
     void installContext_capturesBaselineForPreExistingLoggers() {
         LoggerFactory.getLogger("org.logaperture.container.none.baseline.Probe");
         // No explicit level set on it -- baseline should be captured as inherited.

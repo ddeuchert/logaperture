@@ -156,14 +156,16 @@ class JsonTest {
     void envEmitsAFlatObjectWithCliVersionStitchedInAfterAgentVersion() {
         EnvironmentReportData report = new EnvironmentReportData(
                 "0.1.0-alpha.2", "21.0.4", "Eclipse Adoptium", "Linux", "6.10.3", "x86_64",
-                "JBoss LogManager", "3.1.1.Final", "WildFly", "34.0.1.Final", "INFO");
+                "JBoss LogManager", "3.1.1.Final", "WildFly", "34.0.1.Final", "INFO",
+                "/home/alice/.logaperture/instances/abc123-app.state.yaml");
 
         assertEquals(
                 "{\"agentVersion\":\"0.1.0-alpha.2\",\"cliVersion\":\"0.1.0-alpha.2\",\"javaVersion\":\"21.0.4\","
                         + "\"javaVendor\":\"Eclipse Adoptium\",\"osName\":\"Linux\",\"osVersion\":\"6.10.3\","
                         + "\"osArch\":\"x86_64\",\"backendName\":\"JBoss LogManager\","
                         + "\"backendVersion\":\"3.1.1.Final\",\"containerName\":\"WildFly\","
-                        + "\"containerVersion\":\"34.0.1.Final\",\"diagnosticsLevel\":\"INFO\"}",
+                        + "\"containerVersion\":\"34.0.1.Final\",\"diagnosticsLevel\":\"INFO\","
+                        + "\"stateFilePath\":\"/home/alice/.logaperture/instances/abc123-app.state.yaml\"}",
                 Json.env(report, "0.1.0-alpha.2"));
     }
 
@@ -171,11 +173,12 @@ class JsonTest {
     void envWithNoBackendOrContainerDetected_emitsNullFields() {
         EnvironmentReportData report = new EnvironmentReportData(
                 "0.1.0-alpha.2", "21.0.4", "Eclipse Adoptium", "Linux", "6.10.3", "x86_64",
-                null, null, null, null, null);
+                null, null, null, null, null, null);
 
         String json = Json.env(report, "0.1.0-alpha.2");
 
         assertTrue(json.contains("\"backendName\":null") && json.contains("\"containerName\":null"), json);
         assertTrue(json.contains("\"diagnosticsLevel\":null"), json);
+        assertTrue(json.contains("\"stateFilePath\":null"), json);
     }
 }

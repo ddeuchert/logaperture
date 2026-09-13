@@ -226,13 +226,24 @@ class AggregateLevelControlTest {
     }
 
     @Test
-    void environmentReport_containerNameAndVersion_fromConstructor() {
-        AggregateLevelControl wildfly = new AggregateLevelControl("WildFly", () -> Optional.of("34.0.1.Final"));
+    void environmentReport_containerNameVersionAndStateFilePath_fromConstructor() {
+        AggregateLevelControl wildfly = new AggregateLevelControl(
+                "WildFly", () -> Optional.of("34.0.1.Final"), "/opt/jboss/.logaperture/instances/abc.state.yaml");
 
         EnvironmentReport report = wildfly.environmentReport();
 
         assertEquals("WildFly", report.containerName());
         assertEquals("34.0.1.Final", report.containerVersion());
+        assertEquals("/opt/jboss/.logaperture/instances/abc.state.yaml", report.stateFilePath());
+    }
+
+    @Test
+    void environmentReport_noStateFilePath_isAbsentNotAFailure() {
+        // The no-arg constructor's own case -- a StateStore with no single
+        // filesystem location to name (doc/specs/environment-report.md
+        // "State file"), same "absent, never a failure" contract as every
+        // other unresolved fact.
+        assertNull(aggregate.environmentReport().stateFilePath());
     }
 
     @Test
@@ -246,7 +257,7 @@ class AggregateLevelControlTest {
         // memoised.
         java.util.concurrent.atomic.AtomicReference<Optional<String>> version =
                 new java.util.concurrent.atomic.AtomicReference<>(Optional.empty());
-        AggregateLevelControl wildfly = new AggregateLevelControl("WildFly", version::get);
+        AggregateLevelControl wildfly = new AggregateLevelControl("WildFly", version::get, null);
 
         assertNull(wildfly.environmentReport().containerVersion(), "not yet resolvable, same as real premain timing");
 
@@ -260,7 +271,7 @@ class AggregateLevelControlTest {
     void environmentReport_containerVersionSupplierThrows_containerVersionIsAbsentNotAFailure() {
         AggregateLevelControl wildfly = new AggregateLevelControl("WildFly", () -> {
             throw new RuntimeException("simulated jboss.home.dir resolution failure");
-        });
+        }, null);
 
         assertNull(wildfly.environmentReport().containerVersion());
     }

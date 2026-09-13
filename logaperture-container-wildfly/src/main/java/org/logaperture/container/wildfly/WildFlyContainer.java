@@ -39,6 +39,7 @@ import org.logaperture.core.spi.StateStore;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
@@ -111,7 +112,8 @@ public final class WildFlyContainer implements AutoCloseable {
         this.policy = policy;
         this.auditLog = auditLog;
         this.stateStore = openStateStore();
-        this.aggregate = new AggregateLevelControl(CONTAINER_NAME, containerVersion);
+        this.aggregate = new AggregateLevelControl(CONTAINER_NAME, containerVersion,
+                stateStore.location().map(Path::toString).orElse(null));
 
         this.sweeper = Executors.newSingleThreadScheduledExecutor(WildFlyContainer::newDaemonThread);
         long intervalMillis = sweepInterval.toMillis();

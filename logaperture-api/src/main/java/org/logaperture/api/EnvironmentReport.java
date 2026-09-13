@@ -46,6 +46,13 @@ package org.logaperture.api;
  * @param diagnosticsLevel  the agent's own {@code
  *                          -Dlogaperture.diagnostics.level} setting, or
  *                          {@code null} if not set
+ * @param stateFilePath     the fully-qualified path of the file this JVM
+ *                          persists {@code --for}/{@code --sticky}
+ *                          overrides to, or {@code null} if persistence is
+ *                          degraded to session-only (doc/specs/
+ *                          persistence.md "The same-working-directory
+ *                          collision") or this store has no single
+ *                          filesystem location to name
  */
 public record EnvironmentReport(
         String agentVersion,
@@ -58,7 +65,8 @@ public record EnvironmentReport(
         String backendVersion,
         String containerName,
         String containerVersion,
-        String diagnosticsLevel) {
+        String diagnosticsLevel,
+        String stateFilePath) {
 
     public EnvironmentReport {
         if (agentVersion == null || agentVersion.isEmpty()) {

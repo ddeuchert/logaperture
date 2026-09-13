@@ -657,7 +657,7 @@ class CommandsTest {
     void env_rendersAgentCliJavaAndOsAsALabelValueBlock() {
         mbean.environmentReport = new org.logaperture.control.jmx.EnvironmentReportData(
                 "0.1.0-alpha.2", "21.0.4", "Eclipse Adoptium", "Linux", "6.10.3", "x86_64",
-                null, null, null, null, null);
+                null, null, null, null, null, null);
 
         assertEquals(CliError.OK, run(Commands.env(false)));
 
@@ -669,13 +669,15 @@ class CommandsTest {
         assertFalse(text.contains("Logging backend"), "no backend detected -- the line is left out entirely");
         assertFalse(text.contains("Framework/container"), "no container detected -- the line is left out entirely");
         assertTrue(text.contains("Diagnostics level"), "shown either way, per Decision #5: " + text);
+        assertTrue(text.contains("State file") && text.contains("—"), "shown either way, dash if absent: " + text);
     }
 
     @Test
     void env_backendAndContainerDetected_showBothLinesWithVersions() {
         mbean.environmentReport = new org.logaperture.control.jmx.EnvironmentReportData(
                 "0.1.0-alpha.2", "21.0.4", "Eclipse Adoptium", "Linux", "6.10.3", "x86_64",
-                "JBoss LogManager", "3.1.1.Final", "WildFly", "34.0.1.Final", "INFO");
+                "JBoss LogManager", "3.1.1.Final", "WildFly", "34.0.1.Final", "INFO",
+                "/home/alice/.logaperture/instances/abc123-app.state.yaml");
 
         assertEquals(CliError.OK, run(Commands.env(false)));
 
@@ -683,13 +685,15 @@ class CommandsTest {
         assertTrue(text.contains("Logging backend") && text.contains("JBoss LogManager 3.1.1.Final"), text);
         assertTrue(text.contains("Framework/container") && text.contains("WildFly 34.0.1.Final"), text);
         assertTrue(text.contains("Diagnostics level") && text.contains("INFO"), text);
+        assertTrue(text.contains("State file") && text.contains("/home/alice/.logaperture/instances/abc123-app.state.yaml"),
+                text);
     }
 
     @Test
     void env_json_isAFlatObjectIncludingLogctlsOwnVersion() {
         mbean.environmentReport = new org.logaperture.control.jmx.EnvironmentReportData(
                 "0.1.0-alpha.2", "21.0.4", "Eclipse Adoptium", "Linux", "6.10.3", "x86_64",
-                null, null, null, null, null);
+                null, null, null, null, null, null);
 
         run(Commands.env(true));
 
@@ -697,5 +701,6 @@ class CommandsTest {
         assertTrue(text.contains("\"agentVersion\":\"0.1.0-alpha.2\""), text);
         assertTrue(text.contains("\"cliVersion\":"), "logctl's own version is a JSON field too: " + text);
         assertTrue(text.contains("\"backendName\":null"), text);
+        assertTrue(text.contains("\"stateFilePath\":null"), text);
     }
 }
