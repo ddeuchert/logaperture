@@ -76,6 +76,7 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
 
     @Override
     public synchronized List<LoggerInfo> listLoggers(String filter) {
+        validateFilter(filter);
         List<LoggerInfo> matches = new ArrayList<>();
         for (LoggerInfo info : state.values()) {
             if (filter == null || filter.isEmpty() || info.name().startsWith(filter)) {
@@ -83,6 +84,27 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
             }
         }
         return matches;
+    }
+
+    /**
+     * A deliberately tiny stand-in for {@code NameFilter}'s real grammar
+     * (the full rule set is unit-tested against the real engine in
+     * {@code logaperture-core}'s {@code NameFilterTest}, and end-to-end in
+     * {@code LevelControlEndToEndIT}) — just enough of it (a {@code *}
+     * that isn't its own whole segment) to let {@link CliEndToEndIT} prove
+     * the CLI turns a server-side {@link IllegalArgumentException} into a
+     * usage error over the real cross-process transport, not a raw failure.
+     */
+    private static void validateFilter(String filter) {
+        if (filter == null || filter.indexOf('*') < 0) {
+            return;
+        }
+        for (String segment : filter.split("\\.", -1)) {
+            if (segment.indexOf('*') >= 0 && !segment.equals("*")) {
+                throw new IllegalArgumentException(
+                        "invalid filter '" + filter + "': wildcard must be its own leading or trailing segment");
+            }
+        }
     }
 
     @Override

@@ -115,11 +115,56 @@ class MainRunTest {
 
     @Test
     void capabilityDenialIsExitSixAndNamesTheCapability() {
+        // The real transport (AgentConnection's JMX.newMXBeanProxy) unwraps a
+        // RuntimeMBeanException and rethrows the original exception directly
+        // -- CapabilityDeniedException arrives here unwrapped, not as this
+        // wrapped shape. Covered for real by capabilityDenialUnwrappedIsExitSix
+        // below; kept here as coverage of the defensive fallback in Main's
+        // RuntimeMBeanException catch, in case some path does still wrap it.
         FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
         mbean.throwOnNextCall = new RuntimeMBeanException(new CapabilityDeniedException(Capability.LEVEL_RAISE));
 
         assertEquals(6, run(new String[] {"debug", "com.acme"}, connectorFor(mbean)));
         assertTrue(err().contains("Refused: this JVM's policy does not grant LEVEL_RAISE."), err());
+    }
+
+    @Test
+    void capabilityDenialUnwrappedIsExitSix() {
+        // What the real proxy transport actually hands back (see the comment
+        // above) -- a bare CapabilityDeniedException, never wrapped.
+        FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
+        mbean.throwOnNextCall = new CapabilityDeniedException(Capability.LEVEL_RAISE);
+
+        assertEquals(6, run(new String[] {"debug", "com.acme"}, connectorFor(mbean)));
+        assertTrue(err().contains("Refused: this JVM's policy does not grant LEVEL_RAISE."), err());
+    }
+
+    @Test
+    void invalidFilterFromTheServerIsExitTwoNotOne() {
+        // What the real proxy transport actually hands back -- a bare
+        // IllegalArgumentException, never wrapped (see the comment on
+        // capabilityDenialIsExitSixAndNamesTheCapability above). A NameFilter
+        // rejection is server-side validation of a bad argument, not an
+        // unexpected failure -- doc/specs/cli-transport.md's "usage error
+        // naming the problem" applies here too, even though it only surfaces
+        // after the command itself parsed successfully.
+        FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
+        mbean.throwOnNextCall = new IllegalArgumentException("invalid filter 'org.*apache': bad");
+
+        assertEquals(2, run(new String[] {"levels", "org.*apache"}, connectorFor(mbean)));
+        assertTrue(err().contains("logctl: invalid filter 'org.*apache': bad"), err());
+    }
+
+    @Test
+    void invalidFilterWrappedIsStillExitTwo() {
+        // Coverage of the defensive fallback in Main's RuntimeMBeanException
+        // catch, in case some path does still hand this back wrapped.
+        FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
+        mbean.throwOnNextCall =
+                new RuntimeMBeanException(new IllegalArgumentException("invalid filter 'org.*apache': bad"));
+
+        assertEquals(2, run(new String[] {"levels", "org.*apache"}, connectorFor(mbean)));
+        assertTrue(err().contains("logctl: invalid filter 'org.*apache': bad"), err());
     }
 
     @Test

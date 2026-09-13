@@ -24,6 +24,7 @@ import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
+import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
 
 import java.util.List;
@@ -410,10 +411,55 @@ class LevelControlServiceTest {
         adapter.addKnownLogger("com.acme.Worker");
         adapter.addKnownLogger("com.other.Thing");
 
-        List<LoggerInfo> matched = service.listLoggers("*infinispan");
+        List<LoggerInfo> matched = service.listLoggers("*.infinispan");
 
         assertEquals(1, matched.size());
         assertEquals("org.jboss.as.clustering.infinispan", matched.get(0).name());
+    }
+
+    @Test
+    void listLoggers_rejectsAnInvalidPatternAtTheServiceSeam() {
+        adapter.addKnownLogger("com.acme.Worker");
+
+        IllegalArgumentException e =
+                assertThrows(IllegalArgumentException.class, () -> service.listLoggers("org.*apache"));
+        assertTrue(e.getMessage().contains("org.*apache"), e.getMessage());
+    }
+
+    @Test
+    void listLoggers_rejectsAnInvalidPatternEvenWithNoKnownLoggers() {
+        // Regression: validation must not be a side effect of iterating
+        // candidate names -- an invalid filter has to be rejected even when
+        // there happen to be zero names to check it against. FakeLoggingAdapter
+        // always seeds a "ROOT" entry (like a real framework's root logger),
+        // so this needs a bare-minimum adapter that genuinely reports none.
+        LoggingAdapter emptyAdapter = new LoggingAdapter() {
+            @Override
+            public List<String> knownLoggerNames() {
+                return List.of();
+            }
+
+            @Override
+            public Optional<Level> configuredLevel(String loggerName) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Level effectiveLevel(String loggerName) {
+                return Level.INFO;
+            }
+
+            @Override
+            public void applyLevel(String loggerName, Level level) {
+                // unused by this test
+            }
+        };
+        LevelControlService emptyService = new LevelControlService(
+                emptyAdapter, new BaselineRegistry(), new OverrideRegistry(), CapabilityPolicy.allowAll(),
+                auditLog, stateStore, "alice", "jmx");
+        assertTrue(emptyAdapter.knownLoggerNames().isEmpty());
+
+        assertThrows(IllegalArgumentException.class, () -> emptyService.listLoggers("org.*apache"));
     }
 
     // --- multi-context: activeOverrides / adoptOverride -------------------------------------------

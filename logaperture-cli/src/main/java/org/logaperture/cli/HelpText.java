@@ -81,9 +81,9 @@ final class HelpText {
         sb.append("override on its own, and reverts to its native level the moment none are\n");
         sb.append("left. Setting a fixed level, or resetting it, moves it back out of AUTO.\n");
         sb.append("\n");
-        sb.append("A [filter] for 'levels' is a logger-name prefix, or a glob using\n");
-        sb.append("* and ? — so 'logctl levels *infinispan*' finds a logger when the\n");
-        sb.append("log line shows only the short category name.\n");
+        sb.append("A [filter] for 'levels' is a logger-name prefix, or a pattern with a\n");
+        sb.append("leading and/or trailing * segment — so 'logctl levels *.infinispan'\n");
+        sb.append("finds a logger when the log line shows only the short category name.\n");
         sb.append("\n");
         sb.append("'doctor' is read-only — it never changes anything. It flags common\n");
         sb.append("misconfigurations (unbounded file handlers, DEBUG/TRACE left on,\n");

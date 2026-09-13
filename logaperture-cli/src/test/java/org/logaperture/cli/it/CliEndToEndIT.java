@@ -110,6 +110,20 @@ class CliEndToEndIT {
     }
 
     @Test
+    void invalidFilterPatternIsAUsageError() throws Exception {
+        // A NameFilter rejection thrown server-side and carried back over the
+        // JMX boundary as a RuntimeMBeanException must still surface as the
+        // usage error doc/specs/cli-transport.md promises ("naming the
+        // problem"), not a raw/unexpected-failure exit.
+        Process fixture = launchFixture();
+        awaitReady(fixture);
+
+        Result result = run("levels", "org.*apache");
+        assertEquals(2, result.exitCode, result.out + result.err);
+        assertTrue(result.err.contains("invalid filter 'org.*apache'"), result.err);
+    }
+
+    @Test
     void jsonOutputIsMachineReadable() throws Exception {
         Process fixture = launchFixture();
         awaitReady(fixture);

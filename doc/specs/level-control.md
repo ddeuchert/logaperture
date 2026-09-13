@@ -59,19 +59,45 @@ Returns, per matching logger: name, configured level (the framework's own value,
 captured at baseline), effective level (post-override, following hierarchy), whether an
 override is active, and if so its source and `reason`.
 
-`filter` is a name prefix or glob; `null`/empty returns everything discovered so far.
-A filter with no `*` or `?` is a name prefix. Otherwise it is a glob: `*` matches any run
-of characters (**including leading**, `*.infinispan` / `*infinispan*`, so a logger can be
-found from the abbreviated category a log line prints rather than its fully-qualified name
-— top-level §18.7), `?` matches exactly one character, and any regex metacharacter in the
-filter (`.` in particular) is matched literally.
+`filter` is a name prefix or a pattern; `null`/empty returns everything discovered so far.
 
-> **Superseded (planned).** Top-level §18.7 (issue [#41](https://github.com/ddeuchert/logaperture/issues/41))
-> plans to replace this grammar with a stricter, segment-anchored one: at most one leading
-> `*.` and/or one trailing `.*`, every other segment literal, no mid-segment `*`, no `?`.
-> `*infinispan*` (mid-segment) stops matching; `*.infinispan` (whole trailing segment)
-> keeps working. One grammar across lookup and the apply/reset commands (#41, #42) rather
-> than two.
+**No `*`: a name prefix**, exactly as before — a loose, non-dot-aware `startsWith` (`com.ac`
+matches `com.acme`), deliberately: this is "show me what I typed the start of," not the
+hierarchy-aware descendant matching `includeChildren`/§18.7's standing rules use.
+
+**`*` present: a segment-anchored pattern** (top-level §18.7, issue
+[#41](https://github.com/ddeuchert/logaperture/issues/41) — this is the grammar that
+issue finalized, adopted here as slice 1 of that item; `includeChildren`'s retirement and
+the standing-rule apply/reset commands are later slices of the same issue, not part of
+this one). Splitting the pattern on `.`, at most one leading segment and/or one trailing
+segment may be exactly `*`; every other segment must be plain literal text with no `*`
+anywhere in it. Concretely:
+
+- Valid: `org.apache.*` (matches one-or-more segments under `org.apache`, never
+  `org.apache` itself), `*.apache.writer` (one-or-more leading segments before
+  `apache.writer`), `*.apache.writer.*` (both).
+- Invalid, rejected as a usage error: `org.*apache` (a `*` mixed into a literal segment),
+  `org.*.writer` (a `*` segment that isn't leading or trailing), bare `*` or `*.*` (no
+  literal segment at all — indistinguishable from no filter, and a standing rule built on
+  one would match every logger that will ever exist), and any pattern with an empty
+  segment (`a..b`, a leading `.`, or a trailing `.`) — a typo like `.*` would otherwise be
+  silently "valid" while matching no real logger name.
+- `?` is no longer a wildcard — a filter containing it is rejected the same way, not
+  silently treated as a literal character (that would be a silent behavior change from
+  what `?` used to mean).
+
+The error names the specific problem and suggests the fix, matching this project's
+existing error tone (§14.5, cli-transport.md's agent-version-mismatch errors), and the
+direction of a single-sided star matters to the suggestion: `invalid filter
+'infinispan*': wildcard must be its own leading or trailing segment (try
+'infinispan.*')` for a trailing star ("starts with"), or `(try '*.infinispan')` for a
+leading star ("ends with") — the two are opposite matches, so the hint must not suggest
+one when the user wrote the other. A star on *both* sides (`*infinispan*`, "contains")
+has no anchored equivalent at all — the message says so plainly and names both
+single-sided alternatives rather than guessing one. `*.infinispan` (whole trailing
+segment) — already the correct form for a single-word abbreviated category with no dots,
+since `infinispan` is a whole segment — keeps working unchanged. One grammar across
+lookup and, later, the apply/reset commands (#41, #42) rather than two.
 
 Only **Live** and **Known** states apply
 in this slice (§8.5) — inferred/class-scanning discovery is a later enhancement (§8.6),
@@ -83,7 +109,7 @@ out of scope here.
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `includeChildren` | boolean | `false` | Mirrors Logback's own hierarchy semantics (§5) — does not change how the level applies, only whether it is also applied to loggers already known to be descendants at call time. **Superseded (planned):** top-level §18.7 (issue [#41](https://github.com/ddeuchert/logaperture/issues/41)) plans to retire this option from the operations API entirely — a trailing-wildcard pattern (`org.apache.*`, matching one-or-more descendant segments, *not* `org.apache` itself) becomes the one mechanism for "this logger's descendants," for every caller, CLI or JMX. Note it's descendants-only, not a strict superset of today's option — a caller wanting both the named logger and its descendants targets both `org.apache` and `org.apache.*`. |
+| `includeChildren` | boolean | `false` | Mirrors Logback's own hierarchy semantics (§5) — does not change how the level applies, only whether it is also applied to loggers already known to be descendants at call time. **Superseded (planned, not this slice):** top-level §18.7 (issue [#41](https://github.com/ddeuchert/logaperture/issues/41)) plans to retire this option from the operations API entirely once its replacement ships — a trailing-wildcard pattern (`org.apache.*`, matching one-or-more descendant segments, *not* `org.apache` itself) becomes the one mechanism for "this logger's descendants," for every caller, CLI or JMX. This stays in place, unchanged, until that replacement (#41's standing-rule apply mechanism) actually exists — retiring it any earlier would leave a gap where neither mechanism works. Also note it's descendants-only, not a strict superset of today's option — a caller wanting both the named logger and its descendants will target both `org.apache` and `org.apache.*`. |
 | `reason` | string | `null` | Propagated to the audit log (§9.7). Not required by this slice's code, but every CLI/JMX caller in later slices should be encouraged to supply one. |
 
 No `expiresIn` in this slice — everything is implicitly `--session`. The field is
@@ -235,11 +261,15 @@ Minimum coverage before this slice is done:
   previous/new values.
 - Chaos case: an exception thrown mid-operation leaves the JVM's logging in a defined
   state (either fully applied or fully not — no partial override).
-- Filter matching: empty/`null` returns everything; a no-wildcard filter is a prefix; a
-  `*`/`?` glob matches, with `*` allowed to lead (`*infinispan`); `.` and other regex
-  metacharacters in the filter are literal, not wildcards. Unit-tested on the matcher and
-  at the `listLoggers` service seam; a leading-`*` filter is also driven across the JMX
-  boundary end-to-end in `LevelControlEndToEndIT`.
+- Filter matching: empty/`null` returns everything; a no-wildcard filter is a prefix
+  (`.` and other regex metacharacters in it are literal, not wildcards); a pattern with
+  `*` matches per the segment-anchored grammar above — a leading `*.`, a trailing `.*`,
+  or both, one-or-more segments each side, nothing else. Invalid patterns (`org.*apache`,
+  a middle `*` segment, bare `*`, `*.*`, anything containing `?`) are rejected with a
+  specific, actionable message, not silently matched or silently treated as literal.
+  Unit-tested on the matcher and at the `listLoggers` service seam, including the
+  rejection cases; a leading-`*` pattern is also driven across the JMX boundary
+  end-to-end in `LevelControlEndToEndIT`.
 
 ## Exit criterion
 

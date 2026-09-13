@@ -18,8 +18,8 @@ After this feature, the user will be able to:
 - Do so **without naming a process** — when exactly one LogAperture-enabled JVM is
   running, `logctl` finds it; when several are, it lists them and asks for `--pid`.
 - List loggers and their levels: `logctl levels`, optionally filtered by a name prefix
-  or a `*`/`?` glob — `logctl levels *infinispan*` when the log line shows only the
-  short category name.
+  or a leading/trailing `*` pattern — `logctl levels *.infinispan` when the log line
+  shows only the short category name.
 - Raise or lower a logger with a single dictatable command: `logctl debug com.acme.batch`,
   `logctl debug com.acme.batch for 30m`, `logctl warn com.acme.chatty sticky`,
   `logctl set com.acme.batch TRACE for 2h --reason INC-123`.
@@ -91,7 +91,7 @@ code to the agent beyond a single marker system property (below).
   Its own decisions (a confirmation preview before applying, `logctl reset <pattern>`
   symmetry that also retires the rule, one audit record per matched logger, a capability
   check per match) are still open — see §18.7. Until it lands, the workflow is `logctl
-  levels *infinispan*` to find the category, then `set` on the resolved name.
+  levels *.infinispan` to find the category, then `set` on the resolved name.
 - **Restructuring `reset` into `reset logger`/`reset loggers`/`reset handler`/`reset
   handlers`, plus an `--ignore-sticky` flag**, top-level §18.9; tracked as
   [#42](https://github.com/ddeuchert/logaperture/issues/42), pulled forward to alpha-2.
@@ -201,12 +201,14 @@ to stderr.
 
 ### `logctl levels [filter]`
 
-Calls `listLoggers(filter)`. `filter` is the same name-prefix/glob Feature 1 defined:
-with no `*` or `?` it is a name prefix; with them it is a glob (`*` = any run of
-characters, `?` = exactly one, and `*` may lead), so `logctl levels '*infinispan*'`
-locates a logger from the abbreviated category a log line prints rather than its
-fully-qualified name. Omitted means "everything discovered so far." Default output is a
-table:
+Calls `listLoggers(filter)`. `filter` is the same name-prefix/pattern Feature 1 defined:
+with no `*` it is a name prefix; with one, it is a segment-anchored pattern — at most one
+leading `*.` and/or one trailing `.*`, every other segment literal — so `logctl levels
+'*.infinispan'` locates a logger from the abbreviated category a log line prints rather
+than its fully-qualified name. An invalid pattern (a `*` mixed into a segment, a middle
+wildcard segment, bare `*`/`*.*`, or a `?`) is a usage error naming the problem and
+suggesting the fix, not a silent no-match. Omitted means "everything discovered so far."
+Default output is a table:
 
 ```
 LOGGER                              CONFIGURED  EFFECTIVE  OVERRIDE
@@ -268,10 +270,12 @@ The over-the-wire call is `setLevel(logger, level, includeChildren, reason, tier
 forSeconds)` — the signature Feature 2 already put on the MXBean; `forSeconds` is
 `Duration.ofX(...).toSeconds()` for `for`, `0` otherwise.
 
-> **Superseded (planned).** §18.7 / [#41](https://github.com/ddeuchert/logaperture/issues/41)
-> plans to drop `includeChildren` from this signature — an MXBean parameter removal, not
-> additive, so top-level §11.1's component-versioning policy (major-version discipline for
-> the MXBean surface) applies and needs calling out explicitly, not slipped in incidentally.
+> **Superseded (planned, not this slice).** §18.7 / [#41](https://github.com/ddeuchert/logaperture/issues/41)
+> plans to drop `includeChildren` from this signature — but only once its replacement (the
+> standing-rule apply mechanism) ships, not alongside the pattern-grammar change alone;
+> retiring it earlier would leave a gap where neither mechanism covers "this logger's
+> descendants." An MXBean parameter removal, not additive, so top-level §11.1's
+> component-versioning policy applies and needs calling out explicitly when it happens.
 
 **Confirmation line** (stdout, exit 0):
 
@@ -368,8 +372,8 @@ semantics"). `--json` output is unchanged.
 | Exit | Meaning |
 |---|---|
 | 0 | Success. |
-| 1 | Unexpected failure — connection dropped mid-call, marshalling error, an exception from the operation itself. |
-| 2 | Usage error — unknown command/flag, wrong arity, unparseable level or duration. |
+| 1 | Unexpected failure — connection dropped mid-call, marshalling error, an exception from the operation itself other than a bad-argument rejection. |
+| 2 | Usage error — unknown command/flag, wrong arity, unparseable level or duration, or an invalid filter pattern (§18.7's segment-anchored grammar) rejected server-side and carried back as an `IllegalArgumentException`. |
 | 3 | No LogAperture-enabled JVM found. |
 | 4 | Ambiguous — several candidates; `--pid` required. |
 | 5 | Attach denied — wrong OS user. |
@@ -379,6 +383,19 @@ semantics"). `--json` output is unchanged.
 Exit 6 is distinct from exit 1 because "you're not allowed to do that" and "it broke" are
 different answers for a support engineer, and the capability model (§9.3) is the whole
 reason to tell them apart.
+
+**Implementation note on how a server-side exception actually arrives:** `AgentConnection`
+obtains the MXBean via `JMX.newMXBeanProxy`, whose invocation handler unwraps a
+`RuntimeMBeanException` and rethrows the operation's original unchecked exception directly
+— `CapabilityDeniedException` and `IllegalArgumentException` reach `Main.run` bare, not
+wrapped, for every real invocation. `Main.run` catches both directly for that reason, with
+a `RuntimeMBeanException` catch kept only as a defensive fallback for an invocation path
+that might still hand one back wrapped (none is known to, today). A future change to this
+handling that goes back to relying on the wrapped shape alone would silently stop
+recognizing both cases in production despite passing a unit test built on a hand-written
+MXBean fake that throws the wrapped shape directly — exercise the unwrapped shape too
+(`logaperture-cli`'s `MainRunTest`), and prefer a real cross-process assertion
+(`CliEndToEndIT`) for this specific contract.
 
 Exit 7 is the graceful-degradation path of the component-versioning contract (top-level
 §11.1): a newer `logctl` invoked an operation, or passed an option, that the older
@@ -519,12 +536,18 @@ shallow cross-process integration test.
 - Rendering: table columns align; `--json` output parses and carries the expected keys;
   `status` with no overrides, and `levels` with a non-matching filter, print their
   empty-state lines and exit 0.
-- Glob filter: a `levels` filter containing `*`/`?` is passed through to `listLoggers`
-  verbatim — the CLI does no name matching of its own. (The match itself is Feature 1's:
-  `NameFilter`'s unit tests cover mid-string `*x*` and a leading `*`; `level-control.md`'s
-  `LevelControlEndToEndIT` proves a leading-`*` glob survives the JMX boundary end-to-end.
-  The cross-process `CliEndToEndIT` below stubs the operations, so it asserts pass-through,
-  not matching.)
+- Glob filter: a `levels` filter containing `*` is passed through to `listLoggers`
+  verbatim — the CLI does no name matching or grammar validation of its own, that's
+  Feature 1's job. (`NameFilter`'s unit tests cover the segment-anchored grammar —
+  `level-control.md`'s "`*` present" rules — plus the rejection cases and their specific
+  messages, and `LevelControlServiceTest` covers the same rejection at the `listLoggers`
+  service seam, including with zero candidate logger names. `CommandsTest`'s stubbed
+  `FakeLevelControlMXBean` asserts a glob filter's pass-through — the CLI does no matching
+  of its own. `LevelControlEndToEndIT` proves a leading-`*` pattern survives the JMX
+  boundary end-to-end; the cross-process `CliEndToEndIT` below runs a real fixture JVM and
+  proves an invalid pattern's `IllegalArgumentException`, carried back as a
+  `RuntimeMBeanException`, surfaces as a usage error (exit 2 naming the problem) rather
+  than an unexpected-failure exit.)
 - `reset` three-way outcome (stubbed transport): logger still listed &rarr; "→ level
   (baseline)"; unknown and never overridden &rarr; "nothing was overridden."; override
   cleared but logger drops out of `listLoggers` &rarr; the "not yet instantiated" line and,
