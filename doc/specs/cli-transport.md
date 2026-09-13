@@ -83,12 +83,22 @@ code to the agent beyond a single marker system property (below).
 - **`logctl quiet` / `logctl loud` / `logctl new`** (§14.5). These drive rule packs and
   baseline modes that don't exist until Feature 3 / M4.
 - **A glob on the `set` / level-named forms** (`logctl error *.infinispan`), top-level
-  §18.7. `logctl levels` already takes a glob for *lookup*; applying a level to every
-  match is a fan-out layer over `setLevel` with its own decisions — one audit record per
-  matched logger, a capability check per match, `logctl reset <pattern>` symmetry, and
-  whether the match is a one-shot or a standing rule (the latter being Feature 3 / §7).
-  Until it lands, the workflow is `logctl levels *infinispan*` to find the category, then
-  `set` on the resolved name.
+  §18.7; tracked as [#41](https://github.com/ddeuchert/logaperture/issues/41), pulled
+  forward to alpha-2. `logctl levels` already takes a glob for *lookup*; applying a level
+  to every match is a fan-out layer over `setLevel`, and — decided, not deferred — it is
+  a **standing rule** that also catches loggers registered later, not a one-shot, though
+  narrowly a persisted per-pattern level rather than Feature 3 / §7's full squelch engine.
+  Its own decisions (a confirmation preview before applying, `logctl reset <pattern>`
+  symmetry that also retires the rule, one audit record per matched logger, a capability
+  check per match) are still open — see §18.7. Until it lands, the workflow is `logctl
+  levels *infinispan*` to find the category, then `set` on the resolved name.
+- **Restructuring `reset` into `reset logger`/`reset loggers`/`reset handler`/`reset
+  handlers`, plus an `--ignore-sticky` flag**, top-level §18.9; tracked as
+  [#42](https://github.com/ddeuchert/logaperture/issues/42), pulled forward to alpha-2.
+  Splits today's `reset <logger>` / `reset --all` / `handler <name> reset` into
+  namespace-scoped forms (a deliberate breaking rename of the last one) and changes
+  reset's default to skip `--sticky`-tier overrides unless `--ignore-sticky` is passed.
+  The logger form's glob support is #41's matcher reused, not a second one.
 - **Shell completion over live logger names** (§14.5). High-value, but it's a separate
   deliverable: completion scripts for bash/zsh/fish plus a fast name-only query path.
   `logctl levels --json` is the data source it will consume.
@@ -182,7 +192,7 @@ existing operation, unchanged by this slice.
 | `--pid <n>` | all | Target this PID; skip discovery. |
 | `--json` | all | Emit machine-readable JSON instead of a table. |
 | `--reason <text>` | mutating commands | Passed through as the override's `reason` (§5, §9.7). Optional; not enforced. |
-| `--include-children` | `set` and the level-named forms | Sets `includeChildren` (§5 hierarchy semantics). |
+| `--include-children` | `set` and the level-named forms | Sets `includeChildren` (§5 hierarchy semantics). **Superseded (planned):** §18.7 / [#41](https://github.com/ddeuchert/logaperture/issues/41) plans to drop this flag — a trailing-wildcard pattern argument (`logctl debug org.apache.*`) replaces it. |
 | `--version` | — | Print the CLI's version and exit 0. |
 | `-h`, `--help` | — | Print usage and exit 0. |
 
@@ -257,6 +267,11 @@ duration is a usage error.
 The over-the-wire call is `setLevel(logger, level, includeChildren, reason, tierName,
 forSeconds)` — the signature Feature 2 already put on the MXBean; `forSeconds` is
 `Duration.ofX(...).toSeconds()` for `for`, `0` otherwise.
+
+> **Superseded (planned).** §18.7 / [#41](https://github.com/ddeuchert/logaperture/issues/41)
+> plans to drop `includeChildren` from this signature — an MXBean parameter removal, not
+> additive, so top-level §11.1's component-versioning policy (major-version discipline for
+> the MXBean surface) applies and needs calling out explicitly, not slipped in incidentally.
 
 **Confirmation line** (stdout, exit 0):
 

@@ -232,6 +232,14 @@ reverts handler overrides alongside logger overrides. `logctl reset <name>`
 without `--all` stays logger-only — handler resets are always spelled
 `handler <name> reset` to keep the two namespaces distinct.
 
+> **Superseded (planned).** The paragraph above describes the surface as shipped.
+> Top-level §18.9 (tracked as
+> [issue #42](https://github.com/ddeuchert/logaperture/issues/42)) plans to replace
+> `logctl handler <name> reset` with `logctl reset handler <name>` — a deliberate
+> breaking rename — as part of splitting `reset` into logger-only and handler-only
+> forms, plus a new `--ignore-sticky` flag. `logctl handler <name> <level>` (setting,
+> as opposed to resetting) is unaffected.
+
 ## Warning on level commands
 
 Every level-setting command runs `handlerFloorsBelow(logger, targetLevel)` after

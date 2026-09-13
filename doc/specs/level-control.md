@@ -64,7 +64,16 @@ A filter with no `*` or `?` is a name prefix. Otherwise it is a glob: `*` matche
 of characters (**including leading**, `*.infinispan` / `*infinispan*`, so a logger can be
 found from the abbreviated category a log line prints rather than its fully-qualified name
 — top-level §18.7), `?` matches exactly one character, and any regex metacharacter in the
-filter (`.` in particular) is matched literally. Only **Live** and **Known** states apply
+filter (`.` in particular) is matched literally.
+
+> **Superseded (planned).** Top-level §18.7 (issue [#41](https://github.com/ddeuchert/logaperture/issues/41))
+> plans to replace this grammar with a stricter, segment-anchored one: at most one leading
+> `*.` and/or one trailing `.*`, every other segment literal, no mid-segment `*`, no `?`.
+> `*infinispan*` (mid-segment) stops matching; `*.infinispan` (whole trailing segment)
+> keeps working. One grammar across lookup and the apply/reset commands (#41, #42) rather
+> than two.
+
+Only **Live** and **Known** states apply
 in this slice (§8.5) — inferred/class-scanning discovery is a later enhancement (§8.6),
 out of scope here.
 
@@ -74,7 +83,7 @@ out of scope here.
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `includeChildren` | boolean | `false` | Mirrors Logback's own hierarchy semantics (§5) — does not change how the level applies, only whether it is also applied to loggers already known to be descendants at call time. |
+| `includeChildren` | boolean | `false` | Mirrors Logback's own hierarchy semantics (§5) — does not change how the level applies, only whether it is also applied to loggers already known to be descendants at call time. **Superseded (planned):** top-level §18.7 (issue [#41](https://github.com/ddeuchert/logaperture/issues/41)) plans to retire this option from the operations API entirely — a trailing-wildcard pattern (`org.apache.*`, matching one-or-more descendant segments, *not* `org.apache` itself) becomes the one mechanism for "this logger's descendants," for every caller, CLI or JMX. Note it's descendants-only, not a strict superset of today's option — a caller wanting both the named logger and its descendants targets both `org.apache` and `org.apache.*`. |
 | `reason` | string | `null` | Propagated to the audit log (§9.7). Not required by this slice's code, but every CLI/JMX caller in later slices should be encouraged to supply one. |
 
 No `expiresIn` in this slice — everything is implicitly `--session`. The field is

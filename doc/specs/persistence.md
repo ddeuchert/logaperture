@@ -428,3 +428,8 @@ boundary, and a Logback `context.reset()` mid-session reapplies every active ove
 duplication — matching the M1 bar this slice exists to complete: "a read-only diagnostic release
 you can hand to support and a customer without approval anxiety," now genuinely surviving the
 restart the WildFly problem (§3) was named after.
+
+> **Superseded (planned).** The sentence above describes sticky removal as verified for this
+> slice's exit criterion — a plain reset with no protection. Top-level §18.9 (tracked as
+> [issue #42](https://github.com/ddeuchert/logaperture/issues/42)) plans to change the default:
+> reset skips `--sticky`-tier overrides unless a new `--ignore-sticky` flag is passed.
