@@ -40,6 +40,20 @@ public interface HandlerLevelControlOperations {
      */
     Optional<HandlerLevelOverride> setHandlerLevel(HandlerRef ref, Level level, SetHandlerLevelOptions options);
 
+    /**
+     * {@code logctl handler <name> AUTO} — puts {@code ref} into a
+     * self-tracking mode whose applied level follows the lowest currently
+     * active logger override, reverting to {@code ref}'s own baseline once
+     * none remain (doc/specs/handler-floor-control.md "AUTO handler level",
+     * issue #20).
+     *
+     * @return the created override, or empty if the underlying adapter's
+     *         handlers have no level of their own, or (single-ref only)
+     *         neither an active floor nor a captured baseline exists to
+     *         track — a documented no-op, not an error
+     */
+    Optional<HandlerLevelOverride> setHandlerAuto(HandlerRef ref, SetHandlerLevelOptions options);
+
     void resetHandler(HandlerRef ref);
 
     /**

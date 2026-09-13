@@ -126,6 +126,13 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         for (HandlerLevelOverride override : handlersToRebroadcast) {
             control.handlerService().adoptOverride(override);
         }
+        // One recompute pass now that both halves have been rebroadcast onto
+        // the new context -- doc/specs/handler-floor-control.md "AUTO
+        // handler level", AUTO-5: an AUTO override rebroadcast above carries
+        // whatever level its origin context had computed, possibly stale by
+        // the time it lands here alongside a freshly-rebroadcast logger
+        // override set.
+        control.handlerService().recomputeAuto();
     }
 
     /**
@@ -327,6 +334,46 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         // Every context succeeding as a no-op (no handler levels anywhere,
         // e.g. Logback) is not a failure -- doc/specs/handler-floor-control.md
         // "Logback / none".
+        return Optional.ofNullable(fromSystem != null ? fromSystem : fromAny);
+    }
+
+    /**
+     * Broadcasts {@code setHandlerAuto} across every registered context —
+     * the {@link #setHandlerLevel} counterpart for {@code AUTO} (doc/specs/
+     * handler-floor-control.md "AUTO handler level", issue #20). Same "all
+     * pass or all fail" capability pre-check and per-context fault isolation
+     * as {@link #setHandlerLevel}.
+     */
+    @Override
+    public Optional<HandlerLevelOverride> setHandlerAuto(HandlerRef ref, SetHandlerLevelOptions options) {
+        List<ContextControl> contexts = sortedByKey();
+        if (contexts.isEmpty()) {
+            throw new IllegalStateException("no logging context is registered yet");
+        }
+        for (ContextControl context : contexts) {
+            context.handlerService().checkSetHandlerAutoPermitted(options);
+        }
+        HandlerLevelOverride fromSystem = null;
+        HandlerLevelOverride fromAny = null;
+        int succeeded = 0;
+        for (ContextControl context : contexts) {
+            try {
+                Optional<HandlerLevelOverride> applied = context.handlerService().setHandlerAuto(ref, options);
+                succeeded++;
+                if (applied.isPresent()) {
+                    fromAny = applied.get();
+                    if (ContextHandle.SYSTEM.equals(context.stableKey())) {
+                        fromSystem = applied.get();
+                    }
+                }
+            } catch (RuntimeException e) {
+                System.err.println("[logaperture-core] setHandlerAuto(" + ref + ") failed in context '"
+                        + context.stableKey() + "', that context is unchanged: " + e);
+            }
+        }
+        if (succeeded == 0) {
+            throw new IllegalStateException("setHandlerAuto(" + ref + ") failed in every context");
+        }
         return Optional.ofNullable(fromSystem != null ? fromSystem : fromAny);
     }
 

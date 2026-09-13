@@ -35,12 +35,13 @@ public final class HandlerInfoData {
     private final Boolean autoFlush;
     private final boolean overrideActive;
     private final String overrideLevel;
+    private final String overrideMode;
     private final String overrideTier;
     private final String overrideExpiresAt;
     private final String context;
 
     @ConstructorProperties({"ref", "level", "persistent", "targetPath", "autoFlush", "overrideActive",
-            "overrideLevel", "overrideTier", "overrideExpiresAt", "context"})
+            "overrideLevel", "overrideMode", "overrideTier", "overrideExpiresAt", "context"})
     public HandlerInfoData(
             String ref,
             String level,
@@ -49,6 +50,7 @@ public final class HandlerInfoData {
             Boolean autoFlush,
             boolean overrideActive,
             String overrideLevel,
+            String overrideMode,
             String overrideTier,
             String overrideExpiresAt,
             String context) {
@@ -59,6 +61,7 @@ public final class HandlerInfoData {
         this.autoFlush = autoFlush;
         this.overrideActive = overrideActive;
         this.overrideLevel = overrideLevel;
+        this.overrideMode = overrideMode;
         this.overrideTier = overrideTier;
         this.overrideExpiresAt = overrideExpiresAt;
         this.context = context;
@@ -73,6 +76,7 @@ public final class HandlerInfoData {
                 info.autoFlush(),
                 info.overrideActive(),
                 info.overrideLevel() == null ? null : info.overrideLevel().name(),
+                info.overrideMode() == null ? null : info.overrideMode().name(),
                 info.overrideTier() == null ? null : info.overrideTier().name(),
                 info.overrideExpiresAt() == null ? null : info.overrideExpiresAt().toString(),
                 info.context());
@@ -104,6 +108,11 @@ public final class HandlerInfoData {
 
     public String getOverrideLevel() {
         return overrideLevel;
+    }
+
+    /** {@code "FIXED"} or {@code "AUTO"} — doc/specs/handler-floor-control.md "AUTO handler level", issue #20. */
+    public String getOverrideMode() {
+        return overrideMode;
     }
 
     public String getOverrideTier() {

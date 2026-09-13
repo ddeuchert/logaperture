@@ -59,6 +59,23 @@ public interface LevelControlMXBean {
     HandlerLevelOverrideData setHandlerLevel(String handlerRef, String level, String reason, String tier,
             long forSeconds);
 
+    /**
+     * {@code logctl handler <name> AUTO} — puts {@code handlerRef} into a
+     * self-tracking mode whose applied level follows the lowest currently
+     * active logger override (doc/specs/handler-floor-control.md "AUTO
+     * handler level", issue #20).
+     *
+     * @param tier       {@code "SESSION"}/{@code "FOR"}/{@code "STICKY"} —
+     *                   how long the AUTO mode itself lasts, independent of
+     *                   how often its tracked level moves
+     * @param forSeconds ignored unless {@code tier} is {@code "FOR"}
+     * @return the created override, or {@code null} if this framework's
+     *         handlers have no level of their own, or (single-handler only)
+     *         neither an active floor nor a captured baseline exists yet to
+     *         track — a documented no-op, not an error
+     */
+    HandlerLevelOverrideData setHandlerAuto(String handlerRef, String reason, String tier, long forSeconds);
+
     /** {@code logctl handler <name> reset}. A no-op, not an error, if {@code handlerRef} has no active override. */
     void resetHandler(String handlerRef);
 

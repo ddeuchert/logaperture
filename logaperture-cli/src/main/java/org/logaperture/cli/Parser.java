@@ -194,7 +194,7 @@ final class Parser {
             }
             case "handler" -> {
                 if (rest.size() < 2) {
-                    throw usage("'handler' needs <name> <level>, or <name> reset.");
+                    throw usage("'handler' needs <name> <level>, <name> AUTO, or <name> reset.");
                 }
                 String handlerRef = rest.get(0);
                 if (rest.get(1).equals("reset")) {
@@ -204,6 +204,9 @@ final class Parser {
                     yield Commands.resetHandler(handlerRef, json);
                 }
                 TierChoice tier = resolveTier(rest.subList(2, rest.size()));
+                if (rest.get(1).equalsIgnoreCase("auto")) {
+                    yield Commands.setHandlerAuto(handlerRef, reason, tier.tierName(), tier.forSeconds(), json);
+                }
                 yield Commands.setHandlerLevel(handlerRef, parseLevel(rest.get(1)), reason,
                         tier.tierName(), tier.forSeconds(), json);
             }

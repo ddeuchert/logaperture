@@ -38,22 +38,17 @@ Verified by unit tests (`HandlerLevelControlServiceTest`,
 **signed off, not yet implemented** — see "WildFly handler name resolution" below.
 
 **Planned extension (issue [#28](https://github.com/ddeuchert/logaperture/issues/28),
-alpha-2 — spec section not yet written).** A well-known `DEFAULT_HANDLERS`
-logical ref alongside `ALL_HANDLERS` (user-assigned members, persisted sticky),
-an **`AUTO` handler level** ([#20](https://github.com/ddeuchert/logaperture/issues/20))
-whose effective level tracks the lowest active `logctl` logger override so a
-highlighted category is guaranteed to reach the default handlers (no active
-overrides → the captured baseline), and an additive `logctl debug <logger> --to
-<group>` delivery target (default `DEFAULT_HANDLERS`; ensures the target's level
-lets the record through — *not* routing or restriction, which stays M2). Together
-these make the "define your default handlers, set them `AUTO` sticky, then just
-highlight categories" workflow turnkey, and keep dedicated handlers (an audit
-log, a per-integration log) clean by simply leaving them out of the group. A
-section here will fold in [#20](https://github.com/ddeuchert/logaperture/issues/20)
-before that work starts; open questions include `AUTO` vs. a manual `logctl
-handler <name> <level>` on the same handler, the persistence tier for the group
-definition and the `AUTO` setting, and the reactive recompute cost on every
-`setLevel` / expiry / reset.
+alpha-2).** A well-known `DEFAULT_HANDLERS` logical ref alongside
+`ALL_HANDLERS` (user-assigned members, persisted sticky) and an additive
+`logctl debug <logger> --to <group>` delivery target are still spec-section-
+not-yet-written — see #28 for the full three-piece workflow. The **`AUTO`
+handler level** ([#20](https://github.com/ddeuchert/logaperture/issues/20))
+piece is specced below ("AUTO handler level"), scoped deliberately narrower
+than #28's own framing: AUTO works on any `HandlerRef` you can already name
+(a real handler, or `ALL_HANDLERS`) with no dependency on `DEFAULT_HANDLERS`
+existing yet — a named group is simply one more valid `HandlerRef` once #28
+lands, so nothing here needs rework when it does. **Status: implemented,
+unit-tested** — see "AUTO handler level" below for the full account.
 
 Priority: **high** — pulled forward in §17 as the first behaviour-modifying feature
 after M1. "Make this class TRACE and let me see it on the console" is a primary
@@ -106,6 +101,21 @@ After this feature, the user will be able to:
   one to its own prior level, not to a single shared value. The blocking-handler
   warning on WildFly now names `ALL_HANDLERS` with one command to run, instead
   of one unstable per-handler token per blocker.
+- Put a handler into a self-adjusting mode — `logctl handler CONSOLE AUTO` —
+  so its floor automatically tracks the lowest currently-active `logctl
+  debug`/`trace`/`set` override, dropping the instant one starts and rising
+  back to `CONSOLE`'s own baseline the instant none are left. No more
+  manually lowering the handler every time a logger is raised, and no more
+  remembering to raise it back afterward.
+- Give `AUTO` the same lifetime tokens as any handler override —
+  `logctl handler CONSOLE AUTO sticky`, `logctl handler ALL_HANDLERS AUTO for
+  2h` — controlling how long the *AUTO mode itself* lasts, independent of how
+  often the level it tracks actually moves during that time.
+- See a handler's `AUTO` status and the level it's currently tracking in
+  `logctl status` / `--json` and `logctl handlers`.
+- Switch an `AUTO` handler back to a fixed level, or reset it, exactly as
+  today — `logctl handler CONSOLE INFO` or `logctl handler CONSOLE reset`
+  simply supersedes/reverts it, the same as it would a fixed override.
 
 ## Scope of this slice
 
@@ -151,6 +161,10 @@ per handler, whether they want the sink widened.
   across a restart; see the Status note above and "Adapter SPI" below). Off
   WildFly it's purely additive: real handlers stay individually addressable,
   and `ALL_HANDLERS` is simply one more valid name alongside them.
+- An `AUTO` handler level (issue #20) — a handler mode, not a fixed `<level>`
+  value, whose applied level is recomputed to track the lowest currently-active
+  logger override in the same context, reverting to the handler's native
+  baseline once none remain. See "AUTO handler level" below.
 
 **Explicitly out of scope** (deferred, each with what it needs):
 
@@ -171,11 +185,10 @@ per handler, whether they want the sink widened.
   lands; **now signed off** — see "WildFly handler name resolution" below) —
   `ALL_HANDLERS` is this slice's fix for *addressing* WildFly's handlers, not
   for naming each one individually.
-- A logical `AUTO` handler level that tracks the lowest currently-active
-  logger override, reverting to the handler's native floor once none remain
-  (issue #20) — every fixed-level override here is one-shot; `AUTO` is a
-  distinct, dynamically-recomputed mode, not a value of `<level>` this slice
-  needs to support.
+- A well-known `DEFAULT_HANDLERS` logical group and `logctl debug <logger>
+  --to <group>` delivery targeting (issue #28) — `AUTO` (below) works on any
+  `HandlerRef` you can already name; a named group is simply one more valid
+  `HandlerRef` once #28 lands, needing no rework here.
 
 ## The operation
 
@@ -730,6 +743,328 @@ rather than kept separate (was #9, reversed): #14 is what makes the names on it
 worth reading, and the catalog is what makes #14 testable. See "The handler
 catalog".
 
+## AUTO handler level (issue [#20](https://github.com/ddeuchert/logaperture/issues/20))
+
+Status: **implemented** — all 7 decisions (AUTO-1 through AUTO-7 below)
+resolved and built as drafted, with two mechanism refinements folded back in
+during implementation (see "Recompute trigger" and "Persistence and resume
+ordering" below, each marked "As implemented"): the reactive listener is
+wired by each container at construction time rather than by
+`AggregateLevelControl`, and resume/redeploy ordering resolves per context
+with no new aggregate-level method needed. Scoped narrower than issue #28's
+own framing (see the "Planned extension" note at the top of this doc) — a
+distinct, self-contained slice of #20, not folded into #28 as #28 originally
+proposed: AUTO applies to any `HandlerRef` already addressable today — a real
+handler, or `ALL_HANDLERS` — with no dependency on `DEFAULT_HANDLERS`
+existing first. `DEFAULT_HANDLERS` and `logctl debug … --to <group>` delivery
+targeting stayed behind in #28, trimmed of the AUTO material this section now
+owns. Unit-tested in `LevelControlServiceTest` (the listener seam),
+`HandlerLevelControlServiceTest` (activation, recompute, `ALL_HANDLERS`
+fan-out, precedence, capability), and `AggregateLevelControlTest` (the
+`setHandlerAuto` broadcast). Not yet exercised against real WildFly.
+
+**After this feature, the user will be able to:**
+
+- Put a handler into a self-tracking mode instead of a fixed level:
+  `logctl handler CONSOLE AUTO`, `logctl handler ALL_HANDLERS AUTO sticky`.
+- Raise a logger (`logctl debug org.acme for 30m`) and have an `AUTO` handler
+  on its path drop to match automatically — no separate `logctl handler …`
+  command needed, and no blocking-handler warning naming a floor that's
+  already been cleared out from under it.
+- Let the handler rise back to its own native level automatically the moment
+  the last logger override that needed it resets or expires — no separate
+  "remember to raise it back" step.
+- See which handlers are in `AUTO`, and what level they're currently tracking,
+  in `logctl status` / `--json` and `logctl handlers`.
+- Move a handler out of `AUTO` at any time — a fixed `logctl handler CONSOLE
+  <level>` or a plain `logctl handler CONSOLE reset` supersedes/reverts it
+  exactly as it would a fixed override.
+
+### Mechanism: a mode, not a `Level`
+
+`AUTO` is **not** a fifth pseudo-value of {@link Level} alongside `ALL`/`OFF`.
+`Level`'s ordinal ordering is used directly for real severity comparisons
+(`isMoreVerboseThan`, every `compareTo`) throughout `core`, the JMX surface,
+and every adapter; a value that isn't a real severity would need a special
+case at every one of those call sites, and `ALL`/`OFF` earn their place in
+that enum only because they're genuine configuration extremes a real
+`logback.xml` can set — `AUTO` isn't a level a handler is ever actually
+*at*, it's a policy for what level to be at.
+
+`HandlerLevelOverride` instead gains a `mode` field:
+
+```
+enum HandlerLevelMode { FIXED, AUTO }
+
+HandlerLevelOverride {
+    handlerRef: HandlerRef
+    level: Level        // FIXED: the level the user set.
+                         // AUTO: the level last computed for it (see below) —
+                         // always present, never null, so every other reader
+                         // of this record (status, --json, audit) needs no
+                         // AUTO-specific null handling.
+    mode: HandlerLevelMode = FIXED
+    reason: String?
+    appliedAt: Instant
+    source: String
+    tier: PersistenceTier
+    expiresAt: Instant?
+}
+```
+
+`level` keeps its existing meaning for every reader — "the level currently
+applied to this handler" — for both modes; `mode` is the only new thing to
+branch on, and only `HandlerLevelControlService` ever does. `tier`/`expiresAt`
+govern how long the **AUTO mode itself** lasts, exactly as they do for a fixed
+override today — independent of how many times the tracked `level` moves
+during that time. `logctl handler ALL_HANDLERS AUTO for 2h` means "track for
+2 hours, then revert to baseline", not "the next 2-hour-old recompute expires".
+
+A new operation, parallel to `setHandlerLevel` rather than folded into it (no
+`Level` argument to parse `AUTO` out of):
+
+```
+setHandlerAuto(ref: HandlerRef, options: SetHandlerLevelOptions) -> HandlerLevelOverride?
+```
+
+surfaced as `logctl handler <name> AUTO [<tier token>] [--reason <text>]` —
+same grammar position as `<level>` in `logctl handler <name> <level>`, same
+tier tokens, same `--reason`. Empty return has the same meaning as
+`setHandlerLevel`'s: `hasHandlerLevels() == false` (Logback, `none`), no-op.
+
+### Recompute trigger: reactive, wired by each container at construction time
+
+**As implemented** (adjusted from the sign-off's "`AggregateLevelControl` is
+the only class that wires the two together", below — the mechanism, not the
+contract): `LevelControlService`'s `LoggerOverrideChangeListener` is a
+constructor-injected, immutable field, so it has to be supplied at
+construction time, before `AggregateLevelControl.register` ever sees the
+`ContextControl`. Each container's `installContext` — the one place that
+already builds *both* services for a context — builds
+`HandlerLevelControlService` first, then a listener closing over it
+(`handlerService::recomputeAuto`), then passes that listener into
+`LevelControlService`'s own constructor. `AggregateLevelControl` still owns
+the two places recompute needs a one-off *pull* rather than the reactive
+*push* above (see "Persistence and resume ordering" below), but the live
+per-mutation wiring itself is a composition-root concern, not something
+`AggregateLevelControl` can retrofit onto an already-constructed service.
+`HandlerLevelControlService` also gained a second constructor-injected seam,
+`ActiveLoggerFloor` (`Optional<Level> lowestActive()`), so `recomputeAuto()`
+takes no arguments — it asks its own supplier, which each container wires as
+`() -> ActiveLoggerFloor.lowestOf(overrides.all().values())`, closing over
+the same `OverrideRegistry` instance handed to `LevelControlService`. Neither
+service class ends up referencing the other's type.
+
+Per issue #28: **reactive**, not swept — recomputed synchronously as part of
+the same call that changed the logger-override set, not on the next periodic
+tick. This matters for correctness, not just latency: the blocking-handler
+warning (`LevelControlService.setLevel`'s tail, "Warning on level commands"
+above) reads the adapter's *current* handler level to decide whether to fire.
+If an `AUTO` handler's recompute happened even one tick later, the warning
+would fire against the handler's stale, not-yet-lowered level and print a
+"run `logctl handler CONSOLE TRACE`" suggestion for a handler that's already
+at `TRACE` — actively wrong advice, not just a missed optimization. So
+**recompute must happen before `setLevel` computes its blocking-handler
+floors, inside the same call**, and once it has, no special-casing of the
+warning is needed at all: an `AUTO` handler that already tracked down to the
+new level simply no longer shows up in `handlerFloorsBelow`'s answer, the
+same way a handler a human had already lowered by hand wouldn't.
+
+`LevelControlService` and `HandlerLevelControlService` are deliberately
+decoupled today (`HandlerLevelControlService`'s own class doc: "independent
+lifetime… needs none of `LevelControlService`'s machinery"). AUTO is the
+first feature where a handler override's behavior genuinely depends on
+logger-override state, so *some* seam between the two is unavoidable — the
+question is where. Every container (`NoneContainer`, `WildFlyContainer`)
+already builds exactly one `LevelControlService` + one `HandlerLevelControlService`
+pair per context and hands both to `AggregateLevelControl` as one
+`ContextControl` — this is the one place in `core` that already holds both
+halves for the same context. Putting the wiring there means:
+
+- **`LevelControlService` gains one small, generically-named seam** — a
+  `LoggerOverrideChangeListener` (single abstract method `onChange()`,
+  default `NONE` = no-op) passed in at construction, invoked at the point in
+  `setLevel` right after the mutation loop commits to the registry and
+  *before* the blocking-handler floor computation runs, and once at the end
+  of `resetLevel` and once at the end of `resetAll`'s loop and once at the
+  end of `sweepExpiredOverrides`'s loop. `LevelControlService` calls this
+  listener knowing nothing about handlers, `AUTO`, or `core`'s own handler
+  classes — it is exactly as decoupled from `HandlerLevelControlService` as
+  before, just no longer silent about "my tracked state changed".
+- **`HandlerLevelControlService` gains `recomputeAuto()`** — for every
+  tracked override in this context whose `mode` is `AUTO`, computes the
+  target (`activeLoggerFloor.lowestActive()`, or the handler's own captured
+  baseline if empty) and, if it differs from the override's current `level`,
+  applies it and replaces the registry entry with an updated `level` (same
+  `appliedAt`/`tier`/`expiresAt`/`reason` — a recompute is not a new
+  override, just an updated one). For `ALL_HANDLERS` in `AUTO`, this fans out
+  over `realHandlers()`, skipping any real handler that has its own
+  more-specific override superseding it — **not** the same carve-out
+  `applyAndRecordGroupMutation` makes for `FIXED`, which does the opposite:
+  it overwrites such a real unconditionally and only afterward drops its
+  now-stale individual override. The divergence is deliberate — a `FIXED`
+  `ALL_HANDLERS` command is an explicit, one-shot "set everything to X"; a
+  reactive `AUTO` recompute is ambient and shouldn't clobber an override an
+  operator set on purpose. Every real moves to the same explicit target when
+  one is active; with none active, each real reverts to its *own* baseline
+  (they can genuinely disagree, same as a `FIXED` `ALL_HANDLERS` reset), and
+  the group's single displayed `level` becomes the strictest of those
+  baselines (a display-only summary, the same "no invented aggregate level"
+  gap Decision #5 already lives with) — or stays at its last-known value,
+  never a fabricated one, on a tick where no real resolved anything at all.
+  A recompute that starts against a still-current entry but loses a race to
+  a concurrent write before it finishes is undone — the adapter is
+  re-applied to whatever won — exactly like `verifyAndReapply`'s own "undo a
+  re-apply that did not stick" discipline.
+- **`resumeFromStateStore` and `adoptOverride` do *not* fire the live
+  listener** — seeing why is the next section.
+
+### Scope of "lowest active override": per context, not per routing path
+
+The lowest active override considered is **every currently-active logger
+override in the same logging context** — the same scope `OverrideRegistry`
+already uses, with no notion of "does this logger's path actually reach this
+handler". The codebase has no routing/path model to consult (a WildFly
+context's loggers all share the same handler set today, per the M0 finding
+already recorded in this doc's Status section), and inventing one here only
+to serve `AUTO` would be scope creep. `DEFAULT_HANDLERS` (#28) is exactly the
+mechanism for narrowing "which handlers should this affect" when that turns
+out to matter — by **group membership**, not by a smarter recompute — so
+this stays consistent with #28's own framing ("non-pollution falls out of
+scoping the group, no per-logger routing") without `AUTO` itself needing to
+know about groups.
+
+### Persistence and resume ordering
+
+An `AUTO` override persists its `mode` and its own `tier`/`expiresAt` (its
+own lifetime), plus its last-known `level` as a cache — never trusted as
+current on its own after a restart, always superseded by a recompute before
+anything reads it in anger. This resolves the ordering hazard #20 itself
+flagged (`HandlerLevelControlService.resumeFromStateStore` and
+`LevelControlService.resumeFromStateStore` are two independent methods with
+no ordering guarantee between them):
+
+- Resuming an `AUTO` override (`HandlerLevelControlService.resumeOne`)
+  re-applies its cached `level` verbatim, same as a `FIXED` one — a
+  plausible-but-possibly-stale value, exactly like any other freshly-resumed
+  state before the world has been re-observed once.
+- **Neither `resumeFromStateStore` nor `adoptOverride` fires the live
+  `LoggerOverrideChangeListener`** — both can each be called once per
+  persisted entry / once per rebroadcast override during startup or a
+  redeploy, and firing a full recompute after every single one is wasted
+  work computing against a partially-resumed world.
+- **As implemented**, this needs no cross-context barrier: `AUTO`'s scope is
+  strictly per context (the "Scope" note above), so it's enough for each
+  context's own resume to finish both halves before that context's own
+  recompute runs — no dependency on any *other* context. Each container's
+  `installContext` calls `handlerService.recomputeAuto()` once, right after
+  `service.resumeFromStateStore(...)` and `handlerService.resumeFromStateStore(...)`
+  have both returned for that context. `AggregateLevelControl.addContext`
+  does the same for a redeploy: `control.handlerService().recomputeAuto()`
+  once, after both the logger and handler `adoptOverride` loops have run
+  against the new context. One pass per context, correct final state, no
+  intermediate recomputes against half-resumed data, and no new
+  aggregate-level method needed.
+
+### Capability
+
+Activating `AUTO` (`setHandlerAuto`) requires **`handler.lower`** — the same
+simplification `resetHandler` already makes for reverting to baseline: `AUTO`'s
+entire purpose is letting the floor drop to follow a raised logger, so the
+capability that governs "let this handler get more verbose" is what a
+reviewer is actually granting by turning it on, regardless of which specific
+level it lands at first. `handler.raise` plays no role here, unlike `FIXED`,
+where the direction is judged against the level named.
+
+**Every subsequent reactive recompute checks no capability at all** — same
+as the verification sweep, `resume`, and `reapply` today, none of which
+re-check capability on every tick. This isn't a special carve-out for
+`AUTO`; it's the same principle already in force: a capability check gates a
+*new* operator action, and a recompute is system-driven continuation of one
+`AUTO` activation that was already authorized once, whichever direction it
+happens to move the level on a given tick (down when a new override appears,
+back up toward baseline when the last one clears).
+
+Deactivating `AUTO` — a fixed `setHandlerLevel` or `resetHandler` on the same
+ref — needs exactly what it needs today; nothing about `AUTO` changes those
+capability rules.
+
+### Precedence: manual and `AUTO` on the same handler
+
+**Last-writer-wins**, mirroring the supersede idiom this codebase already
+uses everywhere else on `(contextKey, ref)` (two `FIXED` overrides on the
+same logger or handler; an individual override peeled off by a later
+`ALL_HANDLERS` mutation, in `applyAndRecordGroupMutation`):
+
+- `logctl handler CONSOLE AUTO` while `CONSOLE` has a `FIXED` override:
+  supersedes it, `mode` flips to `AUTO`, immediately recomputed.
+- `logctl handler CONSOLE <level>` while `CONSOLE` is `AUTO`: supersedes it,
+  `mode` flips to `FIXED`, tracks nothing from then on until re-activated.
+
+No "manual as a ceiling `AUTO` can't cross" precedence model — the simplest
+option, and consistent with every other supersede path in this feature
+needing no such thing today.
+
+### Interaction with the base feature
+
+- **Data model, Capability and audit, Failure handling** (below): everything
+  written there about `FIXED` overrides — baseline capture, independent
+  lifetime, `ALL_HANDLERS`'s one-tracked-override/N-audit-rows shape,
+  multi-context broadcast, reconfiguration re-application — applies to an
+  `AUTO` override unchanged; `mode` is purely additive to that record.
+- **Audit.** A recompute that actually changes the applied level writes a
+  `MUTATION` audit record exactly like any other handler-level change,
+  `source = "auto-recompute"`; a recompute tick that finds nothing to change
+  writes nothing (no audit noise from an `AUTO` handler quietly agreeing with
+  itself every time an unrelated logger is touched).
+- **Verification sweep.** `verifyAndReapply` is unaffected — it compares the
+  adapter's live level against the override's tracked `level`, which is
+  exactly what a correct recompute already kept in sync; drift here means
+  something *else* reconfigured the handler out from under `AUTO`, the same
+  drift the sweep already exists to catch.
+- **`--json` / `logctl status` / `logctl handlers`.** `HandlerLevelOverrideData`
+  and `HandlerInfo` gain a `mode` field alongside `level` — additive per
+  `doc/specs/component-versioning-policy` (§11.1: the `--json`/MXBean surface
+  is additive-only within a major).
+
+### Open decisions (sign-off) — resolved
+
+*All seven decisions signed off in review, every one to its recommended
+leaning as drafted — no changes requested:*
+
+- **AUTO-1 (was #20 "Mechanism").** `mode` field, not a pseudo-`Level`; new
+  `setHandlerAuto` operation rather than overloading `setHandlerLevel`'s
+  `<level>` parse.
+- **AUTO-2 (was #20 "Recompute trigger").** Reactive (settled by #28 already)
+  — the seam is a `LoggerOverrideChangeListener` on `LevelControlService`,
+  firing *inside* `setLevel` before the blocking-handler floor check so the
+  warning never fires against a stale pre-recompute level. This ordering is
+  a correctness requirement, not a preference. As implemented, the listener
+  is wired by each container at construction time (not by
+  `AggregateLevelControl`, which can't reach an already-constructed
+  service's constructor-injected field) — see "Recompute trigger" above.
+- **AUTO-3 (was #20 "Scope of lowest active override").** Per logging
+  context, every active override, no path-relevance filtering — matches
+  today's architecture (no routing model exists); `DEFAULT_HANDLERS` (#28)
+  is where narrowing-by-scope belongs.
+- **AUTO-4 (was #20 "Capability semantics").** Activation requires
+  `handler.lower` once; every reactive recompute thereafter checks nothing,
+  matching how resume/reapply/the verification sweep already behave.
+- **AUTO-5 (was #20 "Persistence / resume ordering").** Persist `mode` +
+  the override's own tier/expiry + a last-known `level` cache; one
+  `recomputeAuto()` pull per context after that context's own resume (and
+  after its own redeploy rebroadcast) rather than firing the live listener
+  during either. As implemented this needs no cross-context barrier — `AUTO`
+  is scoped per context (AUTO-3), so no new aggregate-level method was
+  needed; see "Persistence and resume ordering" above.
+- **AUTO-6 (was #20 "Interaction with the blocking-handler warning").**
+  No special-casing needed in the warning path at all, given AUTO-2's
+  ordering — an already-tracked-down handler simply stops appearing in
+  `handlerFloorsBelow`'s answer.
+- **AUTO-7 (new — precedence with a manual override, raised while drafting
+  this section, not originally in #20).** Last-writer-wins on the same ref,
+  no "manual as a ceiling" model.
+
 ## Semantics to pin down
 
 - **Baseline capture.** Kept out of `HandlerLevelOverride` itself, mirroring how
@@ -804,7 +1139,8 @@ catalog".
 ```
 HandlerLevelOverride {
     handlerRef: HandlerRef    // configured name, <class>@<idhash> fallback, or ALL_HANDLERS
-    level: Level              // current target
+    level: Level              // current target (FIXED: user-set; AUTO: last computed)
+    mode: HandlerLevelMode = FIXED   // FIXED | AUTO -- see "AUTO handler level" (issue #20)
     reason: String?
     appliedAt: Instant
     source: String
@@ -857,6 +1193,11 @@ its own prior value (Decision #4).
   never a single `ALL_HANDLERS`-keyed row standing in for the whole group; the
   audit trail's granularity doesn't change just because the tracked override
   does.
+- `setHandlerAuto` (issue #20) checks `handler.lower` once, at activation —
+  see "AUTO handler level" for why, and for why every later reactive
+  recompute checks nothing further. A recompute that changes the applied
+  level writes a `MUTATION` audit record with `source = "auto-recompute"`; a
+  recompute that changes nothing writes no record.
 
 ## Failure handling
 
@@ -935,6 +1276,55 @@ its own prior value (Decision #4).
   and the command prints a note. The text renderer shows the `PERSISTS`/`TARGET`
   columns and an `OVERRIDE` cell; `--json` wraps the rows under a `handlers`
   key with `null` where a field doesn't apply. The parser rejects arguments.
+
+**Unit — `AUTO` (issue #20):**
+
+- `setHandlerAuto(CONSOLE)` with no active logger overrides: `CONSOLE` stays
+  at its captured baseline; the tracked override has `mode = AUTO`.
+- `logctl debug org.acme` while `CONSOLE` is `AUTO`: `CONSOLE` drops to
+  `DEBUG` in the same call, before the blocking-handler warning is computed
+  — `logctl debug org.acme` prints **no** warning (the floor no longer
+  blocks). A second, stricter `logctl trace org.other`: `CONSOLE` drops
+  further to `TRACE`.
+- The `org.acme` override resets (or expires): with `org.other` still
+  `TRACE`, `CONSOLE` stays at `TRACE` (the remaining minimum), not back to
+  baseline.
+- The last remaining logger override (`org.other`) resets: `CONSOLE` returns
+  to its own captured baseline, one audit `MUTATION` record,
+  `source = "auto-recompute"`.
+- A recompute that finds nothing to change (e.g. a second, less-verbose
+  logger override appears while a more-verbose one is already active)
+  writes no audit record and leaves the handler untouched.
+- `ALL_HANDLERS AUTO`: fans out over `realHandlers()` on recompute, one audit
+  row per real handler that actually changed level this tick, skipping a real
+  handler with its own more-specific `FIXED` override — and, unlike `FIXED`
+  `ALL_HANDLERS`, leaving that real completely untouched rather than
+  overwriting it (a deliberate divergence; see "Recompute trigger" above).
+- `ALL_HANDLERS AUTO` with every real individually overridden (all skipped)
+  or with no reals known yet: activation returns empty (nothing to track)
+  rather than fabricating a placeholder level; a recompute in the same
+  situation leaves the tracked `level` exactly as it was, never a
+  fabricated one.
+- Precedence: `CONSOLE AUTO` then `CONSOLE DEBUG` — `mode` flips to `FIXED`,
+  no further recompute touches it until re-activated; and the reverse
+  (`CONSOLE DEBUG` then `CONSOLE AUTO`) immediately recomputes.
+- Capability: `handler.lower` withheld → `setHandlerAuto` denied, exit 6, no
+  override recorded; once active, withholding `handler.lower` afterward does
+  **not** block a later recompute (no capability re-check on the reactive
+  path).
+- Resume ordering: a persisted `sticky AUTO` override and a persisted
+  `sticky` logger override both resume; the per-context `recomputeAuto()`
+  pull each container runs once both halves finish resuming lands on the
+  correct tracked level — not whatever stale `level` was persisted.
+- Race: a recompute that starts against a still-current entry but loses a
+  race to a concurrent `setHandlerLevel` before it finishes is undone — the
+  adapter ends up matching the winner, not the stale recomputed value —
+  exactly `verifyAndReapply`'s own "undo a re-apply that did not stick"
+  discipline, reused here.
+- `logctl status` / `--json` / `logctl handlers` show `mode = AUTO` and the
+  currently-tracked `level` for an `AUTO` handler, including the `MODE`
+  column in `logctl status`'s text table and the `AUTO → <level>` form in
+  `logctl handlers`' `OVERRIDE` cell.
 
 **Cross-process (extends `LevelControlEndToEndIT` / `WildFlyContainerIT`):**
 

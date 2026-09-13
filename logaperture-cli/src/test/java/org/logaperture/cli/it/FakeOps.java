@@ -114,8 +114,19 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
         handlerBaselines.putIfAbsent(ref, BASELINE);
         Instant now = Instant.now();
         Instant expiresAt = options.tier() == PersistenceTier.FOR ? now.plus(options.expiresIn()) : null;
-        HandlerLevelOverride override = new HandlerLevelOverride(
+        HandlerLevelOverride override = HandlerLevelOverride.fixed(
                 ref, level, options.reason(), now, "jmx", options.tier(), expiresAt);
+        handlerOverrides.put(ref, override);
+        return Optional.of(override);
+    }
+
+    @Override
+    public synchronized Optional<HandlerLevelOverride> setHandlerAuto(HandlerRef ref, SetHandlerLevelOptions options) {
+        handlerBaselines.putIfAbsent(ref, BASELINE);
+        Instant now = Instant.now();
+        Instant expiresAt = options.tier() == PersistenceTier.FOR ? now.plus(options.expiresIn()) : null;
+        HandlerLevelOverride override = new HandlerLevelOverride(ref, BASELINE,
+                org.logaperture.api.HandlerLevelMode.AUTO, options.reason(), now, "jmx", options.tier(), expiresAt);
         handlerOverrides.put(ref, override);
         return Optional.of(override);
     }

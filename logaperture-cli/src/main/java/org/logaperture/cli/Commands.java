@@ -132,11 +132,12 @@ final class Commands {
                     table.add(List.of(
                             orDash(row.getHandlerRef()),
                             orDash(row.getLevel()),
+                            orDash(row.getMode()),
                             orDash(row.getTier()),
                             handlerRevertsCell(row),
                             row.getReason() == null ? Format.NONE : '"' + row.getReason() + '"'));
                 }
-                out.println(Format.table(List.of("HANDLER", "LEVEL", "TIER", "REVERTS", "REASON"), table));
+                out.println(Format.table(List.of("HANDLER", "LEVEL", "MODE", "TIER", "REVERTS", "REASON"), table));
             }
             return CliError.OK;
         };
@@ -221,6 +222,33 @@ final class Commands {
                 return CliError.OK;
             }
             out.println("handler " + handlerRef + " → " + result.getLevel() + "   ("
+                    + tierDetail(result.getTier(), result.getExpiresAt()) + ")");
+            return CliError.OK;
+        };
+    }
+
+    /**
+     * {@code logctl handler <name> AUTO} — doc/specs/handler-floor-control.md
+     * "AUTO handler level" (issue #20). Puts {@code handlerRef} into a
+     * self-tracking mode instead of a fixed level.
+     */
+    static Command setHandlerAuto(String handlerRef, String reason, String tierName, long forSeconds, boolean json) {
+        return (mbean, out) -> {
+            HandlerLevelOverrideData result = mbean.setHandlerAuto(handlerRef, reason, tierName, forSeconds);
+            if (result == null) {
+                if (json) {
+                    out.println(Json.handlerNoOp(handlerRef));
+                } else {
+                    out.println("logctl handler: this framework's handlers have no level of their own, or nothing "
+                            + "is active to track yet; nothing to change.");
+                }
+                return CliError.OK;
+            }
+            if (json) {
+                out.println(Json.handlerOverride(result));
+                return CliError.OK;
+            }
+            out.println("handler " + handlerRef + " → AUTO, currently " + result.getLevel() + "   ("
                     + tierDetail(result.getTier(), result.getExpiresAt()) + ")");
             return CliError.OK;
         };
@@ -457,8 +485,11 @@ final class Commands {
         if (!row.isOverrideActive()) {
             return Format.NONE;
         }
-        StringBuilder cell = new StringBuilder(orDash(row.getOverrideLevel()))
-                .append(" (").append(orDash(row.getOverrideTier()));
+        StringBuilder cell = new StringBuilder();
+        if ("AUTO".equals(row.getOverrideMode())) {
+            cell.append("AUTO → ");
+        }
+        cell.append(orDash(row.getOverrideLevel())).append(" (").append(orDash(row.getOverrideTier()));
         if ("FOR".equals(row.getOverrideTier()) && row.getOverrideExpiresAt() != null) {
             cell.append(", reverts ").append(Format.relative(row.getOverrideExpiresAt()));
         }

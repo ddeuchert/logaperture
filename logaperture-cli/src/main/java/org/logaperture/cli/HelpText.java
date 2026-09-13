@@ -41,6 +41,7 @@ final class HelpText {
             "logctl reset <logger>",
             "logctl reset --all",
             "logctl handler <name> <level> [session | for <duration> | sticky]",
+            "logctl handler <name> AUTO [session | for <duration> | sticky]",
             "logctl handler <name> reset");
 
     private HelpText() {
@@ -73,6 +74,11 @@ final class HelpText {
         sb.append("every handler you can name, its level, and any active override — on\n");
         sb.append("WildFly the individual names (CONSOLE, FILE, …) appear once the server\n");
         sb.append("is up; before that, and always, ALL_HANDLERS means every handler at once.\n");
+        sb.append("\n");
+        sb.append("'handler <name> AUTO' puts a handler into a self-adjusting mode instead\n");
+        sb.append("of a fixed level — it tracks the lowest currently active debug or trace\n");
+        sb.append("override on its own, and reverts to its native level the moment none are\n");
+        sb.append("left. Setting a fixed level, or resetting it, moves it back out of AUTO.\n");
         sb.append("\n");
         sb.append("A [filter] for 'levels' is a logger-name prefix, or a glob using\n");
         sb.append("* and ? — so 'logctl levels *infinispan*' finds a logger when the\n");

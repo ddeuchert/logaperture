@@ -148,6 +148,50 @@ class MainRunTest {
         assertTrue(out().contains("LOGGER"));
     }
 
+    // --- handler <name> AUTO (doc/specs/handler-floor-control.md "AUTO handler level", issue #20) --------------
+
+    @Test
+    void handlerAuto_dispatchesToSetHandlerAuto_notSetHandlerLevel() {
+        FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
+        mbean.setHandlerAutoResult = new org.logaperture.control.jmx.HandlerLevelOverrideData(
+                "CONSOLE", "DEBUG", "AUTO", null, "2026-09-12T00:00:00Z", "jmx", "SESSION", null);
+
+        assertEquals(0, run(new String[] {"handler", "CONSOLE", "AUTO"}, connectorFor(mbean)));
+
+        assertEquals(1, mbean.setHandlerAutoCalls.size());
+        Object[] call = mbean.setHandlerAutoCalls.get(0); // {handlerRef, reason, tier, forSeconds}
+        assertEquals("CONSOLE", call[0]);
+        assertEquals("FOR", call[2], "a bare AUTO defaults to 'for 4h', same as every other tier grammar here");
+        assertEquals(java.time.Duration.ofHours(4).toSeconds(), call[3]);
+        assertEquals(0, mbean.setHandlerLevelCalls.size(), "must not be parsed as a literal level named AUTO");
+        assertTrue(out().contains("AUTO"), out());
+    }
+
+    @Test
+    void handlerAuto_isCaseInsensitiveAndAcceptsATierAndAReason() {
+        FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
+        mbean.setHandlerAutoResult = new org.logaperture.control.jmx.HandlerLevelOverrideData(
+                "CONSOLE", "TRACE", "AUTO", "INC-1", "2026-09-12T00:00:00Z", "jmx", "STICKY", null);
+
+        assertEquals(0, run(new String[] {"handler", "CONSOLE", "auto", "sticky", "--reason", "INC-1"},
+                connectorFor(mbean)));
+
+        Object[] call = mbean.setHandlerAutoCalls.get(0);
+        assertEquals("CONSOLE", call[0]);
+        assertEquals("INC-1", call[1]);
+        assertEquals("STICKY", call[2]);
+    }
+
+    @Test
+    void handlerAuto_adapterHasNothingToTrack_printsTheNoOpNote() {
+        FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
+        mbean.setHandlerAutoResult = null; // no level of its own, or nothing active to track yet
+
+        assertEquals(0, run(new String[] {"handler", "CONSOLE", "AUTO"}, connectorFor(mbean)));
+
+        assertTrue(out().contains("nothing to change"), out());
+    }
+
     /** A connector that must not be reached (help/version/usage paths never open a connection). */
     private static Connector unusableConnector() {
         return explicitPid -> {

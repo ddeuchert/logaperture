@@ -532,4 +532,133 @@ class LevelControlServiceTest {
         // adopting it in a second context must not write again.
         assertTrue(stateStore.loadAll().isEmpty());
     }
+
+    // --- LoggerOverrideChangeListener (doc/specs/handler-floor-control.md "AUTO handler level", issue #20) -----
+
+    private int changeCount;
+    private LevelControlService serviceWithListener;
+
+    private void setUpServiceWithListener() {
+        changeCount = 0;
+        LoggerOverrideChangeListener listener = () -> changeCount++;
+        serviceWithListener = new LevelControlService(
+                adapter, baselines, overrides, CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
+                listener);
+    }
+
+    @Test
+    void setLevel_firesTheChangeListenerBeforeReturning() {
+        setUpServiceWithListener();
+        adapter.addKnownLogger("com.acme.Worker");
+
+        serviceWithListener.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
+
+        assertEquals(1, changeCount);
+    }
+
+    @Test
+    void setLevel_firesTheListenerBeforeComputingBlockingHandlers() {
+        // The ordering itself, not just that it fires: the listener runs a
+        // recompute (a real AUTO handler would lower itself here) that must
+        // land before setLevel reads handler state for its own
+        // blocking-handler answer -- doc/specs/handler-floor-control.md
+        // "AUTO handler level", "Recompute trigger".
+        adapter.addKnownLogger("com.acme.Worker");
+        HandlerRef console = new HandlerRef("CONSOLE");
+        adapter.addHandler(console, Level.INFO, "com.acme.Worker");
+        LoggerOverrideChangeListener lowerConsoleOnChange = () -> adapter.setHandlerLevel(console, Level.TRACE);
+        LevelControlService withAutoLikeListener = new LevelControlService(
+                adapter, baselines, overrides, CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
+                lowerConsoleOnChange);
+
+        SetLevelResult result = withAutoLikeListener.setLevel("com.acme.Worker", Level.TRACE, SetLevelOptions.defaults());
+
+        assertTrue(result.blockingHandlers().isEmpty(),
+                "CONSOLE was already lowered by the listener before the floor check ran");
+    }
+
+    @Test
+    void resetLevel_firesTheChangeListener() {
+        setUpServiceWithListener();
+        adapter.addKnownLogger("com.acme.Worker");
+        serviceWithListener.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
+        changeCount = 0;
+
+        serviceWithListener.resetLevel("com.acme.Worker");
+
+        assertEquals(1, changeCount);
+    }
+
+    @Test
+    void resetLevel_withNothingToReset_doesNotFireTheChangeListener() {
+        setUpServiceWithListener();
+
+        serviceWithListener.resetLevel("com.acme.NeverOverridden");
+
+        assertEquals(0, changeCount);
+    }
+
+    @Test
+    void resetAll_firesTheChangeListenerOnce() {
+        setUpServiceWithListener();
+        adapter.addKnownLogger("a");
+        adapter.addKnownLogger("b");
+        serviceWithListener.setLevel("a", Level.DEBUG, SetLevelOptions.defaults());
+        serviceWithListener.setLevel("b", Level.DEBUG, SetLevelOptions.defaults());
+        changeCount = 0;
+
+        serviceWithListener.resetAll();
+
+        assertEquals(1, changeCount);
+    }
+
+    @Test
+    void sweepExpiredOverrides_somethingExpired_firesTheChangeListener() {
+        setUpServiceWithListener();
+        adapter.addKnownLogger("com.acme.Worker");
+        java.time.Instant now = java.time.Instant.now();
+        serviceWithListener.setLevel("com.acme.Worker", Level.DEBUG,
+                new SetLevelOptions(false, null, java.time.Duration.ofMinutes(30), PersistenceTier.FOR));
+        changeCount = 0;
+
+        serviceWithListener.sweepExpiredOverrides(now.plus(java.time.Duration.ofMinutes(31)));
+
+        assertEquals(1, changeCount);
+    }
+
+    @Test
+    void sweepExpiredOverrides_nothingExpired_doesNotFireTheChangeListener() {
+        setUpServiceWithListener();
+        adapter.addKnownLogger("com.acme.Worker");
+        serviceWithListener.setLevel("com.acme.Worker", Level.DEBUG,
+                new SetLevelOptions(false, null, java.time.Duration.ofMinutes(30), PersistenceTier.FOR));
+        changeCount = 0;
+
+        serviceWithListener.sweepExpiredOverrides(java.time.Instant.now()); // nowhere near the 30-minute deadline
+
+        assertEquals(0, changeCount);
+    }
+
+    @Test
+    void resumeFromStateStore_doesNotFireTheChangeListener() {
+        setUpServiceWithListener();
+        stateStore.save(new LevelOverride("com.acme.Worker", Level.DEBUG, false, null, java.time.Instant.now(),
+                "jmx", PersistenceTier.STICKY, null));
+
+        serviceWithListener.resumeFromStateStore(java.time.Instant.now());
+
+        assertEquals(0, changeCount, "the composition root does one recompute pass after resume itself, not per entry");
+    }
+
+    @Test
+    void adoptOverride_doesNotFireTheChangeListener() {
+        setUpServiceWithListener();
+        LevelOverride fromAnotherContext = new LevelOverride(
+                "com.acme.Shared", Level.DEBUG, false, null, java.time.Instant.now(), "jmx",
+                PersistenceTier.STICKY, null);
+
+        serviceWithListener.adoptOverride(fromAnotherContext);
+
+        assertEquals(0, changeCount, "the caller does one recompute pass after every override for the context lands");
+    }
 }

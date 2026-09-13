@@ -86,7 +86,7 @@ class StateFileFormatTest {
         LevelOverride logger = new LevelOverride(
                 "com.acme.Worker", Level.DEBUG, false, "why",
                 Instant.parse("2026-08-21T03:14:02Z"), "jmx", PersistenceTier.STICKY, null);
-        HandlerLevelOverride handler = new HandlerLevelOverride(
+        HandlerLevelOverride handler = HandlerLevelOverride.fixed(
                 new HandlerRef("CONSOLE"), Level.TRACE, "why not",
                 Instant.parse("2026-08-21T03:15:00Z"), "jmx", PersistenceTier.FOR,
                 Instant.parse("2026-08-21T03:45:00Z"));
@@ -115,5 +115,24 @@ class StateFileFormatTest {
 
         assertEquals(1, parsed.overrides().size());
         assertEquals(List.of(), parsed.handlerOverrides());
+    }
+
+    @Test
+    void parse_aVersion2HandlerRecordWithNoModeLine_defaultsToFixed() {
+        String v2 = "schemaVersion: 2\n"
+                + "overrides: []\n"
+                + "handlerOverrides:\n"
+                + "  - handlerRef: \"CONSOLE\"\n"
+                + "    level: TRACE\n"
+                + "    reason: null\n"
+                + "    appliedAt: 2026-08-21T03:15:00Z\n"
+                + "    source: \"jmx\"\n"
+                + "    tier: STICKY\n"
+                + "    expiresAt: null\n";
+
+        StateFileFormat.Parsed parsed = StateFileFormat.parse(v2);
+
+        assertEquals(1, parsed.handlerOverrides().size());
+        assertEquals(org.logaperture.api.HandlerLevelMode.FIXED, parsed.handlerOverrides().get(0).mode());
     }
 }

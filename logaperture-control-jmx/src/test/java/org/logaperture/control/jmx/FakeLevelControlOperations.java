@@ -51,6 +51,7 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     final List<Object[]> setLevelCalls = new ArrayList<>();
     final List<String> resetLevelCalls = new ArrayList<>();
     final List<Object[]> setHandlerLevelCalls = new ArrayList<>();
+    final List<Object[]> setHandlerAutoCalls = new ArrayList<>();
     final List<HandlerRef> resetHandlerCalls = new ArrayList<>();
     boolean resetAllCalled;
 
@@ -105,7 +106,22 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
         }
         Instant now = Instant.now();
         Instant expiresAt = options.tier() == PersistenceTier.FOR ? now.plus(options.expiresIn()) : null;
-        return Optional.of(new HandlerLevelOverride(ref, level, options.reason(), now, "jmx", options.tier(), expiresAt));
+        return Optional.of(HandlerLevelOverride.fixed(ref, level, options.reason(), now, "jmx", options.tier(), expiresAt));
+    }
+
+    @Override
+    public Optional<HandlerLevelOverride> setHandlerAuto(HandlerRef ref, SetHandlerLevelOptions options) {
+        setHandlerAutoCalls.add(new Object[] {ref, options});
+        if (throwOnSetHandlerLevel != null) {
+            throw throwOnSetHandlerLevel;
+        }
+        if (noOpHandlerLevels) {
+            return Optional.empty();
+        }
+        Instant now = Instant.now();
+        Instant expiresAt = options.tier() == PersistenceTier.FOR ? now.plus(options.expiresIn()) : null;
+        return Optional.of(new HandlerLevelOverride(ref, Level.INFO, org.logaperture.api.HandlerLevelMode.AUTO,
+                options.reason(), now, "jmx", options.tier(), expiresAt));
     }
 
     @Override

@@ -41,6 +41,10 @@ import java.time.Instant;
  * @param overrideActive    whether a {@link HandlerLevelOverride} is applied
  * @param overrideLevel     the override's level; {@code null} unless {@code
  *                          overrideActive}
+ * @param overrideMode      the override's mode ({@code FIXED}/{@code AUTO},
+ *                          doc/specs/handler-floor-control.md "AUTO handler
+ *                          level", issue #20); {@code null} unless {@code
+ *                          overrideActive}
  * @param overrideTier      the override's durability tier; {@code null}
  *                          unless {@code overrideActive}
  * @param overrideExpiresAt the override's revert deadline; {@code null}
@@ -58,6 +62,7 @@ public record HandlerInfo(
         Boolean autoFlush,
         boolean overrideActive,
         Level overrideLevel,
+        HandlerLevelMode overrideMode,
         PersistenceTier overrideTier,
         Instant overrideExpiresAt,
         String context) {
@@ -71,14 +76,15 @@ public record HandlerInfo(
     /** A single-context service builds rows with no context key; the aggregate fills it in. */
     public HandlerInfo(
             String ref, Level level, boolean persistent, String targetPath, Boolean autoFlush,
-            boolean overrideActive, Level overrideLevel, PersistenceTier overrideTier, Instant overrideExpiresAt) {
-        this(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel, overrideTier,
+            boolean overrideActive, Level overrideLevel, HandlerLevelMode overrideMode, PersistenceTier overrideTier,
+            Instant overrideExpiresAt) {
+        this(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel, overrideMode, overrideTier,
                 overrideExpiresAt, null);
     }
 
     /** This same row, tagged with its owning context's stable key. */
     public HandlerInfo withContext(String context) {
         return new HandlerInfo(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel,
-                overrideTier, overrideExpiresAt, context);
+                overrideMode, overrideTier, overrideExpiresAt, context);
     }
 }
