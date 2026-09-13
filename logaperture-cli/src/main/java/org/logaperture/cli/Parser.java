@@ -166,6 +166,12 @@ final class Parser {
                 }
                 yield Commands.doctor(json);
             }
+            case "env" -> {
+                if (!rest.isEmpty()) {
+                    throw usage("'env' takes no arguments.");
+                }
+                yield Commands.env(json);
+            }
             case "handlers" -> {
                 if (!rest.isEmpty()) {
                     throw usage("'handlers' takes no arguments.");

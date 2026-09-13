@@ -96,7 +96,8 @@ public final class Main {
         return t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
     }
 
-    private static String version() {
+    /** Package-visible: {@code Commands.env} stitches this into the environment report alongside the agent's own version. */
+    static String version() {
         String v = Main.class.getPackage().getImplementationVersion();
         return v != null ? v : "dev";
     }

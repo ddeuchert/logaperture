@@ -26,11 +26,17 @@ import org.logaperture.core.spi.ContainerIntegration;
 import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.InstallGuidance;
 
+import java.io.IOException;
 import java.lang.instrument.Instrumentation;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The {@link ContainerIntegration} for standalone WildFly — see
@@ -48,6 +54,8 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
 
     private static final String JBOSS_MODULES_CLASS = "org.jboss.modules.Module";
     private static final String DOMAIN_BASE_DIR_PROPERTY = "jboss.domain.base.dir";
+    /** Pulls "34.0.1.Final" out of a Galleon feature-pack location like {@code "...:current#34.0.1.Final"}. */
+    private static final Pattern FEATURE_PACK_VERSION = Pattern.compile("current#([^\"\\s]+)");
     private static final String JBOSS_HOME_PROPERTY = "jboss.home.dir";
 
     private final Duration sweepInterval;
@@ -93,7 +101,13 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
     public AggregateLevelControl activate(
             Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog,
             Consumer<AggregateLevelControl> onFirstContextReady) {
-        WildFlyContainer host = new WildFlyContainer(policy, auditLog, sweepInterval);
+        // this::version, not version().orElse(null) -- see version()'s javadoc.
+        // jboss.home.dir is not yet visible to System.getProperty at this
+        // (premain) point in every real launch tried, so calling version()
+        // here bakes in "no version" permanently. Deferred, it is re-resolved
+        // fresh whenever logctl env actually runs, long after WildFly's own
+        // bootstrap has set it.
+        WildFlyContainer host = new WildFlyContainer(policy, auditLog, sweepInterval, this::version);
 
         Runnable install = () -> {
             try {
@@ -112,6 +126,103 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
         detector.start();
 
         return host.operations();
+    }
+
+    /**
+     * doc/specs/environment-report.md Decision #3, revised after real-WildFly
+     * feedback: the original design assumed {@code $JBOSS_HOME/version.txt};
+     * confirmed against two real images that no such file exists in either
+     * (issue: a user got no version at all). WildFly's actual on-disk layout
+     * for its own version changed between major versions instead, so this
+     * tries two real, pure-file-read sources, in order:
+     *
+     * <ol>
+     *   <li>{@link #versionFromGalleonProvisioning} — Galleon-provisioned
+     *       installs (the quay.io images from WildFly 27 on).</li>
+     *   <li>{@link #versionFromProductManifest} — older, classic installs
+     *       (pre-Galleon) that instead carry a product manifest.</li>
+     * </ol>
+     *
+     * Confirmed against real WildFly 26.1.3.Final (classic manifest, no
+     * {@code .galleon} directory) and 34.0.1.Final (Galleon layout, no
+     * product manifest) — each image has exactly one of the two, never
+     * both. Pure file I/O either way — never touches {@code
+     * java.util.logging}, so safe to call at premain time as far as the
+     * premain gotcha (class doc) goes.
+     *
+     * <p><b>But do not call this from {@link #activate} itself</b> — a second
+     * real-WildFly finding, past the file-layout one above: {@code
+     * jboss.home.dir} is not a genuine JVM launcher {@code -D} property in
+     * every real launch configuration observed. It is present in the final
+     * process's {@code /proc/<pid>/cmdline} (and so looks like a normal
+     * command-line flag), but under this project's own dev/IT launch
+     * command (WildFly's {@code standalone.sh} constructing one {@code java}
+     * invocation), it reads back {@code null} from {@code
+     * System.getProperty} at premain time and only becomes visible once
+     * {@code org.jboss.modules.Main} / {@code org.jboss.as}'s own bootstrap
+     * has run far enough to set it programmatically — strictly after
+     * premain, which runs before any application {@code main()}. {@link
+     * #detect()} tolerates this because {@code jboss.home.dir} is only one
+     * of its two disjuncts (the {@code sun.java.command} match is what
+     * actually fires here); {@code version()} has no such fallback, so
+     * calling it eagerly at {@link #activate} time silently produced no
+     * container version at all against every real launch tried — best-effort
+     * degraded all the way to empty, exactly as designed, just too early to
+     * ever see anything. Call it lazily instead, no earlier than {@code
+     * logctl env} actually running (by which point the server has long
+     * finished booting) — see {@link #activate}'s comment.
+     */
+    @Override
+    public Optional<String> version() {
+        String jbossHome = System.getProperty(JBOSS_HOME_PROPERTY);
+        if (jbossHome == null) {
+            return Optional.empty();
+        }
+        Path home = Path.of(jbossHome);
+        Optional<String> galleon = versionFromGalleonProvisioning(home);
+        return galleon.isPresent() ? galleon : versionFromProductManifest(home);
+    }
+
+    /**
+     * {@code $JBOSS_HOME/.galleon/provisioning.xml} names every resolved
+     * feature-pack as {@code <name>@maven(...):<channel>#<version>}, e.g.
+     * {@code "wildfly@maven(org.jboss.universe:community-universe):current#34.0.1.Final"}.
+     * Every feature-pack in a coherent WildFly build shares one release
+     * version, so the first {@code #<version>} found is taken — no XML
+     * parser needed for one substring pull out of an attribute value.
+     * Package-visible so a test can lock in this parsing against a real
+     * {@code provisioning.xml} sample without a real WildFly.
+     */
+    static Optional<String> versionFromGalleonProvisioning(Path jbossHome) {
+        Path provisioningXml = jbossHome.resolve(".galleon").resolve("provisioning.xml");
+        try {
+            Matcher match = FEATURE_PACK_VERSION.matcher(Files.readString(provisioningXml));
+            return match.find() ? Optional.of(match.group(1)) : Optional.empty();
+        } catch (IOException | RuntimeException notReadable) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * The classic (pre-Galleon) product manifest at {@code
+     * $JBOSS_HOME/modules/system/layers/base/org/jboss/as/product/main/dir/
+     * META-INF/MANIFEST.MF} — the same file WildFly's own {@code
+     * org.jboss.as.version.ProductConfig} reads to print its boot banner
+     * ("WildFly Full 26.1.3.Final ... starting"). Package-visible so a test
+     * can lock in this parsing against a real manifest sample without a
+     * real WildFly.
+     */
+    static Optional<String> versionFromProductManifest(Path jbossHome) {
+        Path manifestPath = jbossHome.resolve("modules").resolve("system").resolve("layers").resolve("base")
+                .resolve("org").resolve("jboss").resolve("as").resolve("product").resolve("main").resolve("dir")
+                .resolve("META-INF").resolve("MANIFEST.MF");
+        try (var in = Files.newInputStream(manifestPath)) {
+            String version = new java.util.jar.Manifest(in).getMainAttributes()
+                    .getValue("JBoss-Product-Release-Version");
+            return Optional.ofNullable(version);
+        } catch (IOException | RuntimeException notReadable) {
+            return Optional.empty();
+        }
     }
 
     @Override

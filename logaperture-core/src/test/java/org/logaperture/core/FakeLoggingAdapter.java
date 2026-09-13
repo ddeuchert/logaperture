@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.BackendInfo;
 import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
@@ -301,5 +302,28 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     @Override
     public List<LoggerByteCount> byteCounts() {
         return byteCountsToReturn;
+    }
+
+    // --- environment report support (doc/specs/environment-report.md) ------------------------
+
+    private BackendInfo backendInfoToReturn = BackendInfo.EMPTY;
+    private boolean throwOnBackendInfo;
+
+    /** What {@link #backendInfo()} returns from now on -- default {@link BackendInfo#EMPTY}. */
+    void setBackendInfo(BackendInfo backendInfo) {
+        this.backendInfoToReturn = backendInfo;
+    }
+
+    /** Makes every subsequent {@link #backendInfo()} call throw, to exercise chaos-case behavior. */
+    void throwOnBackendInfo() {
+        this.throwOnBackendInfo = true;
+    }
+
+    @Override
+    public BackendInfo backendInfo() {
+        if (throwOnBackendInfo) {
+            throw new RuntimeException("simulated adapter failure for backendInfo()");
+        }
+        return backendInfoToReturn;
     }
 }

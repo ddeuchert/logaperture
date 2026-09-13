@@ -15,6 +15,7 @@
  */
 package org.logaperture.adapter.jul;
 
+import org.logaperture.api.BackendInfo;
 import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
@@ -303,6 +304,28 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     @Override
     public List<LoggerByteCount> byteCounts() {
         return topCounters.snapshot();
+    }
+
+    /**
+     * doc/specs/environment-report.md "Adapter / container SPI". The name is
+     * free either way ({@link #isJBossLogManager()} already distinguishes
+     * them for other purposes); a version is only attempted for JBoss
+     * LogManager (doc/specs/environment-report.md Decision #6) — read off
+     * the already-resolved root logger's own runtime class, exactly like
+     * {@link #isJBossLogManager()} itself, so this adds no compile-time
+     * reference to {@code org.jboss.logmanager} (class doc). Plain JUL's
+     * version is the JDK's own, already reported as {@code javaVersion} —
+     * nothing distinct to add here.
+     */
+    @Override
+    public BackendInfo backendInfo() {
+        if (!isJBossLogManager()) {
+            return new BackendInfo("java.util.logging (JUL)", null);
+        }
+        // getPackage() is null for a class with no package info available (an
+        // unusual classloader/module setup) -- best-effort, never NPE.
+        Package pkg = logger(ROOT_ALIAS).getClass().getPackage();
+        return new BackendInfo("JBoss LogManager", pkg == null ? null : pkg.getImplementationVersion());
     }
 
     /**

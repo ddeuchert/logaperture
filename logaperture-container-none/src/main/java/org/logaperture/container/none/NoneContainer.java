@@ -23,6 +23,7 @@ import org.logaperture.core.AuditLog;
 import org.logaperture.core.BaselineRegistry;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.DoctorService;
+import org.logaperture.core.EnvironmentReportService;
 import org.logaperture.core.FileStateStore;
 import org.logaperture.core.HandlerBaselineRegistry;
 import org.logaperture.core.HandlerLevelControlService;
@@ -155,6 +156,7 @@ public final class NoneContainer implements AutoCloseable {
 
         DoctorService doctorService = new DoctorService(adapter, policy);
         TopService topService = new TopService(adapter, policy);
+        EnvironmentReportService environmentReportService = new EnvironmentReportService(adapter, policy);
 
         // doc/specs/persistence.md "Reconfiguration re-application": Logback's
         // own reset event (scan="true", JMXConfigurator, an explicit
@@ -178,7 +180,8 @@ public final class NoneContainer implements AutoCloseable {
         // already happened, so measurement can't start on demand.
         topService.startMeasuring();
 
-        aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService));
+        aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService,
+                environmentReportService));
     }
 
     /**

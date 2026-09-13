@@ -15,6 +15,7 @@
  */
 package org.logaperture.core.spi;
 
+import org.logaperture.api.BackendInfo;
 import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
@@ -202,5 +203,17 @@ public interface LoggingAdapter {
      */
     default List<LoggerByteCount> byteCounts() {
         return List.of();
+    }
+
+    /**
+     * Best-effort name/version of the logging backend this adapter fronts —
+     * for {@code logctl env} (doc/specs/environment-report.md "Adapter /
+     * container SPI"). Never a level. Default {@link BackendInfo#EMPTY}; a
+     * real adapter overrides with what it can cheaply resolve (a manifest
+     * attribute or a well-known class's package version), never by loading a
+     * class it wouldn't otherwise touch.
+     */
+    default BackendInfo backendInfo() {
+        return BackendInfo.EMPTY;
     }
 }

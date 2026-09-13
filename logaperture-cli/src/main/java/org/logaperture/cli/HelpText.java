@@ -31,6 +31,7 @@ final class HelpText {
             "logctl handlers",
             "logctl status",
             "logctl doctor",
+            "logctl env",
             "logctl top [--limit n]",
             "logctl debug <logger> [session | for <duration> | sticky]",
             "logctl trace <logger> [session | for <duration> | sticky]",
@@ -92,6 +93,10 @@ final class HelpText {
         sb.append("'top' is also read-only. It shows which loggers have written the most\n");
         sb.append("bytes since the agent started, worst first, with a rate, a projected\n");
         sb.append("daily total, and what share of that volume is stack traces.\n");
+        sb.append("\n");
+        sb.append("'env' is also read-only. It prints one pasteable block of facts for a\n");
+        sb.append("bug report -- agent and logctl versions, Java, OS, the detected logging\n");
+        sb.append("backend, and the detected application framework or container.\n");
         sb.append("\n");
         sb.append("logctl finds the target JVM on its own when exactly one is running with\n");
         sb.append("the agent attached; otherwise pass --pid. It works only for a JVM you\n");

@@ -23,6 +23,7 @@ import org.logaperture.core.AuditLog;
 import org.logaperture.core.BaselineRegistry;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.DoctorService;
+import org.logaperture.core.EnvironmentReportService;
 import org.logaperture.core.FileStateStore;
 import org.logaperture.core.HandlerBaselineRegistry;
 import org.logaperture.core.HandlerLevelControlService;
@@ -40,9 +41,11 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 /**
  * Composition root for standalone WildFly — see doc/specs/wildfly-support.md
@@ -71,18 +74,44 @@ public final class WildFlyContainer implements AutoCloseable {
     private final CapabilityPolicy policy;
     private final AuditLog auditLog;
     private final StateStore stateStore;
-    private final AggregateLevelControl aggregate = new AggregateLevelControl();
+    private final AggregateLevelControl aggregate;
     private final ScheduledExecutorService sweeper;
+
+    /** This class only ever represents WildFly, so {@link AggregateLevelControl}'s container name is always {@code "WildFly"} -- never left null by a constructor that doesn't happen to know a version. */
+    private static final String CONTAINER_NAME = "WildFly";
 
     public WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog) {
         this(policy, auditLog, SweepPolicy.interval());
     }
 
-    /** Package-visible so tests can use a short sweep interval instead of the real 30s one. */
+    /** Package-visible so tests can use a short sweep interval instead of the real 30s one; no known WildFly version. */
     WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval) {
+        this(policy, auditLog, sweepInterval, Optional::empty);
+    }
+
+    /**
+     * @param containerVersion best-effort WildFly version for {@code logctl
+     *                         env} (doc/specs/environment-report.md) --
+     *                         a <em>supplier</em>, re-invoked fresh on every
+     *                         {@code environmentReport()} call, not resolved
+     *                         once here. {@code
+     *                         WildFlyContainerIntegration.version()}'s own
+     *                         javadoc explains why: at the point this
+     *                         constructor runs (premain time), {@code
+     *                         jboss.home.dir} is not yet visible to {@code
+     *                         System.getProperty} in every real launch
+     *                         tried -- resolving eagerly here silently bakes
+     *                         in "no version" forever. Deferring costs
+     *                         nothing (it's plain file I/O, not touched from
+     *                         any hot path) and self-heals once the server
+     *                         has finished its own bootstrap.
+     */
+    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+            Supplier<Optional<String>> containerVersion) {
         this.policy = policy;
         this.auditLog = auditLog;
         this.stateStore = openStateStore();
+        this.aggregate = new AggregateLevelControl(CONTAINER_NAME, containerVersion);
 
         this.sweeper = Executors.newSingleThreadScheduledExecutor(WildFlyContainer::newDaemonThread);
         long intervalMillis = sweepInterval.toMillis();
@@ -134,6 +163,7 @@ public final class WildFlyContainer implements AutoCloseable {
         }
 
         DoctorService doctorService = new DoctorService(adapter, policy);
+        EnvironmentReportService environmentReportService = new EnvironmentReportService(adapter, policy);
 
         TopService topService = new TopService(adapter, policy);
         // doc/specs/top.md: always-on from the moment this context comes up.
@@ -142,7 +172,8 @@ public final class WildFlyContainer implements AutoCloseable {
         // re-confirms the byte-counting wrap on every tick regardless.
         topService.startMeasuring();
 
-        aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService));
+        aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService,
+                environmentReportService));
     }
 
     /**

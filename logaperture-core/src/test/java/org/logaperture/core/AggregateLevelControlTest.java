@@ -17,7 +17,9 @@ package org.logaperture.core;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.logaperture.api.BackendInfo;
 import org.logaperture.api.DoctorFinding;
+import org.logaperture.api.EnvironmentReport;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
@@ -32,9 +34,12 @@ import org.logaperture.core.spi.StateStore;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -62,6 +67,7 @@ class AggregateLevelControlTest {
         final HandlerLevelControlService handlerService;
         final DoctorService doctorService;
         final TopService topService;
+        final EnvironmentReportService environmentReportService;
         final ContextControl control;
 
         Ctx(String key) {
@@ -75,8 +81,9 @@ class AggregateLevelControlTest {
                     new HandlerOverrideRegistry(), policy, auditLog, sharedStore, "alice", "jmx");
             doctorService = new DoctorService(adapter, policy);
             topService = new TopService(adapter, policy);
-            control = new ContextControl(
-                    ContextHandle.of(key, key, adapter), service, handlerService, doctorService, topService);
+            environmentReportService = new EnvironmentReportService(adapter, policy);
+            control = new ContextControl(ContextHandle.of(key, key, adapter), service, handlerService,
+                    doctorService, topService, environmentReportService);
         }
     }
 
@@ -202,6 +209,116 @@ class AggregateLevelControlTest {
         assertTrue(findings.stream().anyMatch(f -> "system".equals(f.context())));
         assertTrue(findings.stream().anyMatch(f -> "myapp.war".equals(f.context())));
         assertTrue(findings.stream().allMatch(f -> f.context() != null), "every row is tagged with its context");
+    }
+
+    // --- environmentReport (doc/specs/environment-report.md) -----------------------------------
+
+    @Test
+    void environmentReport_noRegisteredContext_stillCarriesProcessWideFacts() {
+        EnvironmentReport report = aggregate.environmentReport();
+
+        assertNotNull(report.agentVersion());
+        assertEquals(System.getProperty("java.version"), report.javaVersion());
+        assertEquals(System.getProperty("java.vendor"), report.javaVendor());
+        assertEquals(System.getProperty("os.name"), report.osName());
+        assertNull(report.backendName(), "no context registered -- nothing to ask for a backend");
+        assertNull(report.containerName(), "the no-arg constructor -- no container to report");
+    }
+
+    @Test
+    void environmentReport_containerNameAndVersion_fromConstructor() {
+        AggregateLevelControl wildfly = new AggregateLevelControl("WildFly", () -> Optional.of("34.0.1.Final"));
+
+        EnvironmentReport report = wildfly.environmentReport();
+
+        assertEquals("WildFly", report.containerName());
+        assertEquals("34.0.1.Final", report.containerVersion());
+    }
+
+    @Test
+    void environmentReport_containerVersionSupplier_reinvokedOnEveryCall_notCachedAtConstruction() {
+        // doc/specs/environment-report.md: the real-WildFly finding that
+        // motivated the supplier in the first place -- a fact genuinely
+        // unresolvable at construction time (jboss.home.dir not yet visible
+        // to System.getProperty) can still resolve later, once the server
+        // finishes its own bootstrap. A one-shot resolve-at-construction
+        // would bake in "no version" forever; the supplier must not be
+        // memoised.
+        java.util.concurrent.atomic.AtomicReference<Optional<String>> version =
+                new java.util.concurrent.atomic.AtomicReference<>(Optional.empty());
+        AggregateLevelControl wildfly = new AggregateLevelControl("WildFly", version::get);
+
+        assertNull(wildfly.environmentReport().containerVersion(), "not yet resolvable, same as real premain timing");
+
+        version.set(Optional.of("26.1.3.Final"));
+
+        assertEquals("26.1.3.Final", wildfly.environmentReport().containerVersion(),
+                "re-invoked fresh, not cached from the first call");
+    }
+
+    @Test
+    void environmentReport_containerVersionSupplierThrows_containerVersionIsAbsentNotAFailure() {
+        AggregateLevelControl wildfly = new AggregateLevelControl("WildFly", () -> {
+            throw new RuntimeException("simulated jboss.home.dir resolution failure");
+        });
+
+        assertNull(wildfly.environmentReport().containerVersion());
+    }
+
+    @Test
+    void environmentReport_backendInfo_fromFirstContextThatResolvesOne() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        app.adapter.setBackendInfo(new BackendInfo("JBoss LogManager", "3.1.1.Final"));
+        aggregate.register(system.control); // default EMPTY -- nothing to resolve
+        aggregate.register(app.control);
+
+        EnvironmentReport report = aggregate.environmentReport();
+
+        assertEquals("JBoss LogManager", report.backendName());
+        assertEquals("3.1.1.Final", report.backendVersion());
+    }
+
+    @Test
+    void environmentReport_oneContextThrowsOnBackendInfo_stillReturnsUsingTheOtherContext() {
+        // doc/specs/environment-report.md "Failure handling": a misbehaving
+        // adapter must degrade that one fact, never fail the whole command.
+        // Keys chosen so the throwing context sorts (and so is tried) first --
+        // sortedByKey() is alphabetical -- genuinely exercising the catch,
+        // rather than the healthy context's break short-circuiting first.
+        Ctx broken = new Ctx("a-broken");
+        Ctx healthy = new Ctx("z-healthy");
+        broken.adapter.throwOnBackendInfo();
+        healthy.adapter.setBackendInfo(new BackendInfo("JBoss LogManager", "3.1.1.Final"));
+        aggregate.register(broken.control);
+        aggregate.register(healthy.control);
+
+        EnvironmentReport report = aggregate.environmentReport();
+
+        assertEquals("JBoss LogManager", report.backendName());
+        assertEquals("3.1.1.Final", report.backendVersion());
+    }
+
+    @Test
+    void environmentReport_everyContextThrowsOnBackendInfo_backendIsAbsentNotAFailure() {
+        Ctx broken = new Ctx("system");
+        broken.adapter.throwOnBackendInfo();
+        aggregate.register(broken.control);
+
+        EnvironmentReport report = aggregate.environmentReport();
+
+        assertNull(report.backendName());
+        assertNull(report.backendVersion());
+    }
+
+    @Test
+    void environmentReport_diagnosticsLevelProperty_surfacedWhenSet() {
+        System.setProperty("logaperture.diagnostics.level", "DEBUG");
+        try {
+            assertEquals("DEBUG", aggregate.environmentReport().diagnosticsLevel());
+        } finally {
+            System.clearProperty("logaperture.diagnostics.level");
+        }
     }
 
     // --- topLoggers (doc/specs/top.md) -----------------------------------------------------------

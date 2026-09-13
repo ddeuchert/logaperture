@@ -21,6 +21,7 @@ import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.core.DoctorOperations;
+import org.logaperture.core.EnvironmentReportOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
 import org.logaperture.core.TopOperations;
@@ -49,13 +50,16 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     private final HandlerLevelControlOperations handlerOperations;
     private final DoctorOperations doctorOperations;
     private final TopOperations topOperations;
+    private final EnvironmentReportOperations environmentReportOperations;
 
     public LevelControlMXBeanImpl(LevelControlOperations operations, HandlerLevelControlOperations handlerOperations,
-            DoctorOperations doctorOperations, TopOperations topOperations) {
+            DoctorOperations doctorOperations, TopOperations topOperations,
+            EnvironmentReportOperations environmentReportOperations) {
         this.operations = Objects.requireNonNull(operations, "operations");
         this.handlerOperations = Objects.requireNonNull(handlerOperations, "handlerOperations");
         this.doctorOperations = Objects.requireNonNull(doctorOperations, "doctorOperations");
         this.topOperations = Objects.requireNonNull(topOperations, "topOperations");
+        this.environmentReportOperations = Objects.requireNonNull(environmentReportOperations, "environmentReportOperations");
     }
 
     @Override
@@ -123,6 +127,11 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     @Override
     public TopReportData topLoggers(int limit) {
         return TopReportData.from(topOperations.topLoggers(limit));
+    }
+
+    @Override
+    public EnvironmentReportData environmentReport() {
+        return EnvironmentReportData.from(environmentReportOperations.environmentReport());
     }
 
     private static SetLevelOptions toOptions(boolean includeChildren, String reason, String tier, long forSeconds) {

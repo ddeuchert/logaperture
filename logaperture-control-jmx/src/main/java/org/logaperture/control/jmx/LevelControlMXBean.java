@@ -109,4 +109,12 @@ public interface LevelControlMXBean {
      *              <= 0} means "every tracked logger"
      */
     TopReportData topLoggers(int limit);
+
+    /**
+     * {@code logctl env} — a read-only environment report for a bug report
+     * (doc/specs/environment-report.md). Never mutates anything; requires
+     * only the {@code VIEW} capability. A fact this JVM can't resolve is
+     * {@code null}, never a failure.
+     */
+    EnvironmentReportData environmentReport();
 }

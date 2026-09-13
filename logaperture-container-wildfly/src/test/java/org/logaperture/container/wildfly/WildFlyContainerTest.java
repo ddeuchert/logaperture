@@ -181,4 +181,18 @@ class WildFlyContainerTest {
             assertTrue(info.overrideActive());
         }
     }
+
+    @Test
+    void environmentReport_containerNameIsAlwaysWildFly_evenWithNoKnownVersion() {
+        // newHost() goes through the no-version 3-arg constructor -- doc/specs/
+        // environment-report.md: this class only ever represents WildFly, so the
+        // container name must never be left null just because no version is known
+        // (unlike backendName/backendVersion, which genuinely can be absent).
+        try (WildFlyContainer host = newHost()) {
+            AggregateLevelControl ops = install(host);
+
+            assertEquals("WildFly", ops.environmentReport().containerName());
+            assertNull(ops.environmentReport().containerVersion(), "no version was supplied to this host");
+        }
+    }
 }
