@@ -39,12 +39,14 @@ public final class EnvironmentReportData {
     private final String containerName;
     private final String containerVersion;
     private final String diagnosticsLevel;
+    private final String stateFilePath;
 
     @ConstructorProperties({"agentVersion", "javaVersion", "javaVendor", "osName", "osVersion", "osArch",
-            "backendName", "backendVersion", "containerName", "containerVersion", "diagnosticsLevel"})
+            "backendName", "backendVersion", "containerName", "containerVersion", "diagnosticsLevel",
+            "stateFilePath"})
     public EnvironmentReportData(String agentVersion, String javaVersion, String javaVendor, String osName,
             String osVersion, String osArch, String backendName, String backendVersion, String containerName,
-            String containerVersion, String diagnosticsLevel) {
+            String containerVersion, String diagnosticsLevel, String stateFilePath) {
         this.agentVersion = agentVersion;
         this.javaVersion = javaVersion;
         this.javaVendor = javaVendor;
@@ -56,6 +58,7 @@ public final class EnvironmentReportData {
         this.containerName = containerName;
         this.containerVersion = containerVersion;
         this.diagnosticsLevel = diagnosticsLevel;
+        this.stateFilePath = stateFilePath;
     }
 
     public static EnvironmentReportData from(EnvironmentReport report) {
@@ -70,7 +73,8 @@ public final class EnvironmentReportData {
                 report.backendVersion(),
                 report.containerName(),
                 report.containerVersion(),
-                report.diagnosticsLevel());
+                report.diagnosticsLevel(),
+                report.stateFilePath());
     }
 
     public String getAgentVersion() {
@@ -115,5 +119,9 @@ public final class EnvironmentReportData {
 
     public String getDiagnosticsLevel() {
         return diagnosticsLevel;
+    }
+
+    public String getStateFilePath() {
+        return stateFilePath;
     }
 }

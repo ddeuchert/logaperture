@@ -39,8 +39,10 @@ import org.logaperture.core.spi.StateStore;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -67,7 +69,7 @@ public final class NoneContainer implements AutoCloseable {
     private final CapabilityPolicy policy;
     private final AuditLog auditLog;
     private final StateStore stateStore;
-    private final AggregateLevelControl aggregate = new AggregateLevelControl();
+    private final AggregateLevelControl aggregate;
     private final ScheduledExecutorService sweeper;
 
     public NoneContainer(CapabilityPolicy policy, AuditLog auditLog) {
@@ -79,6 +81,10 @@ public final class NoneContainer implements AutoCloseable {
         this.policy = policy;
         this.auditLog = auditLog;
         this.stateStore = openStateStore();
+        // No container to name -- the none baseline -- but the state file
+        // fact is universal (doc/specs/environment-report.md "State file").
+        this.aggregate = new AggregateLevelControl(null, Optional::empty,
+                stateStore.location().map(Path::toString).orElse(null));
 
         this.sweeper = Executors.newSingleThreadScheduledExecutor(NoneContainer::newDaemonThread);
         long intervalMillis = sweepInterval.toMillis();

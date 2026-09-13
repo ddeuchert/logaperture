@@ -19,7 +19,9 @@ import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.LevelOverride;
 
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Pluggable persistence for {@code --for}/{@code --sticky} overrides — see
@@ -55,6 +57,17 @@ public interface StateStore {
 
     /** Removes every persisted entry, logger and handler alike. */
     void clear();
+
+    /**
+     * The on-disk location this store persists to, fully qualified — for
+     * {@code logctl env} (doc/specs/environment-report.md "State file").
+     * Default empty, for {@link #noOp()} and any future implementation with
+     * no single filesystem location to name (e.g. a shared/external store,
+     * doc/logaperture-spec.md §18.6).
+     */
+    default Optional<Path> location() {
+        return Optional.empty();
+    }
 
     /**
      * A {@link StateStore} that persists nothing — the degraded-mode target

@@ -100,6 +100,18 @@ class FileStateStoreTest {
     }
 
     @Test
+    void location_isTheFullyQualifiedStateFilePath() throws IOException {
+        // doc/specs/environment-report.md "State file".
+        try (FileStateStore store = FileStateStore.open()) {
+            Path location = store.location().orElseThrow();
+
+            assertTrue(location.isAbsolute(), location.toString());
+            assertTrue(location.startsWith(home.resolve("instances")), location.toString());
+            assertTrue(location.toString().endsWith(".state.yaml"), location.toString());
+        }
+    }
+
+    @Test
     void remove_isANoOpWhenTheLoggerWasNeverPersisted() throws IOException {
         try (FileStateStore store = FileStateStore.open()) {
             store.remove("com.acme.NeverThere"); // must not throw

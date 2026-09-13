@@ -8,7 +8,8 @@ six decisions below were signed off with the recommendation taken as-is, via the
 review artifact per CLAUDE.md's sign-off process; Decision #3's version source was revised
 twice, post-implementation, after real-world feedback (a user got no version at all against
 real WildFly) surfaced first a wrong file-path assumption and then a deeper premain-timing bug
-(below).
+(below). A small, no-fresh-sign-off addition followed: the fully-qualified **state file** path
+("State file"), confirmed against real WildFly to match exactly where overrides are written.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §17 (roadmap — "Pulled forward:
 an environment report for bug reports"), §4.5 (self-diagnostics — `-Dlogaperture.diagnostics.level`),
@@ -27,8 +28,9 @@ After this feature, the user will be able to:
 
 - Run **`logctl env`** against a live JVM and get one pasteable block of facts for a bug
   report: the LogAperture agent and `logctl` versions, the Java version and vendor, the OS and
-  architecture, the detected logging backend and its version, and the detected application
-  framework or container and its version.
+  architecture, the detected logging backend and its version, the detected application
+  framework or container and its version, and the fully-qualified path of the file this JVM
+  persists overrides to.
 - Paste that block straight into an issue instead of being asked the same handful of
   follow-up questions every time.
 - Get the same facts as `--json`, for attaching to an automated report or a support ticket.
@@ -89,11 +91,16 @@ Java                 21.0.4  Eclipse Adoptium
 OS                   Linux 6.10.3  x86_64
 Logging backend      JBoss LogManager 3.1.1.Final
 Framework/container  WildFly 34.0.1.Final
+Diagnostics level    —
+State file           /home/alice/.logaperture/instances/8f2c1a-myapp.state.yaml
 ```
 
 A fact this JVM/environment doesn't resolve is left out of the block entirely (Decision #3),
 not printed as a literal `unknown` line — consistent with `doctor`'s "skip silently, don't
-manufacture a value" discipline for adapter facts that don't apply.
+manufacture a value" discipline for adapter facts that don't apply. **State file** is the one
+exception, same as **Diagnostics level**: shown either way, `—` when persistence is degraded to
+session-only, since "no persistence" is itself a useful fact for a bug report, not noise to
+suppress.
 
 `--json` emits one flat object, `EnvironmentReportData` (below). Phone-test clean: no `--json`
 addition changes that.
@@ -114,6 +121,8 @@ EnvironmentReport {
     containerName: String?             // e.g. "WildFly" -- null for the "none" baseline
     containerVersion: String?          // best-effort, null if not resolvable
     diagnosticsLevel: String?          // -Dlogaperture.diagnostics.level, pending Decision #5
+    stateFilePath: String?             // fully-qualified StateStore location, null if degraded
+                                        // to session-only or this store names no single file
 }
 ```
 
@@ -172,11 +181,63 @@ new per-context `EnvironmentReportService` (`core`, alongside `DoctorService`/`T
 wraps just `adapter.backendInfo()`; `environmentReport()` takes the first non-empty one across
 registered contexts.
 
+### State file (added post-implementation, small addition — no fresh sign-off needed)
+
+One more process-wide fact, added once real use surfaced it as missing: the fully-qualified
+path of the file this JVM persists `--for`/`--sticky` overrides to. Small enough to skip a
+fresh artifact review (CLAUDE.md's own bar for one) — one naming question, confirmed inline
+("state file", matching this codebase's existing vocabulary — `FileStateStore`, `.state.yaml`,
+§6.3 "State store" — over "data file," which appears nowhere else).
+
+New `StateStore` SPI method, same "empty unless overridden" discipline as `backendInfo()`/
+`version()`:
+
+```java
+/** The on-disk location this store persists to, fully qualified, or empty
+ *  for one with no single filesystem location to name (StateStore.noOp(),
+ *  a future shared/external store). */
+default Optional<Path> location() {
+    return Optional.empty();
+}
+```
+
+`FileStateStore` overrides it with its already-resolved, already-absolute `stateFile`. Unlike
+`containerVersion`, this needs no supplier indirection: the `StateStore` is fully opened
+(`FileStateStore.open()`, including resolving `-Dlogaperture.home`) *before* either composition
+root (`NoneContainer`/`WildFlyContainer`) ever constructs its `AggregateLevelControl` — there is
+no equivalent to `jboss.home.dir`'s premain-timing gap here, since `-Dlogaperture.home` is a
+property this project owns end to end, never re-applied later by someone else's bootstrap code.
+Confirmed directly: manually verified against the real `dev/wildfly` environment (a
+`-Dlogaperture.home` pointed at a container-writable path, per that environment's own
+`docker-compose.yml` comment about the image's real `$HOME` not being writable) that the
+reported path is exactly where the file is written once an override is actually persisted, not
+merely a plausible-looking guess.
+
+**A real bug this fact caught, in the test harness rather than the feature:** `WildFlyContainerIT`
+itself never set `-Dlogaperture.home`, so it inherited the same `$HOME`-not-writable problem
+`dev/wildfly`'s own compose file already documents a fix for — every run of that suite had
+silently been degrading to session-only persistence (`WildFlyContainer.openStateStore()`'s
+existing `AccessDeniedException` → `StateStore.noOp()` fail-open path) and nothing in the suite
+had ever asserted persistence strongly enough to notice, since none of its scenarios restart the
+whole JVM. `env`'s own cross-process test caught it immediately (`State file —` where a real
+path was expected) the first time it ran for real. Fixed by giving `WildFlyContainerIT` the same
+`-Dlogaperture.home` `dev/wildfly` already carries.
+
+One process-wide value, threaded through `AggregateLevelControl`'s constructor as a plain
+(non-deferred) `String`, alongside `containerName` — both composition roots resolve their
+`StateStore` before constructing their `AggregateLevelControl` already, so the ordering was
+already right; `none` gains this fact for the first time too (it previously used the neutral
+static `new AggregateLevelControl()`, which now exists only for tests that don't care about
+either process-wide fact).
+
 ## Failure handling
 
 - A fact this environment doesn't resolve (adapter returns `BackendInfo.EMPTY`, container
-  `version()` empty, a system property somehow absent) is **left out of the rendered block and
-  `null` in JSON** — never a placeholder value, never a command failure.
+  `version()` empty, a system property somehow absent, `StateStore.location()` empty) is
+  rendered as `null` in JSON; in text, every fact except **Diagnostics level** and **State
+  file** is left out of the block entirely rather than shown as a placeholder — those two are
+  shown either way (`—` when absent), since "not set" / "no persistence" are themselves useful
+  facts for a bug report, not noise to suppress.
 - `logctl env` never exits non-zero for a missing fact; a non-zero exit is reserved for "the
   command itself failed" (couldn't attach, JMX error), same convention as `doctor`.
 
@@ -200,6 +261,17 @@ registered contexts.
   confirm the real backend/container facts resolve (mirroring `WildFlyContainerIT`'s pattern
   in `doctor.md`/`top.md`).
 - `logctl env --json` round-trips through a JSON parser with the documented shape.
+- Unit — `FileStateStore.location()` resolves the real, already-absolute state file path.
+- Unit — `none`/WildFly composition roots (`NoneContainerTest`/`WildFlyContainerTest`):
+  `environmentReport().stateFilePath()` is the real state file path under that test's temp
+  `logaperture.home`, absolute, ending in `.state.yaml`.
+- Unit — core: `environmentReport()` reports `stateFilePath` as absent (`null`), never a
+  failure, when constructed without one (the no-arg constructor's own case).
+- Cross-process: `logctl env`/`--json` against real standalone WildFly assert an actual
+  absolute path ending in `.state.yaml`, not merely that the "State file" line is present —
+  the same lesson Decision #3's revision note already drew about weak assertions. Manually
+  verified, additionally, that the reported path is where the file is actually written once an
+  override is persisted (`dev/wildfly`, not just `logaperture-it`).
 
 ## Decisions (resolved at sign-off)
 
@@ -310,3 +382,9 @@ Met:
 - A fact this environment can't resolve is absent from both renderings, never a command
   failure — confirmed by a unit test exercising a throwing/empty adapter and container.
 - No capability beyond `view` is required.
+- `logctl env` reports the JVM's actual state file path, fully qualified, matching where
+  overrides are really persisted — confirmed unit-tested (`FileStateStoreTest`,
+  `NoneContainerTest`, `WildFlyContainerTest`), cross-process (`WildFlyContainerIT`, asserting
+  the real path shape, not just line presence), and manually verified end to end against
+  `dev/wildfly` (set a `--sticky` override, confirmed the reported path is exactly the file
+  that appeared on disk with that override in it).

@@ -117,9 +117,22 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     private final Supplier<Optional<String>> containerVersion;
 
-    /** No container to report — the {@code none} baseline (doc/specs/environment-report.md Decision #2's "null for none"). */
+    /**
+     * The fully-qualified path of this JVM's {@code StateStore} location —
+     * doc/specs/environment-report.md "State file". Unlike {@link
+     * #containerVersion}, resolved once and stored plainly: it comes from
+     * the composition root's already-open {@code StateStore} (opened
+     * before this class is ever constructed), not from a fact that might
+     * only become resolvable after the container finishes its own
+     * bootstrap. {@code null} when this JVM's {@code StateStore} has no
+     * single filesystem location to name (session-only degraded mode, or a
+     * future non-file-backed store).
+     */
+    private final String stateFilePath;
+
+    /** No container, no known state file — the minimal construction tests reach for; production always supplies both (even {@code none} passes its real {@code StateStore} location through the 3-arg constructor). */
     public AggregateLevelControl() {
-        this(null, Optional::empty);
+        this(null, Optional::empty, null);
     }
 
     /**
@@ -128,10 +141,15 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      *                         for {@code none}
      * @param containerVersion supplies its best-effort version on demand,
      *                         or {@code Optional.empty()}; see the field doc
+     * @param stateFilePath    this JVM's {@code StateStore} location,
+     *                         fully qualified, or {@code null}; see the
+     *                         field doc
      */
-    public AggregateLevelControl(String containerName, Supplier<Optional<String>> containerVersion) {
+    public AggregateLevelControl(String containerName, Supplier<Optional<String>> containerVersion,
+            String stateFilePath) {
         this.containerName = containerName;
         this.containerVersion = Objects.requireNonNull(containerVersion, "containerVersion");
+        this.stateFilePath = stateFilePath;
     }
 
     /**
@@ -327,7 +345,8 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 backend.version(),
                 containerName,
                 resolveContainerVersion(),
-                System.getProperty(DIAGNOSTICS_LEVEL_PROPERTY));
+                System.getProperty(DIAGNOSTICS_LEVEL_PROPERTY),
+                stateFilePath);
     }
 
     /** {@link #containerVersion}'s supplier is third-party code (a {@code ContainerIntegration}'s own); a throw there must degrade the same as a throwing adapter, never fail the whole report. */

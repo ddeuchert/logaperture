@@ -34,6 +34,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * The one {@link StateStore} implementation this slice ships — a single
@@ -163,6 +164,22 @@ public final class FileStateStore implements StateStore, Closeable {
             handlerCache.clear();
             persist();
         }
+    }
+
+    /**
+     * {@code toAbsolutePath()} is doing real work here, not a defensive
+     * no-op: {@link #resolveHome()}'s default ({@code ${user.home}/
+     * .logaperture}) is always absolute, but its {@code -Dlogaperture.home}
+     * override is used verbatim (no resolution against it) -- a relative
+     * value there makes {@code stateFile} itself relative, resolved against
+     * whatever the JVM's working directory happens to be. {@code logctl
+     * env} promises a *fully-qualified* path (doc/specs/environment-report.md
+     * "State file"), so this must stay, even though {@code -Dlogaperture.home}
+     * is documented/conventionally used as an absolute path in practice.
+     */
+    @Override
+    public Optional<Path> location() {
+        return Optional.of(stateFile.toAbsolutePath());
     }
 
     /**

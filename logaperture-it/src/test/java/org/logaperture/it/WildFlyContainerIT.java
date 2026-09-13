@@ -59,8 +59,14 @@ import static org.junit.jupiter.api.Assertions.fail;
  *
  * <p>Harness notes from the shakeout: this image ignores {@code
  * JAVA_OPTS_APPEND} (so the container command appends a {@code JAVA_OPTS}
- * line to {@code standalone.conf}); and {@code -Dlogaperture.sweep.seconds=3}
- * tightens the verification-sweep window so the management-change test is fast.
+ * line to {@code standalone.conf}); {@code -Dlogaperture.sweep.seconds=3}
+ * tightens the verification-sweep window so the management-change test is fast;
+ * and {@code -Dlogaperture.home=...} points the state store at a
+ * runtime-writable directory -- this image's {@code $HOME} is owned by
+ * {@code root}, not the {@code jboss} user the agent actually runs as, so
+ * without it every run of this suite silently persisted nothing at all
+ * (caught only once doc/specs/environment-report.md's "State file" fact gave
+ * this gap something concrete to assert against).
  */
 @Testcontainers(disabledWithoutDocker = true)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -91,8 +97,17 @@ class WildFlyContainerIT {
         // its --add-opens/--add-exports -- so append one line to standalone.conf.
         // -Dlogaperture.sweep.seconds=3 tightens the verification-sweep window
         // so the management-CLI-collision test does not wait 30s.
+        // -Dlogaperture.home points the agent's state store at a runtime-writable
+        // dir, same fix and same reason as dev/wildfly/docker-compose.yml: this
+        // image's $HOME (/opt/jboss) is owned by root, not writable by the jboss
+        // user, so the default ${user.home}/.logaperture silently degrades every
+        // run of this suite to session-only persistence (AccessDeniedException,
+        // caught by WildFlyContainer.openStateStore()) -- undetected until
+        // doc/specs/environment-report.md's "State file" fact gave it something
+        // concrete to assert against and this suite's own env test caught it.
         String bootScript = "echo 'JAVA_OPTS=\"$JAVA_OPTS -javaagent:/opt/logaperture-agent.jar"
-                + " -Dlogaperture.sweep.seconds=3\"'"
+                + " -Dlogaperture.sweep.seconds=3"
+                + " -Dlogaperture.home=/opt/jboss/wildfly/standalone/tmp/logaperture\"'"
                 + " >> \"$JBOSS_HOME/bin/standalone.conf\" && exec \"$JBOSS_HOME/bin/standalone.sh\" -b 0.0.0.0";
 
         wildfly = new GenericContainer<>(image)
@@ -410,6 +425,11 @@ class WildFlyContainerIT {
         assertTrue(out.contains("Framework/container") && out.contains("WildFly 26.1.3.Final"),
                 "expected the real container line with its actual version, not just the name:\n" + out);
         assertTrue(out.contains("Diagnostics level"), "shown either way, per Decision #5:\n" + out);
+        // doc/specs/environment-report.md "State file" -- an absolute path
+        // ending in .state.yaml, not the dash placeholder a degraded/no-op
+        // store would render.
+        assertTrue(out.matches("(?s).*State file\\s+/\\S*\\.state\\.yaml.*"),
+                "expected a real, absolute state file path:\n" + out);
     }
 
     @Test
@@ -425,6 +445,8 @@ class WildFlyContainerIT {
         assertTrue(out.contains("\"containerName\":\"WildFly\""), out);
         assertTrue(out.contains("\"containerVersion\":\"26.1.3.Final\""),
                 "expected the real container version, not absent:\n" + out);
+        assertTrue(out.matches("(?s).*\"stateFilePath\":\"/\\S*\\.state\\.yaml\".*"),
+                "expected a real, absolute state file path, not absent:\n" + out);
     }
 
     // --- probe WAR ------------------------------------------------------------------------------

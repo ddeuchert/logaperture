@@ -38,6 +38,7 @@ import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -193,6 +194,21 @@ class WildFlyContainerTest {
 
             assertEquals("WildFly", ops.environmentReport().containerName());
             assertNull(ops.environmentReport().containerVersion(), "no version was supplied to this host");
+        }
+    }
+
+    @Test
+    void environmentReport_stateFilePath_isTheRealFullyQualifiedStateFile() {
+        // doc/specs/environment-report.md "State file".
+        try (WildFlyContainer host = newHost()) {
+            AggregateLevelControl ops = install(host);
+
+            String stateFilePath = ops.environmentReport().stateFilePath();
+
+            assertNotNull(stateFilePath);
+            assertTrue(Path.of(stateFilePath).isAbsolute(), stateFilePath);
+            assertTrue(stateFilePath.startsWith(home.resolve("instances").toString()), stateFilePath);
+            assertTrue(stateFilePath.endsWith(".state.yaml"), stateFilePath);
         }
     }
 }

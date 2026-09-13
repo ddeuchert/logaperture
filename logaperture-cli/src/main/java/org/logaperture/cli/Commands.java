@@ -381,6 +381,11 @@ final class Commands {
             // question in most support threads, closed in the same paste.
             rows.add(List.of("Diagnostics level",
                     report.getDiagnosticsLevel() != null ? report.getDiagnosticsLevel() : Format.NONE));
+            // Same "shown either way" convention -- doc/specs/environment-report.md
+            // "State file": absent persistence is itself diagnostically useful,
+            // not a fact to quietly drop the line for.
+            rows.add(List.of("State file",
+                    report.getStateFilePath() != null ? report.getStateFilePath() : Format.NONE));
             out.println(Format.table(rows));
             return CliError.OK;
         };
