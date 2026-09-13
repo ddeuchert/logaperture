@@ -73,9 +73,10 @@ this one). Splitting the pattern on `.`, at most one leading segment and/or one 
 segment may be exactly `*`; every other segment must be plain literal text with no `*`
 anywhere in it. Concretely:
 
-- Valid: `org.apache.*` (matches one-or-more segments under `org.apache`, never
-  `org.apache` itself), `*.apache.writer` (one-or-more leading segments before
-  `apache.writer`), `*.apache.writer.*` (both).
+- Valid: `org.apache.*` (matches `org.apache` itself and zero-or-more segments under it —
+  a true superset of `includeChildren`'s old "the named logger and its descendants"),
+  `*.apache.writer` (zero-or-more leading segments before `apache.writer`, including
+  `apache.writer` alone), `*.apache.writer.*` (both).
 - Invalid, rejected as a usage error: `org.*apache` (a `*` mixed into a literal segment),
   `org.*.writer` (a `*` segment that isn't leading or trailing), bare `*` or `*.*` (no
   literal segment at all — indistinguishable from no filter, and a standing rule built on
@@ -109,7 +110,7 @@ out of scope here.
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `includeChildren` | boolean | `false` | Mirrors Logback's own hierarchy semantics (§5) — does not change how the level applies, only whether it is also applied to loggers already known to be descendants at call time. **Superseded (planned, not this slice):** top-level §18.7 (issue [#41](https://github.com/ddeuchert/logaperture/issues/41)) plans to retire this option from the operations API entirely once its replacement ships — a trailing-wildcard pattern (`org.apache.*`, matching one-or-more descendant segments, *not* `org.apache` itself) becomes the one mechanism for "this logger's descendants," for every caller, CLI or JMX. This stays in place, unchanged, until that replacement (#41's standing-rule apply mechanism) actually exists — retiring it any earlier would leave a gap where neither mechanism works. Also note it's descendants-only, not a strict superset of today's option — a caller wanting both the named logger and its descendants will target both `org.apache` and `org.apache.*`. |
+| `includeChildren` | boolean | `false` | Mirrors Logback's own hierarchy semantics (§5) — does not change how the level applies, only whether it is also applied to loggers already known to be descendants at call time. **Superseded (planned, not this slice):** top-level §18.7 (issue [#41](https://github.com/ddeuchert/logaperture/issues/41)) plans to retire this option from the operations API entirely once its replacement ships — a trailing-wildcard pattern (`org.apache.*`, matching `org.apache` itself and zero-or-more descendant segments) becomes the one mechanism for "this logger and its descendants," for every caller, CLI or JMX — a true superset of this option's own semantics, not merely an approximation of them. This stays in place, unchanged, until that replacement (#41's standing-rule apply mechanism) actually exists — retiring it any earlier would leave a gap where neither mechanism works. |
 | `reason` | string | `null` | Propagated to the audit log (§9.7). Not required by this slice's code, but every CLI/JMX caller in later slices should be encouraged to supply one. |
 
 No `expiresIn` in this slice — everything is implicitly `--session`. The field is
@@ -264,7 +265,7 @@ Minimum coverage before this slice is done:
 - Filter matching: empty/`null` returns everything; a no-wildcard filter is a prefix
   (`.` and other regex metacharacters in it are literal, not wildcards); a pattern with
   `*` matches per the segment-anchored grammar above — a leading `*.`, a trailing `.*`,
-  or both, one-or-more segments each side, nothing else. Invalid patterns (`org.*apache`,
+  or both, zero-or-more segments each side, nothing else. Invalid patterns (`org.*apache`,
   a middle `*` segment, bare `*`, `*.*`, anything containing `?`) are rejected with a
   specific, actionable message, not silently matched or silently treated as literal.
   Unit-tested on the matcher and at the `listLoggers` service seam, including the
