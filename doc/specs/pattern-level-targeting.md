@@ -232,6 +232,14 @@ deliberate step `logctl`'s prompt embodies. See Decision #2.
    on a read from a stdin nothing will ever write to (Decision #4).
 5. On "y", call `setLevel` again with `confirmed = true`.
 
+`logctl` itself never triggers `ConfirmationRequiredException` in normal operation — its own
+`setLevel` call always carries `confirmed = true` by the time it's made (step 4 or 5). `Main`
+still catches it explicitly anyway, alongside its existing `CapabilityDeniedException`/
+`IllegalArgumentException` catches, and prints its message plainly rather than falling through
+to the generic unexpected-failure path — belt-and-suspenders for a race between the preview
+and the apply call (a match set that changed in between) or a future bug, not something this
+slice's tests need to provoke deliberately.
+
 `logctl reset <pattern>` prompts for nothing — matching the project's existing asymmetry
 (reset reverts a bounded, current state; apply creates an unbounded, future-reaching one) and
 `logctl reset --all`'s existing no-prompt convention.
@@ -274,6 +282,11 @@ SetLevelResult {                                     — logaperture-api, change
 ConfirmationRequiredException                        — logaperture-core, new
     pattern: String
     matches: List<String>       // currently-known logger names the pattern resolved to
+    // getMessage() renders both fields as readable text (Decision #2a), e.g.:
+    // "3 matches for '*.deployment.scanner': [a, b, c]. Re-invoke with confirmed=true
+    //  to apply this standing rule." -- so even a raw jconsole invocation, with no
+    //  typed client to catch the exception, gets an actionable message rather than
+    //  an opaque failure.
 ```
 
 ### `LevelControlOperations` / `LevelControlMXBean`
@@ -292,11 +305,22 @@ SetLevelResultData setLevel(
 ```
 
 `includeChildren` is gone from the parameter list entirely, not defaulted or ignored.
-`SetLevelResultData` gains a list-shaped `overrides` field (renamed from the singular
-`override`) and a `confirmationRequired` + `matches` pair of fields so a raw JMX caller can
-read a `ConfirmationRequiredException` result without needing exception-based flow (JMX
-exception marshaling is real but clunkier for a routine "not yet confirmed" outcome than a
-plain return value) — **open, see Decision #2a**.
+`SetLevelResultData` gains only a list-shaped `overrides` field (renamed from the singular
+`override`) — nothing more. **Decision #2a, resolved:** `ConfirmationRequiredException`
+crosses the JMX boundary the same way `CapabilityDeniedException` already does today (as a
+`RuntimeMBeanException`, unwrapped back to itself by `JMX.newMXBeanProxy` for a typed caller —
+`logaperture-cli`'s own `Main.java` fix for exactly this unwrapping behavior is what this
+relies on) — not as a "successful" return value carrying a `confirmationRequired` flag.
+`SetLevelResultData` therefore only ever describes a mutation that actually happened; there is
+no return shape a careless caller could mistake for one.
+
+Rejected the return-value alternative for consistency: every other refusal in this API
+(`CapabilityDeniedException`, an invalid filter's `IllegalArgumentException`,
+`UnknownHandlerException`) is already an exception, not a flagged return value, and an
+uncaught exception fails loudly by default where a wrong assumption about an unchecked return
+field fails silently. The JMX-marshaling concern that originally motivated considering a
+return value doesn't hold up in practice — this project's own `IllegalArgumentException` and
+`CapabilityDeniedException` already cross a real `JMX.newMXBeanProxy` connection intact.
 
 ## Versioning
 
