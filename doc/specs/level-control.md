@@ -79,18 +79,25 @@ anywhere in it. Concretely:
 - Invalid, rejected as a usage error: `org.*apache` (a `*` mixed into a literal segment),
   `org.*.writer` (a `*` segment that isn't leading or trailing), bare `*` or `*.*` (no
   literal segment at all — indistinguishable from no filter, and a standing rule built on
-  one would match every logger that will ever exist).
+  one would match every logger that will ever exist), and any pattern with an empty
+  segment (`a..b`, a leading `.`, or a trailing `.`) — a typo like `.*` would otherwise be
+  silently "valid" while matching no real logger name.
 - `?` is no longer a wildcard — a filter containing it is rejected the same way, not
   silently treated as a literal character (that would be a silent behavior change from
   what `?` used to mean).
 
 The error names the specific problem and suggests the fix, matching this project's
-existing error tone (§14.5, cli-transport.md's agent-version-mismatch errors): e.g.
-`invalid filter '*infinispan*': wildcard must be its own leading or trailing segment
-(try '*.infinispan')`. `*infinispan*` (mid-segment) stops matching; `*.infinispan` (whole
-trailing segment) — already the correct form for a single-word abbreviated category with
-no dots, since `infinispan` is a whole segment — keeps working. One grammar across lookup
-and, later, the apply/reset commands (#41, #42) rather than two.
+existing error tone (§14.5, cli-transport.md's agent-version-mismatch errors), and the
+direction of a single-sided star matters to the suggestion: `invalid filter
+'infinispan*': wildcard must be its own leading or trailing segment (try
+'infinispan.*')` for a trailing star ("starts with"), or `(try '*.infinispan')` for a
+leading star ("ends with") — the two are opposite matches, so the hint must not suggest
+one when the user wrote the other. A star on *both* sides (`*infinispan*`, "contains")
+has no anchored equivalent at all — the message says so plainly and names both
+single-sided alternatives rather than guessing one. `*.infinispan` (whole trailing
+segment) — already the correct form for a single-word abbreviated category with no dots,
+since `infinispan` is a whole segment — keeps working unchanged. One grammar across
+lookup and, later, the apply/reset commands (#41, #42) rather than two.
 
 Only **Live** and **Known** states apply
 in this slice (§8.5) — inferred/class-scanning discovery is a later enhancement (§8.6),

@@ -76,12 +76,46 @@ class NameFilterTest {
     }
 
     @Test
-    void mixedSingleSegmentSuggestsTheAnchoredForm() {
-        // The old *word* / *word / word* forms -- the common migration case --
-        // get a specific "try" suggestion rather than a generic rejection.
+    void trailingStarSuggestsATrailingAnchoredSegment() {
+        // Old "word*" meant "starts with word" -- the anchored equivalent
+        // anchors word as a LEADING literal segment ('word.*'), not a
+        // trailing one ('*.word'), which is the opposite match.
+        IllegalArgumentException e =
+                assertThrows(IllegalArgumentException.class, () -> NameFilter.matches("infinispan*", "x"));
+        assertTrue(e.getMessage().contains("'infinispan.*'"), e.getMessage());
+        assertFalse(e.getMessage().contains("'*.infinispan'"), e.getMessage());
+    }
+
+    @Test
+    void leadingStarSuggestsALeadingAnchoredSegment() {
+        // Old "*word" meant "ends with word" -- the anchored equivalent
+        // anchors word as a TRAILING literal segment ('*.word').
+        IllegalArgumentException e =
+                assertThrows(IllegalArgumentException.class, () -> NameFilter.matches("*infinispan", "x"));
+        assertTrue(e.getMessage().contains("'*.infinispan'"), e.getMessage());
+    }
+
+    @Test
+    void bothSidedStarHasNoAnchoredEquivalent() {
+        // Old "*word*" meant "contains word" -- there is no single anchored
+        // pattern equivalent to a substring match, so the message says so
+        // and names both single-sided alternatives instead of guessing one.
         IllegalArgumentException e =
                 assertThrows(IllegalArgumentException.class, () -> NameFilter.matches("*infinispan*", "x"));
-        assertTrue(e.getMessage().contains("*.infinispan"), e.getMessage());
+        assertTrue(e.getMessage().contains("no anchored equivalent"), e.getMessage());
+        assertTrue(e.getMessage().contains("'*.infinispan'"), e.getMessage());
+        assertTrue(e.getMessage().contains("'infinispan.*'"), e.getMessage());
+    }
+
+    @Test
+    void midWordStarGetsTheGenericHint() {
+        // "foo*bar" isn't a clean prefix or suffix migration case -- stripping
+        // the '*' would concatenate unrelated halves into a word the user
+        // never typed, so this falls back to the generic rejection instead
+        // of a specific (and misleading) suggestion.
+        IllegalArgumentException e =
+                assertThrows(IllegalArgumentException.class, () -> NameFilter.matches("foo*bar", "x"));
+        assertFalse(e.getMessage().contains("foobar"), e.getMessage());
     }
 
     @Test
@@ -100,9 +134,37 @@ class NameFilterTest {
     }
 
     @Test
+    void emptySegmentsAreRejected() {
+        // A leading/trailing/doubled dot produces an empty segment that used
+        // to be silently treated as literal text -- accepted as "valid" yet
+        // compiling to a regex that can never match any real logger name.
+        assertThrows(IllegalArgumentException.class, () -> NameFilter.matches("a..*", "x"));
+        assertThrows(IllegalArgumentException.class, () -> NameFilter.matches(".*", "x"));
+        assertThrows(IllegalArgumentException.class, () -> NameFilter.matches("*.", "x"));
+    }
+
+    @Test
     void questionMarkIsNoLongerAWildcard() {
         assertThrows(IllegalArgumentException.class, () -> NameFilter.matches("com.acme.Worker?", "com.acme.Worker1"));
         // Not silently treated as a literal character either, even with no '*' present.
         assertThrows(IllegalArgumentException.class, () -> NameFilter.matches("com.acme?", "com.acme?"));
+    }
+
+    @Test
+    void literalSegmentsWithRegexMetacharactersAreTreatedLiterally() {
+        assertTrue(NameFilter.matches("org.(weird).*", "org.(weird).Foo"));
+        assertFalse(NameFilter.matches("org.(weird).*", "org.weird.Foo"));
+    }
+
+    @Test
+    void compileValidatesOnceAndReturnsAReusableMatcher() {
+        java.util.function.Predicate<String> matcher = NameFilter.compile("*.infinispan");
+        assertTrue(matcher.test("org.jboss.as.clustering.infinispan"));
+        assertFalse(matcher.test("com.acme.Worker"));
+    }
+
+    @Test
+    void compileValidatesEvenWhenTheMatcherIsNeverTested() {
+        assertThrows(IllegalArgumentException.class, () -> NameFilter.compile("org.*apache"));
     }
 }

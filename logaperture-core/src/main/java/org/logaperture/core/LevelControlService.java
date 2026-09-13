@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 
 /**
  * The level-control engine — framework- and agent-agnostic, per
@@ -94,12 +95,17 @@ public final class LevelControlService implements LevelControlOperations {
     public List<LoggerInfo> listLoggers(String filter) {
         requireCapability(Capability.VIEW);
 
+        // Validated and compiled once, up front -- so an invalid filter is
+        // rejected even when there happen to be zero candidate names below,
+        // and a valid one isn't re-parsed/re-compiled per name in the loop.
+        Predicate<String> matchesFilter = NameFilter.compile(filter);
+
         TreeSet<String> names = new TreeSet<>(adapter.knownLoggerNames());
         names.addAll(overrides.all().keySet());
 
         List<LoggerInfo> result = new ArrayList<>();
         for (String name : names) {
-            if (!NameFilter.matches(filter, name)) {
+            if (!matchesFilter.test(name)) {
                 continue;
             }
             Optional<Level> configured = baselines.captureIfAbsent(name, adapter);

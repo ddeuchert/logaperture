@@ -72,11 +72,37 @@ public final class Main {
         } catch (CliError e) {
             err.println(e.getMessage());
             return e.exitCode();
+        } catch (CapabilityDeniedException denied) {
+            // The real transport: controlPlane.mbean() is a JMX.newMXBeanProxy
+            // (AgentConnection), and MBeanServerInvocationHandler unwraps a
+            // RuntimeMBeanException back to the original unchecked exception
+            // before rethrowing it -- an unchecked exception the operation
+            // throws arrives here directly, never wrapped. Caught ahead of
+            // IllegalArgumentException since this isn't one.
+            err.println("Refused: this JVM's policy does not grant " + denied.capability() + ".");
+            return CliError.REFUSED;
+        } catch (IllegalArgumentException e) {
+            // Bad-argument validation done server-side (e.g. NameFilter's
+            // grammar) is still a usage error (doc/specs/cli-transport.md "is
+            // a usage error naming the problem"), not an unexpected failure,
+            // even though it only surfaces after a successful parse -- once
+            // we're here the command itself was well-formed, so there's no
+            // usage block to print alongside it.
+            err.println("logctl: " + messageOf(e));
+            return CliError.USAGE;
         } catch (RuntimeMBeanException e) {
+            // Kept as a defensive fallback in case some invocation path (a
+            // future non-proxy MBean access, a different JDK's unwrapping
+            // behavior) does hand this back still wrapped, rather than
+            // unwrapped as the two catches above assume.
             Throwable target = e.getTargetException();
             if (target instanceof CapabilityDeniedException denied) {
                 err.println("Refused: this JVM's policy does not grant " + denied.capability() + ".");
                 return CliError.REFUSED;
+            }
+            if (target instanceof IllegalArgumentException) {
+                err.println("logctl: " + messageOf(target));
+                return CliError.USAGE;
             }
             if (invocation.debug()) {
                 e.printStackTrace(err);

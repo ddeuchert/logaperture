@@ -372,8 +372,8 @@ semantics"). `--json` output is unchanged.
 | Exit | Meaning |
 |---|---|
 | 0 | Success. |
-| 1 | Unexpected failure — connection dropped mid-call, marshalling error, an exception from the operation itself. |
-| 2 | Usage error — unknown command/flag, wrong arity, unparseable level or duration. |
+| 1 | Unexpected failure — connection dropped mid-call, marshalling error, an exception from the operation itself other than a bad-argument rejection. |
+| 2 | Usage error — unknown command/flag, wrong arity, unparseable level or duration, or an invalid filter pattern (§18.7's segment-anchored grammar) rejected server-side and carried back as an `IllegalArgumentException`. |
 | 3 | No LogAperture-enabled JVM found. |
 | 4 | Ambiguous — several candidates; `--pid` required. |
 | 5 | Attach denied — wrong OS user. |
@@ -383,6 +383,19 @@ semantics"). `--json` output is unchanged.
 Exit 6 is distinct from exit 1 because "you're not allowed to do that" and "it broke" are
 different answers for a support engineer, and the capability model (§9.3) is the whole
 reason to tell them apart.
+
+**Implementation note on how a server-side exception actually arrives:** `AgentConnection`
+obtains the MXBean via `JMX.newMXBeanProxy`, whose invocation handler unwraps a
+`RuntimeMBeanException` and rethrows the operation's original unchecked exception directly
+— `CapabilityDeniedException` and `IllegalArgumentException` reach `Main.run` bare, not
+wrapped, for every real invocation. `Main.run` catches both directly for that reason, with
+a `RuntimeMBeanException` catch kept only as a defensive fallback for an invocation path
+that might still hand one back wrapped (none is known to, today). A future change to this
+handling that goes back to relying on the wrapped shape alone would silently stop
+recognizing both cases in production despite passing a unit test built on a hand-written
+MXBean fake that throws the wrapped shape directly — exercise the unwrapped shape too
+(`logaperture-cli`'s `MainRunTest`), and prefer a real cross-process assertion
+(`CliEndToEndIT`) for this specific contract.
 
 Exit 7 is the graceful-degradation path of the component-versioning contract (top-level
 §11.1): a newer `logctl` invoked an operation, or passed an option, that the older
@@ -527,10 +540,14 @@ shallow cross-process integration test.
   verbatim — the CLI does no name matching or grammar validation of its own, that's
   Feature 1's job. (`NameFilter`'s unit tests cover the segment-anchored grammar —
   `level-control.md`'s "`*` present" rules — plus the rejection cases and their specific
-  messages; `LevelControlEndToEndIT` proves a leading-`*` pattern survives the JMX
-  boundary end-to-end. The cross-process `CliEndToEndIT` below stubs the operations, so it
-  asserts pass-through, not matching, including an invalid pattern's error surfacing as a
-  usage error rather than a raw exception.)
+  messages, and `LevelControlServiceTest` covers the same rejection at the `listLoggers`
+  service seam, including with zero candidate logger names. `CommandsTest`'s stubbed
+  `FakeLevelControlMXBean` asserts a glob filter's pass-through — the CLI does no matching
+  of its own. `LevelControlEndToEndIT` proves a leading-`*` pattern survives the JMX
+  boundary end-to-end; the cross-process `CliEndToEndIT` below runs a real fixture JVM and
+  proves an invalid pattern's `IllegalArgumentException`, carried back as a
+  `RuntimeMBeanException`, surfaces as a usage error (exit 2 naming the problem) rather
+  than an unexpected-failure exit.)
 - `reset` three-way outcome (stubbed transport): logger still listed &rarr; "→ level
   (baseline)"; unknown and never overridden &rarr; "nothing was overridden."; override
   cleared but logger drops out of `listLoggers` &rarr; the "not yet instantiated" line and,

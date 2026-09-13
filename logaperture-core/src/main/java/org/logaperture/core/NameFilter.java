@@ -15,6 +15,9 @@
  */
 package org.logaperture.core;
 
+import java.util.function.Predicate;
+import java.util.regex.Pattern;
+
 /**
  * {@code listLoggers}' filter matching (doc/specs/level-control.md:
  * "{@code filter} is a name prefix or a pattern").
@@ -44,16 +47,27 @@ final class NameFilter {
     }
 
     static boolean matches(String filter, String loggerName) {
+        return compile(filter).test(loggerName);
+    }
+
+    /**
+     * Validates {@code filter} against the grammar once and returns a reusable
+     * matcher — the seam a caller filtering many names against the same filter
+     * (e.g. {@code listLoggers}) should use instead of {@link #matches}, so
+     * validation and regex compilation happen once rather than once per name.
+     */
+    static Predicate<String> compile(String filter) {
         if (filter == null || filter.isEmpty()) {
-            return true;
+            return name -> true;
         }
         if (filter.indexOf('?') >= 0) {
             throw invalid(filter, "'?' is no longer a wildcard -- patterns use '*' only");
         }
         if (filter.indexOf('*') < 0) {
-            return loggerName.startsWith(filter);
+            return name -> name.startsWith(filter);
         }
-        return loggerName.matches(toRegex(filter));
+        Pattern pattern = Pattern.compile(toRegex(filter));
+        return name -> pattern.matcher(name).matches();
     }
 
     /** Validates the segment-anchored grammar and builds the equivalent anchored regex. */
@@ -62,6 +76,10 @@ final class NameFilter {
         boolean hasLiteralSegment = false;
         for (int i = 0; i < segments.length; i++) {
             String segment = segments[i];
+            if (segment.isEmpty()) {
+                throw invalid(filter, "each segment must be non-empty -- check for '..', a leading '.', or a "
+                        + "trailing '.' in the pattern");
+            }
             if (segment.indexOf('*') < 0) {
                 hasLiteralSegment = true;
                 continue;
@@ -103,28 +121,54 @@ final class NameFilter {
     /**
      * A friendly "try …" suggestion for the common migration case — the whole
      * filter is one dot-free segment mixing {@code *} with literal text (the
-     * old {@code *word*} / {@code *word} / {@code word*} forms). Anything
-     * else gets the generic hint from the caller instead.
+     * old {@code *word*} / {@code *word} / {@code word*} forms). The direction
+     * of the star matters: a trailing star ({@code word*}, "starts with")
+     * anchors to a leading literal segment ({@code word.*}), a leading star
+     * ({@code *word}, "ends with") anchors to a trailing one ({@code *.word})
+     * — suggesting the wrong direction silently swaps the migrated filter's
+     * meaning. A star on both sides ({@code *word*}, "contains") has no
+     * anchored equivalent at all, so it gets an honest "no equivalent" note
+     * instead of a guess. Anything messier (a star in the middle, more than
+     * two stars) gets the generic hint from the caller instead.
      */
     private static String mixedSegmentHint(String filter, String[] segments) {
+        String generic = "wildcard must be its own leading or trailing segment, with at least one literal segment "
+                + "(e.g. 'org.apache.*' or '*.apache.writer')";
         if (segments.length != 1) {
-            return "wildcard must be its own leading or trailing segment, with at least one literal segment "
-                    + "(e.g. 'org.apache.*' or '*.apache.writer')";
+            return generic;
         }
-        String bareWord = segments[0].replace("*", "");
-        return "wildcard must be its own leading or trailing segment (try '*." + bareWord + "')";
+        String segment = segments[0];
+        long starCount = segment.chars().filter(c -> c == '*').count();
+        boolean leadingStar = segment.startsWith("*");
+        boolean trailingStar = segment.length() > 1 && segment.endsWith("*");
+        String interior = segment;
+        if (leadingStar) {
+            interior = interior.substring(1);
+        }
+        if (trailingStar && !interior.isEmpty()) {
+            interior = interior.substring(0, interior.length() - 1);
+        }
+        boolean interiorIsPlain = !interior.isEmpty() && interior.indexOf('*') < 0;
+        if (!interiorIsPlain) {
+            return generic;
+        }
+        if (starCount == 1 && leadingStar) {
+            return "wildcard must be its own leading or trailing segment (try '*." + interior + "')";
+        }
+        if (starCount == 1 && trailingStar) {
+            return "wildcard must be its own leading or trailing segment (try '" + interior + ".*')";
+        }
+        if (starCount == 2 && leadingStar && trailingStar) {
+            return "wildcard must be its own leading or trailing segment -- a 'contains' match like this has no "
+                    + "anchored equivalent; the closest are '*." + interior + "' (segment ending in '" + interior
+                    + "') or '" + interior + ".*' (segment starting with '" + interior + "'), or drop the '*'s for "
+                    + "a literal prefix filter";
+        }
+        return generic;
     }
 
     private static String escapeLiteral(String segment) {
-        StringBuilder out = new StringBuilder();
-        for (int i = 0; i < segment.length(); i++) {
-            char c = segment.charAt(i);
-            switch (c) {
-                case '\\', '^', '$', '|', '(', ')', '[', ']', '{', '}', '+' -> out.append('\\').append(c);
-                default -> out.append(c);
-            }
-        }
-        return out.toString();
+        return Pattern.quote(segment);
     }
 
     private static IllegalArgumentException invalid(String filter, String hint) {
