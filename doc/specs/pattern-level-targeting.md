@@ -24,8 +24,10 @@ After this feature, the user will be able to:
   and confirm before it takes effect — or pass `--yes` to skip the prompt in a script.
 - Retire a standing rule with `logctl reset *.deployment.scanner` — every logger it currently
   covers reverts to baseline, and it stops affecting loggers discovered later.
-- Target a logger's descendants with `logctl debug org.apache.*` — the trailing-wildcard
-  pattern replaces today's `--include-children` flag, which is removed.
+- Target a logger **and** its descendants with `logctl debug org.apache.*` in one command —
+  the trailing-wildcard pattern replaces today's `--include-children` flag, which is removed,
+  and (per the grammar correction in [issue #41](https://github.com/ddeuchert/logaperture/issues/41)'s
+  PR #44) is a true superset of what that flag did, not descendants-only.
 - Trust that a logger's own individually-set override is never silently overwritten by a
   standing rule that happens to also match it.
 - Get the standing-rule glob support on `logctl reset <pattern>` and on the apply-side
@@ -36,11 +38,18 @@ After this feature, the user will be able to:
 
 Top-level §18.7 deliberately sequences these two slices of #41 so that neither ships without
 the other: retiring `includeChildren` (slice 2) before the standing-rule apply mechanism
-(slice 3) exists would leave a gap where **no** mechanism covers "this logger's descendants" —
-today's flag would be gone, and its replacement wouldn't exist yet. So this spec, and the
-implementation it describes, treats them as one unit: `includeChildren` disappears from the
-operations API in the same change that a trailing-wildcard pattern becomes able to receive a
-level.
+(slice 3) exists would leave a gap where **no** mechanism covers "this logger and its
+descendants" — today's flag would be gone, and its replacement wouldn't exist yet. So this
+spec, and the implementation it describes, treats them as one unit: `includeChildren`
+disappears from the operations API in the same change that a trailing-wildcard pattern becomes
+able to receive a level.
+
+This spec also depends on a small, separate correction to the already-shipped slice 1 grammar:
+[PR #44](https://github.com/ddeuchert/logaperture/pull/44) changes a leading/trailing `*` from
+matching one-or-more further segments to zero-or-more, so `org.apache.*` matches `org.apache`
+itself as well as its descendants — a true superset of `includeChildren`'s old behavior, not
+an approximation of it requiring a second target. Everything below assumes that correction has
+landed.
 
 `doc/specs/level-control.md`'s "Superseded (planned, not this slice)" note on `includeChildren`
 and top-level §18.7's own text are both updated by this spec landing (see "Divergence from
@@ -82,9 +91,11 @@ prior specs" at the end).
   `logctl reset --all` shape; #42's restructuring, when it lands, reuses this slice's matcher
   exactly as its own spec already says, without needing this spec to anticipate its exact
   command spelling.
-- Multiple targets in one call (`logctl error org.apache org.apache.*` as a single-command
-  convenience for "self and descendants") — top-level §18.7 flags this as an open question;
-  this slice leaves it as two separate commands. See Decision #9.
+- Multiple targets in one call (`logctl error <a> <b>`). Top-level §18.7 originally raised
+  this as a convenience for "self and descendants," but PR #44's zero-or-more correction
+  resolves that specific case with a single pattern target (`org.apache.*` already covers
+  both) — so this is no longer needed for the motivating reason and is dropped from this
+  slice's scope entirely rather than merely deferred. See Decision #9.
 - Handler-level targeting (`logctl handler <name> ...`) stays exact-name-only, unaffected —
   the handler namespace was already decided to be flat, non-hierarchical (top-level §18.9,
   `handler-floor-control.md`).
