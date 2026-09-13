@@ -39,6 +39,11 @@ __pycache__/
 daves-cheatsheet.txt
 .claude/skills/git-side/
 
+# Cross-machine handoff notes (checkpoint/resume skills) - tracked via git-side, not this repo
+RESUME.md
+.claude/skills/checkpoint/
+.claude/skills/resume/
+
 # Personal dev convenience wrapper - tracked via git-side, not this repo
 logctl-wildfly
 
