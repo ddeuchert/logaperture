@@ -43,20 +43,22 @@ class NameFilterTest {
     }
 
     @Test
-    void trailingStarMatchesOneOrMoreDescendantSegments() {
+    void trailingStarMatchesTheNamedLoggerAndDescendants() {
+        // Zero-or-more: a true superset of the retired includeChildren option's
+        // "the named logger and its descendants," not descendants-only.
+        assertTrue(NameFilter.matches("org.apache.*", "org.apache"));
         assertTrue(NameFilter.matches("org.apache.*", "org.apache.Foo"));
         assertTrue(NameFilter.matches("org.apache.*", "org.apache.commons.Foo"));
-        assertFalse(NameFilter.matches("org.apache.*", "org.apache")); // one-or-more, not zero
         assertFalse(NameFilter.matches("org.apache.*", "org.apacheX.Foo"));
     }
 
     @Test
-    void leadingStarMatchesOneOrMoreAncestorSegments() {
+    void leadingStarMatchesTheNamedLoggerAndAncestors() {
         // The abbreviated-category case: a log line printed "infinispan", the
         // real logger is org.jboss.as.clustering.infinispan.
         String logger = "org.jboss.as.clustering.infinispan";
         assertTrue(NameFilter.matches("*.infinispan", logger));
-        assertFalse(NameFilter.matches("*.infinispan", "infinispan")); // one-or-more, not zero
+        assertTrue(NameFilter.matches("*.infinispan", "infinispan")); // zero-or-more, includes zero
         // Anchored tail: "*.infinispan" must not match a longer name.
         assertFalse(NameFilter.matches("*.infinispan", "org.infinispan.remoting"));
     }
@@ -64,8 +66,9 @@ class NameFilterTest {
     @Test
     void bothLeadingAndTrailingStarMatch() {
         assertTrue(NameFilter.matches("*.apache.writer.*", "org.acme.apache.writer.Impl"));
-        assertFalse(NameFilter.matches("*.apache.writer.*", "apache.writer.Impl")); // needs a leading segment
-        assertFalse(NameFilter.matches("*.apache.writer.*", "org.acme.apache.writer")); // needs a trailing segment
+        assertTrue(NameFilter.matches("*.apache.writer.*", "apache.writer.Impl")); // no leading segment needed
+        assertTrue(NameFilter.matches("*.apache.writer.*", "org.acme.apache.writer")); // no trailing segment needed
+        assertTrue(NameFilter.matches("*.apache.writer.*", "apache.writer")); // neither needed
     }
 
     @Test

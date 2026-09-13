@@ -32,8 +32,11 @@ import java.util.regex.Pattern;
  * issue #41 — slice 1). Splitting on {@code '.'}, at most one leading
  * segment and/or one trailing segment may be exactly {@code "*"}; every
  * other segment must be plain literal text with no {@code *} in it, and at
- * least one segment must be literal. A leading/trailing wildcard matches
- * <b>one or more</b> segments, never zero. {@code ?} is no longer a
+ * least one segment must be literal. A leading/trailing wildcard matches the
+ * named logger itself plus <b>zero or more</b> further segments — {@code
+ * "org.apache.*"} matches {@code "org.apache"} and every descendant of it, a
+ * true superset of the retired {@code includeChildren} option's "the named
+ * logger and its descendants" (doc/specs/level-control.md). {@code ?} is no longer a
  * wildcard at all — a filter containing it is rejected, not silently
  * treated as a literal character (that would be a silent behavior change
  * from what {@code ?} used to mean). An invalid pattern throws {@link
@@ -104,7 +107,7 @@ final class NameFilter {
 
         StringBuilder regex = new StringBuilder("^");
         if (leadingStar) {
-            regex.append("([^.]+\\.)+");
+            regex.append("([^.]+\\.)*");
         }
         for (int i = start; i < end; i++) {
             if (i > start) {
@@ -113,7 +116,7 @@ final class NameFilter {
             regex.append(escapeLiteral(segments[i]));
         }
         if (trailingStar) {
-            regex.append("(\\.[^.]+)+");
+            regex.append("(\\.[^.]+)*");
         }
         return regex.append('$').toString();
     }
