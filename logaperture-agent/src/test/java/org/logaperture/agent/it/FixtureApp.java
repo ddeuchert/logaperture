@@ -29,22 +29,41 @@ import java.nio.charset.StandardCharsets;
  * by {@link LevelControlEndToEndIT} with {@code -javaagent:} attached.
  *
  * <p>Blocks on stdin so the test harness controls its lifetime precisely,
- * rather than racing a fixed sleep.
+ * rather than racing a fixed sleep. A line of exactly {@code NEW-LOGGER}
+ * instantiates a second logger the harness didn't see at startup (doc/specs/
+ * pattern-level-targeting.md's "a logger discovered later" case) and prints
+ * {@code LOGGER-CREATED} instead of exiting; any other line, or end of
+ * input, shuts down.
  */
 public final class FixtureApp {
+
+    /** The logger instantiated on startup — known to every test from the first moment. */
+    public static final String WORKER_LOGGER = "org.logaperture.agent.it.fixture.Worker";
+
+    /** The logger {@code NEW-LOGGER} instantiates — absent until a test explicitly asks for it. */
+    public static final String LATER_LOGGER = "org.logaperture.agent.it.fixture.Later";
 
     private FixtureApp() {
     }
 
     public static void main(String[] args) throws IOException {
-        Logger worker = LoggerFactory.getLogger("org.logaperture.agent.it.fixture.Worker");
+        Logger worker = LoggerFactory.getLogger(WORKER_LOGGER);
         worker.info("fixture app started");
 
         System.out.println("FIXTURE-READY");
         System.out.flush();
 
-        // Blocks until the harness writes a line (or closes stdin) to signal shutdown.
-        new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8)).readLine();
+        BufferedReader stdin = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+        String line;
+        while ((line = stdin.readLine()) != null) {
+            if (!"NEW-LOGGER".equals(line)) {
+                break;
+            }
+            Logger later = LoggerFactory.getLogger(LATER_LOGGER);
+            later.info("later logger instantiated");
+            System.out.println("LOGGER-CREATED");
+            System.out.flush();
+        }
 
         System.out.println("FIXTURE-EXITING");
     }

@@ -114,10 +114,20 @@ class ParserTest {
     }
 
     @Test
-    void reasonAndIncludeChildrenRejectedForNonMutatingCommands() {
+    void reasonAndYesRejectedForNonMutatingCommands() {
         assertUsage(() -> Parser.parse(new String[] {"levels", "--reason", "x"}));
-        assertUsage(() -> Parser.parse(new String[] {"status", "--include-children"}));
+        assertUsage(() -> Parser.parse(new String[] {"status", "--yes"}));
         assertUsage(() -> Parser.parse(new String[] {"reset", "com.acme", "--reason", "x"}));
+    }
+
+    @Test
+    void yesIsAcceptedOnEveryLevelMutationForm() {
+        // doc/specs/pattern-level-targeting.md "Confirmation and CLI
+        // behavior" -- Parser does no pattern detection of its own (same as
+        // a plain logger name, the target string passes through untouched);
+        // --yes just needs to not be rejected as out of place here.
+        Parser.parse(new String[] {"debug", "org.apache.*", "--yes"});
+        Parser.parse(new String[] {"set", "org.apache.*", "DEBUG", "--yes"});
     }
 
     @Test
@@ -145,7 +155,7 @@ class ParserTest {
         Parser.parse(new String[] {"doctor"});
         Parser.parse(new String[] {"doctor", "--json"});
         assertUsage(() -> Parser.parse(new String[] {"doctor", "com.acme"}));
-        assertUsage(() -> Parser.parse(new String[] {"doctor", "--include-children"}));
+        assertUsage(() -> Parser.parse(new String[] {"doctor", "--yes"}));
         assertUsage(() -> Parser.parse(new String[] {"doctor", "--reason", "x"}));
     }
 
@@ -155,7 +165,7 @@ class ParserTest {
         Parser.parse(new String[] {"top", "--json"});
         Parser.parse(new String[] {"top", "--limit", "5"});
         assertUsage(() -> Parser.parse(new String[] {"top", "com.acme"}));
-        assertUsage(() -> Parser.parse(new String[] {"top", "--include-children"}));
+        assertUsage(() -> Parser.parse(new String[] {"top", "--yes"}));
         assertUsage(() -> Parser.parse(new String[] {"top", "--reason", "x"}));
     }
 
@@ -170,7 +180,7 @@ class ParserTest {
         Parser.parse(new String[] {"env"});
         Parser.parse(new String[] {"env", "--json"});
         assertUsage(() -> Parser.parse(new String[] {"env", "com.acme"}));
-        assertUsage(() -> Parser.parse(new String[] {"env", "--include-children"}));
+        assertUsage(() -> Parser.parse(new String[] {"env", "--yes"}));
         assertUsage(() -> Parser.parse(new String[] {"env", "--reason", "x"}));
         assertUsage(() -> Parser.parse(new String[] {"env", "--limit", "5"}));
     }
@@ -209,9 +219,9 @@ class ParserTest {
     }
 
     @Test
-    void handlerAcceptsReasonButNotIncludeChildren() {
+    void handlerAcceptsReasonButNotYes() {
         Parser.parse(new String[] {"handler", "CONSOLE", "TRACE", "--reason", "INC-1"}); // fine
-        assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "TRACE", "--include-children"}));
+        assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "TRACE", "--yes"}));
     }
 
     @Test

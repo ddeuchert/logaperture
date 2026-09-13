@@ -26,6 +26,7 @@ import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.LoggerInfo;
+import org.logaperture.api.PatternRule;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
@@ -185,12 +186,24 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 .stream()
                 .filter(override -> isStillLive(override.tier(), override.expiresAt(), now))
                 .toList();
+        // Standing rules (doc/specs/pattern-level-targeting.md) rebroadcast
+        // the same way -- a rule created before this context existed must
+        // still cover the new context's own loggers.
+        List<PatternRule> patternRulesToRebroadcast = existingAny
+                .map(existing -> existing.service().activePatternRules())
+                .orElseGet(List::of)
+                .stream()
+                .filter(rule -> isStillLive(rule.tier(), rule.expiresAt(), now))
+                .toList();
         byKey.put(control.stableKey(), control);
         for (LevelOverride override : toRebroadcast) {
             control.service().adoptOverride(override);
         }
         for (HandlerLevelOverride override : handlersToRebroadcast) {
             control.handlerService().adoptOverride(override);
+        }
+        for (PatternRule rule : patternRulesToRebroadcast) {
+            control.service().adoptPatternRule(rule);
         }
         // One recompute pass now that both halves have been rebroadcast onto
         // the new context -- doc/specs/handler-floor-control.md "AUTO
@@ -387,18 +400,20 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         for (ContextControl context : contexts) {
             context.service().checkSetLevelPermitted(loggerName, level, options);
         }
-        LevelOverride fromSystem = null;
-        LevelOverride fromAny = null;
+        // Every context's overrides, concatenated -- for an exact-name
+        // target this is one entry per context (as before, just no longer
+        // collapsed down to a single "representative" one); for a pattern
+        // target it's every context's own current matches, which is the
+        // only shape that makes sense once a single call can produce
+        // several overrides in the first place.
+        List<LevelOverride> allOverrides = new ArrayList<>();
         // Union of blocking handlers across every context, deduplicated by
         // ref -- a handler named e.g. CONSOLE in more than one context is
         // still just "CONSOLE" to the operator reading the warning.
         Map<HandlerRef, HandlerFloor> blockingByRef = new LinkedHashMap<>();
         for (ContextControl context : contexts) {
             SetLevelResult result = context.service().setLevel(loggerName, level, options);
-            fromAny = result.override();
-            if (ContextHandle.SYSTEM.equals(context.stableKey())) {
-                fromSystem = result.override();
-            }
+            allOverrides.addAll(result.overrides());
             for (HandlerFloor floor : result.blockingHandlers()) {
                 // Keep the stricter reading for a ref shared across
                 // contexts, not merely the first seen -- same fix as
@@ -409,7 +424,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 blockingByRef.merge(floor.handlerRef(), floor, LevelControlService::stricterFloor);
             }
         }
-        return new SetLevelResult(fromSystem != null ? fromSystem : fromAny, List.copyOf(blockingByRef.values()));
+        return new SetLevelResult(allOverrides, List.copyOf(blockingByRef.values()));
     }
 
     @Override
@@ -571,6 +586,21 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         for (ContextControl context : sortedByKey()) {
             context.service().sweepExpiredOverrides(now);
             context.handlerService().sweepExpiredOverrides(now);
+        }
+    }
+
+    /**
+     * Runs the standing-rule sweep across every context (doc/specs/
+     * pattern-level-targeting.md "Sweep integration") — same composition-
+     * root-owned tick as {@link #sweepExpiredOverrides}, run independently
+     * per context since a pattern rule's match set is judged against each
+     * context's own known loggers. Logger-only: standing rules don't apply
+     * to handlers (top-level §18.9's handler namespace stays exact-name
+     * only).
+     */
+    public void applyStandingRules(Instant now) {
+        for (ContextControl context : sortedByKey()) {
+            context.service().applyStandingRules(now);
         }
     }
 

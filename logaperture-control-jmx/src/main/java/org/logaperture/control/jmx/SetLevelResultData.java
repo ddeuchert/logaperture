@@ -21,30 +21,34 @@ import java.beans.ConstructorProperties;
 import java.util.List;
 
 /**
- * MXBean-friendly mirror of {@link SetLevelResult} — {@code setLevel}'s new
+ * MXBean-friendly mirror of {@link SetLevelResult} — {@code setLevel}'s
  * return type (doc/specs/handler-floor-control.md "Warning on level
- * commands"). {@code blockingHandlers} is empty on every {@code setLevel}
- * call that isn't a raise past a handler floor, which is the common case.
+ * commands"). {@code overrides} has one entry for an exact-name target;
+ * for a pattern target (doc/specs/pattern-level-targeting.md) it has one
+ * entry per currently-matched logger the call actually mutated, possibly
+ * empty if the pattern matches no currently-known logger yet.
+ * {@code blockingHandlers} is empty on every {@code setLevel} call that
+ * isn't a raise past a handler floor, which is the common case.
  */
 public final class SetLevelResultData {
 
-    private final LevelOverrideData override;
+    private final List<LevelOverrideData> overrides;
     private final List<HandlerFloorData> blockingHandlers;
 
-    @ConstructorProperties({"override", "blockingHandlers"})
-    public SetLevelResultData(LevelOverrideData override, List<HandlerFloorData> blockingHandlers) {
-        this.override = override;
+    @ConstructorProperties({"overrides", "blockingHandlers"})
+    public SetLevelResultData(List<LevelOverrideData> overrides, List<HandlerFloorData> blockingHandlers) {
+        this.overrides = overrides;
         this.blockingHandlers = blockingHandlers;
     }
 
     public static SetLevelResultData from(SetLevelResult result) {
         return new SetLevelResultData(
-                LevelOverrideData.from(result.override()),
+                result.overrides().stream().map(LevelOverrideData::from).toList(),
                 result.blockingHandlers().stream().map(HandlerFloorData::from).toList());
     }
 
-    public LevelOverrideData getOverride() {
-        return override;
+    public List<LevelOverrideData> getOverrides() {
+        return overrides;
     }
 
     public List<HandlerFloorData> getBlockingHandlers() {

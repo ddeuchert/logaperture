@@ -19,6 +19,7 @@ import com.sun.tools.attach.VirtualMachine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.logaperture.api.Level;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.JmxRegistrar;
 import org.logaperture.control.jmx.LevelControlMXBean;
@@ -30,6 +31,7 @@ import javax.management.MBeanServerConnection;
 import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -39,6 +41,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -102,9 +105,9 @@ class LevelControlEndToEndIT {
         assertTrue(byGlob.stream().anyMatch(li -> FIXTURE_LOGGER.equals(li.getName())),
                 "leading-* glob should have matched " + FIXTURE_LOGGER);
 
-        SetLevelResultData result = proxy.setLevel(FIXTURE_LOGGER, "DEBUG", false, "e2e-test", "SESSION", 0);
-        assertEquals("DEBUG", result.getOverride().getLevel());
-        assertEquals(FIXTURE_LOGGER, result.getOverride().getLoggerName());
+        SetLevelResultData result = proxy.setLevel(FIXTURE_LOGGER, "DEBUG", "e2e-test", "SESSION", 0, false);
+        assertEquals("DEBUG", result.getOverrides().get(0).getLevel());
+        assertEquals(FIXTURE_LOGGER, result.getOverrides().get(0).getLoggerName());
         assertTrue(result.getBlockingHandlers().isEmpty(), "Logback has no handler floors to report");
 
         List<LoggerInfoData> afterSet = proxy.listLoggers(FIXTURE_LOGGER);
@@ -137,6 +140,95 @@ class LevelControlEndToEndIT {
     }
 
     /**
+     * doc/specs/pattern-level-targeting.md's own exit criterion, driven for
+     * real: a pattern target's confirmation gate and its apply both cross
+     * the real JMX boundary correctly. {@code confirmed=false}'s {@code
+     * ConfirmationRequiredException} arriving here <em>unwrapped</em>
+     * (rather than as a {@code RuntimeMBeanException}) is exactly the
+     * {@code JMX.newMXBeanProxy} unwrapping behavior Decision #2a leans on
+     * — worth proving against a real cross-process connection, not just
+     * the in-process fakes {@code MainRunTest}/{@code CommandsTest} use.
+     */
+    @Test
+    void patternTarget_confirmationGateAndApply_workEndToEndOverJmx() throws Exception {
+        String agentJarPath = System.getProperty("logaperture.agent.jar");
+        assertNotNull(agentJarPath, "system property logaperture.agent.jar must point at the shaded jar");
+
+        Process fixtureProcess = launchFixtureProcess(agentJarPath);
+        LevelControlMXBean proxy = pollForMxBeanProxy(attachAndConnect(fixtureProcess.pid()));
+        String pattern = "*.fixture.Worker"; // matches FIXTURE_LOGGER, same glob levelControlOperations_... already proves
+
+        org.logaperture.core.ConfirmationRequiredException confirmationRequired = assertThrows(
+                org.logaperture.core.ConfirmationRequiredException.class,
+                () -> proxy.setLevel(pattern, "DEBUG", "e2e-pattern-test", "SESSION", 0, false));
+        assertTrue(confirmationRequired.matches().contains(FIXTURE_LOGGER),
+                "unconfirmed call's exception should list the current match: " + confirmationRequired.matches());
+        // Confirmed a mutation didn't sneak through anyway.
+        assertFalse(proxy.listLoggers(FIXTURE_LOGGER).get(0).isOverrideActive());
+
+        SetLevelResultData result = proxy.setLevel(pattern, "DEBUG", "e2e-pattern-test", "SESSION", 0, true);
+        assertTrue(result.getOverrides().stream().anyMatch(o -> FIXTURE_LOGGER.equals(o.getLoggerName())),
+                "'" + pattern + "' should have matched " + FIXTURE_LOGGER);
+        assertEquals(pattern, result.getOverrides().get(0).getOriginPattern());
+        assertEquals("DEBUG", proxy.listLoggers(FIXTURE_LOGGER).get(0).getEffectiveLevel());
+
+        // Pattern reset: reverts the match and retires the rule, over the
+        // same real JMX connection.
+        proxy.resetLevel(pattern);
+        assertEquals("INFO", proxy.listLoggers(FIXTURE_LOGGER).get(0).getEffectiveLevel());
+        assertFalse(proxy.listLoggers(FIXTURE_LOGGER).get(0).isOverrideActive());
+    }
+
+    /**
+     * The other half of doc/specs/pattern-level-targeting.md's exit
+     * criterion: a logger added <em>after</em> the standing rule is set is
+     * picked up within one sweep interval, with no further command --
+     * proven against the real sweep thread (composition root, {@code
+     * -Dlogaperture.sweep.seconds=1}), not a directly-invoked {@code
+     * applyStandingRules} call the way {@code LevelControlServiceTest}
+     * proves it in-process.
+     */
+    @Test
+    void patternTarget_appliesToALoggerDiscoveredAfterTheRuleWasSet() throws Exception {
+        String agentJarPath = System.getProperty("logaperture.agent.jar");
+        assertNotNull(agentJarPath, "system property logaperture.agent.jar must point at the shaded jar");
+
+        Process fixtureProcess = launchFixtureProcess(agentJarPath);
+        LevelControlMXBean proxy = pollForMxBeanProxy(attachAndConnect(fixtureProcess.pid()));
+        String pattern = "*.fixture.*"; // matches both Worker (already known) and Later (not yet)
+
+        proxy.setLevel(pattern, "DEBUG", "e2e-sweep-test", "SESSION", 0, true);
+        assertEquals("DEBUG", proxy.listLoggers(FIXTURE_LOGGER).get(0).getEffectiveLevel());
+
+        sendLine(fixtureProcess, "NEW-LOGGER");
+        String laterLogger = "org.logaperture.agent.it.fixture.Later";
+
+        Level effectiveOnceSwept = pollUntilOverrideActive(proxy, laterLogger);
+        assertEquals("DEBUG", effectiveOnceSwept.name(),
+                "the standing rule should have caught '" + laterLogger + "' within one sweep tick");
+    }
+
+    /** Writes one line to the fixture's stdin without closing it (unlike {@link #stopFixtureProcess}). */
+    private static void sendLine(Process process, String line) throws IOException {
+        OutputStream stdin = process.getOutputStream();
+        stdin.write((line + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        stdin.flush();
+    }
+
+    /** Polls up to ~10s (ten sweep intervals at the fixture's 1s setting) for {@code loggerName}'s override to activate. */
+    private static Level pollUntilOverrideActive(LevelControlMXBean proxy, String loggerName) throws Exception {
+        for (int attempt = 0; attempt < 100; attempt++) {
+            List<LoggerInfoData> rows = proxy.listLoggers(loggerName);
+            if (!rows.isEmpty() && rows.get(0).isOverrideActive()) {
+                return Level.valueOf(rows.get(0).getEffectiveLevel());
+            }
+            Thread.sleep(100);
+        }
+        fail("'" + loggerName + "' was never covered by the standing rule within the timeout");
+        throw new AssertionError("unreachable");
+    }
+
+    /**
      * The literal exit criterion doc/specs/persistence.md adds on top of
      * Feature 1's: a {@code --sticky} override survives a full process
      * restart from the same working directory. The two fixture processes
@@ -153,7 +245,7 @@ class LevelControlEndToEndIT {
 
         Process first = launchFixtureProcess(agentJarPath);
         LevelControlMXBean firstProxy = pollForMxBeanProxy(attachAndConnect(first.pid()));
-        firstProxy.setLevel(FIXTURE_LOGGER, "DEBUG", false, "sticky-e2e-test", "STICKY", 0);
+        firstProxy.setLevel(FIXTURE_LOGGER, "DEBUG", "sticky-e2e-test", "STICKY", 0, false);
         stopFixtureProcess(first);
 
         Process second = launchFixtureProcess(agentJarPath);
@@ -174,6 +266,7 @@ class LevelControlEndToEndIT {
                 javaBin,
                 "-javaagent:" + agentJarPath,
                 "-Dlogaperture.home=" + logapertureHome,
+                "-Dlogaperture.sweep.seconds=1", // so a standing-rule-discovers-a-new-logger test doesn't wait 30s
                 "-cp", classpath,
                 "org.logaperture.agent.it.FixtureApp");
         builder.redirectErrorStream(true);

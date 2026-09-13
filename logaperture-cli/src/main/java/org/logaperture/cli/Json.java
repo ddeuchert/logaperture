@@ -73,7 +73,7 @@ final class Json {
         return new Obj()
                 .str("loggerName", data.getLoggerName())
                 .str("level", data.getLevel())
-                .bool("includeChildren", data.isIncludeChildren())
+                .str("originPattern", data.getOriginPattern())
                 .str("reason", data.getReason())
                 .str("appliedAt", data.getAppliedAt())
                 .str("source", data.getSource())
@@ -82,12 +82,18 @@ final class Json {
     }
 
     /**
-     * {@code setLevel}'s full JSON result: the override, plus {@code
-     * warnings} — one entry per handler that will still swallow records at
-     * the new level (doc/specs/handler-floor-control.md "Warning on level
-     * commands"), empty on the common case of no such handler.
+     * {@code setLevel}'s full JSON result: {@code overrides} — one entry
+     * for an exact-name target, zero or more for a pattern (doc/specs/
+     * pattern-level-targeting.md) — plus {@code warnings}, one entry per
+     * handler that will still swallow records at the new level
+     * (doc/specs/handler-floor-control.md "Warning on level commands"),
+     * empty on the common case of no such handler.
      */
     static String setLevelResult(SetLevelResultData result) {
+        StringJoiner overrides = new StringJoiner(",", "[", "]");
+        for (LevelOverrideData override : result.getOverrides()) {
+            overrides.add(overrideObj(override).toString());
+        }
         StringJoiner warnings = new StringJoiner(",", "[", "]");
         for (HandlerFloorData floor : result.getBlockingHandlers()) {
             warnings.add(new Obj()
@@ -95,7 +101,7 @@ final class Json {
                     .str("currentLevel", floor.getCurrentLevel())
                     .toString());
         }
-        return overrideObj(result.getOverride()).raw("warnings", warnings.toString()).toString();
+        return new Obj().raw("overrides", overrides.toString()).raw("warnings", warnings.toString()).toString();
     }
 
     static String handlerOverride(HandlerLevelOverrideData data) {
@@ -259,6 +265,25 @@ final class Json {
                 .str("name", loggerName)
                 .bool("overrideActive", false)
                 .bool("wasOverridden", wasOverridden)
+                .toString();
+    }
+
+    /**
+     * {@code reset <pattern> --json} (doc/specs/pattern-level-targeting.md):
+     * the loggers this call actually reverted, and that the standing rule
+     * itself is retired -- {@code reverted} is empty on a pattern with
+     * nothing currently overridden, same as the exact-name {@code reset}
+     * reporting {@code wasOverridden: false}.
+     */
+    static String resetPattern(String pattern, List<String> reverted) {
+        StringJoiner names = new StringJoiner(",", "[", "]");
+        for (String name : reverted) {
+            names.add(quote(name));
+        }
+        return new Obj()
+                .str("pattern", pattern)
+                .raw("reverted", names.toString())
+                .bool("ruleRetired", true)
                 .toString();
     }
 

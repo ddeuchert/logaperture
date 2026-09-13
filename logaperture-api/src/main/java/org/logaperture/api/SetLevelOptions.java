@@ -23,17 +23,19 @@ import java.util.Objects;
  * "Operations" section and doc/specs/persistence.md's "Operations" section
  * for {@code tier}.
  *
- * @param includeChildren also apply to loggers already known to be
- *                        descendants at call time (default {@code false})
- * @param reason          propagated to the audit log; {@code null} if none
- *                        given
- * @param expiresIn       required, positive, and only meaningful when
- *                        {@code tier} is {@link PersistenceTier#FOR}; {@code
- *                        null} otherwise
- * @param tier             the durability tier (default {@link
- *                        PersistenceTier#SESSION})
+ * @param reason    propagated to the audit log; {@code null} if none given
+ * @param expiresIn required, positive, and only meaningful when {@code
+ *                  tier} is {@link PersistenceTier#FOR}; {@code null}
+ *                  otherwise
+ * @param tier      the durability tier (default {@link
+ *                  PersistenceTier#SESSION})
+ * @param confirmed whether a pattern {@code target} is confirmed to apply
+ *                  as a standing rule (doc/specs/pattern-level-targeting.md
+ *                  "Confirmation and CLI behavior"); ignored for an
+ *                  exact-name target, which carries none of a standing
+ *                  rule's risk regardless of tier
  */
-public record SetLevelOptions(boolean includeChildren, String reason, Duration expiresIn, PersistenceTier tier) {
+public record SetLevelOptions(String reason, Duration expiresIn, PersistenceTier tier, boolean confirmed) {
 
     public SetLevelOptions {
         Objects.requireNonNull(tier, "tier");
@@ -46,23 +48,28 @@ public record SetLevelOptions(boolean includeChildren, String reason, Duration e
         }
     }
 
-    /** Defaults: no fan-out, no reason, {@code --session}. */
+    /** Defaults: no reason, {@code --session}, unconfirmed. */
     public static SetLevelOptions defaults() {
-        return new SetLevelOptions(false, null, null, PersistenceTier.SESSION);
+        return new SetLevelOptions(null, null, PersistenceTier.SESSION, false);
     }
 
     /** Defaults, but with a reason attached — the common case for a deliberate operator change. */
     public static SetLevelOptions withReason(String reason) {
-        return new SetLevelOptions(false, reason, null, PersistenceTier.SESSION);
+        return new SetLevelOptions(reason, null, PersistenceTier.SESSION, false);
     }
 
-    /** {@code --for <duration>}: no fan-out, no reason. */
+    /** {@code --for <duration>}: no reason. */
     public static SetLevelOptions forDuration(Duration duration) {
-        return new SetLevelOptions(false, null, duration, PersistenceTier.FOR);
+        return new SetLevelOptions(null, duration, PersistenceTier.FOR, false);
     }
 
-    /** {@code --sticky}: no fan-out, no reason. */
+    /** {@code --sticky}: no reason. */
     public static SetLevelOptions sticky() {
-        return new SetLevelOptions(false, null, null, PersistenceTier.STICKY);
+        return new SetLevelOptions(null, null, PersistenceTier.STICKY, false);
+    }
+
+    /** A copy of this options value with {@code confirmed} set — the CLI's own preview-then-apply step. */
+    public SetLevelOptions withConfirmed(boolean confirmed) {
+        return new SetLevelOptions(reason, expiresIn, tier, confirmed);
     }
 }

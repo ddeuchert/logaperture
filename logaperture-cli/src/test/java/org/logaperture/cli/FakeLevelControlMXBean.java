@@ -58,7 +58,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         }
         List<LoggerInfoData> matches = new ArrayList<>();
         for (LoggerInfoData logger : loggers) {
-            if (logger.getName().startsWith(filter)) {
+            if (matchesFilter(filter, logger.getName())) {
                 matches.add(logger);
             }
         }
@@ -66,19 +66,87 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     }
 
     @Override
-    public SetLevelResultData setLevel(String loggerName, String level, boolean includeChildren, String reason,
-            String tier, long forSeconds) {
-        setLevelCalls.add(new Object[] {loggerName, level, includeChildren, reason, tier, forSeconds});
+    public SetLevelResultData setLevel(String target, String level, String reason, String tier, long forSeconds,
+            boolean confirmed) {
+        setLevelCalls.add(new Object[] {target, level, reason, tier, forSeconds, confirmed});
         maybeThrow();
+        if (target.indexOf('*') >= 0 && !confirmed) {
+            // Mirrors the real LevelControlService's confirmation gate
+            // (doc/specs/pattern-level-targeting.md) closely enough for
+            // CommandsTest to exercise the CLI's preview-then-apply flow
+            // end-to-end against this fake.
+            List<String> matchedNames = new ArrayList<>();
+            for (LoggerInfoData logger : loggers) {
+                if (matchesFilter(target, logger.getName())) {
+                    matchedNames.add(logger.getName());
+                }
+            }
+            throw new org.logaperture.core.ConfirmationRequiredException(target, matchedNames);
+        }
         return setLevelResult;
     }
 
+    /**
+     * A deliberately small stand-in for {@code NameFilter}'s real grammar
+     * (package-private to {@code logaperture-core}, not reachable from this
+     * module) — just enough of it (segment-anchored, zero-or-more) for this
+     * fake's {@code listLoggers}/{@code setLevel} to behave sensibly against
+     * a pattern in CLI-level tests; the full grammar is unit-tested against
+     * the real engine in {@code logaperture-core}'s {@code NameFilterTest}.
+     */
+    private static boolean matchesFilter(String filter, String name) {
+        if (filter == null || filter.isEmpty()) {
+            return true;
+        }
+        if (filter.indexOf('*') < 0) {
+            return name.startsWith(filter);
+        }
+        String[] segments = filter.split("\\.", -1);
+        boolean leadingStar = segments[0].equals("*");
+        boolean trailingStar = segments[segments.length - 1].equals("*");
+        int start = leadingStar ? 1 : 0;
+        int end = trailingStar ? segments.length - 1 : segments.length;
+        StringBuilder regex = new StringBuilder("^");
+        if (leadingStar) {
+            regex.append("([^.]+\\.)*");
+        }
+        for (int i = start; i < end; i++) {
+            if (i > start) {
+                regex.append("\\.");
+            }
+            regex.append(java.util.regex.Pattern.quote(segments[i]));
+        }
+        if (trailingStar) {
+            regex.append("(\\.[^.]+)*");
+        }
+        return name.matches(regex.append('$').toString());
+    }
+
     @Override
-    public void resetLevel(String loggerName) {
-        resetLevelCalls.add(loggerName);
+    public void resetLevel(String target) {
+        resetLevelCalls.add(target);
         maybeThrow();
-        if (forgetOnReset.contains(loggerName)) {
-            loggers.removeIf(logger -> logger.getName().equals(loggerName));
+        if (target.indexOf('*') >= 0) {
+            // Simulates a real pattern reset's effect (doc/specs/
+            // pattern-level-targeting.md) well enough for CommandsTest's
+            // before/after rendering: every currently-active match reverts
+            // to its configured (baseline) level, everything else is
+            // untouched.
+            List<LoggerInfoData> reverted = new ArrayList<>();
+            for (LoggerInfoData row : loggers) {
+                if (matchesFilter(target, row.getName()) && row.isOverrideActive()) {
+                    String baseline = row.getConfiguredLevel() != null ? row.getConfiguredLevel() : "INFO";
+                    reverted.add(new LoggerInfoData(row.getName(), row.getConfiguredLevel(), baseline,
+                            false, null, null, null, null, row.getContext()));
+                } else {
+                    reverted.add(row);
+                }
+            }
+            loggers = reverted;
+            return;
+        }
+        if (forgetOnReset.contains(target)) {
+            loggers.removeIf(logger -> logger.getName().equals(target));
         }
     }
 

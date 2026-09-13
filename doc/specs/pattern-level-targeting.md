@@ -1,6 +1,6 @@
 # Pattern-based level targeting — apply and reset (issue #41, slices 2–3)
 
-Status: signed off (2026-09-13, all ten decisions below settled) — not yet implemented.
+Status: implemented (2026-09-13).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §18.7 (roadmap entry), §5
 (Feature 1 definition), §6.1 (persistence tiers), §9 (capability/audit model), §11.1
 (component versioning).
@@ -76,7 +76,7 @@ prior specs" at the end).
 - Precedence rules for a logger matched by more than one active standing rule, and for a logger
   that also carries its own exact-name override.
 - Persistence: a new `PatternRule` entity, its own registry, and a state-file schema addition
-  (`schemaVersion` 1 → 2).
+  (`schemaVersion` 3 → 4).
 - Audit: a new `"pattern-sweep"` source for a rule catching a newly-discovered logger, alongside
   the existing sources for a live apply.
 
@@ -352,10 +352,11 @@ promised — no new thread, no new scheduling primitive.
 
 ## Persistence — state file schema
 
-`schemaVersion` 1 → 2, additive:
+`schemaVersion` 3 → 4, additive (3, not 1, since `handler-floor-control.md`'s `handlerOverrides:`
+section and AUTO-mode `mode:` field already moved this file's schema twice before this slice):
 
 ```yaml
-schemaVersion: 2
+schemaVersion: 4
 overrides:
   - loggerName: com.acme.batch.Worker
     level: DEBUG
@@ -365,6 +366,7 @@ overrides:
     source: jmx
     tier: FOR
     expiresAt: 2026-08-21T03:44:02Z
+handlerOverrides: []
 patternRules:
   - pattern: "*.deployment.scanner"
     level: ERROR
@@ -375,13 +377,13 @@ patternRules:
     expiresAt: null
 ```
 
-A v1 file (no `patternRules` key, `includeChildren` instead of `originPattern` on each
-override) is still readable: `FileStateStore` treats a missing `patternRules` key as an empty
-list, and drops the now-meaningless `includeChildren` field from a legacy row rather than
-failing to parse it — a pre-1.0 alpha user's existing state file must not brick their next
-restart. `schemaVersion: 1` is still accepted on read for this reason; only a version the
-reader has never heard of (0, or a future 3) is the hard failure `FileStateStore` already
-raises today.
+A schema-version-1/2/3 file (no `patternRules` key, `includeChildren` instead of
+`originPattern` on each override) is still readable: `FileStateStore` treats a missing
+`patternRules` key as an empty list, and drops the now-meaningless `includeChildren` field
+from a legacy row rather than failing to parse it — a pre-1.0 alpha user's existing state
+file must not brick their next restart. `schemaVersion` 1, 2, and 3 are all still accepted
+on read for this reason; only a version the reader has never heard of (0, or a future 5) is
+the hard failure `FileStateStore` already raises today.
 
 ## Capability and audit
 
@@ -415,9 +417,9 @@ Per top-level §12, unit-first:
 - Sweep: `applyStandingRules` picks up a newly-discovered logger exactly once, respects
   precedence among active rules, and a `FOR`-tier rule's expiry reverts its matches and removes
   itself.
-- `FileStateStore`: round-trips a `PatternRule`; reads a `schemaVersion: 1` file with no
-  `patternRules` key and no crash; a legacy `includeChildren` field on an override row is
-  ignored, not rejected.
+- `FileStateStore`: round-trips a `PatternRule`; reads a `schemaVersion: 1` (or 2, or 3) file
+  with no `patternRules` key and no crash; a legacy `includeChildren` field on an override row
+  is ignored, not rejected.
 - CLI (`CommandsTest`, stubbed transport): the preview lists matches and states the standing-
   rule consequence; `--yes` suppresses the prompt; a non-interactive invocation without
   `--yes` exits with a usage error instead of blocking on stdin.
@@ -427,12 +429,19 @@ Per top-level §12, unit-first:
 
 ## Exit criterion
 
-`logctl error <pattern>` (with `--yes`, in a non-interactive test harness) applies to every
-currently-matching logger in a real `java -jar` + Logback process, a logger added afterward is
-picked up within one sweep interval without any further command, `logctl reset <pattern>`
-reverts every currently-covered logger and the rule stops applying to loggers added after that,
-and `logctl debug org.apache.*` demonstrates the `includeChildren` replacement end-to-end with
-no `--include-children` flag anywhere in the CLI or the operations API.
+A pattern-targeted `setLevel` (`confirmed = true`) applies to every currently-matching logger
+in a real `java -jar` + Logback process, a logger added afterward is picked up within one sweep
+interval without any further command, and `resetLevel` on the same pattern reverts every
+currently-covered logger and the rule stops applying to loggers added after that —
+`LevelControlEndToEndIT` proves this over the real JMX boundary, `confirmed = false`'s
+`ConfirmationRequiredException` included. `logctl debug org.apache.*` demonstrates the
+`includeChildren` replacement with no `--include-children` flag anywhere in the CLI or the
+operations API — `CommandsTest` proves the CLI's preview/confirm/`--yes` behavior against a
+fake transport. (Not separately exercised: the real `logctl` binary process, invoked with a
+pattern target, against a real `LevelControlService` — `CliEndToEndIT`'s own fixture stubs the
+operations layer, per that module's own docstring, "the CLI's transport is what's under test,
+not the engine"; the CLI-behavior half and the engine-plus-JMX half are each covered for real,
+just not combined into one test.)
 
 ## Decisions
 
@@ -450,7 +459,7 @@ All ten numbered decisions this spec's text above assumes answers to are settled
 | 7 | `SetLevelResult` becomes list-shaped (`overrides`, not `override`) | Yes, breaking, accepted pre-1.0 |
 | 8 | A standing rule can be set at any tier (`SESSION`/`FOR`/`STICKY`) | Yes |
 | 9 | Multiple targets in one call | Dropped — motivating case resolved by [PR #44](https://github.com/ddeuchert/logaperture/pull/44)'s zero-or-more wildcard |
-| 10 | State-file `schemaVersion` 1 → 2, backward-read | Yes |
+| 10 | State-file `schemaVersion` bump, backward-read | Yes (3 → 4, not 1 → 2 as first drafted — the file was already at 3) |
 
 Full discussion: <https://claude.ai/code/artifact/f348e62a-31a9-4afb-9b4c-6180d5e03c83>.
 

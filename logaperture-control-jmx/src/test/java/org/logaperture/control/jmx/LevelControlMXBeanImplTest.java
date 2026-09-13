@@ -57,10 +57,10 @@ class LevelControlMXBeanImplTest {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
         LevelControlMXBeanImpl bean = bean(fake);
 
-        SetLevelResultData result = bean.setLevel("com.acme.Worker", "debug", false, null, "sticky", 0);
+        SetLevelResultData result = bean.setLevel("com.acme.Worker", "debug", null, "sticky", 0, false);
 
-        assertEquals("DEBUG", result.getOverride().getLevel());
-        assertEquals("STICKY", result.getOverride().getTier());
+        assertEquals("DEBUG", result.getOverrides().get(0).getLevel());
+        assertEquals("STICKY", result.getOverrides().get(0).getTier());
     }
 
     @Test
@@ -98,12 +98,12 @@ class LevelControlMXBeanImplTest {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
         LevelControlMXBeanImpl bean = bean(fake);
 
-        SetLevelResultData result = bean.setLevel("com.acme.Worker", "debug", true, "INC-1", "SESSION", 0);
+        SetLevelResultData result = bean.setLevel("com.acme.Worker", "debug", "INC-1", "SESSION", 0, false);
 
-        assertEquals("com.acme.Worker", result.getOverride().getLoggerName());
-        assertEquals("DEBUG", result.getOverride().getLevel());
-        assertTrue(result.getOverride().isIncludeChildren());
-        assertEquals("INC-1", result.getOverride().getReason());
+        assertEquals("com.acme.Worker", result.getOverrides().get(0).getLoggerName());
+        assertEquals("DEBUG", result.getOverrides().get(0).getLevel());
+        assertEquals(null, result.getOverrides().get(0).getOriginPattern());
+        assertEquals("INC-1", result.getOverrides().get(0).getReason());
         assertTrue(result.getBlockingHandlers().isEmpty());
 
         Object[] call = fake.setLevelCalls.get(0);
@@ -117,7 +117,7 @@ class LevelControlMXBeanImplTest {
                 new org.logaperture.api.HandlerFloor(new HandlerRef("CONSOLE"), Level.INFO));
         LevelControlMXBeanImpl bean = bean(fake);
 
-        SetLevelResultData result = bean.setLevel("com.acme.Worker", "TRACE", false, null, "SESSION", 0);
+        SetLevelResultData result = bean.setLevel("com.acme.Worker", "TRACE", null, "SESSION", 0, false);
 
         assertEquals(1, result.getBlockingHandlers().size());
         assertEquals("CONSOLE", result.getBlockingHandlers().get(0).getHandlerRef());
@@ -155,9 +155,9 @@ class LevelControlMXBeanImplTest {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
         LevelControlMXBeanImpl bean = bean(fake);
 
-        SetLevelResultData result = bean.setLevel("com.acme.Worker", "DEBUG", false, null, "FOR", 1800);
+        SetLevelResultData result = bean.setLevel("com.acme.Worker", "DEBUG", null, "FOR", 1800, false);
 
-        assertEquals("FOR", result.getOverride().getTier());
+        assertEquals("FOR", result.getOverrides().get(0).getTier());
         SetLevelOptions passedOptions = (SetLevelOptions) fake.setLevelCalls.get(0)[2];
         assertEquals(PersistenceTier.FOR, passedOptions.tier());
         assertEquals(Duration.ofSeconds(1800), passedOptions.expiresIn());
@@ -168,7 +168,7 @@ class LevelControlMXBeanImplTest {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
         LevelControlMXBeanImpl bean = bean(fake);
 
-        bean.setLevel("com.acme.Worker", "DEBUG", false, null, "STICKY", 999);
+        bean.setLevel("com.acme.Worker", "DEBUG", null, "STICKY", 999, false);
 
         SetLevelOptions passedOptions = (SetLevelOptions) fake.setLevelCalls.get(0)[2];
         assertEquals(PersistenceTier.STICKY, passedOptions.tier());
@@ -180,7 +180,7 @@ class LevelControlMXBeanImplTest {
         LevelControlMXBeanImpl bean = bean(new FakeLevelControlOperations());
 
         assertThrows(IllegalArgumentException.class,
-                () -> bean.setLevel("com.acme.Worker", "DEBUG", false, null, "NOT_A_TIER", 0));
+                () -> bean.setLevel("com.acme.Worker", "DEBUG", null, "NOT_A_TIER", 0, false));
     }
 
     @Test
@@ -188,7 +188,7 @@ class LevelControlMXBeanImplTest {
         LevelControlMXBeanImpl bean = bean(new FakeLevelControlOperations());
 
         assertThrows(IllegalArgumentException.class,
-                () -> bean.setLevel("com.acme.Worker", "NOT_A_LEVEL", false, null, "SESSION", 0));
+                () -> bean.setLevel("com.acme.Worker", "NOT_A_LEVEL", null, "SESSION", 0, false));
     }
 
     @Test
@@ -197,7 +197,7 @@ class LevelControlMXBeanImplTest {
         fake.throwOnSetLevel = new RuntimeException("simulated denial");
         LevelControlMXBeanImpl bean = bean(fake);
 
-        assertThrows(RuntimeException.class, () -> bean.setLevel("com.acme.Worker", "DEBUG", false, null, "SESSION", 0));
+        assertThrows(RuntimeException.class, () -> bean.setLevel("com.acme.Worker", "DEBUG", null, "SESSION", 0, false));
     }
 
     @Test

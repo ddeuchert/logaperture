@@ -16,6 +16,7 @@
 package org.logaperture.cli;
 
 import org.logaperture.core.CapabilityDeniedException;
+import org.logaperture.core.ConfirmationRequiredException;
 
 import javax.management.RuntimeMBeanException;
 import java.io.PrintStream;
@@ -67,8 +68,9 @@ public final class Main {
             return CliError.OK;
         }
 
+        boolean interactive = System.console() != null;
         try (ControlPlane controlPlane = connector.connect(invocation.pid())) {
-            return invocation.command().run(controlPlane.mbean(), out);
+            return invocation.command().run(controlPlane.mbean(), out, System.in, interactive);
         } catch (CliError e) {
             err.println(e.getMessage());
             return e.exitCode();
@@ -81,6 +83,15 @@ public final class Main {
             // IllegalArgumentException since this isn't one.
             err.println("Refused: this JVM's policy does not grant " + denied.capability() + ".");
             return CliError.REFUSED;
+        } catch (ConfirmationRequiredException e) {
+            // logctl's own setLevel flow always resolves confirmed=true (a
+            // typed "y" or --yes) before it ever calls the server for real
+            // (doc/specs/pattern-level-targeting.md "Confirmation and CLI
+            // behavior") -- reaching here means a race between the preview
+            // and the apply call, or a bug, not a usage mistake. Printed
+            // plainly rather than falling through to a raw stack trace.
+            err.println("logctl: " + messageOf(e));
+            return CliError.UNEXPECTED;
         } catch (IllegalArgumentException e) {
             // Bad-argument validation done server-side (e.g. NameFilter's
             // grammar) is still a usage error (doc/specs/cli-transport.md "is
@@ -99,6 +110,10 @@ public final class Main {
             if (target instanceof CapabilityDeniedException denied) {
                 err.println("Refused: this JVM's policy does not grant " + denied.capability() + ".");
                 return CliError.REFUSED;
+            }
+            if (target instanceof ConfirmationRequiredException) {
+                err.println("logctl: " + messageOf(target));
+                return CliError.UNEXPECTED;
             }
             if (target instanceof IllegalArgumentException) {
                 err.println("logctl: " + messageOf(target));

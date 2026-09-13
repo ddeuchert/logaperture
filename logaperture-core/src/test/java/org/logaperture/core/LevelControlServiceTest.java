@@ -64,7 +64,7 @@ class LevelControlServiceTest {
     void setLevel_onExistingLogger_appliesAndRecordsOverride() {
         adapter.addKnownLogger("com.acme.Worker");
 
-        LevelOverride override = service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.withReason("INC-1")).override();
+        LevelOverride override = service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.withReason("INC-1")).overrides().get(0);
 
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme.Worker"));
         assertEquals("com.acme.Worker", override.loggerName());
@@ -89,41 +89,42 @@ class LevelControlServiceTest {
     }
 
     @Test
-    void setLevel_includeChildren_reportsBlockingHandlersOnADescendantsOwnPathToo() {
-        // A code-review finding: blockingHandlers used to be computed once
-        // for the named logger alone, so a descendant fanned out to by
-        // --include-children with its own, different handler on its own
-        // path lost its warning entirely.
+    void setLevel_pattern_reportsBlockingHandlersOnAMatchsOwnPathToo() {
+        // A code-review finding (originally against --include-children, now
+        // the pattern-target fan-out that replaced it): blockingHandlers
+        // used to be computed once for the named logger alone, so a match
+        // with its own, different handler on its own path lost its warning
+        // entirely.
         adapter.addKnownLogger("com.acme");
         adapter.addKnownLogger("com.acme.http");
         HandlerRef fileOnChildOnly = new HandlerRef("FILE");
         adapter.addHandler(fileOnChildOnly, Level.INFO, "com.acme.http"); // not on "com.acme"'s own path
 
         SetLevelResult result = service.setLevel(
-                "com.acme", Level.TRACE, new SetLevelOptions(true, null, null, PersistenceTier.SESSION));
+                "com.acme.*", Level.TRACE, SetLevelOptions.defaults().withConfirmed(true));
 
         assertEquals(1, result.blockingHandlers().size());
         assertEquals(fileOnChildOnly, result.blockingHandlers().get(0).handlerRef());
     }
 
     @Test
-    void setLevel_includeChildren_dedupesAHandlerSharedByParentAndChild() {
+    void setLevel_pattern_dedupesAHandlerSharedAcrossMatches() {
         adapter.addKnownLogger("com.acme");
         adapter.addKnownLogger("com.acme.http");
         HandlerRef console = new HandlerRef("CONSOLE");
         adapter.addHandler(console, Level.INFO, "com.acme", "com.acme.http"); // on both paths
 
         SetLevelResult result = service.setLevel(
-                "com.acme", Level.TRACE, new SetLevelOptions(true, null, null, PersistenceTier.SESSION));
+                "com.acme.*", Level.TRACE, SetLevelOptions.defaults().withConfirmed(true));
 
-        assertEquals(1, result.blockingHandlers().size(), "reported once, not once per target");
+        assertEquals(1, result.blockingHandlers().size(), "reported once, not once per match");
     }
 
     @Test
-    void setLevel_includeChildren_keepsTheStricterFloorWhenTwoTargetsShareARef() {
+    void setLevel_pattern_keepsTheStricterFloorWhenTwoMatchesShareARef() {
         // Code-review finding: on WildFly, handlerFloorsBelow collapses to
         // one shared ALL_HANDLERS ref (Decision #7) -- two different
-        // targets under --include-children can each report a *different*
+        // matches under one pattern can each report a *different*
         // currentLevel for that same ref, and the old putIfAbsent-based
         // dedup silently dropped whichever wasn't seen first, understating
         // the real block.
@@ -134,11 +135,11 @@ class LevelControlServiceTest {
         adapter.addHandlerWithPerTargetLevel(allHandlers, Level.WARN, "com.acme.http"); // stricter
 
         SetLevelResult result = service.setLevel(
-                "com.acme", Level.TRACE, new SetLevelOptions(true, null, null, PersistenceTier.SESSION));
+                "com.acme.*", Level.TRACE, SetLevelOptions.defaults().withConfirmed(true));
 
         assertEquals(1, result.blockingHandlers().size());
         assertEquals(Level.WARN, result.blockingHandlers().get(0).currentLevel(),
-                "the stricter of the two targets' readings, not whichever was seen first");
+                "the stricter of the two matches' readings, not whichever was seen first");
     }
 
     @Test
@@ -164,7 +165,7 @@ class LevelControlServiceTest {
     @Test
     void setLevel_onNotYetExistingLogger_stillWorks() {
         // "com.acme.Later" was never registered with the adapter beforehand.
-        LevelOverride override = service.setLevel("com.acme.Later", Level.TRACE, SetLevelOptions.defaults()).override();
+        LevelOverride override = service.setLevel("com.acme.Later", Level.TRACE, SetLevelOptions.defaults()).overrides().get(0);
 
         assertEquals(Level.TRACE, adapter.effectiveLevel("com.acme.Later"));
         assertEquals(Level.TRACE, override.level());
@@ -217,15 +218,16 @@ class LevelControlServiceTest {
         assertEquals(Level.INFO, adapter.effectiveLevel("com.acme.B"));
     }
 
-    // --- includeChildren / hierarchy fan-out --------------------------------------------------
+    // --- pattern targets: self + descendants, standing rules ---------------------------------
 
     @Test
-    void setLevel_includeChildren_appliesToEveryDescendantIndependently() {
+    void setLevel_pattern_appliesToTheNamedLoggerAndEveryDescendantIndependently() {
+        adapter.addKnownLogger("com.acme");
         adapter.addKnownLogger("com.acme.http");
         adapter.addKnownLogger("com.acme.http.client");
         adapter.addKnownLogger("com.other");
 
-        service.setLevel("com.acme", Level.DEBUG, new SetLevelOptions(true, "reason", null, PersistenceTier.SESSION));
+        service.setLevel("com.acme.*", Level.DEBUG, SetLevelOptions.withReason("reason").withConfirmed(true));
 
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme"));
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme.http"));
@@ -239,12 +241,29 @@ class LevelControlServiceTest {
     }
 
     @Test
-    void setLevel_includeChildrenFalse_doesNotTouchDescendants() {
+    void setLevel_exactName_doesNotTouchDescendants() {
         adapter.addKnownLogger("com.acme.http");
 
         service.setLevel("com.acme", Level.DEBUG, SetLevelOptions.defaults());
 
         assertTrue(overrides.get("com.acme.http").isEmpty());
+    }
+
+    @Test
+    void setLevel_pattern_doesNotImmediatelyApplyToANotYetKnownMatch_butTheRuleStandsForTheSweep() {
+        // Unlike an exact-name target (setLevel_onNotYetExistingLogger_stillWorks,
+        // above), a pattern only mutates CURRENTLY-known matches at creation
+        // time. The rule itself is still created, ready for the sweep to
+        // pick up "com.acme" the moment it's discovered.
+        service.setLevel("com.acme.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
+
+        assertTrue(overrides.get("com.acme").isEmpty());
+
+        adapter.addKnownLogger("com.acme");
+        service.applyStandingRules(java.time.Instant.now());
+
+        assertTrue(overrides.get("com.acme").isPresent());
+        assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme"));
     }
 
     // --- capability checks ---------------------------------------------------------------------
@@ -281,7 +300,7 @@ class LevelControlServiceTest {
     }
 
     @Test
-    void setLevel_includeChildren_denialOnLaterTargetPreventsEarlierTargetFromBeingMutated() {
+    void setLevel_pattern_denialOnLaterMatchPreventsEarlierMatchFromBeingMutated() {
         // Parent already at DEBUG (its own baseline) -- moving it to DEBUG again
         // is "lower or equal", which the policy below allows.
         adapter.setConfiguredLevel("com.acme", Level.DEBUG);
@@ -295,7 +314,7 @@ class LevelControlServiceTest {
         LevelControlService denied = newService(capability -> capability != Capability.LEVEL_RAISE);
 
         assertThrows(CapabilityDeniedException.class,
-                () -> denied.setLevel("com.acme", Level.DEBUG, new SetLevelOptions(true, null, null, PersistenceTier.SESSION)));
+                () -> denied.setLevel("com.acme.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true)));
 
         // The parent passed its own check but must NOT have been mutated --
         // the whole batch is pre-checked before anything is applied.
@@ -351,16 +370,16 @@ class LevelControlServiceTest {
     }
 
     @Test
-    void setLevel_includeChildren_adapterThrowsMidFanout_earlierTargetsStayCommitted() {
+    void setLevel_pattern_adapterThrowsMidFanout_earlierMatchesStayCommitted() {
+        adapter.addKnownLogger("com.acme");
         adapter.addKnownLogger("com.acme.a");
         adapter.addKnownLogger("com.acme.b");
-        // parent "com.acme" applies first, then children in the order LoggerHierarchy returns
-        // them -- descendantsOf preserves input iteration order, and knownLoggerNames() here
-        // returns insertion order, so "com.acme.a" is processed before "com.acme.b".
+        // matchesFor iterates a sorted TreeSet, and "com.acme" is a prefix of
+        // both, so the order is "com.acme", then "com.acme.a", then "com.acme.b".
         adapter.throwOnApply("com.acme.a");
 
         assertThrows(RuntimeException.class,
-                () -> service.setLevel("com.acme", Level.DEBUG, new SetLevelOptions(true, null, null, PersistenceTier.SESSION)));
+                () -> service.setLevel("com.acme.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true)));
 
         // The parent, processed before the throwing child, is applied and recorded.
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme"));
@@ -481,7 +500,7 @@ class LevelControlServiceTest {
     @Test
     void adoptOverride_appliesToAdapterAndRegistry_andRecordsAResume() {
         LevelOverride fromAnotherContext = new LevelOverride(
-                "com.acme.Shared", Level.DEBUG, false, "why", java.time.Instant.now(), "jmx",
+                "com.acme.Shared", Level.DEBUG, null, "why", java.time.Instant.now(), "jmx",
                 PersistenceTier.STICKY, null);
 
         service.adoptOverride(fromAnotherContext);
@@ -569,7 +588,7 @@ class LevelControlServiceTest {
     @Test
     void adoptOverride_doesNotWriteToTheStateStore() {
         LevelOverride fromAnotherContext = new LevelOverride(
-                "com.acme.Shared", Level.DEBUG, false, null, java.time.Instant.now(), "jmx",
+                "com.acme.Shared", Level.DEBUG, null, null, java.time.Instant.now(), "jmx",
                 PersistenceTier.STICKY, null);
 
         service.adoptOverride(fromAnotherContext);
@@ -664,7 +683,7 @@ class LevelControlServiceTest {
         adapter.addKnownLogger("com.acme.Worker");
         java.time.Instant now = java.time.Instant.now();
         serviceWithListener.setLevel("com.acme.Worker", Level.DEBUG,
-                new SetLevelOptions(false, null, java.time.Duration.ofMinutes(30), PersistenceTier.FOR));
+                new SetLevelOptions(null, java.time.Duration.ofMinutes(30), PersistenceTier.FOR, false));
         changeCount = 0;
 
         serviceWithListener.sweepExpiredOverrides(now.plus(java.time.Duration.ofMinutes(31)));
@@ -677,7 +696,7 @@ class LevelControlServiceTest {
         setUpServiceWithListener();
         adapter.addKnownLogger("com.acme.Worker");
         serviceWithListener.setLevel("com.acme.Worker", Level.DEBUG,
-                new SetLevelOptions(false, null, java.time.Duration.ofMinutes(30), PersistenceTier.FOR));
+                new SetLevelOptions(null, java.time.Duration.ofMinutes(30), PersistenceTier.FOR, false));
         changeCount = 0;
 
         serviceWithListener.sweepExpiredOverrides(java.time.Instant.now()); // nowhere near the 30-minute deadline
@@ -688,7 +707,7 @@ class LevelControlServiceTest {
     @Test
     void resumeFromStateStore_doesNotFireTheChangeListener() {
         setUpServiceWithListener();
-        stateStore.save(new LevelOverride("com.acme.Worker", Level.DEBUG, false, null, java.time.Instant.now(),
+        stateStore.save(new LevelOverride("com.acme.Worker", Level.DEBUG, null, null, java.time.Instant.now(),
                 "jmx", PersistenceTier.STICKY, null));
 
         serviceWithListener.resumeFromStateStore(java.time.Instant.now());
@@ -700,7 +719,7 @@ class LevelControlServiceTest {
     void adoptOverride_doesNotFireTheChangeListener() {
         setUpServiceWithListener();
         LevelOverride fromAnotherContext = new LevelOverride(
-                "com.acme.Shared", Level.DEBUG, false, null, java.time.Instant.now(), "jmx",
+                "com.acme.Shared", Level.DEBUG, null, null, java.time.Instant.now(), "jmx",
                 PersistenceTier.STICKY, null);
 
         serviceWithListener.adoptOverride(fromAnotherContext);

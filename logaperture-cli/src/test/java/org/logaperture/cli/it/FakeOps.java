@@ -114,8 +114,8 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
         state.put(loggerName, new LoggerInfo(
                 loggerName, BASELINE, level, true, "jmx", options.reason(), options.tier(), expiresAt));
         LevelOverride override = new LevelOverride(
-                loggerName, level, options.includeChildren(), options.reason(), now, "jmx", options.tier(), expiresAt);
-        return new SetLevelResult(override, List.of());
+                loggerName, level, null, options.reason(), now, "jmx", options.tier(), expiresAt);
+        return new SetLevelResult(List.of(override), List.of());
     }
 
     @Override

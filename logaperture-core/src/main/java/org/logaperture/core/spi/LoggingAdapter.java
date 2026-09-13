@@ -33,9 +33,11 @@ import java.util.Optional;
  * are the modules allowed to implement it with real framework calls.
  *
  * <p>Deliberately four logger methods, no {@code includeChildren} parameter
- * here: fan-out to descendants is {@code core}'s job (pure string logic over
- * already-known names via {@code LoggerHierarchy}), not the adapter's —
- * keeps the adapter a dumb per-logger getter/setter. The handler methods
+ * here: a caller targeting a logger and its descendants does so with a
+ * trailing-wildcard pattern (doc/specs/pattern-level-targeting.md), resolved
+ * against already-known names by {@code core}'s own {@code NameFilter} —
+ * pure string logic, not the adapter's job. Keeps the adapter a dumb
+ * per-logger getter/setter. The handler methods
  * below (doc/specs/handler-floor-control.md "Adapter SPI") follow the same
  * discipline: no tier/reason/lifetime knowledge here, that's {@code core}'s.
  */
