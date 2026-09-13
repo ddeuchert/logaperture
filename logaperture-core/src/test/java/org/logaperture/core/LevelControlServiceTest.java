@@ -410,7 +410,7 @@ class LevelControlServiceTest {
         adapter.addKnownLogger("com.acme.Worker");
         adapter.addKnownLogger("com.other.Thing");
 
-        List<LoggerInfo> matched = service.listLoggers("*infinispan");
+        List<LoggerInfo> matched = service.listLoggers("*.infinispan");
 
         assertEquals(1, matched.size());
         assertEquals("org.jboss.as.clustering.infinispan", matched.get(0).name());

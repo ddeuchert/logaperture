@@ -76,13 +76,14 @@ class CommandsTest {
 
     @Test
     void levelsPassesAGlobFilterThroughVerbatim() {
-        // The CLI does no name matching of its own — a *…* glob must reach
-        // listLoggers unchanged for the server-side NameFilter to apply it.
-        // (The fake MXBean prefix-matches, so it returns nothing here; what
-        // matters is the filter string arriving untouched.)
-        assertEquals(CliError.OK, run(Commands.levels("*infinispan*", false)));
+        // The CLI does no name matching or grammar validation of its own — a
+        // pattern must reach listLoggers unchanged for the server-side
+        // NameFilter to apply and validate it. (The fake MXBean
+        // prefix-matches, so it returns nothing here; what matters is the
+        // filter string arriving untouched.)
+        assertEquals(CliError.OK, run(Commands.levels("*.infinispan", false)));
 
-        assertEquals(List.of("*infinispan*"), mbean.listLoggersFilters);
+        assertEquals(List.of("*.infinispan"), mbean.listLoggersFilters);
     }
 
     @Test

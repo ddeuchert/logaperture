@@ -18,6 +18,7 @@ package org.logaperture.core;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NameFilterTest {
@@ -36,40 +37,72 @@ class NameFilterTest {
     }
 
     @Test
-    void starGlobMatchesAcrossSegments() {
-        assertTrue(NameFilter.matches("com.*.Worker", "com.acme.Worker"));
-        assertFalse(NameFilter.matches("com.*.Worker", "com.acme.Noisy"));
+    void dotsInAPrefixFilterAreLiteral() {
+        // If '.' were regex "any character," "comXacme" would wrongly match "com.acme".
+        assertFalse(NameFilter.matches("com.acme", "comXacme.Worker"));
     }
 
     @Test
-    void questionMarkGlobMatchesSingleChar() {
-        assertTrue(NameFilter.matches("com.acme.Worker?", "com.acme.Worker1"));
-        assertFalse(NameFilter.matches("com.acme.Worker?", "com.acme.Worker12"));
+    void trailingStarMatchesOneOrMoreDescendantSegments() {
+        assertTrue(NameFilter.matches("org.apache.*", "org.apache.Foo"));
+        assertTrue(NameFilter.matches("org.apache.*", "org.apache.commons.Foo"));
+        assertFalse(NameFilter.matches("org.apache.*", "org.apache")); // one-or-more, not zero
+        assertFalse(NameFilter.matches("org.apache.*", "org.apacheX.Foo"));
     }
 
     @Test
-    void dotsInGlobFilterAreLiteralNotRegexAny() {
-        // If '.' were left as regex "any character" instead of escaped,
-        // "comXacme" would wrongly match "com.*" too (com + any-char + any).
-        assertTrue(NameFilter.matches("com.*", "com.acme.Worker"));
-        assertFalse(NameFilter.matches("com.*", "comXacme"));
-    }
-
-    @Test
-    void leadingStarMatchesFromASuffix() {
+    void leadingStarMatchesOneOrMoreAncestorSegments() {
         // The abbreviated-category case: a log line printed "infinispan", the
         // real logger is org.jboss.as.clustering.infinispan.
         String logger = "org.jboss.as.clustering.infinispan";
         assertTrue(NameFilter.matches("*.infinispan", logger));
-        assertTrue(NameFilter.matches("*infinispan*", logger));
-        assertTrue(NameFilter.matches("*infinispan", logger));
+        assertFalse(NameFilter.matches("*.infinispan", "infinispan")); // one-or-more, not zero
         // Anchored tail: "*.infinispan" must not match a longer name.
         assertFalse(NameFilter.matches("*.infinispan", "org.infinispan.remoting"));
     }
 
     @Test
-    void bareStarMatchesEverything() {
-        assertTrue(NameFilter.matches("*", "com.acme.Worker"));
-        assertTrue(NameFilter.matches("*", "ROOT"));
+    void bothLeadingAndTrailingStarMatch() {
+        assertTrue(NameFilter.matches("*.apache.writer.*", "org.acme.apache.writer.Impl"));
+        assertFalse(NameFilter.matches("*.apache.writer.*", "apache.writer.Impl")); // needs a leading segment
+        assertFalse(NameFilter.matches("*.apache.writer.*", "org.acme.apache.writer")); // needs a trailing segment
+    }
+
+    @Test
+    void midSegmentStarIsRejected() {
+        IllegalArgumentException e =
+                assertThrows(IllegalArgumentException.class, () -> NameFilter.matches("org.*apache", "x"));
+        assertTrue(e.getMessage().contains("org.*apache"));
+    }
+
+    @Test
+    void mixedSingleSegmentSuggestsTheAnchoredForm() {
+        // The old *word* / *word / word* forms -- the common migration case --
+        // get a specific "try" suggestion rather than a generic rejection.
+        IllegalArgumentException e =
+                assertThrows(IllegalArgumentException.class, () -> NameFilter.matches("*infinispan*", "x"));
+        assertTrue(e.getMessage().contains("*.infinispan"), e.getMessage());
+    }
+
+    @Test
+    void middleWildcardSegmentIsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> NameFilter.matches("org.*.writer", "x"));
+    }
+
+    @Test
+    void bareStarIsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> NameFilter.matches("*", "com.acme.Worker"));
+    }
+
+    @Test
+    void allWildcardSegmentsAreRejectedEvenWithMoreThanOne() {
+        assertThrows(IllegalArgumentException.class, () -> NameFilter.matches("*.*", "com.acme.Worker"));
+    }
+
+    @Test
+    void questionMarkIsNoLongerAWildcard() {
+        assertThrows(IllegalArgumentException.class, () -> NameFilter.matches("com.acme.Worker?", "com.acme.Worker1"));
+        // Not silently treated as a literal character either, even with no '*' present.
+        assertThrows(IllegalArgumentException.class, () -> NameFilter.matches("com.acme?", "com.acme?"));
     }
 }
