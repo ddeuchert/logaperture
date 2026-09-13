@@ -1,6 +1,6 @@
 # Pattern-based level targeting — apply and reset (issue #41, slices 2–3)
 
-Status: draft, not yet implemented.
+Status: signed off (2026-09-13, all ten decisions below settled) — not yet implemented.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §18.7 (roadmap entry), §5
 (Feature 1 definition), §6.1 (persistence tiers), §9 (capability/audit model), §11.1
 (component versioning).
@@ -434,18 +434,31 @@ reverts every currently-covered logger and the rule stops applying to loggers ad
 and `logctl debug org.apache.*` demonstrates the `includeChildren` replacement end-to-end with
 no `--include-children` flag anywhere in the CLI or the operations API.
 
-## Open decisions
+## Decisions
 
-Sign-off review: <https://claude.ai/code/artifact/f348e62a-31a9-4afb-9b4c-6180d5e03c83> — the
-numbered list (#1–#10) this spec's text above already assumes answers to. Folded into this
-file once agreed; not re-litigated in the PR thread per CLAUDE.md's sign-off process.
+All ten numbered decisions this spec's text above assumes answers to are settled, as proposed:
+
+| # | Decision | Settled as |
+|---|---|---|
+| 1 | Precedence among overlapping patterns | Newest rule (`appliedAt`) wins |
+| 2 | Confirmation as a server-side `confirmed` parameter, not CLI-only UX | Yes |
+| 2a | How a JMX caller reads "not yet confirmed" | `ConfirmationRequiredException`, same as `CapabilityDeniedException` — no return-value alternative |
+| 3 | Confirmation applies at every tier, including `--session` | Yes |
+| 4 | Non-interactive invocation without `--yes` | Fails loudly, exit 2 |
+| 5 | Reset-by-pattern matches by exact string, not by re-resolving | Yes |
+| 6 | `resetAll` also retires every standing rule | Yes |
+| 7 | `SetLevelResult` becomes list-shaped (`overrides`, not `override`) | Yes, breaking, accepted pre-1.0 |
+| 8 | A standing rule can be set at any tier (`SESSION`/`FOR`/`STICKY`) | Yes |
+| 9 | Multiple targets in one call | Dropped — motivating case resolved by [PR #44](https://github.com/ddeuchert/logaperture/pull/44)'s zero-or-more wildcard |
+| 10 | State-file `schemaVersion` 1 → 2, backward-read | Yes |
+
+Full discussion: <https://claude.ai/code/artifact/f348e62a-31a9-4afb-9b4c-6180d5e03c83>.
 
 ## Divergence from prior specs
 
-Once this spec is signed off, before implementation:
+Applied now that sign-off is complete, ahead of implementation:
 
-- `doc/specs/level-control.md`'s `includeChildren` row gets its "Superseded (planned, not this
-  slice)" note updated to "Superseded — removed; see `pattern-level-targeting.md`," since the
-  replacement now exists.
-- Top-level `doc/logaperture-spec.md` §18.7 gets a line added noting slices 2–3 are specced
-  here, matching how §18.7 already links to `level-control.md` for slice 1.
+- `doc/specs/level-control.md`'s `includeChildren` row's "Superseded (planned, not this slice)"
+  note is updated to "Superseded — removed; see `pattern-level-targeting.md`."
+- Top-level `doc/logaperture-spec.md` §18.7 already links here (added when this draft was
+  first published); no further change needed now that it's signed off rather than in review.
