@@ -77,8 +77,8 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
-    public void resetLevel(String loggerName) {
-        operations.resetLevel(loggerName);
+    public ResetOutcomeData resetLevel(String loggerName) {
+        return ResetOutcomeData.from(operations.resetLevel(loggerName));
     }
 
     @Override

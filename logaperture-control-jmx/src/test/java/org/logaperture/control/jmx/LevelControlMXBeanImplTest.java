@@ -209,6 +209,18 @@ class LevelControlMXBeanImplTest {
     }
 
     @Test
+    void resetLevel_returnsWhatTheOperationActuallyReverted() {
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+        fake.resetOutcomeToReturn = new org.logaperture.api.ResetOutcome(
+                List.of("org.apache.A", "org.apache.B"), true);
+
+        ResetOutcomeData result = bean(fake).resetLevel("org.apache.*");
+
+        assertEquals(List.of("org.apache.A", "org.apache.B"), result.getRevertedLoggerNames());
+        assertTrue(result.isPatternRuleRetired());
+    }
+
+    @Test
     void resetAll_delegatesToOperations() {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
         bean(fake).resetAll();

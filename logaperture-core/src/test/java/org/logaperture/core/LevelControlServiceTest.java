@@ -17,18 +17,23 @@ package org.logaperture.core;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
+import org.logaperture.api.PatternRule;
 import org.logaperture.api.PersistenceTier;
+import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -266,6 +271,43 @@ class LevelControlServiceTest {
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme"));
     }
 
+    // --- resetLevel on a pattern: retires the standing rule -----------------------------------
+
+    @Test
+    void resetLevel_pattern_revertsEveryMatchAndReportsTheRuleRetired() {
+        adapter.addKnownLogger("com.acme.http");
+        adapter.addKnownLogger("com.acme.db");
+        service.setLevel("com.acme.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
+
+        var outcome = service.resetLevel("com.acme.*");
+
+        assertTrue(outcome.patternRuleRetired());
+        assertEquals(Set.of("com.acme.http", "com.acme.db"), Set.copyOf(outcome.revertedLoggerNames()));
+        assertEquals(Level.INFO, adapter.effectiveLevel("com.acme.http"));
+        assertEquals(Level.INFO, adapter.effectiveLevel("com.acme.db"));
+        assertTrue(service.activePatternRules().isEmpty());
+    }
+
+    @Test
+    void resetLevel_pattern_ruleTrackedButNoCurrentMatch_stillReportsRetiredWithNothingReverted() {
+        // The rule exists (nothing has matched it yet, or every match was
+        // since reset individually) -- retiring it is real work, distinct
+        // from "no rule existed under that exact string at all" below.
+        service.setLevel("com.brandnew.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
+
+        var outcome = service.resetLevel("com.brandnew.*");
+
+        assertTrue(outcome.patternRuleRetired());
+        assertTrue(outcome.revertedLoggerNames().isEmpty());
+    }
+
+    @Test
+    void resetLevel_pattern_noRuleEverTracked_isANoOpNotAnError() {
+        var outcome = service.resetLevel("com.never.seen.*");
+
+        assertEquals(ResetOutcome.nothingReset(), outcome);
+    }
+
     // --- capability checks ---------------------------------------------------------------------
 
     @Test
@@ -322,6 +364,108 @@ class LevelControlServiceTest {
         assertEquals(Level.ERROR, adapter.effectiveLevel("com.acme.http")); // untouched
         assertTrue(overrides.all().isEmpty());
         assertTrue(auditLog.records().isEmpty());
+    }
+
+    @Test
+    void setLevel_pattern_zeroCurrentMatches_stillRequiresPersist() {
+        // Code-review finding: the PERSIST check used to be nested inside a
+        // per-target loop, so a pattern matching no currently-known logger
+        // (an empty target list) skipped it entirely -- a principal denied
+        // PERSIST could still create a durable standing rule.
+        LevelControlService denied = newService(capability -> capability != Capability.PERSIST);
+
+        assertThrows(CapabilityDeniedException.class,
+                () -> denied.setLevel("org.brandnew.*", Level.DEBUG,
+                        SetLevelOptions.sticky().withConfirmed(true)));
+
+        assertTrue(stateStore.loadAllPatternRules().isEmpty(),
+                "no rule should have been created or persisted when PERSIST is denied");
+    }
+
+    @Test
+    void setLevel_pattern_precedenceSkippedMatch_isNotConsultedForCapability() {
+        // Code-review finding: capability used to be checked against every
+        // resolved match, including one that precedence will skip entirely
+        // (an existing exact-name override) -- denying that skipped
+        // logger's own direction should not block the call.
+        adapter.setConfiguredLevel("com.acme.Other", Level.TRACE); // no override; TRACE -> DEBUG is a lower
+        service.setLevel("com.acme.Legacy", Level.WARN, SetLevelOptions.defaults()); // exact-name override, at WARN
+        LevelControlService lowerOnly = newService(capability -> capability != Capability.LEVEL_RAISE);
+
+        // "com.acme.Legacy" would need LEVEL_RAISE to go from WARN to DEBUG
+        // (more verbose) if it were consulted, but it's covered by an
+        // exact-name override and precedence skips it -- only
+        // com.acme.Other (a lower, granted) actually gets mutated, so this
+        // must succeed rather than throw CapabilityDeniedException(RAISE).
+        SetLevelResult result = lowerOnly.setLevel("com.acme.*", Level.DEBUG,
+                SetLevelOptions.defaults().withConfirmed(true));
+
+        assertEquals(1, result.overrides().size());
+        assertEquals("com.acme.Other", result.overrides().get(0).loggerName());
+        assertEquals(Level.WARN, adapter.effectiveLevel("com.acme.Legacy"), "precedence-skipped, untouched");
+    }
+
+    @Test
+    void setLevel_pattern_persistsTheRuleBeforeAnyMatchedOverride() {
+        // Code-review finding: persisting per-logger overrides before the
+        // rule itself left them orphaned (no way to group-revert, and the
+        // sweep would never re-derive the rule) if a crash landed between
+        // the two. Persisting the rule first means a logger whose override
+        // write is lost simply looks uncovered and gets swept up again.
+        adapter.addKnownLogger("com.acme.Worker");
+        List<String> persistOrder = new ArrayList<>();
+        StateStore orderTrackingStore = new StateStore() {
+            @Override
+            public List<LevelOverride> loadAll() {
+                return List.of();
+            }
+
+            @Override
+            public void save(LevelOverride override) {
+                persistOrder.add("override:" + override.loggerName());
+            }
+
+            @Override
+            public void remove(String loggerName) {
+            }
+
+            @Override
+            public List<HandlerLevelOverride> loadAllHandlers() {
+                return List.of();
+            }
+
+            @Override
+            public void saveHandler(HandlerLevelOverride override) {
+            }
+
+            @Override
+            public void removeHandler(HandlerRef ref) {
+            }
+
+            @Override
+            public List<PatternRule> loadAllPatternRules() {
+                return List.of();
+            }
+
+            @Override
+            public void savePatternRule(PatternRule rule) {
+                persistOrder.add("rule:" + rule.pattern());
+            }
+
+            @Override
+            public void removePatternRule(String pattern) {
+            }
+
+            @Override
+            public void clear() {
+            }
+        };
+        LevelControlService withTrackingStore = new LevelControlService(adapter, baselines, overrides,
+                CapabilityPolicy.allowAll(), auditLog, orderTrackingStore, "alice", "jmx");
+
+        withTrackingStore.setLevel("com.acme.*", Level.DEBUG, SetLevelOptions.sticky().withConfirmed(true));
+
+        assertEquals(List.of("rule:com.acme.*", "override:com.acme.Worker"), persistOrder);
     }
 
     // --- audit -----------------------------------------------------------------------------------

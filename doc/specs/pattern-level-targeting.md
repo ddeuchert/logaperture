@@ -293,7 +293,7 @@ ConfirmationRequiredException                        — logaperture-core, new
 
 ```java
 SetLevelResult setLevel(String target, Level level, SetLevelOptions options);
-void resetLevel(String target);
+ResetOutcome resetLevel(String target);
 void resetAll();
 ```
 
@@ -302,7 +302,27 @@ MXBean wire signature (breaking — see "Versioning" below):
 ```java
 SetLevelResultData setLevel(
     String target, String level, String reason, String tier, long forSeconds, boolean confirmed);
+ResetOutcomeData resetLevel(String target);
 ```
+
+**`resetLevel` returning `void` was corrected post-implementation** (a code-review finding
+against the first cut of this slice): the CLI's `reset` on a pattern used to reconstruct what
+was reverted by diffing two separate `listLoggers(pattern)` reads taken before and after the
+call — racy against a concurrent mutation, and unable to tell "no standing rule was tracked
+under that exact pattern" from "the rule existed but matched nothing," so it printed "Standing
+rule retired" even on a no-op. `resetLevel` now returns `ResetOutcome`/`ResetOutcomeData`
+(`revertedLoggerNames`, `patternRuleRetired`) so the server reports exactly what happened
+instead of leaving the caller to reconstruct it:
+
+```java
+record ResetOutcome(List<String> revertedLoggerNames, boolean patternRuleRetired) {}
+```
+
+For an exact-name target, `revertedLoggerNames` has at most one entry (itself) and
+`patternRuleRetired` is always `false`. For a pattern target, `revertedLoggerNames` is every
+logger whose override traced back to that pattern's rule, and `patternRuleRetired` is `true`
+only when a rule was actually tracked under that exact pattern string and has now been retired
+— `false`, not an error, when no rule was ever tracked under it.
 
 `includeChildren` is gone from the parameter list entirely, not defaulted or ignored.
 `SetLevelResultData` gains only a list-shaped `overrides` field (renamed from the singular

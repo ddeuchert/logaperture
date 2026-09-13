@@ -19,7 +19,6 @@ import org.logaperture.api.PatternRule;
 
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * One {@link PatternRule} per pattern string — idempotent by construction,
@@ -27,22 +26,24 @@ import java.util.concurrent.ConcurrentHashMap;
  * for that exact pattern rather than accumulating a second one. Two
  * <em>different</em> pattern strings whose match sets overlap for some
  * logger are a separate concern — doc/specs/pattern-level-targeting.md
- * "Precedence" (the newest {@code appliedAt} wins), not this registry's.
+ * "Precedence" (the newest {@code appliedAt} wins), not this registry's. A
+ * thin, typed wrapper over {@link KeyedRegistry}, keyed by {@link
+ * PatternRule#pattern()}.
  */
 final class PatternRuleRegistry {
 
-    private final Map<String, PatternRule> rules = new ConcurrentHashMap<>();
+    private final KeyedRegistry<String, PatternRule> registry = new KeyedRegistry<>(PatternRule::pattern);
 
     void put(PatternRule rule) {
-        rules.put(rule.pattern(), rule);
+        registry.put(rule);
     }
 
     Optional<PatternRule> get(String pattern) {
-        return Optional.ofNullable(rules.get(pattern));
+        return registry.get(pattern);
     }
 
     void remove(String pattern) {
-        rules.remove(pattern);
+        registry.remove(pattern);
     }
 
     /**
@@ -52,11 +53,11 @@ final class PatternRuleRegistry {
      * pattern, same discipline as {@link OverrideRegistry#removeIfCurrent}.
      */
     boolean removeIfCurrent(String pattern, PatternRule expected) {
-        return rules.remove(pattern, expected);
+        return registry.removeIfCurrent(pattern, expected);
     }
 
     /** A point-in-time snapshot, safe to iterate while the registry is concurrently mutated. */
     Map<String, PatternRule> all() {
-        return Map.copyOf(rules);
+        return registry.all();
     }
 }

@@ -23,6 +23,7 @@ import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
+import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
@@ -119,10 +120,12 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     }
 
     @Override
-    public synchronized void resetLevel(String loggerName) {
+    public synchronized ResetOutcome resetLevel(String loggerName) {
         if (state.containsKey(loggerName)) {
             state.put(loggerName, baseline(loggerName));
+            return new ResetOutcome(List.of(loggerName), false);
         }
+        return ResetOutcome.nothingReset();
     }
 
     @Override

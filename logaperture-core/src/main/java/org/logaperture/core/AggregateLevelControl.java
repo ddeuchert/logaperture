@@ -28,6 +28,7 @@ import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PatternRule;
 import org.logaperture.api.PersistenceTier;
+import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
@@ -38,10 +39,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
@@ -391,6 +394,27 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         if (contexts.isEmpty()) {
             throw new IllegalStateException("no logging context is registered yet");
         }
+        SetLevelOptions opts = options == null ? SetLevelOptions.defaults() : options;
+        boolean isPattern = NameFilter.isPattern(loggerName);
+
+        // An unconfirmed pattern throws from the very first context checked
+        // below otherwise, so its ConfirmationRequiredException would carry
+        // only that one context's matches (a code-review finding) -- every
+        // context is unconfirmed alike here, so gather each one's matches
+        // first and throw a single exception naming the union across the
+        // whole aggregate, the real blast radius a caller decides against.
+        if (isPattern && !opts.confirmed()) {
+            List<String> allMatches = new ArrayList<>();
+            for (ContextControl context : contexts) {
+                try {
+                    context.service().checkSetLevelPermitted(loggerName, level, opts);
+                } catch (ConfirmationRequiredException e) {
+                    allMatches.addAll(e.matches());
+                }
+            }
+            throw new ConfirmationRequiredException(loggerName, allMatches);
+        }
+
         // Broadcast, "all pass or all fail" (doc/specs/wildfly-support.md):
         // pre-check the capability in *every* context before mutating any,
         // because raise-vs-lower is judged against each context's own current
@@ -398,22 +422,35 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         // policy. A mid-broadcast adapter fault can still leave earlier
         // contexts changed; the verification sweep (Slice 3) reconciles that.
         for (ContextControl context : contexts) {
-            context.service().checkSetLevelPermitted(loggerName, level, options);
+            context.service().checkSetLevelPermitted(loggerName, level, opts);
         }
-        // Every context's overrides, concatenated -- for an exact-name
-        // target this is one entry per context (as before, just no longer
-        // collapsed down to a single "representative" one); for a pattern
-        // target it's every context's own current matches, which is the
-        // only shape that makes sense once a single call can produce
-        // several overrides in the first place.
+        // For a pattern target, every context's current matches, concatenated
+        // -- the only shape that makes sense once a single call can produce
+        // several overrides in the first place. For an exact-name target,
+        // one representative override (preferring SYSTEM), same as every
+        // other broadcast operation here -- every context's own
+        // LevelControlService still independently creates and persists its
+        // own override underneath, this is only what's reported back
+        // (doc/specs/pattern-level-targeting.md: "overrides has exactly one
+        // entry for an exact-name target").
         List<LevelOverride> allOverrides = new ArrayList<>();
+        LevelOverride fromSystem = null;
+        LevelOverride fromAny = null;
         // Union of blocking handlers across every context, deduplicated by
         // ref -- a handler named e.g. CONSOLE in more than one context is
         // still just "CONSOLE" to the operator reading the warning.
         Map<HandlerRef, HandlerFloor> blockingByRef = new LinkedHashMap<>();
         for (ContextControl context : contexts) {
-            SetLevelResult result = context.service().setLevel(loggerName, level, options);
-            allOverrides.addAll(result.overrides());
+            SetLevelResult result = context.service().setLevel(loggerName, level, opts);
+            if (isPattern) {
+                allOverrides.addAll(result.overrides());
+            } else if (!result.overrides().isEmpty()) {
+                LevelOverride override = result.overrides().get(0);
+                fromAny = override;
+                if (ContextHandle.SYSTEM.equals(context.stableKey())) {
+                    fromSystem = override;
+                }
+            }
             for (HandlerFloor floor : result.blockingHandlers()) {
                 // Keep the stricter reading for a ref shared across
                 // contexts, not merely the first seen -- same fix as
@@ -424,14 +461,27 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 blockingByRef.merge(floor.handlerRef(), floor, LevelControlService::stricterFloor);
             }
         }
-        return new SetLevelResult(allOverrides, List.copyOf(blockingByRef.values()));
+        List<LevelOverride> reportedOverrides = isPattern
+                ? allOverrides
+                : List.of(fromSystem != null ? fromSystem : fromAny);
+        return new SetLevelResult(reportedOverrides, List.copyOf(blockingByRef.values()));
     }
 
     @Override
-    public void resetLevel(String loggerName) {
+    public ResetOutcome resetLevel(String loggerName) {
+        // A dedup by name, not a concatenation: two contexts sharing a
+        // logger (or matched by the same standing rule) each report
+        // reverting it independently, and the caller-facing list should
+        // name it once, same reasoning as setLevel's one-override-per-
+        // logger fix above.
+        Set<String> reverted = new LinkedHashSet<>();
+        boolean patternRuleRetired = false;
         for (ContextControl context : sortedByKey()) {
-            context.service().resetLevel(loggerName);
+            ResetOutcome outcome = context.service().resetLevel(loggerName);
+            reverted.addAll(outcome.revertedLoggerNames());
+            patternRuleRetired |= outcome.patternRuleRetired();
         }
+        return new ResetOutcome(List.copyOf(reverted), patternRuleRetired);
     }
 
     @Override

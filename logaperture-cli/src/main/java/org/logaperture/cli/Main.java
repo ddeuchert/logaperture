@@ -19,6 +19,7 @@ import org.logaperture.core.CapabilityDeniedException;
 import org.logaperture.core.ConfirmationRequiredException;
 
 import javax.management.RuntimeMBeanException;
+import java.io.InputStream;
 import java.io.PrintStream;
 
 /**
@@ -47,6 +48,22 @@ public final class Main {
     }
 
     static int run(String[] args, PrintStream out, PrintStream err, Connector connector) {
+        return run(args, out, err, connector, System.in, System.console() != null);
+    }
+
+    /**
+     * The seam a test uses to exercise the confirmation-prompt flow (doc/
+     * specs/pattern-level-targeting.md "Confirmation and CLI behavior")
+     * through {@code Main} itself, not just directly against {@link
+     * Commands#setLevel} -- {@code interactive} is otherwise derived from
+     * {@link System#console()}, which is {@code null} in every test/CI
+     * environment (a code-review finding: without this seam, {@code
+     * MainRunTest} could reach only the "reject, pass --yes" non-interactive
+     * branch of that flow, never the interactive prompt-and-read branch
+     * production actually exercises on an operator's terminal).
+     */
+    static int run(String[] args, PrintStream out, PrintStream err, Connector connector, InputStream in,
+            boolean interactive) {
         Invocation invocation;
         try {
             invocation = Parser.parse(args);
@@ -68,9 +85,8 @@ public final class Main {
             return CliError.OK;
         }
 
-        boolean interactive = System.console() != null;
         try (ControlPlane controlPlane = connector.connect(invocation.pid())) {
-            return invocation.command().run(controlPlane.mbean(), out, System.in, interactive);
+            return invocation.command().run(controlPlane.mbean(), out, in, interactive);
         } catch (CliError e) {
             err.println(e.getMessage());
             return e.exitCode();

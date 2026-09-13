@@ -22,6 +22,7 @@ import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PatternRule;
 import org.logaperture.api.PersistenceTier;
+import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
 import org.logaperture.core.spi.LoggingAdapter;
@@ -133,7 +134,7 @@ public final class LevelControlService implements LevelControlOperations {
         Objects.requireNonNull(level, "level");
         SetLevelOptions opts = options == null ? SetLevelOptions.defaults() : options;
 
-        if (target.indexOf('*') >= 0) {
+        if (NameFilter.isPattern(target)) {
             return setLevelForPattern(target, level, opts);
         }
         return setLevelForExactName(target, level, opts);
@@ -168,43 +169,45 @@ public final class LevelControlService implements LevelControlOperations {
      */
     private SetLevelResult setLevelForPattern(String pattern, Level level, SetLevelOptions opts) {
         List<String> matches = resolveConfirmedMatches(pattern, opts);
-        checkSetLevelPermitted(matches, level, opts);
+
+        // Precedence filtering happens BEFORE the capability check, not
+        // after (a code-review finding): a logger already covered by an
+        // exact-name override (originPattern == null) is never overwritten
+        // by a rule, so it was never really a candidate to raise/lower in
+        // the first place -- checking capability against it too could deny
+        // the whole call over a logger this call will never touch. Anything
+        // else -- no override yet, or one from an older pattern rule -- is
+        // fair game, since this rule's appliedAt (now) is newest by
+        // construction.
+        List<String> targetsToMutate = filterByPrecedence(matches);
+        checkSetLevelPermitted(targetsToMutate, level, opts);
 
         Instant now = Instant.now();
         Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
 
-        // Precedence (doc/specs/pattern-level-targeting.md "Precedence"): a
-        // logger already covered by an exact-name override (originPattern
-        // == null) is never overwritten by a rule. Anything else -- no
-        // override yet, or one from an older pattern rule -- is fair game,
-        // since this rule's appliedAt (now) is newest by construction.
         Map<String, Level> previousEffectiveByTarget = new LinkedHashMap<>();
-        List<String> targetsToMutate = new ArrayList<>();
-        for (String name : matches) {
-            Optional<LevelOverride> existing = overrides.get(name);
-            if (existing.isPresent() && existing.get().originPattern() == null) {
-                continue;
-            }
-            targetsToMutate.add(name);
+        for (String name : targetsToMutate) {
             baselines.captureIfAbsent(name, adapter);
             previousEffectiveByTarget.put(name, adapter.effectiveLevel(name));
         }
 
-        List<LevelOverride> created = new ArrayList<>();
-        for (String name : targetsToMutate) {
-            created.add(applyAndRecordMutation(name, level, opts, pattern));
-        }
-
-        // The rule itself is created/replaced regardless of whether it
-        // currently matches anything -- a pattern with zero matches today
-        // is still a valid standing rule, ready for the sweep to apply the
-        // moment a matching logger is discovered.
+        // The rule is persisted BEFORE any per-logger override (a
+        // code-review finding): if the process stops in between, resume's
+        // applyRulesToUncoveredLoggers self-heals a logger whose override
+        // didn't make it to disk (it simply looks uncovered and gets swept
+        // up again), where the reverse order could persist overrides tagged
+        // with a rule that was never actually saved, orphaning them.
         PatternRule rule = new PatternRule(pattern, level, opts.reason(), now, source, opts.tier(), expiresAt);
         patternRules.put(rule);
         if (opts.tier() != PersistenceTier.SESSION) {
             safePersist(() -> stateStore.savePatternRule(rule));
         } else {
             safePersist(() -> stateStore.removePatternRule(pattern));
+        }
+
+        List<LevelOverride> created = new ArrayList<>();
+        for (String name : targetsToMutate) {
+            created.add(applyAndRecordMutation(name, level, opts, pattern));
         }
 
         if (!created.isEmpty()) {
@@ -264,10 +267,29 @@ public final class LevelControlService implements LevelControlOperations {
     public void checkSetLevelPermitted(String target, Level level, SetLevelOptions options) {
         Objects.requireNonNull(target, "target");
         SetLevelOptions opts = options == null ? SetLevelOptions.defaults() : options;
-        List<String> targets = target.indexOf('*') >= 0
-                ? resolveConfirmedMatches(target, opts)
+        List<String> targets = NameFilter.isPattern(target)
+                ? filterByPrecedence(resolveConfirmedMatches(target, opts))
                 : List.of(target);
         checkSetLevelPermitted(targets, level, opts);
+    }
+
+    /**
+     * Every {@code matches} entry not already covered by a higher-
+     * precedence exact-name override — the set a pattern call will actually
+     * mutate (doc/specs/pattern-level-targeting.md "Precedence"). Shared by
+     * the real apply path and the pre-flight check so both judge capability
+     * against the same, correctly-narrowed set.
+     */
+    private List<String> filterByPrecedence(List<String> matches) {
+        List<String> targetsToMutate = new ArrayList<>();
+        for (String name : matches) {
+            Optional<LevelOverride> existing = overrides.get(name);
+            if (existing.isPresent() && existing.get().originPattern() == null) {
+                continue;
+            }
+            targetsToMutate.add(name);
+        }
+        return targetsToMutate;
     }
 
     private void checkSetLevelPermitted(List<String> targets, Level level, SetLevelOptions opts) {
@@ -282,26 +304,29 @@ public final class LevelControlService implements LevelControlOperations {
             if (!policy.isGranted(required)) {
                 throw new CapabilityDeniedException(required);
             }
-            // persist is required in addition to raise/lower whenever the
-            // change is meant to outlive this session (doc/specs/persistence.md
-            // "Capability and audit") -- checked at the same pre-flight point,
-            // so a denial fails the whole call before any target is mutated.
-            if (opts.tier() != PersistenceTier.SESSION && !policy.isGranted(Capability.PERSIST)) {
-                throw new CapabilityDeniedException(Capability.PERSIST);
-            }
+        }
+        // persist is required in addition to raise/lower whenever the
+        // change is meant to outlive this session (doc/specs/persistence.md
+        // "Capability and audit") -- checked once per call, not once per
+        // target: PERSIST is a property of the call's tier, not of any one
+        // target, and a call with zero targets (a pattern matching no
+        // currently-known logger, still creating a durable standing rule)
+        // must not skip this check just because the loop above never ran
+        // (a code-review finding -- this used to be nested inside it).
+        if (opts.tier() != PersistenceTier.SESSION && !policy.isGranted(Capability.PERSIST)) {
+            throw new CapabilityDeniedException(Capability.PERSIST);
         }
     }
 
     @Override
-    public void resetLevel(String target) {
+    public ResetOutcome resetLevel(String target) {
         Objects.requireNonNull(target, "target");
-        if (target.indexOf('*') >= 0) {
-            resetPattern(target);
-            return;
+        if (NameFilter.isPattern(target)) {
+            return resetPattern(target);
         }
         Optional<LevelOverride> existing = overrides.get(target);
         if (existing.isEmpty()) {
-            return; // no-op, not an error -- per spec
+            return ResetOutcome.nothingReset(); // no-op, not an error -- per spec
         }
         // Simplification for this slice: every reset requires LEVEL_LOWER,
         // regardless of whether reverting to baseline happens to raise or
@@ -313,6 +338,7 @@ public final class LevelControlService implements LevelControlOperations {
         requireCapability(Capability.LEVEL_LOWER);
         applyReset(target, existing.get(), source, null);
         changeListener.onChange(); // this logger's override just went away -- an AUTO handler tracking it needs to know
+        return new ResetOutcome(List.of(target), false);
     }
 
     /**
@@ -321,26 +347,35 @@ public final class LevelControlService implements LevelControlOperations {
      * tracked {@link PatternRule}, not by recomputing which loggers
      * currently match. No-op, not an error, if no rule is tracked under
      * that exact string -- same convention as resetting an unoverridden
-     * logger.
+     * logger. Reports exactly which loggers it reverted rather than
+     * leaving the caller to reconstruct that by diffing two separate
+     * {@code listLoggers} reads around this call -- a code-review finding
+     * against the original slice: that diff was racy against concurrent
+     * mutation, and had no way to distinguish "no rule existed" from "the
+     * rule existed but matched nothing" (so the CLI always printed
+     * "Standing rule retired" even on a no-op).
      */
-    private void resetPattern(String pattern) {
+    private ResetOutcome resetPattern(String pattern) {
         NameFilter.compile(pattern); // validated even though only an exact-string lookup follows
         Optional<PatternRule> existing = patternRules.get(pattern);
         if (existing.isEmpty()) {
-            return;
+            return ResetOutcome.nothingReset();
         }
         requireCapability(Capability.LEVEL_LOWER);
         PatternRule rule = existing.get();
         if (!patternRules.removeIfCurrent(pattern, rule)) {
-            return; // a concurrent setLevel/resetLevel already replaced or removed it
+            return ResetOutcome.nothingReset(); // a concurrent setLevel/resetLevel already replaced or removed it
         }
+        List<String> reverted = new ArrayList<>();
         for (Map.Entry<String, LevelOverride> entry : overrides.all().entrySet()) {
             if (pattern.equals(entry.getValue().originPattern())) {
                 applyReset(entry.getKey(), entry.getValue(), source, null);
+                reverted.add(entry.getKey());
             }
         }
         safePersist(() -> stateStore.removePatternRule(pattern));
         changeListener.onChange();
+        return new ResetOutcome(reverted, true);
     }
 
     @Override
@@ -408,14 +443,23 @@ public final class LevelControlService implements LevelControlOperations {
         if (rulesNewestFirst.isEmpty()) {
             return false;
         }
+        // Each rule's pattern is compiled once per call, not once per
+        // (logger, rule) pair (a code-review finding): the periodic sweep
+        // runs this over every known logger on every tick, so re-validating
+        // and recompiling the same pattern string per logger scales badly
+        // with logger count.
+        List<Predicate<String>> matchers = new ArrayList<>(rulesNewestFirst.size());
+        for (PatternRule rule : rulesNewestFirst) {
+            matchers.add(NameFilter.compile(rule.pattern()));
+        }
         boolean anyApplied = false;
         for (String loggerName : adapter.knownLoggerNames()) {
             if (overrides.get(loggerName).isPresent()) {
                 continue;
             }
-            for (PatternRule rule : rulesNewestFirst) {
-                if (NameFilter.matches(rule.pattern(), loggerName)) {
-                    applyPatternDerivedOverride(loggerName, rule, now, auditSource);
+            for (int i = 0; i < rulesNewestFirst.size(); i++) {
+                if (matchers.get(i).test(loggerName)) {
+                    applyPatternDerivedOverride(loggerName, rulesNewestFirst.get(i), now, auditSource);
                     anyApplied = true;
                     break;
                 }
@@ -689,21 +733,7 @@ public final class LevelControlService implements LevelControlOperations {
         Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
         LevelOverride override = new LevelOverride(
                 loggerName, level, originPattern, opts.reason(), now, source, opts.tier(), expiresAt);
-        OverrideApplier.apply(override, adapter); // mutation: the point of no return
-
-        overrides.put(override); // commit
-        // state-store write -- SESSION also removes, in case this logger
-        // had a previously-persisted FOR/STICKY entry that this plain
-        // mutation now supersedes; leaving it would reappear on resume.
-        if (opts.tier() != PersistenceTier.SESSION) {
-            safePersist(() -> stateStore.save(override));
-        } else {
-            safePersist(() -> stateStore.remove(loggerName));
-        }
-        auditLog.record(new AuditRecord(
-                now, principal, source, loggerName, previousValue, level.toString(), opts.reason(),
-                AuditRecord.Action.MUTATION)); // audit
-
+        installOverride(override, source, previousValue);
         return override;
     }
 
@@ -723,19 +753,35 @@ public final class LevelControlService implements LevelControlOperations {
 
         LevelOverride override = new LevelOverride(
                 loggerName, rule.level(), rule.pattern(), rule.reason(), now, rule.source(), rule.tier(), rule.expiresAt());
-        OverrideApplier.apply(override, adapter);
+        installOverride(override, auditSource, previousValue);
+        return override;
+    }
 
-        overrides.put(override);
-        if (rule.tier() != PersistenceTier.SESSION) {
+    /**
+     * The part of "create an override" that a live {@code setLevel} call
+     * and a rule-derived one (the sweep, or resume) actually share, once
+     * each has built its own {@link LevelOverride} from its own inputs
+     * (opts vs. a {@link PatternRule}) -- mutate the adapter, commit to the
+     * registry, persist per {@code override}'s tier, and audit it under
+     * {@code auditSource}. Pulled out because {@link #applyAndRecordMutation}
+     * and {@link #applyPatternDerivedOverride} used to duplicate this whole
+     * sequence (a code-review finding).
+     */
+    private void installOverride(LevelOverride override, String auditSource, String previousValue) {
+        OverrideApplier.apply(override, adapter); // mutation: the point of no return
+
+        overrides.put(override); // commit
+        // state-store write -- SESSION also removes, in case this logger
+        // had a previously-persisted FOR/STICKY entry that this plain
+        // mutation now supersedes; leaving it would reappear on resume.
+        if (override.tier() != PersistenceTier.SESSION) {
             safePersist(() -> stateStore.save(override));
         } else {
-            safePersist(() -> stateStore.remove(loggerName));
+            safePersist(() -> stateStore.remove(override.loggerName()));
         }
         auditLog.record(new AuditRecord(
-                now, principal, auditSource, loggerName, previousValue, rule.level().toString(), rule.reason(),
-                AuditRecord.Action.MUTATION));
-
-        return override;
+                override.appliedAt(), principal, auditSource, override.loggerName(), previousValue,
+                override.level().toString(), override.reason(), AuditRecord.Action.MUTATION)); // audit
     }
 
     private void applyReset(String loggerName, LevelOverride toRevert, String auditSource, String reasonOverride) {

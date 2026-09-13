@@ -20,6 +20,7 @@ import org.logaperture.control.jmx.EnvironmentReportData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelControlMXBean;
 import org.logaperture.control.jmx.LoggerInfoData;
+import org.logaperture.control.jmx.ResetOutcomeData;
 import org.logaperture.control.jmx.SetLevelResultData;
 import org.logaperture.control.jmx.TopReportData;
 
@@ -38,6 +39,9 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     /** Names dropped from {@link #loggers} when {@link #resetLevel} clears them — a "Known" but not "Live" logger. */
     final List<String> forgetOnReset = new ArrayList<>();
     int resetAllCalls;
+    /** Whether a pattern {@link #resetLevel} should report a standing rule was tracked and retired. Defaults to
+     *  the common case tests wire up; set {@code false} to exercise the "no rule existed" no-op path. */
+    boolean patternRuleTrackedForReset = true;
 
     List<LoggerInfoData> loggers = new ArrayList<>();
     List<HandlerLevelOverrideData> handlerOverrides = new ArrayList<>();
@@ -123,31 +127,38 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     }
 
     @Override
-    public void resetLevel(String target) {
+    public ResetOutcomeData resetLevel(String target) {
         resetLevelCalls.add(target);
         maybeThrow();
         if (target.indexOf('*') >= 0) {
+            if (!patternRuleTrackedForReset) {
+                return new ResetOutcomeData(List.of(), false);
+            }
             // Simulates a real pattern reset's effect (doc/specs/
             // pattern-level-targeting.md) well enough for CommandsTest's
             // before/after rendering: every currently-active match reverts
             // to its configured (baseline) level, everything else is
             // untouched.
             List<LoggerInfoData> reverted = new ArrayList<>();
+            List<String> revertedNames = new ArrayList<>();
             for (LoggerInfoData row : loggers) {
                 if (matchesFilter(target, row.getName()) && row.isOverrideActive()) {
                     String baseline = row.getConfiguredLevel() != null ? row.getConfiguredLevel() : "INFO";
                     reverted.add(new LoggerInfoData(row.getName(), row.getConfiguredLevel(), baseline,
                             false, null, null, null, null, row.getContext()));
+                    revertedNames.add(row.getName());
                 } else {
                     reverted.add(row);
                 }
             }
             loggers = reverted;
-            return;
+            return new ResetOutcomeData(revertedNames, true);
         }
         if (forgetOnReset.contains(target)) {
             loggers.removeIf(logger -> logger.getName().equals(target));
+            return new ResetOutcomeData(List.of(target), false);
         }
+        return new ResetOutcomeData(List.of(), false);
     }
 
     @Override

@@ -61,8 +61,10 @@ public interface LevelControlMXBean {
      * (doc/specs/pattern-level-targeting.md) — resetting a pattern reverts
      * every logger it currently covers <em>and</em> retires the standing
      * rule, so it stops covering loggers discovered later too.
+     *
+     * @return exactly what was reverted — see {@link ResetOutcomeData}
      */
-    void resetLevel(String target);
+    ResetOutcomeData resetLevel(String target);
 
     void resetAll();
 

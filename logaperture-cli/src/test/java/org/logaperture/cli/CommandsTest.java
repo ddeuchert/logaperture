@@ -557,14 +557,30 @@ class CommandsTest {
     }
 
     @Test
-    void reset_pattern_nothingCurrentlyOverridden_stillReportsRuleRetired() {
+    void reset_pattern_ruleTrackedButNothingCurrentlyOverridden_stillReportsRuleRetired() {
         mbean.loggers = List.of(new LoggerInfoData("org.apache.A", "INFO", "INFO", false, null, null, null, null));
 
         assertEquals(CliError.OK, run(Commands.reset("org.apache.*", false)));
 
         String text = output();
-        assertTrue(text.contains("nothing was overridden"), text);
-        assertTrue(text.contains("Standing rule 'org.apache.*' retired."), text);
+        assertTrue(text.contains("Standing rule 'org.apache.*' retired -- it had no currently-matched logger "
+                + "to revert."), text);
+    }
+
+    @Test
+    void reset_pattern_noRuleWasEverTracked_reportsNoOpRatherThanClaimingRetirement() {
+        // Code-review finding: the old CLI reconstructed "retired" from
+        // whether anything was overridden before the call, so it printed
+        // "Standing rule retired" even when no rule existed under that
+        // exact pattern at all. The server now reports this directly.
+        mbean.patternRuleTrackedForReset = false;
+        mbean.loggers = List.of(new LoggerInfoData("org.apache.A", "INFO", "INFO", false, null, null, null, null));
+
+        assertEquals(CliError.OK, run(Commands.reset("org.apache.*", false)));
+
+        String text = output();
+        assertTrue(text.contains("no standing rule was tracked under that pattern"), text);
+        assertFalse(text.contains("retired"), text);
     }
 
     @Test
@@ -578,6 +594,17 @@ class CommandsTest {
         assertTrue(text.contains("\"pattern\":\"org.apache.*\""), text);
         assertTrue(text.contains("\"reverted\":[\"org.apache.A\"]"), text);
         assertTrue(text.contains("\"ruleRetired\":true"), text);
+    }
+
+    @Test
+    void reset_pattern_json_noRuleTracked_reportsRuleRetiredFalse() {
+        mbean.patternRuleTrackedForReset = false;
+
+        run(Commands.reset("org.apache.*", true));
+
+        String text = output().strip();
+        assertTrue(text.contains("\"reverted\":[]"), text);
+        assertTrue(text.contains("\"ruleRetired\":false"), text);
     }
 
     // --- handler (doc/specs/handler-floor-control.md) -----------------------------------------

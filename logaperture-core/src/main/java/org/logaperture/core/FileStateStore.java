@@ -221,6 +221,19 @@ public final class FileStateStore implements StateStore, Closeable {
         lock.channel().close();
     }
 
+    /**
+     * Rewrites the whole state file and {@code fsync}s it -- called once per
+     * {@link #save}/{@link #remove}/etc. A pattern {@code setLevel} matching
+     * N loggers therefore does N full rewrite-and-fsync cycles in one call
+     * (a code-review finding, efficiency): {@code LevelControlService}'s
+     * per-logger loop has no batching hook into this store, and adding one
+     * (a {@code beginBatch}/{@code endBatch} pair, or a bulk {@code
+     * saveAll}) reaches across the {@code StateStore} SPI and every
+     * implementation of it. Left as a known, accepted limitation for this
+     * slice -- correctness and durability are unaffected, and N here is
+     * bounded by how many loggers a single standing rule currently matches,
+     * not by anything unbounded.
+     */
     private void persist() {
         try {
             String content = StateFileFormat.write(

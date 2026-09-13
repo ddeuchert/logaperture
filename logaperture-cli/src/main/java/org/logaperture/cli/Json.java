@@ -270,12 +270,13 @@ final class Json {
 
     /**
      * {@code reset <pattern> --json} (doc/specs/pattern-level-targeting.md):
-     * the loggers this call actually reverted, and that the standing rule
-     * itself is retired -- {@code reverted} is empty on a pattern with
-     * nothing currently overridden, same as the exact-name {@code reset}
-     * reporting {@code wasOverridden: false}.
+     * the loggers this call actually reverted, and whether a standing rule
+     * was tracked under that exact pattern and is now retired -- {@code
+     * ruleRetired} is {@code false} when no rule existed at all, not just
+     * when {@code reverted} is empty (a rule can be retired with nothing
+     * currently matched to revert).
      */
-    static String resetPattern(String pattern, List<String> reverted) {
+    static String resetPattern(String pattern, List<String> reverted, boolean ruleRetired) {
         StringJoiner names = new StringJoiner(",", "[", "]");
         for (String name : reverted) {
             names.add(quote(name));
@@ -283,7 +284,7 @@ final class Json {
         return new Obj()
                 .str("pattern", pattern)
                 .raw("reverted", names.toString())
-                .bool("ruleRetired", true)
+                .bool("ruleRetired", ruleRetired)
                 .toString();
     }
 

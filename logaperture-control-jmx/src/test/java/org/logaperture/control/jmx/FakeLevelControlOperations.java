@@ -25,6 +25,7 @@ import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
+import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
@@ -52,6 +53,7 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     final List<String> listLoggersCalls = new ArrayList<>();
     final List<Object[]> setLevelCalls = new ArrayList<>();
     final List<String> resetLevelCalls = new ArrayList<>();
+    ResetOutcome resetOutcomeToReturn = ResetOutcome.nothingReset();
     final List<Object[]> setHandlerLevelCalls = new ArrayList<>();
     final List<Object[]> setHandlerAutoCalls = new ArrayList<>();
     final List<HandlerRef> resetHandlerCalls = new ArrayList<>();
@@ -88,8 +90,9 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     }
 
     @Override
-    public void resetLevel(String loggerName) {
+    public ResetOutcome resetLevel(String loggerName) {
         resetLevelCalls.add(loggerName);
+        return resetOutcomeToReturn;
     }
 
     @Override
