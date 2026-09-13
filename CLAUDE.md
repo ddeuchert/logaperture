@@ -34,6 +34,19 @@ If a feature's behavior diverges from its spec during implementation,
 update the spec before or alongside the code change that caused the
 divergence — don't let them drift apart.
 
+### Label the tracking issue when the feature lands on develop
+
+A feature branch is named for the issue it implements (`feature/<issue>-<slug>`) and its PR
+title/body reference that issue (e.g. `(issue #32)`) — deliberately never GitHub's `Closes #32`
+keyword, since merging to `develop` is not a release. The moment that PR merges into `develop`,
+add the `code-complete-on-develop` label to the issue, as part of finishing the merge, not a
+separate followup step.
+
+The label means exactly what its own description says: code complete, will be part of the next
+release. **It replaces closing the issue at merge time, it doesn't precede it** — the issue
+stays open, still trackable, until an actual release ships it; closing is a separate,
+release-cut concern this label is not standing in for.
+
 ### Sign-off reviews happen in an artifact, not the thread
 
 Step 3 above — getting a spec to a state the user has agreed to — is a
