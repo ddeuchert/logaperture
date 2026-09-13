@@ -17,7 +17,12 @@ package org.logaperture.container.wildfly;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.logaperture.core.spi.InstallGuidance;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -73,5 +78,38 @@ class WildFlyContainerIntegrationTest {
         assertTrue(guidance.steps().stream().anyMatch(s -> s.contains("-javaagent:")));
         assertTrue(guidance.steps().stream().anyMatch(s -> s.contains("standalone.xml")),
                 "the guidance states the agent never touches standalone.xml");
+    }
+
+    // --- version() (doc/specs/environment-report.md Decision #3) ------------------------------
+
+    @Test
+    void version_noJBossHome_isEmpty() {
+        assertEquals(Optional.empty(), integration.version());
+    }
+
+    @Test
+    void version_missingVersionTxt_isEmpty(@TempDir Path jbossHome) {
+        System.setProperty("jboss.home.dir", jbossHome.toString());
+        assertEquals(Optional.empty(), integration.version());
+    }
+
+    @Test
+    void version_readsTrailingTokenOfVersionTxtsFirstLine(@TempDir Path jbossHome) throws Exception {
+        Files.writeString(jbossHome.resolve("version.txt"), "WildFly Full 34.0.1.Final\n");
+        System.setProperty("jboss.home.dir", jbossHome.toString());
+
+        assertEquals(Optional.of("34.0.1.Final"), integration.version());
+    }
+
+    @Test
+    void extractVersionToken_pullsTheTrailingVersionShapedToken() {
+        assertEquals("34.0.1.Final", WildFlyContainerIntegration.extractVersionToken("WildFly Full 34.0.1.Final"));
+        assertEquals("26.1.3.Final",
+                WildFlyContainerIntegration.extractVersionToken("WildFly Preview 26.1.3.Final"));
+    }
+
+    @Test
+    void extractVersionToken_noDigitAnywhere_returnsTheWholeLine() {
+        assertEquals("Some Unexpected Line", WildFlyContainerIntegration.extractVersionToken("Some Unexpected Line"));
     }
 }

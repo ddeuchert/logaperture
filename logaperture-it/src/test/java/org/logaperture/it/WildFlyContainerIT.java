@@ -385,6 +385,39 @@ class WildFlyContainerIT {
         assertFalse(out.contains("\"measurementStartedAt\":null"), "measurement must already be running by now");
     }
 
+    // --- env (doc/specs/environment-report.md) -----------------------------------------------
+
+    @Test
+    void env_reportsTheRealJBossLogManagerAndWildFlyVersions() {
+        Logctl result = logctl("env");
+        assertEquals(0, result.exitCode(), result.stderr());
+        String out = result.stdout();
+
+        assertTrue(out.contains("LogAperture agent"), out);
+        assertTrue(out.contains("Java"), out);
+        assertTrue(out.contains("OS") && out.contains("Linux"), out);
+        // Decision #3: the version source is $JBOSS_HOME/version.txt plus the
+        // JBoss LogManager root logger's own package version -- confirm both
+        // resolve against this real image, not just that the lines exist.
+        assertTrue(out.contains("Logging backend") && out.contains("JBoss LogManager"),
+                "expected the real logging backend line:\n" + out);
+        assertTrue(out.contains("Framework/container") && out.contains("WildFly"),
+                "expected the real container line:\n" + out);
+        assertTrue(out.contains("Diagnostics level"), "shown either way, per Decision #5:\n" + out);
+    }
+
+    @Test
+    void envJson_roundTripsWithAgentAndCliVersions() {
+        Logctl result = logctl("env", "--json");
+        assertEquals(0, result.exitCode(), result.stderr());
+        String out = result.stdout();
+
+        assertTrue(out.contains("\"agentVersion\":\""), out);
+        assertTrue(out.contains("\"cliVersion\":\""), out);
+        assertTrue(out.contains("\"backendName\":\"JBoss LogManager\""), out);
+        assertTrue(out.contains("\"containerName\":\"WildFly\""), out);
+    }
+
     // --- probe WAR ------------------------------------------------------------------------------
 
     private void deployProbeWar() throws Exception {

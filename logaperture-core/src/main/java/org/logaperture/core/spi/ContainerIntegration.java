@@ -20,6 +20,7 @@ import org.logaperture.core.AuditLog;
 import org.logaperture.core.CapabilityPolicy;
 
 import java.lang.instrument.Instrumentation;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
@@ -76,5 +77,17 @@ public interface ContainerIntegration {
     /** Where the {@code -javaagent} flag goes, for diagnostics and help. Default {@link InstallGuidance#NONE}. */
     default InstallGuidance guidance() {
         return InstallGuidance.NONE;
+    }
+
+    /**
+     * Best-effort version of the detected container/framework itself — not
+     * the logging backend it routes through, see {@link
+     * org.logaperture.core.spi.LoggingAdapter#backendInfo()} for that — e.g.
+     * {@code "34.0.1.Final"} for WildFly. For {@code logctl env}
+     * (doc/specs/environment-report.md "Adapter / container SPI"); {@link
+     * #id()} already supplies the name. Default empty.
+     */
+    default Optional<String> version() {
+        return Optional.empty();
     }
 }

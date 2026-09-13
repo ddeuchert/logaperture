@@ -16,6 +16,7 @@
 package org.logaperture.cli;
 
 import org.logaperture.control.jmx.DoctorFindingData;
+import org.logaperture.control.jmx.EnvironmentReportData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelControlMXBean;
 import org.logaperture.control.jmx.LoggerInfoData;
@@ -133,6 +134,17 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         topLoggersLimits.add(limit);
         maybeThrow();
         return topReport;
+    }
+
+    EnvironmentReportData environmentReport = new EnvironmentReportData("0.1.0-alpha.2", "21.0.4",
+            "Eclipse Adoptium", "Linux", "6.10.3", "x86_64", null, null, null, null, null);
+    int environmentReportCalls;
+
+    @Override
+    public EnvironmentReportData environmentReport() {
+        environmentReportCalls++;
+        maybeThrow();
+        return environmentReport;
     }
 
     private void maybeThrow() {

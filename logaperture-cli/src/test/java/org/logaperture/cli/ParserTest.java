@@ -166,6 +166,16 @@ class ParserTest {
     }
 
     @Test
+    void envTakesNoArguments() {
+        Parser.parse(new String[] {"env"});
+        Parser.parse(new String[] {"env", "--json"});
+        assertUsage(() -> Parser.parse(new String[] {"env", "com.acme"}));
+        assertUsage(() -> Parser.parse(new String[] {"env", "--include-children"}));
+        assertUsage(() -> Parser.parse(new String[] {"env", "--reason", "x"}));
+        assertUsage(() -> Parser.parse(new String[] {"env", "--limit", "5"}));
+    }
+
+    @Test
     void limitNeedsANumericValue() {
         assertUsage(() -> Parser.parse(new String[] {"top", "--limit", "soon"}));
         assertUsage(() -> Parser.parse(new String[] {"top", "--limit"}));

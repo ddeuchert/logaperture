@@ -16,6 +16,7 @@
 package org.logaperture.control.jmx;
 
 import org.logaperture.core.DoctorOperations;
+import org.logaperture.core.EnvironmentReportOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
 import org.logaperture.core.TopOperations;
@@ -42,9 +43,11 @@ public final class JmxRegistrar {
     }
 
     public static void register(LevelControlOperations service, HandlerLevelControlOperations handlerService,
-            DoctorOperations doctorService, TopOperations topService) throws JMException {
+            DoctorOperations doctorService, TopOperations topService,
+            EnvironmentReportOperations environmentReportService) throws JMException {
         StandardMBean mbean = new StandardMBean(
-                new LevelControlMXBeanImpl(service, handlerService, doctorService, topService),
+                new LevelControlMXBeanImpl(service, handlerService, doctorService, topService,
+                        environmentReportService),
                 LevelControlMXBean.class, true);
         ManagementFactory.getPlatformMBeanServer().registerMBean(mbean, OBJECT_NAME);
     }

@@ -16,6 +16,7 @@
 package org.logaperture.control.jmx;
 
 import org.logaperture.api.DoctorFinding;
+import org.logaperture.api.EnvironmentReport;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
@@ -28,6 +29,7 @@ import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
 import org.logaperture.core.DoctorOperations;
+import org.logaperture.core.EnvironmentReportOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
 import org.logaperture.core.TopOperations;
@@ -45,7 +47,7 @@ import java.util.Optional;
  * AggregateLevelControl} does in production.
  */
 final class FakeLevelControlOperations implements LevelControlOperations, HandlerLevelControlOperations,
-        DoctorOperations, TopOperations {
+        DoctorOperations, TopOperations, EnvironmentReportOperations {
 
     final List<String> listLoggersCalls = new ArrayList<>();
     final List<Object[]> setLevelCalls = new ArrayList<>();
@@ -151,5 +153,13 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     public TopReport topLoggers(int limit) {
         topLoggersLimitRequested = limit;
         return new TopReport(topLoggersToReturn, measurementStartedAt, topLoggersToReturn.size());
+    }
+
+    EnvironmentReport environmentReportToReturn = new EnvironmentReport("0.1.0-alpha.2", "21.0.4",
+            "Eclipse Adoptium", "Linux", "6.10.3", "x86_64", null, null, null, null, null);
+
+    @Override
+    public EnvironmentReport environmentReport() {
+        return environmentReportToReturn;
     }
 }

@@ -17,7 +17,9 @@ package org.logaperture.core;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.logaperture.api.BackendInfo;
 import org.logaperture.api.DoctorFinding;
+import org.logaperture.api.EnvironmentReport;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
@@ -35,6 +37,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -62,6 +66,7 @@ class AggregateLevelControlTest {
         final HandlerLevelControlService handlerService;
         final DoctorService doctorService;
         final TopService topService;
+        final EnvironmentReportService environmentReportService;
         final ContextControl control;
 
         Ctx(String key) {
@@ -75,8 +80,9 @@ class AggregateLevelControlTest {
                     new HandlerOverrideRegistry(), policy, auditLog, sharedStore, "alice", "jmx");
             doctorService = new DoctorService(adapter, policy);
             topService = new TopService(adapter, policy);
-            control = new ContextControl(
-                    ContextHandle.of(key, key, adapter), service, handlerService, doctorService, topService);
+            environmentReportService = new EnvironmentReportService(adapter, policy);
+            control = new ContextControl(ContextHandle.of(key, key, adapter), service, handlerService,
+                    doctorService, topService, environmentReportService);
         }
     }
 
@@ -202,6 +208,54 @@ class AggregateLevelControlTest {
         assertTrue(findings.stream().anyMatch(f -> "system".equals(f.context())));
         assertTrue(findings.stream().anyMatch(f -> "myapp.war".equals(f.context())));
         assertTrue(findings.stream().allMatch(f -> f.context() != null), "every row is tagged with its context");
+    }
+
+    // --- environmentReport (doc/specs/environment-report.md) -----------------------------------
+
+    @Test
+    void environmentReport_noRegisteredContext_stillCarriesProcessWideFacts() {
+        EnvironmentReport report = aggregate.environmentReport();
+
+        assertNotNull(report.agentVersion());
+        assertEquals(System.getProperty("java.version"), report.javaVersion());
+        assertEquals(System.getProperty("java.vendor"), report.javaVendor());
+        assertEquals(System.getProperty("os.name"), report.osName());
+        assertNull(report.backendName(), "no context registered -- nothing to ask for a backend");
+        assertNull(report.containerName(), "the no-arg constructor -- no container to report");
+    }
+
+    @Test
+    void environmentReport_containerNameAndVersion_fromConstructor() {
+        AggregateLevelControl wildfly = new AggregateLevelControl("WildFly", "34.0.1.Final");
+
+        EnvironmentReport report = wildfly.environmentReport();
+
+        assertEquals("WildFly", report.containerName());
+        assertEquals("34.0.1.Final", report.containerVersion());
+    }
+
+    @Test
+    void environmentReport_backendInfo_fromFirstContextThatResolvesOne() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        app.adapter.setBackendInfo(new BackendInfo("JBoss LogManager", "3.1.1.Final"));
+        aggregate.register(system.control); // default EMPTY -- nothing to resolve
+        aggregate.register(app.control);
+
+        EnvironmentReport report = aggregate.environmentReport();
+
+        assertEquals("JBoss LogManager", report.backendName());
+        assertEquals("3.1.1.Final", report.backendVersion());
+    }
+
+    @Test
+    void environmentReport_diagnosticsLevelProperty_surfacedWhenSet() {
+        System.setProperty("logaperture.diagnostics.level", "DEBUG");
+        try {
+            assertEquals("DEBUG", aggregate.environmentReport().diagnosticsLevel());
+        } finally {
+            System.clearProperty("logaperture.diagnostics.level");
+        }
     }
 
     // --- topLoggers (doc/specs/top.md) -----------------------------------------------------------

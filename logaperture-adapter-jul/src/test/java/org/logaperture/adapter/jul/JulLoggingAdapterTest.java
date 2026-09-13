@@ -18,6 +18,7 @@ package org.logaperture.adapter.jul;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.logaperture.api.BackendInfo;
 import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
@@ -348,6 +349,18 @@ class JulLoggingAdapterTest {
         } finally {
             Logger.getLogger(name("handler.Real")).removeHandler(console);
         }
+    }
+
+    // --- backendInfo (doc/specs/environment-report.md) -- the JBoss LogManager branch itself
+    // only triggers against a real org.jboss.logmanager.Logger root, not present on this test's
+    // classpath (by design, see the class doc); that path is exercised by WildFlyContainerIT.
+
+    @Test
+    void backendInfo_plainJul_reportsNameNoVersion() {
+        BackendInfo info = adapter.backendInfo();
+
+        assertEquals("java.util.logging (JUL)", info.name());
+        assertNull(info.version(), "the JDK's own version is already reported as javaVersion");
     }
 
     // --- re-appliability ----------------------------------------------------------------------

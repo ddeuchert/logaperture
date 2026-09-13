@@ -16,6 +16,7 @@
 package org.logaperture.cli;
 
 import org.logaperture.control.jmx.DoctorFindingData;
+import org.logaperture.control.jmx.EnvironmentReportData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
@@ -347,6 +348,46 @@ final class Commands {
                     + " warning, " + info + " info, " + clean + " clean.");
             return CliError.OK;
         };
+    }
+
+    /**
+     * {@code logctl env} — doc/specs/environment-report.md "The operation".
+     * Read-only, like {@code doctor}/{@code top}: no target, no tier,
+     * nothing to confirm. {@code logctl}'s own version is stitched in
+     * locally ({@link Main#version()}) alongside the agent-reported facts —
+     * it's not on the wire shape at all (doc/specs/environment-report.md
+     * "Data model": "Deliberately no {@code cliVersion} field").
+     */
+    static Command env(boolean json) {
+        return (mbean, out) -> {
+            EnvironmentReportData report = mbean.environmentReport();
+            String cliVersion = Main.version();
+            if (json) {
+                out.println(Json.env(report, cliVersion));
+                return CliError.OK;
+            }
+            List<List<String>> rows = new ArrayList<>();
+            rows.add(List.of("LogAperture agent", report.getAgentVersion() + "  (logctl " + cliVersion + ")"));
+            rows.add(List.of("Java", report.getJavaVersion() + "  " + report.getJavaVendor()));
+            rows.add(List.of("OS", report.getOsName() + " " + report.getOsVersion() + "  " + report.getOsArch()));
+            if (report.getBackendName() != null) {
+                rows.add(List.of("Logging backend", nameAndVersion(report.getBackendName(), report.getBackendVersion())));
+            }
+            if (report.getContainerName() != null) {
+                rows.add(List.of("Framework/container",
+                        nameAndVersion(report.getContainerName(), report.getContainerVersion())));
+            }
+            // Decision #5: shown either way, including "not set" -- the next
+            // question in most support threads, closed in the same paste.
+            rows.add(List.of("Diagnostics level",
+                    report.getDiagnosticsLevel() != null ? report.getDiagnosticsLevel() : Format.NONE));
+            out.println(Format.table(rows));
+            return CliError.OK;
+        };
+    }
+
+    private static String nameAndVersion(String name, String version) {
+        return version == null ? name : name + " " + version;
     }
 
     /**

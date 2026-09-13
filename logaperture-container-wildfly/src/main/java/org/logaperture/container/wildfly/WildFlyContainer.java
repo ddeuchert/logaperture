@@ -23,6 +23,7 @@ import org.logaperture.core.AuditLog;
 import org.logaperture.core.BaselineRegistry;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.DoctorService;
+import org.logaperture.core.EnvironmentReportService;
 import org.logaperture.core.FileStateStore;
 import org.logaperture.core.HandlerBaselineRegistry;
 import org.logaperture.core.HandlerLevelControlService;
@@ -71,7 +72,7 @@ public final class WildFlyContainer implements AutoCloseable {
     private final CapabilityPolicy policy;
     private final AuditLog auditLog;
     private final StateStore stateStore;
-    private final AggregateLevelControl aggregate = new AggregateLevelControl();
+    private final AggregateLevelControl aggregate;
     private final ScheduledExecutorService sweeper;
 
     public WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog) {
@@ -80,9 +81,27 @@ public final class WildFlyContainer implements AutoCloseable {
 
     /** Package-visible so tests can use a short sweep interval instead of the real 30s one. */
     WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval) {
+        this(policy, auditLog, sweepInterval, null, null);
+    }
+
+    /**
+     * @param containerVersion best-effort WildFly version for {@code logctl
+     *                         env} (doc/specs/environment-report.md); {@code
+     *                         null} if not resolvable. The container name
+     *                         itself is always {@code "WildFly"} — this is
+     *                         the one integration that ever constructs this
+     *                         class.
+     */
+    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval, String containerVersion) {
+        this(policy, auditLog, sweepInterval, "WildFly", containerVersion);
+    }
+
+    private WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+            String containerName, String containerVersion) {
         this.policy = policy;
         this.auditLog = auditLog;
         this.stateStore = openStateStore();
+        this.aggregate = new AggregateLevelControl(containerName, containerVersion);
 
         this.sweeper = Executors.newSingleThreadScheduledExecutor(WildFlyContainer::newDaemonThread);
         long intervalMillis = sweepInterval.toMillis();
@@ -134,6 +153,7 @@ public final class WildFlyContainer implements AutoCloseable {
         }
 
         DoctorService doctorService = new DoctorService(adapter, policy);
+        EnvironmentReportService environmentReportService = new EnvironmentReportService(adapter, policy);
 
         TopService topService = new TopService(adapter, policy);
         // doc/specs/top.md: always-on from the moment this context comes up.
@@ -142,7 +162,8 @@ public final class WildFlyContainer implements AutoCloseable {
         // re-confirms the byte-counting wrap on every tick regardless.
         topService.startMeasuring();
 
-        aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService));
+        aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService,
+                environmentReportService));
     }
 
     /**

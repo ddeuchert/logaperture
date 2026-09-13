@@ -16,6 +16,7 @@
 package org.logaperture.cli;
 
 import org.logaperture.control.jmx.DoctorFindingData;
+import org.logaperture.control.jmx.EnvironmentReportData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
@@ -258,6 +259,31 @@ final class Json {
                 .str("name", loggerName)
                 .bool("overrideActive", false)
                 .bool("wasOverridden", wasOverridden)
+                .toString();
+    }
+
+    /**
+     * {@code logctl env --json} — doc/specs/environment-report.md "The
+     * operation". A flat object; {@code cliVersion} is added here rather
+     * than carried on {@code EnvironmentReportData} itself, same "logctl
+     * already knows its own version locally" split the text renderer uses.
+     * A fact this JVM can't resolve is {@code null}, matching the text
+     * renderer's own "leave the line out" for backend/container.
+     */
+    static String env(EnvironmentReportData report, String cliVersion) {
+        return new Obj()
+                .str("agentVersion", report.getAgentVersion())
+                .str("cliVersion", cliVersion)
+                .str("javaVersion", report.getJavaVersion())
+                .str("javaVendor", report.getJavaVendor())
+                .str("osName", report.getOsName())
+                .str("osVersion", report.getOsVersion())
+                .str("osArch", report.getOsArch())
+                .str("backendName", report.getBackendName())
+                .str("backendVersion", report.getBackendVersion())
+                .str("containerName", report.getContainerName())
+                .str("containerVersion", report.getContainerVersion())
+                .str("diagnosticsLevel", report.getDiagnosticsLevel())
                 .toString();
     }
 

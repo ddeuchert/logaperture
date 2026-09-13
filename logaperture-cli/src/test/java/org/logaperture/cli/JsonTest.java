@@ -16,6 +16,7 @@
 package org.logaperture.cli;
 
 import org.junit.jupiter.api.Test;
+import org.logaperture.control.jmx.EnvironmentReportData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
@@ -147,5 +148,34 @@ class JsonTest {
     @Test
     void handlersWithNothingToList_emitsAnEmptyArray() {
         assertEquals("{\"handlers\":[]}", Json.handlers(List.of()));
+    }
+
+    // --- env (doc/specs/environment-report.md) -----------------------------------------------
+
+    @Test
+    void envEmitsAFlatObjectWithCliVersionStitchedInAfterAgentVersion() {
+        EnvironmentReportData report = new EnvironmentReportData(
+                "0.1.0-alpha.2", "21.0.4", "Eclipse Adoptium", "Linux", "6.10.3", "x86_64",
+                "JBoss LogManager", "3.1.1.Final", "WildFly", "34.0.1.Final", "INFO");
+
+        assertEquals(
+                "{\"agentVersion\":\"0.1.0-alpha.2\",\"cliVersion\":\"0.1.0-alpha.2\",\"javaVersion\":\"21.0.4\","
+                        + "\"javaVendor\":\"Eclipse Adoptium\",\"osName\":\"Linux\",\"osVersion\":\"6.10.3\","
+                        + "\"osArch\":\"x86_64\",\"backendName\":\"JBoss LogManager\","
+                        + "\"backendVersion\":\"3.1.1.Final\",\"containerName\":\"WildFly\","
+                        + "\"containerVersion\":\"34.0.1.Final\",\"diagnosticsLevel\":\"INFO\"}",
+                Json.env(report, "0.1.0-alpha.2"));
+    }
+
+    @Test
+    void envWithNoBackendOrContainerDetected_emitsNullFields() {
+        EnvironmentReportData report = new EnvironmentReportData(
+                "0.1.0-alpha.2", "21.0.4", "Eclipse Adoptium", "Linux", "6.10.3", "x86_64",
+                null, null, null, null, null);
+
+        String json = Json.env(report, "0.1.0-alpha.2");
+
+        assertTrue(json.contains("\"backendName\":null") && json.contains("\"containerName\":null"), json);
+        assertTrue(json.contains("\"diagnosticsLevel\":null"), json);
     }
 }

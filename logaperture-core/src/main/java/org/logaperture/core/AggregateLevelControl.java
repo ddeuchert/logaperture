@@ -15,7 +15,9 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.BackendInfo;
 import org.logaperture.api.DoctorFinding;
+import org.logaperture.api.EnvironmentReport;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerInfo;
 import org.logaperture.api.HandlerLevelOverride;
@@ -62,21 +64,24 @@ import java.util.concurrent.ConcurrentHashMap;
  * call. The multi-context paths are exercised by tests with fake contexts.
  */
 public final class AggregateLevelControl implements LevelControlOperations, HandlerLevelControlOperations,
-        DoctorOperations, TopOperations {
+        DoctorOperations, TopOperations, EnvironmentReportOperations {
 
     /**
      * One context: its {@link ContextHandle}, the single-context logger
      * service, the single-context handler service, the single-context
-     * doctor service, and the single-context top service that drive it.
+     * doctor service, the single-context top service, and the
+     * single-context environment-report service that drive it.
      */
     public record ContextControl(ContextHandle handle, LevelControlService service,
-            HandlerLevelControlService handlerService, DoctorService doctorService, TopService topService) {
+            HandlerLevelControlService handlerService, DoctorService doctorService, TopService topService,
+            EnvironmentReportService environmentReportService) {
         public ContextControl {
             Objects.requireNonNull(handle, "handle");
             Objects.requireNonNull(service, "service");
             Objects.requireNonNull(handlerService, "handlerService");
             Objects.requireNonNull(doctorService, "doctorService");
             Objects.requireNonNull(topService, "topService");
+            Objects.requireNonNull(environmentReportService, "environmentReportService");
         }
 
         String stableKey() {
@@ -84,7 +89,36 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         }
     }
 
+    /**
+     * Same property {@code Diagnostics.LEVEL_PROPERTY} in {@code
+     * logaperture-bridge} names — duplicated rather than depending on that
+     * module for one string, the same independent-duplication precedent
+     * {@code AgentBootstrap.VERSION_PROPERTY}/{@code Discovery.MARKER_PROPERTY}
+     * already set for {@code "logaperture.version"}.
+     */
+    private static final String DIAGNOSTICS_LEVEL_PROPERTY = "logaperture.diagnostics.level";
+
     private final Map<String, ContextControl> byKey = new ConcurrentHashMap<>();
+
+    /** The detected container's display name/version — doc/specs/environment-report.md; both {@code null} for {@code none}. */
+    private final String containerName;
+    private final String containerVersion;
+
+    /** No container to report — the {@code none} baseline (doc/specs/environment-report.md Decision #2's "null for none"). */
+    public AggregateLevelControl() {
+        this(null, null);
+    }
+
+    /**
+     * @param containerName    the detected container/framework's display
+     *                         name, e.g. {@code "WildFly"} — {@code null}
+     *                         for {@code none}
+     * @param containerVersion its best-effort version, or {@code null}
+     */
+    public AggregateLevelControl(String containerName, String containerVersion) {
+        this.containerName = containerName;
+        this.containerVersion = containerVersion;
+    }
 
     /**
      * Adds a context discovered during the container's initial sweep. The
@@ -235,6 +269,55 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         merged.sort(Comparator.comparingLong(LoggerByteCount::totalBytes).reversed());
         List<LoggerByteCount> limited = limit > 0 && merged.size() > limit ? merged.subList(0, limit) : merged;
         return new TopReport(List.copyOf(limited), earliest, merged.size());
+    }
+
+    /**
+     * {@code logctl env} — doc/specs/environment-report.md. Agent/JVM/OS
+     * facts and the detected container are process-wide, computed here
+     * directly; the logging backend is the one fact that can, in principle,
+     * differ per context (§15.4), so this takes the first non-empty {@link
+     * BackendInfo} among registered contexts (in {@code stableKey} order,
+     * for determinism) rather than requiring every context to agree — no
+     * implemented container actually produces more than one distinct
+     * backend today (doc/specs/environment-report.md "Explicitly out of
+     * scope"). Zero registered contexts is not an error, unlike a mutation:
+     * the report still carries every process-wide fact, just no backend.
+     */
+    @Override
+    public EnvironmentReport environmentReport() {
+        BackendInfo backend = BackendInfo.EMPTY;
+        for (ContextControl context : sortedByKey()) {
+            BackendInfo candidate = context.environmentReportService().backendInfo();
+            if (candidate.name() != null) {
+                backend = candidate;
+                break;
+            }
+        }
+        return new EnvironmentReport(
+                agentVersion(),
+                System.getProperty("java.version"),
+                System.getProperty("java.vendor"),
+                System.getProperty("os.name"),
+                System.getProperty("os.version"),
+                System.getProperty("os.arch"),
+                backend.name(),
+                backend.version(),
+                containerName,
+                containerVersion,
+                System.getProperty(DIAGNOSTICS_LEVEL_PROPERTY));
+    }
+
+    /**
+     * Same manifest resolution {@code AgentBootstrap.agentVersion()} uses,
+     * read from this class's own package instead — {@code core} must never
+     * depend on {@code agent} (§4.6), but both modules are stamped with the
+     * same {@code Implementation-Version} from one Maven reactor build
+     * (§11.1's "one version number, released together"), so this resolves
+     * to the same string.
+     */
+    private static String agentVersion() {
+        String version = AggregateLevelControl.class.getPackage().getImplementationVersion();
+        return version != null ? version : "dev"; // null when run from classes dir, e.g. a unit test
     }
 
     @Override

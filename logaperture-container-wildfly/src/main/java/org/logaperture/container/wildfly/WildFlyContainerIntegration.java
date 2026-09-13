@@ -26,11 +26,17 @@ import org.logaperture.core.spi.ContainerIntegration;
 import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.InstallGuidance;
 
+import java.io.IOException;
 import java.lang.instrument.Instrumentation;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The {@link ContainerIntegration} for standalone WildFly — see
@@ -48,6 +54,9 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
 
     private static final String JBOSS_MODULES_CLASS = "org.jboss.modules.Module";
     private static final String DOMAIN_BASE_DIR_PROPERTY = "jboss.domain.base.dir";
+    private static final String VERSION_TXT = "version.txt";
+    /** The trailing {@code x.y.z[.Qualifier]}-shaped token on version.txt's first line, e.g. the "34.0.1.Final" in "WildFly Full 34.0.1.Final". */
+    private static final Pattern TRAILING_VERSION_TOKEN = Pattern.compile("(\\S*\\d\\S*)$");
     private static final String JBOSS_HOME_PROPERTY = "jboss.home.dir";
 
     private final Duration sweepInterval;
@@ -93,7 +102,7 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
     public AggregateLevelControl activate(
             Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog,
             Consumer<AggregateLevelControl> onFirstContextReady) {
-        WildFlyContainer host = new WildFlyContainer(policy, auditLog, sweepInterval);
+        WildFlyContainer host = new WildFlyContainer(policy, auditLog, sweepInterval, version().orElse(null));
 
         Runnable install = () -> {
             try {
@@ -112,6 +121,41 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
         detector.start();
 
         return host.operations();
+    }
+
+    /**
+     * doc/specs/environment-report.md Decision #3: WildFly ships {@code
+     * $JBOSS_HOME/version.txt}, a one-line human string such as {@code
+     * "WildFly Full 34.0.1.Final"} (the product name varies — Full/Preview/
+     * Core distributions). {@link #extractVersionToken} pulls the trailing
+     * version-shaped token out of it; the whole trimmed line is returned
+     * as-is if nothing version-shaped is found there, rather than guessing
+     * further. Pure file I/O — never touches {@code java.util.logging}, so
+     * safe to call from {@link #activate} at premain time (the premain
+     * gotcha, class doc). Best-effort: empty on any failure (no {@code
+     * jboss.home.dir}, no such file, unreadable, empty file).
+     */
+    @Override
+    public Optional<String> version() {
+        String jbossHome = System.getProperty(JBOSS_HOME_PROPERTY);
+        if (jbossHome == null) {
+            return Optional.empty();
+        }
+        try {
+            String firstLine = Files.readString(Path.of(jbossHome, VERSION_TXT)).lines().findFirst().orElse(null);
+            if (firstLine == null || firstLine.isBlank()) {
+                return Optional.empty();
+            }
+            return Optional.of(extractVersionToken(firstLine.trim()));
+        } catch (IOException | RuntimeException notReadable) {
+            return Optional.empty();
+        }
+    }
+
+    /** Package-visible so a test can lock in this parsing against real version.txt samples without a real WildFly. */
+    static String extractVersionToken(String versionTxtFirstLine) {
+        Matcher match = TRAILING_VERSION_TOKEN.matcher(versionTxtFirstLine);
+        return match.find() ? match.group(1) : versionTxtFirstLine;
     }
 
     @Override
