@@ -42,6 +42,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 /**
  * Fans {@link LevelControlOperations} out across every logging context a
@@ -100,24 +101,37 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
 
     private final Map<String, ContextControl> byKey = new ConcurrentHashMap<>();
 
-    /** The detected container's display name/version — doc/specs/environment-report.md; both {@code null} for {@code none}. */
+    /** The detected container's display name — doc/specs/environment-report.md; {@code null} for {@code none}. */
     private final String containerName;
-    private final String containerVersion;
+    /**
+     * Its best-effort version — a <em>supplier</em>, re-invoked fresh on
+     * every {@link #environmentReport()} call, deliberately not resolved
+     * once and cached. {@code WildFlyContainerIntegration.version()}'s own
+     * javadoc has the real-WildFly story: at the point a container's
+     * composition root would otherwise resolve this eagerly (premain time),
+     * the fact often isn't available yet (e.g. {@code jboss.home.dir} is not
+     * yet visible to {@code System.getProperty} in every real launch
+     * tried) — resolving once here would silently bake in "no version"
+     * forever instead of self-healing once the server finishes its own
+     * bootstrap.
+     */
+    private final Supplier<Optional<String>> containerVersion;
 
     /** No container to report — the {@code none} baseline (doc/specs/environment-report.md Decision #2's "null for none"). */
     public AggregateLevelControl() {
-        this(null, null);
+        this(null, Optional::empty);
     }
 
     /**
      * @param containerName    the detected container/framework's display
      *                         name, e.g. {@code "WildFly"} — {@code null}
      *                         for {@code none}
-     * @param containerVersion its best-effort version, or {@code null}
+     * @param containerVersion supplies its best-effort version on demand,
+     *                         or {@code Optional.empty()}; see the field doc
      */
-    public AggregateLevelControl(String containerName, String containerVersion) {
+    public AggregateLevelControl(String containerName, Supplier<Optional<String>> containerVersion) {
         this.containerName = containerName;
-        this.containerVersion = containerVersion;
+        this.containerVersion = Objects.requireNonNull(containerVersion, "containerVersion");
     }
 
     /**
@@ -312,8 +326,18 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 backend.name(),
                 backend.version(),
                 containerName,
-                containerVersion,
+                resolveContainerVersion(),
                 System.getProperty(DIAGNOSTICS_LEVEL_PROPERTY));
+    }
+
+    /** {@link #containerVersion}'s supplier is third-party code (a {@code ContainerIntegration}'s own); a throw there must degrade the same as a throwing adapter, never fail the whole report. */
+    private String resolveContainerVersion() {
+        try {
+            return containerVersion.get().orElse(null);
+        } catch (RuntimeException e) {
+            System.err.println("[logaperture-core] the container version supplier failed, treating it as unresolved: " + e);
+            return null;
+        }
     }
 
     /**

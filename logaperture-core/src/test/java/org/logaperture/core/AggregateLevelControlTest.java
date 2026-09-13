@@ -34,6 +34,7 @@ import org.logaperture.core.spi.StateStore;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -226,12 +227,42 @@ class AggregateLevelControlTest {
 
     @Test
     void environmentReport_containerNameAndVersion_fromConstructor() {
-        AggregateLevelControl wildfly = new AggregateLevelControl("WildFly", "34.0.1.Final");
+        AggregateLevelControl wildfly = new AggregateLevelControl("WildFly", () -> Optional.of("34.0.1.Final"));
 
         EnvironmentReport report = wildfly.environmentReport();
 
         assertEquals("WildFly", report.containerName());
         assertEquals("34.0.1.Final", report.containerVersion());
+    }
+
+    @Test
+    void environmentReport_containerVersionSupplier_reinvokedOnEveryCall_notCachedAtConstruction() {
+        // doc/specs/environment-report.md: the real-WildFly finding that
+        // motivated the supplier in the first place -- a fact genuinely
+        // unresolvable at construction time (jboss.home.dir not yet visible
+        // to System.getProperty) can still resolve later, once the server
+        // finishes its own bootstrap. A one-shot resolve-at-construction
+        // would bake in "no version" forever; the supplier must not be
+        // memoised.
+        java.util.concurrent.atomic.AtomicReference<Optional<String>> version =
+                new java.util.concurrent.atomic.AtomicReference<>(Optional.empty());
+        AggregateLevelControl wildfly = new AggregateLevelControl("WildFly", version::get);
+
+        assertNull(wildfly.environmentReport().containerVersion(), "not yet resolvable, same as real premain timing");
+
+        version.set(Optional.of("26.1.3.Final"));
+
+        assertEquals("26.1.3.Final", wildfly.environmentReport().containerVersion(),
+                "re-invoked fresh, not cached from the first call");
+    }
+
+    @Test
+    void environmentReport_containerVersionSupplierThrows_containerVersionIsAbsentNotAFailure() {
+        AggregateLevelControl wildfly = new AggregateLevelControl("WildFly", () -> {
+            throw new RuntimeException("simulated jboss.home.dir resolution failure");
+        });
+
+        assertNull(wildfly.environmentReport().containerVersion());
     }
 
     @Test

@@ -1,10 +1,14 @@
 # `logctl env` — Environment Report for Bug Reports
 
-Status: implemented and verified end-to-end, including against a real standalone WildFly
-(`WildFlyContainerIT`) — `logctl env` reported the real JBoss LogManager backend version
-(read off the root logger's own runtime package) and the real WildFly container version
-(`$JBOSS_HOME/version.txt`). All six decisions below were signed off with the recommendation
-taken as-is, via the published review artifact per CLAUDE.md's sign-off process.
+Status: implemented and verified end-to-end, including against two real standalone WildFly
+distributions (`WildFlyContainerIT`, plus hand verification against a second image — see
+Decision #3's revision notes) — `logctl env` reports the real JBoss LogManager backend version
+(read off the root logger's own runtime package) and the real WildFly container version. All
+six decisions below were signed off with the recommendation taken as-is, via the published
+review artifact per CLAUDE.md's sign-off process; Decision #3's version source was revised
+twice, post-implementation, after real-world feedback (a user got no version at all against
+real WildFly) surfaced first a wrong file-path assumption and then a deeper premain-timing bug
+(below).
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §17 (roadmap — "Pulled forward:
 an environment report for bug reports"), §4.5 (self-diagnostics — `-Dlogaperture.diagnostics.level`),
@@ -150,11 +154,15 @@ default Optional<String> version() {
 }
 ```
 
-`AggregateLevelControl` gains the container's `id()`/`version()` as constructor-supplied plain
-data (a name and an optional version string) rather than a dependency on `ContainerIntegration`
-itself — each container module's `activate()` already holds `this` and passes it through,
-exactly where `id()` is already read today (`AgentBootstrap.publishControlSurface`'s log line).
-`core` keeps depending on nothing but the SPI interfaces it already knows (§4.6).
+`AggregateLevelControl` gains the container's name as a constructor-supplied plain string, and
+its version as a constructor-supplied `Supplier<Optional<String>>` — re-invoked fresh on every
+`environmentReport()` call, not resolved once — rather than a dependency on `ContainerIntegration`
+itself. Each container module's `activate()` already holds `this` and passes `this::version`
+through, exactly where `id()` is already read today (`AgentBootstrap.publishControlSurface`'s
+log line). `core` keeps depending on nothing but the SPI interfaces it already knows (§4.6). The
+supplier indirection (rather than resolving eagerly at `activate()` time) is load-bearing, not
+a style choice — see Decision #3's second revision note: for WildFly specifically, the version
+genuinely isn't resolvable yet at the point `activate()` runs.
 
 The JVM/OS facts (`java.version`, `java.vendor`, `os.name`, `os.version`, `os.arch`) and the
 diagnostics-level property need no SPI at all — read directly as system properties inside
@@ -177,12 +185,17 @@ registered contexts.
 - Unit — JBoss LogManager adapter: `backendInfo()` resolves a real name/version from a
   well-known class's package version (mirroring `doctor.md`'s reflection precedent), degrades
   to `BackendInfo.EMPTY` if the class shape doesn't match.
-- Unit — WildFly `ContainerIntegration`: `version()` resolves from whatever source Decision #3
-  settles on; degrades to empty on any failure.
+- Unit — WildFly `ContainerIntegration`: `version()` resolves against fixture files copied
+  verbatim from each real source Decision #3 settles on (Galleon's `provisioning.xml`, the
+  classic product manifest), prefers Galleon when both are present, and degrades to empty when
+  neither is.
 - Unit — core: `AggregateLevelControl.environmentReport()` assembles the full report from JVM
-  system properties, the constructor-supplied container facts, and the first context whose
-  `EnvironmentReportService` resolves a non-empty backend; a throwing/empty fact degrades to
-  that one field being absent, never a failed call.
+  system properties, the constructor-supplied container name and version supplier, and the
+  first context whose `EnvironmentReportService` resolves a non-empty backend; a throwing/empty
+  fact (including the version supplier itself throwing) degrades to that one field being
+  absent, never a failed call; the version supplier is re-invoked on every call, confirmed by a
+  test where it starts empty and only resolves on a later call, matching the real-WildFly
+  timing story in Decision #3's second revision note.
 - Cross-process (`logaperture-it`): run `logctl env` against real standalone WildFly and
   confirm the real backend/container facts resolve (mirroring `WildFlyContainerIT`'s pattern
   in `doctor.md`/`top.md`).
@@ -207,14 +220,55 @@ application's* logging needs. Keeps the report to one JVM's worth of facts, one 
 
 **#3 — Framework/container version source, and the "not recognized" line.** A manifest
 `Implementation-Version` attribute (mirrors `AgentBootstrap.agentVersion()`/`Main.version()`
-exactly) vs. a well-known version class/API per framework vs. a container-specific probe (e.g.
-WildFly's `$JBOSS_HOME/version.txt` or `jboss-modules` manifest). And: when nothing resolves,
-leave the line out entirely, or print an explicit `unknown`?
+exactly) vs. a well-known version class/API per framework vs. a container-specific probe. And:
+when nothing resolves, leave the line out entirely, or print an explicit `unknown`?
 *Recommendation:* manifest attribute first, falling back to a well-known class's package
 version where the manifest isn't populated (JBoss LogManager ships both) — same resolution
 order already proven for the agent's own version, no new mechanism to trust. Leave the line
 out entirely on failure (matches `doctor`'s "skip silently" precedent) rather than printing
 `unknown`, which reads like a finding when this command doesn't have any.
+
+**Revised post-implementation, after real-world feedback:** the original WildFly-specific
+container-probe design ("`$JBOSS_HOME/version.txt`") shipped, passed its own cross-process
+test, and still turned out wrong — a user ran it against real WildFly and got no version at
+all. Investigation (`docker run` against the actual images) found that **no image tried ships
+`version.txt`**, and, worse, that WildFly's own on-disk layout for its version changed between
+major versions, so no single path is stable across the coverage matrix:
+
+- **26.1.3.Final** (this project's pinned dev/IT image) — classic layout: a plain manifest at
+  `$JBOSS_HOME/modules/system/layers/base/org/jboss/as/product/main/dir/META-INF/MANIFEST.MF`
+  carries a `JBoss-Product-Release-Version` attribute. This is the exact file WildFly's own
+  `org.jboss.as.version.ProductConfig` reads to print its boot banner ("WildFly Full
+  26.1.3.Final ... started"). No `.galleon` directory exists on this image at all.
+- **34.0.1.Final** — Galleon-provisioned layout (the default from WildFly 27 on): no product
+  manifest exists at all; instead `$JBOSS_HOME/.galleon/provisioning.xml` names the resolved
+  feature-pack as `wildfly@maven(...):current#34.0.1.Final`.
+
+`WildFlyContainerIntegration.version()` now tries both, in order (Galleon first, since it's the
+current default for new images), pure file reads either way — no `version.txt` anywhere, since
+neither real image ships it. This is also the finding that exposed a **test-quality gap**: the
+original cross-process assertions only checked that the word "WildFly" appeared in the output,
+which is also true when no version renders at all (`nameAndVersion` falls back to the bare
+name) — so the broken implementation passed its own IT run. The assertions now check for the
+actual version number, not just the container's name.
+
+**A second, more fundamental finding, from the same investigation:** fixing the file paths
+alone still didn't work. `jboss.home.dir` is not actually a genuine JVM launcher `-D` property
+at the point `WildFlyContainerIntegration.activate()` runs (premain time) — it reads back
+`null` from `System.getProperty` there in every real launch tried, and only becomes visible
+once WildFly's own bootstrap (`org.jboss.modules.Main` / `org.jboss.as`) has run far enough to
+set it *programmatically*, strictly after premain (which runs before any application `main()`).
+`detect()` tolerates this by design — `jboss.home.dir` is only one of its two disjuncts, and the
+`sun.java.command` match is what actually fires — but `version()` had no such fallback, so
+resolving it eagerly at `activate()` time silently baked in "no version" on every real launch,
+forever, regardless of which file-layout fix was in place.
+
+**Fix:** `version()` is no longer called once, eagerly, at agent-install time. `AggregateLevelControl`
+now takes the container's version as a `Supplier<Optional<String>>`, re-invoked fresh on every
+`environmentReport()` call (`WildFlyContainerIntegration.activate()` passes `this::version`) —
+by the time a human actually runs `logctl env`, the server has long finished its own bootstrap,
+so the same file reads that failed at premain succeed. This costs nothing (plain file I/O off
+the hot path) and self-heals rather than requiring the fact to be known at one specific moment.
 
 **#4 — `--json`.** In the first slice, or a fast-follow?
 *Recommendation:* first slice — `doctor.md` and `top.md` both shipped `--json` in their first
@@ -245,9 +299,12 @@ Met:
   (`AggregateLevelControlTest`).
 - `logctl env` against standalone WildFly additionally reports the real JBoss LogManager
   backend version and the real WildFly container version — confirmed cross-process against a
-  real WildFly 26.1.3.Final (`WildFlyContainerIT`): both the backend line (`JBoss LogManager
-  3.1.1.Final`, read off the root logger's own runtime package) and the container line
-  (`WildFly` plus the version resolved from `$JBOSS_HOME/version.txt`) render correctly.
+  real WildFly 26.1.3.Final (`WildFlyContainerIT`, assertions on the actual version numbers, not
+  just the names): the backend line (`JBoss LogManager 3.1.1.Final`, read off the root logger's
+  own runtime package) and the container line (`WildFly 26.1.3.Final`, read from the classic
+  product manifest — see Decision #3's revision note) both render correctly. The Galleon
+  source (34.0.1.Final) was confirmed by hand, not by an automated cross-process test — this
+  project's pinned dev/IT image is 26.1.3.Final.
 - `logctl env --json` round-trips through a JSON parser with the documented shape — confirmed
   cross-process and unit-tested (`JsonTest`).
 - A fact this environment can't resolve is absent from both renderings, never a command

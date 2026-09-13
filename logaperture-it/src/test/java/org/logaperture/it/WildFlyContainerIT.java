@@ -396,13 +396,19 @@ class WildFlyContainerIT {
         assertTrue(out.contains("LogAperture agent"), out);
         assertTrue(out.contains("Java"), out);
         assertTrue(out.contains("OS") && out.contains("Linux"), out);
-        // Decision #3: the version source is $JBOSS_HOME/version.txt plus the
-        // JBoss LogManager root logger's own package version -- confirm both
-        // resolve against this real image, not just that the lines exist.
-        assertTrue(out.contains("Logging backend") && out.contains("JBoss LogManager"),
-                "expected the real logging backend line:\n" + out);
-        assertTrue(out.contains("Framework/container") && out.contains("WildFly"),
-                "expected the real container line:\n" + out);
+        // Decision #3 (revised): the version source is the classic product
+        // manifest (this image predates Galleon provisioning) plus the JBoss
+        // LogManager root logger's own package version -- assert the actual
+        // version numbers render, not just that the line/name is present.
+        // The weaker "contains WildFly" form of this assertion is exactly
+        // what let the original ($JBOSS_HOME/version.txt) implementation
+        // ship broken: that file doesn't exist on this image, so the
+        // container line rendered as bare "WildFly" with no version, and
+        // this test still passed.
+        assertTrue(out.contains("Logging backend") && out.matches("(?s).*JBoss LogManager \\d[\\w.]*Final.*"),
+                "expected the real logging backend line with a version:\n" + out);
+        assertTrue(out.contains("Framework/container") && out.contains("WildFly 26.1.3.Final"),
+                "expected the real container line with its actual version, not just the name:\n" + out);
         assertTrue(out.contains("Diagnostics level"), "shown either way, per Decision #5:\n" + out);
     }
 
@@ -415,7 +421,10 @@ class WildFlyContainerIT {
         assertTrue(out.contains("\"agentVersion\":\""), out);
         assertTrue(out.contains("\"cliVersion\":\""), out);
         assertTrue(out.contains("\"backendName\":\"JBoss LogManager\""), out);
+        assertFalse(out.contains("\"backendVersion\":null"), "expected a real backend version, not absent:\n" + out);
         assertTrue(out.contains("\"containerName\":\"WildFly\""), out);
+        assertTrue(out.contains("\"containerVersion\":\"26.1.3.Final\""),
+                "expected the real container version, not absent:\n" + out);
     }
 
     // --- probe WAR ------------------------------------------------------------------------------
