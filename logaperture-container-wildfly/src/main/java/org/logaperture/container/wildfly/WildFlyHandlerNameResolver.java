@@ -35,15 +35,20 @@ import java.util.logging.Handler;
  *
  * <p><b>In-VM only.</b> The agent already runs inside the WildFly JVM. It
  * obtains the server's own {@code ModelController} from the MSC {@code
- * ServiceContainer} and runs a local, in-process {@code ModelControllerClient}
- * ({@code createClient} — no socket, no {@code $local} handshake, no
- * management credentials, no {@code wildfly-controller-client} on the compile
- * path). Every reflective handle is loaded through a WildFly module's own
- * class loader (via {@code org.jboss.modules}, the one WildFly API on the
- * system class path) and invoked through public interfaces, never the
- * module-private {@code *Impl} classes — the classloader-and-access
- * discipline the retired {@code JbossHandlerNames} attempt got wrong
- * (doc/specs/handler-floor-control.md "Adapter SPI").
+ * ServiceContainer} and calls {@link
+ * org.jboss.as.controller.ModelController#execute} on it directly — no
+ * socket, no {@code $local} handshake, no management credentials, no
+ * {@code ModelControllerClient} at all. (An earlier version of this class
+ * went through {@code ModelController.createClient(Executor)}, a
+ * convenience method present on WildFly 26 but already gone from WildFly
+ * 33's {@code wildfly-controller-25.0.0.Final}; {@code execute} is the
+ * fundamental, long-stable method on the interface and works unchanged
+ * across both.) Every reflective handle is loaded through a WildFly
+ * module's own class loader (via {@code org.jboss.modules}, the one
+ * WildFly API on the system class path) and invoked through public
+ * interfaces, never the module-private {@code *Impl} classes — the
+ * classloader-and-access discipline the retired {@code JbossHandlerNames}
+ * attempt got wrong (doc/specs/handler-floor-control.md "Adapter SPI").
  *
  * <p>Names come from {@code read-children-resources} under {@code
  * /subsystem=logging} for each handler resource type; each name is then bound
@@ -111,29 +116,54 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
         // Resolve every method through its public declaring interface, not the
         // module-private *Impl the instance actually is.
         Class<?> modelControllerIface = Class.forName("org.jboss.as.controller.ModelController", false, loader);
-        Class<?> clientIface = Class.forName("org.jboss.as.controller.client.ModelControllerClient", false, loader);
-        Object client = modelControllerIface.getMethod("createClient", java.util.concurrent.Executor.class)
-                .invoke(modelController, (java.util.concurrent.Executor) Runnable::run);
-        try {
-            Map<String, String> nameToType = readLoggingHandlerNames(loader, clientIface, client);
-            dbg("model handler names=" + nameToType);
-            Map<String, String> fileNameByHandlerName = readFileNames(loader, clientIface, client, nameToType);
-            Map<Handler, String> bound = bind(handlers, nameToType, fileNameByHandlerName);
-            dbg("bound " + bound.size() + " of " + handlers.size());
-            if (!bound.isEmpty()) {
-                Diagnostics.debug("LogAperture: resolved " + bound.size() + " of " + handlers.size()
-                        + " WildFly handler name(s) from /subsystem=logging");
-            }
-            return bound;
-        } finally {
-            closeQuietly(clientIface, client);
+        ModelExecutor executor = ModelExecutor.forServer(loader, modelControllerIface, modelController);
+
+        Map<String, String> nameToType = readLoggingHandlerNames(loader, executor);
+        dbg("model handler names=" + nameToType);
+        Map<String, String> fileNameByHandlerName = readFileNames(loader, executor, nameToType);
+        Map<Handler, String> bound = bind(handlers, nameToType, fileNameByHandlerName);
+        dbg("bound " + bound.size() + " of " + handlers.size());
+        if (!bound.isEmpty()) {
+            Diagnostics.debug("LogAperture: resolved " + bound.size() + " of " + handlers.size()
+                    + " WildFly handler name(s) from /subsystem=logging");
+        }
+        return bound;
+    }
+
+    /**
+     * Binds {@code ModelController.execute(ModelNode, OperationMessageHandler,
+     * OperationTransactionControl, OperationAttachments)} — the fundamental,
+     * long-stable overload, unlike the now-removed {@code createClient}
+     * convenience method — to one server's {@code ModelController} instance,
+     * so callers just pass an operation {@code ModelNode} in.
+     */
+    private record ModelExecutor(Method execute, Object modelController, Object discard, Object commit, Object empty) {
+        static ModelExecutor forServer(ClassLoader loader, Class<?> modelControllerIface, Object modelController)
+                throws Exception {
+            Class<?> modelNode = Class.forName("org.jboss.dmr.ModelNode", false, loader);
+            Class<?> transactionControlIface =
+                    Class.forName("org.jboss.as.controller.ModelController$OperationTransactionControl", false, loader);
+            Class<?> messageHandlerIface =
+                    Class.forName("org.jboss.as.controller.client.OperationMessageHandler", false, loader);
+            Class<?> attachmentsIface =
+                    Class.forName("org.jboss.as.controller.client.OperationAttachments", false, loader);
+            Method execute = modelControllerIface.getMethod(
+                    "execute", modelNode, messageHandlerIface, transactionControlIface, attachmentsIface);
+            Object discard = messageHandlerIface.getField("DISCARD").get(null);
+            Object commit = transactionControlIface.getField("COMMIT").get(null);
+            Object empty = attachmentsIface.getField("EMPTY").get(null);
+            return new ModelExecutor(execute, modelController, discard, commit, empty);
+        }
+
+        Object execute(Object operation) throws Exception {
+            return execute.invoke(modelController, operation, discard, commit, empty);
         }
     }
 
     // --- model reads --------------------------------------------------------------------------------
 
     /** {@code read-children-names} per handler resource type; returns name -> resource type. */
-    private static Map<String, String> readLoggingHandlerNames(ClassLoader loader, Class<?> clientIface, Object client)
+    private static Map<String, String> readLoggingHandlerNames(ClassLoader loader, ModelExecutor executor)
             throws Exception {
         Class<?> modelNode = Class.forName("org.jboss.dmr.ModelNode", false, loader);
         Method mnGet = modelNode.getMethod("get", String.class);
@@ -143,7 +173,6 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
         Method mnAsString = modelNode.getMethod("asString");
         Method mnAsList = modelNode.getMethod("asList");
         Method mnHasDefined = modelNode.getMethod("hasDefined", String.class);
-        Method execute = clientIface.getMethod("execute", modelNode);
 
         Map<String, String> out = new LinkedHashMap<>();
         for (String type : HANDLER_RESOURCE_TYPES) {
@@ -152,7 +181,7 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
             mnSetString.invoke(mnGet.invoke(op, "child-type"), type);
             mnAdd2.invoke(mnGet.invoke(op, "address"), "subsystem", "logging");
 
-            Object result = execute.invoke(client, op);
+            Object result = executor.execute(op);
             if (!(boolean) mnHasDefined.invoke(result, "result")) {
                 continue;
             }
@@ -166,7 +195,7 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
 
     /** For file-type handlers, the configured file's leaf name (for disambiguating &gt;1 file handler). */
     private static Map<String, String> readFileNames(
-            ClassLoader loader, Class<?> clientIface, Object client, Map<String, String> nameToType) throws Exception {
+            ClassLoader loader, ModelExecutor executor, Map<String, String> nameToType) throws Exception {
         Class<?> modelNode = Class.forName("org.jboss.dmr.ModelNode", false, loader);
         Method mnGet = modelNode.getMethod("get", String.class);
         Method mnGetPath = modelNode.getMethod("get", String[].class);
@@ -174,7 +203,6 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
         Method mnAdd2 = modelNode.getMethod("add", String.class, String.class);
         Method mnAsString = modelNode.getMethod("asString");
         Method mnHasDefined = modelNode.getMethod("hasDefined", String.class);
-        Method execute = clientIface.getMethod("execute", modelNode);
 
         Map<String, String> out = new LinkedHashMap<>();
         for (Map.Entry<String, String> e : nameToType.entrySet()) {
@@ -189,7 +217,7 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
             mnAdd2.invoke(address, "subsystem", "logging");
             mnAdd2.invoke(address, e.getValue(), e.getKey());
 
-            Object result = execute.invoke(client, op);
+            Object result = executor.execute(op);
             if (!(boolean) mnHasDefined.invoke(result, "result")) {
                 continue;
             }
@@ -325,14 +353,6 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
             }
         }
         return null;
-    }
-
-    private static void closeQuietly(Class<?> clientIface, Object client) {
-        try {
-            clientIface.getMethod("close").invoke(client);
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
-            // best effort -- ModelControllerClient extends Closeable
-        }
     }
 
     private static void dbg(String message) {
