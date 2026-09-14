@@ -342,6 +342,8 @@ A rule is `{ id, description, enabled, when, then, terminal, dryRun }`.
 | `marker` | name matchers (where supported) |
 | `frame` | a stack frame matching a class/package pattern is present — expensive, opt-in only |
 
+**Prior art to weigh when the matcher/expression syntax is actually designed:** JBoss/WildFly's own LogManager has shipped a message-regex gate for years via its `filter-spec` grammar — e.g. `not(match("UT005108"))` on a `<logger category="io.undertow">` element, silencing one known-benign message code by regex without touching the category's level. The composable forms (`not(...)`, and the `all(...)`/`any(...)` conjunction/disjunction JBoss LogManager also supports) are a mature, battle-tested precedent for exactly this table's `message.regex`-style matching, and worth a direct look given WildFly is already a first-class target elsewhere in this project.
+
 **Actions (`then`)** — ordered list, applied in sequence.
 
 | Action | Stage | Notes |
