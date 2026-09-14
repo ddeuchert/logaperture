@@ -34,6 +34,31 @@ After this feature, the user will be able to:
   commands (`error`, `debug`, `set`, ...) — one grammar, one mechanism, everywhere a logger
   target is accepted.
 
+### Bare name vs. trailing wildcard — why the difference matters
+
+`logctl debug org.acme.mygroup` and `logctl debug org.acme.mygroup.*` look like they'd do
+almost the same thing, and it's easy to assume the trailing `*` is just belt-and-suspenders.
+They're actually different in a way that matters operationally:
+
+- **Bare name** (`org.acme.mygroup`, no `*`): one `LevelOverride`, on that logger only.
+  Whether `org.acme.mygroup.sub` ends up affected too is entirely up to the underlying
+  logging framework's own level-inheritance (JUL/Logback/Log4j2 all walk up the parent chain
+  for a logger with no explicit level of its own) — LogAperture takes no action on descendants
+  and audits nothing for them.
+- **Trailing wildcard** (`org.acme.mygroup.*`): matches `org.acme.mygroup` itself *and* every
+  descendant (zero-or-more, per PR #44's fix — this is a true superset of the bare name, not
+  a separate descendants-only case). Each currently-matched logger gets its **own**
+  `LevelOverride`, applied individually, with its **own** `MUTATION` audit record. Because it's
+  a standing rule, a descendant logger instantiated later (not loaded yet at the time the
+  command ran) gets picked up by the sweep and gets its own override and audit record too.
+
+So the choice isn't cosmetic: the bare name leaves propagation to the target framework and
+takes responsibility for one logger; the trailing wildcard makes LogAperture responsible for
+propagation itself, with an explicit, individually-audited override on every logger it
+touches — now and later. Reach for the trailing wildcard whenever you want that guarantee (or
+just want to `logctl levels *.mygroup.*` to see the whole subtree, standing-rule support aside)
+rather than trusting a specific framework's inheritance behavior to do it for you.
+
 ## Why slices 2 and 3 land in one spec
 
 Top-level §18.7 deliberately sequences these two slices of #41 so that neither ships without
