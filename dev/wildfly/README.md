@@ -71,6 +71,16 @@ Requests share ancestor categories (`org`, `org.logaperture`, ...), so running
 several `sample.http` requests back-to-back also builds up overlapping
 loggers useful for testing standing-rule precedence.
 
+That ancestry also makes a good place to feel the difference between a bare
+logger name and a trailing-wildcard pattern: `logctl debug
+org.logaperture.demo.Checkout` overrides only that one logger, while `logctl
+debug 'org.logaperture.demo.*'` reaches every logger under that category —
+now, and any discovered later (up to the sweep interval before a brand-new
+one is picked up; dev default is `--sweep-seconds 5`, prod default 30s) —
+each with its own audited override. See
+[`doc/specs/pattern-level-targeting.md`](../../doc/specs/pattern-level-targeting.md)'s
+"Bare name vs. trailing wildcard" for the full explanation.
+
 An unrecognized `level` or `implementation` is a 400, not a silent fall back
 to the default. The timer's burst always targets
 `org.logaperture.sample.work.Worker` across all three frameworks — one
