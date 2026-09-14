@@ -67,6 +67,9 @@ dot-separated category above it too, so the default request logs through
 `org`, `org.logaperture` and `org.logaperture.log`, one line each. That gives
 a pattern override anywhere in that ancestry (`logctl debug 'org.logaperture.*'`,
 say) a real logger registered to land on, not just an exact match on the leaf.
+Requests share ancestor categories (`org`, `org.logaperture`, ...), so running
+several `sample.http` requests back-to-back also builds up overlapping
+loggers useful for testing standing-rule precedence.
 
 An unrecognized `level` or `implementation` is a 400, not a silent fall back
 to the default. The timer's burst always targets
