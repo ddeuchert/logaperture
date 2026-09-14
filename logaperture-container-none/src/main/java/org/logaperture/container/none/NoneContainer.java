@@ -101,6 +101,7 @@ public final class NoneContainer implements AutoCloseable {
         Instant now = Instant.now();
         aggregate.sweepExpiredOverrides(now);
         aggregate.verificationSweep(now);
+        aggregate.applyStandingRules(now);
     }
 
     /** The surface a control plane (JMX) binds to. */

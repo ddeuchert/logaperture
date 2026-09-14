@@ -54,6 +54,18 @@ final class NameFilter {
     }
 
     /**
+     * Whether {@code target} is a pattern rather than an exact logger name --
+     * one {@code '*'} anywhere in it. The single check every caller on the
+     * {@code setLevel}/{@code resetLevel} path branches on before deciding
+     * whether it's looking at a standing rule or a plain override; pulled
+     * out here so that branch is spelled once instead of re-typed at each
+     * call site.
+     */
+    static boolean isPattern(String target) {
+        return target.indexOf('*') >= 0;
+    }
+
+    /**
      * Validates {@code filter} against the grammar once and returns a reusable
      * matcher — the seam a caller filtering many names against the same filter
      * (e.g. {@code listLoggers}) should use instead of {@link #matches}, so

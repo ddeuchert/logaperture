@@ -75,8 +75,12 @@ class AggregateLevelControlTest {
         }
 
         Ctx(String key, CapabilityPolicy policy) {
+            this(key, policy, "jmx");
+        }
+
+        Ctx(String key, CapabilityPolicy policy, String source) {
             service = new LevelControlService(adapter, new BaselineRegistry(), new OverrideRegistry(),
-                    policy, auditLog, sharedStore, "alice", "jmx");
+                    policy, auditLog, sharedStore, "alice", source);
             handlerService = new HandlerLevelControlService(adapter, new HandlerBaselineRegistry(),
                     new HandlerOverrideRegistry(), policy, auditLog, sharedStore, "alice", "jmx");
             doctorService = new DoctorService(adapter, policy);
@@ -406,6 +410,50 @@ class AggregateLevelControlTest {
         assertTrue(system.service.activeOverrides().isEmpty());
         assertTrue(app.service.activeOverrides().isEmpty(),
                 "the context whose pre-check passed must not have been mutated");
+    }
+
+    @Test
+    void setLevel_exactName_reportsOneOverride_notOneParContext() {
+        // Code-review finding: an exact-name target broadcast across every
+        // registered context used to report every context's own override in
+        // the result, so a 2-node WildFly deployment's setLevel appeared to
+        // create two overrides for one logger. Every other broadcast
+        // operation here reports one representative (preferring SYSTEM).
+        Ctx system = new Ctx("system", CapabilityPolicy.allowAll(), "system-jmx");
+        Ctx app = new Ctx("myapp.war", CapabilityPolicy.allowAll(), "app-jmx");
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        var result = aggregate.setLevel("com.shared.Util", Level.DEBUG, SetLevelOptions.defaults());
+
+        assertEquals(1, result.overrides().size(),
+                "one representative override, not one per context");
+        assertEquals("system-jmx", result.overrides().get(0).source(),
+                "the SYSTEM context's override is preferred as the representative");
+    }
+
+    @Test
+    void setLevel_pattern_unconfirmed_mergesMatchesFromEveryContext() {
+        // Code-review finding: an unconfirmed pattern used to throw from the
+        // first context whose pre-check ran, so ConfirmationRequiredException
+        // carried only that one context's matches -- a two-node deployment's
+        // preview silently omitted every match that only existed on the
+        // second node.
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        system.adapter.addKnownLogger("com.shared.OnlyOnSystem");
+        app.adapter.addKnownLogger("com.shared.OnlyOnApp");
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        ConfirmationRequiredException ex = assertThrows(ConfirmationRequiredException.class,
+                () -> aggregate.setLevel("com.shared.*", Level.DEBUG, SetLevelOptions.defaults()));
+
+        assertTrue(ex.matches().contains("com.shared.OnlyOnSystem"));
+        assertTrue(ex.matches().contains("com.shared.OnlyOnApp"),
+                "matches from every context are merged into the one exception, not just the first context checked");
+        assertTrue(system.service.activeOverrides().isEmpty(), "unconfirmed preview must not mutate anything");
+        assertTrue(app.service.activeOverrides().isEmpty(), "unconfirmed preview must not mutate anything");
     }
 
     // --- lifecycle: addContext / removeContext ------------------------------------------------

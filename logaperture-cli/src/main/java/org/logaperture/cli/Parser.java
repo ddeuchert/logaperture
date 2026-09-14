@@ -50,7 +50,7 @@ final class Parser {
         List<String> positionals = new ArrayList<>();
         Long pid = null;
         boolean json = false;
-        boolean includeChildren = false;
+        boolean yes = false;
         boolean help = false;
         boolean version = false;
         boolean debug = false;
@@ -65,7 +65,7 @@ final class Parser {
                 case "--version" -> version = true;
                 case "--json" -> json = true;
                 case "--debug" -> debug = true;
-                case "--include-children" -> includeChildren = true;
+                case "--yes" -> yes = true;
                 case "--all" -> all = true;
                 case "--pid" -> {
                     i++;
@@ -128,8 +128,8 @@ final class Parser {
         // "handler <name> <level>" set-form takes --reason.
         boolean isHandlerReset = isHandlerCommand && rest.size() >= 2 && rest.get(1).equals("reset");
 
-        if (includeChildren && !isLevelMutation) {
-            throw usage("--include-children applies only to set/debug/trace/info/warn/error.");
+        if (yes && !isLevelMutation) {
+            throw usage("--yes applies only to set/debug/trace/info/warn/error.");
         }
         if (reason != null && !isLevelMutation && !(isHandlerCommand && !isHandlerReset)) {
             throw usage("--reason applies only to set/debug/trace/info/warn/error, or 'handler <name> <level>'.");
@@ -195,8 +195,8 @@ final class Parser {
                     throw usage("'set' needs <logger> <level> [session | for <duration> | sticky].");
                 }
                 TierChoice tier = resolveTier(rest.subList(2, rest.size()));
-                yield Commands.setLevel(rest.get(0), parseLevel(rest.get(1)), includeChildren, reason,
-                        tier.tierName(), tier.forSeconds(), json);
+                yield Commands.setLevel(rest.get(0), parseLevel(rest.get(1)), reason,
+                        tier.tierName(), tier.forSeconds(), yes, json);
             }
             case "handler" -> {
                 if (rest.size() < 2) {
@@ -224,8 +224,8 @@ final class Parser {
                     throw usage("'" + command + "' needs a <logger>.");
                 }
                 TierChoice tier = resolveTier(rest.subList(1, rest.size()));
-                yield Commands.setLevel(rest.get(0), command.toUpperCase(Locale.ROOT), includeChildren, reason,
-                        tier.tierName(), tier.forSeconds(), json);
+                yield Commands.setLevel(rest.get(0), command.toUpperCase(Locale.ROOT), reason,
+                        tier.tierName(), tier.forSeconds(), yes, json);
             }
         };
 

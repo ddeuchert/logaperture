@@ -30,16 +30,41 @@ public interface LevelControlMXBean {
     List<LoggerInfoData> listLoggers(String filter);
 
     /**
+     * {@code target} is either an exact logger name or a segment-anchored
+     * pattern (doc/specs/level-control.md's grammar) — a {@code *} present
+     * anywhere in it selects the pattern path. A pattern target is a
+     * <em>standing rule</em> (doc/specs/pattern-level-targeting.md):
+     * persisted per {@code tier}, and (re-)applied to any logger discovered
+     * later that it matches, until reset. Replaces the retired {@code
+     * includeChildren} flag — {@code "org.apache.*"} covers what {@code
+     * includeChildren=true} on {@code "org.apache"} used to.
+     *
      * @param tier       {@code "SESSION"}/{@code "FOR"}/{@code "STICKY"}
      * @param forSeconds ignored unless {@code tier} is {@code "FOR"}
-     * @return the created override, plus any handler on {@code loggerName}'s
-     *         path that will still swallow records at {@code level} — doc/specs/
-     *         handler-floor-control.md "Warning on level commands"
+     * @param confirmed  required {@code true} for a pattern {@code target}
+     *                   — a call with {@code confirmed=false} mutates
+     *                   nothing and throws {@code ConfirmationRequiredException}
+     *                   naming the currently-known matches instead; ignored
+     *                   for an exact-name target, which carries none of a
+     *                   standing rule's risk
+     * @return every override this call created or replaced (one, for an
+     *         exact-name target; zero or more, for a pattern), plus any
+     *         handler on one of their paths that will still swallow
+     *         records at {@code level} — doc/specs/handler-floor-control.md
+     *         "Warning on level commands"
      */
-    SetLevelResultData setLevel(String loggerName, String level, boolean includeChildren, String reason,
-            String tier, long forSeconds);
+    SetLevelResultData setLevel(String target, String level, String reason, String tier, long forSeconds,
+            boolean confirmed);
 
-    void resetLevel(String loggerName);
+    /**
+     * {@code target} is either an exact logger name or a pattern
+     * (doc/specs/pattern-level-targeting.md) — resetting a pattern reverts
+     * every logger it currently covers <em>and</em> retires the standing
+     * rule, so it stops covering loggers discovered later too.
+     *
+     * @return exactly what was reverted — see {@link ResetOutcomeData}
+     */
+    ResetOutcomeData resetLevel(String target);
 
     void resetAll();
 

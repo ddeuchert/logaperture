@@ -17,6 +17,7 @@ package org.logaperture.core;
 
 import org.logaperture.api.Level;
 import org.logaperture.api.LoggerInfo;
+import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
 
@@ -39,7 +40,10 @@ public interface LevelControlOperations {
      */
     SetLevelResult setLevel(String loggerName, Level level, SetLevelOptions options);
 
-    void resetLevel(String loggerName);
+    /**
+     * @return exactly what was reverted — see {@link ResetOutcome}
+     */
+    ResetOutcome resetLevel(String loggerName);
 
     void resetAll();
 }

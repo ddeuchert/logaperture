@@ -20,12 +20,14 @@ import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
+import org.logaperture.api.PatternRule;
 import org.logaperture.api.PersistenceTier;
 
 import java.time.Instant;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * {@code quote}/{@code unquote} must escape {@code \n}/{@code \r}, not just
@@ -33,18 +35,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * unescaped newline in a free-text {@code reason} used to split one logical
  * record across physical lines and corrupt every record after it in this
  * line-oriented format. Also covers the {@code handlerOverrides:} section
- * (doc/specs/handler-floor-control.md "Data model") and version-1 files
- * that predate it.
+ * (doc/specs/handler-floor-control.md "Data model"), the {@code
+ * patternRules:} section (doc/specs/pattern-level-targeting.md "State
+ * file"), and older-schema files that predate one or both.
  */
 class StateFileFormatTest {
 
     @Test
     void roundTrips_aReasonContainingNewlinesAndCarriageReturns() {
         LevelOverride withMultilineReason = new LevelOverride(
-                "com.acme.Worker", Level.DEBUG, false, "line one\nline two\r\nline three",
+                "com.acme.Worker", Level.DEBUG, null, "line one\nline two\r\nline three",
                 Instant.parse("2026-08-21T03:14:02Z"), "jmx", PersistenceTier.STICKY, null);
 
-        String content = StateFileFormat.write(List.of(withMultilineReason), List.of());
+        String content = StateFileFormat.write(List.of(withMultilineReason), List.of(), List.of());
         StateFileFormat.Parsed parsed = StateFileFormat.parse(content);
 
         assertEquals(1, parsed.overrides().size());
@@ -54,14 +57,14 @@ class StateFileFormatTest {
     @Test
     void roundTrips_aSecondRecordAfterAMultilineReason() {
         LevelOverride first = new LevelOverride(
-                "com.acme.First", Level.DEBUG, false, "has a\nnewline",
+                "com.acme.First", Level.DEBUG, null, "has a\nnewline",
                 Instant.parse("2026-08-21T03:14:02Z"), "jmx", PersistenceTier.STICKY, null);
         LevelOverride second = new LevelOverride(
-                "com.acme.Second", Level.WARN, false, "plain reason",
+                "com.acme.Second", Level.WARN, null, "plain reason",
                 Instant.parse("2026-08-21T04:00:00Z"), "jmx", PersistenceTier.STICKY, null);
 
         StateFileFormat.Parsed parsed =
-                StateFileFormat.parse(StateFileFormat.write(List.of(first, second), List.of()));
+                StateFileFormat.parse(StateFileFormat.write(List.of(first, second), List.of(), List.of()));
 
         // The bug this guards against: a raw embedded newline used to shift
         // every subsequent line, corrupting (or losing) records after it.
@@ -73,18 +76,30 @@ class StateFileFormatTest {
     @Test
     void roundTrips_backslashesAndQuotesInReason() {
         LevelOverride override = new LevelOverride(
-                "com.acme.Worker", Level.DEBUG, false, "a \"quoted\" path C:\\logs",
+                "com.acme.Worker", Level.DEBUG, null, "a \"quoted\" path C:\\logs",
                 Instant.parse("2026-08-21T03:14:02Z"), "jmx", PersistenceTier.STICKY, null);
 
-        StateFileFormat.Parsed parsed = StateFileFormat.parse(StateFileFormat.write(List.of(override), List.of()));
+        StateFileFormat.Parsed parsed = StateFileFormat.parse(StateFileFormat.write(List.of(override), List.of(), List.of()));
 
         assertEquals(override, parsed.overrides().get(0));
     }
 
     @Test
+    void roundTrips_anOverrideWithAnOriginPattern() {
+        LevelOverride override = new LevelOverride(
+                "org.jboss.as.clustering.infinispan", Level.ERROR, "*.infinispan", "noisy on redeploy",
+                Instant.parse("2026-08-21T03:14:02Z"), "jmx", PersistenceTier.STICKY, null);
+
+        StateFileFormat.Parsed parsed = StateFileFormat.parse(StateFileFormat.write(List.of(override), List.of(), List.of()));
+
+        assertEquals(override, parsed.overrides().get(0));
+        assertEquals("*.infinispan", parsed.overrides().get(0).originPattern());
+    }
+
+    @Test
     void roundTrips_handlerOverridesAlongsideLoggerOverrides() {
         LevelOverride logger = new LevelOverride(
-                "com.acme.Worker", Level.DEBUG, false, "why",
+                "com.acme.Worker", Level.DEBUG, null, "why",
                 Instant.parse("2026-08-21T03:14:02Z"), "jmx", PersistenceTier.STICKY, null);
         HandlerLevelOverride handler = HandlerLevelOverride.fixed(
                 new HandlerRef("CONSOLE"), Level.TRACE, "why not",
@@ -92,14 +107,42 @@ class StateFileFormatTest {
                 Instant.parse("2026-08-21T03:45:00Z"));
 
         StateFileFormat.Parsed parsed =
-                StateFileFormat.parse(StateFileFormat.write(List.of(logger), List.of(handler)));
+                StateFileFormat.parse(StateFileFormat.write(List.of(logger), List.of(handler), List.of()));
 
         assertEquals(List.of(logger), parsed.overrides());
         assertEquals(List.of(handler), parsed.handlerOverrides());
     }
 
     @Test
-    void parse_aVersion1FileWithNoHandlerSection_yieldsAnEmptyHandlerList() {
+    void roundTrips_patternRulesAlongsideOverrides() {
+        LevelOverride logger = new LevelOverride(
+                "org.acme.deployment.scanner.Watcher", Level.ERROR, "*.deployment.scanner", null,
+                Instant.parse("2026-08-21T03:14:02Z"), "jmx", PersistenceTier.STICKY, null);
+        PatternRule rule = new PatternRule(
+                "*.deployment.scanner", Level.ERROR, "known noisy on redeploy",
+                Instant.parse("2026-08-21T03:14:02Z"), "jmx", PersistenceTier.STICKY, null);
+
+        StateFileFormat.Parsed parsed =
+                StateFileFormat.parse(StateFileFormat.write(List.of(logger), List.of(), List.of(rule)));
+
+        assertEquals(List.of(logger), parsed.overrides());
+        assertEquals(List.of(rule), parsed.patternRules());
+    }
+
+    @Test
+    void roundTrips_aForTierPatternRuleWithAnExpiry() {
+        PatternRule rule = new PatternRule(
+                "org.apache.*", Level.DEBUG, "investigating", Instant.parse("2026-08-21T03:14:02Z"),
+                "jmx", PersistenceTier.FOR, Instant.parse("2026-08-21T03:44:02Z"));
+
+        StateFileFormat.Parsed parsed =
+                StateFileFormat.parse(StateFileFormat.write(List.of(), List.of(), List.of(rule)));
+
+        assertEquals(List.of(rule), parsed.patternRules());
+    }
+
+    @Test
+    void parse_aVersion1FileWithNoHandlerOrPatternRuleSection_yieldsEmptyLists() {
         String v1 = "schemaVersion: 1\n"
                 + "overrides:\n"
                 + "  - loggerName: \"com.acme.Worker\"\n"
@@ -114,7 +157,12 @@ class StateFileFormatTest {
         StateFileFormat.Parsed parsed = StateFileFormat.parse(v1);
 
         assertEquals(1, parsed.overrides().size());
+        // The legacy "includeChildren:" field is read and ignored, never
+        // rejected -- originPattern defaults to null, same convention as a
+        // version-2 handler record with no "mode:" line.
+        assertNull(parsed.overrides().get(0).originPattern());
         assertEquals(List.of(), parsed.handlerOverrides());
+        assertEquals(List.of(), parsed.patternRules());
     }
 
     @Test
@@ -134,5 +182,17 @@ class StateFileFormatTest {
 
         assertEquals(1, parsed.handlerOverrides().size());
         assertEquals(org.logaperture.api.HandlerLevelMode.FIXED, parsed.handlerOverrides().get(0).mode());
+        assertEquals(List.of(), parsed.patternRules());
+    }
+
+    @Test
+    void parse_aVersion3FileWithNoPatternRulesSection_yieldsAnEmptyPatternRuleList() {
+        String v3 = "schemaVersion: 3\n"
+                + "overrides: []\n"
+                + "handlerOverrides: []\n";
+
+        StateFileFormat.Parsed parsed = StateFileFormat.parse(v3);
+
+        assertEquals(List.of(), parsed.patternRules());
     }
 }

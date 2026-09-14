@@ -33,13 +33,13 @@ final class HelpText {
             "logctl doctor",
             "logctl env",
             "logctl top [--limit n]",
-            "logctl debug <logger> [session | for <duration> | sticky]",
-            "logctl trace <logger> [session | for <duration> | sticky]",
-            "logctl info <logger> [session | for <duration> | sticky]",
-            "logctl warn <logger> [session | for <duration> | sticky]",
-            "logctl error <logger> [session | for <duration> | sticky]",
-            "logctl set <logger> <level> [session | for <duration> | sticky]",
-            "logctl reset <logger>",
+            "logctl debug <target> [session | for <duration> | sticky]",
+            "logctl trace <target> [session | for <duration> | sticky]",
+            "logctl info <target> [session | for <duration> | sticky]",
+            "logctl warn <target> [session | for <duration> | sticky]",
+            "logctl error <target> [session | for <duration> | sticky]",
+            "logctl set <target> <level> [session | for <duration> | sticky]",
+            "logctl reset <target>",
             "logctl reset --all",
             "logctl handler <name> <level> [session | for <duration> | sticky]",
             "logctl handler <name> AUTO [session | for <duration> | sticky]",
@@ -58,7 +58,7 @@ final class HelpText {
         sb.append("\nOptions:\n");
         sb.append("  --pid <n>            target this JVM instead of discovering one\n");
         sb.append("  --reason <text>      why — shown in status, kept in the audit trail\n");
-        sb.append("  --include-children   also apply to loggers below this one\n");
+        sb.append("  --yes                skip the confirmation prompt when <target> is a pattern\n");
         sb.append("  --limit <n>          for 'top' — worst N offenders, 0 for every one tracked\n");
         sb.append("  --json               machine-readable output\n");
         sb.append("  --version            print version and exit\n");
@@ -84,6 +84,14 @@ final class HelpText {
         sb.append("A [filter] for 'levels' is a logger-name prefix, or a pattern with a\n");
         sb.append("leading and/or trailing * segment — so 'logctl levels *.infinispan'\n");
         sb.append("finds a logger when the log line shows only the short category name.\n");
+        sb.append("\n");
+        sb.append("A <target> for debug/trace/info/warn/error/set/reset is an exact logger\n");
+        sb.append("name, or that same * pattern — 'logctl debug org.apache.*' covers\n");
+        sb.append("org.apache and everything under it in one command. A pattern is a\n");
+        sb.append("standing rule: it also catches a logger discovered later that matches\n");
+        sb.append("it, previews its current matches and asks to confirm before applying\n");
+        sb.append("(--yes skips the prompt), and 'logctl reset' on the same pattern both\n");
+        sb.append("reverts its matches and retires the rule.\n");
         sb.append("\n");
         sb.append("'doctor' is read-only — it never changes anything. It flags common\n");
         sb.append("misconfigurations (unbounded file handlers, DEBUG/TRACE left on,\n");

@@ -19,28 +19,28 @@ import org.logaperture.api.LevelOverride;
 
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * One {@link LevelOverride} per logger name — idempotent by construction:
  * {@link #put} replaces any existing entry for that logger rather than
  * accumulating a second one (doc/specs/level-control.md's idempotency
- * semantics).
+ * semantics). A thin, typed wrapper over {@link KeyedRegistry}, keyed by
+ * {@link LevelOverride#loggerName()}.
  */
 public final class OverrideRegistry {
 
-    private final Map<String, LevelOverride> overrides = new ConcurrentHashMap<>();
+    private final KeyedRegistry<String, LevelOverride> registry = new KeyedRegistry<>(LevelOverride::loggerName);
 
     public void put(LevelOverride override) {
-        overrides.put(override.loggerName(), override);
+        registry.put(override);
     }
 
     public Optional<LevelOverride> get(String loggerName) {
-        return Optional.ofNullable(overrides.get(loggerName));
+        return registry.get(loggerName);
     }
 
     public void remove(String loggerName) {
-        overrides.remove(loggerName);
+        registry.remove(loggerName);
     }
 
     /**
@@ -54,11 +54,11 @@ public final class OverrideRegistry {
      *         current value had already changed (or the entry was already gone)
      */
     public boolean removeIfCurrent(String loggerName, LevelOverride expected) {
-        return overrides.remove(loggerName, expected);
+        return registry.removeIfCurrent(loggerName, expected);
     }
 
     /** A point-in-time snapshot, safe to iterate while the registry is concurrently mutated. */
     public Map<String, LevelOverride> all() {
-        return Map.copyOf(overrides);
+        return registry.all();
     }
 }

@@ -43,9 +43,9 @@ class JsonTest {
     @Test
     void overrideObjectKeyOrderMatchesTheSpec() {
         LevelOverrideData data = new LevelOverrideData(
-                "com.acme", "DEBUG", true, "INC-1", "2026-08-25T00:00:00Z", "jmx", "FOR", "2026-08-25T04:00:00Z");
+                "com.acme", "DEBUG", "*.acme", "INC-1", "2026-08-25T00:00:00Z", "jmx", "FOR", "2026-08-25T04:00:00Z");
         assertEquals(
-                "{\"loggerName\":\"com.acme\",\"level\":\"DEBUG\",\"includeChildren\":true,\"reason\":\"INC-1\","
+                "{\"loggerName\":\"com.acme\",\"level\":\"DEBUG\",\"originPattern\":\"*.acme\",\"reason\":\"INC-1\","
                         + "\"appliedAt\":\"2026-08-25T00:00:00Z\",\"source\":\"jmx\",\"tier\":\"FOR\","
                         + "\"expiresAt\":\"2026-08-25T04:00:00Z\"}",
                 Json.override(data));

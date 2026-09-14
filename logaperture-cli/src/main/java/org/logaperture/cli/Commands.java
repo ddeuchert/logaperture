@@ -26,11 +26,17 @@ import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.SetLevelResultData;
 import org.logaperture.control.jmx.TopReportData;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 
@@ -39,10 +45,12 @@ import java.util.function.Function;
  * {@link org.logaperture.control.jmx.LevelControlMXBean} calls — see
  * doc/specs/cli-transport.md "Command surface" and doc/specs/
  * handler-floor-control.md "The operation" for {@code handler}/{@code
- * resetHandler}. {@code reset} reads {@code listLoggers} before and after
- * only because {@code resetLevel}/{@code resetAll} return {@code void} —
- * the "before" read is what lets it tell "reverted a not-yet-instantiated
- * logger" from "nothing to do".
+ * resetHandler}. An exact-name {@code reset} still reads {@code
+ * listLoggers} before and after -- {@code resetLevel} on an exact name
+ * only reports the reverted logger's name, not its resulting effective
+ * level -- but a pattern {@code reset} takes its answer directly from
+ * {@code resetLevel}'s {@code ResetOutcomeData}, not from diffing
+ * {@code listLoggers} reads around the call.
  */
 final class Commands {
 
@@ -50,7 +58,7 @@ final class Commands {
     }
 
     static Command levels(String filter, boolean json) {
-        return (mbean, out) -> {
+        return (mbean, out, in, interactive) -> {
             List<LoggerInfoData> rows = mbean.listLoggers(filter);
             if (json) {
                 out.println(Json.loggers(rows));
@@ -84,7 +92,7 @@ final class Commands {
     }
 
     static Command status(boolean json) {
-        return (mbean, out) -> {
+        return (mbean, out, in, interactive) -> {
             List<LoggerInfoData> all = mbean.listLoggers(null);
             List<LoggerInfoData> active = new ArrayList<>();
             for (LoggerInfoData row : all) {
@@ -161,19 +169,135 @@ final class Commands {
                 .count() > 1;
     }
 
-    static Command setLevel(String logger, String level, boolean includeChildren, String reason,
-            String tierName, long forSeconds, boolean json) {
-        return (mbean, out) -> {
-            SetLevelResultData result = mbean.setLevel(logger, level, includeChildren, reason, tierName, forSeconds);
-            LevelOverrideData override = result.getOverride();
+    /**
+     * Whether {@code target} is a pattern rather than an exact logger name --
+     * the one check both {@code setLevel} and {@code reset} branch on before
+     * deciding whether they're looking at a standing rule (doc/specs/
+     * pattern-level-targeting.md). {@code logaperture-core}'s equivalent
+     * ({@code NameFilter.isPattern}) isn't reachable from this module --
+     * package-private, and deliberately not part of the JMX wire surface --
+     * so this is its own small copy rather than a shared dependency.
+     */
+    private static boolean isPattern(String target) {
+        return target.indexOf('*') >= 0;
+    }
+
+    /**
+     * {@code target} is either an exact logger name or a pattern (doc/specs/
+     * pattern-level-targeting.md) — a {@code *} anywhere in it means the
+     * latter, resolved the same way {@code logctl levels} already detects
+     * one. A pattern is a standing rule: it previews its current matches
+     * and asks for confirmation ({@code --yes} skips the prompt) before
+     * applying, since it also reaches loggers discovered later.
+     */
+    static Command setLevel(String target, String level, String reason, String tierName, long forSeconds,
+            boolean yes, boolean json) {
+        return (mbean, out, in, interactive) -> {
+            boolean isPattern = isPattern(target);
+            boolean confirmed = yes || !isPattern;
+            // Non-null only when a preview was actually shown -- the set of
+            // names the preview promised, kept around so the apply below
+            // can call out any it silently drops instead of leaving the
+            // discrepancy unexplained (a code-review finding: the preview
+            // and the apply query precedence at two different instants, so
+            // a previewed logger can lose precedence in between and the old
+            // code just never mentioned it again).
+            List<LoggerInfoData> previewed = null;
+            if (isPattern && !confirmed) {
+                previewed = mbean.listLoggers(target);
+                if (!interactive) {
+                    // Decision #4: fail fast rather than block forever on a
+                    // read from a stdin nothing will ever write to.
+                    throw new CliError(CliError.USAGE,
+                            "'" + target + "' is a pattern -- pass --yes to apply it as a standing rule "
+                                    + "non-interactively.");
+                }
+                printPatternPreview(out, target, level, previewed);
+                if (!readYesAnswer(in)) {
+                    out.println("Not applied.");
+                    return CliError.OK;
+                }
+                confirmed = true;
+            }
+
+            SetLevelResultData result = mbean.setLevel(target, level, reason, tierName, forSeconds, confirmed);
+            List<LevelOverrideData> overrides = result.getOverrides();
             if (json) {
                 out.println(Json.setLevelResult(result));
                 return CliError.OK;
             }
-            out.println(logger + " → " + override.getLevel() + "   (" + tierDetail(override.getTier(), override.getExpiresAt()) + ")");
-            printBlockingHandlersWarning(out, override.getLevel(), result.getBlockingHandlers());
+            if (overrides.isEmpty()) {
+                // A pattern with no currently-known match yet -- the rule
+                // still stands, ready for the sweep (doc/specs/
+                // pattern-level-targeting.md "Sweep integration").
+                out.println("Standing rule created for '" + target + "' — no currently-known logger matches yet; "
+                        + "it will apply to one discovered later.");
+                return CliError.OK;
+            }
+            for (LevelOverrideData override : overrides) {
+                out.println(override.getLoggerName() + " → " + override.getLevel() + "   ("
+                        + tierDetail(override.getTier(), override.getExpiresAt()) + ")");
+            }
+            printSkippedFromPreview(out, previewed, overrides);
+            printBlockingHandlersWarning(out, level, result.getBlockingHandlers());
             return CliError.OK;
         };
+    }
+
+    /** The confirmation preview (doc/specs/pattern-level-targeting.md "Confirmation and CLI behavior"). */
+    private static void printPatternPreview(java.io.PrintStream out, String pattern, String level,
+            List<LoggerInfoData> matches) {
+        if (matches.isEmpty()) {
+            out.println("This will create a standing rule setting " + level + " on any logger matching '"
+                    + pattern + "' — none currently known, but it will apply the moment one is discovered.");
+        } else {
+            out.println("This will set " + level + " on " + matches.size() + " currently-known logger"
+                    + (matches.size() == 1 ? "" : "s") + " matching '" + pattern + "':");
+            for (LoggerInfoData match : matches) {
+                out.println("  " + match.getName());
+            }
+        }
+        out.println("Because this is a pattern, LogAperture will also apply " + level + " to any new logger "
+                + "discovered later that matches '" + pattern + "', until you run 'logctl reset " + pattern + "'.");
+        out.print("Apply this standing rule? [y/N] ");
+        out.flush();
+    }
+
+    /**
+     * Names any logger the preview promised would change that the apply
+     * then didn't actually mutate -- it lost precedence to a higher-priority
+     * override in the interval between the preview read and the apply
+     * (doc/specs/pattern-level-targeting.md "Precedence"). Silent about it
+     * is exactly the code-review finding this exists to fix: the preview
+     * and the confirmed apply are two separate calls, so some staleness
+     * between them is inherent to the confirm-then-apply flow, but leaving
+     * the resulting gap unexplained looked like a bug in the tool rather
+     * than an accurate reflection of what happened.
+     */
+    private static void printSkippedFromPreview(java.io.PrintStream out, List<LoggerInfoData> previewed,
+            List<LevelOverrideData> applied) {
+        if (previewed == null || previewed.isEmpty()) {
+            return;
+        }
+        java.util.Set<String> appliedNames = new java.util.HashSet<>();
+        for (LevelOverrideData override : applied) {
+            appliedNames.add(override.getLoggerName());
+        }
+        for (LoggerInfoData match : previewed) {
+            if (!appliedNames.contains(match.getName())) {
+                out.println(match.getName() + " — left unchanged; it picked up a higher-precedence override "
+                        + "between the preview and the apply.");
+            }
+        }
+    }
+
+    private static boolean readYesAnswer(java.io.InputStream in) {
+        try {
+            String line = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8)).readLine();
+            return line != null && (line.equalsIgnoreCase("y") || line.equalsIgnoreCase("yes"));
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /**
@@ -205,7 +329,7 @@ final class Commands {
 
     static Command setHandlerLevel(String handlerRef, String level, String reason, String tierName, long forSeconds,
             boolean json) {
-        return (mbean, out) -> {
+        return (mbean, out, in, interactive) -> {
             HandlerLevelOverrideData result = mbean.setHandlerLevel(handlerRef, level, reason, tierName, forSeconds);
             if (result == null) {
                 // doc/specs/handler-floor-control.md "Logback / none" -- this
@@ -234,7 +358,7 @@ final class Commands {
      * self-tracking mode instead of a fixed level.
      */
     static Command setHandlerAuto(String handlerRef, String reason, String tierName, long forSeconds, boolean json) {
-        return (mbean, out) -> {
+        return (mbean, out, in, interactive) -> {
             HandlerLevelOverrideData result = mbean.setHandlerAuto(handlerRef, reason, tierName, forSeconds);
             if (result == null) {
                 if (json) {
@@ -256,7 +380,7 @@ final class Commands {
     }
 
     static Command resetHandler(String handlerRef, boolean json) {
-        return (mbean, out) -> {
+        return (mbean, out, in, interactive) -> {
             mbean.resetHandler(handlerRef);
             if (json) {
                 out.println(Json.handlerReset(handlerRef));
@@ -267,29 +391,81 @@ final class Commands {
         };
     }
 
-    static Command reset(String logger, boolean json) {
-        return (mbean, out) -> {
-            LoggerInfoData before = findLogger(mbean.listLoggers(logger), logger);
+    /**
+     * {@code target} is either an exact logger name or a pattern. Resetting
+     * a pattern reverts every logger it currently covers <em>and</em>
+     * retires the standing rule, so it stops covering loggers discovered
+     * later too (doc/specs/pattern-level-targeting.md) — no confirmation
+     * either way, matching {@code reset}'s existing no-prompt convention
+     * (reverting a bounded, current state is the opposite risk shape from
+     * applying an unbounded, future-reaching one).
+     */
+    static Command reset(String target, boolean json) {
+        return (mbean, out, in, interactive) -> {
+            if (isPattern(target)) {
+                return resetPattern(mbean, out, target, json);
+            }
+            LoggerInfoData before = findLogger(mbean.listLoggers(target), target);
             boolean wasOverridden = before != null && before.isOverrideActive();
-            mbean.resetLevel(logger);
-            LoggerInfoData after = findLogger(mbean.listLoggers(logger), logger);
+            mbean.resetLevel(target);
+            LoggerInfoData after = findLogger(mbean.listLoggers(target), target);
             if (json) {
-                out.println(after != null ? Json.logger(after) : Json.reset(logger, wasOverridden));
+                out.println(after != null ? Json.logger(after) : Json.reset(target, wasOverridden));
                 return CliError.OK;
             }
             if (after != null) {
-                out.println(logger + " → " + after.getEffectiveLevel() + " (baseline)");
+                out.println(target + " → " + after.getEffectiveLevel() + " (baseline)");
             } else if (wasOverridden) {
-                out.println(logger + " → baseline (not yet instantiated, so no level to show)");
+                out.println(target + " → baseline (not yet instantiated, so no level to show)");
             } else {
-                out.println(logger + " — nothing was overridden.");
+                out.println(target + " — nothing was overridden.");
             }
             return CliError.OK;
         };
     }
 
+    /**
+     * The server reports exactly what it reverted ({@link
+     * org.logaperture.control.jmx.ResetOutcomeData}), so this no longer
+     * reconstructs that by diffing two {@code listLoggers} reads taken
+     * before and after a {@code void} call -- that diff was racy against
+     * concurrent mutation, and had no way to tell "no standing rule existed
+     * under that exact string" from "the rule existed but matched nothing"
+     * (both code-review findings against the original slice; the latter is
+     * why every reset used to print "Standing rule retired" even on a
+     * no-op).
+     */
+    private static int resetPattern(org.logaperture.control.jmx.LevelControlMXBean mbean, java.io.PrintStream out,
+            String pattern, boolean json) {
+        org.logaperture.control.jmx.ResetOutcomeData outcome = mbean.resetLevel(pattern);
+        List<String> reverted = outcome.getRevertedLoggerNames();
+
+        if (json) {
+            out.println(Json.resetPattern(pattern, reverted, outcome.isPatternRuleRetired()));
+            return CliError.OK;
+        }
+        if (!outcome.isPatternRuleRetired()) {
+            out.println("'" + pattern + "' — no standing rule was tracked under that pattern; nothing to do.");
+            return CliError.OK;
+        }
+        if (reverted.isEmpty()) {
+            out.println("Standing rule '" + pattern + "' retired -- it had no currently-matched logger to revert.");
+            return CliError.OK;
+        }
+        Map<String, LoggerInfoData> afterByName = new LinkedHashMap<>();
+        for (LoggerInfoData row : mbean.listLoggers(pattern)) {
+            afterByName.put(row.getName(), row);
+        }
+        for (String name : reverted) {
+            LoggerInfoData row = afterByName.get(name);
+            out.println(name + " → " + (row != null ? row.getEffectiveLevel() : "baseline") + " (baseline)");
+        }
+        out.println("Standing rule '" + pattern + "' retired.");
+        return CliError.OK;
+    }
+
     static Command resetAll(boolean json) {
-        return (mbean, out) -> {
+        return (mbean, out, in, interactive) -> {
             long activeBefore = mbean.listLoggers(null).stream().filter(LoggerInfoData::isOverrideActive).count();
             mbean.resetAll();
             if (json) {
@@ -306,7 +482,7 @@ final class Commands {
      * no target, no tier, nothing to confirm.
      */
     static Command doctor(boolean json) {
-        return (mbean, out) -> {
+        return (mbean, out, in, interactive) -> {
             List<DoctorFindingData> findings = mbean.diagnose();
             if (json) {
                 out.println(Json.doctor(findings));
@@ -359,7 +535,7 @@ final class Commands {
      * "Data model": "Deliberately no {@code cliVersion} field").
      */
     static Command env(boolean json) {
-        return (mbean, out) -> {
+        return (mbean, out, in, interactive) -> {
             EnvironmentReportData report = mbean.environmentReport();
             String cliVersion = Main.version();
             if (json) {
@@ -402,7 +578,7 @@ final class Commands {
      * levels} for handlers.
      */
     static Command handlers(boolean json) {
-        return (mbean, out) -> {
+        return (mbean, out, in, interactive) -> {
             List<HandlerInfoData> rows = mbean.listHandlers();
             if (json) {
                 out.println(Json.handlers(rows));
@@ -445,7 +621,7 @@ final class Commands {
      * running, not carried on the wire (doc/specs/top.md "Data model").
      */
     static Command top(int limit, boolean json) {
-        return (mbean, out) -> {
+        return (mbean, out, in, interactive) -> {
             TopReportData report = mbean.topLoggers(limit);
             if (json) {
                 out.println(Json.top(report));

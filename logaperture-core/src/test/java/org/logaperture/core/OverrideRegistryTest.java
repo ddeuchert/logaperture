@@ -35,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OverrideRegistryTest {
 
     private static LevelOverride override(String loggerName, Level level) {
-        return new LevelOverride(loggerName, level, false, null, Instant.now(), "jmx", PersistenceTier.SESSION, null);
+        return new LevelOverride(loggerName, level, null, null, Instant.now(), "jmx", PersistenceTier.SESSION, null);
     }
 
     @Test

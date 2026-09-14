@@ -17,6 +17,7 @@ package org.logaperture.cli;
 
 import org.logaperture.control.jmx.LevelControlMXBean;
 
+import java.io.InputStream;
 import java.io.PrintStream;
 
 /**
@@ -29,8 +30,17 @@ import java.io.PrintStream;
 interface Command {
 
     /**
+     * @param in          only read by a pattern-targeted {@code setLevel}'s
+     *                    confirmation prompt (doc/specs/
+     *                    pattern-level-targeting.md "Confirmation and CLI
+     *                    behavior"); every other command ignores it
+     * @param interactive whether a real controlling terminal is attached
+     *                    ({@code System.console() != null}, resolved once
+     *                    by {@link Main} so this stays a plain parameter
+     *                    instead of a static call — a command with nothing
+     *                    to confirm ignores this too
      * @return the process exit code (almost always {@link CliError#OK}; a
      *     failure is raised as a {@link CliError} instead)
      */
-    int run(LevelControlMXBean mbean, PrintStream out);
+    int run(LevelControlMXBean mbean, PrintStream out, InputStream in, boolean interactive);
 }

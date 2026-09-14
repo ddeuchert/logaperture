@@ -68,17 +68,17 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
-    public SetLevelResultData setLevel(String loggerName, String level, boolean includeChildren, String reason,
-            String tier, long forSeconds) {
+    public SetLevelResultData setLevel(String target, String level, String reason, String tier, long forSeconds,
+            boolean confirmed) {
         Level parsedLevel = parseLevel(level);
-        SetLevelOptions options = toOptions(includeChildren, reason, tier, forSeconds);
-        var result = operations.setLevel(loggerName, parsedLevel, options);
+        SetLevelOptions options = toOptions(reason, tier, forSeconds, confirmed);
+        var result = operations.setLevel(target, parsedLevel, options);
         return SetLevelResultData.from(result);
     }
 
     @Override
-    public void resetLevel(String loggerName) {
-        operations.resetLevel(loggerName);
+    public ResetOutcomeData resetLevel(String loggerName) {
+        return ResetOutcomeData.from(operations.resetLevel(loggerName));
     }
 
     @Override
@@ -134,10 +134,10 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
         return EnvironmentReportData.from(environmentReportOperations.environmentReport());
     }
 
-    private static SetLevelOptions toOptions(boolean includeChildren, String reason, String tier, long forSeconds) {
+    private static SetLevelOptions toOptions(String reason, String tier, long forSeconds, boolean confirmed) {
         PersistenceTier parsedTier = parseTier(tier);
         Duration expiresIn = parsedTier == PersistenceTier.FOR ? Duration.ofSeconds(forSeconds) : null;
-        return new SetLevelOptions(includeChildren, reason, expiresIn, parsedTier);
+        return new SetLevelOptions(reason, expiresIn, parsedTier, confirmed);
     }
 
     private static SetHandlerLevelOptions toHandlerOptions(String reason, String tier, long forSeconds) {

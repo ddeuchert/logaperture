@@ -19,22 +19,39 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * {@code setLevel}'s result: the override it created, plus every handler on
- * the target logger's path that will still swallow records at the new level
- * — doc/specs/handler-floor-control.md "Warning on level commands". Advice,
- * not an error: {@code blockingHandlers} being non-empty never means {@code
- * override} is {@code null} or the mutation failed.
+ * {@code setLevel}'s result: every override it created, plus the union of
+ * every handler on any of their target loggers' paths that will still
+ * swallow records at the new level — doc/specs/handler-floor-control.md
+ * "Warning on level commands". Advice, not an error: {@code
+ * blockingHandlers} being non-empty never means the mutation failed.
  *
- * @param override         the {@link LevelOverride} {@code setLevel} created
- * @param blockingHandlers handlers whose own level is below {@code
- *                         override.level()}, in the order the adapter
- *                         reported them; empty if none, or if the change
- *                         wasn't a raise
+ * <p>{@code overrides} has exactly one entry for an exact-name target; for
+ * a pattern target (doc/specs/pattern-level-targeting.md) it has one entry
+ * per currently-matched logger the call actually mutated — a logger the
+ * pattern matches but that already carried a higher-precedence override is
+ * skipped, not included, and a pattern matching no currently-known logger
+ * at all yields an <em>empty</em> {@code overrides} list: the standing rule
+ * is still created and persisted, ready to apply the moment a matching
+ * logger is discovered, even though nothing was mutated just now. Always
+ * describes a call that actually reached the mutation step: an unconfirmed
+ * pattern call never produces one of these at all, it throws {@code
+ * ConfirmationRequiredException} instead (doc/specs/pattern-level-targeting.md,
+ * Decision #2a).
+ *
+ * @param overrides        the {@link LevelOverride}s this call created or
+ *                         replaced — empty only for a pattern target with
+ *                         no current match, never for an exact-name target
+ * @param blockingHandlers handlers whose own level is below the level any
+ *                         entry in {@code overrides} was just raised to, in
+ *                         the order the adapter reported them, deduplicated
+ *                         by handler across every target; empty if none, or
+ *                         if the change wasn't a raise
  */
-public record SetLevelResult(LevelOverride override, List<HandlerFloor> blockingHandlers) {
+public record SetLevelResult(List<LevelOverride> overrides, List<HandlerFloor> blockingHandlers) {
 
     public SetLevelResult {
-        Objects.requireNonNull(override, "override");
+        Objects.requireNonNull(overrides, "overrides");
+        overrides = List.copyOf(overrides);
         blockingHandlers = blockingHandlers == null ? List.of() : List.copyOf(blockingHandlers);
     }
 }

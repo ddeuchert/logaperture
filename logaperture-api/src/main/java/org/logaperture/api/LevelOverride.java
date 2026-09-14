@@ -26,32 +26,35 @@ import java.time.Instant;
  * re-application after a framework reset look identical from here. See
  * doc/specs/level-control.md's re-appliability note.
  *
- * @param loggerName      the logger this override targets
- * @param level           the level to apply
- * @param includeChildren whether this override was also fanned out to
- *                        descendants at the time it was created (each
- *                        descendant gets its own independent {@code
- *                        LevelOverride}, not a shared one — see {@code
- *                        LevelControlService})
- * @param reason          human-readable justification; {@code null} if none
- *                        was given
- * @param appliedAt       when this override was created
- * @param source          the control surface that created it (e.g. {@code
- *                        "jmx"}), or the internal source that reinstated it
- *                        (e.g. {@code "resume"})
- * @param tier            the durability tier this override was set at
- *                        (doc/specs/persistence.md)
- * @param expiresAt       the absolute deadline this override reverts at —
- *                        an {@link Instant}, not a relative duration,
- *                        because resume needs to compute *remaining* time
- *                        without resetting the clock on every restart;
- *                        {@code null} unless {@code tier} is {@link
- *                        PersistenceTier#FOR}
+ * @param loggerName    the logger this override targets
+ * @param level         the level to apply
+ * @param originPattern {@code null} if this override was set directly, by
+ *                      exact logger name; otherwise the segment-anchored
+ *                      pattern (doc/specs/pattern-level-targeting.md) of the
+ *                      {@code PatternRule} that produced it — a standing
+ *                      rule's per-logger fan-out still gets one independent
+ *                      {@code LevelOverride} per matched logger, not a
+ *                      shared one, tagged back to its origin so {@code
+ *                      resetLevel} on that pattern can find every override
+ *                      it's responsible for
+ * @param reason        human-readable justification; {@code null} if none
+ *                      was given
+ * @param appliedAt     when this override was created
+ * @param source        the control surface that created it (e.g. {@code
+ *                      "jmx"}), or the internal source that reinstated it
+ *                      (e.g. {@code "resume"}, {@code "pattern-sweep"})
+ * @param tier          the durability tier this override was set at
+ *                      (doc/specs/persistence.md)
+ * @param expiresAt     the absolute deadline this override reverts at — an
+ *                      {@link Instant}, not a relative duration, because
+ *                      resume needs to compute *remaining* time without
+ *                      resetting the clock on every restart; {@code null}
+ *                      unless {@code tier} is {@link PersistenceTier#FOR}
  */
 public record LevelOverride(
         String loggerName,
         Level level,
-        boolean includeChildren,
+        String originPattern,
         String reason,
         Instant appliedAt,
         String source,
@@ -64,6 +67,9 @@ public record LevelOverride(
         }
         if (level == null) {
             throw new IllegalArgumentException("level must not be null");
+        }
+        if (originPattern != null && originPattern.isEmpty()) {
+            throw new IllegalArgumentException("originPattern must not be empty -- use null for a directly-set override");
         }
         if (appliedAt == null) {
             throw new IllegalArgumentException("appliedAt must not be null");

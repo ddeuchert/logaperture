@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
+import org.logaperture.api.PatternRule;
 import org.logaperture.api.PersistenceTier;
 
 import java.io.IOException;
@@ -66,10 +67,10 @@ class FileStateStoreTest {
     @Test
     void roundTrips_everyFieldIncludingBothExpiresAtCases() throws IOException {
         LevelOverride sticky = new LevelOverride(
-                "com.acme.payments", Level.WARN, true, "known-noisy, muted for good",
+                "com.acme.payments", Level.WARN, null, "known-noisy, muted for good",
                 Instant.parse("2026-08-15T10:00:00Z"), "jmx", PersistenceTier.STICKY, null);
         LevelOverride timed = new LevelOverride(
-                "com.acme.batch.Worker", Level.DEBUG, false, "investigating slot exhaustion",
+                "com.acme.batch.Worker", Level.DEBUG, "org.acme.batch.*", "investigating slot exhaustion",
                 Instant.parse("2026-08-21T03:14:02Z"), "jmx", PersistenceTier.FOR,
                 Instant.parse("2026-08-21T03:44:02Z"));
 
@@ -177,7 +178,25 @@ class FileStateStoreTest {
         }
     }
 
+    @Test
+    void roundTrips_patternRules() throws IOException {
+        PatternRule rule = new PatternRule(
+                "*.deployment.scanner", Level.ERROR, "known noisy on redeploy",
+                Instant.parse("2026-09-13T12:00:00Z"), "jmx", PersistenceTier.STICKY, null);
+
+        try (FileStateStore store = FileStateStore.open()) {
+            store.savePatternRule(rule);
+        }
+
+        try (FileStateStore reopened = FileStateStore.open()) {
+            assertEquals(List.of(rule), reopened.loadAllPatternRules());
+
+            reopened.removePatternRule(rule.pattern());
+            assertTrue(reopened.loadAllPatternRules().isEmpty());
+        }
+    }
+
     private static LevelOverride sampleOverride(String loggerName) {
-        return new LevelOverride(loggerName, Level.DEBUG, false, null, Instant.now(), "jmx", PersistenceTier.STICKY, null);
+        return new LevelOverride(loggerName, Level.DEBUG, null, null, Instant.now(), "jmx", PersistenceTier.STICKY, null);
     }
 }
