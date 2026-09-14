@@ -25,8 +25,38 @@
 
 @base = http://localhost:8080/logaperture-sample-war
 
-### One burst of log lines: TRACE..ERROR via java.util.logging, SLF4J and Log4j.
+### All defaults: "Message" at INFO via SLF4J, once each through org,
+### org.logaperture and org.logaperture.log (one logger per category).
 GET {{base}}/log
+
+### Same, but DEBUG.
+GET {{base}}/log?level=debug
+
+### Same, but ERROR.
+GET {{base}}/log?level=error
+
+###
+GET {{base}}/log?logger=org.logaperture.demo.Checkout.log&level=debug
+
+###
+GET {{base}}/log?logger=org.logaperture.log&level=debug
+
+###
+GET {{base}}/log?logger=dave.log&level=debug
+
+###
+GET {{base}}/log?logger=deuchert.dave.c.log&level=debug
+
+
+### Same, but through java.util.logging at WARN.
+GET {{base}}/log?level=warn&implementation=jul
+
+### Custom logger name and message, through Log4j -- logs through
+### org, org.logaperture, org.logaperture.demo and org.logaperture.demo.Checkout.
+GET {{base}}/log?logger=org.logaperture.demo.Checkout&message=order+placed&implementation=log4j
+
+### Unrecognized level or implementation is a 400, not a silent fallback.
+GET {{base}}/log?level=verbose
 
 ### Start the background timer — a burst every 2s.
 POST {{base}}/timer/start?periodMs=2000

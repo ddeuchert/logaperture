@@ -27,7 +27,9 @@ curl http://localhost:8080/logaperture-sample-war/log
 
 python3 dev/wildfly/wildflyctl.py logctl -- levels org.logaperture.sample
 python3 dev/wildfly/wildflyctl.py logctl -- debug org.logaperture.sample.work.Worker for 2m
-curl http://localhost:8080/logaperture-sample-war/log        # now DEBUG lines appear
+curl "http://localhost:8080/logaperture-sample-war/log?logger=org.logaperture.sample.work.Worker&level=debug"
+                                                  # now the org.logaperture.sample.work.Worker DEBUG
+                                                  # line appears; its ancestor categories stay quiet
 python3 dev/wildfly/wildflyctl.py logctl -- status
 
 python3 dev/wildfly/wildflyctl.py tail           # follow server.log
@@ -45,13 +47,31 @@ In VSCode the same actions are **Tasks** (`Terminal → Run Task…`): *WildFly:
 
 | Request | Effect |
 |---|---|
-| `GET /log` | logs one line at TRACE→ERROR via `java.util.logging`, SLF4J, and Log4j |
-| `POST /timer/start?periodMs=3000` | starts a background thread doing the same every `periodMs` (500–60000) |
+| `GET /log` | logs one line — see query parameters below |
+| `POST /timer/start?periodMs=3000` | starts a background thread logging a TRACE→ERROR burst via `java.util.logging`, SLF4J and Log4j every `periodMs` (500–60000) |
 | `POST /timer/stop` | stops it |
 | `GET /timer/status` | running?, period, tick count |
 
-Every logger is named `org.logaperture.sample.work.Worker` — one `logctl`
-override target hits all three frameworks. The timer lets you watch a `for`
+`GET /log` takes four optional query parameters, all defaulted so a bare
+`GET /log` works out of the box:
+
+| Parameter | Default | Also accepts |
+|---|---|---|
+| `logger` | `org.logaperture.log` | any logger name |
+| `message` | `Message` | any text |
+| `level` | `info` | `trace`, `debug`, `warn`, `error` |
+| `implementation` | `slf4j` | `jul`, `log4j` |
+
+`logger` doesn't just log through its own name — it logs through every
+dot-separated category above it too, so the default request logs through
+`org`, `org.logaperture` and `org.logaperture.log`, one line each. That gives
+a pattern override anywhere in that ancestry (`logctl debug 'org.logaperture.*'`,
+say) a real logger registered to land on, not just an exact match on the leaf.
+
+An unrecognized `level` or `implementation` is a 400, not a silent fall back
+to the default. The timer's burst always targets
+`org.logaperture.sample.work.Worker` across all three frameworks — one
+`logctl` override target hits all three. It lets you watch a `for`
 override expire (and the verification sweep re-apply drift) without hitting an
 endpoint by hand.
 

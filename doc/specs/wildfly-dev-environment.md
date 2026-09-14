@@ -271,14 +271,43 @@ agent observes from outside.
 **Classes** — `src/main/java/org/logaperture/sample/`, Apache-2.0 header (year
 2026), no wildcard imports, 4-space indent:
 
-- **`WorkLog`** — a tiny helper holding the three framework loggers, all named
-  `org.logaperture.sample.work.Worker`, with one method
-  `emitAllLevels(String marker)` that logs `marker` at TRACE→ERROR through each
-  of JUL (`java.util.logging.Logger`, `FINEST`/`FINE`/`INFO`/`WARNING`/`SEVERE`),
-  SLF4J, and Log4j. One obvious logger name to target with `logctl`.
-- **`LogServlet`** (`@WebServlet("/log")`) — `doGet` calls
-  `emitAllLevels("http GET /log #" + counter)` and returns a one-line text
-  summary of what it logged.
+- **`WorkLog`** — the sample's one place that emits log lines, with two
+  entry points:
+  - `emitAllLevels(String marker)` — holds the three framework loggers, all
+    named `org.logaperture.sample.work.Worker`, and logs `marker` at
+    TRACE→ERROR through each of JUL (`java.util.logging.Logger`,
+    `FINEST`/`FINE`/`INFO`/`WARNING`/`SEVERE`), SLF4J, and Log4j. One
+    obvious logger name to target with `logctl`. Used by `SampleContextListener`
+    and the timer (below).
+  - `emit(String loggerName, String message, Level level, Implementation
+    implementation)` — logs `message` once, at a caller-chosen level, through
+    a caller-chosen framework -- but once per dot-separated category of
+    `loggerName`, top-down, not just the leaf: `"org.logaperture.log"` logs
+    through `"org"`, `"org.logaperture"` and `"org.logaperture.log"`, each
+    its own named logger (each framework caches its own `Logger` instances
+    by name, so `emit` needs no cache of its own). Returns the categories
+    logged, top-down, so `LogServlet` can report exactly what happened. This
+    gives a pattern override anywhere in that ancestry -- not just an exact
+    match on the leaf -- a real logger registered to land on. `Level`
+    (`TRACE`/`DEBUG`/`INFO`/`WARN`/`ERROR`) and `Implementation`
+    (`SLF4J`/`JUL`/`LOG4J`) are nested enums with a case-insensitive
+    `parse(String)` that throws `IllegalArgumentException` on an
+    unrecognized value; `emit` maps `Level` to JUL's own scheme the same way
+    `emitAllLevels` does. Backs `LogServlet`.
+- **`LogServlet`** (`@WebServlet("/log")`) — `doGet` reads four optional query
+  parameters, each independently defaulted, and calls `WorkLog.emit`:
+  - `logger` — default `org.logaperture.log` (so the default request logs
+    through `org`, `org.logaperture` and `org.logaperture.log`).
+  - `message` — default `Message`.
+  - `level` — default `info`; also accepts `trace`, `debug`, `warn`, `error`.
+  - `implementation` — default `slf4j`; also accepts `jul`, `log4j`.
+
+  An unrecognized `level` or `implementation` is a 400 (the `WorkLog.Level`/
+  `Implementation` parse failure's message as the body), not a silent fall
+  back to the default -- the endpoint's whole point is showing exactly what
+  got logged and how. On success, returns a one-line text summary of what it
+  logged, the list of categories it logged to, and the `logctl` line that
+  would raise it.
 - **`TimerServlet`** (`@WebServlet("/timer/*")`) —
   - `POST /timer/start` (optional `?periodMs=`, default 3000, clamped
     500..60000) — starts a single-thread daemon `ScheduledExecutorService` that
