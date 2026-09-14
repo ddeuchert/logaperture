@@ -253,8 +253,21 @@ deliberate step `logctl`'s prompt embodies. See Decision #2.
 
 4. `--yes` skips the prompt and calls `setLevel` with `confirmed = true` directly. Without it,
    on a non-interactive invocation (no controlling terminal — same check a real confirmation
-   prompt anywhere needs), `logctl` fails with a usage error naming `--yes` rather than hanging
-   on a read from a stdin nothing will ever write to (Decision #4).
+   prompt anywhere needs), `logctl` fails with a usage error rather than hanging on a read from
+   a stdin nothing will ever write to (Decision #4). That error is the *only* explanation a
+   non-interactive caller ever sees — step 3's preview never runs on this path — so it states
+   the standing-rule consequence itself rather than just naming the escape hatch:
+
+   ```
+   'org.apache.*' is a pattern -- applying it creates a standing rule: DEBUG on every
+   currently-matching logger, AND on any new one discovered later, until 'logctl reset
+   org.apache.*'. Pass --yes to apply it non-interactively.
+   ```
+
+   This matters in practice for exactly the case that motivated it: every invocation of
+   `logctl` through `dev/wildfly/wildflyctl.py logctl --` (or any `docker compose exec -T`) is
+   non-interactive, since `-T` disables the pseudo-TTY the interactive path's `[y/N]` prompt
+   needs.
 5. On "y", call `setLevel` again with `confirmed = true`.
 
 `logctl` itself never triggers `ConfirmationRequiredException` in normal operation — its own

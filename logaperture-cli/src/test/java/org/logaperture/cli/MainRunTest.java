@@ -250,7 +250,9 @@ class MainRunTest {
 
         assertEquals(2, run(new String[] {"debug", "org.acme.*"}, connectorFor(mbean)));
 
-        assertTrue(err().contains("pass --yes"), err());
+        String error = err();
+        assertTrue(error.contains("--yes"), error);
+        assertTrue(error.contains("standing rule"), error);
         assertEquals(0, mbean.setLevelCalls.size(), "must not have called the server at all");
     }
 

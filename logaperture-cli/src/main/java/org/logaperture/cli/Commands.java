@@ -207,9 +207,16 @@ final class Commands {
                 previewed = mbean.listLoggers(target);
                 if (!interactive) {
                     // Decision #4: fail fast rather than block forever on a
-                    // read from a stdin nothing will ever write to.
+                    // read from a stdin nothing will ever write to -- but
+                    // still explain the standing-rule consequence, not just
+                    // name the escape hatch, since this is the *only* message
+                    // a non-interactive caller (every `wildflyctl.py logctl
+                    // --`/`docker compose exec -T` invocation) ever sees; the
+                    // full preview (printPatternPreview) never runs here (#46).
                     throw new CliError(CliError.USAGE,
-                            "'" + target + "' is a pattern -- pass --yes to apply it as a standing rule "
+                            "'" + target + "' is a pattern -- applying it creates a standing rule: " + level
+                                    + " on every currently-matching logger, AND on any new one discovered later, "
+                                    + "until 'logctl reset " + target + "'. Pass --yes to apply it "
                                     + "non-interactively.");
                 }
                 printPatternPreview(out, target, level, previewed);
