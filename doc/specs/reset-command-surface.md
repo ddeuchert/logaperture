@@ -276,18 +276,27 @@ Excluded 'org.apache.tomcat' from standing rule 'org.apache.*' — its own desce
 logger discovered under it later, keep inheriting the rule.
 ```
 
-**Marking a rule-governed override on `status`/`levels` (Decision #6, open).** Today's rendering
-gives no way to see, from the output alone, that an override came from a live standing rule (and
-is therefore excludable/reclaimable) rather than a one-off `setLevel`. Proposed — name the
-governing pattern rather than an unlabeled symbol, since `*` is already the pattern wildcard
-itself and would be confusable inline:
+**Marking a rule-governed override on `status`/`levels` (Decision #6 — RESOLVED).** Today's
+rendering gives no way to see, from the output alone, that an override came from a live standing
+rule (and will therefore keep propagating to newly-discovered descendants) rather than a one-off
+`setLevel`. The first proposal named the governing pattern (`[org.apache.*]`) — rejected: that's
+exactly the provenance-recall the whole point of Decision #2 was to avoid. The marker only needs
+to say **that** it cascades, never **which rule** is doing it — the user never needs to know that
+to act on it (`reset logger <target>` works the same either way):
 
 ```
-org.apache.tomcat.connector    DEBUG   STICKY   until reset   "known-noisy"   [org.apache.*]
+org.apache.tomcat.connector    DEBUG   STICKY   until reset   "known-noisy"   (cascading)
 ```
 
-`[org.apache.*]` comes straight from the existing `originPattern` field (`pattern-level-
-targeting.md`'s data model) — display-only, no new data. Not yet confirmed; see Decision #6.
+`(cascading)` is a plain boolean — `originPattern != null` server-side — never the pattern string
+itself. `--json` gets the same boolean, a new `cascading` field on the override shape `listLoggers`
+already returns (additive, top-level §11.1); the pattern string stays internal, not part of any
+public surface. Table rendering: a `CASCADE` column, shown only when at least one listed row has
+it (`yes`/`—`) — the same conditional-column precedent `cli-transport.md`'s `CONTEXT` column
+already established, so the common case (no standing rules active) looks exactly as it does today.
+The one-off confirmation line printed by the `reset` command *itself* (immediately above) still
+names the specific rule it retired or excluded from — that's transparency about the action just
+taken, not a fact the user has to carry forward, so it doesn't carry the same objection.
 
 ## Versioning
 
@@ -360,13 +369,18 @@ one flag with one meaning; consistency here is worth the small extra friction of
 needing `--include-sticky com.acme.payments`. Flagging for explicit sign-off since it's the
 decision most likely to surprise an existing script.
 
-**#6 — Display marker for a rule-governed override on `status`/`levels`.**
+**#6 — RESOLVED. Display marker for a rule-governed override on `status`/`levels`.**
 Decision #2's exclusion mechanism only helps if the operator can tell, from the output, that an
-override is rule-governed (and therefore excludable, and subject to reclaim by future sweeps for
-anything *not* excluded) rather than a one-off `setLevel`. Proposed: append the governing
-pattern in brackets — `[org.apache.*]` — reusing the existing `originPattern` field, display-only.
-Not `*` alone (already the pattern wildcard glyph; confusable next to an actual pattern string in
-the same line). Open: exact placement/format, and whether `levels` gets it too or just `status`.
+override is rule-governed (and will keep propagating to newly-discovered descendants) rather than
+a one-off `setLevel`. The first proposal named the governing pattern in brackets
+(`[org.apache.*]`) — rejected as inconsistent with Decision #2's own philosophy: the marker's job
+is to say a row **will cascade to descendants discovered later**, never to identify **which rule**
+is doing it — the user never needs that to act (`reset logger <target>` doesn't need it either).
+Resolved as a plain boolean, `(cascading)` in text / `cascading: true` in `--json`, driven by
+`originPattern != null` without ever surfacing the pattern string on this surface. See "CLI
+output" above for the conditional `CASCADE` column and the one exception (the `reset` command's
+own one-off confirmation line still names what it acted on — that's feedback about the action just
+taken, not an ongoing fact to track).
 
 ## Cross-reference updates (once signed off)
 
