@@ -24,6 +24,11 @@ After this feature, the user will be able to:
 - Trust that a routine or broad reset leaves a deliberately-set `--sticky` override alone by
   default, on every form above — and reach for `--include-sticky` on any of them when a sticky
   override genuinely needs to go too.
+- Reset just the part of a standing rule's reach that needs to change — one logger, or a
+  narrower pattern under it — without retiring the whole rule or needing to remember which
+  command originally set it up: point `reset logger` at whatever `logctl status` shows, and
+  leave the rest of the rule's coverage exactly as it was, still applying to loggers discovered
+  later too.
 - Keep using `logctl reset --all` as the "get me back to normal, everything, both namespaces"
   escape hatch (pending sign-off — see Decision #1).
 
@@ -43,6 +48,12 @@ After this feature, the user will be able to:
 - Retiring `logctl handler <name> reset` in favor of `logctl reset handler <name>` — a deliberate
   breaking rename, not a synonym kept alongside it (pre-1.0, per top-level §11.1).
 - New/changed MXBean operations backing the above (see Operations).
+- **Scoped exclusions against a standing rule** — resetting a target narrower than an entire
+  pattern rule's own coverage carves that target out of the rule going forward, rather than
+  either retiring the whole rule or being a no-op (see "Partial reset — scoped exclusions").
+  This revises `pattern-level-targeting.md`'s `resetLevel(target)` pattern-lookup behavior
+  (issue #41, Decision #5) and its sweep step 2 — both get their own "Superseded (planned)"
+  notes alongside the others below.
 - Updating the "Superseded (planned)" forward-pointing notes already left in
   `cli-transport.md`, `handler-floor-control.md`, and `persistence.md` (see "Cross-reference
   updates" at the end) to describe the shipped behavior instead of the plan.
@@ -110,18 +121,101 @@ before/after "was racy against concurrent mutation" and "had no way to tell" a n
 real skip) — reusing `ResetOutcomeData` rather than inventing a parallel `void` + CLI-side-diff
 path for handlers avoids repeating that mistake.
 
-**`ResetOutcomeData` gains a skipped-sticky field**, reused across all five operations:
+**`ResetOutcomeData` gains a skipped-sticky field, and its pattern field becomes list-shaped**,
+reused across all five operations:
 
 ```java
 List<String> revertedNames;      // loggers, or handlers, reverted by this call
-boolean patternRuleRetired;      // unchanged — meaningless (false) for a non-pattern target
+List<String> retiredPatterns;    // pattern strings of any rule(s) fully retired by this call
+List<String> excludedFrom;       // pattern strings of any rule(s) this call carved target out of
 List<String> skippedStickyNames; // reverted-eligible but left alone because STICKY and !includeSticky
 ```
 
-`skippedStickyNames` is empty whenever `includeSticky = true`, or the target had no sticky entries
-to begin with — a plain, no-`--include-sticky` reset with nothing sticky in scope looks exactly as
-it does today. For `resetLevel` on a **pattern** target, a sticky-tier `PatternRule` itself (not
-just the individual overrides it produced) is what gets skipped-or-retired — see Decision #2.
+`patternRuleRetired: boolean` (#41's shape) becomes `retiredPatterns` because a single `reset
+logger <target>` call can now affect more than one rule at once (Decision #2) — a boolean can't
+say "retired this one, merely excluded from that one." `excludedFrom` is new: empty for an
+exact-name target with no covering rule, for a full-rule retirement (nothing partial about it),
+or for a non-pattern-adjacent reset entirely. `skippedStickyNames` is empty whenever `includeSticky
+= true`, or the target had no sticky entries to begin with — a plain, no-`--include-sticky` reset
+with nothing sticky in scope looks exactly as it does today.
+
+## Partial reset — scoped exclusions
+
+This is the resolution of Decision #2. `resetLevel(target)`'s pattern path (`pattern-level-
+targeting.md`, shipped under #41) looks up the `PatternRuleRegistry` by **exact string match**:
+`logctl reset logger org.apache.*` only does anything if a rule was registered under exactly
+`"org.apache.*"`. That works for retiring a rule wholesale, but has no answer for resetting *part*
+of what a rule covers — `logctl reset logger org.apache.tomcat` (an exact name inside a live
+`org.apache.*` rule) finds no rule under that string and is a no-op today; worse, even a plain
+per-logger revert of that name (going through the ordinary exact-name path, not the pattern path)
+only lasts until the next sweep tick, which reapplies the still-active rule to any known,
+now-override-less logger it matches — there's no way today to durably say "stop this rule from
+covering just this one thing."
+
+**The fix: `PatternRule` gains an exclusion set**, using the same `NameFilter` grammar as the
+rule's own pattern — each entry is either an exact name or a sub-pattern:
+
+```java
+List<String> exclusions;   // NameFilter-grammar entries, same grammar as PatternRule.pattern
+```
+
+**Persistence.** `exclusions` is written and read alongside the rest of each `patternRules` entry
+(`pattern-level-targeting.md`'s state-file schema); a legacy row with no `exclusions` key reads as
+an empty list, the same tolerant-read convention already used for a missing `patternRules` key
+entirely. `schemaVersion` moves 4 → 5 for the addition, matching this project's practice of
+bumping on every shape change even when the change itself is read-tolerant (the same reasoning
+`pattern-level-targeting.md` gave for its own 3 → 4 bump).
+
+**One algorithm, not a special case for full vs. partial.** `resetLevel(target)` no longer keys
+off exact-string identity against the registry. Instead:
+
+1. Resolve `target`'s own match set (same matcher as always — one name for an exact target, the
+   current matches for a pattern target).
+2. For each currently-known logger in that set, find whichever active `PatternRule` currently
+   owns it (today's existing precedence resolution — newest `appliedAt` wins on an overlap; see
+   `pattern-level-targeting.md`'s Precedence section, unchanged). A logger with no covering rule
+   just goes through the ordinary revert path, exactly as today.
+3. Revert the current `LevelOverride` on every logger in `target`'s match set, regardless of which
+   rule (if any) covers it — unchanged from today's behavior.
+4. Group the affected loggers by covering rule. For each rule: if `target`'s scope, together with
+   that rule's *existing* exclusions, now accounts for the rule's **entire** original coverage,
+   the rule has nothing left to do — remove it outright (its old exclusions go with it; there's no
+   rule left for them to qualify). Otherwise, add `target` (or the sub-pattern/name naming
+   precisely what fell under that rule) to that rule's exclusion set and leave the rule active for
+   everything else.
+
+`logctl reset logger org.apache.*` against the rule that created it is just the case where step 4
+finds nothing left over — full retirement, unchanged from #41's behavior and unchanged spelling.
+`logctl reset logger org.apache.tomcat` against that same rule is the general case — reverts
+`org.apache.tomcat`, leaves the rule active for everything else (including `org.apache.tomcat`'s
+own descendants, present and future — the exclusion is exactly the literal name, nothing more).
+`logctl reset logger org.apache.tomcat.*` excludes that name **and** its whole subtree, present and
+future, the same way the pattern grammar's zero-or-more semantics already work on the apply side.
+
+**Exclusions are scoped to the rule instance, not the pattern string.** If `org.apache.*` is fully
+retired and later re-applied (`logctl error org.apache.* sticky` again), that is a brand-new
+`PatternRule` with no memory of the old one's exclusions — it reapplies to everything it currently
+matches, carve-outs included. This matches the project's existing "recreate = last write wins"
+idiom (`pattern-level-targeting.md`'s Precedence section) rather than inventing a second one that
+makes exclusions immortal across unrelated rule generations.
+
+**A target can span more than one active rule in one call.** If different loggers under `target`
+fall to different currently-winning rules (an overlap case the precedence rules already
+anticipate), step 4 above runs once per affected rule — one `reset logger <target>` can retire one
+rule and merely exclude `target` from another in the same call. No special-casing: it falls out of
+running step 4 per rule rather than once globally.
+
+**Sweep step 2 gets one added check.** `pattern-level-targeting.md`'s sweep currently reapplies the
+newest matching rule to any known, override-less logger. It now also skips a logger the winning
+rule's own `exclusions` covers — the identical `NameFilter` match test, just run as a negative
+filter instead of the rule's own positive one.
+
+**Why the user never needs to know which command created the coverage.** `reset logger <target>`
+always does the right thing for whatever currently governs `target` — a rule, a plain override, or
+nothing — without the caller needing to know which. This matches `reset`'s existing job description
+(`cli-transport.md`'s framing of the deferred `logctl undo`: reset gets you back to baseline without
+requiring you to reconstruct history; `undo`, not built yet, is the one that would need to know what
+happened before).
 
 ## Capability and audit
 
@@ -137,7 +231,10 @@ shape. Nothing is recorded for a sticky-skipped name — it wasn't touched, so t
 reversion to record; `skippedStickyNames` in the return value (and the CLI's summary line) is
 the only place that information surfaces. `resetLevel` on a pattern that itself retires a
 `STICKY`-tier `PatternRule` under `--include-sticky` records that retirement exactly as today's
-already-shipped pattern reset does.
+already-shipped pattern reset does. A partial carve-out (Decision #2) gets no separate audit
+record either — same convention as full retirement (`pattern-level-targeting.md`: "no separate
+record type for 'rule retired'"): the `REVERSION` record for whatever was actually reverted, plus
+the state file's `exclusions` entry, are the evidence.
 
 ## CLI output
 
@@ -162,6 +259,36 @@ omitting the second sentence entirely when nothing was skipped. `--json` emits t
 pending — see Json.java's existing `revertedCount`/`resetPattern` helpers for the established
 style to match).
 
+**Partial reset of a standing rule** prints what it reverted, then names what changed about the
+rule rather than silence — full retirement (unchanged from #41):
+
+```
+org.apache.tomcat → INFO (baseline)
+org.apache.tomcat.connector → INFO (baseline)
+Standing rule 'org.apache.*' retired.
+```
+
+versus a carve-out that leaves the rule active for everything else:
+
+```
+org.apache.tomcat → INFO (baseline)
+Excluded 'org.apache.tomcat' from standing rule 'org.apache.*' — its own descendants, and any
+logger discovered under it later, keep inheriting the rule.
+```
+
+**Marking a rule-governed override on `status`/`levels` (Decision #6, open).** Today's rendering
+gives no way to see, from the output alone, that an override came from a live standing rule (and
+is therefore excludable/reclaimable) rather than a one-off `setLevel`. Proposed — name the
+governing pattern rather than an unlabeled symbol, since `*` is already the pattern wildcard
+itself and would be confusable inline:
+
+```
+org.apache.tomcat.connector    DEBUG   STICKY   until reset   "known-noisy"   [org.apache.*]
+```
+
+`[org.apache.*]` comes straight from the existing `originPattern` field (`pattern-level-
+targeting.md`'s data model) — display-only, no new data. Not yet confirmed; see Decision #6.
+
 ## Versioning
 
 Adding `includeSticky` as a trailing boolean parameter on five operations is additive by
@@ -184,14 +311,24 @@ Recommendation: keep `--all`, give it `--include-sticky` too, and define it as e
 `ResetOutcomeData` (concatenated `revertedNames`, unioned `skippedStickyNames`) — not a third,
 independently-implemented code path.
 
-**#2 — `--include-sticky` on a pattern target: does it also un-protect the standing rule itself?**
-A standing `PatternRule` is persisted per its own tier, exactly like a `LevelOverride`
-(`pattern-level-targeting.md`: "persisted per the tier it's set at"). That symmetry gives a clean
-answer: a `STICKY`-tier `PatternRule` is itself a sticky-tier entity, so the *same* filter that
-protects a sticky logger/handler override from a plain reset protects a sticky standing rule from
-retirement too — no special-casing needed, `--include-sticky` uncovers both in one flag.
-Recommendation: yes, uniform — a `STICKY` pattern rule needs `--include-sticky` to retire, exactly
-like a `STICKY` single-logger override needs it to revert; nothing pattern-specific to design.
+**#2 — RESOLVED. Partial reset of a standing rule's coverage.**
+Originally framed narrowly ("does `--include-sticky` also un-protect the rule itself"); working
+through a concrete example surfaced a bigger, pre-existing gap — #41's shipped `resetLevel(target)`
+has no way to reset *part* of what a rule covers, only the whole rule (by its exact original
+pattern string) or nothing. See "Partial reset — scoped exclusions" above for the full mechanism.
+Resolved as: `PatternRule` gains an exclusion set; `reset logger <target>` on a target narrower
+than a covering rule's full scope carves that target (name or sub-pattern, same grammar either
+way) out of the rule rather than retiring it, and full-string retirement (today's behavior) falls
+out as the case where nothing is left over. A logger's descendants are only carved out when
+`target` itself is a sub-pattern that says so — an excluded exact name's own descendants, present
+and future, keep inheriting the rule. Exclusions belong to the rule *instance*; retiring and
+re-creating a rule for the same pattern string starts clean. A single call may affect more than
+one rule when `target` spans loggers currently owned by different active rules — no special
+case, falls out of resolving ownership per logger. The original sticky-tier symmetry still holds
+as part of this: a `STICKY` rule (whole or partial) needs `--include-sticky` to touch, exactly
+like a `STICKY` single-logger override.
+Still open, tracked separately as **Decision #6**: the exact display marker for surfacing which
+rule governs a given override on `status`/`levels`.
 
 **#3 — Confirmation/preview parity with #41's `error <pattern>` apply-side prompt.**
 Recommendation: **no**, none of the broad forms should prompt, including `reset logger
@@ -223,6 +360,14 @@ one flag with one meaning; consistency here is worth the small extra friction of
 needing `--include-sticky com.acme.payments`. Flagging for explicit sign-off since it's the
 decision most likely to surprise an existing script.
 
+**#6 — Display marker for a rule-governed override on `status`/`levels`.**
+Decision #2's exclusion mechanism only helps if the operator can tell, from the output, that an
+override is rule-governed (and therefore excludable, and subject to reclaim by future sweeps for
+anything *not* excluded) rather than a one-off `setLevel`. Proposed: append the governing
+pattern in brackets — `[org.apache.*]` — reusing the existing `originPattern` field, display-only.
+Not `*` alone (already the pattern wildcard glyph; confusable next to an actual pattern string in
+the same line). Open: exact placement/format, and whether `levels` gets it too or just `status`.
+
 ## Cross-reference updates (once signed off)
 
 - `cli-transport.md`: replace the `logctl reset <logger>` / `logctl reset --all` section with
@@ -234,16 +379,27 @@ decision most likely to surprise an existing script.
   the exit-criterion sentence it points at stays as written (it accurately described that
   slice's behavior at the time); this spec's landing is what makes the forward note obsolete,
   not a rewrite of the original sentence.
+- `pattern-level-targeting.md`: add a "Superseded (planned)" note on `resetLevel(target)`'s
+  exact-string `PatternRuleRegistry` lookup (its Decision #5) and on sweep step 2, both replaced
+  by "Partial reset — scoped exclusions" above; the `PatternRule` data model gains `exclusions`.
 - Top-level §18.9: update Status once implemented, matching §18.7's "shipped" treatment.
 
 ## Testing (sketch, to expand once decisions are resolved)
 
 - Unit: each new/changed operation, sticky-skip on/off, against a hand-built override registry
   fixture (mirrors `LevelControlServiceTest` patterns already in place for `resetLevel`).
+- Unit: partial-reset scenarios directly off this spec's worked example — reset an exact name
+  under a live sub-pattern rule leaves its descendants covered (both currently-known and
+  discovered afterward via a simulated sweep tick); reset a sub-pattern wipes out the whole
+  named branch and stops the sweep from reclaiming anything under it; a target spanning two
+  overlapping rules retires one and excludes from the other in a single call; exclusions do not
+  survive a full retire-then-recreate of the same pattern string.
 - CLI: `ParserTest` for the new subcommand grammar and the retired forms' error messages;
-  `MainRunTest`/`Json` tests for the new summary line and `--json` shape.
+  `MainRunTest`/`Json` tests for the new summary line, the retirement-vs-exclusion rendering, and
+  the `--json` shape.
 - Cross-process: extend `CliEndToEndIT` with a sticky-then-broad-reset scenario (sticky survives
-  a plain `reset loggers`, is gone after `--include-sticky`) and a `reset handler <name>` /
-  retired-`handler <name> reset` pair.
+  a plain `reset loggers`, is gone after `--include-sticky`), a `reset handler <name>` /
+  retired-`handler <name> reset` pair, and a live-standing-rule partial-reset scenario across a
+  real sweep interval.
 - `WildFlyContainerIT`: at minimum confirm `reset handlers`/`reset loggers` behave the same
   broadcast way existing broad resets do there.
