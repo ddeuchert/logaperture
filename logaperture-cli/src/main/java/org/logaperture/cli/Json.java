@@ -23,6 +23,7 @@ import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
+import org.logaperture.control.jmx.ResetOutcomeData;
 import org.logaperture.control.jmx.SetLevelResultData;
 import org.logaperture.control.jmx.TopReportData;
 
@@ -62,6 +63,7 @@ final class Json {
                 .str("overrideReason", row.getOverrideReason())
                 .str("tier", row.getTier())
                 .str("expiresAt", row.getExpiresAt())
+                .bool("cascading", row.isCascading())
                 .toString();
     }
 
@@ -150,15 +152,27 @@ final class Json {
                 .toString();
     }
 
-    static String handlerReset(String handlerRef) {
+    /**
+     * Shared by every reset-shaped command (doc/specs/reset-command-surface.md
+     * "CLI output") — {@code reset logger}, {@code reset loggers}, {@code
+     * reset handler}, {@code reset handlers}, and {@code reset --all} all
+     * emit this same shape, whichever fields apply to that call.
+     */
+    static String resetOutcome(ResetOutcomeData outcome) {
         return new Obj()
-                .str("handlerRef", handlerRef)
-                .bool("reset", true)
+                .raw("reverted", nameArray(outcome.getRevertedNames()))
+                .raw("retiredPatterns", nameArray(outcome.getRetiredPatterns()))
+                .raw("excludedFrom", nameArray(outcome.getExcludedFrom()))
+                .raw("skippedSticky", nameArray(outcome.getSkippedStickyNames()))
                 .toString();
     }
 
-    static String revertedCount(long count) {
-        return "{\"reverted\":" + count + "}";
+    private static String nameArray(List<String> names) {
+        StringJoiner array = new StringJoiner(",", "[", "]");
+        for (String name : names) {
+            array.add(quote(name));
+        }
+        return array.toString();
     }
 
     /**
@@ -251,41 +265,6 @@ final class Json {
                     .toString());
         }
         return new Obj().raw("handlers", array.toString()).toString();
-    }
-
-    /**
-     * {@code reset <logger>} fell through with no post-reset {@link LoggerInfoData}
-     * to emit — the logger is not "Live" and holds no override, so {@code
-     * listLoggers} returns nothing for it. Report what is actually known instead
-     * of a bare {@code null}: the name, that no override is active, and whether
-     * this call cleared one.
-     */
-    static String reset(String loggerName, boolean wasOverridden) {
-        return new Obj()
-                .str("name", loggerName)
-                .bool("overrideActive", false)
-                .bool("wasOverridden", wasOverridden)
-                .toString();
-    }
-
-    /**
-     * {@code reset <pattern> --json} (doc/specs/pattern-level-targeting.md):
-     * the loggers this call actually reverted, and whether a standing rule
-     * was tracked under that exact pattern and is now retired -- {@code
-     * ruleRetired} is {@code false} when no rule existed at all, not just
-     * when {@code reverted} is empty (a rule can be retired with nothing
-     * currently matched to revert).
-     */
-    static String resetPattern(String pattern, List<String> reverted, boolean ruleRetired) {
-        StringJoiner names = new StringJoiner(",", "[", "]");
-        for (String name : reverted) {
-            names.add(quote(name));
-        }
-        return new Obj()
-                .str("pattern", pattern)
-                .raw("reverted", names.toString())
-                .bool("ruleRetired", ruleRetired)
-                .toString();
     }
 
     /**

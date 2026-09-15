@@ -21,31 +21,46 @@ import java.beans.ConstructorProperties;
 import java.util.List;
 
 /**
- * MXBean-friendly mirror of {@link ResetOutcome} — {@code resetLevel}'s
- * return type. Reports exactly what the server reverted, so a caller (the
- * CLI's {@code reset} command) never needs to reconstruct that by diffing
- * {@code listLoggers} before and after the call.
+ * MXBean-friendly mirror of {@link ResetOutcome} — shared by every
+ * reset-shaped operation (doc/specs/reset-command-surface.md "Operations").
+ * Reports exactly what the server reverted, retired, excluded, and skipped,
+ * so a caller (the CLI's {@code reset} command) never needs to reconstruct
+ * that by diffing {@code listLoggers} before and after the call.
  */
 public final class ResetOutcomeData {
 
-    private final List<String> revertedLoggerNames;
-    private final boolean patternRuleRetired;
+    private final List<String> revertedNames;
+    private final List<String> retiredPatterns;
+    private final List<String> excludedFrom;
+    private final List<String> skippedStickyNames;
 
-    @ConstructorProperties({"revertedLoggerNames", "patternRuleRetired"})
-    public ResetOutcomeData(List<String> revertedLoggerNames, boolean patternRuleRetired) {
-        this.revertedLoggerNames = revertedLoggerNames;
-        this.patternRuleRetired = patternRuleRetired;
+    @ConstructorProperties({"revertedNames", "retiredPatterns", "excludedFrom", "skippedStickyNames"})
+    public ResetOutcomeData(List<String> revertedNames, List<String> retiredPatterns, List<String> excludedFrom,
+            List<String> skippedStickyNames) {
+        this.revertedNames = revertedNames;
+        this.retiredPatterns = retiredPatterns;
+        this.excludedFrom = excludedFrom;
+        this.skippedStickyNames = skippedStickyNames;
     }
 
     public static ResetOutcomeData from(ResetOutcome outcome) {
-        return new ResetOutcomeData(outcome.revertedLoggerNames(), outcome.patternRuleRetired());
+        return new ResetOutcomeData(outcome.revertedNames(), outcome.retiredPatterns(), outcome.excludedFrom(),
+                outcome.skippedStickyNames());
     }
 
-    public List<String> getRevertedLoggerNames() {
-        return revertedLoggerNames;
+    public List<String> getRevertedNames() {
+        return revertedNames;
     }
 
-    public boolean isPatternRuleRetired() {
-        return patternRuleRetired;
+    public List<String> getRetiredPatterns() {
+        return retiredPatterns;
+    }
+
+    public List<String> getExcludedFrom() {
+        return excludedFrom;
+    }
+
+    public List<String> getSkippedStickyNames() {
+        return skippedStickyNames;
     }
 }

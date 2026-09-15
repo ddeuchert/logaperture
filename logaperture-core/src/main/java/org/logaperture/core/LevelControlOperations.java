@@ -41,9 +41,60 @@ public interface LevelControlOperations {
     SetLevelResult setLevel(String loggerName, Level level, SetLevelOptions options);
 
     /**
+     * Equivalent to {@link #resetLevel(String, boolean) resetLevel(loggerName,
+     * false)} — leaves a {@code STICKY}-tier override or standing rule
+     * untouched (doc/specs/reset-command-surface.md's new default).
+     *
      * @return exactly what was reverted — see {@link ResetOutcome}
      */
-    ResetOutcome resetLevel(String loggerName);
+    default ResetOutcome resetLevel(String loggerName) {
+        return resetLevel(loggerName, false);
+    }
 
-    void resetAll();
+    /** Equivalent to {@link #resetLevel(String, boolean, String) resetLevel(loggerName, includeSticky, null)}. */
+    default ResetOutcome resetLevel(String loggerName, boolean includeSticky) {
+        return resetLevel(loggerName, includeSticky, null);
+    }
+
+    /**
+     * {@code loggerName} is either an exact logger name or a pattern
+     * (doc/specs/pattern-level-targeting.md). A target narrower than an
+     * active standing rule's own coverage carves it out of the rule rather
+     * than retiring the whole thing or no-op'ing (doc/specs/
+     * reset-command-surface.md "Partial reset — scoped exclusions").
+     *
+     * @param includeSticky {@code false} (the default) leaves a
+     *                      {@code STICKY}-tier override, or a
+     *                      {@code STICKY}-tier standing rule, untouched;
+     *                      {@code true} reverts/excludes it like any other
+     *                      tier
+     * @param reason        recorded on the audit entry for every logger this
+     *                      call actually reverts, in place of the override's
+     *                      own reason; {@code null} to leave each reversion's
+     *                      audit reason as the override's original one
+     * @return exactly what was reverted, retired, excluded, and skipped —
+     *         see {@link ResetOutcome}
+     */
+    ResetOutcome resetLevel(String loggerName, boolean includeSticky, String reason);
+
+    /**
+     * Equivalent to {@link #resetAllLoggers(boolean) resetAllLoggers(false)}.
+     * Kept as the pre-existing zero-arg entry point ({@code void}, matching
+     * every caller that only ever needed "did it throw") — {@link
+     * #resetAllLoggers(boolean)} is the one that reports what happened.
+     */
+    default void resetAll() {
+        resetAllLoggers(false);
+    }
+
+    /**
+     * Reverts every logger override this operations surface controls —
+     * handlers are untouched (doc/specs/reset-command-surface.md, {@code
+     * logctl reset loggers}). Also retires every standing rule (skipping a
+     * {@code STICKY}-tier one unless {@code includeSticky}), same as
+     * today's {@code resetAll} did for the logger side.
+     *
+     * @param includeSticky see {@link #resetLevel(String, boolean)}
+     */
+    ResetOutcome resetAllLoggers(boolean includeSticky);
 }

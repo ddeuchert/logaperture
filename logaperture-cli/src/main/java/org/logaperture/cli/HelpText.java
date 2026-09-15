@@ -39,11 +39,13 @@ final class HelpText {
             "logctl warn <target> [session | for <duration> | sticky]",
             "logctl error <target> [session | for <duration> | sticky]",
             "logctl set <target> <level> [session | for <duration> | sticky]",
-            "logctl reset <target>",
-            "logctl reset --all",
+            "logctl reset logger <target> [--include-sticky]",
+            "logctl reset loggers [--include-sticky]",
+            "logctl reset handler <name> [--include-sticky]",
+            "logctl reset handlers [--include-sticky]",
+            "logctl reset --all [--include-sticky]",
             "logctl handler <name> <level> [session | for <duration> | sticky]",
-            "logctl handler <name> AUTO [session | for <duration> | sticky]",
-            "logctl handler <name> reset");
+            "logctl handler <name> AUTO [session | for <duration> | sticky]");
 
     private HelpText() {
     }
@@ -59,6 +61,7 @@ final class HelpText {
         sb.append("  --pid <n>            target this JVM instead of discovering one\n");
         sb.append("  --reason <text>      why — shown in status, kept in the audit trail\n");
         sb.append("  --yes                skip the confirmation prompt when <target> is a pattern\n");
+        sb.append("  --include-sticky     let a 'reset' form touch a sticky override or rule too\n");
         sb.append("  --limit <n>          for 'top' — worst N offenders, 0 for every one tracked\n");
         sb.append("  --json               machine-readable output\n");
         sb.append("  --version            print version and exit\n");
@@ -71,7 +74,7 @@ final class HelpText {
         sb.append("'handler' sets a handler's own level directly — the fix when raising a\n");
         sb.append("logger still won't show output because a handler is set stricter. A raise\n");
         sb.append("that hits this prints which handler and the exact command to lower it.\n");
-        sb.append("'handler <name> reset' reverts it on its own. 'logctl handlers' lists\n");
+        sb.append("'reset handler <name>' reverts it on its own. 'logctl handlers' lists\n");
         sb.append("every handler you can name, its level, and any active override — on\n");
         sb.append("WildFly the individual names (CONSOLE, FILE, …) appear once the server\n");
         sb.append("is up; before that, and always, ALL_HANDLERS means every handler at once.\n");
@@ -85,15 +88,25 @@ final class HelpText {
         sb.append("leading and/or trailing * segment — so 'logctl levels *.infinispan'\n");
         sb.append("finds a logger when the log line shows only the short category name.\n");
         sb.append("\n");
-        sb.append("A <target> for debug/trace/info/warn/error/set/reset is an exact logger\n");
-        sb.append("name, or that same * pattern — 'logctl debug org.apache.*' covers\n");
-        sb.append("org.apache and everything under it in one command. A pattern is a\n");
+        sb.append("A <target> for debug/trace/info/warn/error/set, or for 'reset logger', is\n");
+        sb.append("an exact logger name, or that same * pattern — 'logctl debug org.apache.*'\n");
+        sb.append("covers org.apache and everything under it in one command. A pattern is a\n");
         sb.append("standing rule: it also catches a logger discovered later that matches\n");
         sb.append("it (up to sweep-interval delay, default 30s, before a brand-new logger\n");
         sb.append("is caught — no instant hook on logger creation), previews its current\n");
-        sb.append("matches and asks to confirm before applying (--yes skips the prompt),\n");
-        sb.append("and 'logctl reset' on the same pattern both reverts its matches and\n");
-        sb.append("retires the rule.\n");
+        sb.append("matches and asks to confirm before applying (--yes skips the prompt).\n");
+        sb.append("\n");
+        sb.append("'reset logger' on that same pattern reverts its matches and retires the\n");
+        sb.append("rule; a narrower target — one logger's exact name, or a narrower pattern\n");
+        sb.append("under it — carves just that target out of the rule instead, leaving the\n");
+        sb.append("rest of its reach untouched. Either way, you never need to know which\n");
+        sb.append("command originally created the rule — point 'reset logger' at whatever\n");
+        sb.append("'logctl status' shows.\n");
+        sb.append("\n");
+        sb.append("'reset loggers' reverts every logger override; 'reset handlers' reverts\n");
+        sb.append("every handler override; 'reset --all' reverts both in one command. Every\n");
+        sb.append("reset form leaves a sticky override alone by default -- add\n");
+        sb.append("--include-sticky to revert one too, even one you named exactly.\n");
         sb.append("\n");
         sb.append("A trailing-wildcard pattern is worth reaching for even when an exact\n");
         sb.append("name would look the same today: it gives every matched logger, now and\n");

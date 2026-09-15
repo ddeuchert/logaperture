@@ -36,7 +36,7 @@ class JsonTest {
         assertEquals(
                 "{\"name\":\"com.acme\",\"configuredLevel\":null,\"effectiveLevel\":\"INFO\","
                         + "\"overrideActive\":false,\"overrideSource\":null,\"overrideReason\":null,"
-                        + "\"tier\":null,\"expiresAt\":null}",
+                        + "\"tier\":null,\"expiresAt\":null,\"cascading\":false}",
                 Json.logger(row));
     }
 
@@ -70,8 +70,13 @@ class JsonTest {
     }
 
     @Test
-    void revertedCountIsABareNumber() {
-        assertEquals("{\"reverted\":3}", Json.revertedCount(3));
+    void resetOutcomeWrapsEveryFieldAsAnArray() {
+        var outcome = new org.logaperture.control.jmx.ResetOutcomeData(
+                List.of("com.acme"), List.of("org.apache.*"), List.of(), List.of("com.sticky"));
+        assertEquals(
+                "{\"reverted\":[\"com.acme\"],\"retiredPatterns\":[\"org.apache.*\"],\"excludedFrom\":[],"
+                        + "\"skippedSticky\":[\"com.sticky\"]}",
+                Json.resetOutcome(outcome));
     }
 
     @Test

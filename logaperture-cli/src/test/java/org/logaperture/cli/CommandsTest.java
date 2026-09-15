@@ -500,7 +500,7 @@ class CommandsTest {
         assertTrue(message.contains("--yes"), message);
         assertTrue(message.contains("standing rule"), message);
         assertTrue(message.contains("DEBUG"), message);
-        assertTrue(message.contains("logctl reset org.apache.*"), message);
+        assertTrue(message.contains("logctl reset logger org.apache.*"), message);
         assertTrue(mbean.setLevelCalls.isEmpty());
     }
 
@@ -547,17 +547,19 @@ class CommandsTest {
         assertTrue(text.contains("\"originPattern\":\"org.apache.*\""), text);
     }
 
-    // --- reset on a pattern (doc/specs/pattern-level-targeting.md) ---------------------------
+    // --- reset logger on a pattern (doc/specs/reset-command-surface.md) ----------------------
 
     @Test
-    void reset_pattern_revertsCurrentMatchesAndRetiresTheRule() {
+    void resetLogger_pattern_revertsCurrentMatchesAndRetiresTheRule() {
         mbean.loggers = List.of(
                 new LoggerInfoData("org.apache.A", "INFO", "DEBUG", true, "jmx", null, "STICKY", null),
                 new LoggerInfoData("org.apache.B", "INFO", "INFO", false, null, null, null, null));
 
-        assertEquals(CliError.OK, run(Commands.reset("org.apache.*", false)));
+        assertEquals(CliError.OK, run(Commands.resetLogger("org.apache.*", null, true, false)));
 
-        assertEquals(List.of("org.apache.*"), mbean.resetLevelCalls);
+        assertEquals(1, mbean.resetLevelCalls.size());
+        assertEquals("org.apache.*", mbean.resetLevelCalls.get(0)[0]);
+        assertEquals(true, mbean.resetLevelCalls.get(0)[1]);
         String text = output();
         assertTrue(text.contains("org.apache.A → INFO (baseline)"), text);
         assertFalse(text.contains("org.apache.B"), "never-overridden matches aren't reported as reverted: " + text);
@@ -565,10 +567,22 @@ class CommandsTest {
     }
 
     @Test
-    void reset_pattern_ruleTrackedButNothingCurrentlyOverridden_stillReportsRuleRetired() {
+    void resetLogger_pattern_stickyMatchLeftUntouchedByDefault() {
+        mbean.loggers = List.of(
+                new LoggerInfoData("org.apache.A", "INFO", "DEBUG", true, "jmx", null, "STICKY", null));
+
+        assertEquals(CliError.OK, run(Commands.resetLogger("org.apache.*", null, false, false)));
+
+        String text = output();
+        assertTrue(text.contains("org.apache.A — left untouched (STICKY; use --include-sticky to include it)."),
+                text);
+    }
+
+    @Test
+    void resetLogger_pattern_ruleTrackedButNothingCurrentlyOverridden_stillReportsRuleRetired() {
         mbean.loggers = List.of(new LoggerInfoData("org.apache.A", "INFO", "INFO", false, null, null, null, null));
 
-        assertEquals(CliError.OK, run(Commands.reset("org.apache.*", false)));
+        assertEquals(CliError.OK, run(Commands.resetLogger("org.apache.*", null, true, false)));
 
         String text = output();
         assertTrue(text.contains("Standing rule 'org.apache.*' retired -- it had no currently-matched logger "
@@ -576,43 +590,43 @@ class CommandsTest {
     }
 
     @Test
-    void reset_pattern_noRuleWasEverTracked_reportsNoOpRatherThanClaimingRetirement() {
+    void resetLogger_pattern_noRuleWasEverTracked_reportsNothingOverridden() {
         // Code-review finding: the old CLI reconstructed "retired" from
         // whether anything was overridden before the call, so it printed
         // "Standing rule retired" even when no rule existed under that
-        // exact pattern at all. The server now reports this directly.
+        // exact pattern at all. The server now reports this directly, via
+        // an empty outcome, not a special "no rule tracked" message.
         mbean.patternRuleTrackedForReset = false;
         mbean.loggers = List.of(new LoggerInfoData("org.apache.A", "INFO", "INFO", false, null, null, null, null));
 
-        assertEquals(CliError.OK, run(Commands.reset("org.apache.*", false)));
+        assertEquals(CliError.OK, run(Commands.resetLogger("org.apache.*", null, true, false)));
 
         String text = output();
-        assertTrue(text.contains("no standing rule was tracked under that pattern"), text);
+        assertTrue(text.contains("nothing was overridden"), text);
         assertFalse(text.contains("retired"), text);
     }
 
     @Test
-    void reset_pattern_json_reportsRevertedNamesAndRuleRetired() {
+    void resetLogger_pattern_json_reportsRevertedNamesAndRetiredPattern() {
         mbean.loggers = List.of(
                 new LoggerInfoData("org.apache.A", "INFO", "DEBUG", true, "jmx", null, "STICKY", null));
 
-        run(Commands.reset("org.apache.*", true));
+        run(Commands.resetLogger("org.apache.*", null, true, true));
 
         String text = output().strip();
-        assertTrue(text.contains("\"pattern\":\"org.apache.*\""), text);
         assertTrue(text.contains("\"reverted\":[\"org.apache.A\"]"), text);
-        assertTrue(text.contains("\"ruleRetired\":true"), text);
+        assertTrue(text.contains("\"retiredPatterns\":[\"org.apache.*\"]"), text);
     }
 
     @Test
-    void reset_pattern_json_noRuleTracked_reportsRuleRetiredFalse() {
+    void resetLogger_pattern_json_noRuleTracked_reportsEmptyOutcome() {
         mbean.patternRuleTrackedForReset = false;
 
-        run(Commands.reset("org.apache.*", true));
+        run(Commands.resetLogger("org.apache.*", null, true, true));
 
         String text = output().strip();
         assertTrue(text.contains("\"reverted\":[]"), text);
-        assertTrue(text.contains("\"ruleRetired\":false"), text);
+        assertTrue(text.contains("\"retiredPatterns\":[]"), text);
     }
 
     // --- handler (doc/specs/handler-floor-control.md) -----------------------------------------
@@ -729,70 +743,103 @@ class CommandsTest {
 
     @Test
     void handlerResetCallsResetHandler() {
-        assertEquals(CliError.OK, run(Commands.resetHandler("CONSOLE", false)));
-        assertEquals(List.of("CONSOLE"), mbean.resetHandlerCalls);
+        assertEquals(CliError.OK, run(Commands.resetHandler("CONSOLE", false, false)));
+        assertEquals(1, mbean.resetHandlerCalls.size());
+        assertEquals("CONSOLE", mbean.resetHandlerCalls.get(0)[0]);
+        assertEquals(false, mbean.resetHandlerCalls.get(0)[1]);
         assertEquals("handler CONSOLE → reset to its previous level.", output().strip());
     }
 
     @Test
     void handlerResetJsonEmitsAnObject() {
-        assertEquals(CliError.OK, run(Commands.resetHandler("CONSOLE", true)));
-        assertEquals("{\"handlerRef\":\"CONSOLE\",\"reset\":true}", output().strip());
-    }
-
-    @Test
-    void resetCallsResetLevelThenReportsTheRestoredLevel() {
-        mbean.loggers = List.of(new LoggerInfoData("com.acme", "INFO", "INFO", false, null, null, null, null));
-        assertEquals(CliError.OK, run(Commands.reset("com.acme", false)));
-        assertEquals(List.of("com.acme"), mbean.resetLevelCalls);
-        assertEquals("com.acme → INFO (baseline)", output().strip());
-    }
-
-    @Test
-    void resetOfAnUnknownLoggerSaysNothingWasOverridden() {
-        assertEquals(CliError.OK, run(Commands.reset("com.acme.ghost", false)));
-        assertEquals("com.acme.ghost — nothing was overridden.", output().strip());
-    }
-
-    @Test
-    void resetOfAnOverriddenButNotYetInstantiatedLoggerReportsTheRevertNotNothing() {
-        mbean.loggers = new ArrayList<>(List.of(
-                new LoggerInfoData("com.acme.Known", null, "DEBUG", true, "jmx", "resumed", "STICKY", null)));
-        mbean.forgetOnReset.add("com.acme.Known");
-
-        assertEquals(CliError.OK, run(Commands.reset("com.acme.Known", false)));
-        assertEquals(List.of("com.acme.Known"), mbean.resetLevelCalls);
-        assertEquals("com.acme.Known → baseline (not yet instantiated, so no level to show)", output().strip());
-    }
-
-    @Test
-    void resetJsonEmitsAnObjectEvenWhenNoPostResetLoggerRemains() {
-        mbean.loggers = new ArrayList<>(List.of(
-                new LoggerInfoData("com.acme.Known", null, "DEBUG", true, "jmx", null, "STICKY", null)));
-        mbean.forgetOnReset.add("com.acme.Known");
-
-        assertEquals(CliError.OK, run(Commands.reset("com.acme.Known", true)));
+        assertEquals(CliError.OK, run(Commands.resetHandler("CONSOLE", false, true)));
         assertEquals(
-                "{\"name\":\"com.acme.Known\",\"overrideActive\":false,\"wasOverridden\":true}",
+                "{\"reverted\":[\"CONSOLE\"],\"retiredPatterns\":[],\"excludedFrom\":[],\"skippedSticky\":[]}",
                 output().strip());
     }
 
     @Test
-    void resetAllCountsActiveOverridesFirstThenClears() {
-        mbean.loggers = List.of(
-                new LoggerInfoData("a", "INFO", "DEBUG", true, "jmx", null, "STICKY", null),
-                new LoggerInfoData("b", "INFO", "INFO", false, null, null, null, null),
-                new LoggerInfoData("c", "INFO", "TRACE", true, "jmx", null, "SESSION", null));
-
-        assertEquals(CliError.OK, run(Commands.resetAll(false)));
-        assertEquals(1, mbean.resetAllCalls);
-        assertEquals("Reverted 2 override(s).", output().strip());
+    void resetLogger_exactName_callsResetLevelThenReportsTheRestoredLevel() {
+        mbean.loggers = List.of(new LoggerInfoData("com.acme", "INFO", "INFO", false, null, null, null, null));
+        assertEquals(CliError.OK, run(Commands.resetLogger("com.acme", null, false, false)));
+        assertEquals("com.acme", mbean.resetLevelCalls.get(0)[0]);
+        assertEquals("com.acme — nothing was overridden.", output().strip());
     }
 
     @Test
-    void resetAllJsonEmitsTheCount() {
-        assertEquals(CliError.OK, run(Commands.resetAll(true)));
-        assertEquals("{\"reverted\":0}", output().strip());
+    void resetLogger_exactName_overriddenLogger_reportsTheRestoredLevel() {
+        mbean.loggers = new ArrayList<>(List.of(
+                new LoggerInfoData("com.acme", "INFO", "DEBUG", true, "jmx", null, "SESSION", null)));
+        assertEquals(CliError.OK, run(Commands.resetLogger("com.acme", null, false, false)));
+        assertEquals("com.acme → INFO (baseline)", output().strip());
+    }
+
+    @Test
+    void resetLogger_ofAnUnknownLoggerSaysNothingWasOverridden() {
+        assertEquals(CliError.OK, run(Commands.resetLogger("com.acme.ghost", null, false, false)));
+        assertEquals("com.acme.ghost — nothing was overridden.", output().strip());
+    }
+
+    @Test
+    void resetLogger_ofAnOverriddenButNotYetInstantiatedLoggerReportsTheRevertNotNothing() {
+        mbean.loggers = new ArrayList<>(List.of(
+                new LoggerInfoData("com.acme.Known", null, "DEBUG", true, "jmx", "resumed", "SESSION", null)));
+        mbean.forgetOnReset.add("com.acme.Known");
+
+        assertEquals(CliError.OK, run(Commands.resetLogger("com.acme.Known", null, false, false)));
+        assertEquals("com.acme.Known", mbean.resetLevelCalls.get(0)[0]);
+        assertEquals("com.acme.Known → baseline (not yet instantiated, so no level to show)", output().strip());
+    }
+
+    @Test
+    void resetLogger_stickyExactName_leftUntouchedByDefault() {
+        mbean.loggers = new ArrayList<>(List.of(
+                new LoggerInfoData("com.acme.Known", null, "DEBUG", true, "jmx", null, "STICKY", null)));
+
+        assertEquals(CliError.OK, run(Commands.resetLogger("com.acme.Known", null, false, false)));
+        assertEquals("com.acme.Known — left untouched (STICKY; use --include-sticky to include it).",
+                output().strip());
+    }
+
+    @Test
+    void resetLogger_jsonEmitsAnObjectEvenWhenNoPostResetLoggerRemains() {
+        mbean.loggers = new ArrayList<>(List.of(
+                new LoggerInfoData("com.acme.Known", null, "DEBUG", true, "jmx", null, "SESSION", null)));
+        mbean.forgetOnReset.add("com.acme.Known");
+
+        run(Commands.resetLogger("com.acme.Known", null, false, true));
+        assertEquals(
+                "{\"reverted\":[\"com.acme.Known\"],\"retiredPatterns\":[],\"excludedFrom\":[],\"skippedSticky\":[]}",
+                output().strip());
+    }
+
+    @Test
+    void resetAllLoggers_printsRevertedSummary() {
+        assertEquals(CliError.OK, run(Commands.resetAllLoggers(false, false)));
+        assertEquals(1, mbean.resetAllLoggersCalls);
+        assertEquals("Reverted 0 logger override(s).", output().strip());
+    }
+
+    @Test
+    void resetAllHandlers_printsRevertedSummary() {
+        assertEquals(CliError.OK, run(Commands.resetAllHandlers(false, false)));
+        assertEquals(1, mbean.resetAllHandlersCalls);
+        assertEquals("Reverted 0 handler override(s).", output().strip());
+    }
+
+    @Test
+    void resetAll_printsRevertedSummaryWithNoNounPrefix() {
+        assertEquals(CliError.OK, run(Commands.resetAll(false, false)));
+        assertEquals(1, mbean.resetAllCalls);
+        assertEquals("Reverted 0 override(s).", output().strip());
+    }
+
+    @Test
+    void resetAllJsonEmitsTheOutcome() {
+        assertEquals(CliError.OK, run(Commands.resetAll(true, true)));
+        assertEquals(
+                "{\"reverted\":[],\"retiredPatterns\":[],\"excludedFrom\":[],\"skippedSticky\":[]}",
+                output().strip());
     }
 
     // --- CONTEXT column (doc/specs/wildfly-support.md, Slice 3) ------------------------------------

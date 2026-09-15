@@ -205,27 +205,46 @@ class LevelControlMXBeanImplTest {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
         bean(fake).resetLevel("com.acme.Worker");
 
-        assertEquals(List.of("com.acme.Worker"), fake.resetLevelCalls);
+        assertEquals(1, fake.resetLevelCalls.size());
+        assertEquals("com.acme.Worker", fake.resetLevelCalls.get(0)[0]);
+        assertEquals(false, fake.resetLevelCalls.get(0)[1]); // the no-arg overload defaults includeSticky to false
+    }
+
+    @Test
+    void resetLevel_withIncludeStickyAndReason_delegatesBothThrough() {
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+        bean(fake).resetLevel("com.acme.Worker", true, "cleanup");
+
+        assertEquals(List.of("com.acme.Worker", true, "cleanup"), List.of(fake.resetLevelCalls.get(0)));
     }
 
     @Test
     void resetLevel_returnsWhatTheOperationActuallyReverted() {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
         fake.resetOutcomeToReturn = new org.logaperture.api.ResetOutcome(
-                List.of("org.apache.A", "org.apache.B"), true);
+                List.of("org.apache.A", "org.apache.B"), List.of("org.apache.*"), List.of(), List.of());
 
         ResetOutcomeData result = bean(fake).resetLevel("org.apache.*");
 
-        assertEquals(List.of("org.apache.A", "org.apache.B"), result.getRevertedLoggerNames());
-        assertTrue(result.isPatternRuleRetired());
+        assertEquals(List.of("org.apache.A", "org.apache.B"), result.getRevertedNames());
+        assertEquals(List.of("org.apache.*"), result.getRetiredPatterns());
     }
 
     @Test
-    void resetAll_delegatesToOperations() {
+    void resetAllLoggers_delegatesToOperations() {
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+        bean(fake).resetAllLoggers(false);
+
+        assertTrue(fake.resetAllLoggersCalled);
+    }
+
+    @Test
+    void resetAll_composesLoggersAndHandlersFromBothInterfaces() {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
         bean(fake).resetAll();
 
-        assertTrue(fake.resetAllCalled);
+        assertTrue(fake.resetAllLoggersCalled);
+        assertTrue(fake.resetAllHandlersCalled);
     }
 
     // --- handler operations (doc/specs/handler-floor-control.md) -----------------------------------
@@ -261,7 +280,17 @@ class LevelControlMXBeanImplTest {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
         bean(fake).resetHandler("CONSOLE");
 
-        assertEquals(List.of(new HandlerRef("CONSOLE")), fake.resetHandlerCalls);
+        assertEquals(1, fake.resetHandlerCalls.size());
+        assertEquals(new HandlerRef("CONSOLE"), fake.resetHandlerCalls.get(0)[0]);
+        assertEquals(false, fake.resetHandlerCalls.get(0)[1]);
+    }
+
+    @Test
+    void resetAllHandlers_delegatesToOperations() {
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+        bean(fake).resetAllHandlers(true);
+
+        assertTrue(fake.resetAllHandlersCalled);
     }
 
     @Test

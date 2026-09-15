@@ -52,6 +52,16 @@ import java.time.Instant;
  *                         stamps the real key ({@link #withContext}) on every
  *                         row it returns, so it is never {@code null} on the
  *                         control-plane path
+ * @param cascading        whether this override is governed by a live
+ *                         standing rule — it will keep propagating to
+ *                         newly-discovered descendants until the rule is
+ *                         retired or excluded from (doc/specs/
+ *                         reset-command-surface.md "Marking a rule-governed
+ *                         override"). Deliberately never names <em>which</em>
+ *                         rule — that's exactly the provenance-recall a
+ *                         caller shouldn't need (Decision #2/#6); {@code
+ *                         false} whenever {@code overrideActive} is
+ *                         {@code false}
  */
 public record LoggerInfo(
         String name,
@@ -62,7 +72,8 @@ public record LoggerInfo(
         String overrideReason,
         PersistenceTier overrideTier,
         Instant overrideExpiresAt,
-        String context) {
+        String context,
+        boolean cascading) {
 
     public LoggerInfo {
         if (name == null || name.isEmpty()) {
@@ -74,9 +85,10 @@ public record LoggerInfo(
     }
 
     /**
-     * A single-context service builds its rows without a context key;
-     * {@code AggregateLevelControl} fills it in afterwards. Keeps every
-     * existing {@code new LoggerInfo(...)} call site unchanged.
+     * A single-context service builds its rows without a context key or a
+     * cascading flag; {@code AggregateLevelControl} fills the context in
+     * afterwards ({@link #withContext}). Keeps every pre-{@code cascading}
+     * {@code new LoggerInfo(...)} call site unchanged.
      */
     public LoggerInfo(
             String name,
@@ -88,12 +100,31 @@ public record LoggerInfo(
             PersistenceTier overrideTier,
             Instant overrideExpiresAt) {
         this(name, configuredLevel, effectiveLevel, overrideActive, overrideSource, overrideReason,
-                overrideTier, overrideExpiresAt, null);
+                overrideTier, overrideExpiresAt, null, false);
+    }
+
+    /**
+     * As above, plus whether this row's override is rule-governed
+     * (doc/specs/reset-command-surface.md) — the constructor a single-context
+     * service actually uses once it has that answer to give.
+     */
+    public LoggerInfo(
+            String name,
+            Level configuredLevel,
+            Level effectiveLevel,
+            boolean overrideActive,
+            String overrideSource,
+            String overrideReason,
+            PersistenceTier overrideTier,
+            Instant overrideExpiresAt,
+            boolean cascading) {
+        this(name, configuredLevel, effectiveLevel, overrideActive, overrideSource, overrideReason,
+                overrideTier, overrideExpiresAt, null, cascading);
     }
 
     /** This same row, tagged with its owning context's stable key. */
     public LoggerInfo withContext(String context) {
         return new LoggerInfo(name, configuredLevel, effectiveLevel, overrideActive, overrideSource,
-                overrideReason, overrideTier, overrideExpiresAt, context);
+                overrideReason, overrideTier, overrideExpiresAt, context, cascading);
     }
 }

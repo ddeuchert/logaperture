@@ -37,6 +37,12 @@ import java.beans.ConstructorProperties;
  * {@code "system"}) was added by doc/specs/wildfly-support.md. Slice 1
  * carries it over the wire; no CLI surface renders it yet (the CONTEXT
  * column is Slice 3, shown only when more than one context exists).
+ *
+ * <p>{@code cascading} (doc/specs/reset-command-surface.md "Marking a
+ * rule-governed override") was added alongside the reset-command-surface
+ * split: whether this row's override is governed by a live standing rule,
+ * and will therefore keep propagating to newly-discovered descendants.
+ * Deliberately never names which rule — see {@link LoggerInfo#cascading()}.
  */
 public final class LoggerInfoData {
 
@@ -49,9 +55,34 @@ public final class LoggerInfoData {
     private final String tier;
     private final String expiresAt;
     private final String context;
+    private final boolean cascading;
 
     @ConstructorProperties({"name", "configuredLevel", "effectiveLevel", "overrideActive", "overrideSource",
-            "overrideReason", "tier", "expiresAt", "context"})
+            "overrideReason", "tier", "expiresAt", "context", "cascading"})
+    public LoggerInfoData(
+            String name,
+            String configuredLevel,
+            String effectiveLevel,
+            boolean overrideActive,
+            String overrideSource,
+            String overrideReason,
+            String tier,
+            String expiresAt,
+            String context,
+            boolean cascading) {
+        this.name = name;
+        this.configuredLevel = configuredLevel;
+        this.effectiveLevel = effectiveLevel;
+        this.overrideActive = overrideActive;
+        this.overrideSource = overrideSource;
+        this.overrideReason = overrideReason;
+        this.tier = tier;
+        this.expiresAt = expiresAt;
+        this.context = context;
+        this.cascading = cascading;
+    }
+
+    /** Back-compat constructor for callers (tests) that don't care about {@code cascading}, but do set {@code context}. */
     public LoggerInfoData(
             String name,
             String configuredLevel,
@@ -62,18 +93,11 @@ public final class LoggerInfoData {
             String tier,
             String expiresAt,
             String context) {
-        this.name = name;
-        this.configuredLevel = configuredLevel;
-        this.effectiveLevel = effectiveLevel;
-        this.overrideActive = overrideActive;
-        this.overrideSource = overrideSource;
-        this.overrideReason = overrideReason;
-        this.tier = tier;
-        this.expiresAt = expiresAt;
-        this.context = context;
+        this(name, configuredLevel, effectiveLevel, overrideActive, overrideSource, overrideReason, tier,
+                expiresAt, context, false);
     }
 
-    /** Back-compat constructor for callers (tests) that don't care about {@code context}. */
+    /** Back-compat constructor for callers (tests) that don't care about {@code context}/{@code cascading}. */
     public LoggerInfoData(
             String name,
             String configuredLevel,
@@ -84,7 +108,7 @@ public final class LoggerInfoData {
             String tier,
             String expiresAt) {
         this(name, configuredLevel, effectiveLevel, overrideActive, overrideSource, overrideReason,
-                tier, expiresAt, null);
+                tier, expiresAt, null, false);
     }
 
     public static LoggerInfoData from(LoggerInfo info) {
@@ -97,7 +121,8 @@ public final class LoggerInfoData {
                 info.overrideReason(),
                 info.overrideTier() == null ? null : info.overrideTier().name(),
                 info.overrideExpiresAt() == null ? null : info.overrideExpiresAt().toString(),
-                info.context());
+                info.context(),
+                info.cascading());
     }
 
     public String getName() {
@@ -134,5 +159,9 @@ public final class LoggerInfoData {
 
     public String getContext() {
         return context;
+    }
+
+    public boolean isCascading() {
+        return cascading;
     }
 }

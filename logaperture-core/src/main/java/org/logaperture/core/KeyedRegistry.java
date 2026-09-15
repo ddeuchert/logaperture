@@ -56,6 +56,18 @@ final class KeyedRegistry<K, V> {
         return entries.remove(key, expected);
     }
 
+    /**
+     * Atomic compare-and-swap — replaces {@code key}'s entry with {@code
+     * replacement} only if it currently still equals {@code expected}, the
+     * same race discipline {@link #removeIfCurrent} uses for a stale
+     * caller, applied to an in-place update (e.g. a {@link
+     * org.logaperture.api.PatternRule} gaining an exclusion) rather than a
+     * removal.
+     */
+    boolean replaceIfCurrent(K key, V expected, V replacement) {
+        return entries.replace(key, expected, replacement);
+    }
+
     /** A point-in-time snapshot, safe to iterate while the registry is concurrently mutated. */
     Map<K, V> all() {
         return Map.copyOf(entries);

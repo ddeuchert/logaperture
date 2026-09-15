@@ -52,12 +52,13 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
 
     final List<String> listLoggersCalls = new ArrayList<>();
     final List<Object[]> setLevelCalls = new ArrayList<>();
-    final List<String> resetLevelCalls = new ArrayList<>();
+    final List<Object[]> resetLevelCalls = new ArrayList<>();
     ResetOutcome resetOutcomeToReturn = ResetOutcome.nothingReset();
     final List<Object[]> setHandlerLevelCalls = new ArrayList<>();
     final List<Object[]> setHandlerAutoCalls = new ArrayList<>();
-    final List<HandlerRef> resetHandlerCalls = new ArrayList<>();
-    boolean resetAllCalled;
+    final List<Object[]> resetHandlerCalls = new ArrayList<>();
+    boolean resetAllLoggersCalled;
+    boolean resetAllHandlersCalled;
 
     List<LoggerInfo> loggersToReturn = List.of();
     List<HandlerFloor> blockingHandlersToReturn = List.of();
@@ -90,14 +91,15 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     }
 
     @Override
-    public ResetOutcome resetLevel(String loggerName) {
-        resetLevelCalls.add(loggerName);
+    public ResetOutcome resetLevel(String loggerName, boolean includeSticky, String reason) {
+        resetLevelCalls.add(new Object[] {loggerName, includeSticky, reason});
         return resetOutcomeToReturn;
     }
 
     @Override
-    public void resetAll() {
-        resetAllCalled = true;
+    public ResetOutcome resetAllLoggers(boolean includeSticky) {
+        resetAllLoggersCalled = true;
+        return resetOutcomeToReturn;
     }
 
     @Override
@@ -130,8 +132,15 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     }
 
     @Override
-    public void resetHandler(HandlerRef ref) {
-        resetHandlerCalls.add(ref);
+    public ResetOutcome resetHandler(HandlerRef ref, boolean includeSticky) {
+        resetHandlerCalls.add(new Object[] {ref, includeSticky});
+        return resetOutcomeToReturn;
+    }
+
+    @Override
+    public ResetOutcome resetAllHandlers(boolean includeSticky) {
+        resetAllHandlersCalled = true;
+        return resetOutcomeToReturn;
     }
 
     @Override

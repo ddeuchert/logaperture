@@ -59,10 +59,18 @@ import java.util.Map;
  * with an empty pattern-rule list; a legacy {@code includeChildren:} field
  * on an override record is read and ignored, never rejected, and {@code
  * originPattern:} defaults to {@code null} when absent.
+ *
+ * <p>Schema version 5 (doc/specs/reset-command-surface.md "Partial reset —
+ * scoped exclusions") adds an {@code exclusions:} flow-sequence field to
+ * each {@code patternRules} record — the names/sub-patterns a partial
+ * {@code resetLevel} has carved out of that rule's coverage. A
+ * version-1/2/3/4 record (no {@code exclusions:} line) still parses,
+ * defaulting to an empty list — every rule written before this feature
+ * existed had, by construction, nothing carved out of it yet.
  */
 final class StateFileFormat {
 
-    private static final int SCHEMA_VERSION = 4;
+    private static final int SCHEMA_VERSION = 5;
 
     private StateFileFormat() {
     }
@@ -118,9 +126,25 @@ final class StateFileFormat {
                 out.append("    source: ").append(quote(rule.source())).append('\n');
                 out.append("    tier: ").append(rule.tier().name()).append('\n');
                 out.append("    expiresAt: ").append(rule.expiresAt() == null ? "null" : rule.expiresAt()).append('\n');
+                out.append("    exclusions: ").append(writeExclusions(rule.exclusions())).append('\n');
             }
         }
         return out.toString();
+    }
+
+    /** {@code exclusions:}'s value is a flow sequence, e.g. {@code ["org.apache.tomcat", "org.apache.tomcat.*"]}. */
+    private static String writeExclusions(List<String> exclusions) {
+        if (exclusions.isEmpty()) {
+            return "[]";
+        }
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < exclusions.size(); i++) {
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append(quote(exclusions.get(i)));
+        }
+        return sb.append(']').toString();
     }
 
     /** Everything {@link #parse} recovered from one file: all three lists. */
@@ -141,7 +165,8 @@ final class StateFileFormat {
      */
     static Parsed parse(String content) {
         int schemaVersion = extractSchemaVersion(content);
-        if (schemaVersion != 1 && schemaVersion != 2 && schemaVersion != 3 && schemaVersion != SCHEMA_VERSION) {
+        if (schemaVersion != 1 && schemaVersion != 2 && schemaVersion != 3 && schemaVersion != 4
+                && schemaVersion != SCHEMA_VERSION) {
             throw new IllegalStateException("unsupported or missing state file schemaVersion: " + schemaVersion);
         }
 
@@ -262,7 +287,50 @@ final class StateFileFormat {
                 Instant.parse(fields.get("appliedAt")),
                 unquote(fields.get("source")),
                 PersistenceTier.valueOf(fields.get("tier")),
-                nullable(fields.get("expiresAt")) == null ? null : Instant.parse(fields.get("expiresAt")));
+                nullable(fields.get("expiresAt")) == null ? null : Instant.parse(fields.get("expiresAt")),
+                readExclusions(fields.get("exclusions")));
+    }
+
+    /**
+     * The inverse of {@link #writeExclusions} — {@code null} (a
+     * schema-version-&lt;5 record, no {@code exclusions:} line at all) and
+     * {@code "[]"} both mean an empty list. A quoted entry is unquoted with
+     * the same escaping {@link #unquote} uses for every other string field;
+     * entries are split on a comma that falls outside any quoted entry, so
+     * a (grammar-illegal, but tolerated on read per §6.3's tolerant-parsing
+     * bar) comma inside one entry can't corrupt the ones after it.
+     */
+    private static List<String> readExclusions(String value) {
+        if (value == null) {
+            return List.of();
+        }
+        String trimmed = value.trim();
+        if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) {
+            return List.of();
+        }
+        String inner = trimmed.substring(1, trimmed.length() - 1).trim();
+        if (inner.isEmpty()) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inQuotes = false;
+        for (int i = 0; i < inner.length(); i++) {
+            char c = inner.charAt(i);
+            if (c == '"' && (i == 0 || inner.charAt(i - 1) != '\\')) {
+                inQuotes = !inQuotes;
+                current.append(c);
+            } else if (c == ',' && !inQuotes) {
+                result.add(unquote(current.toString().trim()));
+                current.setLength(0);
+            } else {
+                current.append(c);
+            }
+        }
+        if (!current.isEmpty()) {
+            result.add(unquote(current.toString().trim()));
+        }
+        return result;
     }
 
     private static String nullable(String value) {

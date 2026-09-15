@@ -1,6 +1,6 @@
 # Reset command surface: logger/handler split + `--include-sticky` (issue #42)
 
-Status: signed off (2026-09-14) — all six decisions resolved; ready for implementation.
+Status: implemented (2026-09-14).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §18.9 (roadmap entry), §6.1
 (persistence tiers), §9 (capability/audit model), §11.1 (component versioning).
 Builds on: [`doc/specs/pattern-level-targeting.md`](pattern-level-targeting.md) (the glob
@@ -379,19 +379,20 @@ taken, not an ongoing fact to track).
 
 ## Cross-reference updates
 
-- `cli-transport.md`: replace the `logctl reset <logger>` / `logctl reset --all` section with
-  the four-form grammar; move its current content into `reset logger`/`reset --all`
-  subsections; retire the `#42` "deferred" bullet in Scope.
-- `handler-floor-control.md`: land the rename in the "handler resets are always spelled..."
-  passage and resolve its own "Superseded (planned)" note (line ~235).
-- `persistence.md`: resolve its "Superseded (planned)" note on sticky removal (line ~432) —
-  the exit-criterion sentence it points at stays as written (it accurately described that
-  slice's behavior at the time); this spec's landing is what makes the forward note obsolete,
-  not a rewrite of the original sentence.
-- `pattern-level-targeting.md`: add a "Superseded (planned)" note on `resetLevel(target)`'s
-  exact-string `PatternRuleRegistry` lookup (its Decision #5) and on sweep step 2, both replaced
-  by "Partial reset — scoped exclusions" above; the `PatternRule` data model gains `exclusions`.
-- Top-level §18.9: update Status once implemented, matching §18.7's "shipped" treatment.
+All landed alongside the implementation:
+
+- `cli-transport.md`: "Superseded (shipped)" notes on the `resetLevel`/`resetAll` command
+  mapping and the detailed `logctl reset <logger>` / `logctl reset --all` section; the
+  `#42` "deferred" scope bullet struck through; the `undo`-section and Naming-reconciliation
+  literal command mentions updated to the new spelling.
+- `handler-floor-control.md`: its "Superseded (planned)" note resolved to "(shipped)".
+- `persistence.md`: its "Superseded (planned)" note resolved to "(shipped)" — the
+  exit-criterion sentence it points at stays as written (it accurately described that
+  slice's behavior at the time).
+- `pattern-level-targeting.md`: "Superseded (shipped)" notes on `resetLevel(target)`'s
+  exact-string lookup (Decision #5) and on sweep step 2; the `PatternRule` data model and
+  state-file schema sections note the new `exclusions` field and `schemaVersion` 4 → 5.
+- Top-level §18.9: Status updated to "Shipped", matching §18.7's treatment.
 
 ## Testing (sketch)
 

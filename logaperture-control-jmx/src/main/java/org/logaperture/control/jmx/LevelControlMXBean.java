@@ -57,16 +57,85 @@ public interface LevelControlMXBean {
             boolean confirmed);
 
     /**
-     * {@code target} is either an exact logger name or a pattern
-     * (doc/specs/pattern-level-targeting.md) — resetting a pattern reverts
-     * every logger it currently covers <em>and</em> retires the standing
-     * rule, so it stops covering loggers discovered later too.
+     * Equivalent to {@link #resetLevel(String, boolean) resetLevel(target,
+     * false)} — kept for wire compatibility with a client built before
+     * doc/specs/reset-command-surface.md's {@code includeSticky} landed;
+     * note that this changes what this exact call now does, since skipping
+     * a {@code STICKY} target is the new default, not a new opt-in (that
+     * spec's "Versioning" section).
      *
-     * @return exactly what was reverted — see {@link ResetOutcomeData}
+     * @return exactly what was reverted, retired, excluded, and skipped —
+     *         see {@link ResetOutcomeData}
      */
-    ResetOutcomeData resetLevel(String target);
+    default ResetOutcomeData resetLevel(String target) {
+        return resetLevel(target, false);
+    }
 
-    void resetAll();
+    /**
+     * {@code target} is either an exact logger name or a pattern
+     * (doc/specs/pattern-level-targeting.md). Resetting a pattern that
+     * exactly matches a tracked standing rule's own pattern string reverts
+     * every logger it currently covers <em>and</em> retires the rule, so it
+     * stops covering loggers discovered later too. A narrower target —  an
+     * exact name, or a sub-pattern that isn't itself a tracked rule — falls
+     * under {@code logctl reset logger}'s partial-reset case instead: it
+     * carves {@code target} out of whichever rule currently governs it
+     * rather than retiring the whole rule (doc/specs/
+     * reset-command-surface.md "Partial reset — scoped exclusions").
+     *
+     * @param includeSticky {@code false} (the default) leaves a
+     *                      {@code STICKY}-tier override, or a
+     *                      {@code STICKY}-tier standing rule (whole or
+     *                      partial), untouched; {@code true} reverts/
+     *                      excludes it like any other tier
+     * @return exactly what was reverted, retired, excluded, and skipped —
+     *         see {@link ResetOutcomeData}
+     */
+    default ResetOutcomeData resetLevel(String target, boolean includeSticky) {
+        return resetLevel(target, includeSticky, null);
+    }
+
+    /**
+     * As {@link #resetLevel(String, boolean)}, plus a reason recorded on
+     * the audit entry for every logger this call actually reverts —
+     * {@code logctl reset logger <target> --reason ...} (doc/specs/
+     * reset-command-surface.md "Command grammar").
+     *
+     * @param reason {@code null}/empty to leave each reversion's audit
+     *               reason as the override's original one
+     */
+    ResetOutcomeData resetLevel(String target, boolean includeSticky, String reason);
+
+    /** Equivalent to {@link #resetAll(boolean) resetAll(false)}; see {@link #resetLevel(String)}'s note on the wire-compatibility caveat. */
+    default ResetOutcomeData resetAll() {
+        return resetAll(false);
+    }
+
+    /**
+     * {@code logctl reset --all} (doc/specs/reset-command-surface.md) —
+     * reverts every logger <em>and</em> handler override, both namespaces
+     * in one call; Decision #1's "get me back to normal shouldn't require
+     * remembering two commands."
+     *
+     * @param includeSticky see {@link #resetLevel(String, boolean)}
+     */
+    ResetOutcomeData resetAll(boolean includeSticky);
+
+    /**
+     * {@code logctl reset loggers} (doc/specs/reset-command-surface.md) —
+     * reverts every logger override, handlers untouched.
+     *
+     * @param includeSticky see {@link #resetLevel(String, boolean)}
+     */
+    ResetOutcomeData resetAllLoggers(boolean includeSticky);
+
+    /**
+     * {@code logctl reset handlers} (doc/specs/reset-command-surface.md) —
+     * reverts every handler override, loggers untouched.
+     *
+     * @param includeSticky see {@link #resetLevel(String, boolean)}
+     */
+    ResetOutcomeData resetAllHandlers(boolean includeSticky);
 
     /**
      * {@code logctl handler <name> <level>} — doc/specs/
@@ -101,8 +170,24 @@ public interface LevelControlMXBean {
      */
     HandlerLevelOverrideData setHandlerAuto(String handlerRef, String reason, String tier, long forSeconds);
 
-    /** {@code logctl handler <name> reset}. A no-op, not an error, if {@code handlerRef} has no active override. */
-    void resetHandler(String handlerRef);
+    /**
+     * Equivalent to {@link #resetHandler(String, boolean) resetHandler(handlerRef,
+     * false)}; see {@link #resetLevel(String)}'s note on the wire-compatibility
+     * caveat. A no-op, not an error, if {@code handlerRef} has no active override.
+     */
+    default ResetOutcomeData resetHandler(String handlerRef) {
+        return resetHandler(handlerRef, false);
+    }
+
+    /**
+     * {@code logctl reset handler <name>} (doc/specs/
+     * reset-command-surface.md — replaces the retired {@code logctl
+     * handler <name> reset}). A no-op, not an error, if {@code handlerRef}
+     * has no active override.
+     *
+     * @param includeSticky see {@link #resetLevel(String, boolean)}
+     */
+    ResetOutcomeData resetHandler(String handlerRef, boolean includeSticky);
 
     /**
      * Every handler override currently active, across every registered

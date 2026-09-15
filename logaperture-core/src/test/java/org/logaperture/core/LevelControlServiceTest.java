@@ -281,8 +281,8 @@ class LevelControlServiceTest {
 
         var outcome = service.resetLevel("com.acme.*");
 
-        assertTrue(outcome.patternRuleRetired());
-        assertEquals(Set.of("com.acme.http", "com.acme.db"), Set.copyOf(outcome.revertedLoggerNames()));
+        assertEquals(List.of("com.acme.*"), outcome.retiredPatterns());
+        assertEquals(Set.of("com.acme.http", "com.acme.db"), Set.copyOf(outcome.revertedNames()));
         assertEquals(Level.INFO, adapter.effectiveLevel("com.acme.http"));
         assertEquals(Level.INFO, adapter.effectiveLevel("com.acme.db"));
         assertTrue(service.activePatternRules().isEmpty());
@@ -297,8 +297,8 @@ class LevelControlServiceTest {
 
         var outcome = service.resetLevel("com.brandnew.*");
 
-        assertTrue(outcome.patternRuleRetired());
-        assertTrue(outcome.revertedLoggerNames().isEmpty());
+        assertEquals(List.of("com.brandnew.*"), outcome.retiredPatterns());
+        assertTrue(outcome.revertedNames().isEmpty());
     }
 
     @Test
@@ -306,6 +306,95 @@ class LevelControlServiceTest {
         var outcome = service.resetLevel("com.never.seen.*");
 
         assertEquals(ResetOutcome.nothingReset(), outcome);
+    }
+
+    // --- partial reset: scoped exclusions (doc/specs/reset-command-surface.md) ---------------
+
+    @Test
+    void resetLevel_exactNameUnderALiveRule_excludesJustThatNameLeavingDescendantsCovered() {
+        // Deliberately NOT adding "org.apache" itself as a known logger --
+        // it would also match the pattern and pick up its own DEBUG
+        // override, which "org.apache.tomcat" would then inherit once its
+        // own override is removed (ordinary hierarchy-based inheritance,
+        // not a property of the exclusion mechanism this test targets).
+        // Keeping it out of the fixture isolates that from what's actually
+        // under test: whether the excluded name's own override is gone and
+        // whether the sweep honors the exclusion.
+        adapter.addKnownLogger("org.apache.tomcat");
+        adapter.addKnownLogger("org.apache.tomcat.connector");
+        service.setLevel("org.apache.*", Level.DEBUG, SetLevelOptions.sticky().withConfirmed(true));
+
+        var outcome = service.resetLevel("org.apache.tomcat", true); // includeSticky -- the rule is STICKY
+
+        assertTrue(outcome.retiredPatterns().isEmpty());
+        assertEquals(List.of("org.apache.*"), outcome.excludedFrom());
+        assertEquals(List.of("org.apache.tomcat"), outcome.revertedNames());
+        assertTrue(overrides.get("org.apache.tomcat").isEmpty(), "the excluded name's own override is gone");
+        // The rule is still active for everything else, including this
+        // excluded name's own descendants -- the exclusion is exactly the
+        // literal name, nothing more.
+        assertTrue(service.activePatternRules().stream().anyMatch(r -> r.pattern().equals("org.apache.*")));
+        assertEquals(Level.DEBUG, adapter.effectiveLevel("org.apache.tomcat.connector"));
+
+        // A newly-discovered descendant of the excluded name still inherits
+        // the rule...
+        adapter.addKnownLogger("org.apache.tomcat.connector.http11");
+        service.applyStandingRules(java.time.Instant.now());
+        assertEquals(Level.DEBUG, adapter.effectiveLevel("org.apache.tomcat.connector.http11"));
+
+        // ...but the excluded name itself is not reclaimed by a later sweep.
+        service.applyStandingRules(java.time.Instant.now());
+        assertTrue(overrides.get("org.apache.tomcat").isEmpty(), "still excluded after another sweep tick");
+        assertEquals(Level.INFO, adapter.effectiveLevel("org.apache.tomcat"));
+    }
+
+    @Test
+    void resetLevel_subPatternUnderALiveRule_excludesTheWholeSubtreePresentAndFuture() {
+        // See the note in the test above on why "org.apache" itself is
+        // deliberately left out of the fixture.
+        adapter.addKnownLogger("org.apache.tomcat");
+        adapter.addKnownLogger("org.apache.tomcat.connector");
+        service.setLevel("org.apache.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
+
+        var outcome = service.resetLevel("org.apache.tomcat.*");
+
+        assertEquals(List.of("org.apache.*"), outcome.excludedFrom());
+        assertEquals(Set.of("org.apache.tomcat", "org.apache.tomcat.connector"), Set.copyOf(outcome.revertedNames()));
+        assertTrue(overrides.get("org.apache.tomcat").isEmpty());
+        assertTrue(overrides.get("org.apache.tomcat.connector").isEmpty());
+
+        // A brand-new logger under the excluded subtree does NOT get swept
+        // in -- the whole branch was wiped out for good.
+        adapter.addKnownLogger("org.apache.tomcat.connector.http11");
+        service.applyStandingRules(java.time.Instant.now());
+        assertTrue(overrides.get("org.apache.tomcat.connector.http11").isEmpty());
+        assertEquals(Level.INFO, adapter.effectiveLevel("org.apache.tomcat.connector.http11"));
+    }
+
+    @Test
+    void resetLevel_stickyRule_partialTarget_leftAloneWithoutIncludeSticky() {
+        adapter.addKnownLogger("org.apache.tomcat");
+        service.setLevel("org.apache.*", Level.DEBUG, SetLevelOptions.sticky().withConfirmed(true));
+
+        var outcome = service.resetLevel("org.apache.tomcat"); // includeSticky defaults to false
+
+        assertEquals(List.of("org.apache.tomcat"), outcome.skippedStickyNames());
+        assertTrue(outcome.revertedNames().isEmpty());
+        assertTrue(outcome.excludedFrom().isEmpty());
+        assertEquals(Level.DEBUG, adapter.effectiveLevel("org.apache.tomcat")); // untouched
+    }
+
+    @Test
+    void resetLevel_exclusion_doesNotSurviveARetireThenRecreateOfTheSamePattern() {
+        adapter.addKnownLogger("org.apache.tomcat");
+        service.setLevel("org.apache.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
+        service.resetLevel("org.apache.tomcat"); // carve out the exclusion
+
+        service.resetLevel("org.apache.*"); // full retirement -- the old rule, and its exclusion, are both gone
+        service.setLevel("org.apache.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true)); // fresh rule
+
+        assertEquals(Level.DEBUG, adapter.effectiveLevel("org.apache.tomcat"),
+                "a brand-new rule instance reapplies to everything it currently matches, exclusions included");
     }
 
     // --- capability checks ---------------------------------------------------------------------
@@ -688,8 +777,12 @@ class LevelControlServiceTest {
         adapter.addKnownLogger("com.acme.Raced");
         service.setLevel("com.acme.Raced", Level.DEBUG, SetLevelOptions.sticky());
 
-        // A control-plane resetLevel lands while the sweep is reading this logger.
-        adapter.runOnEffectiveLevel("com.acme.Raced", () -> service.resetLevel("com.acme.Raced"));
+        // A control-plane resetLevel lands while the sweep is reading this
+        // logger -- includeSticky=true since this override is STICKY-tier
+        // and the new default otherwise leaves it untouched (doc/specs/
+        // reset-command-surface.md), which is a different concern from what
+        // this test is actually exercising.
+        adapter.runOnEffectiveLevel("com.acme.Raced", () -> service.resetLevel("com.acme.Raced", true));
 
         int reapplied = service.verifyAndReapply(java.time.Instant.now());
 

@@ -429,7 +429,9 @@ duplication — matching the M1 bar this slice exists to complete: "a read-only 
 you can hand to support and a customer without approval anxiety," now genuinely surviving the
 restart the WildFly problem (§3) was named after.
 
-> **Superseded (planned).** The sentence above describes sticky removal as verified for this
-> slice's exit criterion — a plain reset with no protection. Top-level §18.9 (tracked as
-> [issue #42](https://github.com/ddeuchert/logaperture/issues/42)) plans to change the default:
-> reset skips `--sticky`-tier overrides unless a new `--ignore-sticky` flag is passed.
+> **Superseded (shipped).** The sentence above describes sticky removal as verified for this
+> slice's exit criterion — a plain reset with no protection, accurate for what that slice
+> tested at the time. [`reset-command-surface.md`](reset-command-surface.md) (issue #42)
+> changed the default: every reset form now skips a `STICKY`-tier override or standing rule
+> unless `--include-sticky` is passed — including a single, fully-named target (naming it
+> exactly is not itself consent).

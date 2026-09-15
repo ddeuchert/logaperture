@@ -56,6 +56,16 @@ final class PatternRuleRegistry {
         return registry.removeIfCurrent(pattern, expected);
     }
 
+    /**
+     * Atomic compare-and-swap for an in-place update — a partial {@code
+     * resetLevel} carving a new exclusion into an existing rule (doc/specs/
+     * reset-command-surface.md "Partial reset — scoped exclusions") rather
+     * than replacing it with an unrelated new one via {@link #put}.
+     */
+    boolean replaceIfCurrent(String pattern, PatternRule expected, PatternRule replacement) {
+        return registry.replaceIfCurrent(pattern, expected, replacement);
+    }
+
     /** A point-in-time snapshot, safe to iterate while the registry is concurrently mutated. */
     Map<String, PatternRule> all() {
         return registry.all();

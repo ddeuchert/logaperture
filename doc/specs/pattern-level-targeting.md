@@ -196,6 +196,18 @@ by recomputing which loggers currently match:
   override (see Precedence) is left alone — it was never covered by this rule in the first
   place.
 
+> **Superseded (shipped).** [`reset-command-surface.md`](reset-command-surface.md) (issue
+> #42) generalizes this: exact-string lookup against `PatternRuleRegistry` (Decision #5
+> above) is still exactly how a *full* retirement is recognized — `target` equal to the
+> rule's own pattern string — but a **narrower** target (an exact name, or a sub-pattern
+> that isn't itself a tracked rule) is no longer a no-op. It carves `target` out of
+> whichever rule currently covers it instead: `PatternRule` gains an `exclusions` list
+> (same grammar as its own pattern), and the sweep (below) skips a logger any active rule's
+> `exclusions` covers. Exclusions belong to the rule instance, not the pattern string — a
+> full retire-then-recreate starts clean. See that spec's "Partial reset — scoped
+> exclusions" for the full mechanism, including the `--include-sticky` interaction and the
+> multi-rule-in-one-call case.
+
 ### `resetAll()`
 
 Unchanged in shape, expanded in effect: reverts every `LevelOverride` (as today) **and**
@@ -303,6 +315,9 @@ PatternRule {                                       — logaperture-api, new
     source: String             // "jmx" — same convention as LevelOverride
     tier: PersistenceTier
     expiresAt: Instant?        // non-null iff tier == FOR, same rule as LevelOverride
+    exclusions: List<String>   // NEW (issue #42) — names/sub-patterns carved out of this
+                                //   rule instance by a partial resetLevel; empty until
+                                //   then, never survives a retire-then-recreate
 }
 
 LevelOverride {                                      — logaperture-api, changed
@@ -418,6 +433,13 @@ Extends the existing sweep tick (`NoneContainer`/`WildFlyContainer`'s `sweepTick
 This is architecturally the same "reuse the sweep thread that already exists" the roadmap
 promised — no new thread, no new scheduling primitive.
 
+> **Superseded (shipped).** Step 2's "find the first (newest) active rule that matches it"
+> gained one more condition: [`reset-command-surface.md`](reset-command-surface.md) (issue
+> #42) also skips a rule whose `exclusions` cover the logger name — the same matcher,
+> compiled once per rule per sweep tick alongside the rule's own pattern, run as a negative
+> filter instead of a positive one. A logger excluded from a rule is otherwise indistinguishable
+> from any other uncovered logger at sweep time; the exclusion is what keeps it uncovered.
+
 ## Persistence — state file schema
 
 `schemaVersion` 3 → 4, additive (3, not 1, since `handler-floor-control.md`'s `handlerOverrides:`
@@ -444,6 +466,12 @@ patternRules:
     tier: STICKY
     expiresAt: null
 ```
+
+> **Superseded (shipped).** [`reset-command-surface.md`](reset-command-surface.md) (issue
+> #42) bumps this to `schemaVersion: 5`, adding an `exclusions: []` flow-sequence field to
+> each `patternRules` record (a schema-version-&lt;5 record with no `exclusions:` line reads
+> as an empty list — the same tolerant-read convention this file's own `patternRules`
+> section got from a pre-4 file).
 
 A schema-version-1/2/3 file (no `patternRules` key, `includeChildren` instead of
 `originPattern` on each override) is still readable: `FileStateStore` treats a missing
@@ -522,7 +550,7 @@ All ten numbered decisions this spec's text above assumes answers to are settled
 | 2a | How a JMX caller reads "not yet confirmed" | `ConfirmationRequiredException`, same as `CapabilityDeniedException` — no return-value alternative |
 | 3 | Confirmation applies at every tier, including `--session` | Yes |
 | 4 | Non-interactive invocation without `--yes` | Fails loudly, exit 2 |
-| 5 | Reset-by-pattern matches by exact string, not by re-resolving | Yes |
+| 5 | Reset-by-pattern matches by exact string, not by re-resolving | Yes — still true for a *full* retirement; superseded (shipped) for a narrower target, see "Sweep integration" |
 | 6 | `resetAll` also retires every standing rule | Yes |
 | 7 | `SetLevelResult` becomes list-shaped (`overrides`, not `override`) | Yes, breaking, accepted pre-1.0 |
 | 8 | A standing rule can be set at any tier (`SESSION`/`FOR`/`STICKY`) | Yes |

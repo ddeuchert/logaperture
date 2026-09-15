@@ -19,38 +19,59 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * {@code resetLevel}'s result — what actually happened, reported by the
- * server that did the reverting rather than reconstructed by a caller
- * diffing two point-in-time reads of {@code listLoggers} around a {@code
- * void} call (a code-review finding against the original slice: that diff
- * was racy against concurrent mutation, and had no way to tell "no
- * standing rule existed under that exact string" from "the rule existed
- * but matched nothing").
+ * What a reset operation actually did, reported by the server that did the
+ * reverting rather than reconstructed by a caller diffing two point-in-time
+ * reads of {@code listLoggers} around a {@code void} call (a code-review
+ * finding against the original slice: that diff was racy against concurrent
+ * mutation, and had no way to tell "no standing rule existed under that
+ * exact string" from "the rule existed but matched nothing"). Shared by
+ * every reset-shaped operation (doc/specs/reset-command-surface.md
+ * "Operations") — {@code resetLevel}, {@code resetHandler}, {@code
+ * resetAllLoggers}, {@code resetAllHandlers}, and {@code resetAll} all
+ * return this same shape; a field that doesn't apply to a given operation
+ * (e.g. {@code retiredPatterns} for a handler reset) is simply empty.
  *
- * @param revertedLoggerNames the loggers whose override was actually
- *                            reverted by this call — for an exact-name
- *                            target, at most one entry (itself, if it
- *                            carried an override); for a pattern target,
- *                            every logger whose override traced back to
- *                            that pattern's standing rule; empty if there
- *                            was nothing to revert
- * @param patternRuleRetired  {@code true} only when {@code target} was a
- *                            pattern and a standing rule was tracked under
- *                            that exact pattern string and has now been
- *                            retired; always {@code false} for an
- *                            exact-name target, and for a pattern with no
- *                            rule tracked under it (a no-op, not an error)
+ * @param revertedNames    the loggers or handlers whose override was
+ *                         actually reverted by this call
+ * @param retiredPatterns  pattern strings of any standing rule(s) fully
+ *                         retired by this call — a single {@code
+ *                         resetLevel(target, ...)} can retire more than one
+ *                         rule when {@code target} spans loggers currently
+ *                         owned by different active rules (doc/specs/
+ *                         reset-command-surface.md "Partial reset — scoped
+ *                         exclusions"); always empty for a non-pattern
+ *                         operation
+ * @param excludedFrom     pattern strings of any standing rule(s) this call
+ *                         carved {@code target} out of without retiring the
+ *                         whole rule; always empty for a non-pattern
+ *                         operation, or when {@code target} exhausted a
+ *                         rule's entire coverage (that rule is reported in
+ *                         {@code retiredPatterns} instead)
+ * @param skippedStickyNames names that would otherwise have been reverted
+ *                         but were left alone because they (or the standing
+ *                         rule governing them) are {@code STICKY}-tier and
+ *                         the call did not pass {@code includeSticky}
  */
-public record ResetOutcome(List<String> revertedLoggerNames, boolean patternRuleRetired) {
+public record ResetOutcome(
+        List<String> revertedNames,
+        List<String> retiredPatterns,
+        List<String> excludedFrom,
+        List<String> skippedStickyNames) {
 
     public ResetOutcome {
-        Objects.requireNonNull(revertedLoggerNames, "revertedLoggerNames");
-        revertedLoggerNames = List.copyOf(revertedLoggerNames);
+        Objects.requireNonNull(revertedNames, "revertedNames");
+        Objects.requireNonNull(retiredPatterns, "retiredPatterns");
+        Objects.requireNonNull(excludedFrom, "excludedFrom");
+        Objects.requireNonNull(skippedStickyNames, "skippedStickyNames");
+        revertedNames = List.copyOf(revertedNames);
+        retiredPatterns = List.copyOf(retiredPatterns);
+        excludedFrom = List.copyOf(excludedFrom);
+        skippedStickyNames = List.copyOf(skippedStickyNames);
     }
 
-    private static final ResetOutcome NOTHING_RESET = new ResetOutcome(List.of(), false);
+    private static final ResetOutcome NOTHING_RESET = new ResetOutcome(List.of(), List.of(), List.of(), List.of());
 
-    /** No override existed to revert and no standing rule was retired. */
+    /** Nothing was overridden, no standing rule was touched, and nothing was skipped for being sticky. */
     public static ResetOutcome nothingReset() {
         return NOTHING_RESET;
     }

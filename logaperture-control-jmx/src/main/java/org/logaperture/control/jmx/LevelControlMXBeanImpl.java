@@ -27,6 +27,7 @@ import org.logaperture.core.LevelControlOperations;
 import org.logaperture.core.TopOperations;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -77,13 +78,63 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
-    public ResetOutcomeData resetLevel(String loggerName) {
-        return ResetOutcomeData.from(operations.resetLevel(loggerName));
+    public ResetOutcomeData resetLevel(String target) {
+        return resetLevel(target, false);
     }
 
     @Override
-    public void resetAll() {
-        operations.resetAll();
+    public ResetOutcomeData resetLevel(String target, boolean includeSticky) {
+        return resetLevel(target, includeSticky, null);
+    }
+
+    @Override
+    public ResetOutcomeData resetLevel(String target, boolean includeSticky, String reason) {
+        return ResetOutcomeData.from(operations.resetLevel(target, includeSticky, reason));
+    }
+
+    @Override
+    public ResetOutcomeData resetAll() {
+        return resetAll(false);
+    }
+
+    /**
+     * Composed here from the two narrow interfaces this bean already holds
+     * — {@code logctl reset --all}'s both-namespaces meaning (doc/specs/
+     * reset-command-surface.md, Decision #1) can't live on either
+     * interface alone, and this bean deliberately depends on neither
+     * concrete {@code AggregateLevelControl} type (see the class javadoc).
+     */
+    @Override
+    public ResetOutcomeData resetAll(boolean includeSticky) {
+        var loggers = operations.resetAllLoggers(includeSticky);
+        var handlers = handlerOperations.resetAllHandlers(includeSticky);
+        return new ResetOutcomeData(
+                concat(loggers.revertedNames(), handlers.revertedNames()),
+                loggers.retiredPatterns(),
+                loggers.excludedFrom(),
+                concat(loggers.skippedStickyNames(), handlers.skippedStickyNames()));
+    }
+
+    @Override
+    public ResetOutcomeData resetAllLoggers(boolean includeSticky) {
+        return ResetOutcomeData.from(operations.resetAllLoggers(includeSticky));
+    }
+
+    @Override
+    public ResetOutcomeData resetAllHandlers(boolean includeSticky) {
+        return ResetOutcomeData.from(handlerOperations.resetAllHandlers(includeSticky));
+    }
+
+    private static List<String> concat(List<String> a, List<String> b) {
+        if (a.isEmpty()) {
+            return b;
+        }
+        if (b.isEmpty()) {
+            return a;
+        }
+        List<String> combined = new ArrayList<>(a);
+        combined.addAll(b);
+        return List.copyOf(combined);
     }
 
     @Override
@@ -105,8 +156,13 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
-    public void resetHandler(String handlerRef) {
-        handlerOperations.resetHandler(new HandlerRef(handlerRef));
+    public ResetOutcomeData resetHandler(String handlerRef) {
+        return resetHandler(handlerRef, false);
+    }
+
+    @Override
+    public ResetOutcomeData resetHandler(String handlerRef, boolean includeSticky) {
+        return ResetOutcomeData.from(handlerOperations.resetHandler(new HandlerRef(handlerRef), includeSticky));
     }
 
     @Override

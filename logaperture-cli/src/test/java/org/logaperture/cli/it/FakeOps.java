@@ -120,19 +120,35 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     }
 
     @Override
-    public synchronized ResetOutcome resetLevel(String loggerName) {
-        if (state.containsKey(loggerName)) {
-            state.put(loggerName, baseline(loggerName));
-            return new ResetOutcome(List.of(loggerName), false);
+    public synchronized ResetOutcome resetLevel(String loggerName, boolean includeSticky, String reason) {
+        LoggerInfo existing = state.get(loggerName);
+        if (existing == null || !existing.overrideActive()) {
+            return ResetOutcome.nothingReset();
         }
-        return ResetOutcome.nothingReset();
+        if (existing.overrideTier() == PersistenceTier.STICKY && !includeSticky) {
+            return new ResetOutcome(List.of(), List.of(), List.of(), List.of(loggerName));
+        }
+        state.put(loggerName, baseline(loggerName));
+        return new ResetOutcome(List.of(loggerName), List.of(), List.of(), List.of());
     }
 
     @Override
-    public synchronized void resetAll() {
+    public synchronized ResetOutcome resetAllLoggers(boolean includeSticky) {
+        List<String> reverted = new ArrayList<>();
+        List<String> skipped = new ArrayList<>();
         for (String name : List.copyOf(state.keySet())) {
+            LoggerInfo info = state.get(name);
+            if (!info.overrideActive()) {
+                continue;
+            }
+            if (info.overrideTier() == PersistenceTier.STICKY && !includeSticky) {
+                skipped.add(name);
+                continue;
+            }
             state.put(name, baseline(name));
+            reverted.add(name);
         }
+        return new ResetOutcome(reverted, List.of(), List.of(), skipped);
     }
 
     @Override
@@ -159,9 +175,34 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     }
 
     @Override
-    public synchronized void resetHandler(HandlerRef ref) {
+    public synchronized ResetOutcome resetHandler(HandlerRef ref, boolean includeSticky) {
+        HandlerLevelOverride existing = handlerOverrides.get(ref);
+        if (existing == null) {
+            return ResetOutcome.nothingReset();
+        }
+        if (existing.tier() == PersistenceTier.STICKY && !includeSticky) {
+            return new ResetOutcome(List.of(), List.of(), List.of(), List.of(ref.value()));
+        }
         handlerBaselines.remove(ref);
         handlerOverrides.remove(ref);
+        return new ResetOutcome(List.of(ref.value()), List.of(), List.of(), List.of());
+    }
+
+    @Override
+    public synchronized ResetOutcome resetAllHandlers(boolean includeSticky) {
+        List<String> reverted = new ArrayList<>();
+        List<String> skipped = new ArrayList<>();
+        for (HandlerRef ref : List.copyOf(handlerOverrides.keySet())) {
+            HandlerLevelOverride existing = handlerOverrides.get(ref);
+            if (existing.tier() == PersistenceTier.STICKY && !includeSticky) {
+                skipped.add(ref.value());
+                continue;
+            }
+            handlerBaselines.remove(ref);
+            handlerOverrides.remove(ref);
+            reverted.add(ref.value());
+        }
+        return new ResetOutcome(reverted, List.of(), List.of(), skipped);
     }
 
     @Override

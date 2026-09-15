@@ -16,6 +16,8 @@
 package org.logaperture.api;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A standing rule — doc/specs/pattern-level-targeting.md: a segment-anchored
@@ -25,23 +27,31 @@ import java.time.Instant;
  * applying it to a matched logger produces that logger's own independent
  * {@link LevelOverride}, tagged via {@link LevelOverride#originPattern()}.
  *
- * @param pattern   the segment-anchored pattern, verbatim (doc/specs/
- *                  level-control.md's grammar)
- * @param level     the level every currently- and future-matching logger
- *                  gets
- * @param reason    human-readable justification; {@code null} if none was
- *                  given
- * @param appliedAt when this rule was created or last replaced — the newest
- *                  {@code appliedAt} among rules matching a given logger
- *                  wins (doc/specs/pattern-level-targeting.md "Precedence")
- * @param source    the control surface that created it (e.g. {@code "jmx"})
- * @param tier      the durability tier this rule was set at — same
- *                  vocabulary as {@link LevelOverride#tier()}, reused
- *                  as-is rather than inventing pattern-specific durability
- *                  language
- * @param expiresAt the absolute deadline this rule (and every override it
- *                  produced) reverts and retires at; {@code null} unless
- *                  {@code tier} is {@link PersistenceTier#FOR}
+ * @param pattern    the segment-anchored pattern, verbatim (doc/specs/
+ *                   level-control.md's grammar)
+ * @param level      the level every currently- and future-matching logger
+ *                   gets
+ * @param reason     human-readable justification; {@code null} if none was
+ *                   given
+ * @param appliedAt  when this rule was created or last replaced — the newest
+ *                   {@code appliedAt} among rules matching a given logger
+ *                   wins (doc/specs/pattern-level-targeting.md "Precedence")
+ * @param source     the control surface that created it (e.g. {@code "jmx"})
+ * @param tier       the durability tier this rule was set at — same
+ *                   vocabulary as {@link LevelOverride#tier()}, reused
+ *                   as-is rather than inventing pattern-specific durability
+ *                   language
+ * @param expiresAt  the absolute deadline this rule (and every override it
+ *                   produced) reverts and retires at; {@code null} unless
+ *                   {@code tier} is {@link PersistenceTier#FOR}
+ * @param exclusions names or sub-patterns (same grammar as {@code pattern})
+ *                   carved out of this rule's coverage by a partial {@code
+ *                   resetLevel} (doc/specs/reset-command-surface.md
+ *                   "Partial reset — scoped exclusions") — belongs to this
+ *                   rule instance, not the pattern string: a full retire
+ *                   and later re-apply of the same pattern starts with an
+ *                   empty list again. Never {@code null}; empty for a rule
+ *                   nothing has been carved out of yet
  */
 public record PatternRule(
         String pattern,
@@ -50,7 +60,8 @@ public record PatternRule(
         Instant appliedAt,
         String source,
         PersistenceTier tier,
-        Instant expiresAt) {
+        Instant expiresAt,
+        List<String> exclusions) {
 
     public PatternRule {
         if (pattern == null || pattern.isEmpty()) {
@@ -75,5 +86,29 @@ public record PatternRule(
         } else if (expiresAt != null) {
             throw new IllegalArgumentException("expiresAt must be null unless tier is FOR");
         }
+        exclusions = exclusions == null ? List.of() : List.copyOf(exclusions);
+    }
+
+    /** Convenience constructor for a freshly-created rule — no exclusions yet. */
+    public PatternRule(String pattern, Level level, String reason, Instant appliedAt, String source,
+            PersistenceTier tier, Instant expiresAt) {
+        this(pattern, level, reason, appliedAt, source, tier, expiresAt, List.of());
+    }
+
+    /**
+     * A copy of this rule with {@code target} added to its exclusion set —
+     * idempotent (adding an already-excluded target is a no-op, not a
+     * duplicate entry), and otherwise identical to this rule (same {@code
+     * appliedAt}, since an exclusion is a carve-out of existing coverage,
+     * not a new grant of it — "Precedence" (doc/specs/
+     * pattern-level-targeting.md) is unaffected).
+     */
+    public PatternRule withExclusion(String target) {
+        if (exclusions.contains(target)) {
+            return this;
+        }
+        List<String> updated = new ArrayList<>(exclusions);
+        updated.add(target);
+        return new PatternRule(pattern, level, reason, appliedAt, source, tier, expiresAt, updated);
     }
 }

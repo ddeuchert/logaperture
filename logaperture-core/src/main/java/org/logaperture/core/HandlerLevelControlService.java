@@ -22,6 +22,7 @@ import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.PersistenceTier;
+import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
@@ -388,31 +389,55 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     }
 
     @Override
-    public void resetHandler(HandlerRef ref) {
+    public ResetOutcome resetHandler(HandlerRef ref, boolean includeSticky) {
         Objects.requireNonNull(ref, "ref");
         Optional<HandlerLevelOverride> existing = overrides.get(ref);
         if (existing.isEmpty()) {
-            return; // no-op, not an error -- matches resetLevel
+            return ResetOutcome.nothingReset(); // no-op, not an error -- matches resetLevel
+        }
+        if (existing.get().tier() == PersistenceTier.STICKY && !includeSticky) {
+            // Left alone, not capability-checked -- nothing is attempted
+            // against it without the flag (doc/specs/
+            // reset-command-surface.md "Capability and audit").
+            return new ResetOutcome(List.of(), List.of(), List.of(), List.of(ref.value()));
         }
         // Simplification for this slice, matching LevelControlService.resetLevel:
         // every reset requires HANDLER_LOWER, regardless of whether reverting
         // to baseline happens to raise or lower this particular handler.
         requireCapability(Capability.HANDLER_LOWER);
         applyReset(ref, existing.get(), source);
+        return new ResetOutcome(List.of(ref.value()), List.of(), List.of(), List.of());
     }
 
     /**
-     * Reverts every active handler override — the {@link
-     * LevelControlService#resetAll} counterpart for handlers, called by
-     * {@link AggregateLevelControl#resetAll} alongside the logger reset so
-     * {@code logctl reset --all} covers both (doc/specs/
-     * handler-floor-control.md "The operation").
+     * {@code logctl reset handlers} (doc/specs/reset-command-surface.md) —
+     * the {@link LevelControlService#resetAllLoggers} counterpart for
+     * handlers, and (composed with it at the MXBean layer, not here) what
+     * {@code logctl reset --all} covers on the handler side.
      */
-    public void resetAllHandlers() {
+    @Override
+    public ResetOutcome resetAllHandlers(boolean includeSticky) {
+        // Unconditional, matching resetAllLoggers -- a broad reset checks
+        // capability regardless of whether anything is currently active.
         requireCapability(Capability.HANDLER_LOWER);
+        List<String> reverted = new ArrayList<>();
+        List<String> skippedSticky = new ArrayList<>();
         for (Map.Entry<HandlerRef, HandlerLevelOverride> entry : overrides.all().entrySet()) {
-            applyReset(entry.getKey(), entry.getValue(), source);
+            if (entry.getValue().tier() == PersistenceTier.STICKY && !includeSticky) {
+                skippedSticky.add(entry.getKey().value());
+            } else {
+                reverted.add(entry.getKey().value());
+            }
         }
+        if (reverted.isEmpty()) {
+            return new ResetOutcome(List.of(), List.of(), List.of(), skippedSticky);
+        }
+        for (Map.Entry<HandlerRef, HandlerLevelOverride> entry : overrides.all().entrySet()) {
+            if (reverted.contains(entry.getKey().value())) {
+                applyReset(entry.getKey(), entry.getValue(), source);
+            }
+        }
+        return new ResetOutcome(reverted, List.of(), List.of(), skippedSticky);
     }
 
     /**

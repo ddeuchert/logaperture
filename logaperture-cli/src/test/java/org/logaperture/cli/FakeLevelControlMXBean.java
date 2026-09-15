@@ -32,13 +32,15 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
 
     final List<String> listLoggersFilters = new ArrayList<>();
     final List<Object[]> setLevelCalls = new ArrayList<>();
-    final List<String> resetLevelCalls = new ArrayList<>();
+    final List<Object[]> resetLevelCalls = new ArrayList<>();
     final List<Object[]> setHandlerLevelCalls = new ArrayList<>();
     final List<Object[]> setHandlerAutoCalls = new ArrayList<>();
-    final List<String> resetHandlerCalls = new ArrayList<>();
+    final List<Object[]> resetHandlerCalls = new ArrayList<>();
     /** Names dropped from {@link #loggers} when {@link #resetLevel} clears them — a "Known" but not "Live" logger. */
     final List<String> forgetOnReset = new ArrayList<>();
     int resetAllCalls;
+    int resetAllLoggersCalls;
+    int resetAllHandlersCalls;
     /** Whether a pattern {@link #resetLevel} should report a standing rule was tracked and retired. Defaults to
      *  the common case tests wire up; set {@code false} to exercise the "no rule existed" no-op path. */
     boolean patternRuleTrackedForReset = true;
@@ -127,44 +129,86 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     }
 
     @Override
-    public ResetOutcomeData resetLevel(String target) {
-        resetLevelCalls.add(target);
+    public ResetOutcomeData resetLevel(String target, boolean includeSticky, String reason) {
+        resetLevelCalls.add(new Object[] {target, includeSticky, reason});
         maybeThrow();
         if (target.indexOf('*') >= 0) {
             if (!patternRuleTrackedForReset) {
-                return new ResetOutcomeData(List.of(), false);
+                return new ResetOutcomeData(List.of(), List.of(), List.of(), List.of());
             }
             // Simulates a real pattern reset's effect (doc/specs/
             // pattern-level-targeting.md) well enough for CommandsTest's
-            // before/after rendering: every currently-active match reverts
-            // to its configured (baseline) level, everything else is
-            // untouched.
+            // before/after rendering: every currently-active, non-sticky
+            // (unless includeSticky) match reverts to its configured
+            // (baseline) level, everything else is untouched.
             List<LoggerInfoData> reverted = new ArrayList<>();
             List<String> revertedNames = new ArrayList<>();
+            List<String> skippedSticky = new ArrayList<>();
             for (LoggerInfoData row : loggers) {
-                if (matchesFilter(target, row.getName()) && row.isOverrideActive()) {
+                boolean sticky = "STICKY".equals(row.getTier());
+                if (matchesFilter(target, row.getName()) && row.isOverrideActive() && (includeSticky || !sticky)) {
                     String baseline = row.getConfiguredLevel() != null ? row.getConfiguredLevel() : "INFO";
                     reverted.add(new LoggerInfoData(row.getName(), row.getConfiguredLevel(), baseline,
-                            false, null, null, null, null, row.getContext()));
+                            false, null, null, null, null, row.getContext(), false));
                     revertedNames.add(row.getName());
                 } else {
+                    if (matchesFilter(target, row.getName()) && row.isOverrideActive() && sticky) {
+                        skippedSticky.add(row.getName());
+                    }
                     reverted.add(row);
                 }
             }
             loggers = reverted;
-            return new ResetOutcomeData(revertedNames, true);
+            // A real STICKY rule is either wholly retired or wholly left
+            // alone, never partially (doc/specs/reset-command-surface.md) --
+            // this simplified fake mirrors that by treating any sticky skip
+            // as "the rule itself was left alone" rather than modeling a
+            // separate per-rule tier.
+            List<String> retiredPatterns = skippedSticky.isEmpty() ? List.of(target) : List.of();
+            return new ResetOutcomeData(revertedNames, retiredPatterns, List.of(), skippedSticky);
+        }
+        LoggerInfoData existing = loggers.stream().filter(row -> row.getName().equals(target)).findFirst().orElse(null);
+        if (existing == null || !existing.isOverrideActive()) {
+            return new ResetOutcomeData(List.of(), List.of(), List.of(), List.of());
+        }
+        if ("STICKY".equals(existing.getTier()) && !includeSticky) {
+            return new ResetOutcomeData(List.of(), List.of(), List.of(), List.of(target));
         }
         if (forgetOnReset.contains(target)) {
             loggers.removeIf(logger -> logger.getName().equals(target));
-            return new ResetOutcomeData(List.of(target), false);
+            return new ResetOutcomeData(List.of(target), List.of(), List.of(), List.of());
         }
-        return new ResetOutcomeData(List.of(), false);
+        String baseline = existing.getConfiguredLevel() != null ? existing.getConfiguredLevel() : "INFO";
+        List<LoggerInfoData> updated = new ArrayList<>();
+        for (LoggerInfoData row : loggers) {
+            updated.add(row.getName().equals(target)
+                    ? new LoggerInfoData(row.getName(), row.getConfiguredLevel(), baseline, false, null, null,
+                            null, null, row.getContext(), false)
+                    : row);
+        }
+        loggers = updated;
+        return new ResetOutcomeData(List.of(target), List.of(), List.of(), List.of());
     }
 
     @Override
-    public void resetAll() {
+    public ResetOutcomeData resetAll(boolean includeSticky) {
         resetAllCalls++;
         maybeThrow();
+        return new ResetOutcomeData(List.of(), List.of(), List.of(), List.of());
+    }
+
+    @Override
+    public ResetOutcomeData resetAllLoggers(boolean includeSticky) {
+        resetAllLoggersCalls++;
+        maybeThrow();
+        return new ResetOutcomeData(List.of(), List.of(), List.of(), List.of());
+    }
+
+    @Override
+    public ResetOutcomeData resetAllHandlers(boolean includeSticky) {
+        resetAllHandlersCalls++;
+        maybeThrow();
+        return new ResetOutcomeData(List.of(), List.of(), List.of(), List.of());
     }
 
     @Override
@@ -183,9 +227,10 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     }
 
     @Override
-    public void resetHandler(String handlerRef) {
-        resetHandlerCalls.add(handlerRef);
+    public ResetOutcomeData resetHandler(String handlerRef, boolean includeSticky) {
+        resetHandlerCalls.add(new Object[] {handlerRef, includeSticky});
         maybeThrow();
+        return new ResetOutcomeData(List.of(handlerRef), List.of(), List.of(), List.of());
     }
 
     @Override

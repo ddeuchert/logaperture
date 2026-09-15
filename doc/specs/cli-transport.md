@@ -25,8 +25,10 @@ After this feature, the user will be able to:
   `logctl set com.acme.batch TRACE for 2h --reason INC-123`.
 - See what is currently overridden, in which tier, and when each one reverts:
   `logctl status`.
-- Clear an override: `logctl reset com.acme.batch` for one logger, `logctl reset --all`
-  to return everything to how the application configured it.
+- Clear an override: `logctl reset logger com.acme.batch` for one logger (or every logger
+  matching a glob), `logctl reset loggers`/`logctl reset handlers` for one namespace at a
+  time, or `logctl reset --all` to return everything to how the application configured it
+  — see [`reset-command-surface.md`](reset-command-surface.md).
 - Get machine-readable output for any command with `--json`.
 - Rely on the command only ever succeeding for someone who could already attach a
   debugger to that JVM — authorization is the operating system's, not a password.
@@ -59,6 +61,14 @@ code to the agent beyond a single marker system property (below).
   - `logctl status` &rarr; `listLoggers`, pre-filtered to active overrides
   - `logctl reset <logger>` &rarr; `resetLevel`
   - `logctl reset --all` &rarr; `resetAll`
+
+  > **Superseded (shipped).** [`reset-command-surface.md`](reset-command-surface.md) (issue
+  > #42) splits this into `logctl reset logger <target>` (glob-capable, reusing #41's
+  > matcher), `logctl reset loggers`, `logctl reset handler <name>` (replacing `logctl
+  > handler <name> reset`), `logctl reset handlers`, and `logctl reset --all` — every form
+  > taking `--include-sticky`, which changes the default from "revert regardless of tier"
+  > to "leave a `STICKY` override or standing rule alone unless told otherwise." The bare
+  > `logctl reset <logger>` form above is retired, not kept as a synonym.
 - The duration grammar (`30m`, `2h`, `90s`, `1d`) and tier resolution, including the
   4-hour default for a bare `logctl debug` (see below — this supersedes §14.5's original
   15-minute figure).
@@ -77,8 +87,8 @@ code to the agent beyond a single marker system property (below).
 - **`logctl undo`** (§14.5). "Revert the last change" needs the control surface to expose
   either recent audit history or a dedicated undo operation — neither exists yet. The
   audit record already carries the previous-value field such an operation would need
-  (Feature 1, §9.7); wiring it to a command is its own slice. `logctl reset <logger>` is
-  the escape hatch in the meantime (it reverts to baseline, not to the previous override
+  (Feature 1, §9.7); wiring it to a command is its own slice. `logctl reset logger <name>`
+  is the escape hatch in the meantime (it reverts to baseline, not to the previous override
   value — that's the difference `undo` would close).
 - **`logctl quiet` / `logctl loud` / `logctl new`** (§14.5). These drive rule packs and
   baseline modes that don't exist until Feature 3 / M4.
@@ -92,13 +102,8 @@ code to the agent beyond a single marker system property (below).
   symmetry that also retires the rule, one audit record per matched logger, a capability
   check per match) are still open — see §18.7. Until it lands, the workflow is `logctl
   levels *.infinispan` to find the category, then `set` on the resolved name.
-- **Restructuring `reset` into `reset logger`/`reset loggers`/`reset handler`/`reset
-  handlers`, plus an `--ignore-sticky` flag**, top-level §18.9; tracked as
-  [#42](https://github.com/ddeuchert/logaperture/issues/42), pulled forward to alpha-2.
-  Splits today's `reset <logger>` / `reset --all` / `handler <name> reset` into
-  namespace-scoped forms (a deliberate breaking rename of the last one) and changes
-  reset's default to skip `--sticky`-tier overrides unless `--ignore-sticky` is passed.
-  The logger form's glob support is #41's matcher reused, not a second one.
+- ~~**Restructuring `reset`...**~~ Shipped — see the "Superseded (shipped)" note above and
+  [`reset-command-surface.md`](reset-command-surface.md) (issue #42).
 - **Shell completion over live logger names** (§14.5). High-value, but it's a separate
   deliverable: completion scripts for bash/zsh/fish plus a fast name-only query path.
   `logctl levels --json` is the data source it will consume.
@@ -341,6 +346,16 @@ emits `{"name": …, "overrideActive": false, "wasOverridden": <bool>}` instead 
 `resetAll()`. This is Feature 1's "get me back to normal" escape hatch, so it does **not**
 prompt for confirmation — someone typing it at 3am wants it to just work. Prints
 `Reverted N override(s).`; `--json` emits `{"reverted": N}`.
+
+> **Superseded (shipped).** [`reset-command-surface.md`](reset-command-surface.md) (issue
+> #42) replaces this whole section: `resetLevel`/`resetAll` (and the new `resetAllLoggers`/
+> `resetAllHandlers`/`resetHandler`) return a `ResetOutcomeData` reporting exactly what was
+> reverted, retired, excluded, and skipped-for-being-sticky, so the CLI no longer needs the
+> before/after `listLoggers` diff this section describes — that diff was racy against
+> concurrent mutation (a code-review finding). The three-outcome rendering above still
+> applies to `logctl reset logger <name>` on a single exact name; the broad forms print a
+> `Reverted N <namespace> override(s).` summary instead of a per-name line. Still no
+> confirmation prompt on any reset form.
 
 ### The phone test, enforced
 

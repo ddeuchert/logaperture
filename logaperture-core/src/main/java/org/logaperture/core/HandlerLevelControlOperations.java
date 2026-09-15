@@ -19,6 +19,7 @@ import org.logaperture.api.HandlerInfo;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
+import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetHandlerLevelOptions;
 
 import java.util.List;
@@ -54,7 +55,40 @@ public interface HandlerLevelControlOperations {
      */
     Optional<HandlerLevelOverride> setHandlerAuto(HandlerRef ref, SetHandlerLevelOptions options);
 
-    void resetHandler(HandlerRef ref);
+    /**
+     * Equivalent to {@link #resetHandler(HandlerRef, boolean)
+     * resetHandler(ref, false)} — leaves a {@code STICKY}-tier override
+     * untouched (doc/specs/reset-command-surface.md's new default).
+     */
+    default ResetOutcome resetHandler(HandlerRef ref) {
+        return resetHandler(ref, false);
+    }
+
+    /**
+     * {@code logctl reset handler <name>} (doc/specs/
+     * reset-command-surface.md — replaces the retired {@code logctl
+     * handler <name> reset}).
+     *
+     * @param includeSticky {@code false} (the default) leaves a
+     *                      {@code STICKY}-tier override untouched;
+     *                      {@code true} reverts it like any other tier
+     * @return exactly what was reverted — see {@link ResetOutcome}
+     */
+    ResetOutcome resetHandler(HandlerRef ref, boolean includeSticky);
+
+    /** Equivalent to {@link #resetAllHandlers(boolean) resetAllHandlers(false)}. */
+    default ResetOutcome resetAllHandlers() {
+        return resetAllHandlers(false);
+    }
+
+    /**
+     * {@code logctl reset handlers} (doc/specs/reset-command-surface.md) —
+     * reverts every active handler override, loggers untouched.
+     *
+     * @param includeSticky see {@link #resetHandler(HandlerRef, boolean)}
+     * @return exactly what was reverted — see {@link ResetOutcome}
+     */
+    ResetOutcome resetAllHandlers(boolean includeSticky);
 
     /**
      * Every handler override currently active — the {@link

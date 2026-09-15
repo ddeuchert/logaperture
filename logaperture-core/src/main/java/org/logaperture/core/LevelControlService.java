@@ -123,7 +123,8 @@ public final class LevelControlService implements LevelControlOperations {
                     override.map(LevelOverride::source).orElse(null),
                     override.map(LevelOverride::reason).orElse(null),
                     override.map(LevelOverride::tier).orElse(null),
-                    override.map(LevelOverride::expiresAt).orElse(null)));
+                    override.map(LevelOverride::expiresAt).orElse(null),
+                    override.map(o -> o.originPattern() != null).orElse(false)));
         }
         return List.copyOf(result);
     }
@@ -319,76 +320,173 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     @Override
-    public ResetOutcome resetLevel(String target) {
+    public ResetOutcome resetLevel(String target, boolean includeSticky, String reason) {
         Objects.requireNonNull(target, "target");
-        if (NameFilter.isPattern(target)) {
-            return resetPattern(target);
+        boolean isPattern = NameFilter.isPattern(target);
+        if (isPattern) {
+            NameFilter.compile(target); // validated even though the exact-string branch below only does a lookup
+            Optional<PatternRule> exact = patternRules.get(target);
+            if (exact.isPresent()) {
+                return retireWholeRule(target, exact.get(), includeSticky, reason);
+            }
         }
-        Optional<LevelOverride> existing = overrides.get(target);
-        if (existing.isEmpty()) {
-            return ResetOutcome.nothingReset(); // no-op, not an error -- per spec
-        }
-        // Simplification for this slice: every reset requires LEVEL_LOWER,
-        // regardless of whether reverting to baseline happens to raise or
-        // lower the effective level for this particular logger. resetAll's
-        // "get me back to normal" framing is the dominant use case; the
-        // capability-direction nuance for a reset that's actually a raise
-        // (reverting a manual silence) is a known, documented gap -- not
-        // resolved by the spec, not addressed here.
-        requireCapability(Capability.LEVEL_LOWER);
-        applyReset(target, existing.get(), source, null);
-        changeListener.onChange(); // this logger's override just went away -- an AUTO handler tracking it needs to know
-        return new ResetOutcome(List.of(target), false);
+        return resetScopedTarget(target, isPattern, includeSticky, reason);
     }
 
     /**
-     * Retires a standing rule (doc/specs/pattern-level-targeting.md,
-     * Decision #5): looked up by {@code pattern}'s exact string against the
-     * tracked {@link PatternRule}, not by recomputing which loggers
-     * currently match. No-op, not an error, if no rule is tracked under
-     * that exact string -- same convention as resetting an unoverridden
-     * logger. Reports exactly which loggers it reverted rather than
-     * leaving the caller to reconstruct that by diffing two separate
-     * {@code listLoggers} reads around this call -- a code-review finding
-     * against the original slice: that diff was racy against concurrent
-     * mutation, and had no way to distinguish "no rule existed" from "the
-     * rule existed but matched nothing" (so the CLI always printed
-     * "Standing rule retired" even on a no-op).
+     * {@code target} is exactly a tracked rule's own pattern string —
+     * doc/specs/pattern-level-targeting.md's original, #41-shipped path
+     * (looked up by exact string, not by recomputing which loggers
+     * currently match), now gated by {@code includeSticky} and reporting
+     * the richer {@link ResetOutcome} shape doc/specs/
+     * reset-command-surface.md adds.
      */
-    private ResetOutcome resetPattern(String pattern) {
-        NameFilter.compile(pattern); // validated even though only an exact-string lookup follows
-        Optional<PatternRule> existing = patternRules.get(pattern);
-        if (existing.isEmpty()) {
-            return ResetOutcome.nothingReset();
+    private ResetOutcome retireWholeRule(String pattern, PatternRule rule, boolean includeSticky, String reason) {
+        if (rule.tier() == PersistenceTier.STICKY && !includeSticky) {
+            // Left alone entirely, not even capability-checked -- nothing is
+            // attempted against a sticky rule without the flag (doc/specs/
+            // reset-command-surface.md "Capability and audit"). Every
+            // logger this rule currently covers is reported skipped, since
+            // none of them get to revert either.
+            List<String> skipped = new ArrayList<>();
+            for (Map.Entry<String, LevelOverride> e : overrides.all().entrySet()) {
+                if (pattern.equals(e.getValue().originPattern())) {
+                    skipped.add(e.getKey());
+                }
+            }
+            return new ResetOutcome(List.of(), List.of(), List.of(), skipped);
         }
         requireCapability(Capability.LEVEL_LOWER);
-        PatternRule rule = existing.get();
         if (!patternRules.removeIfCurrent(pattern, rule)) {
             return ResetOutcome.nothingReset(); // a concurrent setLevel/resetLevel already replaced or removed it
         }
         List<String> reverted = new ArrayList<>();
         for (Map.Entry<String, LevelOverride> entry : overrides.all().entrySet()) {
             if (pattern.equals(entry.getValue().originPattern())) {
-                applyReset(entry.getKey(), entry.getValue(), source, null);
+                applyReset(entry.getKey(), entry.getValue(), source, reason);
                 reverted.add(entry.getKey());
             }
         }
         safePersist(() -> stateStore.removePatternRule(pattern));
         changeListener.onChange();
-        return new ResetOutcome(reverted, true);
+        return new ResetOutcome(reverted, List.of(pattern), List.of(), List.of());
+    }
+
+    /**
+     * {@code target} is an exact name, or a sub-pattern that isn't itself a
+     * tracked rule's own pattern string — the general case of doc/specs/
+     * reset-command-surface.md's "Partial reset — scoped exclusions":
+     * revert whatever is currently overridden within {@code target}'s
+     * scope, and for any rule that governs part of it, carve {@code
+     * target} into that rule's exclusion set rather than retiring the
+     * whole rule (full retirement is {@link #retireWholeRule}'s job,
+     * reached only when {@code target} literally equals the rule's own
+     * pattern string). {@code STICKY} filtering happens per logger, before
+     * grouping by rule — every override a given rule produces shares its
+     * tier by construction ({@link #applyPatternDerivedOverride}), so this
+     * needs no separate rule-level check the way {@link #retireWholeRule}
+     * does (that path has no override to read a tier from when the rule
+     * currently covers zero loggers).
+     */
+    private ResetOutcome resetScopedTarget(String target, boolean isPattern, boolean includeSticky, String reason) {
+        List<String> targetMatches = isPattern ? matchesFor(target) : List.of(target);
+
+        Map<String, List<String>> loggersByRule = new LinkedHashMap<>();
+        List<String> plain = new ArrayList<>();
+        List<String> skippedSticky = new ArrayList<>();
+        for (String name : targetMatches) {
+            Optional<LevelOverride> existing = overrides.get(name);
+            if (existing.isEmpty()) {
+                continue;
+            }
+            LevelOverride override = existing.get();
+            if (override.tier() == PersistenceTier.STICKY && !includeSticky) {
+                skippedSticky.add(name);
+                continue;
+            }
+            if (override.originPattern() != null) {
+                loggersByRule.computeIfAbsent(override.originPattern(), k -> new ArrayList<>()).add(name);
+            } else {
+                plain.add(name);
+            }
+        }
+        if (loggersByRule.isEmpty() && plain.isEmpty()) {
+            return new ResetOutcome(List.of(), List.of(), List.of(), skippedSticky);
+        }
+        requireCapability(Capability.LEVEL_LOWER);
+
+        List<String> reverted = new ArrayList<>();
+        for (String name : plain) {
+            overrides.get(name).ifPresent(o -> applyReset(name, o, source, reason));
+            reverted.add(name);
+        }
+
+        List<String> excludedFrom = new ArrayList<>();
+        for (Map.Entry<String, List<String>> entry : loggersByRule.entrySet()) {
+            String pattern = entry.getKey();
+            Optional<PatternRule> ruleOpt = patternRules.get(pattern);
+            if (ruleOpt.isEmpty()) {
+                continue; // concurrently retired between the scan above and now
+            }
+            PatternRule rule = ruleOpt.get();
+            for (String name : entry.getValue()) {
+                overrides.get(name).ifPresent(o -> applyReset(name, o, source, reason));
+            }
+            reverted.addAll(entry.getValue());
+
+            PatternRule updated = rule.withExclusion(target);
+            if (patternRules.replaceIfCurrent(pattern, rule, updated)) {
+                if (rule.tier() != PersistenceTier.SESSION) {
+                    safePersist(() -> stateStore.savePatternRule(updated));
+                }
+                excludedFrom.add(pattern);
+            }
+            // A lost replaceIfCurrent race (a concurrent setLevel/resetLevel
+            // already replaced the rule) leaves the reverts above standing
+            // -- they're real -- but records no exclusion for this call;
+            // the winner of that race is responsible for its own outcome.
+        }
+
+        changeListener.onChange(); // reaching here means plain or loggersByRule was non-empty -- something changed
+        return new ResetOutcome(reverted, List.of(), excludedFrom, skippedSticky);
     }
 
     @Override
-    public void resetAll() {
+    public ResetOutcome resetAllLoggers(boolean includeSticky) {
+        // Unlike a targeted reset (nothing to check capability against when
+        // there's nothing addressable), a broad reset checks capability
+        // unconditionally, matching this operation's pre-existing "get me
+        // back to normal" contract -- a policy denying LEVEL_LOWER denies
+        // this call even against an empty registry.
         requireCapability(Capability.LEVEL_LOWER);
+        List<String> reverted = new ArrayList<>();
+        List<String> skippedSticky = new ArrayList<>();
         for (Map.Entry<String, LevelOverride> entry : overrides.all().entrySet()) {
-            applyReset(entry.getKey(), entry.getValue(), source, null);
+            if (entry.getValue().tier() == PersistenceTier.STICKY && !includeSticky) {
+                skippedSticky.add(entry.getKey());
+            } else {
+                reverted.add(entry.getKey());
+            }
         }
-        for (String pattern : patternRules.all().keySet()) {
+        List<String> retiredPatterns = new ArrayList<>();
+        for (PatternRule rule : patternRules.all().values()) {
+            if (rule.tier() == PersistenceTier.STICKY && !includeSticky) {
+                continue; // left entirely alone -- its overrides are already in skippedSticky above
+            }
+            retiredPatterns.add(rule.pattern());
+        }
+        if (reverted.isEmpty() && retiredPatterns.isEmpty()) {
+            return new ResetOutcome(List.of(), List.of(), List.of(), skippedSticky);
+        }
+        for (String loggerName : reverted) {
+            overrides.get(loggerName).ifPresent(o -> applyReset(loggerName, o, source, null));
+        }
+        for (String pattern : retiredPatterns) {
             patternRules.remove(pattern);
             safePersist(() -> stateStore.removePatternRule(pattern));
         }
         changeListener.onChange();
+        return new ResetOutcome(reverted, retiredPatterns, List.of(), skippedSticky);
     }
 
     /**
@@ -443,14 +541,17 @@ public final class LevelControlService implements LevelControlOperations {
         if (rulesNewestFirst.isEmpty()) {
             return false;
         }
-        // Each rule's pattern is compiled once per call, not once per
-        // (logger, rule) pair (a code-review finding): the periodic sweep
-        // runs this over every known logger on every tick, so re-validating
-        // and recompiling the same pattern string per logger scales badly
-        // with logger count.
+        // Each rule's pattern -- and now its exclusion set (doc/specs/
+        // reset-command-surface.md "Partial reset — scoped exclusions") --
+        // is compiled once per call, not once per (logger, rule) pair (a
+        // code-review finding): the periodic sweep runs this over every
+        // known logger on every tick, so re-validating and recompiling the
+        // same pattern strings per logger scales badly with logger count.
         List<Predicate<String>> matchers = new ArrayList<>(rulesNewestFirst.size());
+        List<Predicate<String>> exclusionMatchers = new ArrayList<>(rulesNewestFirst.size());
         for (PatternRule rule : rulesNewestFirst) {
             matchers.add(NameFilter.compile(rule.pattern()));
+            exclusionMatchers.add(anyOf(rule.exclusions()));
         }
         boolean anyApplied = false;
         for (String loggerName : adapter.knownLoggerNames()) {
@@ -458,7 +559,7 @@ public final class LevelControlService implements LevelControlOperations {
                 continue;
             }
             for (int i = 0; i < rulesNewestFirst.size(); i++) {
-                if (matchers.get(i).test(loggerName)) {
+                if (matchers.get(i).test(loggerName) && !exclusionMatchers.get(i).test(loggerName)) {
                     applyPatternDerivedOverride(loggerName, rulesNewestFirst.get(i), now, auditSource);
                     anyApplied = true;
                     break;
@@ -466,6 +567,30 @@ public final class LevelControlService implements LevelControlOperations {
             }
         }
         return anyApplied;
+    }
+
+    /**
+     * A predicate matching any of {@code exclusions} (each entry using the
+     * same {@code NameFilter} grammar as a rule's own pattern) — {@code
+     * false} for every name when {@code exclusions} is empty, the common
+     * case for a rule nothing has been carved out of.
+     */
+    private static Predicate<String> anyOf(List<String> exclusions) {
+        if (exclusions.isEmpty()) {
+            return name -> false;
+        }
+        List<Predicate<String>> compiled = new ArrayList<>(exclusions.size());
+        for (String exclusion : exclusions) {
+            compiled.add(NameFilter.compile(exclusion));
+        }
+        return name -> {
+            for (Predicate<String> matcher : compiled) {
+                if (matcher.test(name)) {
+                    return true;
+                }
+            }
+            return false;
+        };
     }
 
     /**

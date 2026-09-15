@@ -69,6 +69,7 @@ final class Commands {
                 return CliError.OK;
             }
             boolean showContext = spansMultipleContexts(rows, LoggerInfoData::getContext);
+            boolean showCascade = rows.stream().anyMatch(LoggerInfoData::isCascading);
             List<List<String>> table = new ArrayList<>();
             for (LoggerInfoData row : rows) {
                 List<String> cells = new ArrayList<>();
@@ -79,6 +80,9 @@ final class Commands {
                 cells.add(orDash(row.getConfiguredLevel()));
                 cells.add(orDash(row.getEffectiveLevel()));
                 cells.add(overrideCell(row));
+                if (showCascade) {
+                    cells.add(cascadeCell(row));
+                }
                 table.add(cells);
             }
             List<String> headers = new ArrayList<>();
@@ -86,6 +90,9 @@ final class Commands {
                 headers.add("CONTEXT");
             }
             headers.addAll(List.of("LOGGER", "CONFIGURED", "EFFECTIVE", "OVERRIDE"));
+            if (showCascade) {
+                headers.add("CASCADE");
+            }
             out.println(Format.table(headers, table));
             return CliError.OK;
         };
@@ -112,6 +119,7 @@ final class Commands {
             }
             if (!active.isEmpty()) {
                 boolean showContext = spansMultipleContexts(all, LoggerInfoData::getContext);
+                boolean showCascade = active.stream().anyMatch(LoggerInfoData::isCascading);
                 List<List<String>> table = new ArrayList<>();
                 for (LoggerInfoData row : active) {
                     List<String> cells = new ArrayList<>();
@@ -123,6 +131,9 @@ final class Commands {
                     cells.add(orDash(row.getTier()));
                     cells.add(revertsCell(row));
                     cells.add(row.getOverrideReason() == null ? Format.NONE : '"' + row.getOverrideReason() + '"');
+                    if (showCascade) {
+                        cells.add(cascadeCell(row));
+                    }
                     table.add(cells);
                 }
                 List<String> headers = new ArrayList<>();
@@ -130,6 +141,9 @@ final class Commands {
                     headers.add("CONTEXT");
                 }
                 headers.addAll(List.of("LOGGER", "LEVEL", "TIER", "REVERTS", "REASON"));
+                if (showCascade) {
+                    headers.add("CASCADE");
+                }
                 out.println(Format.table(headers, table));
             }
             if (!handlerOverrides.isEmpty()) {
@@ -216,7 +230,7 @@ final class Commands {
                     throw new CliError(CliError.USAGE,
                             "'" + target + "' is a pattern -- applying it creates a standing rule: " + level
                                     + " on every currently-matching logger, AND on any new one discovered later, "
-                                    + "until 'logctl reset " + target + "'. Pass --yes to apply it "
+                                    + "until 'logctl reset logger " + target + "'. Pass --yes to apply it "
                                     + "non-interactively.");
                 }
                 printPatternPreview(out, target, level, previewed);
@@ -265,7 +279,7 @@ final class Commands {
             }
         }
         out.println("Because this is a pattern, LogAperture will also apply " + level + " to any new logger "
-                + "discovered later that matches '" + pattern + "', until you run 'logctl reset " + pattern + "'.");
+                + "discovered later that matches '" + pattern + "', until you run 'logctl reset logger " + pattern + "'.");
         out.print("Apply this standing rule? [y/N] ");
         out.flush();
     }
@@ -386,102 +400,134 @@ final class Commands {
         };
     }
 
-    static Command resetHandler(String handlerRef, boolean json) {
+    static Command resetHandler(String handlerRef, boolean includeSticky, boolean json) {
         return (mbean, out, in, interactive) -> {
-            mbean.resetHandler(handlerRef);
+            org.logaperture.control.jmx.ResetOutcomeData outcome = mbean.resetHandler(handlerRef, includeSticky);
             if (json) {
-                out.println(Json.handlerReset(handlerRef));
+                out.println(Json.resetOutcome(outcome));
                 return CliError.OK;
             }
-            out.println("handler " + handlerRef + " → reset to its previous level.");
+            if (!outcome.getSkippedStickyNames().isEmpty()) {
+                out.println(handlerRef + " — left untouched (STICKY; use --include-sticky to include it).");
+            } else if (outcome.getRevertedNames().isEmpty()) {
+                out.println(handlerRef + " — nothing was overridden.");
+            } else {
+                out.println("handler " + handlerRef + " → reset to its previous level.");
+            }
             return CliError.OK;
         };
     }
 
     /**
      * {@code target} is either an exact logger name or a pattern. Resetting
-     * a pattern reverts every logger it currently covers <em>and</em>
-     * retires the standing rule, so it stops covering loggers discovered
-     * later too (doc/specs/pattern-level-targeting.md) — no confirmation
-     * either way, matching {@code reset}'s existing no-prompt convention
-     * (reverting a bounded, current state is the opposite risk shape from
-     * applying an unbounded, future-reaching one).
+     * a target that exactly matches a tracked standing rule's own pattern
+     * reverts every logger it currently covers <em>and</em> retires the
+     * rule, so it stops covering loggers discovered later too. A narrower
+     * target — an exact name, or a sub-pattern that isn't itself a tracked
+     * rule — carves {@code target} out of whichever rule currently governs
+     * it instead of retiring the whole rule or no-op'ing (doc/specs/
+     * reset-command-surface.md "Partial reset — scoped exclusions"). No
+     * confirmation either way, matching {@code reset}'s existing no-prompt
+     * convention (reverting a bounded, current state is the opposite risk
+     * shape from applying an unbounded, future-reaching one).
+     *
+     * <p>The server reports exactly what it reverted, retired, excluded, and
+     * skipped ({@link org.logaperture.control.jmx.ResetOutcomeData}), so this
+     * needs at most one {@code listLoggers} read — after the call, to render
+     * post-reset levels for whatever was actually reverted — never a
+     * before/after pair: the outcome itself already answers "was anything
+     * overridden" (a code-review finding against the original slice's
+     * before/after diff, which was racy against concurrent mutation).
      */
-    static Command reset(String target, boolean json) {
+    static Command resetLogger(String target, String reason, boolean includeSticky, boolean json) {
         return (mbean, out, in, interactive) -> {
-            if (isPattern(target)) {
-                return resetPattern(mbean, out, target, json);
-            }
-            LoggerInfoData before = findLogger(mbean.listLoggers(target), target);
-            boolean wasOverridden = before != null && before.isOverrideActive();
-            mbean.resetLevel(target);
-            LoggerInfoData after = findLogger(mbean.listLoggers(target), target);
+            org.logaperture.control.jmx.ResetOutcomeData outcome = mbean.resetLevel(target, includeSticky, reason);
+            List<String> reverted = outcome.getRevertedNames();
+            List<String> retiredPatterns = outcome.getRetiredPatterns();
+            List<String> excludedFrom = outcome.getExcludedFrom();
+
             if (json) {
-                out.println(after != null ? Json.logger(after) : Json.reset(target, wasOverridden));
+                out.println(Json.resetOutcome(outcome));
                 return CliError.OK;
             }
-            if (after != null) {
-                out.println(target + " → " + after.getEffectiveLevel() + " (baseline)");
-            } else if (wasOverridden) {
-                out.println(target + " → baseline (not yet instantiated, so no level to show)");
-            } else {
-                out.println(target + " — nothing was overridden.");
+
+            if (reverted.isEmpty() && retiredPatterns.isEmpty() && excludedFrom.isEmpty()) {
+                if (!outcome.getSkippedStickyNames().isEmpty()) {
+                    // One line per skipped name, not per target -- a
+                    // pattern target can leave more than one logger sticky-
+                    // protected in a single call.
+                    for (String name : outcome.getSkippedStickyNames()) {
+                        out.println(name + " — left untouched (STICKY; use --include-sticky to include it).");
+                    }
+                } else {
+                    out.println(target + " — nothing was overridden.");
+                }
+                return CliError.OK;
+            }
+
+            Map<String, LoggerInfoData> afterByName = new LinkedHashMap<>();
+            if (!reverted.isEmpty()) {
+                for (LoggerInfoData row : mbean.listLoggers(target)) {
+                    afterByName.put(row.getName(), row);
+                }
+            }
+            for (String name : reverted) {
+                LoggerInfoData row = afterByName.get(name);
+                if (row != null) {
+                    out.println(name + " → " + row.getEffectiveLevel() + " (baseline)");
+                } else {
+                    out.println(name + " → baseline (not yet instantiated, so no level to show)");
+                }
+            }
+            for (String pattern : retiredPatterns) {
+                out.println(reverted.isEmpty()
+                        ? "Standing rule '" + pattern + "' retired -- it had no currently-matched logger to revert."
+                        : "Standing rule '" + pattern + "' retired.");
+            }
+            for (String pattern : excludedFrom) {
+                out.println("Excluded '" + target + "' from standing rule '" + pattern + "' — its own descendants, "
+                        + "and any logger discovered under it later, keep inheriting the rule.");
             }
             return CliError.OK;
         };
+    }
+
+    static Command resetAllLoggers(boolean includeSticky, boolean json) {
+        return (mbean, out, in, interactive) ->
+                printBroadResetSummary(out, json, "logger", mbean.resetAllLoggers(includeSticky));
+    }
+
+    static Command resetAllHandlers(boolean includeSticky, boolean json) {
+        return (mbean, out, in, interactive) ->
+                printBroadResetSummary(out, json, "handler", mbean.resetAllHandlers(includeSticky));
+    }
+
+    static Command resetAll(boolean includeSticky, boolean json) {
+        return (mbean, out, in, interactive) ->
+                printBroadResetSummary(out, json, null, mbean.resetAll(includeSticky));
     }
 
     /**
-     * The server reports exactly what it reverted ({@link
-     * org.logaperture.control.jmx.ResetOutcomeData}), so this no longer
-     * reconstructs that by diffing two {@code listLoggers} reads taken
-     * before and after a {@code void} call -- that diff was racy against
-     * concurrent mutation, and had no way to tell "no standing rule existed
-     * under that exact string" from "the rule existed but matched nothing"
-     * (both code-review findings against the original slice; the latter is
-     * why every reset used to print "Standing rule retired" even on a
-     * no-op).
+     * {@code reset loggers}/{@code reset handlers}/{@code reset --all}'s
+     * shared rendering — a summary, not a per-name confirmation line
+     * (doc/specs/reset-command-surface.md "CLI output"), same shape as the
+     * pre-existing {@code resetAll}'s {@code "Reverted N override(s)."}.
+     * {@code nounPrefix} is {@code null} for {@code reset --all}, which
+     * spans both namespaces so no single noun fits.
      */
-    private static int resetPattern(org.logaperture.control.jmx.LevelControlMXBean mbean, java.io.PrintStream out,
-            String pattern, boolean json) {
-        org.logaperture.control.jmx.ResetOutcomeData outcome = mbean.resetLevel(pattern);
-        List<String> reverted = outcome.getRevertedLoggerNames();
-
+    private static int printBroadResetSummary(java.io.PrintStream out, boolean json, String nounPrefix,
+            org.logaperture.control.jmx.ResetOutcomeData outcome) {
         if (json) {
-            out.println(Json.resetPattern(pattern, reverted, outcome.isPatternRuleRetired()));
+            out.println(Json.resetOutcome(outcome));
             return CliError.OK;
         }
-        if (!outcome.isPatternRuleRetired()) {
-            out.println("'" + pattern + "' — no standing rule was tracked under that pattern; nothing to do.");
-            return CliError.OK;
+        String prefix = nounPrefix == null ? "" : nounPrefix + " ";
+        out.println("Reverted " + outcome.getRevertedNames().size() + " " + prefix + "override(s).");
+        int skipped = outcome.getSkippedStickyNames().size();
+        if (skipped > 0) {
+            out.println(skipped + " sticky override(s) left untouched (use --include-sticky).");
         }
-        if (reverted.isEmpty()) {
-            out.println("Standing rule '" + pattern + "' retired -- it had no currently-matched logger to revert.");
-            return CliError.OK;
-        }
-        Map<String, LoggerInfoData> afterByName = new LinkedHashMap<>();
-        for (LoggerInfoData row : mbean.listLoggers(pattern)) {
-            afterByName.put(row.getName(), row);
-        }
-        for (String name : reverted) {
-            LoggerInfoData row = afterByName.get(name);
-            out.println(name + " → " + (row != null ? row.getEffectiveLevel() : "baseline") + " (baseline)");
-        }
-        out.println("Standing rule '" + pattern + "' retired.");
         return CliError.OK;
-    }
-
-    static Command resetAll(boolean json) {
-        return (mbean, out, in, interactive) -> {
-            long activeBefore = mbean.listLoggers(null).stream().filter(LoggerInfoData::isOverrideActive).count();
-            mbean.resetAll();
-            if (json) {
-                out.println(Json.revertedCount(activeBefore));
-            } else {
-                out.println("Reverted " + activeBefore + " override(s).");
-            }
-            return CliError.OK;
-        };
     }
 
     /**
@@ -677,10 +723,6 @@ final class Commands {
         return row.getExpiresAt() == null ? Instant.MAX : Instant.parse(row.getExpiresAt());
     }
 
-    private static LoggerInfoData findLogger(List<LoggerInfoData> rows, String name) {
-        return rows.stream().filter(r -> r.getName().equals(name)).findFirst().orElse(null);
-    }
-
     private static String orDash(String value) {
         return value == null ? Format.NONE : value;
     }
@@ -698,6 +740,17 @@ final class Commands {
             cell.append(" — \"").append(row.getOverrideReason()).append('"');
         }
         return cell.toString();
+    }
+
+    /**
+     * {@code CASCADE} column (Decision #6, doc/specs/reset-command-surface.md
+     * "Marking a rule-governed override") — says only that this row is
+     * governed by a live standing rule and will keep propagating to
+     * newly-discovered descendants, never which rule; naming the rule would
+     * reintroduce exactly the provenance-recall Decision #2 exists to avoid.
+     */
+    private static String cascadeCell(LoggerInfoData row) {
+        return row.isCascading() ? "yes" : Format.NONE;
     }
 
     private static String revertsCell(LoggerInfoData row) {

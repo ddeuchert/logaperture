@@ -137,10 +137,60 @@ class ParserTest {
     }
 
     @Test
-    void resetNeedsExactlyOneLoggerOrAll() {
+    void includeStickyOnlyAppliesToReset() {
+        assertUsage(() -> Parser.parse(new String[] {"levels", "--include-sticky"}));
+        Parser.parse(new String[] {"reset", "--all", "--include-sticky"}); // fine
+    }
+
+    @Test
+    void resetNeedsANamespacedFormOrAll() {
         assertUsage(() -> Parser.parse(new String[] {"reset"}));
         assertUsage(() -> Parser.parse(new String[] {"reset", "a", "b"}));
         assertUsage(() -> Parser.parse(new String[] {"reset", "--all", "com.acme"}));
+    }
+
+    @Test
+    void resetBareLoggerNameIsRetired() {
+        // doc/specs/reset-command-surface.md, Decision #4 -- every reset now
+        // names its namespace explicitly; the old bare form is gone, not
+        // kept as a synonym for 'reset logger'.
+        assertUsage(() -> Parser.parse(new String[] {"reset", "com.acme"}));
+    }
+
+    @Test
+    void resetLoggerParsesExactlyOneNameOrPattern() {
+        Parser.parse(new String[] {"reset", "logger", "com.acme"}); // fine
+        Parser.parse(new String[] {"reset", "logger", "org.apache.*", "--include-sticky"}); // fine
+        Parser.parse(new String[] {"reset", "logger", "com.acme", "--reason", "cleanup"}); // fine
+        assertUsage(() -> Parser.parse(new String[] {"reset", "logger"}));
+        assertUsage(() -> Parser.parse(new String[] {"reset", "logger", "a", "b"}));
+    }
+
+    @Test
+    void resetLoggersTakesNoArguments() {
+        Parser.parse(new String[] {"reset", "loggers"}); // fine
+        Parser.parse(new String[] {"reset", "loggers", "--include-sticky"}); // fine
+        assertUsage(() -> Parser.parse(new String[] {"reset", "loggers", "com.acme"}));
+        assertUsage(() -> Parser.parse(new String[] {"reset", "loggers", "--reason", "x"})); // no single target
+    }
+
+    @Test
+    void resetHandlerParsesExactlyOneName() {
+        Parser.parse(new String[] {"reset", "handler", "CONSOLE"}); // fine
+        Parser.parse(new String[] {"reset", "handler", "CONSOLE", "--include-sticky"}); // fine
+        assertUsage(() -> Parser.parse(new String[] {"reset", "handler"}));
+        assertUsage(() -> Parser.parse(new String[] {"reset", "handler", "CONSOLE", "FILE"}));
+    }
+
+    @Test
+    void resetHandlersTakesNoArguments() {
+        Parser.parse(new String[] {"reset", "handlers"}); // fine
+        assertUsage(() -> Parser.parse(new String[] {"reset", "handlers", "CONSOLE"}));
+    }
+
+    @Test
+    void resetUnknownSubformIsAUsageError() {
+        assertUsage(() -> Parser.parse(new String[] {"reset", "bogus"}));
     }
 
     @Test
@@ -213,8 +263,10 @@ class ParserTest {
     }
 
     @Test
-    void handlerResetTakesNoFurtherArguments() {
-        Parser.parse(new String[] {"handler", "CONSOLE", "reset"}); // fine
+    void handlerResetIsRetired() {
+        // doc/specs/reset-command-surface.md -- replaced by 'reset handler
+        // <name>', not kept as a synonym.
+        assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "reset"}));
         assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "reset", "extra"}));
     }
 
