@@ -37,6 +37,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -308,6 +309,57 @@ class LevelControlServiceTest {
         assertEquals(ResetOutcome.nothingReset(), outcome);
     }
 
+    @Test
+    void resetLevel_stickyRule_exactPatternMatch_blockedWithoutIncludeSticky_leavesRuleActive() {
+        // retireWholeRule's own STICKY-skip guard -- direct unit coverage
+        // for a shape that, before this test, only an incidental CLI-level
+        // test against a hand-written fake exercised (a code-review
+        // finding). Full-rule retirement (target spelled out exactly as
+        // the rule's own tracked pattern string) must be blocked by a
+        // STICKY tier without --include-sticky, exactly like the
+        // already-tested partial-target guard (resetLevel_stickyRule_
+        // partialTarget_leftAloneWithoutIncludeSticky, above).
+        adapter.addKnownLogger("org.apache.tomcat");
+        adapter.addKnownLogger("org.apache.tomcat.connector");
+        service.setLevel("org.apache.*", Level.DEBUG, SetLevelOptions.sticky().withConfirmed(true));
+
+        var outcome = service.resetLevel("org.apache.*"); // includeSticky defaults to false
+
+        assertTrue(outcome.revertedNames().isEmpty());
+        assertTrue(outcome.retiredPatterns().isEmpty());
+        assertEquals(Set.of("org.apache.tomcat", "org.apache.tomcat.connector"), Set.copyOf(outcome.skippedStickyNames()));
+        assertEquals(Level.DEBUG, adapter.effectiveLevel("org.apache.tomcat"), "untouched");
+        assertEquals(Level.DEBUG, adapter.effectiveLevel("org.apache.tomcat.connector"), "untouched");
+        assertTrue(service.activePatternRules().stream().anyMatch(r -> r.pattern().equals("org.apache.*")),
+                "the rule is still live, not retired");
+    }
+
+    @Test
+    void resetLevel_stickyRule_zeroCurrentMatches_reportsTheRuleItselfNotAGenericNoOp() {
+        // A code-review finding: a STICKY rule that currently covers zero
+        // known loggers (never yet swept onto one, or every prior match
+        // already individually excluded) was indistinguishable, from the
+        // ResetOutcome alone, from "no such rule was ever tracked" --
+        // retireWholeRule's sticky-skip branch scanned for overrides
+        // tagged with this pattern, found none, and returned an all-empty
+        // outcome either way. The fix reports the rule's own pattern
+        // string in skippedStickyNames when nothing else qualifies, so the
+        // caller (and the CLI) can tell "a live, still-cascading rule was
+        // left alone" apart from a genuine no-op.
+        service.setLevel("org.apache.*", Level.DEBUG, SetLevelOptions.sticky().withConfirmed(true));
+        // Deliberately no known logger under "org.apache.*" -- the rule
+        // exists but has never matched anything yet.
+
+        var outcome = service.resetLevel("org.apache.*"); // includeSticky defaults to false
+
+        assertNotEquals(ResetOutcome.nothingReset(), outcome, "must be distinguishable from no rule ever tracked");
+        assertEquals(List.of("org.apache.*"), outcome.skippedStickyNames());
+        assertTrue(outcome.revertedNames().isEmpty());
+        assertTrue(outcome.retiredPatterns().isEmpty());
+        assertTrue(service.activePatternRules().stream().anyMatch(r -> r.pattern().equals("org.apache.*")),
+                "the rule is still live");
+    }
+
     // --- partial reset: scoped exclusions (doc/specs/reset-command-surface.md) ---------------
 
     @Test
@@ -395,6 +447,93 @@ class LevelControlServiceTest {
 
         assertEquals(Level.DEBUG, adapter.effectiveLevel("org.apache.tomcat"),
                 "a brand-new rule instance reapplies to everything it currently matches, exclusions included");
+    }
+
+    // --- partial reset: retirement via containment/exhaustion (code-review findings #1/#2) ---
+
+    @Test
+    void resetLevel_broaderTargetContainsTwoIndependentRules_retiresBothRatherThanBlindingThem() {
+        // A code-review finding against the original slice: a reset target
+        // spanning loggers owned by two DIFFERENT, disjoint standing rules
+        // recorded the raw, un-narrowed target as an exclusion on BOTH
+        // rules, even though the target's own pattern fully contains each
+        // rule's own pattern -- since the target is a strict superset of
+        // each rule's coverage, that exclusion permanently blinded both
+        // rules to everything they could ever have matched again, not just
+        // the logger this call actually reverted. The fix: when a target's
+        // scope abstractly contains a rule's own pattern, retire that rule
+        // outright, the same outcome #41's exact-string retirement already
+        // produces for the identical pattern spelled out directly.
+        adapter.addKnownLogger("com.acme.db.Worker");
+        adapter.addKnownLogger("com.acme.http.Server");
+        service.setLevel("com.acme.db.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
+        service.setLevel("com.acme.http.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
+
+        var outcome = service.resetLevel("com.acme.*");
+
+        assertEquals(Set.of("com.acme.db.*", "com.acme.http.*"), Set.copyOf(outcome.retiredPatterns()));
+        assertTrue(outcome.excludedFrom().isEmpty());
+        assertEquals(Set.of("com.acme.db.Worker", "com.acme.http.Server"), Set.copyOf(outcome.revertedNames()));
+        assertTrue(service.activePatternRules().isEmpty());
+
+        // Both rules are genuinely gone, not merely blinded: a logger
+        // created later under either original pattern is not swept up by
+        // anything, because there's nothing left to sweep it with.
+        adapter.addKnownLogger("com.acme.db.NewWorker");
+        service.applyStandingRules(java.time.Instant.now());
+        assertEquals(Level.INFO, adapter.effectiveLevel("com.acme.db.NewWorker"));
+    }
+
+    @Test
+    void resetLevel_exactName_exhaustsRulesOnlyKnownMatch_retiresRuleInsteadOfLeavingItStandingForever() {
+        // A code-review finding: a rule is never retired via accumulated or
+        // exhausted exclusions, only via an exact pattern-string match --
+        // so a rule whose entire currently-known coverage gets excluded via
+        // a narrower target (its one remaining logger, reset by exact name)
+        // was never cleaned up, sitting in patternRules -- persisted,
+        // recompiled, and evaluated on every sweep tick -- forever, for a
+        // rule that can no longer match anything currently known. This is a
+        // real design call (doc/specs/reset-command-surface.md): it forgoes
+        // the abstract guarantee that a logger discovered later under the
+        // same pattern would still be covered, in exchange for not leaving
+        // a zombie rule behind once nothing it currently knows about
+        // escapes its own exclusions.
+        adapter.addKnownLogger("com.acme.db.Worker");
+        service.setLevel("com.acme.db.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
+
+        var outcome = service.resetLevel("com.acme.db.Worker");
+
+        assertEquals(List.of("com.acme.db.*"), outcome.retiredPatterns());
+        assertTrue(outcome.excludedFrom().isEmpty());
+        assertEquals(List.of("com.acme.db.Worker"), outcome.revertedNames());
+        assertTrue(service.activePatternRules().isEmpty());
+    }
+
+    @Test
+    void resetLevel_subPatternExclusionCoveringEveryKnownLogger_stillLeavesRuleActiveForAFutureSibling() {
+        // Guards the boundary between the two tests above and the ordinary
+        // carve-out path: unlike an exact-name exclusion exhausting a
+        // rule's only known match (retired, above), a SUB-PATTERN exclusion
+        // that happens to cover every logger currently known must NOT
+        // retire the rule -- by construction, a sub-pattern narrower than
+        // the rule's own pattern (not itself caught by the containment
+        // check) always leaves some sibling scope the rule could still
+        // cover; "nothing known currently escapes it" here is only a
+        // coincidence of which loggers happen to exist right now, not a
+        // fact about the rule's remaining reach.
+        adapter.addKnownLogger("org.apache.tomcat");
+        service.setLevel("org.apache.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
+
+        var outcome = service.resetLevel("org.apache.tomcat.*"); // a sub-pattern, not an exact name
+
+        assertTrue(outcome.retiredPatterns().isEmpty());
+        assertEquals(List.of("org.apache.*"), outcome.excludedFrom());
+        assertTrue(service.activePatternRules().stream().anyMatch(r -> r.pattern().equals("org.apache.*")));
+
+        // A brand-new sibling outside the excluded subtree still gets swept up.
+        adapter.addKnownLogger("org.apache.other");
+        service.applyStandingRules(java.time.Instant.now());
+        assertEquals(Level.DEBUG, adapter.effectiveLevel("org.apache.other"));
     }
 
     // --- capability checks ---------------------------------------------------------------------
@@ -587,6 +726,53 @@ class LevelControlServiceTest {
         assertEquals(AuditRecord.Action.REVERSION, record.action());
         assertEquals("DEBUG", record.previousValue());
         assertEquals("WARN", record.newValue());
+    }
+
+    // --- reset races: a concurrent mutation between classification and apply (code-review finding #4) ---
+
+    @Test
+    void resetLevel_concurrentlyVanishedOverride_isNotReportedAsReverted() {
+        // A code-review finding: reverted.add(name) used to run
+        // unconditionally right after overrides.get(name).ifPresent(...),
+        // so a concurrent reset landing between the classification scan and
+        // this call's own apply step silently no-op'd through applyReset's
+        // compare-and-remove while this call still claimed credit for the
+        // revert, with no backing audit record. The capability check is the
+        // one seam between resetScopedTarget's classification and apply --
+        // used here to inject the race deterministically.
+        adapter.addKnownLogger("com.acme.Raced");
+        service.setLevel("com.acme.Raced", Level.DEBUG, SetLevelOptions.defaults());
+        int auditBefore = auditLog.records().size();
+
+        LevelControlService racy = newService(capability -> {
+            overrides.removeIfCurrent("com.acme.Raced", overrides.get("com.acme.Raced").orElseThrow());
+            return true;
+        });
+
+        var outcome = racy.resetLevel("com.acme.Raced");
+
+        assertTrue(outcome.revertedNames().isEmpty(), "nothing was actually reverted by this call");
+        assertEquals(auditBefore, auditLog.records().size(), "no phantom reversion audit record");
+    }
+
+    @Test
+    void resetAllLoggers_concurrentlyVanishedOverride_isNotReportedAsReverted() {
+        // Same fix, same fault-injection technique, for the broad-reset
+        // path: LEVEL_LOWER is checked once, unconditionally, between
+        // resetAllLoggers' own classification and apply steps.
+        adapter.addKnownLogger("com.acme.Raced");
+        service.setLevel("com.acme.Raced", Level.DEBUG, SetLevelOptions.defaults());
+        int auditBefore = auditLog.records().size();
+
+        LevelControlService racy = newService(capability -> {
+            overrides.removeIfCurrent("com.acme.Raced", overrides.get("com.acme.Raced").orElseThrow());
+            return true;
+        });
+
+        var outcome = racy.resetAllLoggers(false);
+
+        assertTrue(outcome.revertedNames().isEmpty(), "nothing was actually reverted by this call");
+        assertEquals(auditBefore, auditLog.records().size(), "no phantom reversion audit record");
     }
 
     // --- chaos: adapter throws mid-operation -----------------------------------------------------

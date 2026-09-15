@@ -108,6 +108,59 @@ class HandlerLevelControlServiceTest {
     }
 
     @Test
+    void resetAllHandlers_promotedToStickyBetweenClassificationAndApply_isHonoredNotReverted() {
+        // A code-review finding: resetAllHandlers used to classify every
+        // entry as revertible-or-sticky-skipped off ONE overrides.all()
+        // snapshot, then apply against a SECOND, independently-read
+        // snapshot without re-checking each entry's CURRENT tier -- so a
+        // handler promoted to STICKY between the two reads (a concurrent
+        // "logctl handler CONSOLE <level> sticky") still got reverted,
+        // silently bypassing --include-sticky. The fix re-reads each
+        // candidate's live tier at apply time, mirroring
+        // LevelControlService.resetAllLoggers's own re-fetch-before-revert
+        // discipline.
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
+
+        // The capability check is the only seam between resetAllHandlers'
+        // classification scan and its apply loop -- use it to inject the
+        // race deterministically: by the time apply looks at CONSOLE
+        // again, it's STICKY.
+        HandlerLevelControlService racy = newService(capability -> {
+            service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.sticky());
+            return true;
+        });
+
+        var outcome = racy.resetAllHandlers(false);
+
+        assertTrue(outcome.revertedNames().isEmpty(), "the now-STICKY handler must not be reported reverted");
+        assertEquals(List.of(CONSOLE.value()), outcome.skippedStickyNames());
+        assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow(), "left exactly as the race left it");
+        assertTrue(overrides.get(CONSOLE).isPresent(), "the override still stands, now STICKY-tier");
+    }
+
+    @Test
+    void resetAllHandlers_concurrentlyVanishedOverride_isNotReportedAsReverted() {
+        // A code-review finding, shared with LevelControlService's own
+        // reset paths: reverted.add(...) used to run unconditionally right
+        // after the (possibly stale) apply attempt, so a handler whose
+        // override a concurrent reset already removed between
+        // classification and apply was still reported reverted here, with
+        // no backing audit record.
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
+        int auditBefore = auditLog.records().size();
+
+        HandlerLevelControlService racy = newService(capability -> {
+            overrides.removeIfCurrent(CONSOLE, overrides.get(CONSOLE).orElseThrow());
+            return true;
+        });
+
+        var outcome = racy.resetAllHandlers(false);
+
+        assertTrue(outcome.revertedNames().isEmpty(), "nothing was actually reverted by this call");
+        assertEquals(auditBefore, auditLog.records().size(), "no phantom reversion audit record");
+    }
+
+    @Test
     void listHandlerOverrides_reflectsSetAndResetHandler() {
         HandlerRef file = new HandlerRef("FILE");
         adapter.addHandler(file, Level.INFO);
