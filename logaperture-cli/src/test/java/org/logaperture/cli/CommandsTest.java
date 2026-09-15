@@ -802,6 +802,26 @@ class CommandsTest {
     }
 
     @Test
+    void resetLogger_stickyPatternWithZeroCurrentMatches_reportsTheRuleNotAGenericNoOp() {
+        // A code-review finding: a live STICKY standing rule that currently
+        // covers zero known loggers (never yet swept onto one, or every
+        // prior match already individually excluded) used to be
+        // indistinguishable, from the outcome alone, from "no such rule was
+        // ever tracked" -- both rendered as "nothing was overridden," even
+        // though the rule is still active and will keep applying to every
+        // future match. The fix reports the rule's own pattern string in
+        // skippedStickyNames for this case, which resetLogger's existing
+        // per-name sticky rendering already knows how to print.
+        mbean.forcedResetLevelOutcome = new org.logaperture.control.jmx.ResetOutcomeData(
+                List.of(), List.of(), List.of(), List.of("org.apache.*"));
+
+        assertEquals(CliError.OK, run(Commands.resetLogger("org.apache.*", null, false, false)));
+
+        assertEquals("org.apache.* — left untouched (STICKY; use --include-sticky to include it).",
+                output().strip());
+    }
+
+    @Test
     void resetLogger_jsonEmitsAnObjectEvenWhenNoPostResetLoggerRemains() {
         mbean.loggers = new ArrayList<>(List.of(
                 new LoggerInfoData("com.acme.Known", null, "DEBUG", true, "jmx", null, "SESSION", null)));
@@ -821,6 +841,23 @@ class CommandsTest {
     }
 
     @Test
+    void resetAllLoggers_printsNonzeroRevertedCount() {
+        // A code-review finding: the fake always returned an all-empty
+        // ResetOutcomeData for the broad-reset operations regardless of
+        // fixture state, so printBroadResetSummary's reverted-count
+        // rendering was only ever exercised against zero.
+        mbean.loggers = new ArrayList<>(List.of(
+                new LoggerInfoData("com.acme.A", "INFO", "DEBUG", true, "jmx", null, "SESSION", null),
+                new LoggerInfoData("com.acme.B", "INFO", "TRACE", true, "jmx", null, "SESSION", null),
+                new LoggerInfoData("com.acme.Sticky", "INFO", "WARN", true, "jmx", null, "STICKY", null)));
+
+        assertEquals(CliError.OK, run(Commands.resetAllLoggers(false, false)));
+
+        assertEquals("Reverted 2 logger override(s).\n1 sticky override(s) left untouched (use --include-sticky).",
+                output().strip());
+    }
+
+    @Test
     void resetAllHandlers_printsRevertedSummary() {
         assertEquals(CliError.OK, run(Commands.resetAllHandlers(false, false)));
         assertEquals(1, mbean.resetAllHandlersCalls);
@@ -828,10 +865,34 @@ class CommandsTest {
     }
 
     @Test
+    void resetAllHandlers_printsNonzeroRevertedCount() {
+        mbean.handlerOverrides = new ArrayList<>(List.of(
+                new HandlerLevelOverrideData("CONSOLE", "TRACE", "FIXED", null, Instant.now().toString(), "jmx",
+                        "SESSION", null)));
+
+        assertEquals(CliError.OK, run(Commands.resetAllHandlers(false, false)));
+
+        assertEquals("Reverted 1 handler override(s).", output().strip());
+    }
+
+    @Test
     void resetAll_printsRevertedSummaryWithNoNounPrefix() {
         assertEquals(CliError.OK, run(Commands.resetAll(false, false)));
         assertEquals(1, mbean.resetAllCalls);
         assertEquals("Reverted 0 override(s).", output().strip());
+    }
+
+    @Test
+    void resetAll_printsNonzeroRevertedCountAcrossBothNamespaces() {
+        mbean.loggers = new ArrayList<>(List.of(
+                new LoggerInfoData("com.acme.A", "INFO", "DEBUG", true, "jmx", null, "SESSION", null)));
+        mbean.handlerOverrides = new ArrayList<>(List.of(
+                new HandlerLevelOverrideData("CONSOLE", "TRACE", "FIXED", null, Instant.now().toString(), "jmx",
+                        "SESSION", null)));
+
+        assertEquals(CliError.OK, run(Commands.resetAll(false, false)));
+
+        assertEquals("Reverted 2 override(s).", output().strip());
     }
 
     @Test

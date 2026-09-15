@@ -44,6 +44,15 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     /** Whether a pattern {@link #resetLevel} should report a standing rule was tracked and retired. Defaults to
      *  the common case tests wire up; set {@code false} to exercise the "no rule existed" no-op path. */
     boolean patternRuleTrackedForReset = true;
+    /**
+     * When set, {@link #resetLevel} returns this directly instead of
+     * simulating an outcome from {@link #loggers} -- this fake's simulation
+     * has no notion of a standing rule as its own object, only of logger
+     * rows, so it can't otherwise represent a case like a STICKY rule that
+     * currently covers zero known loggers (doc/specs/
+     * reset-command-surface.md's zero-match sticky case) any other way.
+     */
+    ResetOutcomeData forcedResetLevelOutcome;
 
     List<LoggerInfoData> loggers = new ArrayList<>();
     List<HandlerLevelOverrideData> handlerOverrides = new ArrayList<>();
@@ -132,6 +141,9 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     public ResetOutcomeData resetLevel(String target, boolean includeSticky, String reason) {
         resetLevelCalls.add(new Object[] {target, includeSticky, reason});
         maybeThrow();
+        if (forcedResetLevelOutcome != null) {
+            return forcedResetLevelOutcome;
+        }
         if (target.indexOf('*') >= 0) {
             if (!patternRuleTrackedForReset) {
                 return new ResetOutcomeData(List.of(), List.of(), List.of(), List.of());
@@ -194,21 +206,81 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     public ResetOutcomeData resetAll(boolean includeSticky) {
         resetAllCalls++;
         maybeThrow();
-        return new ResetOutcomeData(List.of(), List.of(), List.of(), List.of());
+        // Composed from the two namespace-scoped fakes below, mirroring
+        // LevelControlMXBeanImpl.resetAll(boolean)'s own composition
+        // (doc/specs/reset-command-surface.md, Decision #1) -- a code-review
+        // finding against the original fake: it always returned an all-empty
+        // outcome regardless of fixture state, so CommandsTest could never
+        // exercise printBroadResetSummary's nonzero-reverted-count rendering.
+        ResetOutcomeData loggersOutcome = doResetAllLoggers(includeSticky);
+        ResetOutcomeData handlersOutcome = doResetAllHandlers(includeSticky);
+        List<String> reverted = new ArrayList<>(loggersOutcome.getRevertedNames());
+        reverted.addAll(handlersOutcome.getRevertedNames());
+        List<String> skippedSticky = new ArrayList<>(loggersOutcome.getSkippedStickyNames());
+        skippedSticky.addAll(handlersOutcome.getSkippedStickyNames());
+        return new ResetOutcomeData(reverted, loggersOutcome.getRetiredPatterns(), loggersOutcome.getExcludedFrom(),
+                skippedSticky);
     }
 
     @Override
     public ResetOutcomeData resetAllLoggers(boolean includeSticky) {
         resetAllLoggersCalls++;
         maybeThrow();
-        return new ResetOutcomeData(List.of(), List.of(), List.of(), List.of());
+        return doResetAllLoggers(includeSticky);
+    }
+
+    /**
+     * Actually computes an outcome from {@link #loggers}' own fixture state
+     * -- mirroring how {@link #resetLevel} already does this for the
+     * single-target and pattern cases, rather than always returning an
+     * all-empty {@link ResetOutcomeData} regardless of what the fixture
+     * says is currently overridden (a code-review finding).
+     */
+    private ResetOutcomeData doResetAllLoggers(boolean includeSticky) {
+        List<LoggerInfoData> updated = new ArrayList<>();
+        List<String> revertedNames = new ArrayList<>();
+        List<String> skippedSticky = new ArrayList<>();
+        for (LoggerInfoData row : loggers) {
+            boolean sticky = "STICKY".equals(row.getTier());
+            if (row.isOverrideActive() && (includeSticky || !sticky)) {
+                String baseline = row.getConfiguredLevel() != null ? row.getConfiguredLevel() : "INFO";
+                updated.add(new LoggerInfoData(row.getName(), row.getConfiguredLevel(), baseline, false, null, null,
+                        null, null, row.getContext(), false));
+                revertedNames.add(row.getName());
+            } else {
+                if (row.isOverrideActive() && sticky) {
+                    skippedSticky.add(row.getName());
+                }
+                updated.add(row);
+            }
+        }
+        loggers = updated;
+        return new ResetOutcomeData(revertedNames, List.of(), List.of(), skippedSticky);
     }
 
     @Override
     public ResetOutcomeData resetAllHandlers(boolean includeSticky) {
         resetAllHandlersCalls++;
         maybeThrow();
-        return new ResetOutcomeData(List.of(), List.of(), List.of(), List.of());
+        return doResetAllHandlers(includeSticky);
+    }
+
+    /** {@link #doResetAllLoggers}'s counterpart for {@link #handlerOverrides} -- same fixture-driven fix. */
+    private ResetOutcomeData doResetAllHandlers(boolean includeSticky) {
+        List<HandlerLevelOverrideData> remaining = new ArrayList<>();
+        List<String> revertedNames = new ArrayList<>();
+        List<String> skippedSticky = new ArrayList<>();
+        for (HandlerLevelOverrideData row : handlerOverrides) {
+            boolean sticky = "STICKY".equals(row.getTier());
+            if (includeSticky || !sticky) {
+                revertedNames.add(row.getHandlerRef());
+            } else {
+                skippedSticky.add(row.getHandlerRef());
+                remaining.add(row);
+            }
+        }
+        handlerOverrides = remaining;
+        return new ResetOutcomeData(revertedNames, List.of(), List.of(), skippedSticky);
     }
 
     @Override
