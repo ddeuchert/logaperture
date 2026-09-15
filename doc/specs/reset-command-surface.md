@@ -1,6 +1,6 @@
 # Reset command surface: logger/handler split + `--include-sticky` (issue #42)
 
-Status: draft — under review, open decisions below.
+Status: signed off (2026-09-14) — all six decisions resolved; ready for implementation.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §18.9 (roadmap entry), §6.1
 (persistence tiers), §9 (capability/audit model), §11.1 (component versioning).
 Builds on: [`doc/specs/pattern-level-targeting.md`](pattern-level-targeting.md) (the glob
@@ -30,7 +30,7 @@ After this feature, the user will be able to:
   leave the rest of the rule's coverage exactly as it was, still applying to loggers discovered
   later too.
 - Keep using `logctl reset --all` as the "get me back to normal, everything, both namespaces"
-  escape hatch (pending sign-off — see Decision #1).
+  escape hatch.
 
 ## Scope
 
@@ -76,7 +76,7 @@ logctl reset logger <name-or-pattern> [--include-sticky] [--reason ...]
 logctl reset loggers [--include-sticky]
 logctl reset handler <name> [--include-sticky]
 logctl reset handlers [--include-sticky]
-logctl reset --all [--include-sticky]          # pending Decision #1
+logctl reset --all [--include-sticky]
 ```
 
 Space-separated subcommands under `reset`, per the phone test (`cli-transport.md`, "The phone
@@ -100,7 +100,7 @@ ResetOutcomeData resetLevel(String target, boolean includeSticky);   // new over
 ResetOutcomeData resetAllLoggers(boolean includeSticky);              // new
 ResetOutcomeData resetAllHandlers(boolean includeSticky);             // new
 ResetOutcomeData resetHandler(String handlerRef, boolean includeSticky); // new overload, was void
-ResetOutcomeData resetAll(boolean includeSticky);                     // new overload — Decision #1
+ResetOutcomeData resetAll(boolean includeSticky);                     // new overload
 ```
 
 The existing zero/one-arg overloads (`resetLevel(target)`, `resetHandler(handlerRef)`,
@@ -308,17 +308,15 @@ before 1.0"), but it's the same category of change §18.7 already called out exp
 `includeChildren`'s retirement, so it gets the same explicit callout here rather than being
 buried in a diff.
 
-## Open decisions
+## Decisions
 
-**#1 — Does `logctl reset --all` survive as the both-namespaces umbrella?**
-Leaning **yes, keep it** (per the issue: "'get me back to normal' shouldn't require remembering
-two commands"). If kept, it needs its own `includeSticky` overload (`resetAll(boolean)`, in
-Operations above) for the same reason every other form does — otherwise `--all` would be the one
-reset command that can never leave a sticky override alone, which would be a strange asymmetry.
-Recommendation: keep `--all`, give it `--include-sticky` too, and define it as exactly
-`resetAllLoggers(includeSticky)` + `resetAllHandlers(includeSticky)` composed into one call and one
-`ResetOutcomeData` (concatenated `revertedNames`, unioned `skippedStickyNames`) — not a third,
-independently-implemented code path.
+**#1 — RESOLVED. `logctl reset --all` survives as the both-namespaces umbrella.**
+"Get me back to normal" (§6.1) shouldn't require remembering two commands. It gets its own
+`includeSticky` overload (`resetAll(boolean)`, in Operations above) for the same reason every
+other form does — otherwise `--all` would be the one reset command that can never leave a sticky
+override alone. Defined as exactly `resetAllLoggers(includeSticky)` + `resetAllHandlers(includeSticky)`
+composed into one call and one `ResetOutcomeData` (concatenated `revertedNames`, unioned
+`skippedStickyNames`) — not a third, independently-implemented code path.
 
 **#2 — RESOLVED. Partial reset of a standing rule's coverage.**
 Originally framed narrowly ("does `--include-sticky` also un-protect the rule itself"); working
@@ -339,35 +337,32 @@ like a `STICKY` single-logger override.
 Still open, tracked separately as **Decision #6**: the exact display marker for surfacing which
 rule governs a given override on `status`/`levels`.
 
-**#3 — Confirmation/preview parity with #41's `error <pattern>` apply-side prompt.**
-Recommendation: **no**, none of the broad forms should prompt, including `reset logger
-<pattern>`. This isn't a new call — `pattern-level-targeting.md` already made this exact call for
-pattern reset specifically ("no confirmation either way... reverting a bounded, current state is
-the opposite risk shape from applying an unbounded, future-reaching one"), and `reset --all`
-already doesn't prompt today for the same "someone typing this at 3am wants it to just work"
-reason (`cli-transport.md`). `reset loggers`/`reset handlers` revert exactly what's active right
-now — bounded, not amplifying — so the same reasoning extends to them without needing a new
-argument.
+**#3 — RESOLVED. No confirmation/preview on any reset form.**
+None of the broad forms prompt, including `reset logger <pattern>`. This isn't a new call —
+`pattern-level-targeting.md` already made this exact call for pattern reset specifically ("no
+confirmation either way... reverting a bounded, current state is the opposite risk shape from
+applying an unbounded, future-reaching one"), and `reset --all` already doesn't prompt today for
+the same "someone typing this at 3am wants it to just work" reason (`cli-transport.md`). `reset
+loggers`/`reset handlers` revert exactly what's active right now — bounded, not amplifying — so
+the same reasoning extends to them without needing a new argument.
 
-**#4 — Does bare `logctl reset <name>` (no `logger`/`handler` keyword) survive as shorthand?**
+**#4 — RESOLVED. Bare `logctl reset <name>` does not survive as shorthand.**
 Not raised explicitly in the issue text, but the command-shape table there shows only the four
-namespaced forms — worth confirming rather than assuming. Recommendation: **no**, retire it
-alongside `logctl handler <name> reset` — keeping a keyword-less logger-only shorthand around
-would mean two spellings for the same thing (`reset <name>` and `reset logger <name>`) forever,
-undercutting the whole point of the namespace split being uniform. A clear error on `logctl reset
-<bare-name>` naming the new form is cheap and keeps the surface single-spelling.
+namespaced forms. Retired alongside `logctl handler <name> reset` — keeping a keyword-less
+logger-only shorthand around would mean two spellings for the same thing (`reset <name>` and
+`reset logger <name>`) forever, undercutting the whole point of the namespace split being uniform.
+A clear error on `logctl reset <bare-name>` naming the new form is cheap and keeps the surface
+single-spelling.
 
-**#5 — Does a single, explicitly-named sticky target (`reset logger <exact-sticky-name>`) get
-skipped too, or does naming it directly count as consent?**
-The issue's own wording ("reset skips `--sticky`-tier overrides" on "each form above") reads as
-applying even to a one-name, fully-explicit target — but that's a real behavior change from
-today (`logctl reset com.acme.payments` on a sticky override currently just works), and "I typed
-the exact name" is arguably itself a considered decision, similar in spirit to why sticky exists
-at all. Recommendation: **skip it too, uniformly** — the alternative (bare-name resets bypass the
-protection, only pattern/broad resets honor it) is a second, harder-to-remember rule rather than
-one flag with one meaning; consistency here is worth the small extra friction of occasionally
-needing `--include-sticky com.acme.payments`. Flagging for explicit sign-off since it's the
-decision most likely to surprise an existing script.
+**#5 — RESOLVED. A single, explicitly-named sticky target gets skipped too.**
+Naming a sticky target exactly (`reset logger <exact-sticky-name>`) does **not** count as consent
+by itself — uniform with every other form. The issue's own wording ("reset skips `--sticky`-tier
+overrides" on "each form above") already read this way, and the alternative (bare-name resets
+bypass the protection, only pattern/broad resets honor it) would be a second, harder-to-remember
+rule rather than one flag with one meaning. This is the decision most likely to surprise an
+existing script — `logctl reset com.acme.payments` on a sticky override currently just works, and
+now needs `--include-sticky com.acme.payments` — worth calling out in the release notes when this
+ships.
 
 **#6 — RESOLVED. Display marker for a rule-governed override on `status`/`levels`.**
 Decision #2's exclusion mechanism only helps if the operator can tell, from the output, that an
@@ -382,7 +377,7 @@ output" above for the conditional `CASCADE` column and the one exception (the `r
 own one-off confirmation line still names what it acted on — that's feedback about the action just
 taken, not an ongoing fact to track).
 
-## Cross-reference updates (once signed off)
+## Cross-reference updates
 
 - `cli-transport.md`: replace the `logctl reset <logger>` / `logctl reset --all` section with
   the four-form grammar; move its current content into `reset logger`/`reset --all`
@@ -398,7 +393,7 @@ taken, not an ongoing fact to track).
   by "Partial reset — scoped exclusions" above; the `PatternRule` data model gains `exclusions`.
 - Top-level §18.9: update Status once implemented, matching §18.7's "shipped" treatment.
 
-## Testing (sketch, to expand once decisions are resolved)
+## Testing (sketch)
 
 - Unit: each new/changed operation, sticky-skip on/off, against a hand-built override registry
   fixture (mirrors `LevelControlServiceTest` patterns already in place for `resetLevel`).
