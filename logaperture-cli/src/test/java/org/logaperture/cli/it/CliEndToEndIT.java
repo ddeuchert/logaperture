@@ -96,7 +96,7 @@ class CliEndToEndIT {
         assertTrue(status.out.contains("FOR"), status.out);
         assertTrue(status.out.contains("cli-e2e"), status.out);
 
-        Result reset = run("reset", LOGGER);
+        Result reset = run("reset", "logger", LOGGER);
         assertEquals(0, reset.exitCode, reset.err);
         assertTrue(reset.out.contains(LOGGER + " → INFO (baseline)"), reset.out);
 
