@@ -417,25 +417,47 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      */
     @Override
     public ResetOutcome resetAllHandlers(boolean includeSticky) {
-        // Unconditional, matching resetAllLoggers -- a broad reset checks
-        // capability regardless of whether anything is currently active.
-        requireCapability(Capability.HANDLER_LOWER);
-        List<String> reverted = new ArrayList<>();
+        List<HandlerRef> candidates = new ArrayList<>();
         List<String> skippedSticky = new ArrayList<>();
         for (Map.Entry<HandlerRef, HandlerLevelOverride> entry : overrides.all().entrySet()) {
             if (entry.getValue().tier() == PersistenceTier.STICKY && !includeSticky) {
                 skippedSticky.add(entry.getKey().value());
             } else {
-                reverted.add(entry.getKey().value());
+                candidates.add(entry.getKey());
             }
         }
-        if (reverted.isEmpty()) {
+        // Unconditional, matching resetAllLoggers -- a broad reset checks
+        // capability regardless of whether anything is currently active.
+        // Placed after classification, not before, for the same reason
+        // LevelControlService.resetAllLoggers now does: classification is
+        // read-only, so this changes when the check runs, not what it
+        // checks, and it puts the check between classification and apply
+        // rather than in front of both.
+        requireCapability(Capability.HANDLER_LOWER);
+        if (candidates.isEmpty()) {
             return new ResetOutcome(List.of(), List.of(), List.of(), skippedSticky);
         }
-        for (Map.Entry<HandlerRef, HandlerLevelOverride> entry : overrides.all().entrySet()) {
-            if (reverted.contains(entry.getKey().value())) {
-                applyReset(entry.getKey(), entry.getValue(), source);
+        List<String> reverted = new ArrayList<>();
+        for (HandlerRef ref : candidates) {
+            // Re-read each entry's live value at apply time rather than
+            // trusting the classification snapshot above (a code-review
+            // finding): a handler promoted to STICKY between the two
+            // instants (a concurrent "logctl handler <name> <level> sticky")
+            // must still be honored, not silently reverted on the strength
+            // of a now-stale classification -- and, same fix as
+            // LevelControlService's own reset paths, a handler whose
+            // override a concurrent reset already removed must not be
+            // reported reverted here either.
+            Optional<HandlerLevelOverride> current = overrides.get(ref);
+            if (current.isEmpty()) {
+                continue; // concurrently reset between the scan above and now
             }
+            if (current.get().tier() == PersistenceTier.STICKY && !includeSticky) {
+                skippedSticky.add(ref.value());
+                continue;
+            }
+            applyReset(ref, current.get(), source);
+            reverted.add(ref.value());
         }
         return new ResetOutcome(reverted, List.of(), List.of(), skippedSticky);
     }

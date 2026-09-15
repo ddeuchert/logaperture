@@ -184,6 +184,50 @@ off exact-string identity against the registry. Instead:
    precisely what fell under that rule) to that rule's exclusion set and leave the rule active for
    everything else.
 
+**Implementation note: how step 4's "nothing left to do" is decided.** Step 4 as written above is
+an existence question ("is there anything left the rule could ever match") that, taken fully
+generally, would need genuine set arithmetic over the `NameFilter` grammar. The shipped
+implementation (`LevelControlService.shouldRetire`) answers it with two narrower, individually
+sound tests, either of which retires the rule — chosen as a code-review fix once the original
+slice's "always record `target` as the exclusion" turned out to leave a rule permanently unable to
+match anything when `target` was broader than the rule's own pattern:
+
+1. **`target`'s pattern abstractly contains the rule's own pattern** (`NameFilter.covers`, a
+   decidable check over the grammar's three shapes — exact name, `x.*`, `*.x`): if every name
+   `rule.pattern()` could ever match is also matched by `target`, the rule's entire abstract reach
+   is gone, present and future, regardless of what's currently known. This is what makes `logctl
+   reset logger com.acme.*` correctly retire two independent, already-live `com.acme.db.*` and
+   `com.acme.http.*` rules in one call, rather than recording `com.acme.*` as a permanent exclusion
+   on each (the bug above) — covered by `resetLevel_broaderTargetContainsTwoIndependentRules_
+   retiresBothRatherThanBlindingThem` in `LevelControlServiceTest`.
+2. **Concrete exhaustion, restricted to exact-name carve-outs:** when `target`'s scope doesn't
+   abstractly contain the rule's own pattern (so test 1 above doesn't fire) but the exclusion this
+   call would add is a finite set of *exact* logger names — never a sub-pattern — the rule retires
+   if no *currently-known* logger matching `rule.pattern()` escapes that exclusion (old exclusions
+   plus this call's new one). This is deliberately a concrete, current-state answer, not an
+   abstract one: resetting a rule's one and only currently-known logger by its exact name (`logctl
+   reset logger com.acme.db.Worker` against a `com.acme.db.*` rule with nothing else known under
+   it) retires the rule rather than leaving a zombie standing rule — persisted, recompiled, and
+   evaluated on every sweep tick — that currently matches nothing. This **forgoes the abstract
+   guarantee that a logger discovered later under the same pattern would still be covered**, in
+   that specific situation, in exchange for not accumulating rules with nothing left to do. Covered
+   by `resetLevel_exactName_exhaustsRulesOnlyKnownMatch_retiresRuleInsteadOfLeavingItStandingForever`.
+   Restricted to exact names because a sub-pattern carve-out that fails test 1 always leaves some
+   sibling scope by construction (it isn't a full containment) — "nothing known currently escapes
+   it" there would only be a coincidence of which loggers happen to exist right now, not a fact
+   about the rule's remaining reach, and retiring on it would wrongly cut off a sibling that simply
+   hasn't been created yet. Covered by `resetLevel_subPatternExclusionCoveringEveryKnownLogger_
+   stillLeavesRuleActiveForAFutureSibling`, which locks in that a sub-pattern carve-out covering
+   every currently-known logger still leaves the rule active for a sibling added afterward.
+
+Whenever neither test retires the rule, the exclusion actually recorded follows the same
+containment primitive: `target` verbatim when `target`'s scope is narrower than or equal to the
+rule's own pattern (the common case worked through below), or, for a genuine partial overlap
+`NameFilter.covers` can't resolve either direction (e.g. a leading-star target crossing a
+trailing-star rule), the individual currently-matched logger names instead of `target` itself —
+narrower than `target`, and therefore never over-broad, at the cost of not excluding a
+not-yet-discovered descendant of `target` in that specific overlap shape.
+
 `logctl reset logger org.apache.*` against the rule that created it is just the case where step 4
 finds nothing left over — full retirement, unchanged from #41's behavior and unchanged spelling.
 `logctl reset logger org.apache.tomcat` against that same rule is the general case — reverts

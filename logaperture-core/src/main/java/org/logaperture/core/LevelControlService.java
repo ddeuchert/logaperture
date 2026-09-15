@@ -354,6 +354,17 @@ public final class LevelControlService implements LevelControlOperations {
                     skipped.add(e.getKey());
                 }
             }
+            if (skipped.isEmpty()) {
+                // The rule itself is live and STICKY even though nothing it
+                // currently covers has an override (never yet swept onto a
+                // logger, or every prior match was individually excluded) --
+                // report the rule's own pattern so the caller can tell this
+                // apart from "no such rule was ever tracked" (a code-review
+                // finding: both cases used to return an identical, entirely
+                // empty ResetOutcome, so the CLI rendered "nothing was
+                // overridden" for a still-live, still-cascading rule).
+                skipped.add(pattern);
+            }
             return new ResetOutcome(List.of(), List.of(), List.of(), skipped);
         }
         requireCapability(Capability.LEVEL_LOWER);
@@ -377,16 +388,25 @@ public final class LevelControlService implements LevelControlOperations {
      * tracked rule's own pattern string — the general case of doc/specs/
      * reset-command-surface.md's "Partial reset — scoped exclusions":
      * revert whatever is currently overridden within {@code target}'s
-     * scope, and for any rule that governs part of it, carve {@code
-     * target} into that rule's exclusion set rather than retiring the
-     * whole rule (full retirement is {@link #retireWholeRule}'s job,
-     * reached only when {@code target} literally equals the rule's own
-     * pattern string). {@code STICKY} filtering happens per logger, before
-     * grouping by rule — every override a given rule produces shares its
-     * tier by construction ({@link #applyPatternDerivedOverride}), so this
-     * needs no separate rule-level check the way {@link #retireWholeRule}
-     * does (that path has no override to read a tier from when the rule
-     * currently covers zero loggers).
+     * scope, and for any rule that governs part of it, either carve {@code
+     * target} into that rule's exclusion set or, if that carve-out (added
+     * to whatever the rule was already missing) leaves nothing of the
+     * rule's own coverage standing, retire the rule outright (a code-review
+     * finding against the original slice: it always recorded the raw,
+     * un-narrowed {@code target} as the exclusion, even for a rule whose
+     * pattern {@code target} itself fully contained, permanently blinding
+     * that rule to everything it could ever match instead of retiring it
+     * the way {@link #retireWholeRule}'s exact-string path already would
+     * have for the same pattern spelled out directly; the original slice
+     * also never retired a rule this way at all, however thoroughly its
+     * exclusions accumulated). See {@link #shouldRetire} and {@link
+     * #exclusionsFor} for the two decisions this makes per affected rule.
+     * {@code STICKY} filtering happens per logger, before grouping by rule
+     * — every override a given rule produces shares its tier by
+     * construction ({@link #applyPatternDerivedOverride}), so this needs no
+     * separate rule-level check the way {@link #retireWholeRule} does (that
+     * path has no override to read a tier from when the rule currently
+     * covers zero loggers).
      */
     private ResetOutcome resetScopedTarget(String target, boolean isPattern, boolean includeSticky, String reason) {
         List<String> targetMatches = isPattern ? matchesFor(target) : List.of(target);
@@ -394,6 +414,18 @@ public final class LevelControlService implements LevelControlOperations {
         Map<String, List<String>> loggersByRule = new LinkedHashMap<>();
         List<String> plain = new ArrayList<>();
         List<String> skippedSticky = new ArrayList<>();
+        // Carries each matched logger's already-read LevelOverride from
+        // classification into the apply loops below, so applying a reset
+        // costs one registry lookup per logger, not two (a code-review
+        // finding against the original two-pass shape, which re-fetched by
+        // name a second time at apply). Safe to trust at apply time despite
+        // being read here, before requireCapability and before any mutation:
+        // applyReset's own removeIfCurrent compare-and-remove still catches
+        // a concurrent change in between and reports it via its boolean
+        // return, which is what actually decides `reverted` membership below
+        // -- this map only saves the redundant re-read, it never bypasses
+        // the freshness check.
+        Map<String, LevelOverride> overridesByName = new LinkedHashMap<>();
         for (String name : targetMatches) {
             Optional<LevelOverride> existing = overrides.get(name);
             if (existing.isEmpty()) {
@@ -404,6 +436,7 @@ public final class LevelControlService implements LevelControlOperations {
                 skippedSticky.add(name);
                 continue;
             }
+            overridesByName.put(name, override);
             if (override.originPattern() != null) {
                 loggersByRule.computeIfAbsent(override.originPattern(), k -> new ArrayList<>()).add(name);
             } else {
@@ -417,11 +450,18 @@ public final class LevelControlService implements LevelControlOperations {
 
         List<String> reverted = new ArrayList<>();
         for (String name : plain) {
-            overrides.get(name).ifPresent(o -> applyReset(name, o, source, reason));
-            reverted.add(name);
+            // Only reported reverted when applyReset's own compare-and-
+            // remove actually succeeded (a code-review finding): a
+            // concurrent reset between the classification scan above and
+            // here would otherwise silently no-op while this call still
+            // claimed credit for it.
+            if (applyReset(name, overridesByName.get(name), source, reason)) {
+                reverted.add(name);
+            }
         }
 
         List<String> excludedFrom = new ArrayList<>();
+        List<String> retiredByCarveOut = new ArrayList<>();
         for (Map.Entry<String, List<String>> entry : loggersByRule.entrySet()) {
             String pattern = entry.getKey();
             Optional<PatternRule> ruleOpt = patternRules.get(pattern);
@@ -429,12 +469,39 @@ public final class LevelControlService implements LevelControlOperations {
                 continue; // concurrently retired between the scan above and now
             }
             PatternRule rule = ruleOpt.get();
-            for (String name : entry.getValue()) {
-                overrides.get(name).ifPresent(o -> applyReset(name, o, source, reason));
-            }
-            reverted.addAll(entry.getValue());
+            List<String> matchedUnderRule = entry.getValue();
 
-            PatternRule updated = rule.withExclusion(target);
+            List<String> actuallyReverted = new ArrayList<>();
+            for (String name : matchedUnderRule) {
+                // Same "only claim what actually happened" fix as the plain
+                // loop above.
+                if (applyReset(name, overridesByName.get(name), source, reason)) {
+                    actuallyReverted.add(name);
+                }
+            }
+            reverted.addAll(actuallyReverted);
+
+            // What this carve-out would add to the rule's exclusions if it
+            // doesn't retire the rule outright -- computed before the retire
+            // decision below so both share the exact same value: the
+            // "would this exhaust the rule's own coverage" check needs to
+            // know precisely what's being added, not just that something is.
+            List<String> exclusionsToAdd = exclusionsFor(target, rule, matchedUnderRule);
+            if (shouldRetire(target, rule, exclusionsToAdd)) {
+                if (patternRules.removeIfCurrent(pattern, rule)) {
+                    safePersist(() -> stateStore.removePatternRule(pattern));
+                    retiredByCarveOut.add(pattern);
+                }
+                // A lost removeIfCurrent race (a concurrent setLevel/
+                // resetLevel already replaced or removed the rule) leaves
+                // the reverts above standing -- they're real -- but records
+                // no retirement for this call; the winner of that race owns
+                // this rule's own outcome, same as retireWholeRule's own
+                // removeIfCurrent guard.
+                continue;
+            }
+
+            PatternRule updated = rule.withExclusions(exclusionsToAdd);
             if (patternRules.replaceIfCurrent(pattern, rule, updated)) {
                 if (rule.tier() != PersistenceTier.SESSION) {
                     safePersist(() -> stateStore.savePatternRule(updated));
@@ -448,24 +515,125 @@ public final class LevelControlService implements LevelControlOperations {
         }
 
         changeListener.onChange(); // reaching here means plain or loggersByRule was non-empty -- something changed
-        return new ResetOutcome(reverted, List.of(), excludedFrom, skippedSticky);
+        return new ResetOutcome(reverted, retiredByCarveOut, excludedFrom, skippedSticky);
+    }
+
+    /**
+     * Whether carving {@code exclusionsToAdd} into {@code rule} (on top of
+     * whatever it already excludes) leaves the rule with nothing left to
+     * do, per doc/specs/reset-command-surface.md's "Partial reset — scoped
+     * exclusions" step 4 ("if target's scope, together with that rule's
+     * existing exclusions, now accounts for the rule's entire original
+     * coverage, the rule has nothing left to do — remove it outright") —
+     * true via either of two tests, both sound (never claim retirement
+     * unless nothing of the rule's own reach genuinely remains):
+     *
+     * <ol>
+     *   <li><b>{@code target} abstractly contains the rule's own pattern</b>
+     *       ({@link NameFilter#covers}) — {@code target}'s scope is a
+     *       superset of everything {@code rule.pattern()} could ever match,
+     *       present or future, so nothing an exclusion could preserve is
+     *       left standing regardless of what's currently known. This is the
+     *       primary case doc/specs/reset-command-surface.md's own worked
+     *       example covers (two independent rules each fully contained by a
+     *       broader reset target) and the one existing behavior this method
+     *       must not regress: recording {@code target} as those rules'
+     *       exclusion instead of retiring them left both permanently unable
+     *       to match anything ever again (the bug this whole fix exists
+     *       for).</li>
+     *   <li><b>{@code exclusionsToAdd} is a finite set of exact names, and no
+     *       currently-known logger matching the rule's pattern escapes it
+     *       plus the rule's existing exclusions</b> — a pragmatic,
+     *       concrete-state fallback for the case abstract containment can't
+     *       decide (e.g. an exact-name {@code target} narrower than a
+     *       trailing-star rule pattern, which can never abstractly contain
+     *       it, but which happens to be the rule's <em>only</em>
+     *       currently-known match). This is a real design call flagged in
+     *       doc/specs/reset-command-surface.md (search "single
+     *       currently-known logger"): it retires a rule that, in the
+     *       abstract, could still match a logger discovered later under the
+     *       same pattern -- forgoing that specific future-coverage
+     *       guarantee in exchange for not leaving a rule that currently
+     *       matches nothing sitting in {@code patternRules} (persisted,
+     *       recompiled, and evaluated on every sweep tick) forever.
+     *       <b>Restricted to exact-name additions on purpose</b> -- if
+     *       {@code exclusionsToAdd} itself carries a sub-pattern (a
+     *       wildcard carve-out that step 1 above already found doesn't
+     *       abstractly contain the whole rule), then by definition some
+     *       sibling scope the sub-pattern doesn't reach still belongs to the
+     *       rule; "no currently-known logger escapes" in that case would
+     *       only be a coincidence of which loggers happen to exist right
+     *       now, not a fact about the rule's remaining reach, and retiring
+     *       on it would wrongly cut off a sibling like {@code
+     *       "org.apache.other"} that simply hasn't been created yet. Never
+     *       wrongly <em>keeps</em> a rule around past this point either way:
+     *       every name this test walks is re-read fresh via {@link
+     *       #matchesFor}, and every name it treats as "already excluded" was
+     *       reverted either by this very call or by whichever earlier
+     *       {@code resetLevel} call first added it to {@code
+     *       rule.exclusions()} (this method's own invariant -- an exclusion
+     *       is never recorded here without reverting whatever it covers in
+     *       the same call), so no currently-overridden logger is ever left
+     *       orphaned by a retirement this test triggers.</li>
+     * </ol>
+     */
+    private boolean shouldRetire(String target, PatternRule rule, List<String> exclusionsToAdd) {
+        if (NameFilter.covers(target, rule.pattern())) {
+            return true;
+        }
+        if (exclusionsToAdd.stream().anyMatch(NameFilter::isPattern)) {
+            return false;
+        }
+        List<String> allExclusions = new ArrayList<>(rule.exclusions());
+        allExclusions.addAll(exclusionsToAdd);
+        Predicate<String> excluded = anyOf(allExclusions);
+        for (String name : matchesFor(rule.pattern())) {
+            if (!excluded.test(name)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * What a carve-out that does <em>not</em> retire {@code rule} outright
+     * should add to its exclusion set. {@code target} verbatim whenever
+     * it's provably safe (narrower than or equal to {@code rule}'s own
+     * pattern, per {@link NameFilter#covers}) — the common, spec-documented
+     * case ({@code org.apache.tomcat} excluded from a live {@code
+     * org.apache.*} rule, still covering the excluded name's own
+     * descendants present and future). Otherwise {@code target}'s scope and
+     * {@code rule}'s own aren't in a provable subset relationship either
+     * way (a genuine partial overlap, e.g. a leading-star target crossing a
+     * trailing-star rule, or a shape {@link NameFilter#covers} doesn't
+     * reason about at all) — recording {@code target} itself here risks
+     * exactly the bug this whole fix exists for (an over-broad exclusion
+     * that outlives what this call actually had the right to carve out), so
+     * this falls back to the individual currently-matched logger names
+     * instead ({@code matchedUnderRule}, already known safe: every one of
+     * them is a concrete name this call is reverting right now). Narrower
+     * than {@code target} itself, and therefore never over-broad, at the
+     * cost of not excluding a not-yet-discovered descendant of {@code
+     * target} in this specific overlap shape -- an accepted, documented
+     * trade-off (doc/specs/reset-command-surface.md, "Partial reset —
+     * scoped exclusions").
+     */
+    private List<String> exclusionsFor(String target, PatternRule rule, List<String> matchedUnderRule) {
+        if (NameFilter.covers(rule.pattern(), target)) {
+            return List.of(target);
+        }
+        return matchedUnderRule;
     }
 
     @Override
     public ResetOutcome resetAllLoggers(boolean includeSticky) {
-        // Unlike a targeted reset (nothing to check capability against when
-        // there's nothing addressable), a broad reset checks capability
-        // unconditionally, matching this operation's pre-existing "get me
-        // back to normal" contract -- a policy denying LEVEL_LOWER denies
-        // this call even against an empty registry.
-        requireCapability(Capability.LEVEL_LOWER);
-        List<String> reverted = new ArrayList<>();
+        List<String> candidates = new ArrayList<>();
         List<String> skippedSticky = new ArrayList<>();
         for (Map.Entry<String, LevelOverride> entry : overrides.all().entrySet()) {
             if (entry.getValue().tier() == PersistenceTier.STICKY && !includeSticky) {
                 skippedSticky.add(entry.getKey());
             } else {
-                reverted.add(entry.getKey());
+                candidates.add(entry.getKey());
             }
         }
         List<String> retiredPatterns = new ArrayList<>();
@@ -475,11 +643,34 @@ public final class LevelControlService implements LevelControlOperations {
             }
             retiredPatterns.add(rule.pattern());
         }
-        if (reverted.isEmpty() && retiredPatterns.isEmpty()) {
+        // Checked unconditionally, even when classification above found
+        // nothing addressable -- a broad reset's pre-existing "get me back
+        // to normal" contract means a policy denying LEVEL_LOWER denies
+        // this call even against an empty registry (unlike a targeted
+        // reset, which has nothing to check capability against when there's
+        // nothing addressable). Placed after classification, not before --
+        // classification is a read-only scan, so this doesn't change what
+        // gets checked, only when, and it means the capability check (like
+        // resetScopedTarget's own) sits between classification and apply
+        // rather than in front of both.
+        requireCapability(Capability.LEVEL_LOWER);
+        if (candidates.isEmpty() && retiredPatterns.isEmpty()) {
             return new ResetOutcome(List.of(), List.of(), List.of(), skippedSticky);
         }
-        for (String loggerName : reverted) {
-            overrides.get(loggerName).ifPresent(o -> applyReset(loggerName, o, source, null));
+        List<String> reverted = new ArrayList<>();
+        for (String loggerName : candidates) {
+            // Only reported reverted when an override was actually still
+            // there to revert (a code-review finding, shared with
+            // resetScopedTarget's identical fix): a concurrent reset
+            // between the classification scan above and here would
+            // otherwise silently no-op through applyReset's own compare-
+            // and-remove while this call still claimed credit for it.
+            Optional<LevelOverride> current = overrides.get(loggerName);
+            if (current.isEmpty()) {
+                continue; // concurrently reset between the scan above and now
+            }
+            applyReset(loggerName, current.get(), source, null);
+            reverted.add(loggerName);
         }
         for (String pattern : retiredPatterns) {
             patternRules.remove(pattern);
@@ -576,21 +767,28 @@ public final class LevelControlService implements LevelControlOperations {
      * case for a rule nothing has been carved out of.
      */
     private static Predicate<String> anyOf(List<String> exclusions) {
-        if (exclusions.isEmpty()) {
-            return name -> false;
-        }
-        List<Predicate<String>> compiled = new ArrayList<>(exclusions.size());
-        for (String exclusion : exclusions) {
-            compiled.add(NameFilter.compile(exclusion));
-        }
-        return name -> {
-            for (Predicate<String> matcher : compiled) {
-                if (matcher.test(name)) {
-                    return true;
-                }
-            }
-            return false;
-        };
+        return exclusions.stream()
+                .map(LevelControlService::exclusionMatcher)
+                .reduce(Predicate::or)
+                .orElse(name -> false);
+    }
+
+    /**
+     * One exclusion entry's own matcher. A {@code '*'}-bearing entry is a
+     * real sub-pattern, matched the same way a rule's own pattern is
+     * ({@link NameFilter#compile}). A plain entry names one exact logger --
+     * matched by equality, <em>not</em> by handing it to {@link
+     * NameFilter#compile} as-is, whose own no-{@code '*'} branch is a loose,
+     * non-dot-aware prefix (documented on {@link NameFilter} itself as
+     * {@code listLoggers}' own display-filter convenience, not this
+     * segment-anchored exclusion grammar) — a code-review finding: excluding
+     * {@code "org.apache.tomcat"} must not also swallow an unrelated
+     * descendant like {@code "org.apache.tomcat.connector"} by raw string
+     * prefix, which would contradict this very mechanism's "excluded name's
+     * own descendants keep inheriting the rule" guarantee.
+     */
+    private static Predicate<String> exclusionMatcher(String exclusion) {
+        return NameFilter.isPattern(exclusion) ? NameFilter.compile(exclusion) : exclusion::equals;
     }
 
     /**
@@ -909,14 +1107,30 @@ public final class LevelControlService implements LevelControlOperations {
                 override.level().toString(), override.reason(), AuditRecord.Action.MUTATION)); // audit
     }
 
-    private void applyReset(String loggerName, LevelOverride toRevert, String auditSource, String reasonOverride) {
+    /**
+     * @return whether this call actually reverted {@code toRevert} -- {@code
+     *         false} means a concurrent mutation won the compare-and-remove
+     *         below, so nothing here touched the adapter, the state store,
+     *         or the audit log. Every caller in a classification-then-apply
+     *         pair (e.g. {@link #resetScopedTarget}) uses this, not a second
+     *         registry read, to decide whether a name actually belongs in
+     *         its own reported {@code reverted} list (a code-review
+     *         finding's "only claim what actually happened" fix, and --
+     *         since the {@link LevelOverride} classification already read
+     *         is passed straight through rather than re-fetched -- also the
+     *         fix for a separate finding: each matched logger cost two
+     *         registry lookups, one at classification and one at apply,
+     *         when this compare-and-remove already makes the second one
+     *         redundant).
+     */
+    private boolean applyReset(String loggerName, LevelOverride toRevert, String auditSource, String reasonOverride) {
         // Atomic compare-and-remove first: if the registry's current entry
         // for this logger is no longer exactly `toRevert`, a concurrent
         // setLevel already replaced it (the expiry sweep's own race, per
         // doc/specs/persistence.md's review) -- bail out without touching
         // the adapter, so the newer override is never clobbered.
         if (!overrides.removeIfCurrent(loggerName, toRevert)) {
-            return;
+            return false;
         }
 
         String previousValue = toRevert.level().toString();
@@ -931,6 +1145,7 @@ public final class LevelControlService implements LevelControlOperations {
         auditLog.record(new AuditRecord(
                 Instant.now(), principal, auditSource, loggerName, previousValue, newValue, reasonOverride,
                 AuditRecord.Action.REVERSION)); // audit
+        return true;
     }
 
     /**

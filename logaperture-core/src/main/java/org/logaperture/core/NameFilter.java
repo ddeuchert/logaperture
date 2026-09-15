@@ -189,4 +189,89 @@ final class NameFilter {
     private static IllegalArgumentException invalid(String filter, String hint) {
         return new IllegalArgumentException("invalid filter '" + filter + "': " + hint);
     }
+
+    /**
+     * Whether every name {@code inner} could ever match (now or on some
+     * future sweep) is also matched by {@code outer} — both read as this
+     * class's own grammar, not run as one pattern against a fixed string.
+     * The containment primitive doc/specs/reset-command-surface.md's
+     * "Partial reset — scoped exclusions" calls for (a code-review finding
+     * against the original slice, which recorded a partial-reset target as
+     * a rule's exclusion verbatim even when the target's own scope fully
+     * swallowed that rule's, permanently blinding the rule to everything it
+     * could ever have matched instead of retiring it): {@code
+     * LevelControlService} uses this to decide, per affected rule, whether
+     * a carve-out should retire the rule outright rather than merely
+     * exclude from it.
+     *
+     * <p>Decidable from the grammar's own structure (at most one leading
+     * {@code *.} and/or one trailing {@code .*}, literal segments in
+     * between) — this reasons about three shapes: an exact name (matches
+     * only itself), a trailing-star pattern (matches its own literal prefix
+     * and everything segment-wise under it), and a leading-star pattern
+     * (matches its own literal suffix and everything segment-wise above
+     * it). A pattern using <em>both</em> a leading and a trailing star at
+     * once (e.g. {@code "*.foo.*"}) is intentionally not reasoned about
+     * beyond exact string equality — containment for that shape needs an
+     * unanchored "contains this segment sequence anywhere" match that none
+     * of this feature's call sites need, and guessing wrong here would
+     * mean either wrongly retiring a rule that still had reach, or wrongly
+     * excluding it into permanent blindness (the very bug this method
+     * exists to fix) — so callers fall back to their own conservative
+     * default (add the standing exclusion instead of retiring; scope it to
+     * concrete names instead of the raw pattern) rather than risk that.
+     */
+    static boolean covers(String outer, String inner) {
+        if (outer.equals(inner)) {
+            return true;
+        }
+        Scope outerScope = Scope.of(outer);
+        Scope innerScope = Scope.of(inner);
+        if (outerScope == null || innerScope == null) {
+            return false; // one side is a leading-and-trailing-star pattern -- not reasoned about, see the javadoc above
+        }
+        return outerScope.covers(innerScope);
+    }
+
+    /** One pattern's shape, decomposed for {@link #covers(String, String)}. */
+    private record Scope(Kind kind, String literal) {
+
+        enum Kind {
+            EXACT, LEADING, TRAILING
+        }
+
+        /** {@code null} for a pattern using both a leading and a trailing star -- {@link #covers} doesn't reason about that shape. */
+        static Scope of(String pattern) {
+            if (!isPattern(pattern)) {
+                return new Scope(Kind.EXACT, pattern);
+            }
+            boolean leading = pattern.startsWith("*.");
+            boolean trailing = pattern.endsWith(".*");
+            if (leading == trailing) {
+                return null; // both (rare) or -- for a validated pattern -- neither, which can't happen
+            }
+            String literal = leading ? pattern.substring(2) : pattern.substring(0, pattern.length() - 2);
+            return new Scope(leading ? Kind.LEADING : Kind.TRAILING, literal);
+        }
+
+        boolean covers(Scope inner) {
+            return switch (kind) {
+                case EXACT -> inner.kind == Kind.EXACT && literal.equals(inner.literal);
+                case TRAILING -> (inner.kind == Kind.EXACT || inner.kind == Kind.TRAILING)
+                        && segmentPrefixCovers(literal, inner.literal);
+                case LEADING -> (inner.kind == Kind.EXACT || inner.kind == Kind.LEADING)
+                        && segmentSuffixCovers(literal, inner.literal);
+            };
+        }
+    }
+
+    /** Whether {@code candidate} is {@code prefix} itself or lies under it, segment-anchored (the {@code "prefix.*"} scope). */
+    private static boolean segmentPrefixCovers(String prefix, String candidate) {
+        return candidate.equals(prefix) || candidate.startsWith(prefix + ".");
+    }
+
+    /** Whether {@code candidate} is {@code suffix} itself or lies above it, segment-anchored (the {@code "*.suffix"} scope). */
+    private static boolean segmentSuffixCovers(String suffix, String candidate) {
+        return candidate.equals(suffix) || candidate.endsWith("." + suffix);
+    }
 }

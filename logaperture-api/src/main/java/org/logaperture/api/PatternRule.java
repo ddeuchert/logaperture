@@ -111,4 +111,19 @@ public record PatternRule(
         updated.add(target);
         return new PatternRule(pattern, level, reason, appliedAt, source, tier, expiresAt, updated);
     }
+
+    /**
+     * {@link #withExclusion(String)}, applied for every entry in {@code
+     * targets} — the multi-name fallback doc/specs/reset-command-surface.md's
+     * "Partial reset — scoped exclusions" design note calls for (a single
+     * carve-out call can need to exclude more than one concrete logger name
+     * at once, rather than one pattern/name covering all of them).
+     */
+    public PatternRule withExclusions(List<String> targets) {
+        PatternRule result = this;
+        for (String target : targets) {
+            result = result.withExclusion(target);
+        }
+        return result;
+    }
 }
