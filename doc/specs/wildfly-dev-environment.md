@@ -164,14 +164,25 @@ Subcommands:
 
 | Command | Behaviour |
 |---|---|
-| `up [--debug-suspend] [--sweep-seconds N] [--build]` | Verify `logaperture-agent/target/logaperture-agent.jar` and `logaperture-cli/target/logaperture-cli.jar` exist; if missing (or `--build`), run `mvn -q -pl logaperture-agent,logaperture-cli -am package`. Then `docker compose -p logaperture up -d`, exporting `DEBUG_SUSPEND` / `LOGAPERTURE_SWEEP_SECONDS`. Print the attach hint and, with `--debug-suspend`, that the JVM is paused until the debugger connects. |
+| `up [--debug-suspend] [--sweep-seconds N] [--build]` | Verify `logaperture-agent/target/logaperture-agent.jar` and `logaperture-cli/target/logaperture-cli.jar` exist; if missing (or `--build`), run `mvn -q -pl logaperture-agent,logaperture-cli -am package`; otherwise warn if either looks stale (see below). Then `docker compose -p logaperture up -d`, exporting `DEBUG_SUSPEND` / `LOGAPERTURE_SWEEP_SECONDS`. Print the attach hint and, with `--debug-suspend`, that the JVM is paused until the debugger connects. |
 | `down` | `docker compose -p logaperture down`. |
 | `restart-agent [--build]` | Rebuild the agent jar (default on), then `docker compose -p logaperture up -d --force-recreate wildfly` — a recreate, not a plain `restart`, so `standalone.conf` and `server.log` start fresh (a `restart` re-runs the container command against the same filesystem, re-appending the agent flags). Comes back in normal, non-suspend mode. |
-| `deploy [PATH]` | Copy `PATH` (default: the built `logaperture-sample-war/target/*.war`) into `dev/wildfly/deployments/`; poll for the `<name>.war.deployed` marker via `docker compose exec`; fail on `<name>.war.failed`. On a redeploy of the same archive, first removes it and waits for `.undeployed`, then clears the scanner's stale status markers — otherwise the poll can match the previous deploy's `.deployed` (or a stale `.failed`). |
+| `deploy [PATH]` | Copy `PATH` (default: the built `logaperture-sample-war/target/*.war`) into `dev/wildfly/deployments/`; poll for the `<name>.war.deployed` marker via `docker compose exec`; fail on `<name>.war.failed`. On a redeploy of the same archive, first removes it and waits for `.undeployed`, then clears the scanner's stale status markers — otherwise the poll can match the previous deploy's `.deployed` (or a stale `.failed`). Warns if the WAR looks stale (only when `PATH` is omitted — a caller-supplied archive isn't this reactor's to judge). |
 | `undeploy [NAME]` | Remove the archive from `deployments/`; wait for `.undeployed`. Default `NAME` = the sample. |
 | `logctl -- ARG...` | `docker compose -p logaperture exec -T wildfly java -jar /opt/logctl.jar ARG...`. The `--` separates driver args from `logctl` args. |
 | `tail [--lines N]` | Follow `server.log` (`docker compose exec wildfly tail -n N -f …`). |
-| `status` | Container state + `logctl status` + a `WILDFLY_IMAGE` vs pom drift check (see below). |
+| `status` | Container state + `logctl status` + a `WILDFLY_IMAGE` vs pom drift check + an agent/CLI jar staleness check (see below). |
+
+**Source staleness check.** `up`, `deploy` and `status` warn (non-fatal) when a built jar/WAR
+predates a source change under the module tree(s) that feed it — the newer of the latest
+commit touching them and any uncommitted change's own file mtime, so an edit made but not
+yet committed still counts. Without this, a container left running across several merged
+PRs keeps executing the old agent with nothing anywhere to say so — indistinguishable from a
+real regression (#46). The module list each artifact is checked against is hand-kept in sync
+with that module's pom.xml `<dependency>` blocks, the same trade-off already made for the
+image-version check below. The fix named in the warning is always `--build` (for the agent/CLI
+jars) or the direct `mvn … package` line (for the sample WAR, which `deploy` has no `--build`
+flag to trigger on its own).
 
 **Image-version drift check.** The single source of truth for the WildFly version
 is the root `pom.xml` `wildfly.image` property (also consumed by

@@ -18,8 +18,10 @@ After this feature, the user will be able to:
 - Set a level on every logger matching a pattern in one command, the same way `logctl levels`
   already looks them up: `logctl error *.deployment.scanner`.
 - Have that pattern act as a **standing rule** — a logger that doesn't exist yet (not loaded,
-  not yet instantiated) automatically gets the same level the moment LogAperture discovers it,
-  with no need to re-run the command.
+  not yet instantiated) automatically gets the same level once LogAperture discovers it, with
+  no need to re-run the command. Discovery isn't instant: it happens on the periodic sweep
+  (default every 30s, `-Dlogaperture.sweep.seconds`), not on a synchronous hook at logger
+  creation, so a just-created logger can take up to one sweep interval to pick up the rule.
 - See a preview of exactly which currently-known loggers a pattern command is about to affect,
   and confirm before it takes effect — or pass `--yes` to skip the prompt in a script.
 - Retire a standing rule with `logctl reset *.deployment.scanner` — every logger it currently
@@ -55,9 +57,17 @@ They're actually different in a way that matters operationally:
 So the choice isn't cosmetic: the bare name leaves propagation to the target framework and
 takes responsibility for one logger; the trailing wildcard makes LogAperture responsible for
 propagation itself, with an explicit, individually-audited override on every logger it
-touches — now and later. Reach for the trailing wildcard whenever you want that guarantee (or
-just want to `logctl levels *.mygroup.*` to see the whole subtree, standing-rule support aside)
-rather than trusting a specific framework's inheritance behavior to do it for you.
+touches — now and later. That per-logger override also gets its own capability check (see
+"Capability and audit" below) — a bare name is a single `LEVEL_RAISE`/`LEVEL_LOWER` decision
+for one logger, a wildcard is that same decision evaluated once per match, now and on every
+future one the sweep finds. It's also the only way to reach, in one command, every logger
+matching that shape across more than one WildFly deployment context — a bare name is one
+literal string, broadcast to whichever context happens to have a logger by that exact name
+(see `doc/specs/wildfly-support.md`'s "Broadcast semantics"); it can't catch a same-purpose
+logger a different deployment happens to have named slightly differently the way a pattern
+can. Reach for the trailing wildcard whenever you want any of that (or just want to `logctl
+levels *.mygroup.*` to see the whole subtree, standing-rule support aside) rather than
+trusting a specific framework's inheritance behavior to do it for you.
 
 ## Why slices 2 and 3 land in one spec
 
@@ -253,8 +263,21 @@ deliberate step `logctl`'s prompt embodies. See Decision #2.
 
 4. `--yes` skips the prompt and calls `setLevel` with `confirmed = true` directly. Without it,
    on a non-interactive invocation (no controlling terminal — same check a real confirmation
-   prompt anywhere needs), `logctl` fails with a usage error naming `--yes` rather than hanging
-   on a read from a stdin nothing will ever write to (Decision #4).
+   prompt anywhere needs), `logctl` fails with a usage error rather than hanging on a read from
+   a stdin nothing will ever write to (Decision #4). That error is the *only* explanation a
+   non-interactive caller ever sees — step 3's preview never runs on this path — so it states
+   the standing-rule consequence itself rather than just naming the escape hatch:
+
+   ```
+   'org.apache.*' is a pattern -- applying it creates a standing rule: DEBUG on every
+   currently-matching logger, AND on any new one discovered later, until 'logctl reset
+   org.apache.*'. Pass --yes to apply it non-interactively.
+   ```
+
+   This matters in practice for exactly the case that motivated it: every invocation of
+   `logctl` through `dev/wildfly/wildflyctl.py logctl --` (or any `docker compose exec -T`) is
+   non-interactive, since `-T` disables the pseudo-TTY the interactive path's `[y/N]` prompt
+   needs.
 5. On "y", call `setLevel` again with `confirmed = true`.
 
 `logctl` itself never triggers `ConfirmationRequiredException` in normal operation — its own

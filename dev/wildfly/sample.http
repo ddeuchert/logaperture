@@ -22,6 +22,15 @@
 #
 # The timer logs on a background thread — its output goes to the server,
 # not the response body. Watch it with `python3 dev/wildfly/wildflyctl.py tail`.
+#
+# Pattern targeting: a bare exact name (`logctl debug org.logaperture.demo.Checkout`)
+# overrides only that one logger. A trailing-wildcard pattern
+# (`logctl debug 'org.logaperture.demo.*'`) instead reaches every logger under that
+# category, now and any discovered later -- each with its own audited override, up
+# to a sweep-interval delay (dev default 5s, prod default 30s; see wildflyctl up
+# --sweep-seconds) before a brand-new one is picked up. See
+# doc/specs/pattern-level-targeting.md
+# "Bare name vs. trailing wildcard -- why the difference matters".
 
 @base = http://localhost:8080/logaperture-sample-war
 

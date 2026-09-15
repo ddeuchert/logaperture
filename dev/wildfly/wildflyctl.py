@@ -120,6 +120,67 @@ def warn_on_image_drift():
 
 # --- build artifacts --------------------------------------------------------
 
+# Source trees that feed each built artifact, as the transitive module
+# closure of its pom.xml <dependency> blocks. There's no cheap way to ask
+# Maven "which source dirs feed this jar" short of invoking the reactor
+# itself, so this list is hand-kept in sync with those <dependency> blocks —
+# the same trade-off this file already makes for WILDFLY_IMAGE (a narrow
+# regex over pom.xml rather than an XML dependency).
+AGENT_MODULES = ["logaperture-bridge", "logaperture-api", "logaperture-core",
+                  "logaperture-adapter-logback", "logaperture-adapter-jul",
+                  "logaperture-container-none", "logaperture-container-wildfly",
+                  "logaperture-control-jmx", "logaperture-agent"]
+CLI_MODULES = ["logaperture-bridge", "logaperture-api", "logaperture-core",
+               "logaperture-control-jmx", "logaperture-cli"]
+SAMPLE_WAR_MODULES = ["logaperture-sample-war"]
+
+
+def _newest_source_change(modules):
+    """Latest modification time (Unix seconds) across `modules`' `src/`
+    trees: the newer of (a) the latest commit touching them and (b) any
+    uncommitted change to a tracked or untracked file under them, by that
+    file's own mtime — so an edit made but not yet committed doesn't hide
+    behind a stale commit timestamp. None if git can't answer at all (not a
+    checkout, `git` missing) — staleness then just isn't checked.
+    """
+    paths = [f"{m}/src" for m in modules]
+    latest = None
+    log = run(["git", "log", "-1", "--format=%ct", "--", *paths], check=False, capture=True)
+    if log.returncode == 0 and log.stdout.strip():
+        latest = int(log.stdout.strip())
+    status = run(["git", "status", "--porcelain", "--", *paths], check=False, capture=True)
+    if status.returncode == 0:
+        for line in status.stdout.splitlines():
+            f = REPO_ROOT / line[3:].strip()
+            if f.is_file():
+                mtime = int(f.stat().st_mtime)
+                latest = mtime if latest is None else max(latest, mtime)
+    return latest
+
+
+def _fmt_time(ts):
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
+
+
+def warn_if_stale(jar, modules, rebuild_hint):
+    """Non-fatal warning when `jar` predates a source change under
+    `modules` — otherwise a container left running keeps executing
+    yesterday's code with nothing on screen to say so, easy to mistake for a
+    real regression (#46)."""
+    if not jar.is_file():
+        return
+    src_time = _newest_source_change(modules)
+    if src_time is None or jar.stat().st_mtime >= src_time:
+        return
+    print(
+        f"\n  warning: {jar.relative_to(REPO_ROOT)} looks stale\n"
+        f"    built            {_fmt_time(jar.stat().st_mtime)}\n"
+        f"    source changed   {_fmt_time(src_time)}  (under {', '.join(modules)})\n"
+        f"    fix: {rebuild_hint}\n",
+        file=sys.stderr,
+    )
+
+
 def ensure_jars(build):
     missing = [p for p in (AGENT_JAR, CLI_JAR) if not p.is_file()]
     if build or missing:
@@ -127,6 +188,9 @@ def ensure_jars(build):
             print(f"note: building missing jar(s): {', '.join(p.name for p in missing)}",
                   file=sys.stderr)
         mvn("-pl", "logaperture-agent,logaperture-cli", "-am", "package", "-DskipTests")
+    else:
+        warn_if_stale(AGENT_JAR, AGENT_MODULES, "wildflyctl up --build")
+        warn_if_stale(CLI_JAR, CLI_MODULES, "wildflyctl up --build")
     for p in (AGENT_JAR, CLI_JAR):
         if not p.is_file():
             sys.exit(f"error: expected {p} after build — did `mvn package` fail?")
@@ -136,6 +200,9 @@ def ensure_sample_war():
     if not SAMPLE_WAR.is_file():
         print("note: building logaperture-sample-war", file=sys.stderr)
         mvn("-pl", "logaperture-sample-war", "-am", "package", "-DskipTests")
+    else:
+        warn_if_stale(SAMPLE_WAR, SAMPLE_WAR_MODULES,
+                       "mvn -pl logaperture-sample-war -am package -DskipTests")
     if not SAMPLE_WAR.is_file():
         sys.exit(f"error: expected {SAMPLE_WAR} after build")
 
@@ -353,6 +420,8 @@ def cmd_tail(a):
 def cmd_status(a):
     require_docker()
     warn_on_image_drift()
+    warn_if_stale(AGENT_JAR, AGENT_MODULES, "wildflyctl up --build")
+    warn_if_stale(CLI_JAR, CLI_MODULES, "wildflyctl up --build")
     compose("ps", check=False)
     print("\n--- logctl status ---", file=sys.stderr)
     logctl(["status"], check=False)

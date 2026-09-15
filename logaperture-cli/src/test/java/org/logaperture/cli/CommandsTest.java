@@ -487,12 +487,20 @@ class CommandsTest {
     @Test
     void setLevel_pattern_nonInteractiveWithoutYes_isAUsageErrorNamingTheFlag() {
         // Decision #4: fail fast rather than block forever on a read from a
-        // stdin nothing will ever write to.
+        // stdin nothing will ever write to. This is also the *only* message a
+        // non-interactive caller ever sees -- the full preview
+        // (printPatternPreview) never runs here -- so it must explain the
+        // standing-rule consequence itself, not just name the escape hatch
+        // (#46).
         CliError error = org.junit.jupiter.api.Assertions.assertThrows(CliError.class,
                 () -> run(Commands.setLevel("org.apache.*", "DEBUG", null, "SESSION", 0L, false, false)));
 
         assertEquals(CliError.USAGE, error.exitCode());
-        assertTrue(error.getMessage().contains("--yes"), error.getMessage());
+        String message = error.getMessage();
+        assertTrue(message.contains("--yes"), message);
+        assertTrue(message.contains("standing rule"), message);
+        assertTrue(message.contains("DEBUG"), message);
+        assertTrue(message.contains("logctl reset org.apache.*"), message);
         assertTrue(mbean.setLevelCalls.isEmpty());
     }
 
