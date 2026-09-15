@@ -1,4 +1,4 @@
-# Reset command surface: logger/handler split + `--ignore-sticky` (issue #42)
+# Reset command surface: logger/handler split + `--include-sticky` (issue #42)
 
 Status: draft — under review, open decisions below.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §18.9 (roadmap entry), §6.1
@@ -22,7 +22,7 @@ After this feature, the user will be able to:
   handler CONSOLE reset`.
 - Reset every handler override in one command, loggers untouched: `logctl reset handlers`.
 - Trust that a routine or broad reset leaves a deliberately-set `--sticky` override alone by
-  default, on every form above — and reach for `--ignore-sticky` on any of them when a sticky
+  default, on every form above — and reach for `--include-sticky` on any of them when a sticky
   override genuinely needs to go too.
 - Keep using `logctl reset --all` as the "get me back to normal, everything, both namespaces"
   escape hatch (pending sign-off — see Decision #1).
@@ -33,8 +33,13 @@ After this feature, the user will be able to:
 
 - The four namespace-scoped `reset` subcommands above, and the parser/help-text changes they
   need.
-- `--ignore-sticky` on every form, changing reset's default from "revert regardless of tier" to
-  "revert everything except `STICKY`-tier overrides, unless told otherwise."
+- `--include-sticky` on every form, changing reset's default from "revert regardless of tier" to
+  "revert everything except `STICKY`-tier overrides, unless told otherwise." Named
+  `--include-sticky`, not the issue's original `--ignore-sticky` — since the *default* is already
+  to ignore/skip sticky entries, a flag called `--ignore-sticky` would read as reinforcing that
+  default rather than overriding it (a double-negative trap: "ignore" is what already happens to
+  sticky without the flag). `--include-sticky` also matches the existing `--include-children`
+  naming shape (`cli-transport.md`) rather than inventing a new one.
 - Retiring `logctl handler <name> reset` in favor of `logctl reset handler <name>` — a deliberate
   breaking rename, not a synonym kept alongside it (pre-1.0, per top-level §11.1).
 - New/changed MXBean operations backing the above (see Operations).
@@ -56,11 +61,11 @@ After this feature, the user will be able to:
 ## Command grammar
 
 ```
-logctl reset logger <name-or-pattern> [--ignore-sticky] [--reason ...]
-logctl reset loggers [--ignore-sticky]
-logctl reset handler <name> [--ignore-sticky]
-logctl reset handlers [--ignore-sticky]
-logctl reset --all [--ignore-sticky]          # pending Decision #1
+logctl reset logger <name-or-pattern> [--include-sticky] [--reason ...]
+logctl reset loggers [--include-sticky]
+logctl reset handler <name> [--include-sticky]
+logctl reset handlers [--include-sticky]
+logctl reset --all [--include-sticky]          # pending Decision #1
 ```
 
 Space-separated subcommands under `reset`, per the phone test (`cli-transport.md`, "The phone
@@ -80,16 +85,16 @@ All operations below stay on `LevelControlMXBean` — the existing single interf
 and handler control already share.
 
 ```java
-ResetOutcomeData resetLevel(String target, boolean ignoreSticky);   // new overload
-ResetOutcomeData resetAllLoggers(boolean ignoreSticky);              // new
-ResetOutcomeData resetAllHandlers(boolean ignoreSticky);             // new
-ResetOutcomeData resetHandler(String handlerRef, boolean ignoreSticky); // new overload, was void
-ResetOutcomeData resetAll(boolean ignoreSticky);                     // new overload — Decision #1
+ResetOutcomeData resetLevel(String target, boolean includeSticky);   // new overload
+ResetOutcomeData resetAllLoggers(boolean includeSticky);              // new
+ResetOutcomeData resetAllHandlers(boolean includeSticky);             // new
+ResetOutcomeData resetHandler(String handlerRef, boolean includeSticky); // new overload, was void
+ResetOutcomeData resetAll(boolean includeSticky);                     // new overload — Decision #1
 ```
 
 The existing zero/one-arg overloads (`resetLevel(target)`, `resetHandler(handlerRef)`,
 `resetAll()`) are kept as additive per top-level §11.1 ("a new *optional* parameter... a new
-overload"), each delegating to its new sibling with `ignoreSticky = false` for wire-compatibility
+overload"), each delegating to its new sibling with `includeSticky = false` for wire-compatibility
 — **but this changes what that existing call now does**, since the sticky-skip is a new default,
 not a new opt-in. That's a behavioral break riding on a signature that stays additive; §11.1's
 compatibility promise is explicitly moot pre-1.0 ("no skew guarantee before 1.0... takes effect at
@@ -110,11 +115,11 @@ path for handlers avoids repeating that mistake.
 ```java
 List<String> revertedNames;      // loggers, or handlers, reverted by this call
 boolean patternRuleRetired;      // unchanged — meaningless (false) for a non-pattern target
-List<String> skippedStickyNames; // reverted-eligible but left alone because STICKY and !ignoreSticky
+List<String> skippedStickyNames; // reverted-eligible but left alone because STICKY and !includeSticky
 ```
 
-`skippedStickyNames` is empty whenever `ignoreSticky = true`, or the target had no sticky entries
-to begin with — a plain, no-`--ignore-sticky` reset with nothing sticky in scope looks exactly as
+`skippedStickyNames` is empty whenever `includeSticky = true`, or the target had no sticky entries
+to begin with — a plain, no-`--include-sticky` reset with nothing sticky in scope looks exactly as
 it does today. For `resetLevel` on a **pattern** target, a sticky-tier `PatternRule` itself (not
 just the individual overrides it produced) is what gets skipped-or-retired — see Decision #2.
 
@@ -131,7 +136,7 @@ One `REVERSION` audit record per logger/handler actually reverted, `source = "jm
 shape. Nothing is recorded for a sticky-skipped name — it wasn't touched, so there's no
 reversion to record; `skippedStickyNames` in the return value (and the CLI's summary line) is
 the only place that information surfaces. `resetLevel` on a pattern that itself retires a
-`STICKY`-tier `PatternRule` under `--ignore-sticky` records that retirement exactly as today's
+`STICKY`-tier `PatternRule` under `--include-sticky` records that retirement exactly as today's
 already-shipped pattern reset does.
 
 ## CLI output
@@ -142,14 +147,14 @@ rendering (`Commands.resetPattern`) unchanged, with one addition: a target left 
 sticky prints its own line instead of silence —
 
 ```
-com.acme.payments — left untouched (STICKY; use --ignore-sticky to include it).
+com.acme.payments — left untouched (STICKY; use --include-sticky to include it).
 ```
 
 The broad forms (`reset loggers`, `reset handlers`, `reset --all`) print a summary, not a
 per-name confirmation line (consistent with `resetAll`'s existing `Reverted N override(s).`):
 
 ```
-Reverted 4 logger override(s). 1 sticky override left untouched (use --ignore-sticky).
+Reverted 4 logger override(s). 1 sticky override left untouched (use --include-sticky).
 ```
 
 omitting the second sentence entirely when nothing was skipped. `--json` emits the
@@ -159,7 +164,7 @@ style to match).
 
 ## Versioning
 
-Adding `ignoreSticky` as a trailing boolean parameter on five operations is additive by
+Adding `includeSticky` as a trailing boolean parameter on five operations is additive by
 top-level §11.1's letter (new optional parameter, new overload) but not by its spirit — the
 *default behavior* of every existing zero-arg reset call changes underneath any caller that
 doesn't pass the new argument. Pre-1.0 this is moot (§11.1's own words: "no skew guarantee
@@ -171,21 +176,21 @@ buried in a diff.
 
 **#1 — Does `logctl reset --all` survive as the both-namespaces umbrella?**
 Leaning **yes, keep it** (per the issue: "'get me back to normal' shouldn't require remembering
-two commands"). If kept, it needs its own `ignoreSticky` overload (`resetAll(boolean)`, in
+two commands"). If kept, it needs its own `includeSticky` overload (`resetAll(boolean)`, in
 Operations above) for the same reason every other form does — otherwise `--all` would be the one
 reset command that can never leave a sticky override alone, which would be a strange asymmetry.
-Recommendation: keep `--all`, give it `--ignore-sticky` too, and define it as exactly
-`resetAllLoggers(ignoreSticky)` + `resetAllHandlers(ignoreSticky)` composed into one call and one
+Recommendation: keep `--all`, give it `--include-sticky` too, and define it as exactly
+`resetAllLoggers(includeSticky)` + `resetAllHandlers(includeSticky)` composed into one call and one
 `ResetOutcomeData` (concatenated `revertedNames`, unioned `skippedStickyNames`) — not a third,
 independently-implemented code path.
 
-**#2 — `--ignore-sticky` on a pattern target: does it also un-protect the standing rule itself?**
+**#2 — `--include-sticky` on a pattern target: does it also un-protect the standing rule itself?**
 A standing `PatternRule` is persisted per its own tier, exactly like a `LevelOverride`
 (`pattern-level-targeting.md`: "persisted per the tier it's set at"). That symmetry gives a clean
 answer: a `STICKY`-tier `PatternRule` is itself a sticky-tier entity, so the *same* filter that
 protects a sticky logger/handler override from a plain reset protects a sticky standing rule from
-retirement too — no special-casing needed, `--ignore-sticky` uncovers both in one flag.
-Recommendation: yes, uniform — a `STICKY` pattern rule needs `--ignore-sticky` to retire, exactly
+retirement too — no special-casing needed, `--include-sticky` uncovers both in one flag.
+Recommendation: yes, uniform — a `STICKY` pattern rule needs `--include-sticky` to retire, exactly
 like a `STICKY` single-logger override needs it to revert; nothing pattern-specific to design.
 
 **#3 — Confirmation/preview parity with #41's `error <pattern>` apply-side prompt.**
@@ -215,7 +220,7 @@ the exact name" is arguably itself a considered decision, similar in spirit to w
 at all. Recommendation: **skip it too, uniformly** — the alternative (bare-name resets bypass the
 protection, only pattern/broad resets honor it) is a second, harder-to-remember rule rather than
 one flag with one meaning; consistency here is worth the small extra friction of occasionally
-needing `--ignore-sticky com.acme.payments`. Flagging for explicit sign-off since it's the
+needing `--include-sticky com.acme.payments`. Flagging for explicit sign-off since it's the
 decision most likely to surprise an existing script.
 
 ## Cross-reference updates (once signed off)
@@ -238,7 +243,7 @@ decision most likely to surprise an existing script.
 - CLI: `ParserTest` for the new subcommand grammar and the retired forms' error messages;
   `MainRunTest`/`Json` tests for the new summary line and `--json` shape.
 - Cross-process: extend `CliEndToEndIT` with a sticky-then-broad-reset scenario (sticky survives
-  a plain `reset loggers`, is gone after `--ignore-sticky`) and a `reset handler <name>` /
+  a plain `reset loggers`, is gone after `--include-sticky`) and a `reset handler <name>` /
   retired-`handler <name> reset` pair.
 - `WildFlyContainerIT`: at minimum confirm `reset handlers`/`reset loggers` behave the same
   broadcast way existing broad resets do there.
