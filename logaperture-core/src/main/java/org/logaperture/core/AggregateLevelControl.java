@@ -46,6 +46,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -469,17 +470,39 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
 
     @Override
     public ResetOutcome resetLevel(String loggerName, boolean includeSticky, String reason) {
-        // A dedup by name, not a concatenation: two contexts sharing a
-        // logger (or matched by the same standing rule) each report
-        // reverting it independently, and the caller-facing list should
-        // name it once, same reasoning as setLevel's one-override-per-
-        // logger fix above.
+        return fanOutAndMergeReset(context -> context.service().resetLevel(loggerName, includeSticky, reason));
+    }
+
+    @Override
+    public ResetOutcome resetAllLoggers(boolean includeSticky) {
+        return fanOutAndMergeReset(context -> context.service().resetAllLoggers(includeSticky));
+    }
+
+    /**
+     * The fan-out-and-merge rule every {@link ResetOutcome}-returning
+     * operation here shares: call {@code perContext} once per registered
+     * context and union each of the four {@link ResetOutcome} list fields
+     * across the results (a code-review finding against the original
+     * slice, which duplicated this loop-plus-four-way-union by hand in
+     * {@link #resetLevel}, {@link #resetAllLoggers}, {@link #resetHandler},
+     * and {@link #resetAllHandlers}). A dedup by name, not a concatenation
+     * -- two contexts sharing a logger/handler (or matched by the same
+     * standing rule) each report reverting it independently, and the
+     * caller-facing list should name it once, same reasoning as {@link
+     * #setLevel}'s own one-override-per-logger fix. Safe to reuse for every
+     * caller even though not all four {@link ResetOutcome} fields apply to
+     * every operation (e.g. {@code resetHandler} never populates {@code
+     * retiredPatterns}/{@code excludedFrom}) -- the per-context calls
+     * themselves never populate a field their own operation doesn't use, so
+     * unioning it here still comes out empty.
+     */
+    private ResetOutcome fanOutAndMergeReset(Function<ContextControl, ResetOutcome> perContext) {
         Set<String> reverted = new LinkedHashSet<>();
         Set<String> retiredPatterns = new LinkedHashSet<>();
         Set<String> excludedFrom = new LinkedHashSet<>();
         Set<String> skippedSticky = new LinkedHashSet<>();
         for (ContextControl context : sortedByKey()) {
-            ResetOutcome outcome = context.service().resetLevel(loggerName, includeSticky, reason);
+            ResetOutcome outcome = perContext.apply(context);
             reverted.addAll(outcome.revertedNames());
             retiredPatterns.addAll(outcome.retiredPatterns());
             excludedFrom.addAll(outcome.excludedFrom());
@@ -487,37 +510,6 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         }
         return new ResetOutcome(List.copyOf(reverted), List.copyOf(retiredPatterns),
                 List.copyOf(excludedFrom), List.copyOf(skippedSticky));
-    }
-
-    @Override
-    public ResetOutcome resetAllLoggers(boolean includeSticky) {
-        Set<String> reverted = new LinkedHashSet<>();
-        Set<String> retiredPatterns = new LinkedHashSet<>();
-        Set<String> skippedSticky = new LinkedHashSet<>();
-        for (ContextControl context : sortedByKey()) {
-            ResetOutcome outcome = context.service().resetAllLoggers(includeSticky);
-            reverted.addAll(outcome.revertedNames());
-            retiredPatterns.addAll(outcome.retiredPatterns());
-            skippedSticky.addAll(outcome.skippedStickyNames());
-        }
-        return new ResetOutcome(List.copyOf(reverted), List.copyOf(retiredPatterns), List.of(), List.copyOf(skippedSticky));
-    }
-
-    /**
-     * {@code logctl reset --all}'s both-namespaces composition — kept as an
-     * explicit override (the {@link LevelControlOperations#resetAll()}
-     * default is loggers-only, correct for a single-context {@link
-     * LevelControlService} but not for this aggregate, which alone has
-     * both a logger and a handler service per context in view). The
-     * MXBean-facing, {@code includeSticky}-aware form of this same
-     * composition lives at {@code LevelControlMXBeanImpl} instead, since it
-     * depends on both narrow interfaces exactly the way this class does —
-     * see doc/specs/reset-command-surface.md, Decision #1.
-     */
-    @Override
-    public void resetAll() {
-        resetAllLoggers(false);
-        resetAllHandlers(false);
     }
 
     /**
@@ -607,26 +599,12 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
 
     @Override
     public ResetOutcome resetHandler(HandlerRef ref, boolean includeSticky) {
-        Set<String> reverted = new LinkedHashSet<>();
-        Set<String> skippedSticky = new LinkedHashSet<>();
-        for (ContextControl context : sortedByKey()) {
-            ResetOutcome outcome = context.handlerService().resetHandler(ref, includeSticky);
-            reverted.addAll(outcome.revertedNames());
-            skippedSticky.addAll(outcome.skippedStickyNames());
-        }
-        return new ResetOutcome(List.copyOf(reverted), List.of(), List.of(), List.copyOf(skippedSticky));
+        return fanOutAndMergeReset(context -> context.handlerService().resetHandler(ref, includeSticky));
     }
 
     @Override
     public ResetOutcome resetAllHandlers(boolean includeSticky) {
-        Set<String> reverted = new LinkedHashSet<>();
-        Set<String> skippedSticky = new LinkedHashSet<>();
-        for (ContextControl context : sortedByKey()) {
-            ResetOutcome outcome = context.handlerService().resetAllHandlers(includeSticky);
-            reverted.addAll(outcome.revertedNames());
-            skippedSticky.addAll(outcome.skippedStickyNames());
-        }
-        return new ResetOutcome(List.copyOf(reverted), List.of(), List.of(), List.copyOf(skippedSticky));
+        return fanOutAndMergeReset(context -> context.handlerService().resetAllHandlers(includeSticky));
     }
 
     /**

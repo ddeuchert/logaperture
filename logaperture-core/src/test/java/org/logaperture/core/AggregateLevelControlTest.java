@@ -168,7 +168,15 @@ class AggregateLevelControlTest {
     }
 
     @Test
-    void resetAll_revertsEveryOverrideInEveryContext() {
+    void resetAllLoggersAndResetAllHandlers_revertsEveryOverrideInEveryContext() {
+        // logctl reset --all's both-namespaces composition lives at
+        // LevelControlMXBeanImpl.resetAll(boolean) (doc/specs/
+        // reset-command-surface.md, Decision #1), not here -- this class no
+        // longer duplicates that composition itself (a code-review finding:
+        // AggregateLevelControl.resetAll() and LevelControlMXBeanImpl.
+        // resetAll(boolean) independently composed the identical "reset
+        // loggers + reset handlers" rule), so this test drives both narrow
+        // operations directly, the way that composition actually does.
         Ctx system = new Ctx("system");
         Ctx app = new Ctx("myapp.war");
         aggregate.register(system.control);
@@ -176,7 +184,8 @@ class AggregateLevelControlTest {
         aggregate.setLevel("com.a.One", Level.DEBUG, SetLevelOptions.defaults());
         aggregate.setLevel("com.b.Two", Level.TRACE, SetLevelOptions.defaults());
 
-        aggregate.resetAll();
+        aggregate.resetAllLoggers(false);
+        aggregate.resetAllHandlers(false);
 
         for (Ctx c : List.of(system, app)) {
             assertEquals(Level.INFO, c.adapter.effectiveLevel("com.a.One"));
@@ -185,7 +194,7 @@ class AggregateLevelControlTest {
     }
 
     @Test
-    void resetAll_revertsHandlerOverridesToo() {
+    void resetAllLoggersAndResetAllHandlers_revertsHandlerOverridesToo() {
         Ctx system = new Ctx("system");
         HandlerRef console = new HandlerRef("CONSOLE");
         system.adapter.addHandler(console, Level.INFO);
@@ -193,7 +202,8 @@ class AggregateLevelControlTest {
         aggregate.setLevel("com.a.One", Level.DEBUG, SetLevelOptions.defaults());
         aggregate.setHandlerLevel(console, Level.TRACE, SetHandlerLevelOptions.defaults());
 
-        aggregate.resetAll();
+        aggregate.resetAllLoggers(false);
+        aggregate.resetAllHandlers(false);
 
         assertEquals(Level.INFO, system.adapter.effectiveLevel("com.a.One"));
         assertEquals(Level.INFO, system.adapter.handlerLevel(console).orElseThrow());
