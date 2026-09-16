@@ -128,7 +128,7 @@ class NoneContainerTest {
 
             // resetLevel on a logger that was never overridden must be a safe
             // no-op -- if baseline capture hadn't run, this would misbehave.
-            ops.resetLevel("org.logaperture.container.none.baseline.Probe");
+            ops.resetLogger("org.logaperture.container.none.baseline.Probe", false);
         }
     }
 
@@ -142,7 +142,7 @@ class NoneContainerTest {
             assertEquals(Level.DEBUG, afterSet.effectiveLevel());
             assertTrue(afterSet.overrideActive());
 
-            ops.resetLevel("org.logaperture.container.none.roundtrip.Worker");
+            ops.resetLogger("org.logaperture.container.none.roundtrip.Worker", false);
             LoggerInfo afterReset = ops.listLoggers("org.logaperture.container.none.roundtrip.Worker").get(0);
             assertTrue(!afterReset.overrideActive());
         }

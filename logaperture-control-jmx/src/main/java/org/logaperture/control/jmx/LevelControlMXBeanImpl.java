@@ -77,13 +77,13 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
-    public ResetOutcomeData resetLevel(String loggerName) {
-        return ResetOutcomeData.from(operations.resetLevel(loggerName));
+    public ResetOutcomeData resetLogger(String target, boolean includeSticky) {
+        return ResetOutcomeData.from(operations.resetLogger(target, includeSticky));
     }
 
     @Override
-    public void resetAll() {
-        operations.resetAll();
+    public ResetOutcomeData resetAllLoggers(boolean includeSticky) {
+        return ResetOutcomeData.from(operations.resetAllLoggers(includeSticky));
     }
 
     @Override
@@ -109,8 +109,13 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
-    public void resetHandler(String handlerRef) {
-        handlerOperations.resetHandler(new HandlerRef(handlerRef));
+    public HandlerResetOutcomeData resetHandler(String handlerRef, boolean includeSticky) {
+        return HandlerResetOutcomeData.from(handlerOperations.resetHandler(new HandlerRef(handlerRef), includeSticky));
+    }
+
+    @Override
+    public HandlerResetOutcomeData resetAllHandlers(boolean includeSticky) {
+        return HandlerResetOutcomeData.from(handlerOperations.resetAllHandlers(includeSticky));
     }
 
     @Override

@@ -121,11 +121,11 @@ class JulLevelControlTest {
         assertEquals("system", afterSet.context());
         assertEquals(java.util.logging.Level.FINE, Logger.getLogger(logger).getLevel(), "mapped exactly to FINE");
 
-        ops.resetLevel(logger);
+        ops.resetLogger(logger, false);
         assertFalse(row(ops).overrideActive());
         assertEquals(Level.INFO, row(ops).effectiveLevel());
 
-        ops.resetAll(); // smoke
+        ops.resetAllLoggers(false); // smoke
     }
 
     @Test

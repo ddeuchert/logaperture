@@ -94,7 +94,7 @@ logaperture-cli/bin/logctl levels [filter]             # list loggers + effectiv
 logaperture-cli/bin/logctl status                      # active overrides
 logaperture-cli/bin/logctl debug <logger> [tier]       # also: trace | info | warn | error
 logaperture-cli/bin/logctl set   <logger> <level> [tier]
-logaperture-cli/bin/logctl reset <logger>              # or: reset --all
+logaperture-cli/bin/logctl reset logger <logger>       # also: reset loggers | reset handler <name> | reset handlers
 ```
 
 `tier` is `session` (until the JVM exits), `for <n>s|m|h|d` (auto-reverts), or

@@ -20,6 +20,7 @@ import org.logaperture.api.EnvironmentReport;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
+import org.logaperture.api.HandlerResetOutcome;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerByteCount;
@@ -58,7 +59,9 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     final List<Object[]> setHandlerLevelCalls = new ArrayList<>();
     final List<Object[]> setHandlerAutoCalls = new ArrayList<>();
     final List<HandlerRef> resetHandlerCalls = new ArrayList<>();
-    boolean resetAllCalled;
+    HandlerResetOutcome handlerResetOutcomeToReturn = HandlerResetOutcome.nothingReset();
+    boolean resetAllLoggersCalled;
+    boolean resetAllHandlersCalled;
 
     List<LoggerInfo> loggersToReturn = List.of();
     List<HandlerFloor> blockingHandlersToReturn = List.of();
@@ -91,14 +94,15 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     }
 
     @Override
-    public ResetOutcome resetLevel(String loggerName) {
-        resetLevelCalls.add(loggerName);
+    public ResetOutcome resetLogger(String target, boolean includeSticky) {
+        resetLevelCalls.add(target);
         return resetOutcomeToReturn;
     }
 
     @Override
-    public void resetAll() {
-        resetAllCalled = true;
+    public ResetOutcome resetAllLoggers(boolean includeSticky) {
+        resetAllLoggersCalled = true;
+        return resetOutcomeToReturn;
     }
 
     @Override
@@ -140,8 +144,15 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     }
 
     @Override
-    public void resetHandler(HandlerRef ref) {
+    public HandlerResetOutcome resetHandler(HandlerRef ref, boolean includeSticky) {
         resetHandlerCalls.add(ref);
+        return handlerResetOutcomeToReturn;
+    }
+
+    @Override
+    public HandlerResetOutcome resetAllHandlers(boolean includeSticky) {
+        resetAllHandlersCalled = true;
+        return handlerResetOutcomeToReturn;
     }
 
     @Override

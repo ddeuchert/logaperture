@@ -131,16 +131,61 @@ class ParserTest {
     }
 
     @Test
-    void allOnlyAppliesToReset() {
-        assertUsage(() -> Parser.parse(new String[] {"levels", "--all"}));
-        Parser.parse(new String[] {"reset", "--all"}); // fine
+    void includeStickyOnlyAppliesToReset() {
+        assertUsage(() -> Parser.parse(new String[] {"levels", "--include-sticky"}));
+        Parser.parse(new String[] {"reset", "logger", "com.acme", "--include-sticky"}); // fine
+    }
+
+    // --- reset (doc/specs/reset-command-surface.md) -------------------------------------------
+
+    @Test
+    void resetAllNoLongerExists() {
+        assertUsage(() -> Parser.parse(new String[] {"reset", "--all"}));
     }
 
     @Test
-    void resetNeedsExactlyOneLoggerOrAll() {
+    void bareResetOfALoggerNameNoLongerExists() {
+        // The bare "reset <logger>" spelling is retired; "logger" isn't
+        // recognized as a noun on its own, and "com.acme" isn't one of the
+        // four recognized nouns either -- both are usage errors naming the
+        // replacement (doc/specs/reset-command-surface.md).
+        assertUsage(() -> Parser.parse(new String[] {"reset", "com.acme"}));
         assertUsage(() -> Parser.parse(new String[] {"reset"}));
-        assertUsage(() -> Parser.parse(new String[] {"reset", "a", "b"}));
-        assertUsage(() -> Parser.parse(new String[] {"reset", "--all", "com.acme"}));
+    }
+
+    @Test
+    void resetLoggerNeedsExactlyOneTarget() {
+        assertUsage(() -> Parser.parse(new String[] {"reset", "logger"}));
+        assertUsage(() -> Parser.parse(new String[] {"reset", "logger", "a", "b"}));
+        Parser.parse(new String[] {"reset", "logger", "com.acme"}); // fine
+        Parser.parse(new String[] {"reset", "logger", "com.acme", "--include-sticky"}); // fine
+    }
+
+    @Test
+    void resetLoggersTakesNoArguments() {
+        Parser.parse(new String[] {"reset", "loggers"}); // fine
+        Parser.parse(new String[] {"reset", "loggers", "--include-sticky"}); // fine
+        assertUsage(() -> Parser.parse(new String[] {"reset", "loggers", "com.acme"}));
+    }
+
+    @Test
+    void resetHandlerNeedsExactlyOneName() {
+        assertUsage(() -> Parser.parse(new String[] {"reset", "handler"}));
+        assertUsage(() -> Parser.parse(new String[] {"reset", "handler", "CONSOLE", "FILE"}));
+        Parser.parse(new String[] {"reset", "handler", "CONSOLE"}); // fine
+        Parser.parse(new String[] {"reset", "handler", "CONSOLE", "--include-sticky"}); // fine
+    }
+
+    @Test
+    void resetHandlersTakesNoArguments() {
+        Parser.parse(new String[] {"reset", "handlers"}); // fine
+        Parser.parse(new String[] {"reset", "handlers", "--include-sticky"}); // fine
+        assertUsage(() -> Parser.parse(new String[] {"reset", "handlers", "CONSOLE"}));
+    }
+
+    @Test
+    void resetUnknownNounIsAUsageError() {
+        assertUsage(() -> Parser.parse(new String[] {"reset", "everything"}));
     }
 
     @Test
@@ -213,22 +258,16 @@ class ParserTest {
     }
 
     @Test
-    void handlerResetTakesNoFurtherArguments() {
-        Parser.parse(new String[] {"handler", "CONSOLE", "reset"}); // fine
-        assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "reset", "extra"}));
+    void handlerResetNoLongerExists() {
+        // doc/specs/reset-command-surface.md -- retired in favor of
+        // "reset handler <name>", no alias kept (pre-1.0).
+        assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "reset"}));
     }
 
     @Test
     void handlerAcceptsReasonButNotYes() {
         Parser.parse(new String[] {"handler", "CONSOLE", "TRACE", "--reason", "INC-1"}); // fine
         assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "TRACE", "--yes"}));
-    }
-
-    @Test
-    void handlerResetRejectsReason_sameAsResetLoggerDoes() {
-        // "handler <name> reset" is a revert, not a set -- a reason attached
-        // to it would be silently dropped, same as "reset <logger> --reason".
-        assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "reset", "--reason", "INC-1"}));
     }
 
     @Test

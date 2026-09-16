@@ -163,14 +163,14 @@ class AggregateLevelControlTest {
         aggregate.register(app.control);
         aggregate.setLevel("com.shared.Util", Level.DEBUG, SetLevelOptions.defaults());
 
-        aggregate.resetLevel("com.shared.Util");
+        aggregate.resetLogger("com.shared.Util", false);
 
         assertEquals(Level.INFO, system.adapter.effectiveLevel("com.shared.Util"));
         assertEquals(Level.INFO, app.adapter.effectiveLevel("com.shared.Util"));
     }
 
     @Test
-    void resetAll_revertsEveryOverrideInEveryContext() {
+    void resetAllLoggers_revertsEveryOverrideInEveryContext() {
         Ctx system = new Ctx("system");
         Ctx app = new Ctx("myapp.war");
         aggregate.register(system.control);
@@ -178,7 +178,7 @@ class AggregateLevelControlTest {
         aggregate.setLevel("com.a.One", Level.DEBUG, SetLevelOptions.defaults());
         aggregate.setLevel("com.b.Two", Level.TRACE, SetLevelOptions.defaults());
 
-        aggregate.resetAll();
+        aggregate.resetAllLoggers(false);
 
         for (Ctx c : List.of(system, app)) {
             assertEquals(Level.INFO, c.adapter.effectiveLevel("com.a.One"));
@@ -187,7 +187,10 @@ class AggregateLevelControlTest {
     }
 
     @Test
-    void resetAll_revertsHandlerOverridesToo() {
+    void resetAllLoggersAndResetAllHandlers_revertBothInEveryContext() {
+        // doc/specs/reset-command-surface.md drops the combined resetAll() --
+        // logctl reset loggers and logctl reset handlers are two separate
+        // calls now, so this exercises both rather than one combined one.
         Ctx system = new Ctx("system");
         HandlerRef console = new HandlerRef("CONSOLE");
         system.adapter.addHandler(console, Level.INFO);
@@ -195,7 +198,8 @@ class AggregateLevelControlTest {
         aggregate.setLevel("com.a.One", Level.DEBUG, SetLevelOptions.defaults());
         aggregate.setHandlerLevel(console, Level.TRACE, SetHandlerLevelOptions.defaults());
 
-        aggregate.resetAll();
+        aggregate.resetAllLoggers(false);
+        aggregate.resetAllHandlers(false);
 
         assertEquals(Level.INFO, system.adapter.effectiveLevel("com.a.One"));
         assertEquals(Level.INFO, system.adapter.handlerLevel(console).orElseThrow());
@@ -622,7 +626,7 @@ class AggregateLevelControlTest {
         aggregate.register(app.control);
         aggregate.setHandlerLevel(console, Level.TRACE, SetHandlerLevelOptions.defaults());
 
-        aggregate.resetHandler(console);
+        aggregate.resetHandler(console, false);
 
         assertEquals(Level.INFO, system.adapter.handlerLevel(console).orElseThrow());
         assertEquals(Level.INFO, app.adapter.handlerLevel(console).orElseThrow());
@@ -791,7 +795,7 @@ class AggregateLevelControlTest {
         aggregate.setHandlerLevel(console, Level.TRACE, SetHandlerLevelOptions.defaults());
         system.adapter.vanishHandler(console);
 
-        aggregate.resetHandler(console); // must not throw
+        aggregate.resetHandler(console, false); // must not throw
 
         assertEquals(Level.INFO, app.adapter.handlerLevel(console).orElseThrow(),
                 "the other context is still reverted despite the first one's handler having vanished");

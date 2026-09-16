@@ -39,11 +39,12 @@ final class HelpText {
             "logctl warn <target> [session | for <duration> | sticky]",
             "logctl error <target> [session | for <duration> | sticky]",
             "logctl set <target> <level> [session | for <duration> | sticky]",
-            "logctl reset <target>",
-            "logctl reset --all",
+            "logctl reset logger <target> [--include-sticky]",
+            "logctl reset loggers [--include-sticky]",
+            "logctl reset handler <name> [--include-sticky]",
+            "logctl reset handlers [--include-sticky]",
             "logctl handler <name> <level> [session | for <duration> | sticky]",
-            "logctl handler <name> AUTO [session | for <duration> | sticky]",
-            "logctl handler <name> reset");
+            "logctl handler <name> AUTO [session | for <duration> | sticky]");
 
     private HelpText() {
     }
@@ -59,6 +60,7 @@ final class HelpText {
         sb.append("  --pid <n>            target this JVM instead of discovering one\n");
         sb.append("  --reason <text>      why — shown in status, kept in the audit trail\n");
         sb.append("  --yes                skip the confirmation prompt when <target> is a pattern\n");
+        sb.append("  --include-sticky     for 'reset' -- also revert a sticky override, not just skip it\n");
         sb.append("  --limit <n>          for 'top' — worst N offenders, 0 for every one tracked\n");
         sb.append("  --json               machine-readable output\n");
         sb.append("  --version            print version and exit\n");
@@ -71,7 +73,7 @@ final class HelpText {
         sb.append("'handler' sets a handler's own level directly — the fix when raising a\n");
         sb.append("logger still won't show output because a handler is set stricter. A raise\n");
         sb.append("that hits this prints which handler and the exact command to lower it.\n");
-        sb.append("'handler <name> reset' reverts it on its own. 'logctl handlers' lists\n");
+        sb.append("'reset handler <name>' reverts it on its own. 'logctl handlers' lists\n");
         sb.append("every handler you can name, its level, and any active override — on\n");
         sb.append("WildFly the individual names (CONSOLE, FILE, …) appear once the server\n");
         sb.append("is up; before that, and always, ALL_HANDLERS means every handler at once.\n");
@@ -96,9 +98,14 @@ final class HelpText {
         sb.append("org.apache and everything under it, present and future, with nothing\n");
         sb.append("of LogAperture's own to show for the descendants.\n");
         sb.append("\n");
-        sb.append("'reset' takes either wildcard shape: it reverts whatever is currently\n");
-        sb.append("overridden under that scope, including a logger set by its own exact\n");
-        sb.append("name -- 'logctl reset org.apache.*' finds it regardless.\n");
+        sb.append("'reset logger <target>' takes either wildcard shape too -- it reverts\n");
+        sb.append("whatever is currently overridden under that scope, including a logger\n");
+        sb.append("set by its own exact name. 'reset loggers' and 'reset handlers' revert\n");
+        sb.append("every currently-overridden logger, or handler, at once. Every reset form\n");
+        sb.append("skips a sticky override by default -- naming one sticky target by its\n");
+        sb.append("exact name refuses outright rather than silently doing nothing; a\n");
+        sb.append("pattern or a bulk reset instead leaves it in place and reports it.\n");
+        sb.append("--include-sticky reverts it anyway.\n");
         sb.append("\n");
         sb.append("'doctor' is read-only — it never changes anything. It flags common\n");
         sb.append("misconfigurations (unbounded file handlers, DEBUG/TRACE left on,\n");

@@ -25,7 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Captures each logger's baseline (framework-configured) level once,
  * lazily — doc/specs/level-control.md: "Without this, {@code
- * resetLevel}/{@code resetAll} are undefined, and there is no way to
+ * resetLogger}/{@code resetAllLoggers} are undefined, and there is no way to
  * distinguish 'the operator set INFO' from 'the app was already INFO'."
  *
  * <p>Presence of a key distinguishes "captured" from "not yet captured";

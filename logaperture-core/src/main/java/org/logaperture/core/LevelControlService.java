@@ -388,14 +388,23 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     @Override
-    public ResetOutcome resetLevel(String target) {
+    public ResetOutcome resetLogger(String target, boolean includeSticky) {
         Objects.requireNonNull(target, "target");
         if (NameFilter.isPattern(target)) {
-            return resetPattern(target);
+            return resetPattern(target, includeSticky);
         }
         Optional<LevelOverride> existing = overrides.get(target);
         if (existing.isEmpty()) {
             return ResetOutcome.nothingReset(); // no-op, not an error -- per spec
+        }
+        if (existing.get().tier() == PersistenceTier.STICKY && !includeSticky) {
+            // Decision #1 (doc/specs/reset-command-surface.md): a single
+            // named target refuses outright rather than silently doing
+            // nothing -- checked before the capability check below, same
+            // "validate the target's shape/eligibility first" ordering
+            // rejectIfTrailingWildcard already uses ahead of setLevel's own
+            // capability check.
+            throw rejectSticky(target);
         }
         // Simplification for this slice: every reset requires LEVEL_LOWER,
         // regardless of whether reverting to baseline happens to raise or
@@ -409,34 +418,43 @@ public final class LevelControlService implements LevelControlOperations {
             safePersist(() -> stateStore.remove(target));
         }
         changeListener.onChange(); // this logger's override just went away -- an AUTO handler tracking it needs to know
-        return new ResetOutcome(List.of(target));
+        return new ResetOutcome(List.of(target), List.of());
     }
 
     /**
-     * A pattern target's {@code resetLevel} (doc/specs/
+     * A pattern target's {@code resetLogger} (doc/specs/
      * pattern-selection-semantics.md "Operations") -- resolves {@code
      * pattern}'s current match set (same matcher as always) and reverts
      * whichever of those loggers carry an active {@link LevelOverride},
      * regardless of how that override came to exist. No rule identity to
      * look up any more: this is exactly what {@code listLoggers}/{@code
-     * levels} already do, filtered down to "and has an override."
+     * levels} already do, filtered down to "and has an override." A
+     * {@code STICKY} match is left alone and reported rather than refused
+     * (doc/specs/reset-command-surface.md, Decision #1 -- a pattern names a
+     * set, however large, not one specific thing).
      */
-    private ResetOutcome resetPattern(String pattern) {
+    private ResetOutcome resetPattern(String pattern, boolean includeSticky) {
         // One read per candidate name, not two (a code-review finding
         // against an earlier version of this method, which read `overrides`
         // once to decide whether a name qualified, then again, separately,
         // right before reverting it): iterate matchesFor's plain name
         // snapshot -- same discipline sweepExpiredOverrides follows -- and
         // act on whatever a single fresh overrides.get(name) finds. The
-        // capability check is deferred to the first name that actually has
-        // an override, so a match set with nothing currently overridden
-        // still skips it entirely, same convention as an exact-name target.
+        // capability check is deferred to the first name actually reverted,
+        // so a match set with nothing to revert (nothing overridden, or
+        // every match sticky-skipped) still skips it entirely, same
+        // convention as an exact-name target.
         List<String> matches = matchesFor(pattern);
         List<String> reverted = new ArrayList<>();
+        List<String> skippedSticky = new ArrayList<>();
         boolean capabilityChecked = false;
         for (String name : matches) {
             Optional<LevelOverride> current = overrides.get(name);
             if (current.isEmpty()) {
+                continue;
+            }
+            if (current.get().tier() == PersistenceTier.STICKY && !includeSticky) {
+                skippedSticky.add(name);
                 continue;
             }
             if (!capabilityChecked) {
@@ -447,27 +465,54 @@ public final class LevelControlService implements LevelControlOperations {
                 reverted.add(name);
             }
         }
-        if (reverted.isEmpty()) {
+        if (reverted.isEmpty() && skippedSticky.isEmpty()) {
             return ResetOutcome.nothingReset();
         }
-        safePersist(() -> stateStore.removeAll(reverted)); // one rewrite for the whole match set (issue #17)
-        changeListener.onChange();
-        return new ResetOutcome(reverted);
+        if (!reverted.isEmpty()) {
+            safePersist(() -> stateStore.removeAll(reverted)); // one rewrite for the whole match set (issue #17)
+            changeListener.onChange();
+        }
+        return new ResetOutcome(reverted, skippedSticky);
     }
 
     @Override
-    public void resetAll() {
+    public ResetOutcome resetAllLoggers(boolean includeSticky) {
+        // Unconditional capability check up front, matching the removed
+        // resetAll()'s own convention (unlike resetPattern's lazy check) --
+        // "reset everything" asks for authorization to do that regardless of
+        // what, if anything, currently qualifies.
         requireCapability(Capability.LEVEL_LOWER);
         List<String> reverted = new ArrayList<>();
+        List<String> skippedSticky = new ArrayList<>();
         for (Map.Entry<String, LevelOverride> entry : overrides.all().entrySet()) {
+            if (entry.getValue().tier() == PersistenceTier.STICKY && !includeSticky) {
+                skippedSticky.add(entry.getKey());
+                continue;
+            }
             if (applyReset(entry.getKey(), entry.getValue(), source, null)) {
                 reverted.add(entry.getKey());
             }
         }
         if (!reverted.isEmpty()) {
             safePersist(() -> stateStore.removeAll(reverted)); // one rewrite, not one per logger (issue #17)
+            changeListener.onChange();
         }
-        changeListener.onChange();
+        return new ResetOutcome(reverted, skippedSticky);
+    }
+
+    /**
+     * Builds the usage error for a sticky exact-name reset target (doc/specs/
+     * reset-command-surface.md, Decision #1) -- reuses {@code
+     * IllegalArgumentException}, the same type {@link #rejectTrailingWildcard}
+     * already throws for a different {@code reset}/{@code set} usage
+     * mistake, so it needs no new exception type and reaches {@code logctl}
+     * as the same exit-2 usage error (doc/specs/cli-transport.md's existing
+     * {@code IllegalArgumentException} -&gt; exit 2 mapping, unchanged by
+     * this slice).
+     */
+    private static IllegalArgumentException rejectSticky(String target) {
+        return new IllegalArgumentException(
+                "'" + target + "' is STICKY -- reset refused without --include-sticky.");
     }
 
     /**

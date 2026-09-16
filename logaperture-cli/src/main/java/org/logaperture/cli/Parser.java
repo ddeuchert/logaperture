@@ -54,7 +54,7 @@ final class Parser {
         boolean help = false;
         boolean version = false;
         boolean debug = false;
-        boolean all = false;
+        boolean includeSticky = false;
         String reason = null;
         Integer limit = null;
 
@@ -66,7 +66,9 @@ final class Parser {
                 case "--json" -> json = true;
                 case "--debug" -> debug = true;
                 case "--yes" -> yes = true;
-                case "--all" -> all = true;
+                case "--include-sticky" -> includeSticky = true;
+                case "--all" -> throw usage("'reset --all' no longer exists -- use 'reset loggers' and "
+                        + "'reset handlers'.");
                 case "--pid" -> {
                     i++;
                     if (i >= argv.length) {
@@ -134,8 +136,8 @@ final class Parser {
         if (reason != null && !isLevelMutation && !(isHandlerCommand && !isHandlerReset)) {
             throw usage("--reason applies only to set/debug/trace/info/warn/error, or 'handler <name> <level>'.");
         }
-        if (all && !command.equals("reset")) {
-            throw usage("--all applies only to 'reset'.");
+        if (includeSticky && !command.equals("reset")) {
+            throw usage("--include-sticky applies only to 'reset'.");
         }
         if (limit != null && !command.equals("top")) {
             throw usage("--limit applies only to 'top'.");
@@ -179,16 +181,39 @@ final class Parser {
                 yield Commands.handlers(json);
             }
             case "reset" -> {
-                if (all) {
-                    if (!rest.isEmpty()) {
-                        throw usage("'reset --all' takes no logger name.");
+                if (rest.isEmpty()) {
+                    throw usage("'reset' needs 'logger <target>', 'loggers', 'handler <name>', or 'handlers'.");
+                }
+                String noun = rest.get(0);
+                List<String> nounRest = rest.subList(1, rest.size());
+                yield switch (noun) {
+                    case "logger" -> {
+                        if (nounRest.size() != 1) {
+                            throw usage("'reset logger' needs exactly one target.");
+                        }
+                        yield Commands.resetLogger(nounRest.get(0), includeSticky, json);
                     }
-                    yield Commands.resetAll(json);
-                }
-                if (rest.size() != 1) {
-                    throw usage("'reset' needs exactly one logger name, or --all.");
-                }
-                yield Commands.reset(rest.get(0), json);
+                    case "loggers" -> {
+                        if (!nounRest.isEmpty()) {
+                            throw usage("'reset loggers' takes no arguments.");
+                        }
+                        yield Commands.resetAllLoggers(includeSticky, json);
+                    }
+                    case "handler" -> {
+                        if (nounRest.size() != 1) {
+                            throw usage("'reset handler' needs exactly one handler name.");
+                        }
+                        yield Commands.resetHandler(nounRest.get(0), includeSticky, json);
+                    }
+                    case "handlers" -> {
+                        if (!nounRest.isEmpty()) {
+                            throw usage("'reset handlers' takes no arguments.");
+                        }
+                        yield Commands.resetAllHandlers(includeSticky, json);
+                    }
+                    default -> throw usage("'reset' needs 'logger <target>', 'loggers', 'handler <name>', or "
+                            + "'handlers', got '" + noun + "'.");
+                };
             }
             case "set" -> {
                 if (rest.size() < 2) {
@@ -200,14 +225,12 @@ final class Parser {
             }
             case "handler" -> {
                 if (rest.size() < 2) {
-                    throw usage("'handler' needs <name> <level>, <name> AUTO, or <name> reset.");
+                    throw usage("'handler' needs <name> <level> or <name> AUTO.");
                 }
                 String handlerRef = rest.get(0);
                 if (rest.get(1).equals("reset")) {
-                    if (rest.size() != 2) {
-                        throw usage("'handler <name> reset' takes no further arguments.");
-                    }
-                    yield Commands.resetHandler(handlerRef, json);
+                    throw usage("'handler <name> reset' no longer exists -- use 'reset handler " + handlerRef
+                            + "'.");
                 }
                 TierChoice tier = resolveTier(rest.subList(2, rest.size()));
                 if (rest.get(1).equalsIgnoreCase("auto")) {

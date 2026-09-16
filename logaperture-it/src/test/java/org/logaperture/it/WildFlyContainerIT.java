@@ -160,7 +160,7 @@ class WildFlyContainerIT {
         assertTrue(logctl("status").stdout().contains(BOOT_LOGGER),
                 "logctl status shows the active override");
 
-        assertEquals(0, logctl("reset", BOOT_LOGGER).exitCode());
+        assertEquals(0, logctl("reset", "logger", BOOT_LOGGER).exitCode());
         assertFalse(logctl("status").stdout().contains(BOOT_LOGGER),
                 "the override is gone after reset");
     }
@@ -171,7 +171,7 @@ class WildFlyContainerIT {
 
         logctl("debug", "com.example.Probe", "sticky");
         logctl("trace", "org.hibernate.SQL");
-        logctl("reset", "--all");
+        logctl("reset", "loggers", "--include-sticky");
 
         assertEquals(before, exec("md5sum", STANDALONE_XML).getStdout(),
                 "the agent never writes standalone.xml");
@@ -195,7 +195,7 @@ class WildFlyContainerIT {
             assertTrue(pollLogctl("levels", APP_LOGGER, out -> out.contains("DEBUG")),
                     "the override is still in force after a redeploy");
         } finally {
-            logctl("reset", APP_LOGGER);
+            logctl("reset", "logger", APP_LOGGER);
             undeployProbeWar();
         }
     }
@@ -217,7 +217,7 @@ class WildFlyContainerIT {
                                     && line.contains("logger=" + BOOT_LOGGER)),
                     "a single verification-sweep audit entry names " + BOOT_LOGGER);
         } finally {
-            logctl("reset", BOOT_LOGGER);
+            logctl("reset", "logger", BOOT_LOGGER);
             exec(JBOSS_CLI, "--connect", "--command=/subsystem=logging/logger=" + BOOT_LOGGER + ":remove");
         }
     }
@@ -257,7 +257,7 @@ class WildFlyContainerIT {
             assertFalse(logctl("status").stdout().contains(BOOT_LOGGER),
                     "only 'org.jboss.as' itself was ever set -- its descendant carries no override");
         } finally {
-            logctl("reset", "org.jboss.as");
+            logctl("reset", "logger", "org.jboss.as");
         }
     }
 
@@ -272,7 +272,7 @@ class WildFlyContainerIT {
         assertEquals(0, logctl("debug", BOOT_LOGGER, "sticky").exitCode()); // exact name, not the pattern
         assertTrue(logctl("levels", BOOT_LOGGER).stdout().contains("DEBUG"));
 
-        Logctl reverted = logctl("reset", "org.jboss.as.*");
+        Logctl reverted = logctl("reset", "logger", "org.jboss.as.*");
 
         assertEquals(0, reverted.exitCode(), reverted.stderr());
         assertTrue(logctl("levels", BOOT_LOGGER).stdout().contains("INFO"),
@@ -301,7 +301,7 @@ class WildFlyContainerIT {
             assertTrue(raised.stdout().contains("logctl handler CONSOLE TRACE"),
                     "the warning's suggested command is directly copy-pasteable:\n" + raised.stdout());
         } finally {
-            logctl("reset", freshLogger);
+            logctl("reset", "logger", freshLogger);
         }
     }
 
@@ -315,7 +315,7 @@ class WildFlyContainerIT {
             assertTrue(raised.stdout().contains("CONSOLE") && raised.stdout().contains("DEBUG"), raised.stdout());
             assertTrue(logctl("status").stdout().contains("CONSOLE"), "status shows the override under its real name");
         } finally {
-            assertEquals(0, logctl("handler", "CONSOLE", "reset").exitCode());
+            assertEquals(0, logctl("reset", "handler", "CONSOLE").exitCode());
         }
     }
 
@@ -340,7 +340,7 @@ class WildFlyContainerIT {
             assertTrue(withOverride.contains("CONSOLE") && withOverride.contains("TRACE"),
                     "the CONSOLE row reflects the active override:\n" + withOverride);
         } finally {
-            logctl("handler", "CONSOLE", "reset");
+            logctl("reset", "handler", "CONSOLE");
         }
 
         Logctl json = logctl("handlers", "--json");
@@ -380,14 +380,14 @@ class WildFlyContainerIT {
             // Reset genuinely took effect, not just returned exit 0: a further
             // redeploy's marker must not add a new occurrence once every real
             // handler is back at its own default floor.
-            assertEquals(0, logctl("handler", "ALL_HANDLERS", "reset").exitCode());
+            assertEquals(0, logctl("reset", "handler", "ALL_HANDLERS").exitCode());
             long before = wildfly.getLogs().lines().filter(l -> l.contains(traceMarker)).count();
             redeployProbeWar();
             assertEquals(before, wildfly.getLogs().lines().filter(l -> l.contains(traceMarker)).count(),
                     "the console handler is back at INFO after reset -- no new marker line");
         } finally {
-            logctl("handler", "ALL_HANDLERS", "reset"); // no-op if the test already reset it
-            logctl("reset", APP_LOGGER);
+            logctl("reset", "handler", "ALL_HANDLERS"); // no-op if the test already reset it
+            logctl("reset", "logger", APP_LOGGER);
             undeployProbeWar();
         }
     }

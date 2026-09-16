@@ -47,7 +47,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * The literal spec exit criterion (doc/specs/level-control.md): {@code
- * listLoggers}/{@code setLevel}/{@code resetLevel}/{@code resetAll} work
+ * listLoggers}/{@code setLevel}/{@code resetLogger}/{@code resetAllLoggers} work
  * end-to-end over JMX against a real {@code java -jar} process running
  * Logback, with {@code -javaagent:} attached, run cross-process rather than
  * simulated.
@@ -114,19 +114,19 @@ class LevelControlEndToEndIT {
         assertEquals("DEBUG", afterSet.get(0).getEffectiveLevel());
         assertTrue(afterSet.get(0).isOverrideActive());
 
-        proxy.resetLevel(FIXTURE_LOGGER);
+        proxy.resetLogger(FIXTURE_LOGGER, false);
         List<LoggerInfoData> afterReset = proxy.listLoggers(FIXTURE_LOGGER);
         assertEquals("INFO", afterReset.get(0).getEffectiveLevel());
         assertFalse(afterReset.get(0).isOverrideActive());
 
-        proxy.resetAll(); // smoke: must not throw even with nothing active
+        proxy.resetAllLoggers(false); // smoke: must not throw even with nothing active
 
         // doc/specs/handler-floor-control.md "Logback / none": this fixture
         // runs Logback, whose appenders have no level of their own -- the
         // real cross-process JMX null return, not just the in-process fake.
         HandlerLevelOverrideData handlerResult = proxy.setHandlerLevel("CONSOLE", "TRACE", null, "SESSION", 0);
         assertEquals(null, handlerResult);
-        proxy.resetHandler("CONSOLE"); // smoke: must not throw even though nothing was ever set
+        proxy.resetHandler("CONSOLE", false); // smoke: must not throw even though nothing was ever set
 
         // The install also publishes the marker logaperture-cli's discovery
         // filters candidate JVMs on (doc/specs/cli-transport.md "Discovery").
@@ -174,7 +174,7 @@ class LevelControlEndToEndIT {
         // Pattern reset: reverts the current match, over the same real JMX
         // connection -- no rule identity to retire any more (doc/specs/
         // pattern-selection-semantics.md).
-        proxy.resetLevel(pattern);
+        proxy.resetLogger(pattern, false);
         assertEquals("INFO", proxy.listLoggers(FIXTURE_LOGGER).get(0).getEffectiveLevel());
         assertFalse(proxy.listLoggers(FIXTURE_LOGGER).get(0).isOverrideActive());
     }

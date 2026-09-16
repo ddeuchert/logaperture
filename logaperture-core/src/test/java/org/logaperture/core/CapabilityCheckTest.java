@@ -68,7 +68,7 @@ class CapabilityCheckTest {
                 adapter, baselines, overrides,
                 capability -> capability != Capability.LEVEL_LOWER, auditLog, StateStore.noOp(), "alice", "jmx");
 
-        assertThrows(CapabilityDeniedException.class, () -> noLower.resetLevel("com.acme.Worker"));
+        assertThrows(CapabilityDeniedException.class, () -> noLower.resetLogger("com.acme.Worker", false));
     }
 
     @Test
@@ -82,6 +82,6 @@ class CapabilityCheckTest {
                 adapter, baselines, overrides,
                 capability -> capability != Capability.LEVEL_LOWER, auditLog, StateStore.noOp(), "alice", "jmx");
 
-        assertThrows(CapabilityDeniedException.class, noLower::resetAll);
+        assertThrows(CapabilityDeniedException.class, () -> noLower.resetAllLoggers(false));
     }
 }

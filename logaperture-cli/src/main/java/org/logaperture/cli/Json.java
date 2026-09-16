@@ -158,15 +158,11 @@ final class Json {
                 .toString();
     }
 
-    static String handlerReset(String handlerRef) {
+    static String handlerReset(String handlerRef, boolean reverted) {
         return new Obj()
                 .str("handlerRef", handlerRef)
-                .bool("reset", true)
+                .bool("reset", reverted)
                 .toString();
-    }
-
-    static String revertedCount(long count) {
-        return "{\"reverted\":" + count + "}";
     }
 
     /**
@@ -277,20 +273,42 @@ final class Json {
     }
 
     /**
-     * {@code reset <pattern> --json} (doc/specs/pattern-selection-semantics.md):
-     * the loggers this call actually reverted -- every currently-matched
-     * logger that carried an active override, regardless of how it came to
-     * exist. Empty when the pattern currently matches nothing overridden.
+     * {@code reset logger <pattern> --json} (doc/specs/
+     * reset-command-surface.md): the loggers this call actually reverted --
+     * every currently-matched logger that carried an active, non-skipped
+     * override -- plus any it left alone for being {@code STICKY}. Both
+     * empty when the pattern currently matches nothing overridden.
      */
-    static String resetPattern(String pattern, List<String> reverted) {
-        StringJoiner names = new StringJoiner(",", "[", "]");
-        for (String name : reverted) {
-            names.add(quote(name));
-        }
+    static String resetPattern(String pattern, List<String> reverted, List<String> skippedSticky) {
         return new Obj()
                 .str("pattern", pattern)
-                .raw("reverted", names.toString())
+                .raw("revertedLoggerNames", stringArray(reverted))
+                .raw("skippedStickyLoggerNames", stringArray(skippedSticky))
                 .toString();
+    }
+
+    /** {@code reset loggers --json} (doc/specs/reset-command-surface.md). */
+    static String resetAllLoggers(List<String> reverted, List<String> skippedSticky) {
+        return new Obj()
+                .raw("revertedLoggerNames", stringArray(reverted))
+                .raw("skippedStickyLoggerNames", stringArray(skippedSticky))
+                .toString();
+    }
+
+    /** {@code reset handlers --json} (doc/specs/reset-command-surface.md). */
+    static String resetAllHandlers(List<String> reverted, List<String> skippedSticky) {
+        return new Obj()
+                .raw("revertedHandlerRefs", stringArray(reverted))
+                .raw("skippedStickyHandlerRefs", stringArray(skippedSticky))
+                .toString();
+    }
+
+    private static String stringArray(List<String> values) {
+        StringJoiner array = new StringJoiner(",", "[", "]");
+        for (String value : values) {
+            array.add(quote(value));
+        }
+        return array.toString();
     }
 
     /**

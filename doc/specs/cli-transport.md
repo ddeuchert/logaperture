@@ -25,8 +25,9 @@ After this feature, the user will be able to:
   `logctl set com.acme.batch TRACE for 2h --reason INC-123`.
 - See what is currently overridden, in which tier, and when each one reverts:
   `logctl status`.
-- Clear an override: `logctl reset com.acme.batch` for one logger, `logctl reset --all`
-  to return everything to how the application configured it.
+- Clear an override: `logctl reset logger com.acme.batch` for one logger, `logctl reset
+  loggers` to return every logger to how the application configured it (`logctl reset
+  handlers` does the same for handlers — see [`reset-command-surface.md`](reset-command-surface.md)).
 - Get machine-readable output for any command with `--json`.
 - Rely on the command only ever succeeding for someone who could already attach a
   debugger to that JVM — authorization is the operating system's, not a password.
@@ -92,13 +93,10 @@ code to the agent beyond a single marker system property (below).
   symmetry that also retires the rule, one audit record per matched logger, a capability
   check per match) are still open — see §18.7. Until it lands, the workflow is `logctl
   levels *.infinispan` to find the category, then `set` on the resolved name.
-- **Restructuring `reset` into `reset logger`/`reset loggers`/`reset handler`/`reset
-  handlers`, plus an `--ignore-sticky` flag**, top-level §18.9; tracked as
-  [#42](https://github.com/ddeuchert/logaperture/issues/42), pulled forward to alpha-2.
-  Splits today's `reset <logger>` / `reset --all` / `handler <name> reset` into
-  namespace-scoped forms (a deliberate breaking rename of the last one) and changes
-  reset's default to skip `--sticky`-tier overrides unless `--ignore-sticky` is passed.
-  The logger form's glob support is #41's matcher reused, not a second one.
+- **`set`/`list` namespacing** (slices 2 and 3 of [#42](https://github.com/ddeuchert/logaperture/issues/42)
+  — `set logger`/`set handler`, `list loggers`/`list handlers` replacing `levels`/`handlers`,
+  retiring the `debug`/`trace`/`info`/`warn`/`error` level-named verbs). The reset half of
+  #42 (slice 1) is shipped — see "Command surface" below.
 - **Shell completion over live logger names** (§14.5). High-value, but it's a separate
   deliverable: completion scripts for bash/zsh/fish plus a fast name-only query path.
   `logctl levels --json` is the data source it will consume.
@@ -315,36 +313,30 @@ is at least "Known" and `listLoggers` returns it even if nothing has instantiate
 
 Zero active overrides prints `No active overrides.` and exits 0.
 
-### `logctl reset <logger>` and `logctl reset --all`
+### `logctl reset logger`/`loggers`/`handler`/`handlers`
 
-`resetLevel` and `resetAll` both return `void` (Feature 1's MXBean surface), so the CLI
-reads `listLoggers` to render its confirmation — extra control-plane round trips, negligible
-on this path.
+**Superseded (shipped).** The single `logctl reset <logger>` / `logctl reset --all` /
+`logctl handler <name> reset` surface this section originally specced is retired —
+[`reset-command-surface.md`](reset-command-surface.md) (issue #42, slice 1) replaces it with
+four namespace-scoped forms:
 
-`logctl reset com.acme.batch.Worker` reads `listLoggers(name)` **before** the reset (to
-learn whether an override was actually active), calls `resetLevel(name)`, then reads
-`listLoggers(name)` **again** to learn the restored level. Not an error if nothing was
-overridden (Feature 1 semantics). Three outcomes:
+```
+logctl reset logger <target> [--include-sticky]
+logctl reset loggers [--include-sticky]
+logctl reset handler <name> [--include-sticky]
+logctl reset handlers [--include-sticky]
+```
 
-- The logger is still listed afterwards (the common case — the adapter retains any logger
-  it has touched): `com.acme.batch.Worker → INFO (baseline)`.
-- Nothing was overridden and the logger is unknown: `com.acme.batch.Worker — nothing was
-  overridden.`
-- An override *was* active but the logger is "Known", not "Live" (e.g. a `STICKY`/`FOR`
-  entry resumed from the state store for a logger nothing has instantiated), so clearing
-  it removes the name from `listLoggers` entirely: `com.acme.batch.Worker → baseline (not
-  yet instantiated, so no level to show)` — the pre-reset read is what keeps this from
-  being misreported as "nothing was overridden."
-
-`--json` emits the post-reset `LoggerInfoData` object, same shape as `logctl levels`. When
-that object doesn't exist (the third case, or a `--json` reset of an unknown logger), it
-emits `{"name": …, "overrideActive": false, "wasOverridden": <bool>}` instead of a bare
-`null`, so a script always gets an object and can see whether the call cleared anything.
-
-`logctl reset --all` calls `listLoggers(null)` first to count what's active, then
-`resetAll()`. This is Feature 1's "get me back to normal" escape hatch, so it does **not**
-prompt for confirmation — someone typing it at 3am wants it to just work. Prints
-`Reverted N override(s).`; `--json` emits `{"reverted": N}`.
+`reset logger <target>` accepts an exact name or a pattern, exactly as `set` does. A
+`STICKY`-tier override is skipped by default on every form — `--include-sticky` opts back
+in — with an exact-name target (`reset logger`/`reset handler`) refusing outright (exit 2)
+rather than silently skipping, since naming one specific thing and having it do nothing
+would be a trap; a pattern or a bulk form (`reset loggers`/`reset handlers`) instead leaves
+a sticky match in place and reports it, the same way "matched nothing" already isn't an
+error. `logctl reset --all` no longer exists — `reset loggers` and `reset handlers` are the
+only broad forms, and neither prompts for confirmation (same "someone typing this wants it
+to just work" reasoning the old `reset --all` had). Full command-by-command output shapes,
+exit codes, and design rationale: [`reset-command-surface.md`](reset-command-surface.md).
 
 ### The phone test, enforced
 
@@ -597,7 +589,7 @@ From a plain shell, against a `java -jar` application started with
 - `logctl levels com.acme` lists the package's loggers with configured vs effective
   levels; `logctl levels '*Worker'` finds the same logger from its suffix alone (the glob
   match is Feature 1's `NameFilter`, reached unchanged through the CLI).
-- `logctl reset com.acme.batch.Worker` returns it to baseline; `logctl reset --all`
+- `logctl reset logger com.acme.batch.Worker` returns it to baseline; `logctl reset loggers`
   is a safe no-op when nothing is active.
 - Two enabled JVMs make the un-`--pid`'d command exit 4 with both listed; zero make it
   exit 3.

@@ -41,9 +41,35 @@ public interface LevelControlOperations {
     SetLevelResult setLevel(String loggerName, Level level, SetLevelOptions options);
 
     /**
-     * @return exactly what was reverted — see {@link ResetOutcome}
+     * {@code target} is an exact logger name or a pattern (doc/specs/
+     * pattern-selection-semantics.md). Renamed from {@code resetLevel}
+     * (doc/specs/reset-command-surface.md, Decision #2a) now that the CLI
+     * verb is {@code reset logger}, never a generic {@code reset}.
+     *
+     * @param includeSticky whether a {@code STICKY}-tier override is
+     *                      reverted too, instead of left in place — new
+     *                      default is to skip it (doc/specs/
+     *                      reset-command-surface.md)
+     * @return exactly what was reverted, and what was left alone for being
+     *         sticky — see {@link ResetOutcome}
+     * @throws IllegalArgumentException if {@code target} is an exact name
+     *                                   whose active override is {@code
+     *                                   STICKY} and {@code includeSticky} is
+     *                                   {@code false} (Decision #1 — a
+     *                                   single named target refuses outright
+     *                                   rather than silently skipping)
      */
-    ResetOutcome resetLevel(String loggerName);
+    ResetOutcome resetLogger(String target, boolean includeSticky);
 
-    void resetAll();
+    /**
+     * Reverts every currently-overridden logger — the bulk counterpart to
+     * {@link #resetLogger}, replacing the removed {@code resetAll()}
+     * (doc/specs/reset-command-surface.md).
+     *
+     * @param includeSticky whether a {@code STICKY}-tier override is
+     *                      reverted too, instead of left in place
+     * @return exactly what was reverted, and what was left alone for being
+     *         sticky
+     */
+    ResetOutcome resetAllLoggers(boolean includeSticky);
 }
