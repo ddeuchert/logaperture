@@ -18,7 +18,6 @@ package org.logaperture.core.spi;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.LevelOverride;
-import org.logaperture.api.PatternRule;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -56,16 +55,7 @@ public interface StateStore {
     /** No-op if {@code ref} was never persisted. */
     void removeHandler(HandlerRef ref);
 
-    /** Every persisted standing rule (doc/specs/pattern-level-targeting.md), in no particular order. */
-    List<PatternRule> loadAllPatternRules();
-
-    /** Upserts by {@code rule.pattern()} — one entry per pattern, same idempotency rule as an override. */
-    void savePatternRule(PatternRule rule);
-
-    /** No-op if {@code pattern} was never persisted. */
-    void removePatternRule(String pattern);
-
-    /** Removes every persisted entry — logger overrides, handler overrides, and pattern rules alike. */
+    /** Removes every persisted entry — logger overrides and handler overrides alike. */
     void clear();
 
     /**
@@ -115,21 +105,6 @@ public interface StateStore {
 
             @Override
             public void removeHandler(HandlerRef ref) {
-                // nothing to remove
-            }
-
-            @Override
-            public List<PatternRule> loadAllPatternRules() {
-                return List.of();
-            }
-
-            @Override
-            public void savePatternRule(PatternRule rule) {
-                // discarded, deliberately
-            }
-
-            @Override
-            public void removePatternRule(String pattern) {
                 // nothing to remove
             }
 

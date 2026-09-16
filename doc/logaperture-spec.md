@@ -1187,6 +1187,8 @@ The rendered log line often shows only an abbreviated category — WildFly's def
 
   **Slices 2–3, shipped:** [`doc/specs/pattern-level-targeting.md`](specs/pattern-level-targeting.md) works out `includeChildren`'s retirement and the standing-rule apply/reset mechanism together, and both are implemented — `includeChildren` is gone from the operations API, `setLevel`/`resetLevel` accept a pattern target, and it persists as a standing rule the periodic sweep (re-)applies. Layer 2, complete.
 
+  **Standing-rule mechanism since retired.** Field-testing an unmerged exploration of #42's reset-side scoped-exclusion idea against a live WildFly container surfaced a foundational rethink: every framework this project targets already propagates an explicit level down to a descendant logger, present and future, via its own hierarchy — the standing-rule/sweep machinery above duplicates that for no real benefit, at the cost of persisted state a user has no way to distinguish from having typed each match by hand. [`doc/specs/pattern-selection-semantics.md`](specs/pattern-selection-semantics.md) (issue #49) retires slice 3's standing-rule/sweep mechanism entirely: a pattern target is a pure, one-time selection now, on both `setLevel` and `resetLevel`, with a further asymmetry — `setLevel` rejects a **trailing**-wildcard target outright as a usage error (the framework's own inheritance already covers "this logger and its descendants" once the literal ancestor name is set), while `resetLevel` keeps full selection semantics for both wildcard shapes. Slice 1 (grammar) and slice 2 (`includeChildren`'s removal) are unaffected.
+
 ### 18.8 Per-category exception-detail threshold
 
 A second per-logger threshold, set and expired exactly like a level override, that controls **at which level a logged exception is expanded to its full stack trace** versus reduced to a one-line summary. The event itself is still emitted at its own level — only the throwable's rendering changes.
@@ -1240,6 +1242,8 @@ logctl reset handlers             # every handler override — handlers only
 - Does plain `logctl reset --all` still exist as the "reset absolutely everything, both namespaces" umbrella, or is it replaced entirely by `reset loggers` + `reset handlers`? Leaning toward keeping `--all` — "get me back to normal" (§6.1) shouldn't require remembering two commands — but a real product call.
 - `--ignore-sticky`'s interaction with #41's standing-rule reset: does it mean "retire the standing rule but leave sticky-tier matches alone," a slightly different shape than a plain override reset?
 - Confirmation/preview parity with #41's `reset <pattern>` — should `reset loggers` / `reset handlers`, being broad, also preview and confirm before applying (with the same kind of scriptable override), the way #41 decided `error <pattern>` should?
+
+**Status note.** An implementation of this section was built (issue #42, PR #48) but never merged — closed unmerged after field-testing it surfaced the standing-rule rethink described in §18.7's own note above. This section's open questions are all still genuinely open; nothing here has shipped. Separately, whenever this does get implemented, `reset logger <pattern>` should target [`pattern-selection-semantics.md`](specs/pattern-selection-semantics.md) (issue #49)'s pure-selection `resetLevel`, not the standing-rule/`PatternRule` mechanism this section's "Ownership split" paragraph above still describes — that mechanism is retired.
 
 ---
 

@@ -441,16 +441,16 @@ class AggregateLevelControlTest {
         // second node.
         Ctx system = new Ctx("system");
         Ctx app = new Ctx("myapp.war");
-        system.adapter.addKnownLogger("com.shared.OnlyOnSystem");
-        app.adapter.addKnownLogger("com.shared.OnlyOnApp");
+        system.adapter.addKnownLogger("system.Shared");
+        app.adapter.addKnownLogger("app.Shared");
         aggregate.register(system.control);
         aggregate.register(app.control);
 
         ConfirmationRequiredException ex = assertThrows(ConfirmationRequiredException.class,
-                () -> aggregate.setLevel("com.shared.*", Level.DEBUG, SetLevelOptions.defaults()));
+                () -> aggregate.setLevel("*.Shared", Level.DEBUG, SetLevelOptions.defaults()));
 
-        assertTrue(ex.matches().contains("com.shared.OnlyOnSystem"));
-        assertTrue(ex.matches().contains("com.shared.OnlyOnApp"),
+        assertTrue(ex.matches().contains("system.Shared"));
+        assertTrue(ex.matches().contains("app.Shared"),
                 "matches from every context are merged into the one exception, not just the first context checked");
         assertTrue(system.service.activeOverrides().isEmpty(), "unconfirmed preview must not mutate anything");
         assertTrue(app.service.activeOverrides().isEmpty(), "unconfirmed preview must not mutate anything");

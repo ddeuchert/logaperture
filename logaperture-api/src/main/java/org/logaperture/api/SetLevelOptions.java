@@ -29,11 +29,11 @@ import java.util.Objects;
  *                  otherwise
  * @param tier      the durability tier (default {@link
  *                  PersistenceTier#SESSION})
- * @param confirmed whether a pattern {@code target} is confirmed to apply
- *                  as a standing rule (doc/specs/pattern-level-targeting.md
+ * @param confirmed whether a leading-star pattern {@code target} is
+ *                  confirmed to apply (doc/specs/pattern-selection-semantics.md
  *                  "Confirmation and CLI behavior"); ignored for an
- *                  exact-name target, which carries none of a standing
- *                  rule's risk regardless of tier
+ *                  exact-name target, which carries none of a batch
+ *                  mutation's risk regardless of tier
  */
 public record SetLevelOptions(String reason, Duration expiresIn, PersistenceTier tier, boolean confirmed) {
 

@@ -102,7 +102,6 @@ class LevelControlMXBeanImplTest {
 
         assertEquals("com.acme.Worker", result.getOverrides().get(0).getLoggerName());
         assertEquals("DEBUG", result.getOverrides().get(0).getLevel());
-        assertEquals(null, result.getOverrides().get(0).getOriginPattern());
         assertEquals("INC-1", result.getOverrides().get(0).getReason());
         assertTrue(result.getBlockingHandlers().isEmpty());
 
@@ -212,12 +211,11 @@ class LevelControlMXBeanImplTest {
     void resetLevel_returnsWhatTheOperationActuallyReverted() {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
         fake.resetOutcomeToReturn = new org.logaperture.api.ResetOutcome(
-                List.of("org.apache.A", "org.apache.B"), true);
+                List.of("org.apache.A", "org.apache.B"));
 
         ResetOutcomeData result = bean(fake).resetLevel("org.apache.*");
 
         assertEquals(List.of("org.apache.A", "org.apache.B"), result.getRevertedLoggerNames());
-        assertTrue(result.isPatternRuleRetired());
     }
 
     @Test

@@ -115,7 +115,7 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
         state.put(loggerName, new LoggerInfo(
                 loggerName, BASELINE, level, true, "jmx", options.reason(), options.tier(), expiresAt));
         LevelOverride override = new LevelOverride(
-                loggerName, level, null, options.reason(), now, "jmx", options.tier(), expiresAt);
+                loggerName, level, options.reason(), now, "jmx", options.tier(), expiresAt);
         return new SetLevelResult(List.of(override), List.of());
     }
 
@@ -123,7 +123,7 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     public synchronized ResetOutcome resetLevel(String loggerName) {
         if (state.containsKey(loggerName)) {
             state.put(loggerName, baseline(loggerName));
-            return new ResetOutcome(List.of(loggerName), false);
+            return new ResetOutcome(List.of(loggerName));
         }
         return ResetOutcome.nothingReset();
     }

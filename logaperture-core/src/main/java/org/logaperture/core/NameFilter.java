@@ -57,12 +57,30 @@ final class NameFilter {
      * Whether {@code target} is a pattern rather than an exact logger name --
      * one {@code '*'} anywhere in it. The single check every caller on the
      * {@code setLevel}/{@code resetLevel} path branches on before deciding
-     * whether it's looking at a standing rule or a plain override; pulled
-     * out here so that branch is spelled once instead of re-typed at each
-     * call site.
+     * whether it's looking at a one-time selection or a plain override;
+     * pulled out here so that branch is spelled once instead of re-typed at
+     * each call site.
      */
     static boolean isPattern(String target) {
         return target.indexOf('*') >= 0;
+    }
+
+    /**
+     * Whether {@code target}'s trailing segment is {@code *} — the check
+     * {@code setLevel} rejects on outright (doc/specs/
+     * pattern-selection-semantics.md, Decision #5), since every descendant
+     * already inherits a set ancestor's level from the framework itself. A
+     * cheap, purely syntactic check, deliberately not full grammar
+     * validation — the rest of the pattern's grammar is still validated
+     * later, by whichever path actually resolves matches ({@link #compile}/
+     * {@code matchesFor}). {@code target.endsWith(".*")} alone already
+     * implies {@link #isPattern} — no separate call needed (a code-review
+     * finding: the redundant conjunct cost every {@code setLevel}/{@code
+     * checkSetLevelPermitted} call site a second, needless scan of {@code
+     * target}).
+     */
+    static boolean isTrailingWildcard(String target) {
+        return target.endsWith(".*");
     }
 
     /**
@@ -108,8 +126,8 @@ final class NameFilter {
             }
         }
         if (!hasLiteralSegment) {
-            throw invalid(filter, "at least one segment must be literal -- a pattern of only '*' segments matches "
-                    + "everything and, as a standing rule, would never stop matching new loggers");
+            throw invalid(filter, "at least one segment must be literal -- a pattern of only '*' segments would "
+                    + "match everything known right now, which is never a useful selection");
         }
 
         boolean leadingStar = segments[0].equals("*");

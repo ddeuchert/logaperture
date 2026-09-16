@@ -73,7 +73,6 @@ final class Json {
         return new Obj()
                 .str("loggerName", data.getLoggerName())
                 .str("level", data.getLevel())
-                .str("originPattern", data.getOriginPattern())
                 .str("reason", data.getReason())
                 .str("appliedAt", data.getAppliedAt())
                 .str("source", data.getSource())
@@ -84,7 +83,7 @@ final class Json {
     /**
      * {@code setLevel}'s full JSON result: {@code overrides} — one entry
      * for an exact-name target, zero or more for a pattern (doc/specs/
-     * pattern-level-targeting.md) — plus {@code warnings}, one entry per
+     * pattern-selection-semantics.md) — plus {@code warnings}, one entry per
      * handler that will still swallow records at the new level
      * (doc/specs/handler-floor-control.md "Warning on level commands"),
      * empty on the common case of no such handler.
@@ -269,14 +268,12 @@ final class Json {
     }
 
     /**
-     * {@code reset <pattern> --json} (doc/specs/pattern-level-targeting.md):
-     * the loggers this call actually reverted, and whether a standing rule
-     * was tracked under that exact pattern and is now retired -- {@code
-     * ruleRetired} is {@code false} when no rule existed at all, not just
-     * when {@code reverted} is empty (a rule can be retired with nothing
-     * currently matched to revert).
+     * {@code reset <pattern> --json} (doc/specs/pattern-selection-semantics.md):
+     * the loggers this call actually reverted -- every currently-matched
+     * logger that carried an active override, regardless of how it came to
+     * exist. Empty when the pattern currently matches nothing overridden.
      */
-    static String resetPattern(String pattern, List<String> reverted, boolean ruleRetired) {
+    static String resetPattern(String pattern, List<String> reverted) {
         StringJoiner names = new StringJoiner(",", "[", "]");
         for (String name : reverted) {
             names.add(quote(name));
@@ -284,7 +281,6 @@ final class Json {
         return new Obj()
                 .str("pattern", pattern)
                 .raw("reverted", names.toString())
-                .bool("ruleRetired", ruleRetired)
                 .toString();
     }
 

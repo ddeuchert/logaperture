@@ -197,7 +197,6 @@ public final class WildFlyContainer implements AutoCloseable {
         Instant now = Instant.now();
         aggregate.sweepExpiredOverrides(now);
         aggregate.verificationSweep(now);
-        aggregate.applyStandingRules(now);
     }
 
     private static StateStore openStateStore() {

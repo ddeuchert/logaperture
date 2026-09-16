@@ -26,17 +26,15 @@ import java.util.Objects;
  * blockingHandlers} being non-empty never means the mutation failed.
  *
  * <p>{@code overrides} has exactly one entry for an exact-name target; for
- * a pattern target (doc/specs/pattern-level-targeting.md) it has one entry
- * per currently-matched logger the call actually mutated — a logger the
- * pattern matches but that already carried a higher-precedence override is
- * skipped, not included, and a pattern matching no currently-known logger
- * at all yields an <em>empty</em> {@code overrides} list: the standing rule
- * is still created and persisted, ready to apply the moment a matching
- * logger is discovered, even though nothing was mutated just now. Always
- * describes a call that actually reached the mutation step: an unconfirmed
- * pattern call never produces one of these at all, it throws {@code
- * ConfirmationRequiredException} instead (doc/specs/pattern-level-targeting.md,
- * Decision #2a).
+ * a leading-star pattern target (doc/specs/pattern-selection-semantics.md)
+ * it has one entry per currently-matched logger — every match is
+ * unconditionally overwritten, none skipped (Precedence is retired) — and a
+ * pattern matching no currently-known logger at all yields an
+ * <em>empty</em> {@code overrides} list: nothing happened, and nothing is
+ * left standing to happen later either. Always describes a call that
+ * actually reached the mutation step: an unconfirmed pattern call never
+ * produces one of these at all, it throws {@code
+ * ConfirmationRequiredException} instead.
  *
  * @param overrides        the {@link LevelOverride}s this call created or
  *                         replaced — empty only for a pattern target with

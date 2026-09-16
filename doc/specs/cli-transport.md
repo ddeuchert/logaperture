@@ -192,7 +192,7 @@ existing operation, unchanged by this slice.
 | `--pid <n>` | all | Target this PID; skip discovery. |
 | `--json` | all | Emit machine-readable JSON instead of a table. |
 | `--reason <text>` | mutating commands | Passed through as the override's `reason` (§5, §9.7). Optional; not enforced. |
-| `--include-children` | `set` and the level-named forms | Sets `includeChildren` (§5 hierarchy semantics). **Superseded (planned):** §18.7 / [#41](https://github.com/ddeuchert/logaperture/issues/41) plans to drop this flag — a trailing-wildcard pattern argument (`logctl debug org.apache.*`) replaces it. |
+| `--include-children` | — | **Superseded (shipped).** §18.7 / [#41](https://github.com/ddeuchert/logaperture/issues/41) dropped this flag from the operations API entirely (this row is stale — not updated at the time #41 shipped). No trailing-wildcard replacement takes its place either: [`pattern-selection-semantics.md`](pattern-selection-semantics.md) (issue #49) makes a trailing-wildcard `set` target a usage error, so `logctl debug org.apache` alone now covers `org.apache` and every descendant, via the logging framework's own level-inheritance. |
 | `--version` | — | Print the CLI's version and exit 0. |
 | `-h`, `--help` | — | Print usage and exit 0. |
 
@@ -270,12 +270,16 @@ The over-the-wire call is `setLevel(logger, level, includeChildren, reason, tier
 forSeconds)` — the signature Feature 2 already put on the MXBean; `forSeconds` is
 `Duration.ofX(...).toSeconds()` for `for`, `0` otherwise.
 
-> **Superseded (planned, not this slice).** §18.7 / [#41](https://github.com/ddeuchert/logaperture/issues/41)
-> plans to drop `includeChildren` from this signature — but only once its replacement (the
-> standing-rule apply mechanism) ships, not alongside the pattern-grammar change alone;
-> retiring it earlier would leave a gap where neither mechanism covers "this logger's
-> descendants." An MXBean parameter removal, not additive, so top-level §11.1's
-> component-versioning policy applies and needs calling out explicitly when it happens.
+> **Superseded (shipped, then changed again).** §18.7 / [#41](https://github.com/ddeuchert/logaperture/issues/41)
+> dropped `includeChildren` from this signature once its replacement (the standing-rule apply
+> mechanism) shipped (this row wasn't updated at the time). An MXBean parameter removal, not
+> additive, so top-level §11.1's component-versioning policy applies — moot pre-1.0, but worth
+> calling out explicitly rather than incidentally. **Further update:**
+> [`pattern-selection-semantics.md`](pattern-selection-semantics.md) (issue #49) has since retired
+> the standing-rule mechanism that replaced `includeChildren` — a trailing-wildcard target is now
+> a usage error on `set`, not a fan-out; `logctl debug org.apache` alone (no wildcard at all) is
+> what covers "this logger's descendants," via the framework's own inheritance rather than any
+> LogAperture mechanism.
 
 **Confirmation line** (stdout, exit 0):
 
