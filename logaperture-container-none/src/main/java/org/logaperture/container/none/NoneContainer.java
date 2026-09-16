@@ -42,6 +42,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -133,7 +134,7 @@ public final class NoneContainer implements AutoCloseable {
         OverrideRegistry overrides = new OverrideRegistry();
         HandlerBaselineRegistry handlerBaselines = new HandlerBaselineRegistry();
         HandlerOverrideRegistry handlerOverrides = new HandlerOverrideRegistry();
-        ActiveLoggerFloor activeLoggerFloor = () -> ActiveLoggerFloor.lowestOf(overrides.all().values());
+        ActiveLoggerFloor activeLoggerFloor = () -> List.copyOf(overrides.all().values());
         HandlerLevelControlService handlerService = new HandlerLevelControlService(
                 adapter, handlerBaselines, handlerOverrides, policy, auditLog, stateStore, principal(), "jmx",
                 activeLoggerFloor);

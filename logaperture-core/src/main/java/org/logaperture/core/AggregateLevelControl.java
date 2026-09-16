@@ -31,6 +31,7 @@ import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
+import org.logaperture.api.SquelchedLogger;
 import org.logaperture.core.spi.ContextHandle;
 
 import java.time.Instant;
@@ -529,6 +530,33 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         // e.g. Logback) is not a failure -- doc/specs/handler-floor-control.md
         // "Logback / none".
         return Optional.ofNullable(fromSystem != null ? fromSystem : fromAny);
+    }
+
+    /**
+     * {@code squelchedByRaise}'s multi-context broadcast (doc/specs/
+     * handler-floor-control.md "Squelch warning", issue #16) -- read-only, no
+     * capability pre-check needed (nothing is mutated). Same representative-answer
+     * preference {@link #setHandlerLevel}/{@link #setHandlerAuto} already use: the
+     * {@code system} context's answer when it has one, else the first non-empty
+     * answer from any context, since {@code ref}'s pre-raise level (and therefore
+     * what counts as newly squelched) can genuinely differ per context.
+     */
+    @Override
+    public List<SquelchedLogger> squelchedByRaise(HandlerRef ref, Level newLevel) {
+        List<SquelchedLogger> fromSystem = null;
+        List<SquelchedLogger> fromAny = null;
+        for (ContextControl context : sortedByKey()) {
+            List<SquelchedLogger> squelched = context.handlerService().squelchedByRaise(ref, newLevel);
+            if (!squelched.isEmpty()) {
+                if (fromAny == null) {
+                    fromAny = squelched;
+                }
+                if (ContextHandle.SYSTEM.equals(context.stableKey())) {
+                    fromSystem = squelched;
+                }
+            }
+        }
+        return fromSystem != null ? fromSystem : (fromAny != null ? fromAny : List.of());
     }
 
     /**

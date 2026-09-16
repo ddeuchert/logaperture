@@ -15,6 +15,7 @@
  */
 package org.logaperture.cli;
 
+import org.logaperture.api.Level;
 import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.EnvironmentReportData;
 import org.logaperture.control.jmx.HandlerFloorData;
@@ -24,6 +25,7 @@ import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.SetLevelResultData;
+import org.logaperture.control.jmx.SquelchedLoggerData;
 import org.logaperture.control.jmx.TopReportData;
 
 import java.io.BufferedReader;
@@ -351,8 +353,50 @@ final class Commands {
             }
             out.println("handler " + handlerRef + " → " + result.getLevel() + "   ("
                     + tierDetail(result.getTier(), result.getExpiresAt()) + ")");
+            printSquelchedLoggersWarning(out, handlerRef, result.getLevel(), result.getWarnings());
             return CliError.OK;
         };
+    }
+
+    /**
+     * The actionable warning doc/specs/handler-floor-control.md "Squelch
+     * warning" calls for (issue #16) -- {@link #printBlockingHandlersWarning}'s
+     * mirror image: names every currently-active logger override that {@code
+     * logctl handler <name> <stricter-level>} just started silencing, and the
+     * one {@code logctl handler} command that would let all of them back
+     * through (the most verbose level among them -- a developer who wants
+     * only some back can always raise it again from there).
+     */
+    private static void printSquelchedLoggersWarning(java.io.PrintStream out, String handlerRef, String newLevel,
+            List<SquelchedLoggerData> squelched) {
+        if (squelched.isEmpty()) {
+            return;
+        }
+        if (squelched.size() == 1) {
+            SquelchedLoggerData one = squelched.get(0);
+            out.println("WARN: handler " + handlerRef + " is now " + newLevel + " and will drop " + one.getLevel()
+                    + " records from " + one.getLoggerName() + ".");
+            out.println("      To keep seeing them: logctl handler " + handlerRef + " " + one.getLevel());
+        } else {
+            out.println("WARN: handler " + handlerRef + " is now " + newLevel + " and will drop records from "
+                    + squelched.size() + " loggers:");
+            for (SquelchedLoggerData one : squelched) {
+                out.println("      " + one.getLoggerName() + "   (" + one.getLevel() + ")");
+            }
+            out.println("      To keep seeing all of them: logctl handler " + handlerRef + " "
+                    + mostVerboseLevel(squelched));
+        }
+    }
+
+    private static String mostVerboseLevel(List<SquelchedLoggerData> squelched) {
+        Level most = null;
+        for (SquelchedLoggerData one : squelched) {
+            Level level = Level.valueOf(one.getLevel());
+            if (most == null || level.isMoreVerboseThan(most)) {
+                most = level;
+            }
+        }
+        return most.name();
     }
 
     /**

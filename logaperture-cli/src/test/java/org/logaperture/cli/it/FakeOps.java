@@ -29,6 +29,7 @@ import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
 import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.Severity;
+import org.logaperture.api.SquelchedLogger;
 import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.EnvironmentReportOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
@@ -145,6 +146,11 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
                 ref, level, options.reason(), now, "jmx", options.tier(), expiresAt);
         handlerOverrides.put(ref, override);
         return Optional.of(override);
+    }
+
+    @Override
+    public synchronized List<SquelchedLogger> squelchedByRaise(HandlerRef ref, Level newLevel) {
+        return List.of();
     }
 
     @Override

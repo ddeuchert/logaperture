@@ -16,38 +16,52 @@
 package org.logaperture.core;
 
 import org.logaperture.api.Level;
+import org.logaperture.api.LevelOverride;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
- * Supplies the most verbose level among this context's currently-active
- * logger overrides — the value an {@code AUTO} handler override tracks
- * (doc/specs/handler-floor-control.md "AUTO handler level", issue #20,
- * "Scope of 'lowest active override'": every active override in the same
- * logging context, no per-logger routing). Empty when none are active,
- * meaning an {@code AUTO} handler should be at its own baseline.
+ * Supplies this context's currently-active logger overrides — both the full
+ * set (for {@link HandlerLevelControlService#squelchedByRaise}, issue #16) and,
+ * via {@link #lowestActive()}, the most verbose level among them, the value an
+ * {@code AUTO} handler override tracks (doc/specs/handler-floor-control.md
+ * "AUTO handler level", issue #20, "Scope of 'lowest active override'": every
+ * active override in the same logging context, no per-logger routing). Empty
+ * when none are active, meaning an {@code AUTO} handler should be at its own
+ * baseline.
  *
  * <p>Constructor-injected into {@link HandlerLevelControlService} so it can
- * ask this at both {@code setHandlerAuto} activation time and on every
- * reactive recompute, without referencing {@link LevelControlService} or
- * {@link OverrideRegistry} directly — the composition root (each container's
- * {@code installContext}) supplies the real implementation, closing over the
- * same context's {@link OverrideRegistry} it already builds for {@link
- * LevelControlService}. Default: {@link #NONE}, for every context that
- * doesn't need this.
+ * ask this at {@code setHandlerAuto} activation time, on every reactive
+ * recompute, and on a squelch check, without referencing {@link
+ * LevelControlService} or {@link OverrideRegistry} directly — the
+ * composition root (each container's {@code installContext}) supplies the
+ * real implementation, closing over the same context's {@link
+ * OverrideRegistry} it already builds for {@link LevelControlService}.
+ * Default: {@link #NONE}, for every context that doesn't need this.
  */
 public interface ActiveLoggerFloor {
 
-    Optional<Level> lowestActive();
+    /** Every currently-active logger override in this context, in no particular order. */
+    List<LevelOverride> active();
 
-    ActiveLoggerFloor NONE = Optional::empty;
+    /**
+     * The most verbose ({@link Level#compareTo} minimum — {@code Level} is
+     * declared verbose-to-quiet, so its natural ordering doubles as
+     * verbosity) level among {@link #active()}, or empty if there are none.
+     */
+    default Optional<Level> lowestActive() {
+        return lowestOf(active());
+    }
+
+    ActiveLoggerFloor NONE = List::of;
 
     /**
      * The most verbose ({@link Level#compareTo} minimum — {@code Level} is
      * declared verbose-to-quiet, so its natural ordering doubles as
      * verbosity) level among {@code overrides}, or empty if it's empty.
      */
-    static Optional<Level> lowestOf(java.util.Collection<org.logaperture.api.LevelOverride> overrides) {
-        return overrides.stream().map(org.logaperture.api.LevelOverride::level).min(Level::compareTo);
+    static Optional<Level> lowestOf(java.util.Collection<LevelOverride> overrides) {
+        return overrides.stream().map(LevelOverride::level).min(Level::compareTo);
     }
 }
