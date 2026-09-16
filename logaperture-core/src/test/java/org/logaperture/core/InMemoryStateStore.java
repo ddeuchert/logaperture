@@ -20,6 +20,7 @@ import org.logaperture.api.HandlerRef;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.core.spi.StateStore;
 
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,10 +35,22 @@ final class InMemoryStateStore implements StateStore {
     private final Map<String, LevelOverride> saved = new LinkedHashMap<>();
     private final Map<HandlerRef, HandlerLevelOverride> savedHandlers = new LinkedHashMap<>();
     private RuntimeException throwOnSave;
+    private int removeAllCalls;
+    private int removeAllHandlersCalls;
 
     /** Makes every subsequent {@link #save} call throw, to exercise chaos-case behavior. */
     void throwOnSave(RuntimeException exception) {
         this.throwOnSave = exception;
+    }
+
+    /** How many times {@link #removeAll} has been called -- a batch caller (issue #17) should call this once per pass, not once per entry. */
+    int removeAllCalls() {
+        return removeAllCalls;
+    }
+
+    /** {@link #removeAllCalls()}'s handler-override counterpart. */
+    int removeAllHandlersCalls() {
+        return removeAllHandlersCalls;
     }
 
     @Override
@@ -59,6 +72,12 @@ final class InMemoryStateStore implements StateStore {
     }
 
     @Override
+    public void removeAll(Collection<String> loggerNames) {
+        removeAllCalls++;
+        loggerNames.forEach(saved::remove);
+    }
+
+    @Override
     public List<HandlerLevelOverride> loadAllHandlers() {
         return List.copyOf(savedHandlers.values());
     }
@@ -74,6 +93,12 @@ final class InMemoryStateStore implements StateStore {
     @Override
     public void removeHandler(HandlerRef ref) {
         savedHandlers.remove(ref);
+    }
+
+    @Override
+    public void removeAllHandlers(Collection<HandlerRef> refs) {
+        removeAllHandlersCalls++;
+        refs.forEach(savedHandlers::remove);
     }
 
     @Override

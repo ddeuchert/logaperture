@@ -405,7 +405,9 @@ public final class LevelControlService implements LevelControlOperations {
         // (reverting a manual silence) is a known, documented gap -- not
         // resolved by the spec, not addressed here.
         requireCapability(Capability.LEVEL_LOWER);
-        applyReset(target, existing.get(), source, null);
+        if (applyReset(target, existing.get(), source, null)) {
+            safePersist(() -> stateStore.remove(target));
+        }
         changeListener.onChange(); // this logger's override just went away -- an AUTO handler tracking it needs to know
         return new ResetOutcome(List.of(target));
     }
@@ -441,12 +443,14 @@ public final class LevelControlService implements LevelControlOperations {
                 requireCapability(Capability.LEVEL_LOWER);
                 capabilityChecked = true;
             }
-            applyReset(name, current.get(), source, null);
-            reverted.add(name);
+            if (applyReset(name, current.get(), source, null)) {
+                reverted.add(name);
+            }
         }
         if (reverted.isEmpty()) {
             return ResetOutcome.nothingReset();
         }
+        safePersist(() -> stateStore.removeAll(reverted)); // one rewrite for the whole match set (issue #17)
         changeListener.onChange();
         return new ResetOutcome(reverted);
     }
@@ -454,8 +458,14 @@ public final class LevelControlService implements LevelControlOperations {
     @Override
     public void resetAll() {
         requireCapability(Capability.LEVEL_LOWER);
+        List<String> reverted = new ArrayList<>();
         for (Map.Entry<String, LevelOverride> entry : overrides.all().entrySet()) {
-            applyReset(entry.getKey(), entry.getValue(), source, null);
+            if (applyReset(entry.getKey(), entry.getValue(), source, null)) {
+                reverted.add(entry.getKey());
+            }
+        }
+        if (!reverted.isEmpty()) {
+            safePersist(() -> stateStore.removeAll(reverted)); // one rewrite, not one per logger (issue #17)
         }
         changeListener.onChange();
     }
@@ -634,16 +644,17 @@ public final class LevelControlService implements LevelControlOperations {
         // by the time this loop reaches an entry (a concurrent setLevel may
         // have already replaced it), and applyReset's compare-and-remove
         // uses this same fresh value, not the (possibly stale) one below.
-        boolean anyReverted = false;
+        List<String> reverted = new ArrayList<>();
         for (String loggerName : overrides.all().keySet()) {
             Optional<LevelOverride> current = overrides.get(loggerName);
             if (current.isPresent() && current.get().tier() == PersistenceTier.FOR
-                    && !current.get().expiresAt().isAfter(now)) {
-                applyReset(loggerName, current.get(), "expiry-sweep", null);
-                anyReverted = true;
+                    && !current.get().expiresAt().isAfter(now)
+                    && applyReset(loggerName, current.get(), "expiry-sweep", null)) {
+                reverted.add(loggerName);
             }
         }
-        if (anyReverted) {
+        if (!reverted.isEmpty()) {
+            safePersist(() -> stateStore.removeAll(reverted)); // one rewrite per sweep tick, not one per expiry (issue #17)
             // Only when something actually expired -- a quiet sweep tick
             // triggers no AUTO recompute, matching this method's own
             // "idempotent, no audit noise" bar for a system with nothing to do.
@@ -693,14 +704,23 @@ public final class LevelControlService implements LevelControlOperations {
                 override.level().toString(), override.reason(), AuditRecord.Action.MUTATION)); // audit
     }
 
-    private void applyReset(String loggerName, LevelOverride toRevert, String auditSource, String reasonOverride) {
+    /**
+     * @return {@code true} if this call actually reverted {@code loggerName} (adapter
+     *         mutated, registry entry removed, audit recorded) -- {@code false} if a
+     *         concurrent change already superseded {@code toRevert}, nothing to do. The
+     *         state-store write is the caller's responsibility (a single-target caller
+     *         persists immediately; a batch caller like {@code resetAll} or the expiry
+     *         sweep collects every {@code true} name and makes one {@code removeAll}
+     *         call after its loop -- doc/specs/persistence.md "Batch removal", issue #17).
+     */
+    private boolean applyReset(String loggerName, LevelOverride toRevert, String auditSource, String reasonOverride) {
         // Atomic compare-and-remove first: if the registry's current entry
         // for this logger is no longer exactly `toRevert`, a concurrent
         // setLevel already replaced it (the expiry sweep's own race, per
         // doc/specs/persistence.md's review) -- bail out without touching
         // the adapter, so the newer override is never clobbered.
         if (!overrides.removeIfCurrent(loggerName, toRevert)) {
-            return;
+            return false;
         }
 
         String previousValue = toRevert.level().toString();
@@ -708,13 +728,11 @@ public final class LevelControlService implements LevelControlOperations {
 
         adapter.applyLevel(loggerName, baseline.orElse(null)); // mutation
 
-        // state-store write -- no-op if this override was never persisted
-        safePersist(() -> stateStore.remove(loggerName));
-
         String newValue = baseline.map(Level::toString).orElse("<inherited>");
         auditLog.record(new AuditRecord(
                 Instant.now(), principal, auditSource, loggerName, previousValue, newValue, reasonOverride,
                 AuditRecord.Action.REVERSION)); // audit
+        return true;
     }
 
     /**

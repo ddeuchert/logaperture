@@ -26,7 +26,6 @@ import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
 import org.logaperture.core.spi.LoggingAdapter;
-import org.logaperture.core.spi.StateStore;
 
 import java.util.List;
 import java.util.Optional;
@@ -43,7 +42,7 @@ class LevelControlServiceTest {
     private BaselineRegistry baselines;
     private OverrideRegistry overrides;
     private InMemoryAuditLog auditLog;
-    private StateStore stateStore;
+    private InMemoryStateStore stateStore;
     private LevelControlService service;
 
     @BeforeEach
@@ -218,6 +217,18 @@ class LevelControlServiceTest {
         assertTrue(overrides.all().isEmpty());
         assertEquals(Level.INFO, adapter.effectiveLevel("com.acme.A"));
         assertEquals(Level.INFO, adapter.effectiveLevel("com.acme.B"));
+    }
+
+    @Test
+    void resetAll_persistsInOneBatchedRewrite() {
+        // doc/specs/persistence.md "Batch removal" (issue #17): reverting several
+        // overrides in one resetAll call should be one state-store write, not one per logger.
+        service.setLevel("com.acme.A", Level.DEBUG, SetLevelOptions.withReason("r"));
+        service.setLevel("com.acme.B", Level.TRACE, SetLevelOptions.withReason("r"));
+
+        service.resetAll();
+
+        assertEquals(1, stateStore.removeAllCalls());
     }
 
     // --- pattern targets: one-time selection (doc/specs/pattern-selection-semantics.md) ------
@@ -824,6 +835,24 @@ class LevelControlServiceTest {
         serviceWithListener.sweepExpiredOverrides(now.plus(java.time.Duration.ofMinutes(31)));
 
         assertEquals(1, changeCount);
+    }
+
+    @Test
+    void sweepExpiredOverrides_multipleExpired_persistsInOneBatchedRewrite() {
+        // doc/specs/persistence.md "Batch removal" (issue #17).
+        setUpServiceWithListener();
+        adapter.addKnownLogger("com.acme.A");
+        adapter.addKnownLogger("com.acme.B");
+        java.time.Instant now = java.time.Instant.now();
+        serviceWithListener.setLevel("com.acme.A", Level.DEBUG,
+                new SetLevelOptions(null, java.time.Duration.ofMinutes(30), PersistenceTier.FOR, false));
+        serviceWithListener.setLevel("com.acme.B", Level.TRACE,
+                new SetLevelOptions(null, java.time.Duration.ofMinutes(30), PersistenceTier.FOR, false));
+
+        serviceWithListener.sweepExpiredOverrides(now.plus(java.time.Duration.ofMinutes(31)));
+
+        assertEquals(1, stateStore.removeAllCalls());
+        assertTrue(stateStore.loadAll().isEmpty());
     }
 
     @Test

@@ -19,6 +19,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.logaperture.api.HandlerLevelOverride;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.PersistenceTier;
@@ -120,6 +122,47 @@ class FileStateStoreTest {
     }
 
     @Test
+    void removeAll_dropsEveryNamedEntryInOneRewrite() throws IOException {
+        // doc/specs/persistence.md "Batch removal" (issue #17).
+        try (FileStateStore store = FileStateStore.open()) {
+            store.save(sampleOverride("com.acme.One"));
+            store.save(sampleOverride("com.acme.Two"));
+            store.save(sampleOverride("com.acme.Three"));
+
+            store.removeAll(List.of("com.acme.One", "com.acme.Two", "com.acme.NeverThere"));
+
+            assertEquals(1, store.loadAll().size());
+            assertEquals("com.acme.Three", store.loadAll().get(0).loggerName());
+        }
+    }
+
+    @Test
+    void removeAll_emptyCollection_doesNotRewriteTheFile() throws IOException {
+        try (FileStateStore store = FileStateStore.open()) {
+            store.save(sampleOverride("com.acme.Untouched"));
+            Path location = store.location().orElseThrow();
+            var mtimeBefore = Files.getLastModifiedTime(location);
+
+            store.removeAll(List.of());
+
+            assertEquals(mtimeBefore, Files.getLastModifiedTime(location));
+        }
+    }
+
+    @Test
+    void removeAllHandlers_dropsEveryNamedEntryInOneRewrite() throws IOException {
+        try (FileStateStore store = FileStateStore.open()) {
+            store.saveHandler(sampleHandlerOverride(new HandlerRef("CONSOLE")));
+            store.saveHandler(sampleHandlerOverride(new HandlerRef("FILE")));
+
+            store.removeAllHandlers(List.of(new HandlerRef("CONSOLE"), new HandlerRef("NEVER-THERE")));
+
+            assertEquals(1, store.loadAllHandlers().size());
+            assertEquals(new HandlerRef("FILE"), store.loadAllHandlers().get(0).handlerRef());
+        }
+    }
+
+    @Test
     void loadAll_missingStateFile_isEmptyNotAnError() throws IOException {
         try (FileStateStore store = FileStateStore.open()) {
             assertTrue(store.loadAll().isEmpty());
@@ -179,5 +222,9 @@ class FileStateStoreTest {
 
     private static LevelOverride sampleOverride(String loggerName) {
         return new LevelOverride(loggerName, Level.DEBUG, null, Instant.now(), "jmx", PersistenceTier.STICKY, null);
+    }
+
+    private static HandlerLevelOverride sampleHandlerOverride(HandlerRef ref) {
+        return HandlerLevelOverride.fixed(ref, Level.WARN, null, Instant.now(), "jmx", PersistenceTier.STICKY, null);
     }
 }
