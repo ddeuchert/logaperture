@@ -398,7 +398,9 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         // every reset requires HANDLER_LOWER, regardless of whether reverting
         // to baseline happens to raise or lower this particular handler.
         requireCapability(Capability.HANDLER_LOWER);
-        applyReset(ref, existing.get(), source);
+        if (applyReset(ref, existing.get(), source)) {
+            safePersist(() -> stateStore.removeHandler(ref));
+        }
     }
 
     /**
@@ -410,8 +412,14 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      */
     public void resetAllHandlers() {
         requireCapability(Capability.HANDLER_LOWER);
+        List<HandlerRef> reverted = new ArrayList<>();
         for (Map.Entry<HandlerRef, HandlerLevelOverride> entry : overrides.all().entrySet()) {
-            applyReset(entry.getKey(), entry.getValue(), source);
+            if (applyReset(entry.getKey(), entry.getValue(), source)) {
+                reverted.add(entry.getKey());
+            }
+        }
+        if (!reverted.isEmpty()) {
+            safePersist(() -> stateStore.removeAllHandlers(reverted)); // one rewrite, not one per handler (issue #17)
         }
     }
 
@@ -724,13 +732,18 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      * LevelControlService#sweepExpiredOverrides} counterpart for handlers.
      */
     public void sweepExpiredOverrides(Instant now) {
+        List<HandlerRef> reverted = new ArrayList<>();
         for (HandlerRef ref : overrides.all().keySet()) {
             Consumer<HandlerLevelOverride> revertIfExpired = override -> {
-                if (override.tier() == PersistenceTier.FOR && !override.expiresAt().isAfter(now)) {
-                    applyReset(ref, override, "expiry-sweep");
+                if (override.tier() == PersistenceTier.FOR && !override.expiresAt().isAfter(now)
+                        && applyReset(ref, override, "expiry-sweep")) {
+                    reverted.add(ref);
                 }
             };
             overrides.get(ref).ifPresent(revertIfExpired);
+        }
+        if (!reverted.isEmpty()) {
+            safePersist(() -> stateStore.removeAllHandlers(reverted)); // one rewrite per sweep tick (issue #17)
         }
     }
 
@@ -857,15 +870,26 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         return override;
     }
 
-    private void applyReset(HandlerRef ref, HandlerLevelOverride toRevert, String auditSource) {
+    /**
+     * @return {@code true} if this call actually dropped {@code ref} from tracking
+     *         (registry entry removed) -- {@code false} if a concurrent change already
+     *         superseded {@code toRevert}, nothing to do. {@code true} regardless of
+     *         whether the adapter mutation itself succeeded: an adapter failure still
+     *         drops tracking (see the catch below), so the state-store write always
+     *         follows a {@code true} return. The write is the caller's responsibility --
+     *         a single-target caller persists immediately; a batch caller like {@link
+     *         #resetAllHandlers} or {@link #sweepExpiredOverrides} collects every {@code
+     *         true} ref and makes one {@code removeAllHandlers} call after its loop
+     *         (doc/specs/persistence.md "Batch removal", issue #17).
+     */
+    private boolean applyReset(HandlerRef ref, HandlerLevelOverride toRevert, String auditSource) {
         if (!overrides.removeIfCurrent(ref, toRevert)) {
-            return; // a concurrent setHandlerLevel already replaced it
+            return false; // a concurrent setHandlerLevel already replaced it
         }
 
         if (HandlerRef.ALL_HANDLERS.equals(ref)) {
             applyGroupReset(auditSource);
-            safePersist(() -> stateStore.removeHandler(ref));
-            return;
+            return true;
         }
 
         String previousValue = toRevert.level().toString();
@@ -884,16 +908,14 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         } catch (RuntimeException e) {
             System.err.println("[logaperture-core] failed to revert handler '" + ref
                     + "', dropping it from tracking without reverting it: " + e);
-            safePersist(() -> stateStore.removeHandler(ref));
-            return;
+            return true;
         }
-
-        safePersist(() -> stateStore.removeHandler(ref));
 
         String newValue = baseline == null ? "<none>" : baseline.toString();
         auditLog.record(new AuditRecord(
                 Instant.now(), principal, auditSource, ref.value(), previousValue, newValue, null,
                 AuditRecord.Action.REVERSION));
+        return true;
     }
 
     /**

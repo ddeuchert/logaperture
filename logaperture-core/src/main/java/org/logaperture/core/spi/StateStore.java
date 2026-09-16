@@ -20,6 +20,7 @@ import org.logaperture.api.HandlerRef;
 import org.logaperture.api.LevelOverride;
 
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -46,6 +47,20 @@ public interface StateStore {
     /** No-op if {@code loggerName} was never persisted. */
     void remove(String loggerName);
 
+    /**
+     * Removes every one of {@code loggerNames} in a single rewrite instead of one per
+     * name — doc/specs/persistence.md "Batch removal" (issue #17), for a caller reverting
+     * several overrides in one pass ({@code resetAll}, the expiry sweep). A name never
+     * persisted is silently skipped, same as {@link #remove}; an empty collection does no
+     * rewrite at all. Default implementation removes one at a time — correct for any SPI
+     * implementer that doesn't otherwise batch, just not the point of this method.
+     */
+    default void removeAll(Collection<String> loggerNames) {
+        for (String loggerName : loggerNames) {
+            remove(loggerName);
+        }
+    }
+
     /** Every persisted handler override, in no particular order. */
     List<HandlerLevelOverride> loadAllHandlers();
 
@@ -54,6 +69,13 @@ public interface StateStore {
 
     /** No-op if {@code ref} was never persisted. */
     void removeHandler(HandlerRef ref);
+
+    /** {@link #removeAll}'s handler-override counterpart (issue #17). */
+    default void removeAllHandlers(Collection<HandlerRef> refs) {
+        for (HandlerRef ref : refs) {
+            removeHandler(ref);
+        }
+    }
 
     /** Removes every persisted entry — logger overrides and handler overrides alike. */
     void clear();

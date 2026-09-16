@@ -31,6 +31,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -140,6 +141,17 @@ public final class FileStateStore implements StateStore, Closeable {
     }
 
     @Override
+    public synchronized void removeAll(Collection<String> loggerNames) {
+        boolean changed = false;
+        for (String loggerName : loggerNames) {
+            changed |= cache.remove(loggerName) != null;
+        }
+        if (changed) {
+            persist();
+        }
+    }
+
+    @Override
     public synchronized List<HandlerLevelOverride> loadAllHandlers() {
         return List.copyOf(handlerCache.values());
     }
@@ -153,6 +165,17 @@ public final class FileStateStore implements StateStore, Closeable {
     @Override
     public synchronized void removeHandler(HandlerRef ref) {
         if (handlerCache.remove(ref) != null) {
+            persist();
+        }
+    }
+
+    @Override
+    public synchronized void removeAllHandlers(Collection<HandlerRef> refs) {
+        boolean changed = false;
+        for (HandlerRef ref : refs) {
+            changed |= handlerCache.remove(ref) != null;
+        }
+        if (changed) {
             persist();
         }
     }
@@ -197,16 +220,12 @@ public final class FileStateStore implements StateStore, Closeable {
 
     /**
      * Rewrites the whole state file and {@code fsync}s it -- called once per
-     * {@link #save}/{@link #remove}/etc. A pattern {@code setLevel} matching
-     * N loggers therefore does N full rewrite-and-fsync cycles in one call
-     * (a code-review finding, efficiency): {@code LevelControlService}'s
-     * per-logger loop has no batching hook into this store, and adding one
-     * (a {@code beginBatch}/{@code endBatch} pair, or a bulk {@code
-     * saveAll}) reaches across the {@code StateStore} SPI and every
-     * implementation of it. Left as a known, accepted limitation for this
-     * slice -- correctness and durability are unaffected, and N here is
-     * bounded by how many loggers a single pattern currently matches, not
-     * by anything unbounded.
+     * {@link #save}/{@link #remove}/{@link #removeAll}/etc. A pattern {@code
+     * setLevel} matching N loggers still does N full rewrite-and-fsync
+     * cycles (each is a genuine upsert, so there's no batch primitive for
+     * that direction -- doc/specs/persistence.md "Batch removal"), but a
+     * bulk revert ({@code resetAll}, either expiry sweep) collapses to one
+     * cycle via {@link #removeAll}/{@link #removeAllHandlers} (issue #17).
      */
     private void persist() {
         try {

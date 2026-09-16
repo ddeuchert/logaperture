@@ -303,6 +303,7 @@ interface StateStore {
     List<LevelOverride> loadAll();
     void save(LevelOverride override);   // upsert by loggerName
     void remove(String loggerName);
+    void removeAll(Collection<String> loggerNames);   // batch remove, one rewrite
     void clear();
 }
 ```
@@ -312,6 +313,26 @@ Lives in `org.logaperture.core.spi`, alongside `LoggingAdapter` — same rationa
 the module layout's existing "state store" line) is what ships, but a shared/external store for
 containerized or clustered deployments (§18.6) is a later implementation of this same interface,
 not a redesign of anything that calls it.
+
+`saveHandler`/`removeHandler`/`removeAllHandlers` (`doc/specs/handler-floor-control.md`) round
+out the same interface for handler overrides, in their own namespace within one state file — not
+repeated here to avoid two specs drifting on the same signature list.
+
+#### Batch removal (issue [#17](https://github.com/ddeuchert/logaperture/issues/17))
+
+`FileStateStore` rewrites and `fsync`s the whole state file on every `save`/`remove` call (below).
+`resetAll`/`resetHandler`-for-`ALL_HANDLERS`-scale operations and the two expiry sweeps
+(`LevelControlService.sweepExpiredOverrides`, `HandlerLevelControlService.sweepExpiredOverrides`)
+only ever *revert* entries — never create or update one mid-loop — so `removeAll`/
+`removeAllHandlers` are the only batch primitives this needs; there is no corresponding
+`saveAll`. A caller reverting N overrides in one pass collects the names/refs that actually
+reverted (the existing per-entry compare-and-remove against `OverrideRegistry`/
+`HandlerOverrideRegistry` is unchanged — a name only joins the batch if that succeeded) and makes
+one `removeAll` call after the loop instead of one `remove` call per iteration. `removeAll` is a
+no-op (no rewrite) when its argument is empty, matching every other write path's "nothing changed,
+nothing to persist" discipline. Both `save`/`saveHandler`, the exact-name `resetLevel`/
+`resetHandler`, and `logctl reset --all`'s constituent per-context `resetLevel` calls still make
+their single existing call per mutation — only the four loops named above batch.
 
 ## Data model summary
 
@@ -334,6 +355,7 @@ StateStore {                                       — logaperture-core.spi, new
     loadAll() -> List<LevelOverride>
     save(LevelOverride)
     remove(loggerName)
+    removeAll(Collection<String>)                   new, issue #17
     clear()
 }
 ```

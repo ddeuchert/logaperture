@@ -108,6 +108,19 @@ class HandlerLevelControlServiceTest {
     }
 
     @Test
+    void resetAllHandlers_persistsInOneBatchedRewrite() {
+        // doc/specs/persistence.md "Batch removal" (issue #17).
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
+        service.setHandlerLevel(file, Level.DEBUG, SetHandlerLevelOptions.defaults());
+
+        service.resetAllHandlers();
+
+        assertEquals(1, ((InMemoryStateStore) stateStore).removeAllHandlersCalls());
+    }
+
+    @Test
     void listHandlerOverrides_reflectsSetAndResetHandler() {
         HandlerRef file = new HandlerRef("FILE");
         adapter.addHandler(file, Level.INFO);
@@ -226,6 +239,19 @@ class HandlerLevelControlServiceTest {
 
         assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow(), "past deadline -- reverted");
         assertEquals(Level.DEBUG, adapter.handlerLevel(file).orElseThrow(), "still live -- untouched");
+    }
+
+    @Test
+    void sweepExpiredOverrides_multipleExpired_persistsInOneBatchedRewrite() {
+        // doc/specs/persistence.md "Batch removal" (issue #17).
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.forDuration(Duration.ofMillis(1)));
+        service.setHandlerLevel(file, Level.DEBUG, SetHandlerLevelOptions.forDuration(Duration.ofMillis(1)));
+
+        service.sweepExpiredOverrides(Instant.now().plusSeconds(1));
+
+        assertEquals(1, ((InMemoryStateStore) stateStore).removeAllHandlersCalls());
     }
 
     // --- capability direction when the handler is unresolvable (code-review finding) --------------
