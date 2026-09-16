@@ -24,6 +24,7 @@ import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.SetLevelResultData;
+import org.logaperture.control.jmx.SquelchedLoggerData;
 import org.logaperture.control.jmx.TopReportData;
 
 import java.util.LinkedHashSet;
@@ -116,6 +117,13 @@ final class Json {
     }
 
     private static Obj handlerOverrideObj(HandlerLevelOverrideData data) {
+        StringJoiner warnings = new StringJoiner(",", "[", "]");
+        for (SquelchedLoggerData squelched : data.getWarnings()) {
+            warnings.add(new Obj()
+                    .str("loggerName", squelched.getLoggerName())
+                    .str("level", squelched.getLevel())
+                    .toString());
+        }
         return new Obj()
                 .str("handlerRef", data.getHandlerRef())
                 .str("level", data.getLevel())
@@ -124,7 +132,8 @@ final class Json {
                 .str("appliedAt", data.getAppliedAt())
                 .str("source", data.getSource())
                 .str("tier", data.getTier())
-                .str("expiresAt", data.getExpiresAt());
+                .str("expiresAt", data.getExpiresAt())
+                .raw("warnings", warnings.toString());
     }
 
     /**

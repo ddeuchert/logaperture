@@ -23,6 +23,7 @@ import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.SetLevelResultData;
+import org.logaperture.control.jmx.SquelchedLoggerData;
 import org.logaperture.control.jmx.TopReportData;
 
 import java.io.ByteArrayInputStream;
@@ -143,7 +144,7 @@ class CommandsTest {
     @Test
     void status_alsoRendersActiveHandlerOverrides() {
         mbean.handlerOverrides = List.of(new HandlerLevelOverrideData(
-                "CONSOLE", "TRACE", "FIXED", "INC-1", Instant.now().toString(), "jmx", "STICKY", null));
+                "CONSOLE", "TRACE", "FIXED", "INC-1", Instant.now().toString(), "jmx", "STICKY", null, List.of()));
 
         assertEquals(CliError.OK, run(Commands.status(false)));
 
@@ -157,7 +158,7 @@ class CommandsTest {
     @Test
     void status_handlerOverridesOnly_stillPrintsWithNoLoggerTable() {
         mbean.handlerOverrides = List.of(new HandlerLevelOverrideData(
-                "CONSOLE", "TRACE", "FIXED", null, Instant.now().toString(), "jmx", "SESSION", null));
+                "CONSOLE", "TRACE", "FIXED", null, Instant.now().toString(), "jmx", "SESSION", null, List.of()));
 
         assertEquals(CliError.OK, run(Commands.status(false)));
 
@@ -169,7 +170,7 @@ class CommandsTest {
         mbean.loggers = List.of(
                 new LoggerInfoData("com.acme.Loud", "INFO", "DEBUG", true, "jmx", null, "STICKY", null));
         mbean.handlerOverrides = List.of(new HandlerLevelOverrideData(
-                "CONSOLE", "TRACE", "FIXED", null, Instant.now().toString(), "jmx", "STICKY", null));
+                "CONSOLE", "TRACE", "FIXED", null, Instant.now().toString(), "jmx", "STICKY", null, List.of()));
 
         run(Commands.status(true));
 
@@ -604,7 +605,7 @@ class CommandsTest {
     @Test
     void handlerSetForwardsEveryArgumentAndPrintsAConfirmation() {
         mbean.setHandlerLevelResult = new HandlerLevelOverrideData(
-                "CONSOLE", "TRACE", "FIXED", "INC-1", Instant.now().toString(), "jmx", "SESSION", null);
+                "CONSOLE", "TRACE", "FIXED", "INC-1", Instant.now().toString(), "jmx", "SESSION", null, List.of());
 
         run(Commands.setHandlerLevel("CONSOLE", "TRACE", "INC-1", "SESSION", 0L, false));
 
@@ -619,14 +620,60 @@ class CommandsTest {
     @Test
     void handlerSetJsonEmitsTheOverrideObject() {
         mbean.setHandlerLevelResult = new HandlerLevelOverrideData(
-                "CONSOLE", "TRACE", "FIXED", null, "2026-08-25T00:00:00Z", "jmx", "STICKY", null);
+                "CONSOLE", "TRACE", "FIXED", null, "2026-08-25T00:00:00Z", "jmx", "STICKY", null, List.of());
 
         run(Commands.setHandlerLevel("CONSOLE", "TRACE", null, "STICKY", 0L, true));
 
         assertEquals(
                 "{\"handlerRef\":\"CONSOLE\",\"level\":\"TRACE\",\"mode\":\"FIXED\",\"reason\":null,"
                         + "\"appliedAt\":\"2026-08-25T00:00:00Z\",\"source\":\"jmx\",\"tier\":\"STICKY\","
-                        + "\"expiresAt\":null}",
+                        + "\"expiresAt\":null,\"warnings\":[]}",
+                output().strip());
+    }
+
+    @Test
+    void handlerSet_oneSquelchedLogger_printsTheWarning() {
+        // doc/specs/handler-floor-control.md "Squelch warning" (issue #16).
+        mbean.setHandlerLevelResult = new HandlerLevelOverrideData(
+                "CONSOLE", "INFO", "FIXED", null, Instant.now().toString(), "jmx", "SESSION", null,
+                List.of(new SquelchedLoggerData("com.acme.Worker", "DEBUG")));
+
+        run(Commands.setHandlerLevel("CONSOLE", "INFO", null, "SESSION", 0L, false));
+
+        String text = output();
+        assertTrue(text.contains("WARN: handler CONSOLE is now INFO and will drop DEBUG records from "
+                + "com.acme.Worker."), text);
+        assertTrue(text.contains("logctl handler CONSOLE DEBUG"), text);
+    }
+
+    @Test
+    void handlerSet_multipleSquelchedLoggers_listsEachAndSuggestsTheMostVerboseLevel() {
+        mbean.setHandlerLevelResult = new HandlerLevelOverrideData(
+                "CONSOLE", "INFO", "FIXED", null, Instant.now().toString(), "jmx", "SESSION", null,
+                List.of(new SquelchedLoggerData("com.acme.Worker", "DEBUG"),
+                        new SquelchedLoggerData("com.acme.Payments", "TRACE")));
+
+        run(Commands.setHandlerLevel("CONSOLE", "INFO", null, "SESSION", 0L, false));
+
+        String text = output();
+        assertTrue(text.contains("will drop records from 2 loggers"), text);
+        assertTrue(text.contains("com.acme.Worker"), text);
+        assertTrue(text.contains("com.acme.Payments"), text);
+        assertTrue(text.contains("logctl handler CONSOLE TRACE"), text); // most verbose of DEBUG/TRACE
+    }
+
+    @Test
+    void handlerSetJson_squelchedLogger_includesItInTheWarningsArray() {
+        mbean.setHandlerLevelResult = new HandlerLevelOverrideData(
+                "CONSOLE", "INFO", "FIXED", null, "2026-08-25T00:00:00Z", "jmx", "SESSION", null,
+                List.of(new SquelchedLoggerData("com.acme.Worker", "DEBUG")));
+
+        run(Commands.setHandlerLevel("CONSOLE", "INFO", null, "SESSION", 0L, true));
+
+        assertEquals(
+                "{\"handlerRef\":\"CONSOLE\",\"level\":\"INFO\",\"mode\":\"FIXED\",\"reason\":null,"
+                        + "\"appliedAt\":\"2026-08-25T00:00:00Z\",\"source\":\"jmx\",\"tier\":\"SESSION\","
+                        + "\"expiresAt\":null,\"warnings\":[{\"loggerName\":\"com.acme.Worker\",\"level\":\"DEBUG\"}]}",
                 output().strip());
     }
 
@@ -652,7 +699,7 @@ class CommandsTest {
     @Test
     void handlerAutoForwardsEveryArgumentAndPrintsAConfirmation() {
         mbean.setHandlerAutoResult = new HandlerLevelOverrideData(
-                "CONSOLE", "DEBUG", "AUTO", "INC-1", Instant.now().toString(), "jmx", "SESSION", null);
+                "CONSOLE", "DEBUG", "AUTO", "INC-1", Instant.now().toString(), "jmx", "SESSION", null, List.of());
 
         run(Commands.setHandlerAuto("CONSOLE", "INC-1", "SESSION", 0L, false));
 
@@ -666,14 +713,14 @@ class CommandsTest {
     @Test
     void handlerAutoJsonEmitsTheOverrideObjectWithMode() {
         mbean.setHandlerAutoResult = new HandlerLevelOverrideData(
-                "CONSOLE", "TRACE", "AUTO", null, "2026-08-25T00:00:00Z", "jmx", "STICKY", null);
+                "CONSOLE", "TRACE", "AUTO", null, "2026-08-25T00:00:00Z", "jmx", "STICKY", null, List.of());
 
         run(Commands.setHandlerAuto("CONSOLE", null, "STICKY", 0L, true));
 
         assertEquals(
                 "{\"handlerRef\":\"CONSOLE\",\"level\":\"TRACE\",\"mode\":\"AUTO\",\"reason\":null,"
                         + "\"appliedAt\":\"2026-08-25T00:00:00Z\",\"source\":\"jmx\",\"tier\":\"STICKY\","
-                        + "\"expiresAt\":null}",
+                        + "\"expiresAt\":null,\"warnings\":[]}",
                 output().strip());
     }
 
@@ -689,9 +736,9 @@ class CommandsTest {
     void status_rendersAModeColumnDistinguishingAutoFromFixed() {
         mbean.handlerOverrides = List.of(
                 new HandlerLevelOverrideData("CONSOLE", "DEBUG", "AUTO", null, Instant.now().toString(), "jmx",
-                        "STICKY", null),
+                        "STICKY", null, List.of()),
                 new HandlerLevelOverrideData("FILE", "WARN", "FIXED", null, Instant.now().toString(), "jmx",
-                        "STICKY", null));
+                        "STICKY", null, List.of()));
 
         assertEquals(CliError.OK, run(Commands.status(false)));
 

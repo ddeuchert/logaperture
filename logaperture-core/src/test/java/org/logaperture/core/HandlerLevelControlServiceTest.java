@@ -23,6 +23,7 @@ import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetHandlerLevelOptions;
+import org.logaperture.api.SquelchedLogger;
 import org.logaperture.core.spi.StateStore;
 
 import java.time.Duration;
@@ -172,6 +173,80 @@ class HandlerLevelControlServiceTest {
 
         assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow(),
                 "reset lands on the pre-LogAperture baseline, not the DEBUG the first call captured as 'previous'");
+    }
+
+    // --- squelch warning (doc/specs/handler-floor-control.md "Squelch warning", issue #16) -------
+
+    @Test
+    void squelchedByRaise_lowerDirection_isAlwaysEmpty() {
+        FakeActiveLoggerFloor floor = new FakeActiveLoggerFloor();
+        floor.setActive(List.of(sampleLevelOverride("com.acme.Worker", Level.DEBUG)));
+        HandlerLevelControlService squelchService = new HandlerLevelControlService(
+                adapter, baselines, overrides, CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
+                floor);
+        // CONSOLE starts at INFO -- TRACE is a lower (more verbose), not a raise.
+        assertTrue(squelchService.squelchedByRaise(CONSOLE, Level.TRACE).isEmpty());
+    }
+
+    @Test
+    void squelchedByRaise_raiseAboveAnActiveOverride_reportsIt() {
+        FakeActiveLoggerFloor floor = new FakeActiveLoggerFloor();
+        floor.setActive(List.of(sampleLevelOverride("com.acme.Worker", Level.DEBUG)));
+        HandlerLevelControlService squelchService = new HandlerLevelControlService(
+                adapter, baselines, overrides, CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
+                floor);
+        adapter.setHandlerLevel(CONSOLE, Level.TRACE); // CONSOLE currently lets DEBUG through
+
+        List<SquelchedLogger> squelched = squelchService.squelchedByRaise(CONSOLE, Level.INFO);
+
+        assertEquals(1, squelched.size());
+        assertEquals("com.acme.Worker", squelched.get(0).loggerName());
+        assertEquals(Level.DEBUG, squelched.get(0).level());
+    }
+
+    @Test
+    void squelchedByRaise_overrideAlreadyBlockedBeforeTheRaise_isNotReported() {
+        FakeActiveLoggerFloor floor = new FakeActiveLoggerFloor();
+        floor.setActive(List.of(sampleLevelOverride("com.acme.Worker", Level.DEBUG)));
+        HandlerLevelControlService squelchService = new HandlerLevelControlService(
+                adapter, baselines, overrides, CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
+                floor);
+        adapter.setHandlerLevel(CONSOLE, Level.INFO); // already blocking DEBUG before this raise
+
+        List<SquelchedLogger> squelched = squelchService.squelchedByRaise(CONSOLE, Level.WARN);
+
+        assertTrue(squelched.isEmpty(), "not new information this raise is responsible for");
+    }
+
+    @Test
+    void squelchedByRaise_noActiveOverrides_isEmpty() {
+        assertTrue(service.squelchedByRaise(CONSOLE, Level.ERROR).isEmpty());
+    }
+
+    @Test
+    void squelchedByRaise_adapterHasNoHandlerLevels_isEmpty() {
+        adapter.disableHandlerLevels();
+        assertTrue(service.squelchedByRaise(CONSOLE, Level.ERROR).isEmpty());
+    }
+
+    @Test
+    void squelchedByRaise_allHandlers_unionsAcrossReals() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.TRACE);
+        adapter.setHandlerLevel(CONSOLE, Level.TRACE);
+        FakeActiveLoggerFloor floor = new FakeActiveLoggerFloor();
+        floor.setActive(List.of(
+                sampleLevelOverride("com.acme.Worker", Level.DEBUG),
+                sampleLevelOverride("com.acme.Other", Level.TRACE)));
+        HandlerLevelControlService squelchService = new HandlerLevelControlService(
+                adapter, baselines, overrides, CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
+                floor);
+
+        List<SquelchedLogger> squelched = squelchService.squelchedByRaise(HandlerRef.ALL_HANDLERS, Level.INFO);
+
+        assertEquals(2, squelched.size());
+        assertTrue(squelched.stream().anyMatch(s -> s.loggerName().equals("com.acme.Worker")));
+        assertTrue(squelched.stream().anyMatch(s -> s.loggerName().equals("com.acme.Other")));
     }
 
     // --- direction / capability ---------------------------------------------------------------
@@ -671,16 +746,25 @@ class HandlerLevelControlServiceTest {
 
     /** A settable {@link ActiveLoggerFloor} test double -- production wires the real thing from an {@code OverrideRegistry}. */
     private static final class FakeActiveLoggerFloor implements ActiveLoggerFloor {
-        private Optional<Level> current = Optional.empty();
+        private List<org.logaperture.api.LevelOverride> current = List.of();
 
         @Override
-        public Optional<Level> lowestActive() {
+        public List<org.logaperture.api.LevelOverride> active() {
             return current;
         }
 
+        /** Sets a single active override at {@code level} (AUTO tests only care about the floor level, not the logger name). */
         void set(Level level) {
-            current = Optional.ofNullable(level);
+            current = level == null ? List.of() : List.of(sampleLevelOverride("auto.floor.logger", level));
         }
+
+        void setActive(List<org.logaperture.api.LevelOverride> overrides) {
+            current = overrides;
+        }
+    }
+
+    private static org.logaperture.api.LevelOverride sampleLevelOverride(String loggerName, Level level) {
+        return new org.logaperture.api.LevelOverride(loggerName, level, null, Instant.now(), "jmx", PersistenceTier.SESSION, null);
     }
 
     private FakeActiveLoggerFloor activeLoggerFloor;

@@ -42,6 +42,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -145,7 +146,7 @@ public final class WildFlyContainer implements AutoCloseable {
         // "Recompute trigger" (this container is the composition root that
         // wires the two services together).
         OverrideRegistry overrides = new OverrideRegistry();
-        ActiveLoggerFloor activeLoggerFloor = () -> ActiveLoggerFloor.lowestOf(overrides.all().values());
+        ActiveLoggerFloor activeLoggerFloor = () -> List.copyOf(overrides.all().values());
         HandlerLevelControlService handlerService = new HandlerLevelControlService(adapter,
                 new HandlerBaselineRegistry(), new HandlerOverrideRegistry(), policy, auditLog, stateStore,
                 principal(), "jmx", activeLoggerFloor);

@@ -29,6 +29,7 @@ import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
+import org.logaperture.api.SquelchedLogger;
 import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.EnvironmentReportOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
@@ -112,6 +113,15 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
         Instant now = Instant.now();
         Instant expiresAt = options.tier() == PersistenceTier.FOR ? now.plus(options.expiresIn()) : null;
         return Optional.of(HandlerLevelOverride.fixed(ref, level, options.reason(), now, "jmx", options.tier(), expiresAt));
+    }
+
+    List<SquelchedLogger> squelchedToReturn = List.of();
+    final List<Object[]> squelchedByRaiseCalls = new ArrayList<>();
+
+    @Override
+    public List<SquelchedLogger> squelchedByRaise(HandlerRef ref, Level newLevel) {
+        squelchedByRaiseCalls.add(new Object[] {ref, newLevel});
+        return squelchedToReturn;
     }
 
     @Override

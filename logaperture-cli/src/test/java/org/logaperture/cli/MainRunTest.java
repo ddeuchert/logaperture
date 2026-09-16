@@ -200,7 +200,7 @@ class MainRunTest {
     void handlerAuto_dispatchesToSetHandlerAuto_notSetHandlerLevel() {
         FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
         mbean.setHandlerAutoResult = new org.logaperture.control.jmx.HandlerLevelOverrideData(
-                "CONSOLE", "DEBUG", "AUTO", null, "2026-09-12T00:00:00Z", "jmx", "SESSION", null);
+                "CONSOLE", "DEBUG", "AUTO", null, "2026-09-12T00:00:00Z", "jmx", "SESSION", null, List.of());
 
         assertEquals(0, run(new String[] {"handler", "CONSOLE", "AUTO"}, connectorFor(mbean)));
 
@@ -217,7 +217,7 @@ class MainRunTest {
     void handlerAuto_isCaseInsensitiveAndAcceptsATierAndAReason() {
         FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
         mbean.setHandlerAutoResult = new org.logaperture.control.jmx.HandlerLevelOverrideData(
-                "CONSOLE", "TRACE", "AUTO", "INC-1", "2026-09-12T00:00:00Z", "jmx", "STICKY", null);
+                "CONSOLE", "TRACE", "AUTO", "INC-1", "2026-09-12T00:00:00Z", "jmx", "STICKY", null, List.of());
 
         assertEquals(0, run(new String[] {"handler", "CONSOLE", "auto", "sticky", "--reason", "INC-1"},
                 connectorFor(mbean)));

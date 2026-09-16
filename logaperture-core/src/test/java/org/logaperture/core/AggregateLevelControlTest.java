@@ -79,10 +79,12 @@ class AggregateLevelControlTest {
         }
 
         Ctx(String key, CapabilityPolicy policy, String source) {
-            service = new LevelControlService(adapter, new BaselineRegistry(), new OverrideRegistry(),
+            OverrideRegistry overrides = new OverrideRegistry();
+            service = new LevelControlService(adapter, new BaselineRegistry(), overrides,
                     policy, auditLog, sharedStore, "alice", source);
+            ActiveLoggerFloor activeLoggerFloor = () -> List.copyOf(overrides.all().values());
             handlerService = new HandlerLevelControlService(adapter, new HandlerBaselineRegistry(),
-                    new HandlerOverrideRegistry(), policy, auditLog, sharedStore, "alice", "jmx");
+                    new HandlerOverrideRegistry(), policy, auditLog, sharedStore, "alice", "jmx", activeLoggerFloor);
             doctorService = new DoctorService(adapter, policy);
             topService = new TopService(adapter, policy);
             environmentReportService = new EnvironmentReportService(adapter, policy);
@@ -571,6 +573,42 @@ class AggregateLevelControlTest {
 
         assertEquals(Level.TRACE, system.adapter.handlerLevel(console).orElseThrow());
         assertEquals(Level.TRACE, app.adapter.handlerLevel(console).orElseThrow());
+    }
+
+    @Test
+    void squelchedByRaise_prefersTheSystemContextsAnswerOverAnotherContexts() {
+        // doc/specs/handler-floor-control.md "Squelch warning" (issue #16) --
+        // same representative-answer preference setHandlerLevel/setHandlerAuto
+        // already use, since a handler's pre-raise level can genuinely differ
+        // per context.
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        HandlerRef console = new HandlerRef("CONSOLE");
+        system.adapter.addHandler(console, Level.TRACE);
+        app.adapter.addHandler(console, Level.TRACE);
+        system.service.setLevel("com.acme.SystemWorker", Level.DEBUG, SetLevelOptions.defaults());
+        app.service.setLevel("com.acme.AppWorker", Level.DEBUG, SetLevelOptions.defaults());
+        aggregate.register(app.control);
+        aggregate.register(system.control);
+
+        List<org.logaperture.api.SquelchedLogger> squelched = aggregate.squelchedByRaise(console, Level.INFO);
+
+        assertEquals(1, squelched.size());
+        assertEquals("com.acme.SystemWorker", squelched.get(0).loggerName(),
+                "the system context's own answer, not myapp.war's");
+    }
+
+    @Test
+    void squelchedByRaise_readOnly_neverMutatesTheHandler() {
+        Ctx system = new Ctx("system");
+        HandlerRef console = new HandlerRef("CONSOLE");
+        system.adapter.addHandler(console, Level.TRACE);
+        system.service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
+        aggregate.register(system.control);
+
+        aggregate.squelchedByRaise(console, Level.INFO);
+
+        assertEquals(Level.TRACE, system.adapter.handlerLevel(console).orElseThrow());
     }
 
     @Test

@@ -91,8 +91,12 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
             long forSeconds) {
         Level parsedLevel = parseLevel(level);
         SetHandlerLevelOptions options = toHandlerOptions(reason, tier, forSeconds);
-        return handlerOperations.setHandlerLevel(new HandlerRef(handlerRef), parsedLevel, options)
-                .map(HandlerLevelOverrideData::from)
+        HandlerRef ref = new HandlerRef(handlerRef);
+        // Read before the mutation, against the pre-raise handler level -- doc/specs/
+        // handler-floor-control.md "Squelch warning" (issue #16).
+        var squelched = handlerOperations.squelchedByRaise(ref, parsedLevel);
+        return handlerOperations.setHandlerLevel(ref, parsedLevel, options)
+                .map(override -> HandlerLevelOverrideData.from(override, squelched))
                 .orElse(null); // this framework's handlers have no level of their own -- documented no-op
     }
 

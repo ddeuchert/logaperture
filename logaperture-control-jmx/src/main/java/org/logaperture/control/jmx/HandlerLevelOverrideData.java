@@ -16,13 +16,17 @@
 package org.logaperture.control.jmx;
 
 import org.logaperture.api.HandlerLevelOverride;
+import org.logaperture.api.SquelchedLogger;
 
 import java.beans.ConstructorProperties;
+import java.util.List;
 
 /**
  * MXBean-friendly mirror of {@link HandlerLevelOverride} — the {@link
  * LevelOverrideData} counterpart for {@code logctl handler <name> <level>}
- * (doc/specs/handler-floor-control.md).
+ * (doc/specs/handler-floor-control.md). {@code warnings} was added by
+ * "Squelch warning" (issue #16) — empty except right after a raise that
+ * newly silences one or more active logger overrides.
  */
 public final class HandlerLevelOverrideData {
 
@@ -34,8 +38,9 @@ public final class HandlerLevelOverrideData {
     private final String source;
     private final String tier;
     private final String expiresAt;
+    private final List<SquelchedLoggerData> warnings;
 
-    @ConstructorProperties({"handlerRef", "level", "mode", "reason", "appliedAt", "source", "tier", "expiresAt"})
+    @ConstructorProperties({"handlerRef", "level", "mode", "reason", "appliedAt", "source", "tier", "expiresAt", "warnings"})
     public HandlerLevelOverrideData(
             String handlerRef,
             String level,
@@ -44,7 +49,8 @@ public final class HandlerLevelOverrideData {
             String appliedAt,
             String source,
             String tier,
-            String expiresAt) {
+            String expiresAt,
+            List<SquelchedLoggerData> warnings) {
         this.handlerRef = handlerRef;
         this.level = level;
         this.mode = mode;
@@ -53,9 +59,15 @@ public final class HandlerLevelOverrideData {
         this.source = source;
         this.tier = tier;
         this.expiresAt = expiresAt;
+        this.warnings = warnings == null ? List.of() : warnings;
     }
 
+    /** {@code warnings} always empty -- the {@link #from(HandlerLevelOverride, List)} overload is for {@code setHandlerLevel}'s raise direction. */
     public static HandlerLevelOverrideData from(HandlerLevelOverride override) {
+        return from(override, List.of());
+    }
+
+    public static HandlerLevelOverrideData from(HandlerLevelOverride override, List<SquelchedLogger> squelched) {
         return new HandlerLevelOverrideData(
                 override.handlerRef().value(),
                 override.level().name(),
@@ -64,7 +76,8 @@ public final class HandlerLevelOverrideData {
                 override.appliedAt().toString(),
                 override.source(),
                 override.tier().name(),
-                override.expiresAt() == null ? null : override.expiresAt().toString());
+                override.expiresAt() == null ? null : override.expiresAt().toString(),
+                squelched.stream().map(SquelchedLoggerData::from).toList());
     }
 
     public String getHandlerRef() {
@@ -98,5 +111,10 @@ public final class HandlerLevelOverrideData {
 
     public String getExpiresAt() {
         return expiresAt;
+    }
+
+    /** Active logger overrides this raise newly silences (doc/specs/handler-floor-control.md "Squelch warning", issue #16) — empty otherwise. */
+    public List<SquelchedLoggerData> getWarnings() {
+        return warnings;
     }
 }

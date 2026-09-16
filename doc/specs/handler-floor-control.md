@@ -116,6 +116,11 @@ After this feature, the user will be able to:
 - Switch an `AUTO` handler back to a fixed level, or reset it, exactly as
   today — `logctl handler CONSOLE INFO` or `logctl handler CONSOLE reset`
   simply supersedes/reverts it, the same as it would a fixed override.
+- Raise a handler's own floor and, if that would newly silence a logger
+  they're currently watching, get the mirror-image warning — `logctl handler
+  CONSOLE INFO` prints `WARN: handler CONSOLE is now INFO and will drop DEBUG
+  records from com.acme.Worker` and the exact command to see them again. The
+  level change still takes effect; the warning is advice, not an error.
 
 ## Scope of this slice
 
@@ -294,6 +299,66 @@ Zero changes to core, the JMX surface, or `Commands` — the collapsing is
 entirely the WildFly adapter's own answer to a question it already answers.
 The known cost: the "just lower CONSOLE, leave FILE alone" granularity is
 genuinely lost on WildFly until issue #14 lands real per-handler names.
+
+## Squelch warning (issue [#16](https://github.com/ddeuchert/logaperture/issues/16))
+
+The mirror image of "Warning on level commands" above, in the opposite direction:
+`logctl handler <name> <stricter-level>` (and the `ALL_HANDLERS` fan-out) now warns
+when the raise newly silences one or more currently-active logger overrides that
+were getting through before. Only a genuine *new* consequence of this command
+warns — an override already blocked by this same handler before the raise (or
+blocked only by some other, unrelated handler) is not new information this
+command is responsible for surfacing:
+
+```
+$ logctl handler CONSOLE INFO
+handler CONSOLE → INFO   (SESSION -- until the JVM stops)
+WARN: handler CONSOLE is now INFO and will drop DEBUG records from com.acme.Worker.
+      To keep seeing them: logctl handler CONSOLE DEBUG
+```
+
+More than one:
+
+```
+WARN: handler CONSOLE is now INFO and will drop records from 2 loggers:
+      com.acme.Worker   (DEBUG)
+      com.acme.Payments   (TRACE)
+      To keep seeing all of them: logctl handler CONSOLE TRACE
+```
+
+The suggested command uses the most verbose level among the squelched loggers —
+a developer who wants only some of them back can always raise it again from
+there. Same "advice, never fails, never mutates anything" contract as the
+lower-direction warning: printed to stdout after the confirmation line in text
+mode, and as a `warnings[]` array alongside the override in `--json` (empty
+when there's nothing to warn about).
+
+**Mechanism.** `HandlerLevelControlOperations.squelchedByRaise(ref, newLevel)` is
+a read-only pre-check, run against the handler's *current* (pre-mutation) level:
+for each currently-active logger override, it was "getting through" if the old
+handler level is not stricter than the override's own level, and is "now
+blocked" if the new level is stricter — same strict "handler stricter than
+record" comparison `JulLoggingAdapter.handlerFloorsBelow` already uses (equal
+levels never block, on either side of the raise). `ALL_HANDLERS` unions the
+per-real answer across `adapter.realHandlers()`, deduplicated by logger name.
+
+No adapter SPI change: unlike the lower-direction warning (which asks the
+adapter what's blocking, since JUL's own handler nesting/`useParentHandlers`
+matters there), this is pure `Level` arithmetic against the same "no per-logger
+routing" model `ActiveLoggerFloor` (issue #20) already established — every
+active logger override in the same context is a candidate, independent of which
+handler(s) it would actually reach. `ActiveLoggerFloor`'s single method was
+widened from "the lowest active level" to "every active override," with
+`lowestActive()` staying as a default computed from that — no behavior change
+for AUTO, which only ever needed the lowest.
+
+**Multi-context (WildFly).** `AggregateLevelControl.squelchedByRaise` broadcasts
+read-only to every context and prefers the `system` context's answer, falling
+back to the first context with a non-empty answer — same representative-answer
+preference `setHandlerLevel`/`setHandlerAuto` already use, since a handler's
+pre-raise level (and therefore what counts as newly squelched) can genuinely
+differ per context. Called by the MXBean layer *before* the real
+`setHandlerLevel` call, against the still-unmutated handler level.
 
 ## Operations impact
 
@@ -1381,11 +1446,8 @@ feature, not a cost.
   user's own framing of this feature ("reset the level of an appender up or
   down") settles it — `handler.lower` and `handler.raise` both ship this slice, as
   written above.
-- **B. Squelch-direction warning.** Resolved: **defer.** `logctl handler <name>
-  <stricter-level>` ships (per D) without warning about currently-active logger
-  overrides it might silence — that symmetry with the lower-direction warning is a
-  cheap, self-contained follow-up once the base command is in, not a reason to
-  hold up this slice.
+- **B. Squelch-direction warning.** Originally resolved *defer*; **delivered with
+  issue #16** as `squelchedByRaise` — see "Squelch warning" below.
 - **C. `--session` handler overrides and the state file.** Resolved: **treat
   identically to `--session` loggers** — no special-cased louder confirmation
   line. Revisit only if this proves confusing in practice.

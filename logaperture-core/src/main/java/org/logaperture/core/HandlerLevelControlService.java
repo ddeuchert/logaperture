@@ -21,8 +21,10 @@ import org.logaperture.api.HandlerLevelMode;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
+import org.logaperture.api.LevelOverride;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetHandlerLevelOptions;
+import org.logaperture.api.SquelchedLogger;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
 import org.logaperture.core.spi.UnknownHandlerException;
@@ -110,6 +112,56 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return Optional.of(applyAndRecordGroupMutation(level, opts));
         }
         return Optional.of(applyAndRecordMutation(ref, level, opts));
+    }
+
+    /**
+     * {@code squelchedByRaise} (doc/specs/handler-floor-control.md "Squelch
+     * warning", issue #16) -- read-only, no capability check (nothing is
+     * mutated). Not a raise at all (equal or a genuine lower) is always
+     * empty, the cheap short-circuit before touching {@link
+     * #activeLoggerFloor} mirrors {@link #recomputeAuto}'s own reasoning for
+     * the same seam. {@link HandlerRef#ALL_HANDLERS} unions the per-real
+     * answer across {@code adapter.realHandlers()}, deduplicated by logger
+     * name (a logger squelched by more than one real in the group is
+     * reported once, not once per real).
+     */
+    @Override
+    public List<SquelchedLogger> squelchedByRaise(HandlerRef ref, Level newLevel) {
+        Objects.requireNonNull(ref, "ref");
+        Objects.requireNonNull(newLevel, "newLevel");
+        if (!adapter.hasHandlerLevels()) {
+            return List.of();
+        }
+        if (HandlerRef.ALL_HANDLERS.equals(ref)) {
+            Map<String, SquelchedLogger> squelched = new LinkedHashMap<>();
+            for (HandlerRef real : adapter.realHandlers()) {
+                for (SquelchedLogger one : squelchedByRaiseForOneRef(real, newLevel)) {
+                    squelched.putIfAbsent(one.loggerName(), one);
+                }
+            }
+            return List.copyOf(squelched.values());
+        }
+        return squelchedByRaiseForOneRef(ref, newLevel);
+    }
+
+    private List<SquelchedLogger> squelchedByRaiseForOneRef(HandlerRef ref, Level newLevel) {
+        Optional<Level> previousLevel = adapter.handlerLevel(ref);
+        if (previousLevel.isEmpty() || !previousLevel.get().isMoreVerboseThan(newLevel)) {
+            return List.of(); // no baseline to compare against, or this isn't actually a raise
+        }
+        List<SquelchedLogger> squelched = new ArrayList<>();
+        for (LevelOverride override : activeLoggerFloor.active()) {
+            // A handler at exactly a record's own level still passes it (JulLoggingAdapter's
+            // real handlerFloorsBelow uses this same strict "handler stricter than record"
+            // test, not "at or stricter than") -- so equality is never itself a block, on
+            // either side of the raise.
+            boolean wasGettingThrough = !override.level().isMoreVerboseThan(previousLevel.get());
+            boolean nowBlocked = override.level().isMoreVerboseThan(newLevel);
+            if (wasGettingThrough && nowBlocked) {
+                squelched.add(new SquelchedLogger(override.loggerName(), override.level()));
+            }
+        }
+        return squelched;
     }
 
     /**

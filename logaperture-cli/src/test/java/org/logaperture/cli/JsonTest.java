@@ -78,7 +78,7 @@ class JsonTest {
     void statusWrapsLoggersAndHandlerOverridesUnderTheirOwnKeys() {
         LoggerInfoData logger = new LoggerInfoData("a", "INFO", "DEBUG", true, "jmx", null, "STICKY", null);
         HandlerLevelOverrideData handler = new HandlerLevelOverrideData(
-                "CONSOLE", "TRACE", "FIXED", null, "2026-08-25T00:00:00Z", "jmx", "STICKY", null);
+                "CONSOLE", "TRACE", "FIXED", null, "2026-08-25T00:00:00Z", "jmx", "STICKY", null, List.of());
 
         String json = Json.status(List.of(logger), List.of(handler));
 

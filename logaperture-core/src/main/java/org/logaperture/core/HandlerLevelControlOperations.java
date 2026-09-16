@@ -20,6 +20,7 @@ import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.SetHandlerLevelOptions;
+import org.logaperture.api.SquelchedLogger;
 
 import java.util.List;
 import java.util.Optional;
@@ -39,6 +40,22 @@ public interface HandlerLevelControlOperations {
      *         no-op, not an error; nothing is tracked or persisted
      */
     Optional<HandlerLevelOverride> setHandlerLevel(HandlerRef ref, Level level, SetHandlerLevelOptions options);
+
+    /**
+     * Read-only pre-check for {@link #setHandlerLevel}'s "raise" direction
+     * (doc/specs/handler-floor-control.md "Squelch warning", issue #16): if
+     * {@code ref} were raised to {@code newLevel} right now, which currently-active
+     * logger overrides would newly stop reaching it — ones getting through at
+     * {@code ref}'s current level that {@code newLevel} would silence. Mutates
+     * nothing; a caller runs this before the real {@link #setHandlerLevel} call
+     * (using the same pre-mutation handler level this reads) and folds the answer
+     * into that call's warning, the same "advice, never fails, never re-run to
+     * suppress" contract {@code setLevel}'s own blocking-handler warning already
+     * has. Empty for a lower/no-op direction, for the underlying adapter having no
+     * handler levels of its own, or for a handler this context can't currently
+     * resolve.
+     */
+    List<SquelchedLogger> squelchedByRaise(HandlerRef ref, Level newLevel);
 
     /**
      * {@code logctl handler <name> AUTO} — puts {@code ref} into a
