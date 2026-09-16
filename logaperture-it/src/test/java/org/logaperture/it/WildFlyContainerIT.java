@@ -55,7 +55,12 @@ import static org.junit.jupiter.api.Assertions.fail;
  * discovery; raise a boot logger + {@code reset}; {@code standalone.xml}
  * untouched; a deployed WAR's logger visible under the one system context
  * and its override surviving a redeploy; a {@code /subsystem=logging}
- * management change being corrected by the verification sweep.
+ * management change being corrected by the verification sweep; and
+ * doc/specs/pattern-selection-semantics.md's exit criterion against real
+ * JBoss LogManager inheritance -- a trailing-star {@code setLevel} rejected
+ * outright, a bare-ancestor {@code setLevel} covering an already-known
+ * descendant with no override of its own, and a trailing-star {@code reset}
+ * reverting an exact-name override under its scope.
  *
  * <p>Harness notes from the shakeout: this image ignores {@code
  * JAVA_OPTS_APPEND} (so the container command appends a {@code JAVA_OPTS}
@@ -215,6 +220,64 @@ class WildFlyContainerIT {
             logctl("reset", BOOT_LOGGER);
             exec(JBOSS_CLI, "--connect", "--command=/subsystem=logging/logger=" + BOOT_LOGGER + ":remove");
         }
+    }
+
+    // --- pattern selection semantics (doc/specs/pattern-selection-semantics.md) --------------------
+
+    @Test
+    void trailingWildcardSet_isRejectedAsAUsageError_andMutatesNothing() {
+        // Decision #5's exit criterion: a trailing-star target on setLevel
+        // fails outright, in the same real process, and never reaches
+        // matching/capability-checking/mutation.
+        Logctl rejected = logctl("debug", "org.jboss.as.*");
+
+        assertEquals(2, rejected.exitCode(), rejected.stdout() + rejected.stderr());
+        assertTrue(rejected.stderr().contains("trailing wildcard isn't accepted"),
+                "expected the Decision #5 usage error:\n" + rejected.stderr());
+        assertTrue(rejected.stderr().contains("logctl debug org.jboss.as"),
+                "expected the suggested fix naming the literal ancestor:\n" + rejected.stderr());
+        assertFalse(logctl("status").stdout().contains("org.jboss.as"),
+                "the rejected command must not have mutated anything");
+    }
+
+    @Test
+    void ancestorSet_bringsAnAlreadyKnownDescendantToTheSameLevel_withNoOverrideOfItsOwn() throws Exception {
+        // The exit criterion this spec replaced the old standing-rule/sweep
+        // one with: setting the literal ancestor -- no star at all, since
+        // setLevel now rejects a trailing one -- brings every descendant to
+        // the same effective level purely through JBoss LogManager's own
+        // inheritance, with no LogAperture override or audit record on the
+        // descendant itself. BOOT_LOGGER (org.jboss.as.server) is a real,
+        // already-known descendant of "org.jboss.as" on stock WildFly.
+        try {
+            assertEquals(0, logctl("debug", "org.jboss.as").exitCode());
+
+            assertTrue(pollLogctl("levels", BOOT_LOGGER, out -> out.contains("DEBUG")),
+                    "org.jboss.as.server inherits DEBUG from org.jboss.as with no override of its own");
+            assertFalse(logctl("status").stdout().contains(BOOT_LOGGER),
+                    "only 'org.jboss.as' itself was ever set -- its descendant carries no override");
+        } finally {
+            logctl("reset", "org.jboss.as");
+        }
+    }
+
+    @Test
+    void resetLevel_onATrailingStarTarget_revertsEveryCurrentlyOverriddenMatch_includingAnExactNameOne() {
+        // Decision #5's asymmetry, proven end-to-end: unlike setLevel, reset
+        // keeps full selection semantics for a trailing star -- it has to,
+        // since a descendant can carry its own hand-set override (from an
+        // exact-name set run directly against it) that only a real scan of
+        // current matches finds (doc/specs/pattern-selection-semantics.md
+        // "Operations").
+        assertEquals(0, logctl("debug", BOOT_LOGGER, "sticky").exitCode()); // exact name, not the pattern
+        assertTrue(logctl("levels", BOOT_LOGGER).stdout().contains("DEBUG"));
+
+        Logctl reverted = logctl("reset", "org.jboss.as.*");
+
+        assertEquals(0, reverted.exitCode(), reverted.stderr());
+        assertTrue(logctl("levels", BOOT_LOGGER).stdout().contains("INFO"),
+                "the exact-name override under the trailing-star scope was reverted too");
+        assertFalse(logctl("status").stdout().contains(BOOT_LOGGER));
     }
 
     // --- handler-floor control (doc/specs/handler-floor-control.md) --------------------------------
