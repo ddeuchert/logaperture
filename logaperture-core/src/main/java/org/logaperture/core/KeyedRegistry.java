@@ -26,8 +26,9 @@ import java.util.function.Function;
  * one), with an atomic compare-and-remove for guarding a stale caller (a
  * sweep that read a snapshot and may act on it after the registry has moved
  * on) from clobbering a newer entry set concurrently. {@link OverrideRegistry}
- * is exactly this shape — one keyed by logger name — so it delegates to one
- * instance of this rather than hand-rolling its own {@code
+ * and {@link HandlerOverrideRegistry} are both exactly this shape — one keyed
+ * by logger name, the other by {@code HandlerRef} — so both delegate to one
+ * instance of this rather than each hand-rolling the same {@code
  * ConcurrentHashMap} wrapper (a code-review finding).
  */
 final class KeyedRegistry<K, V> {

@@ -15,17 +15,6 @@ the foundation).
 Tracks: [issue #49](https://github.com/ddeuchert/logaperture/issues/49), which supersedes issue
 [#41](https://github.com/ddeuchert/logaperture/issues/41)'s slice 3.
 
-**A note on issue #42.** Top-level §18.9's reset-namespace-split proposal (`reset logger` /
-`reset loggers` / `reset handler` / `reset handlers`, `--include-sticky`) was worked out in
-[issue #42](https://github.com/ddeuchert/logaperture/issues/42) and a spec,
-`doc/specs/reset-command-surface.md`, but its implementation (PR #48) was **closed unmerged** —
-none of it ever landed on `develop`. Field-testing that unmerged branch is what surfaced the
-insight behind this spec (see "Motivation" below), but this spec builds directly on top of
-issue #41's actually-shipped surface (`logctl reset <target>` / `logctl reset --all`, a single
-`resetLevel(target)`/`resetAll()`), not on #42's. §18.9's proposal remains open, unimplemented,
-and entirely out of scope here — a deliberate choice to keep this spec narrow (see Scope) rather
-than fold it in just because `reset-command-surface.md` is being retired as a document.
-
 ## Functional summary
 
 After this feature, the user will be able to:
@@ -66,6 +55,17 @@ After this feature, the user will be able to:
   tracks underneath it (see "Motivation" and Decision #5).
 - Keep using `logctl levels *.mygroup.*` to look up a whole subtree by an abbreviated name —
   unaffected; `listLoggers` was always a live query, never a standing rule.
+
+**A note on issue #42.** Top-level §18.9's reset-namespace-split proposal (`reset logger` /
+`reset loggers` / `reset handler` / `reset handlers`, `--include-sticky`) was worked out in
+[issue #42](https://github.com/ddeuchert/logaperture/issues/42) and a spec,
+`doc/specs/reset-command-surface.md`, but its implementation (PR #48) was **closed unmerged** —
+none of it ever landed on `develop`. Field-testing that unmerged branch is what surfaced the
+insight behind this spec (see "Motivation" below), but this spec builds directly on top of
+issue #41's actually-shipped surface (`logctl reset <target>` / `logctl reset --all`, a single
+`resetLevel(target)`/`resetAll()`), not on #42's. §18.9's proposal remains open, unimplemented,
+and entirely out of scope here — a deliberate choice to keep this spec narrow (see Scope) rather
+than fold it in just because `reset-command-surface.md` is being retired as a document.
 
 ## Motivation
 

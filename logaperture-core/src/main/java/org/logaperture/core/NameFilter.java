@@ -73,10 +73,14 @@ final class NameFilter {
      * cheap, purely syntactic check, deliberately not full grammar
      * validation — the rest of the pattern's grammar is still validated
      * later, by whichever path actually resolves matches ({@link #compile}/
-     * {@code matchesFor}).
+     * {@code matchesFor}). {@code target.endsWith(".*")} alone already
+     * implies {@link #isPattern} — no separate call needed (a code-review
+     * finding: the redundant conjunct cost every {@code setLevel}/{@code
+     * checkSetLevelPermitted} call site a second, needless scan of {@code
+     * target}).
      */
     static boolean isTrailingWildcard(String target) {
-        return isPattern(target) && target.endsWith(".*");
+        return target.endsWith(".*");
     }
 
     /**

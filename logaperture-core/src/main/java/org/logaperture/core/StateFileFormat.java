@@ -73,6 +73,7 @@ import java.util.Map;
 final class StateFileFormat {
 
     private static final int SCHEMA_VERSION = 5;
+    private static final int MIN_SUPPORTED_SCHEMA_VERSION = 1;
 
     private StateFileFormat() {
     }
@@ -131,8 +132,10 @@ final class StateFileFormat {
      */
     static Parsed parse(String content) {
         int schemaVersion = extractSchemaVersion(content);
-        if (schemaVersion != 1 && schemaVersion != 2 && schemaVersion != 3 && schemaVersion != 4
-                && schemaVersion != SCHEMA_VERSION) {
+        // A range, not an enumerated OR-chain (a code-review finding): every
+        // version from 1 through the current one is contiguous and always
+        // readable, so this needs no edit at the next schema bump.
+        if (schemaVersion < MIN_SUPPORTED_SCHEMA_VERSION || schemaVersion > SCHEMA_VERSION) {
             throw new IllegalStateException("unsupported or missing state file schemaVersion: " + schemaVersion);
         }
 

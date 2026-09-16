@@ -263,11 +263,43 @@ class LevelControlServiceTest {
 
     @Test
     void setLevel_leadingAndTrailingWildcard_isRejectedTheSameWay() {
-        assertThrows(IllegalArgumentException.class,
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                 () -> service.setLevel("*.apache.tomcat.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true)));
 
+        // A code-review finding against an earlier version of this message:
+        // stripping only the trailing ".*" leaves "*.apache.tomcat", which
+        // is itself still a pattern, not a literal ancestor logger -- the
+        // message must not suggest running that as if it were one (that
+        // would silently contradict its own "the framework already covers
+        // every descendant" claim, since a leading-star selection has no
+        // such framework guarantee to lean on).
+        assertTrue(e.getMessage().contains("*.apache.tomcat.*"), e.getMessage());
+        assertFalse(e.getMessage().contains("already inherits its level from the logging framework"),
+                "no framework-inheritance claim for a target with no single literal ancestor:\n" + e.getMessage());
+        assertFalse(e.getMessage().contains("run 'logctl debug *.apache.tomcat'"),
+                "must not suggest re-running the still-a-pattern ancestor as a fix:\n" + e.getMessage());
         assertTrue(overrides.all().isEmpty());
         assertTrue(auditLog.records().isEmpty());
+    }
+
+    @Test
+    void setLevel_trailingWildcard_suggestsTheDedicatedLevelSubcommand() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> service.setLevel("org.apache.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true)));
+
+        assertTrue(e.getMessage().contains("run 'logctl debug org.apache' instead"), e.getMessage());
+    }
+
+    @Test
+    void setLevel_trailingWildcard_withAllOrOff_suggestsTheGenericSetCommand() {
+        // Level.ALL/OFF have no dedicated `logctl <level>` subcommand -- a
+        // code-review finding: the rejection message used to always suggest
+        // "logctl <level-name> <ancestor>", which for ALL/OFF names a
+        // subcommand that doesn't exist ("logctl all ...").
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> service.setLevel("org.apache.*", Level.ALL, SetLevelOptions.defaults().withConfirmed(true)));
+
+        assertTrue(e.getMessage().contains("run 'logctl set org.apache ALL' instead"), e.getMessage());
     }
 
     @Test

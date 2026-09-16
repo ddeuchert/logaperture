@@ -192,6 +192,15 @@ final class Commands {
      * known true, so no need to re-check for a {@code *} at all. Same
      * "core's package-private copy isn't reachable from here" reasoning as
      * {@link #isPattern}.
+     *
+     * <p><b>Keep this in lockstep with {@code NameFilter.isTrailingWildcard}
+     * in {@code logaperture-core}</b> (a code-review finding: two
+     * independent copies of the same classification is a real drift risk --
+     * a false positive here would silently skip confirmation for what the
+     * server still treats as an ordinary batch mutation, exactly the risk
+     * Decision #1 keeps confirmation for). Both are currently the one-line
+     * {@code target.endsWith(".*")}; if that check ever grows more
+     * conditions on one side, mirror it on the other.
      */
     private static boolean isTrailingWildcard(String target) {
         return target.endsWith(".*");
@@ -219,7 +228,12 @@ final class Commands {
             // can call out any it silently drops instead of leaving the
             // discrepancy unexplained.
             List<LoggerInfoData> previewed = null;
-            if (isPattern && !isTrailingWildcard && !confirmed) {
+            // !confirmed alone already excludes a trailing-wildcard target --
+            // confirmed is unconditionally true whenever isTrailingWildcard is
+            // (line above) -- so an explicit "&& !isTrailingWildcard" here
+            // would be a redundant conjunct that only obscures that (a
+            // code-review finding).
+            if (isPattern && !confirmed) {
                 previewed = mbean.listLoggers(target);
                 if (!interactive) {
                     // Decision #4: fail fast rather than block forever on a

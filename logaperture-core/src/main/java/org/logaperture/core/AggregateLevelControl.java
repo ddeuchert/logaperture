@@ -408,8 +408,17 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         // effective level and so can differ per context under a non-trivial
         // policy. A mid-broadcast adapter fault can still leave earlier
         // contexts changed; the verification sweep (Slice 3) reconciles that.
+        //
+        // Each context's resolved match list is kept, not discarded, and
+        // threaded into the apply loop below via setLevel's resolved-match
+        // overload -- a code-review finding: resolving a pattern's matches
+        // is a full scan of the context's known loggers plus overrides, and
+        // the apply loop used to pay for that scan a second time immediately
+        // after this pre-flight had already computed the identical answer.
+        Map<String, List<String>> resolvedMatchesByContext = new LinkedHashMap<>();
         for (ContextControl context : contexts) {
-            context.service().checkSetLevelPermitted(loggerName, level, opts);
+            resolvedMatchesByContext.put(context.stableKey(),
+                    context.service().checkSetLevelPermittedAndResolve(loggerName, level, opts));
         }
         // For a pattern target, every context's current matches, concatenated
         // -- the only shape that makes sense once a single call can produce
@@ -428,7 +437,8 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         // still just "CONSOLE" to the operator reading the warning.
         Map<HandlerRef, HandlerFloor> blockingByRef = new LinkedHashMap<>();
         for (ContextControl context : contexts) {
-            SetLevelResult result = context.service().setLevel(loggerName, level, opts);
+            SetLevelResult result = context.service().setLevel(
+                    loggerName, level, opts, resolvedMatchesByContext.get(context.stableKey()));
             if (isPattern) {
                 allOverrides.addAll(result.overrides());
             } else if (!result.overrides().isEmpty()) {

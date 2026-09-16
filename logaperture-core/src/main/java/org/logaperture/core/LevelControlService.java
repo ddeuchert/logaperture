@@ -132,11 +132,31 @@ public final class LevelControlService implements LevelControlOperations {
         Objects.requireNonNull(level, "level");
         SetLevelOptions opts = options == null ? SetLevelOptions.defaults() : options;
 
-        if (NameFilter.isTrailingWildcard(target)) {
-            throw rejectTrailingWildcard(target, level);
-        }
+        rejectIfTrailingWildcard(target, level);
         if (NameFilter.isPattern(target)) {
             return setLevelForPattern(target, level, opts);
+        }
+        return setLevelForExactName(target, level, opts);
+    }
+
+    /**
+     * {@link AggregateLevelControl}'s broadcast entry point once it has
+     * already resolved {@code target} and capability-checked the result via
+     * {@link #checkSetLevelPermittedAndResolve} for its own "all pass or all
+     * fail" pre-flight across every context -- applies {@code
+     * resolvedMatches} directly for a pattern target instead of re-resolving
+     * it (a code-review finding). {@code resolvedMatches} is meaningless for
+     * an exact-name target (it always mutates just {@code target} itself,
+     * same as the two-arg overload) and is ignored in that case.
+     */
+    SetLevelResult setLevel(String target, Level level, SetLevelOptions options, List<String> resolvedMatches) {
+        Objects.requireNonNull(target, "target");
+        Objects.requireNonNull(level, "level");
+        SetLevelOptions opts = options == null ? SetLevelOptions.defaults() : options;
+
+        rejectIfTrailingWildcard(target, level);
+        if (NameFilter.isPattern(target)) {
+            return applyToMatches(resolvedMatches, level, opts);
         }
         return setLevelForExactName(target, level, opts);
     }
@@ -177,7 +197,21 @@ public final class LevelControlService implements LevelControlOperations {
         // a pattern-based set overwrites whatever a match already carries,
         // exactly as re-running an exact-name set against it would.
         checkSetLevelPermitted(matches, level, opts);
+        return applyToMatches(matches, level, opts);
+    }
 
+    /**
+     * The part of the pattern apply path that comes after matches are
+     * resolved and capability-checked -- pulled out so {@link
+     * AggregateLevelControl}'s broadcast, which already resolved and
+     * capability-checked this same match list once via {@link
+     * #checkSetLevelPermittedAndResolve}, can apply it directly instead of
+     * paying for a second, independent resolution of the same pattern (a
+     * code-review finding: the match set used to be resolved twice per
+     * context for one logical broadcast -- once in the pre-flight check,
+     * once again in this call).
+     */
+    private SetLevelResult applyToMatches(List<String> matches, Level level, SetLevelOptions opts) {
         Map<String, Level> previousEffectiveByTarget = new LinkedHashMap<>();
         for (String name : matches) {
             baselines.captureIfAbsent(name, adapter);
@@ -245,15 +279,26 @@ public final class LevelControlService implements LevelControlOperations {
      * (doc/specs/wildfly-support.md, "all pass or all fail").
      */
     public void checkSetLevelPermitted(String target, Level level, SetLevelOptions options) {
+        checkSetLevelPermittedAndResolve(target, level, options);
+    }
+
+    /**
+     * {@link #checkSetLevelPermitted(String, Level, SetLevelOptions)}, plus
+     * the resolved match list it already had to compute internally --
+     * {@link AggregateLevelControl}'s broadcast keeps this result and hands
+     * it to {@link #setLevel(String, Level, SetLevelOptions, List)} instead
+     * of discarding it and re-resolving the same pattern a second time (a
+     * code-review finding).
+     */
+    List<String> checkSetLevelPermittedAndResolve(String target, Level level, SetLevelOptions options) {
         Objects.requireNonNull(target, "target");
         SetLevelOptions opts = options == null ? SetLevelOptions.defaults() : options;
-        if (NameFilter.isTrailingWildcard(target)) {
-            throw rejectTrailingWildcard(target, level);
-        }
+        rejectIfTrailingWildcard(target, level);
         List<String> targets = NameFilter.isPattern(target)
                 ? resolveConfirmedMatches(target, opts)
                 : List.of(target);
         checkSetLevelPermitted(targets, level, opts);
+        return targets;
     }
 
     private void checkSetLevelPermitted(List<String> targets, Level level, SetLevelOptions opts) {
@@ -283,21 +328,63 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     /**
-     * Builds the usage error {@link #setLevel}/{@link #checkSetLevelPermitted}
-     * throw for a trailing-wildcard target (doc/specs/
-     * pattern-selection-semantics.md, Decision #5) -- naming the literal
-     * ancestor (the target with its trailing {@code ".*"} stripped) as the
-     * fix, since the framework's own inheritance already covers every
+     * Throws the usage error {@link #setLevel}/{@link #checkSetLevelPermitted}
+     * share for a trailing-wildcard target (doc/specs/
+     * pattern-selection-semantics.md, Decision #5) -- pulled into one place
+     * (a code-review finding) so the two call sites can't drift if this rule
+     * ever changes.
+     */
+    private static void rejectIfTrailingWildcard(String target, Level level) {
+        if (NameFilter.isTrailingWildcard(target)) {
+            throw rejectTrailingWildcard(target, level);
+        }
+    }
+
+    /**
+     * Builds the usage error for a trailing-wildcard target -- naming the
+     * literal ancestor (the target with its trailing {@code ".*"} stripped)
+     * as the fix, since the framework's own inheritance already covers every
      * descendant once the ancestor itself is set.
+     *
+     * <p>A target with <em>both</em> a leading and a trailing star (e.g.
+     * {@code "*.apache.tomcat.*"}) strips down to an ancestor that is
+     * itself still a pattern -- there is no single literal logger name to
+     * set, so the framework-inheritance fix doesn't apply and isn't offered
+     * (a code-review finding against an earlier version of this message,
+     * which suggested running the still-a-pattern "ancestor" as if it were
+     * one, silently contradicting its own inheritance claim).
      */
     private static IllegalArgumentException rejectTrailingWildcard(String target, Level level) {
         String ancestor = target.substring(0, target.length() - 2);
-        String levelWord = level.name().toLowerCase(Locale.ROOT);
-        return new IllegalArgumentException(
-                "'" + target + "': a trailing wildcard isn't accepted for a level-setting command. "
-                        + "Every descendant of '" + ancestor + "' already inherits its level from the logging "
-                        + "framework once '" + ancestor + "' itself is set -- run 'logctl " + levelWord + " "
-                        + ancestor + "' instead.");
+        String header = "'" + target + "': a trailing wildcard isn't accepted for a level-setting command.";
+        if (NameFilter.isPattern(ancestor)) {
+            return new IllegalArgumentException(header + " '" + ancestor + "' still matches more than one "
+                    + "logger with no common ancestor to set instead -- run 'logctl levels " + ancestor
+                    + "' to see the current matches, then set the ones you actually want by their own exact name.");
+        }
+        String fix = levelSubcommand(level)
+                .map(word -> "logctl " + word + " " + ancestor)
+                .orElseGet(() -> "logctl set " + ancestor + " " + level.name());
+        return new IllegalArgumentException(header + " Every descendant of '" + ancestor + "' already inherits "
+                + "its level from the logging framework once '" + ancestor + "' itself is set -- run '" + fix
+                + "' instead.");
+    }
+
+    /**
+     * The dedicated {@code logctl} subcommand for {@code level} (doc/specs/
+     * cli-transport.md's level subcommands: {@code debug}/{@code trace}/
+     * {@code info}/{@code warn}/{@code error}), or empty for {@code ALL}/
+     * {@code OFF}, which have no dedicated subcommand -- only the generic
+     * {@code logctl set <target> <LEVEL>} reaches them (a code-review
+     * finding: the trailing-wildcard rejection message used to suggest
+     * {@code "logctl all ..."}/{@code "logctl off ..."}, commands that don't
+     * exist).
+     */
+    private static Optional<String> levelSubcommand(Level level) {
+        return switch (level) {
+            case TRACE, DEBUG, INFO, WARN, ERROR -> Optional.of(level.name().toLowerCase(Locale.ROOT));
+            case ALL, OFF -> Optional.empty();
+        };
     }
 
     @Override
@@ -333,29 +420,29 @@ public final class LevelControlService implements LevelControlOperations {
      * levels} already do, filtered down to "and has an override."
      */
     private ResetOutcome resetPattern(String pattern) {
+        // One read per candidate name, not two (a code-review finding
+        // against an earlier version of this method, which read `overrides`
+        // once to decide whether a name qualified, then again, separately,
+        // right before reverting it): iterate matchesFor's plain name
+        // snapshot -- same discipline sweepExpiredOverrides follows -- and
+        // act on whatever a single fresh overrides.get(name) finds. The
+        // capability check is deferred to the first name that actually has
+        // an override, so a match set with nothing currently overridden
+        // still skips it entirely, same convention as an exact-name target.
         List<String> matches = matchesFor(pattern);
-        List<String> candidates = new ArrayList<>();
-        for (String name : matches) {
-            if (overrides.get(name).isPresent()) {
-                candidates.add(name);
-            }
-        }
-        if (candidates.isEmpty()) {
-            return ResetOutcome.nothingReset(); // no-op, not an error -- same convention as an exact name
-        }
-        requireCapability(Capability.LEVEL_LOWER);
-
         List<String> reverted = new ArrayList<>();
-        for (String name : candidates) {
-            // Re-read right before acting, not the earlier snapshot -- same
-            // discipline as sweepExpiredOverrides/verifyAndReapply, so a
-            // concurrent mutation between the scan above and this revert
-            // can't be clobbered by a stale value.
+        boolean capabilityChecked = false;
+        for (String name : matches) {
             Optional<LevelOverride> current = overrides.get(name);
-            if (current.isPresent()) {
-                applyReset(name, current.get(), source, null);
-                reverted.add(name);
+            if (current.isEmpty()) {
+                continue;
             }
+            if (!capabilityChecked) {
+                requireCapability(Capability.LEVEL_LOWER);
+                capabilityChecked = true;
+            }
+            applyReset(name, current.get(), source, null);
+            reverted.add(name);
         }
         if (reverted.isEmpty()) {
             return ResetOutcome.nothingReset();

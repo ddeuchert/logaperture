@@ -20,29 +20,35 @@ import org.logaperture.api.HandlerRef;
 
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * One {@link HandlerLevelOverride} per handler — the {@link OverrideRegistry}
  * counterpart for handlers. Idempotent by construction: {@link #put}
  * replaces any existing entry for that handler (a second {@code logctl
  * handler CONSOLE ...} supersedes the first, keeping the original baseline —
- * doc/specs/handler-floor-control.md "Baseline capture").
+ * doc/specs/handler-floor-control.md "Baseline capture"). A thin, typed
+ * wrapper over {@link KeyedRegistry}, keyed by {@link
+ * HandlerLevelOverride#handlerRef()} — same shape as {@link OverrideRegistry},
+ * and now {@link KeyedRegistry}'s second real consumer (a code-review
+ * finding: this class used to hand-roll its own {@code ConcurrentHashMap}
+ * wrapper alongside {@code KeyedRegistry}, which existed for exactly this
+ * kind of duplication).
  */
 public final class HandlerOverrideRegistry {
 
-    private final Map<HandlerRef, HandlerLevelOverride> overrides = new ConcurrentHashMap<>();
+    private final KeyedRegistry<HandlerRef, HandlerLevelOverride> registry =
+            new KeyedRegistry<>(HandlerLevelOverride::handlerRef);
 
     public void put(HandlerLevelOverride override) {
-        overrides.put(override.handlerRef(), override);
+        registry.put(override);
     }
 
     public Optional<HandlerLevelOverride> get(HandlerRef ref) {
-        return Optional.ofNullable(overrides.get(ref));
+        return registry.get(ref);
     }
 
     public void remove(HandlerRef ref) {
-        overrides.remove(ref);
+        registry.remove(ref);
     }
 
     /**
@@ -51,11 +57,11 @@ public final class HandlerOverrideRegistry {
      * OverrideRegistry#removeIfCurrent}.
      */
     public boolean removeIfCurrent(HandlerRef ref, HandlerLevelOverride expected) {
-        return overrides.remove(ref, expected);
+        return registry.removeIfCurrent(ref, expected);
     }
 
     /** A point-in-time snapshot, safe to iterate while the registry is concurrently mutated. */
     public Map<HandlerRef, HandlerLevelOverride> all() {
-        return Map.copyOf(overrides);
+        return registry.all();
     }
 }
