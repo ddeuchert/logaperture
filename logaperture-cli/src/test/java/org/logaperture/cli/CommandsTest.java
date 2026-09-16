@@ -349,7 +349,7 @@ class CommandsTest {
     void setLevelForwardsEveryArgumentAndPrintsARevertTime() {
         String expiresAt = Instant.now().plus(30, ChronoUnit.MINUTES).toString();
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(
-                "com.acme", "DEBUG", null, "INC-1", Instant.now().toString(), "jmx", "FOR", expiresAt), List.of());
+                "com.acme", "DEBUG", "INC-1", Instant.now().toString(), "jmx", "FOR", expiresAt), List.of());
 
         run(Commands.setLevel("com.acme", "DEBUG", "INC-1", "FOR", 1800L, false, false));
 
@@ -370,13 +370,13 @@ class CommandsTest {
     @Test
     void setLevelStickyAndSessionConfirmationsReadPlainly() {
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(
-                "com.acme", "WARN", null, null, Instant.now().toString(), "jmx", "STICKY", null), List.of());
+                "com.acme", "WARN", null, Instant.now().toString(), "jmx", "STICKY", null), List.of());
         run(Commands.setLevel("com.acme", "WARN", null, "STICKY", 0L, false, false));
         assertTrue(output().contains("(STICKY — until reset)"));
 
         captured.reset();
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(
-                "com.acme", "WARN", null, null, Instant.now().toString(), "jmx", "SESSION", null), List.of());
+                "com.acme", "WARN", null, Instant.now().toString(), "jmx", "SESSION", null), List.of());
         run(Commands.setLevel("com.acme", "WARN", null, "SESSION", 0L, false, false));
         assertTrue(output().contains("(SESSION — until the JVM stops)"));
     }
@@ -384,10 +384,10 @@ class CommandsTest {
     @Test
     void setLevelJsonEmitsTheOverrideObject() {
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(
-                "com.acme", "DEBUG", null, null, "2026-08-25T00:00:00Z", "jmx", "SESSION", null), List.of());
+                "com.acme", "DEBUG", null, "2026-08-25T00:00:00Z", "jmx", "SESSION", null), List.of());
         run(Commands.setLevel("com.acme", "DEBUG", null, "SESSION", 0L, false, true));
         assertEquals(
-                "{\"overrides\":[{\"loggerName\":\"com.acme\",\"level\":\"DEBUG\",\"originPattern\":null,"
+                "{\"overrides\":[{\"loggerName\":\"com.acme\",\"level\":\"DEBUG\","
                         + "\"reason\":null,\"appliedAt\":\"2026-08-25T00:00:00Z\",\"source\":\"jmx\","
                         + "\"tier\":\"SESSION\",\"expiresAt\":null}],\"warnings\":[]}",
                 output().strip());
@@ -396,7 +396,7 @@ class CommandsTest {
     @Test
     void setLevel_oneBlockingHandler_printsTheActionableWarning() {
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(
-                "com.acme", "TRACE", null, null, Instant.now().toString(), "jmx", "SESSION", null),
+                "com.acme", "TRACE", null, Instant.now().toString(), "jmx", "SESSION", null),
                 List.of(new HandlerFloorData("CONSOLE", "INFO")));
 
         run(Commands.setLevel("com.acme", "TRACE", null, "SESSION", 0L, false, false));
@@ -409,7 +409,7 @@ class CommandsTest {
     @Test
     void setLevel_multipleBlockingHandlers_printsOneCommandEach() {
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(
-                "com.acme", "TRACE", null, null, Instant.now().toString(), "jmx", "SESSION", null),
+                "com.acme", "TRACE", null, Instant.now().toString(), "jmx", "SESSION", null),
                 List.of(new HandlerFloorData("CONSOLE", "INFO"), new HandlerFloorData("FILE", "DEBUG")));
 
         run(Commands.setLevel("com.acme", "TRACE", null, "SESSION", 0L, false, false));
@@ -423,7 +423,7 @@ class CommandsTest {
     @Test
     void setLevel_noBlockingHandlers_printsNoWarning() {
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(
-                "com.acme", "DEBUG", null, null, Instant.now().toString(), "jmx", "SESSION", null), List.of());
+                "com.acme", "DEBUG", null, Instant.now().toString(), "jmx", "SESSION", null), List.of());
 
         run(Commands.setLevel("com.acme", "DEBUG", null, "SESSION", 0L, false, false));
 
@@ -433,7 +433,7 @@ class CommandsTest {
     @Test
     void setLevelJson_withBlockingHandlers_emitsWarningsArray() {
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(
-                "com.acme", "TRACE", null, null, "2026-08-25T00:00:00Z", "jmx", "SESSION", null),
+                "com.acme", "TRACE", null, "2026-08-25T00:00:00Z", "jmx", "SESSION", null),
                 List.of(new HandlerFloorData("CONSOLE", "INFO")));
 
         run(Commands.setLevel("com.acme", "TRACE", null, "SESSION", 0L, false, true));
@@ -441,21 +441,21 @@ class CommandsTest {
         assertTrue(output().contains("\"warnings\":[{\"handlerRef\":\"CONSOLE\",\"currentLevel\":\"INFO\"}]"));
     }
 
-    // --- setLevel on a pattern: standing rules (doc/specs/pattern-level-targeting.md) ---------
+    // --- setLevel on a pattern: one-time selection (doc/specs/pattern-selection-semantics.md) -
 
     @Test
     void setLevel_pattern_confirmedViaYesFlag_appliesWithoutPrompting() {
         mbean.loggers = List.of(new LoggerInfoData("org.apache.Worker", "INFO", "INFO", false, null, null, null, null));
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(
-                "org.apache.Worker", "DEBUG", "org.apache.*", null, Instant.now().toString(), "jmx", "SESSION", null),
+                "org.apache.Worker", "DEBUG", null, Instant.now().toString(), "jmx", "SESSION", null),
                 List.of());
 
-        int exit = run(Commands.setLevel("org.apache.*", "DEBUG", null, "SESSION", 0L, true, false));
+        int exit = run(Commands.setLevel("*.Worker", "DEBUG", null, "SESSION", 0L, true, false));
 
         assertEquals(CliError.OK, exit);
         Object[] call = mbean.setLevelCalls.get(0);
         assertEquals(true, call[5], "confirmed");
-        assertFalse(output().contains("Apply this standing rule"), "--yes must skip the prompt entirely");
+        assertFalse(output().contains("Apply? [y/N]"), "--yes must skip the prompt entirely");
         assertTrue(output().contains("org.apache.Worker → DEBUG"), output());
     }
 
@@ -463,21 +463,22 @@ class CommandsTest {
     void setLevel_pattern_interactiveTypedY_previewsThenApplies() {
         mbean.loggers = List.of(new LoggerInfoData("org.apache.Worker", "INFO", "INFO", false, null, null, null, null));
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(
-                "org.apache.Worker", "DEBUG", "org.apache.*", null, Instant.now().toString(), "jmx", "SESSION", null),
+                "org.apache.Worker", "DEBUG", null, Instant.now().toString(), "jmx", "SESSION", null),
                 List.of());
 
-        int exit = run(Commands.setLevel("org.apache.*", "DEBUG", null, "SESSION", 0L, false, false), "y", true);
+        int exit = run(Commands.setLevel("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "y", true);
 
         assertEquals(CliError.OK, exit);
         String text = output();
-        assertTrue(text.contains("Apply this standing rule"), text);
+        assertTrue(text.contains("This will set DEBUG on 1 currently-known logger"), text);
         assertTrue(text.contains("org.apache.Worker"), "the preview lists the current match: " + text);
+        assertTrue(text.contains("not affected"), "reworded to drop the standing-rule framing: " + text);
         assertTrue(mbean.setLevelCalls.get(0)[5].equals(true), "a typed 'y' confirms exactly like --yes");
     }
 
     @Test
     void setLevel_pattern_interactiveTypedN_declinesWithoutCallingSetLevel() {
-        int exit = run(Commands.setLevel("org.apache.*", "DEBUG", null, "SESSION", 0L, false, false), "n", true);
+        int exit = run(Commands.setLevel("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "n", true);
 
         assertEquals(CliError.OK, exit);
         assertTrue(mbean.setLevelCalls.isEmpty(), "declining must never reach the server");
@@ -487,46 +488,39 @@ class CommandsTest {
     @Test
     void setLevel_pattern_nonInteractiveWithoutYes_isAUsageErrorNamingTheFlag() {
         // Decision #4: fail fast rather than block forever on a read from a
-        // stdin nothing will ever write to. This is also the *only* message a
-        // non-interactive caller ever sees -- the full preview
-        // (printPatternPreview) never runs here -- so it must explain the
-        // standing-rule consequence itself, not just name the escape hatch
-        // (#46).
+        // stdin nothing will ever write to.
         CliError error = org.junit.jupiter.api.Assertions.assertThrows(CliError.class,
-                () -> run(Commands.setLevel("org.apache.*", "DEBUG", null, "SESSION", 0L, false, false)));
+                () -> run(Commands.setLevel("*.Worker", "DEBUG", null, "SESSION", 0L, false, false)));
 
         assertEquals(CliError.USAGE, error.exitCode());
         String message = error.getMessage();
         assertTrue(message.contains("--yes"), message);
-        assertTrue(message.contains("standing rule"), message);
         assertTrue(message.contains("DEBUG"), message);
-        assertTrue(message.contains("logctl reset org.apache.*"), message);
+        assertTrue(message.contains("matches"), message);
+        assertFalse(message.contains("standing rule"), message);
         assertTrue(mbean.setLevelCalls.isEmpty());
     }
 
     @Test
-    void setLevel_pattern_zeroCurrentMatches_stillCreatesTheStandingRule() {
-        // The rule is created even though nothing is mutated right now --
-        // it stands ready for the sweep (doc/specs/pattern-level-targeting.md
-        // "Sweep integration").
+    void setLevel_pattern_zeroCurrentMatches_printsNothingToSet() {
         mbean.setLevelResult = new SetLevelResultData(List.of(), List.of());
 
-        int exit = run(Commands.setLevel("org.apache.*", "DEBUG", null, "SESSION", 0L, true, false));
+        int exit = run(Commands.setLevel("*.brandnew", "DEBUG", null, "SESSION", 0L, true, false));
 
         assertEquals(CliError.OK, exit);
-        assertTrue(output().contains("Standing rule created"), output());
+        assertTrue(output().contains("matches no currently-known logger; nothing to set."), output());
     }
 
     @Test
     void setLevel_pattern_multipleMatches_printsOneLinePerLogger() {
         mbean.setLevelResult = new SetLevelResultData(List.of(
-                new LevelOverrideData("org.apache.A", "DEBUG", "org.apache.*", null, Instant.now().toString(),
+                new LevelOverrideData("org.apache.A", "DEBUG", null, Instant.now().toString(),
                         "jmx", "SESSION", null),
-                new LevelOverrideData("org.apache.B", "DEBUG", "org.apache.*", null, Instant.now().toString(),
+                new LevelOverrideData("org.apache.B", "DEBUG", null, Instant.now().toString(),
                         "jmx", "SESSION", null)),
                 List.of());
 
-        run(Commands.setLevel("org.apache.*", "DEBUG", null, "SESSION", 0L, true, false));
+        run(Commands.setLevel("*.A", "DEBUG", null, "SESSION", 0L, true, false));
 
         String text = output();
         assertTrue(text.contains("org.apache.A → DEBUG"), text);
@@ -536,21 +530,34 @@ class CommandsTest {
     @Test
     void setLevel_pattern_json_wrapsOverridesAsAList() {
         mbean.setLevelResult = new SetLevelResultData(List.of(
-                new LevelOverrideData("org.apache.A", "DEBUG", "org.apache.*", null, "2026-08-25T00:00:00Z",
+                new LevelOverrideData("org.apache.A", "DEBUG", null, "2026-08-25T00:00:00Z",
                         "jmx", "SESSION", null)),
                 List.of());
 
-        run(Commands.setLevel("org.apache.*", "DEBUG", null, "SESSION", 0L, true, true));
+        run(Commands.setLevel("*.A", "DEBUG", null, "SESSION", 0L, true, true));
 
         String text = output().strip();
         assertTrue(text.startsWith("{\"overrides\":[{"), text);
-        assertTrue(text.contains("\"originPattern\":\"org.apache.*\""), text);
+        assertTrue(text.contains("\"loggerName\":\"org.apache.A\""), text);
     }
 
-    // --- reset on a pattern (doc/specs/pattern-level-targeting.md) ---------------------------
+    @Test
+    void setLevel_trailingWildcard_skipsThePreviewAndLetsTheServersUsageErrorPropagate() {
+        // doc/specs/pattern-selection-semantics.md, Decision #5: rejected
+        // before confirmation is even evaluated, whether or not --yes was
+        // passed and whether or not the call is interactive.
+        RuntimeException e = org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class,
+                () -> run(Commands.setLevel("org.apache.*", "DEBUG", null, "SESSION", 0L, false, false)));
+
+        assertTrue(e.getMessage().contains("trailing wildcard"), e.getMessage());
+        assertFalse(output().contains("Apply? [y/N]"), "no preview is ever shown for a trailing-star target");
+        assertEquals(1, mbean.setLevelCalls.size(), "the call reaches the server directly, no preview round-trip");
+    }
+
+    // --- reset on a pattern (doc/specs/pattern-selection-semantics.md) -----------------------
 
     @Test
-    void reset_pattern_revertsCurrentMatchesAndRetiresTheRule() {
+    void reset_pattern_revertsCurrentlyOverriddenMatches() {
         mbean.loggers = List.of(
                 new LoggerInfoData("org.apache.A", "INFO", "DEBUG", true, "jmx", null, "STICKY", null),
                 new LoggerInfoData("org.apache.B", "INFO", "INFO", false, null, null, null, null));
@@ -561,38 +568,19 @@ class CommandsTest {
         String text = output();
         assertTrue(text.contains("org.apache.A → INFO (baseline)"), text);
         assertFalse(text.contains("org.apache.B"), "never-overridden matches aren't reported as reverted: " + text);
-        assertTrue(text.contains("Standing rule 'org.apache.*' retired."), text);
     }
 
     @Test
-    void reset_pattern_ruleTrackedButNothingCurrentlyOverridden_stillReportsRuleRetired() {
+    void reset_pattern_nothingCurrentlyOverridden_printsNothingWasOverridden() {
         mbean.loggers = List.of(new LoggerInfoData("org.apache.A", "INFO", "INFO", false, null, null, null, null));
 
         assertEquals(CliError.OK, run(Commands.reset("org.apache.*", false)));
 
-        String text = output();
-        assertTrue(text.contains("Standing rule 'org.apache.*' retired -- it had no currently-matched logger "
-                + "to revert."), text);
+        assertEquals("'org.apache.*' — nothing was overridden.", output().strip());
     }
 
     @Test
-    void reset_pattern_noRuleWasEverTracked_reportsNoOpRatherThanClaimingRetirement() {
-        // Code-review finding: the old CLI reconstructed "retired" from
-        // whether anything was overridden before the call, so it printed
-        // "Standing rule retired" even when no rule existed under that
-        // exact pattern at all. The server now reports this directly.
-        mbean.patternRuleTrackedForReset = false;
-        mbean.loggers = List.of(new LoggerInfoData("org.apache.A", "INFO", "INFO", false, null, null, null, null));
-
-        assertEquals(CliError.OK, run(Commands.reset("org.apache.*", false)));
-
-        String text = output();
-        assertTrue(text.contains("no standing rule was tracked under that pattern"), text);
-        assertFalse(text.contains("retired"), text);
-    }
-
-    @Test
-    void reset_pattern_json_reportsRevertedNamesAndRuleRetired() {
+    void reset_pattern_json_reportsRevertedNames() {
         mbean.loggers = List.of(
                 new LoggerInfoData("org.apache.A", "INFO", "DEBUG", true, "jmx", null, "STICKY", null));
 
@@ -601,18 +589,14 @@ class CommandsTest {
         String text = output().strip();
         assertTrue(text.contains("\"pattern\":\"org.apache.*\""), text);
         assertTrue(text.contains("\"reverted\":[\"org.apache.A\"]"), text);
-        assertTrue(text.contains("\"ruleRetired\":true"), text);
     }
 
     @Test
-    void reset_pattern_json_noRuleTracked_reportsRuleRetiredFalse() {
-        mbean.patternRuleTrackedForReset = false;
-
+    void reset_pattern_json_nothingOverridden_reportsAnEmptyRevertedList() {
         run(Commands.reset("org.apache.*", true));
 
         String text = output().strip();
         assertTrue(text.contains("\"reverted\":[]"), text);
-        assertTrue(text.contains("\"ruleRetired\":false"), text);
     }
 
     // --- handler (doc/specs/handler-floor-control.md) -----------------------------------------

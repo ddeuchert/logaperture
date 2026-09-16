@@ -33,20 +33,23 @@ public interface LevelControlMXBean {
      * {@code target} is either an exact logger name or a segment-anchored
      * pattern (doc/specs/level-control.md's grammar) — a {@code *} present
      * anywhere in it selects the pattern path. A pattern target is a
-     * <em>standing rule</em> (doc/specs/pattern-level-targeting.md):
-     * persisted per {@code tier}, and (re-)applied to any logger discovered
-     * later that it matches, until reset. Replaces the retired {@code
-     * includeChildren} flag — {@code "org.apache.*"} covers what {@code
-     * includeChildren=true} on {@code "org.apache"} used to.
+     * one-time selection (doc/specs/pattern-selection-semantics.md):
+     * resolved once against currently-known loggers and applied to each,
+     * nothing left standing afterward. A <em>trailing</em>-star target
+     * (e.g. {@code "org.apache.*"}) is rejected outright — every descendant
+     * already inherits a set ancestor's level from the logging framework
+     * itself, so {@code "org.apache"} alone covers what a trailing star
+     * used to.
      *
      * @param tier       {@code "SESSION"}/{@code "FOR"}/{@code "STICKY"}
      * @param forSeconds ignored unless {@code tier} is {@code "FOR"}
-     * @param confirmed  required {@code true} for a pattern {@code target}
-     *                   — a call with {@code confirmed=false} mutates
-     *                   nothing and throws {@code ConfirmationRequiredException}
-     *                   naming the currently-known matches instead; ignored
-     *                   for an exact-name target, which carries none of a
-     *                   standing rule's risk
+     * @param confirmed  required {@code true} for a leading-star pattern
+     *                   {@code target} — a call with {@code confirmed=false}
+     *                   mutates nothing and throws {@code
+     *                   ConfirmationRequiredException} naming the
+     *                   currently-known matches instead; ignored for an
+     *                   exact-name target, which carries none of a batch
+     *                   mutation's risk
      * @return every override this call created or replaced (one, for an
      *         exact-name target; zero or more, for a pattern), plus any
      *         handler on one of their paths that will still swallow

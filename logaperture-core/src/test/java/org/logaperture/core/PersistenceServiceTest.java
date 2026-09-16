@@ -160,7 +160,7 @@ class PersistenceServiceTest {
     void resumeFromStateStore_stickyOverride_alwaysReapplies() {
         Instant appliedAt = Instant.now().minus(Duration.ofDays(1));
         stateStore.save(new LevelOverride(
-                "com.acme.Payments", Level.WARN, null, "known-noisy", appliedAt, "jmx", PersistenceTier.STICKY, null));
+                "com.acme.Payments", Level.WARN, "known-noisy", appliedAt, "jmx", PersistenceTier.STICKY, null));
 
         service.resumeFromStateStore(Instant.now());
 
@@ -176,7 +176,7 @@ class PersistenceServiceTest {
         Instant now = Instant.now();
         Instant expiresAt = now.plus(Duration.ofMinutes(10)); // 10 minutes still remain
         stateStore.save(new LevelOverride(
-                "com.acme.Worker", Level.DEBUG, null, "triage", now.minus(Duration.ofMinutes(20)), "jmx",
+                "com.acme.Worker", Level.DEBUG, "triage", now.minus(Duration.ofMinutes(20)), "jmx",
                 PersistenceTier.FOR, expiresAt));
 
         service.resumeFromStateStore(now);
@@ -196,7 +196,7 @@ class PersistenceServiceTest {
         Instant now = Instant.now();
         Instant expiresAt = now.minus(Duration.ofMinutes(1)); // expired while this JVM was down
         stateStore.save(new LevelOverride(
-                "com.acme.Worker", Level.DEBUG, null, "triage", now.minus(Duration.ofMinutes(31)), "jmx",
+                "com.acme.Worker", Level.DEBUG, "triage", now.minus(Duration.ofMinutes(31)), "jmx",
                 PersistenceTier.FOR, expiresAt));
 
         service.resumeFromStateStore(now);
@@ -214,9 +214,9 @@ class PersistenceServiceTest {
     void resumeFromStateStore_oneBadEntry_doesNotAbortResumingTheRest() {
         Instant appliedAt = Instant.now().minus(Duration.ofDays(1));
         stateStore.save(new LevelOverride(
-                "com.acme.Bad", Level.DEBUG, null, null, appliedAt, "jmx", PersistenceTier.STICKY, null));
+                "com.acme.Bad", Level.DEBUG, null, appliedAt, "jmx", PersistenceTier.STICKY, null));
         stateStore.save(new LevelOverride(
-                "com.acme.Good", Level.WARN, null, null, appliedAt, "jmx", PersistenceTier.STICKY, null));
+                "com.acme.Good", Level.WARN, null, appliedAt, "jmx", PersistenceTier.STICKY, null));
         adapter.throwOnApply("com.acme.Bad"); // simulates a bad entry blowing up mid-resume
 
         service.resumeFromStateStore(Instant.now()); // must not throw
