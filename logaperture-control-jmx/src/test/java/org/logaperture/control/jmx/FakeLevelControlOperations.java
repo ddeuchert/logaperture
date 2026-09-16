@@ -83,7 +83,7 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
         if (throwOnSetLevel != null) {
             throw throwOnSetLevel;
         }
-        LevelOverride override = new LevelOverride(loggerName, level, null, options.reason(),
+        LevelOverride override = new LevelOverride(loggerName, level, options.reason(),
                 Instant.now(), "jmx", options.tier(),
                 options.tier() == PersistenceTier.FOR ? Instant.now().plus(options.expiresIn()) : null);
         return new SetLevelResult(List.of(override), blockingHandlersToReturn);

@@ -39,9 +39,6 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     /** Names dropped from {@link #loggers} when {@link #resetLevel} clears them — a "Known" but not "Live" logger. */
     final List<String> forgetOnReset = new ArrayList<>();
     int resetAllCalls;
-    /** Whether a pattern {@link #resetLevel} should report a standing rule was tracked and retired. Defaults to
-     *  the common case tests wire up; set {@code false} to exercise the "no rule existed" no-op path. */
-    boolean patternRuleTrackedForReset = true;
 
     List<LoggerInfoData> loggers = new ArrayList<>();
     List<HandlerLevelOverrideData> handlerOverrides = new ArrayList<>();
@@ -74,6 +71,17 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
             boolean confirmed) {
         setLevelCalls.add(new Object[] {target, level, reason, tier, forSeconds, confirmed});
         maybeThrow();
+        if (target.indexOf('*') >= 0 && target.endsWith(".*")) {
+            // Mirrors LevelControlService's trailing-wildcard rejection
+            // (doc/specs/pattern-selection-semantics.md, Decision #5)
+            // closely enough for CommandsTest to exercise the CLI's
+            // straight-to-the-server path for this target shape.
+            String ancestor = target.substring(0, target.length() - 2);
+            throw new IllegalArgumentException("'" + target + "': a trailing wildcard isn't accepted for a "
+                    + "level-setting command. Every descendant of '" + ancestor + "' already inherits its level "
+                    + "from the logging framework once '" + ancestor + "' itself is set -- run 'logctl "
+                    + level.toLowerCase(java.util.Locale.ROOT) + " " + ancestor + "' instead.");
+        }
         if (target.indexOf('*') >= 0 && !confirmed) {
             // Mirrors the real LevelControlService's confirmation gate
             // (doc/specs/pattern-level-targeting.md) closely enough for
@@ -131,14 +139,12 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         resetLevelCalls.add(target);
         maybeThrow();
         if (target.indexOf('*') >= 0) {
-            if (!patternRuleTrackedForReset) {
-                return new ResetOutcomeData(List.of(), false);
-            }
             // Simulates a real pattern reset's effect (doc/specs/
-            // pattern-level-targeting.md) well enough for CommandsTest's
+            // pattern-selection-semantics.md) well enough for CommandsTest's
             // before/after rendering: every currently-active match reverts
             // to its configured (baseline) level, everything else is
-            // untouched.
+            // untouched. No rule identity to look up any more -- current
+            // matches with an active override, full stop.
             List<LoggerInfoData> reverted = new ArrayList<>();
             List<String> revertedNames = new ArrayList<>();
             for (LoggerInfoData row : loggers) {
@@ -152,13 +158,13 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
                 }
             }
             loggers = reverted;
-            return new ResetOutcomeData(revertedNames, true);
+            return new ResetOutcomeData(revertedNames);
         }
         if (forgetOnReset.contains(target)) {
             loggers.removeIf(logger -> logger.getName().equals(target));
-            return new ResetOutcomeData(List.of(target), false);
+            return new ResetOutcomeData(List.of(target));
         }
-        return new ResetOutcomeData(List.of(), false);
+        return new ResetOutcomeData(List.of());
     }
 
     @Override

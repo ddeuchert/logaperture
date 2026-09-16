@@ -27,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Exit-code contract from doc/specs/cli-transport.md "Output and exit codes", driven through a fake {@link Connector}. */
@@ -238,7 +239,7 @@ class MainRunTest {
     }
 
     // --- setLevel on a pattern: the confirmation-prompt flow through Main itself (doc/specs/
-    // pattern-level-targeting.md "Confirmation and CLI behavior") -----------------------------
+    // pattern-selection-semantics.md "Confirmation and CLI behavior") -----------------------
 
     @Test
     void patternWithoutYes_nonInteractive_isUsageErrorNamingTheFix() {
@@ -248,12 +249,27 @@ class MainRunTest {
         // interactive prompt-and-read test below.
         FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
 
-        assertEquals(2, run(new String[] {"debug", "org.acme.*"}, connectorFor(mbean)));
+        assertEquals(2, run(new String[] {"debug", "*.acme"}, connectorFor(mbean)));
 
         String error = err();
         assertTrue(error.contains("--yes"), error);
-        assertTrue(error.contains("standing rule"), error);
+        assertFalse(error.contains("standing rule"), error);
         assertEquals(0, mbean.setLevelCalls.size(), "must not have called the server at all");
+    }
+
+    @Test
+    void trailingWildcard_nonInteractive_isUsageErrorAndDoesReachTheServer() {
+        // Rejected server-side (doc/specs/pattern-selection-semantics.md,
+        // Decision #5) -- unlike a leading-star target, the CLI never
+        // previews this shape at all, so the call still reaches the fake
+        // (and its own trailing-wildcard rejection) directly.
+        FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
+
+        assertEquals(2, run(new String[] {"debug", "org.acme.*"}, connectorFor(mbean)));
+
+        String error = err();
+        assertTrue(error.contains("trailing wildcard"), error);
+        assertEquals(1, mbean.setLevelCalls.size());
     }
 
     @Test
@@ -265,16 +281,16 @@ class MainRunTest {
         mbean.loggers = List.of(new LoggerInfoData("org.acme.Worker", "INFO", "INFO", false, null, null, null, null));
         mbean.setLevelResult = new org.logaperture.control.jmx.SetLevelResultData(
                 List.of(new org.logaperture.control.jmx.LevelOverrideData(
-                        "org.acme.Worker", "DEBUG", "org.acme.*", null, "2026-09-13T00:00:00Z", "jmx", "STICKY",
+                        "org.acme.Worker", "DEBUG", null, "2026-09-13T00:00:00Z", "jmx", "STICKY",
                         null)),
                 List.of());
         java.io.InputStream typedYes = new java.io.ByteArrayInputStream("y\n".getBytes(StandardCharsets.UTF_8));
 
-        int exitCode = Main.run(new String[] {"debug", "org.acme.*", "sticky"}, out, err, connectorFor(mbean),
+        int exitCode = Main.run(new String[] {"debug", "*.acme.Worker", "sticky"}, out, err, connectorFor(mbean),
                 typedYes, true);
 
         assertEquals(0, exitCode);
-        assertTrue(out().contains("Apply this standing rule?"), out());
+        assertTrue(out().contains("Apply? [y/N]"), out());
         assertTrue(out().contains("org.acme.Worker → DEBUG"), out());
         Object[] call = mbean.setLevelCalls.get(0); // {target, level, reason, tier, forSeconds, confirmed}
         assertEquals(true, call[5], "the typed 'y' resolved confirmed=true on the real call to the server");
@@ -286,7 +302,7 @@ class MainRunTest {
         mbean.loggers = List.of(new LoggerInfoData("org.acme.Worker", "INFO", "INFO", false, null, null, null, null));
         java.io.InputStream typedNo = new java.io.ByteArrayInputStream("n\n".getBytes(StandardCharsets.UTF_8));
 
-        int exitCode = Main.run(new String[] {"debug", "org.acme.*"}, out, err, connectorFor(mbean), typedNo, true);
+        int exitCode = Main.run(new String[] {"debug", "*.acme.Worker"}, out, err, connectorFor(mbean), typedNo, true);
 
         assertEquals(0, exitCode);
         assertTrue(out().contains("Not applied."), out());

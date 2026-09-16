@@ -169,43 +169,49 @@ class LevelControlEndToEndIT {
         SetLevelResultData result = proxy.setLevel(pattern, "DEBUG", "e2e-pattern-test", "SESSION", 0, true);
         assertTrue(result.getOverrides().stream().anyMatch(o -> FIXTURE_LOGGER.equals(o.getLoggerName())),
                 "'" + pattern + "' should have matched " + FIXTURE_LOGGER);
-        assertEquals(pattern, result.getOverrides().get(0).getOriginPattern());
         assertEquals("DEBUG", proxy.listLoggers(FIXTURE_LOGGER).get(0).getEffectiveLevel());
 
-        // Pattern reset: reverts the match and retires the rule, over the
-        // same real JMX connection.
+        // Pattern reset: reverts the current match, over the same real JMX
+        // connection -- no rule identity to retire any more (doc/specs/
+        // pattern-selection-semantics.md).
         proxy.resetLevel(pattern);
         assertEquals("INFO", proxy.listLoggers(FIXTURE_LOGGER).get(0).getEffectiveLevel());
         assertFalse(proxy.listLoggers(FIXTURE_LOGGER).get(0).isOverrideActive());
     }
 
     /**
-     * The other half of doc/specs/pattern-level-targeting.md's exit
-     * criterion: a logger added <em>after</em> the standing rule is set is
-     * picked up within one sweep interval, with no further command --
-     * proven against the real sweep thread (composition root, {@code
-     * -Dlogaperture.sweep.seconds=1}), not a directly-invoked {@code
-     * applyStandingRules} call the way {@code LevelControlServiceTest}
-     * proves it in-process.
+     * The exit criterion this spec replaced the old standing-rule one with
+     * (doc/specs/pattern-selection-semantics.md "Exit criterion", "Motivation"):
+     * setting the literal ancestor logger — no trailing star, {@code
+     * setLevel} rejects that shape outright — brings every current
+     * <em>and</em> subsequently-created descendant to the same effective
+     * level purely through the framework's own inheritance, with no
+     * override or audit record on any of them but the ancestor itself. The
+     * direct negative of the old "picked up within one sweep interval"
+     * proof: there is no sweep pass left to catch the later logger at all,
+     * and this proves none is needed.
      */
     @Test
-    void patternTarget_appliesToALoggerDiscoveredAfterTheRuleWasSet() throws Exception {
+    void ancestorLoggerSet_coversEveryDescendantPresentAndFuture_throughFrameworkInheritanceAlone() throws Exception {
         String agentJarPath = System.getProperty("logaperture.agent.jar");
         assertNotNull(agentJarPath, "system property logaperture.agent.jar must point at the shaded jar");
 
         Process fixtureProcess = launchFixtureProcess(agentJarPath);
         LevelControlMXBean proxy = pollForMxBeanProxy(attachAndConnect(fixtureProcess.pid()));
-        String pattern = "*.fixture.*"; // matches both Worker (already known) and Later (not yet)
+        String ancestor = "org.logaperture.agent.it.fixture"; // bare name -- no star at all
 
-        proxy.setLevel(pattern, "DEBUG", "e2e-sweep-test", "SESSION", 0, true);
+        proxy.setLevel(ancestor, "DEBUG", "e2e-inheritance-test", "SESSION", 0, false);
         assertEquals("DEBUG", proxy.listLoggers(FIXTURE_LOGGER).get(0).getEffectiveLevel());
+        assertFalse(proxy.listLoggers(FIXTURE_LOGGER).get(0).isOverrideActive(),
+                "the already-known descendant inherits DEBUG from the framework -- LogAperture never touched it");
 
         sendLine(fixtureProcess, "NEW-LOGGER");
         String laterLogger = "org.logaperture.agent.it.fixture.Later";
 
-        Level effectiveOnceSwept = pollUntilOverrideActive(proxy, laterLogger);
-        assertEquals("DEBUG", effectiveOnceSwept.name(),
-                "the standing rule should have caught '" + laterLogger + "' within one sweep tick");
+        Level effective = pollUntilKnownAtLevel(proxy, laterLogger, Level.DEBUG);
+        assertEquals(Level.DEBUG, effective);
+        assertFalse(proxy.listLoggers(laterLogger).get(0).isOverrideActive(),
+                "no override or audit record on the later-created descendant -- only 'ancestor' itself was ever set");
     }
 
     /** Writes one line to the fixture's stdin without closing it (unlike {@link #stopFixtureProcess}). */
@@ -215,16 +221,17 @@ class LevelControlEndToEndIT {
         stdin.flush();
     }
 
-    /** Polls up to ~10s (ten sweep intervals at the fixture's 1s setting) for {@code loggerName}'s override to activate. */
-    private static Level pollUntilOverrideActive(LevelControlMXBean proxy, String loggerName) throws Exception {
+    /** Polls up to ~10s for {@code loggerName} to become known to the adapter at exactly {@code expected}. */
+    private static Level pollUntilKnownAtLevel(LevelControlMXBean proxy, String loggerName, Level expected)
+            throws Exception {
         for (int attempt = 0; attempt < 100; attempt++) {
             List<LoggerInfoData> rows = proxy.listLoggers(loggerName);
-            if (!rows.isEmpty() && rows.get(0).isOverrideActive()) {
+            if (!rows.isEmpty() && expected.name().equals(rows.get(0).getEffectiveLevel())) {
                 return Level.valueOf(rows.get(0).getEffectiveLevel());
             }
             Thread.sleep(100);
         }
-        fail("'" + loggerName + "' was never covered by the standing rule within the timeout");
+        fail("'" + loggerName + "' never reached " + expected + " within the timeout");
         throw new AssertionError("unreachable");
     }
 

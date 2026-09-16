@@ -29,23 +29,17 @@ import java.util.List;
 public final class ResetOutcomeData {
 
     private final List<String> revertedLoggerNames;
-    private final boolean patternRuleRetired;
 
-    @ConstructorProperties({"revertedLoggerNames", "patternRuleRetired"})
-    public ResetOutcomeData(List<String> revertedLoggerNames, boolean patternRuleRetired) {
+    @ConstructorProperties({"revertedLoggerNames"})
+    public ResetOutcomeData(List<String> revertedLoggerNames) {
         this.revertedLoggerNames = revertedLoggerNames;
-        this.patternRuleRetired = patternRuleRetired;
     }
 
     public static ResetOutcomeData from(ResetOutcome outcome) {
-        return new ResetOutcomeData(outcome.revertedLoggerNames(), outcome.patternRuleRetired());
+        return new ResetOutcomeData(outcome.revertedLoggerNames());
     }
 
     public List<String> getRevertedLoggerNames() {
         return revertedLoggerNames;
-    }
-
-    public boolean isPatternRuleRetired() {
-        return patternRuleRetired;
     }
 }

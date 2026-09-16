@@ -18,9 +18,11 @@ package org.logaperture.core;
 import java.util.List;
 
 /**
- * Thrown by {@code setLevel} when {@code target} is a pattern (doc/specs/
- * pattern-level-targeting.md) and {@code options.confirmed()} is {@code
- * false} — never mutates anything. Crosses the JMX boundary the same way
+ * Thrown by {@code setLevel} when {@code target} is a leading-star pattern
+ * (doc/specs/pattern-selection-semantics.md) and {@code options.confirmed()}
+ * is {@code false} — never mutates anything. (A trailing-star target never
+ * reaches this at all — {@code setLevel} rejects that shape outright,
+ * before confirmation is even evaluated.) Crosses the JMX boundary the same way
  * {@link CapabilityDeniedException} already does (unwrapped back to itself
  * by {@code JMX.newMXBeanProxy} for a typed caller, per that spec's Decision
  * #2a) rather than as a "successful" return value a careless caller could
@@ -47,7 +49,7 @@ public final class ConfirmationRequiredException extends RuntimeException {
 
     private static String message(String pattern, List<String> matches) {
         return matches.size() + " match(es) for '" + pattern + "': " + matches
-                + ". Re-invoke with confirmed=true to apply this standing rule.";
+                + ". Re-invoke with confirmed=true to apply.";
     }
 
     /** The pattern {@code setLevel} was called with. */

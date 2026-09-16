@@ -26,7 +26,6 @@ import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.LoggerInfo;
-import org.logaperture.api.PatternRule;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetHandlerLevelOptions;
@@ -189,24 +188,12 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 .stream()
                 .filter(override -> isStillLive(override.tier(), override.expiresAt(), now))
                 .toList();
-        // Standing rules (doc/specs/pattern-level-targeting.md) rebroadcast
-        // the same way -- a rule created before this context existed must
-        // still cover the new context's own loggers.
-        List<PatternRule> patternRulesToRebroadcast = existingAny
-                .map(existing -> existing.service().activePatternRules())
-                .orElseGet(List::of)
-                .stream()
-                .filter(rule -> isStillLive(rule.tier(), rule.expiresAt(), now))
-                .toList();
         byKey.put(control.stableKey(), control);
         for (LevelOverride override : toRebroadcast) {
             control.service().adoptOverride(override);
         }
         for (HandlerLevelOverride override : handlersToRebroadcast) {
             control.handlerService().adoptOverride(override);
-        }
-        for (PatternRule rule : patternRulesToRebroadcast) {
-            control.service().adoptPatternRule(rule);
         }
         // One recompute pass now that both halves have been rebroadcast onto
         // the new context -- doc/specs/handler-floor-control.md "AUTO
@@ -470,18 +457,15 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     @Override
     public ResetOutcome resetLevel(String loggerName) {
         // A dedup by name, not a concatenation: two contexts sharing a
-        // logger (or matched by the same standing rule) each report
-        // reverting it independently, and the caller-facing list should
-        // name it once, same reasoning as setLevel's one-override-per-
-        // logger fix above.
+        // logger (or matched by the same pattern) each report reverting it
+        // independently, and the caller-facing list should name it once,
+        // same reasoning as setLevel's one-override-per-logger fix above.
         Set<String> reverted = new LinkedHashSet<>();
-        boolean patternRuleRetired = false;
         for (ContextControl context : sortedByKey()) {
             ResetOutcome outcome = context.service().resetLevel(loggerName);
             reverted.addAll(outcome.revertedLoggerNames());
-            patternRuleRetired |= outcome.patternRuleRetired();
         }
-        return new ResetOutcome(List.copyOf(reverted), patternRuleRetired);
+        return new ResetOutcome(List.copyOf(reverted));
     }
 
     @Override
@@ -636,21 +620,6 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         for (ContextControl context : sortedByKey()) {
             context.service().sweepExpiredOverrides(now);
             context.handlerService().sweepExpiredOverrides(now);
-        }
-    }
-
-    /**
-     * Runs the standing-rule sweep across every context (doc/specs/
-     * pattern-level-targeting.md "Sweep integration") — same composition-
-     * root-owned tick as {@link #sweepExpiredOverrides}, run independently
-     * per context since a pattern rule's match set is judged against each
-     * context's own known loggers. Logger-only: standing rules don't apply
-     * to handlers (top-level §18.9's handler namespace stays exact-name
-     * only).
-     */
-    public void applyStandingRules(Instant now) {
-        for (ContextControl context : sortedByKey()) {
-            context.service().applyStandingRules(now);
         }
     }
 

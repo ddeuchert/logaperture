@@ -43,14 +43,15 @@ import java.util.function.Function;
 /**
  * The sub-commands, each a thin renderer over one (occasionally two)
  * {@link org.logaperture.control.jmx.LevelControlMXBean} calls — see
- * doc/specs/cli-transport.md "Command surface" and doc/specs/
- * handler-floor-control.md "The operation" for {@code handler}/{@code
- * resetHandler}. An exact-name {@code reset} still reads {@code
- * listLoggers} before and after -- {@code resetLevel} on an exact name
- * only reports the reverted logger's name, not its resulting effective
- * level -- but a pattern {@code reset} takes its answer directly from
- * {@code resetLevel}'s {@code ResetOutcomeData}, not from diffing
- * {@code listLoggers} reads around the call.
+ * doc/specs/cli-transport.md "Command surface", doc/specs/
+ * pattern-selection-semantics.md for {@code setLevel}/{@code reset}'s
+ * pattern-target behavior, and doc/specs/handler-floor-control.md "The
+ * operation" for {@code handler}/{@code resetHandler}. An exact-name
+ * {@code reset} still reads {@code listLoggers} before and after -- {@code
+ * resetLevel} on an exact name only reports the reverted logger's name, not
+ * its resulting effective level -- but a pattern {@code reset} takes its
+ * answer directly from {@code resetLevel}'s {@code ResetOutcomeData}, not
+ * from diffing {@code listLoggers} reads around the call.
  */
 final class Commands {
 
@@ -172,8 +173,8 @@ final class Commands {
     /**
      * Whether {@code target} is a pattern rather than an exact logger name --
      * the one check both {@code setLevel} and {@code reset} branch on before
-     * deciding whether they're looking at a standing rule (doc/specs/
-     * pattern-level-targeting.md). {@code logaperture-core}'s equivalent
+     * deciding whether they're looking at a one-time selection (doc/specs/
+     * pattern-selection-semantics.md). {@code logaperture-core}'s equivalent
      * ({@code NameFilter.isPattern}) isn't reachable from this module --
      * package-private, and deliberately not part of the JMX wire surface --
      * so this is its own small copy rather than a shared dependency.
@@ -183,41 +184,53 @@ final class Commands {
     }
 
     /**
+     * Whether {@code target}'s trailing segment is {@code *} -- {@code
+     * setLevel} rejects this outright (doc/specs/
+     * pattern-selection-semantics.md, Decision #5), so the CLI skips its
+     * whole preview/confirm dance for one and lets the server's usage error
+     * surface instead. Only ever called after {@link #isPattern} is already
+     * known true, so no need to re-check for a {@code *} at all. Same
+     * "core's package-private copy isn't reachable from here" reasoning as
+     * {@link #isPattern}.
+     */
+    private static boolean isTrailingWildcard(String target) {
+        return target.endsWith(".*");
+    }
+
+    /**
      * {@code target} is either an exact logger name or a pattern (doc/specs/
-     * pattern-level-targeting.md) — a {@code *} anywhere in it means the
+     * pattern-selection-semantics.md) — a {@code *} anywhere in it means the
      * latter, resolved the same way {@code logctl levels} already detects
-     * one. A pattern is a standing rule: it previews its current matches
-     * and asks for confirmation ({@code --yes} skips the prompt) before
-     * applying, since it also reaches loggers discovered later.
+     * one. A leading-star pattern is a one-time selection: it previews its
+     * current matches and asks for confirmation ({@code --yes} skips the
+     * prompt) before applying, since a single wildcard can match more
+     * loggers than the operator expects. A trailing-star target is rejected
+     * by the server before confirmation is even evaluated, so it skips this
+     * whole preview dance entirely.
      */
     static Command setLevel(String target, String level, String reason, String tierName, long forSeconds,
             boolean yes, boolean json) {
         return (mbean, out, in, interactive) -> {
             boolean isPattern = isPattern(target);
-            boolean confirmed = yes || !isPattern;
+            boolean isTrailingWildcard = isPattern && isTrailingWildcard(target);
+            boolean confirmed = yes || !isPattern || isTrailingWildcard;
             // Non-null only when a preview was actually shown -- the set of
             // names the preview promised, kept around so the apply below
             // can call out any it silently drops instead of leaving the
-            // discrepancy unexplained (a code-review finding: the preview
-            // and the apply query precedence at two different instants, so
-            // a previewed logger can lose precedence in between and the old
-            // code just never mentioned it again).
+            // discrepancy unexplained.
             List<LoggerInfoData> previewed = null;
-            if (isPattern && !confirmed) {
+            if (isPattern && !isTrailingWildcard && !confirmed) {
                 previewed = mbean.listLoggers(target);
                 if (!interactive) {
                     // Decision #4: fail fast rather than block forever on a
-                    // read from a stdin nothing will ever write to -- but
-                    // still explain the standing-rule consequence, not just
-                    // name the escape hatch, since this is the *only* message
-                    // a non-interactive caller (every `wildflyctl.py logctl
-                    // --`/`docker compose exec -T` invocation) ever sees; the
-                    // full preview (printPatternPreview) never runs here (#46).
-                    throw new CliError(CliError.USAGE,
-                            "'" + target + "' is a pattern -- applying it creates a standing rule: " + level
-                                    + " on every currently-matching logger, AND on any new one discovered later, "
-                                    + "until 'logctl reset " + target + "'. Pass --yes to apply it "
-                                    + "non-interactively.");
+                    // read from a stdin nothing will ever write to.
+                    throw new CliError(CliError.USAGE, previewed.isEmpty()
+                            ? "'" + target + "' matches no currently-known logger. Pass --yes to apply " + level
+                                    + " anyway (this affects only loggers that exist right now)."
+                            : "'" + target + "' matches " + previewed.size() + " currently-known logger"
+                                    + (previewed.size() == 1 ? "" : "s") + ". Pass --yes to apply " + level
+                                    + " to all of them non-interactively (this affects only loggers that exist "
+                                    + "right now).");
                 }
                 printPatternPreview(out, target, level, previewed);
                 if (!readYesAnswer(in)) {
@@ -234,68 +247,37 @@ final class Commands {
                 return CliError.OK;
             }
             if (overrides.isEmpty()) {
-                // A pattern with no currently-known match yet -- the rule
-                // still stands, ready for the sweep (doc/specs/
-                // pattern-level-targeting.md "Sweep integration").
-                out.println("Standing rule created for '" + target + "' — no currently-known logger matches yet; "
-                        + "it will apply to one discovered later.");
+                // A pattern currently matching no logger -- a one-time
+                // selection over nothing does nothing, and nothing will
+                // happen later either (doc/specs/pattern-selection-semantics.md).
+                out.println("'" + target + "' matches no currently-known logger; nothing to set.");
                 return CliError.OK;
             }
             for (LevelOverrideData override : overrides) {
                 out.println(override.getLoggerName() + " → " + override.getLevel() + "   ("
                         + tierDetail(override.getTier(), override.getExpiresAt()) + ")");
             }
-            printSkippedFromPreview(out, previewed, overrides);
             printBlockingHandlersWarning(out, level, result.getBlockingHandlers());
             return CliError.OK;
         };
     }
 
-    /** The confirmation preview (doc/specs/pattern-level-targeting.md "Confirmation and CLI behavior"). */
+    /** The confirmation preview (doc/specs/pattern-selection-semantics.md "Confirmation and CLI behavior"). */
     private static void printPatternPreview(java.io.PrintStream out, String pattern, String level,
             List<LoggerInfoData> matches) {
         if (matches.isEmpty()) {
-            out.println("This will create a standing rule setting " + level + " on any logger matching '"
-                    + pattern + "' — none currently known, but it will apply the moment one is discovered.");
+            out.println("'" + pattern + "' matches no currently-known logger.");
         } else {
             out.println("This will set " + level + " on " + matches.size() + " currently-known logger"
                     + (matches.size() == 1 ? "" : "s") + " matching '" + pattern + "':");
             for (LoggerInfoData match : matches) {
                 out.println("  " + match.getName());
             }
+            out.println("A logger created later that would also match this pattern is not affected — re-run "
+                    + "this command if you need it too.");
         }
-        out.println("Because this is a pattern, LogAperture will also apply " + level + " to any new logger "
-                + "discovered later that matches '" + pattern + "', until you run 'logctl reset " + pattern + "'.");
-        out.print("Apply this standing rule? [y/N] ");
+        out.print("Apply? [y/N] ");
         out.flush();
-    }
-
-    /**
-     * Names any logger the preview promised would change that the apply
-     * then didn't actually mutate -- it lost precedence to a higher-priority
-     * override in the interval between the preview read and the apply
-     * (doc/specs/pattern-level-targeting.md "Precedence"). Silent about it
-     * is exactly the code-review finding this exists to fix: the preview
-     * and the confirmed apply are two separate calls, so some staleness
-     * between them is inherent to the confirm-then-apply flow, but leaving
-     * the resulting gap unexplained looked like a bug in the tool rather
-     * than an accurate reflection of what happened.
-     */
-    private static void printSkippedFromPreview(java.io.PrintStream out, List<LoggerInfoData> previewed,
-            List<LevelOverrideData> applied) {
-        if (previewed == null || previewed.isEmpty()) {
-            return;
-        }
-        java.util.Set<String> appliedNames = new java.util.HashSet<>();
-        for (LevelOverrideData override : applied) {
-            appliedNames.add(override.getLoggerName());
-        }
-        for (LoggerInfoData match : previewed) {
-            if (!appliedNames.contains(match.getName())) {
-                out.println(match.getName() + " — left unchanged; it picked up a higher-precedence override "
-                        + "between the preview and the apply.");
-            }
-        }
     }
 
     private static boolean readYesAnswer(java.io.InputStream in) {
@@ -400,12 +382,11 @@ final class Commands {
 
     /**
      * {@code target} is either an exact logger name or a pattern. Resetting
-     * a pattern reverts every logger it currently covers <em>and</em>
-     * retires the standing rule, so it stops covering loggers discovered
-     * later too (doc/specs/pattern-level-targeting.md) — no confirmation
-     * either way, matching {@code reset}'s existing no-prompt convention
-     * (reverting a bounded, current state is the opposite risk shape from
-     * applying an unbounded, future-reaching one).
+     * a pattern reverts every currently-overridden logger it matches
+     * (doc/specs/pattern-selection-semantics.md) — no confirmation either
+     * way, matching {@code reset}'s existing no-prompt convention (reverting
+     * a bounded, current state is the opposite risk shape from applying a
+     * batch mutation).
      */
     static Command reset(String target, boolean json) {
         return (mbean, out, in, interactive) -> {
@@ -436,11 +417,10 @@ final class Commands {
      * org.logaperture.control.jmx.ResetOutcomeData}), so this no longer
      * reconstructs that by diffing two {@code listLoggers} reads taken
      * before and after a {@code void} call -- that diff was racy against
-     * concurrent mutation, and had no way to tell "no standing rule existed
-     * under that exact string" from "the rule existed but matched nothing"
-     * (both code-review findings against the original slice; the latter is
-     * why every reset used to print "Standing rule retired" even on a
-     * no-op).
+     * concurrent mutation (a code-review finding against the original
+     * slice). Renders exactly like a scoped {@code resetAll} (doc/specs/
+     * pattern-selection-semantics.md "CLI output") — there is no rule to
+     * report on, only loggers actually reverted.
      */
     private static int resetPattern(org.logaperture.control.jmx.LevelControlMXBean mbean, java.io.PrintStream out,
             String pattern, boolean json) {
@@ -448,15 +428,11 @@ final class Commands {
         List<String> reverted = outcome.getRevertedLoggerNames();
 
         if (json) {
-            out.println(Json.resetPattern(pattern, reverted, outcome.isPatternRuleRetired()));
-            return CliError.OK;
-        }
-        if (!outcome.isPatternRuleRetired()) {
-            out.println("'" + pattern + "' — no standing rule was tracked under that pattern; nothing to do.");
+            out.println(Json.resetPattern(pattern, reverted));
             return CliError.OK;
         }
         if (reverted.isEmpty()) {
-            out.println("Standing rule '" + pattern + "' retired -- it had no currently-matched logger to revert.");
+            out.println("'" + pattern + "' — nothing was overridden.");
             return CliError.OK;
         }
         Map<String, LoggerInfoData> afterByName = new LinkedHashMap<>();
@@ -467,7 +443,6 @@ final class Commands {
             LoggerInfoData row = afterByName.get(name);
             out.println(name + " → " + (row != null ? row.getEffectiveLevel() : "baseline") + " (baseline)");
         }
-        out.println("Standing rule '" + pattern + "' retired.");
         return CliError.OK;
     }
 
