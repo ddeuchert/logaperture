@@ -11,6 +11,16 @@ tiers this reuses rather than reinventing).
 Tracks: [issue #41](https://github.com/ddeuchert/logaperture/issues/41), slices 2 and 3,
 taken together (see "Why slices 2 and 3 land in one spec" below).
 
+> **Superseded — slice 3 retired.** [`pattern-selection-semantics.md`](pattern-selection-semantics.md)
+> (issue #49) retires this document's standing-rule apply/sweep mechanism entirely — `PatternRule`,
+> the pattern-sweep pass, the "Precedence" section, and the exact-string `resetLevel` lookup below
+> are no longer how any of this works. A pattern target on `setLevel`/`resetLevel` is pure
+> selection now: resolved once against currently-known loggers, with nothing left standing
+> afterward. Slice 1 (the segment-anchored grammar, `NameFilter`) and slice 2
+> (`includeChildren`'s removal) are **unaffected** and stay exactly as shipped below — only slice
+> 3's standing-rule content is retired. See `pattern-selection-semantics.md` for the current
+> design.
+
 ## Functional summary
 
 After this feature, the user will be able to:
