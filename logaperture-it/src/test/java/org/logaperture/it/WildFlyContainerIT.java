@@ -57,8 +57,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * and its override surviving a redeploy; a {@code /subsystem=logging}
  * management change being corrected by the verification sweep; and
  * doc/specs/pattern-selection-semantics.md's exit criterion against real
- * JBoss LogManager inheritance -- a trailing-star {@code setLevel} rejected
- * outright, a bare-ancestor {@code setLevel} covering an already-known
+ * JBoss LogManager inheritance -- a trailing-star {@code setLogger} rejected
+ * outright, a bare-ancestor {@code setLogger} covering an already-known
  * descendant with no override of its own, and a trailing-star {@code reset}
  * reverting an exact-name override under its scope.
  *
@@ -153,7 +153,7 @@ class WildFlyContainerIT {
         Logctl before = logctl("levels", BOOT_LOGGER);
         assertTrue(before.stdout().contains("INFO"), "org.jboss.as.server starts at INFO:\n" + before.stdout());
 
-        Logctl raised = logctl("debug", BOOT_LOGGER, "for", "30m");
+        Logctl raised = logctl("set", "logger", BOOT_LOGGER, "DEBUG", "for", "30m");
         assertEquals(0, raised.exitCode(), raised.stderr());
         assertTrue(logctl("levels", BOOT_LOGGER).stdout().contains("DEBUG"),
                 "logctl levels shows the raised level");
@@ -169,8 +169,8 @@ class WildFlyContainerIT {
     void standaloneXml_isByteIdenticalAfterASessionOfOverrides() throws Exception {
         String before = exec("md5sum", STANDALONE_XML).getStdout();
 
-        logctl("debug", "com.example.Probe", "sticky");
-        logctl("trace", "org.hibernate.SQL");
+        logctl("set", "logger", "com.example.Probe", "DEBUG", "sticky");
+        logctl("set", "logger", "org.hibernate.SQL", "TRACE");
         logctl("reset", "loggers", "--include-sticky");
 
         assertEquals(before, exec("md5sum", STANDALONE_XML).getStdout(),
@@ -187,7 +187,7 @@ class WildFlyContainerIT {
             assertFalse(levels.contains("CONTEXT"),
                     "stock WildFly routes the deployment to the one shared system context");
 
-            assertEquals(0, logctl("debug", APP_LOGGER, "sticky").exitCode());
+            assertEquals(0, logctl("set", "logger", APP_LOGGER, "DEBUG", "sticky").exitCode());
             assertTrue(logctl("levels", APP_LOGGER).stdout().contains("DEBUG"));
 
             redeployProbeWar();
@@ -206,7 +206,7 @@ class WildFlyContainerIT {
 
     @Test
     void managementCliLoggingChange_isCorrectedByTheVerificationSweep() throws Exception {
-        assertEquals(0, logctl("debug", BOOT_LOGGER, "sticky").exitCode());
+        assertEquals(0, logctl("set", "logger", BOOT_LOGGER, "DEBUG", "sticky").exitCode());
         assertTrue(logctl("levels", BOOT_LOGGER).stdout().contains("DEBUG"));
 
         // A /subsystem=logging change (as a management console does) clobbers the override.
@@ -231,15 +231,15 @@ class WildFlyContainerIT {
 
     @Test
     void trailingWildcardSet_isRejectedAsAUsageError_andMutatesNothing() {
-        // Decision #5's exit criterion: a trailing-star target on setLevel
+        // Decision #5's exit criterion: a trailing-star target on setLogger
         // fails outright, in the same real process, and never reaches
         // matching/capability-checking/mutation.
-        Logctl rejected = logctl("debug", "org.jboss.as.*");
+        Logctl rejected = logctl("set", "logger", "org.jboss.as.*", "DEBUG");
 
         assertEquals(2, rejected.exitCode(), rejected.stdout() + rejected.stderr());
         assertTrue(rejected.stderr().contains("trailing wildcard isn't accepted"),
                 "expected the Decision #5 usage error:\n" + rejected.stderr());
-        assertTrue(rejected.stderr().contains("logctl debug org.jboss.as"),
+        assertTrue(rejected.stderr().contains("logctl set logger org.jboss.as DEBUG"),
                 "expected the suggested fix naming the literal ancestor:\n" + rejected.stderr());
         assertFalse(logctl("status").stdout().contains("org.jboss.as"),
                 "the rejected command must not have mutated anything");
@@ -249,13 +249,13 @@ class WildFlyContainerIT {
     void ancestorSet_bringsAnAlreadyKnownDescendantToTheSameLevel_withNoOverrideOfItsOwn() throws Exception {
         // The exit criterion this spec replaced the old standing-rule/sweep
         // one with: setting the literal ancestor -- no star at all, since
-        // setLevel now rejects a trailing one -- brings every descendant to
+        // setLogger now rejects a trailing one -- brings every descendant to
         // the same effective level purely through JBoss LogManager's own
         // inheritance, with no LogAperture override or audit record on the
         // descendant itself. BOOT_LOGGER (org.jboss.as.server) is a real,
         // already-known descendant of "org.jboss.as" on stock WildFly.
         try {
-            assertEquals(0, logctl("debug", "org.jboss.as").exitCode());
+            assertEquals(0, logctl("set", "logger", "org.jboss.as", "DEBUG").exitCode());
 
             assertTrue(pollLogctl("levels", BOOT_LOGGER, out -> out.contains("DEBUG")),
                     "org.jboss.as.server inherits DEBUG from org.jboss.as with no override of its own");
@@ -268,13 +268,13 @@ class WildFlyContainerIT {
 
     @Test
     void resetLevel_onATrailingStarTarget_revertsEveryCurrentlyOverriddenMatch_includingAnExactNameOne() {
-        // Decision #5's asymmetry, proven end-to-end: unlike setLevel, reset
+        // Decision #5's asymmetry, proven end-to-end: unlike setLogger, reset
         // keeps full selection semantics for a trailing star -- it has to,
         // since a descendant can carry its own hand-set override (from an
         // exact-name set run directly against it) that only a real scan of
         // current matches finds (doc/specs/pattern-selection-semantics.md
         // "Operations").
-        assertEquals(0, logctl("debug", BOOT_LOGGER, "sticky").exitCode()); // exact name, not the pattern
+        assertEquals(0, logctl("set", "logger", BOOT_LOGGER, "DEBUG", "sticky").exitCode()); // exact name, not the pattern
         assertTrue(logctl("levels", BOOT_LOGGER).stdout().contains("DEBUG"));
 
         // --include-sticky: the exact-name override above is sticky, and a
@@ -303,11 +303,11 @@ class WildFlyContainerIT {
         // WildFly 26.1.3.Final.
         String freshLogger = "com.myapp.probe.HandlerWarningHarness";
         try {
-            Logctl raised = logctl("trace", freshLogger);
+            Logctl raised = logctl("set", "logger", freshLogger, "TRACE");
             assertEquals(0, raised.exitCode(), raised.stderr());
             assertTrue(raised.stdout().contains("handler CONSOLE is at"),
                     "the warning names the resolved handler, not a token or ALL_HANDLERS:\n" + raised.stdout());
-            assertTrue(raised.stdout().contains("logctl handler CONSOLE TRACE"),
+            assertTrue(raised.stdout().contains("logctl set handler CONSOLE TRACE"),
                     "the warning's suggested command is directly copy-pasteable:\n" + raised.stdout());
         } finally {
             logctl("reset", "logger", freshLogger);
@@ -316,10 +316,10 @@ class WildFlyContainerIT {
 
     @Test
     void handler_isAddressableByItsConfiguredName_andRevertsCleanly() {
-        // Issue #14: `logctl handler CONSOLE <level>` works by the name an
+        // Issue #14: `logctl set handler CONSOLE <level>` works by the name an
         // operator reads in standalone.xml -- no identity-hash token typed.
         try {
-            Logctl raised = logctl("handler", "CONSOLE", "DEBUG", "for", "30m");
+            Logctl raised = logctl("set", "handler", "CONSOLE", "DEBUG", "for", "30m");
             assertEquals(0, raised.exitCode(), raised.stderr());
             assertTrue(raised.stdout().contains("CONSOLE") && raised.stdout().contains("DEBUG"), raised.stdout());
             assertTrue(logctl("status").stdout().contains("CONSOLE"), "status shows the override under its real name");
@@ -344,7 +344,7 @@ class WildFlyContainerIT {
                 "no identity-hash tokens once #14 resolution succeeds:\n" + out);
 
         try {
-            assertEquals(0, logctl("handler", "CONSOLE", "TRACE", "for", "10m").exitCode());
+            assertEquals(0, logctl("set", "handler", "CONSOLE", "TRACE", "for", "10m").exitCode());
             String withOverride = logctl("handlers").stdout();
             assertTrue(withOverride.contains("CONSOLE") && withOverride.contains("TRACE"),
                     "the CONSOLE row reflects the active override:\n" + withOverride);
@@ -363,7 +363,7 @@ class WildFlyContainerIT {
         String traceMarker = "probe trace marker";
         deployProbeWar();
         try {
-            Logctl raised = logctl("trace", APP_LOGGER);
+            Logctl raised = logctl("set", "logger", APP_LOGGER, "TRACE");
             assertEquals(0, raised.exitCode(), raised.stderr());
             // Post issue #14 the blocking-handler warning names CONSOLE; the
             // lower/reset below still go through ALL_HANDLERS to keep the real
@@ -377,7 +377,7 @@ class WildFlyContainerIT {
             assertFalse(wildfly.getLogs().contains(traceMarker),
                     "the console handler is still at INFO -- the TRACE marker must not reach it yet");
 
-            Logctl lowered = logctl("handler", "ALL_HANDLERS", "TRACE");
+            Logctl lowered = logctl("set", "handler", "ALL_HANDLERS", "TRACE");
             assertEquals(0, lowered.exitCode(), lowered.stderr());
             assertTrue(lowered.stdout().contains("ALL_HANDLERS") && lowered.stdout().contains("TRACE"),
                     lowered.stdout());

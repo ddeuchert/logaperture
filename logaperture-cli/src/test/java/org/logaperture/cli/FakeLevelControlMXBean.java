@@ -72,7 +72,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     }
 
     @Override
-    public SetLevelResultData setLevel(String target, String level, String reason, String tier, long forSeconds,
+    public SetLevelResultData setLogger(String target, String level, String reason, String tier, long forSeconds,
             boolean confirmed) {
         setLevelCalls.add(new Object[] {target, level, reason, tier, forSeconds, confirmed});
         maybeThrow();
@@ -107,7 +107,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
      * A deliberately small stand-in for {@code NameFilter}'s real grammar
      * (package-private to {@code logaperture-core}, not reachable from this
      * module) — just enough of it (segment-anchored, zero-or-more) for this
-     * fake's {@code listLoggers}/{@code setLevel} to behave sensibly against
+     * fake's {@code listLoggers}/{@code setLogger} to behave sensibly against
      * a pattern in CLI-level tests; the full grammar is unit-tested against
      * the real engine in {@code logaperture-core}'s {@code NameFilterTest}.
      */

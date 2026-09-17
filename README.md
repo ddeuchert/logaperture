@@ -38,8 +38,8 @@
 Working today:
 
 - **`logctl levels [glob]`** — every logger and its effective level; the glob finds a logger from the abbreviated name a log line actually printed.
-- **`logctl debug <logger> for 30m`** / `trace` / `set <logger> <level> sticky` — change a level at runtime. It reverts on its own timer, survives a restart if you ask (`sticky`), and never touches `standalone.xml`, `logback-spring.xml`, or anything your application owns.
-- **`logctl handler <name> <level>`** / **`logctl handlers`** — set a handler's own level (the fix when a raised logger still shows nothing because a handler is pinned stricter) and list the handler catalogue. On WildFly the handlers resolve to their real configured names (`CONSOLE`, `FILE`, …), read in-VM from the server's own model.
+- **`logctl set logger <logger> DEBUG for 30m`** / `sticky` — change a level at runtime. It reverts on its own timer, survives a restart if you ask (`sticky`), and never touches `standalone.xml`, `logback-spring.xml`, or anything your application owns.
+- **`logctl set handler <name> <level>`** / **`logctl handlers`** — set a handler's own level (the fix when a raised logger still shows nothing because a handler is pinned stricter) and list the handler catalogue. On WildFly the handlers resolve to their real configured names (`CONSOLE`, `FILE`, …), read in-VM from the server's own model.
 - **`logctl doctor`** — flag common logging-config problems: unbounded file-handler growth, verbosity left on, the same content written twice, autoflush on a busy handler, disk headroom vs. write rate.
 - **`logctl top`** — bytes written per logger, worst-first, with a projected daily total and the stack-trace-byte fraction.
 - **`logctl status`** / **`logctl reset loggers`** / **`logctl reset handlers`** — what LogAperture has changed, and undo all of it.

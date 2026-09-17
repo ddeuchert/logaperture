@@ -62,7 +62,7 @@ class PersistenceServiceTest {
 
     @Test
     void setLevel_sessionTier_neverReachesTheStateStore() {
-        service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
+        service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
 
         assertTrue(stateStore.loadAll().isEmpty());
     }
@@ -71,7 +71,7 @@ class PersistenceServiceTest {
     void setLevel_forTier_persistsWithAbsoluteExpiresAt() {
         Instant before = Instant.now();
 
-        service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMinutes(30)));
+        service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMinutes(30)));
 
         LevelOverride persisted = stateStore.loadAll().get(0);
         assertEquals(PersistenceTier.FOR, persisted.tier());
@@ -81,7 +81,7 @@ class PersistenceServiceTest {
 
     @Test
     void setLevel_stickyTier_persistsWithNoExpiresAt() {
-        service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.sticky());
+        service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.sticky());
 
         LevelOverride persisted = stateStore.loadAll().get(0);
         assertEquals(PersistenceTier.STICKY, persisted.tier());
@@ -90,7 +90,7 @@ class PersistenceServiceTest {
 
     @Test
     void resetLevel_removesAPersistedOverrideFromTheStateStore() {
-        service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.sticky());
+        service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.sticky());
 
         service.resetLogger("com.acme.Worker", true); // sticky -- includeSticky=true to actually revert it
 
@@ -99,8 +99,8 @@ class PersistenceServiceTest {
 
     @Test
     void resetAll_removesEveryPersistedOverrideFromTheStateStore() {
-        service.setLevel("com.acme.A", Level.DEBUG, SetLevelOptions.sticky());
-        service.setLevel("com.acme.B", Level.TRACE, SetLevelOptions.forDuration(Duration.ofMinutes(5)));
+        service.setLogger("com.acme.A", Level.DEBUG, SetLevelOptions.sticky());
+        service.setLogger("com.acme.B", Level.TRACE, SetLevelOptions.forDuration(Duration.ofMinutes(5)));
 
         service.resetAllLoggers(true); // includeSticky=true -- com.acme.A is sticky
 
@@ -109,13 +109,13 @@ class PersistenceServiceTest {
 
     @Test
     void setLevel_sessionTier_afterAPreviousStickyOverride_clearsTheStalePersistedEntry() {
-        service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.sticky());
+        service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.sticky());
         assertFalse(stateStore.loadAll().isEmpty());
 
-        // A later plain (SESSION) setLevel on the same logger supersedes the
+        // A later plain (SESSION) setLogger on the same logger supersedes the
         // sticky one -- the stale disk entry must not survive to reappear
         // on the next restart (code-review finding against this PR).
-        service.setLevel("com.acme.Worker", Level.WARN, SetLevelOptions.defaults());
+        service.setLogger("com.acme.Worker", Level.WARN, SetLevelOptions.defaults());
 
         assertTrue(stateStore.loadAll().isEmpty());
     }
@@ -127,7 +127,7 @@ class PersistenceServiceTest {
         LevelControlService denied = newService(capability -> capability != Capability.PERSIST);
 
         assertThrows(CapabilityDeniedException.class,
-                () -> denied.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMinutes(5))));
+                () -> denied.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMinutes(5))));
 
         assertEquals(Level.INFO, adapter.effectiveLevel("com.acme.Worker"));
         assertTrue(overrides.get("com.acme.Worker").isEmpty());
@@ -140,7 +140,7 @@ class PersistenceServiceTest {
         LevelControlService denied = newService(capability -> capability != Capability.PERSIST);
 
         assertThrows(CapabilityDeniedException.class,
-                () -> denied.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.sticky()));
+                () -> denied.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.sticky()));
 
         assertTrue(overrides.get("com.acme.Worker").isEmpty());
     }
@@ -149,7 +149,7 @@ class PersistenceServiceTest {
     void setLevel_sessionTier_doesNotRequirePersistCapability() {
         LevelControlService noPersist = newService(capability -> capability != Capability.PERSIST);
 
-        noPersist.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults()); // must not throw
+        noPersist.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults()); // must not throw
 
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme.Worker"));
     }
@@ -230,7 +230,7 @@ class PersistenceServiceTest {
     @Test
     void sweepExpiredOverrides_revertsAndRemovesFromTheStateStoreWithAnExpirySweepAuditRecord() {
         Instant now = Instant.now();
-        service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMinutes(1)));
+        service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMinutes(1)));
 
         service.sweepExpiredOverrides(now.plus(Duration.ofMinutes(2)));
 
@@ -245,7 +245,7 @@ class PersistenceServiceTest {
 
     @Test
     void sweepExpiredOverrides_notYetDue_leftUntouched() {
-        service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMinutes(30)));
+        service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMinutes(30)));
 
         service.sweepExpiredOverrides(Instant.now()); // nowhere near the 30-minute deadline
 
@@ -255,8 +255,8 @@ class PersistenceServiceTest {
 
     @Test
     void sweepExpiredOverrides_ignoresStickyAndSessionOverrides() {
-        service.setLevel("com.acme.Sticky", Level.DEBUG, SetLevelOptions.sticky());
-        service.setLevel("com.acme.Session", Level.TRACE, SetLevelOptions.defaults());
+        service.setLogger("com.acme.Sticky", Level.DEBUG, SetLevelOptions.sticky());
+        service.setLogger("com.acme.Session", Level.TRACE, SetLevelOptions.defaults());
 
         service.sweepExpiredOverrides(Instant.now().plus(Duration.ofDays(365)));
 
@@ -270,7 +270,7 @@ class PersistenceServiceTest {
     void setLevel_stateStoreThrows_stillSucceedsInMemoryForThisSession() {
         stateStore.throwOnSave(new RuntimeException("disk full"));
 
-        LevelOverride override = service.setLevel(
+        LevelOverride override = service.setLogger(
                 "com.acme.Worker", Level.DEBUG, SetLevelOptions.sticky()).overrides().get(0); // must not throw
 
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme.Worker"));

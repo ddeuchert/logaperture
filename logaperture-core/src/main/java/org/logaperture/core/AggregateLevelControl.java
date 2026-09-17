@@ -59,7 +59,7 @@ import java.util.function.Supplier;
  * <ul>
  *   <li>{@code listLoggers} — concatenate every context's rows, each tagged
  *       with its context's {@code stableKey}.</li>
- *   <li>{@code setLevel} / {@code resetLogger} / {@code resetAllLoggers} —
+ *   <li>{@code setLogger} / {@code resetLogger} / {@code resetAllLoggers} —
  *       <b>broadcast</b>: apply to the named logger in <em>every</em>
  *       registered context. There is no per-call context selector (override
  *       scoping is a deferred nice-to-have, doc/specs/wildfly-support.md).</li>
@@ -378,7 +378,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     }
 
     @Override
-    public SetLevelResult setLevel(String loggerName, Level level, SetLevelOptions options) {
+    public SetLevelResult setLogger(String loggerName, Level level, SetLevelOptions options) {
         List<ContextControl> contexts = sortedByKey();
         if (contexts.isEmpty()) {
             throw new IllegalStateException("no logging context is registered yet");
@@ -412,7 +412,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         // contexts changed; the verification sweep (Slice 3) reconciles that.
         //
         // Each context's resolved match list is kept, not discarded, and
-        // threaded into the apply loop below via setLevel's resolved-match
+        // threaded into the apply loop below via setLogger's resolved-match
         // overload -- a code-review finding: resolving a pattern's matches
         // is a full scan of the context's known loggers plus overrides, and
         // the apply loop used to pay for that scan a second time immediately
@@ -439,7 +439,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         // still just "CONSOLE" to the operator reading the warning.
         Map<HandlerRef, HandlerFloor> blockingByRef = new LinkedHashMap<>();
         for (ContextControl context : contexts) {
-            SetLevelResult result = context.service().setLevel(
+            SetLevelResult result = context.service().setLogger(
                     loggerName, level, opts, resolvedMatchesByContext.get(context.stableKey()));
             if (isPattern) {
                 allOverrides.addAll(result.overrides());
@@ -453,7 +453,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             for (HandlerFloor floor : result.blockingHandlers()) {
                 // Keep the stricter reading for a ref shared across
                 // contexts, not merely the first seen -- same fix as
-                // LevelControlService.setLevel's own merge, and for the
+                // LevelControlService.setLogger's own merge, and for the
                 // same reason: WildFly's collapsed ALL_HANDLERS ref can
                 // legitimately report different levels from different
                 // contexts (code-review finding).
@@ -471,7 +471,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         // A dedup by name, not a concatenation: two contexts sharing a
         // logger (or matched by the same pattern) each report reverting it
         // independently, and the caller-facing list should name it once,
-        // same reasoning as setLevel's one-override-per-logger fix above.
+        // same reasoning as setLogger's one-override-per-logger fix above.
         // No "all pass or all fail" pre-flight for the sticky refusal
         // (Decision #1's IllegalArgumentException) -- same accepted
         // residual-effect convention this broadcast already has for a
@@ -502,9 +502,9 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
 
     /**
      * Broadcasts {@code setHandlerLevel} across every registered context —
-     * the {@link #setLevel} counterpart for handlers (doc/specs/
+     * the {@link #setLogger} counterpart for handlers (doc/specs/
      * handler-floor-control.md "Multi-context (WildFly)"). Same "all pass or
-     * all fail" capability pre-check; unlike {@code setLevel}, a per-context
+     * all fail" capability pre-check; unlike {@code setLogger}, a per-context
      * adapter fault here is caught and skipped rather than left for a later
      * sweep to reconcile (doc/specs/handler-floor-control.md "Failure
      * handling") -- there is no handler verification sweep in this slice.
@@ -643,7 +643,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * #listLoggers} counterpart for handlers, feeding {@code logctl status}
      * (doc/specs/handler-floor-control.md "logctl status shows handler
      * overrides too"). Unioned by ref rather than tagged per context, same
-     * as {@link #setLevel}'s blocking-handler union: a handler named e.g.
+     * as {@link #setLogger}'s blocking-handler union: a handler named e.g.
      * CONSOLE in more than one context is still just "CONSOLE" to the
      * operator reading the list, and {@link HandlerLevelOverride} carries no
      * context of its own to tag rows with in the first place.

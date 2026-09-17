@@ -62,7 +62,7 @@ class CapabilityCheckTest {
 
         LevelControlService allowAll = new LevelControlService(
                 adapter, baselines, overrides, CapabilityPolicy.allowAll(), auditLog, StateStore.noOp(), "alice", "jmx");
-        allowAll.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
+        allowAll.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
 
         LevelControlService noLower = new LevelControlService(
                 adapter, baselines, overrides,

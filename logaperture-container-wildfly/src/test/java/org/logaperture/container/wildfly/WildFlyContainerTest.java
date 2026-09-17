@@ -96,7 +96,7 @@ class WildFlyContainerTest {
         try (WildFlyContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
 
-            ops.setLevel(logger, Level.DEBUG, SetLevelOptions.withReason("boot detail"));
+            ops.setLogger(logger, Level.DEBUG, SetLevelOptions.withReason("boot detail"));
             LoggerInfo afterSet = row(ops);
             assertEquals(Level.DEBUG, afterSet.effectiveLevel());
             assertEquals("system", afterSet.context());
@@ -114,7 +114,7 @@ class WildFlyContainerTest {
     void verificationSweep_reAppliesAnOverrideThatWasResetOutFromUnderUs() {
         try (WildFlyContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
-            ops.setLevel(logger, Level.DEBUG, SetLevelOptions.sticky());
+            ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
 
             Logger.getLogger(logger).setLevel(null); // a /subsystem=logging change / :reload
             assertNull(Logger.getLogger(logger).getLevel(), "the runtime level really was cleared");
@@ -133,7 +133,7 @@ class WildFlyContainerTest {
     void verificationSweep_isANoOpWhenNothingHasDrifted() {
         try (WildFlyContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
-            ops.setLevel(logger, Level.DEBUG, SetLevelOptions.sticky());
+            ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
             int auditSizeBefore = auditLog.records().size();
 
             assertEquals(0, ops.verificationSweep(Instant.now()));
@@ -145,7 +145,7 @@ class WildFlyContainerTest {
     void configurationChangeListenerPath_triggersAVerificationSweep() throws Exception {
         try (WildFlyContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
-            ops.setLevel(logger, Level.DEBUG, SetLevelOptions.sticky());
+            ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
             Logger.getLogger(logger).setLevel(null); // drift
 
             host.runVerificationSweepNow(); // what the LogManager config listener calls
@@ -161,7 +161,7 @@ class WildFlyContainerTest {
     void forOverride_isRevertedByTheExpirySweep() {
         try (WildFlyContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
-            ops.setLevel(logger, Level.TRACE, SetLevelOptions.forDuration(Duration.ofMillis(1)));
+            ops.setLogger(logger, Level.TRACE, SetLevelOptions.forDuration(Duration.ofMillis(1)));
 
             ops.sweepExpiredOverrides(Instant.now().plusSeconds(60));
 
@@ -172,7 +172,7 @@ class WildFlyContainerTest {
     @Test
     void stickyOverride_resumesAfterASimulatedRestart() {
         try (WildFlyContainer first = newHost()) {
-            install(first).setLevel(logger, Level.DEBUG, SetLevelOptions.sticky());
+            install(first).setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
         }
         Logger.getLogger(logger).setLevel(null); // "restart"
 

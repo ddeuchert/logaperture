@@ -30,7 +30,7 @@ import java.io.PrintStream;
 interface Command {
 
     /**
-     * @param in          only read by a pattern-targeted {@code setLevel}'s
+     * @param in          only read by a pattern-targeted {@code setLogger}'s
      *                    confirmation prompt (doc/specs/
      *                    pattern-level-targeting.md "Confirmation and CLI
      *                    behavior"); every other command ignores it

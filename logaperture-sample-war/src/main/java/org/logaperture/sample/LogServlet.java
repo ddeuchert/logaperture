@@ -76,7 +76,7 @@ public class LogServlet extends HttpServlet {
                 "logged \"%s\" at %s via %s, once per category:%n"
                         + "  %s%n"
                         + "%n"
-                        + "raise it with:  logctl debug %s for 5m%n",
+                        + "raise it with:  logctl set logger %s DEBUG for 5m%n",
                 message, level, implementation, String.join("\n  ", categories), loggerName);
     }
 

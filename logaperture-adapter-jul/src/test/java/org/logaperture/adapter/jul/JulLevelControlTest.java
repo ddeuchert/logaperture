@@ -115,7 +115,7 @@ class JulLevelControlTest {
     void fullLoop_listSetResetResetAll() {
         AggregateLevelControl ops = wire(StateStore.noOp());
 
-        ops.setLevel(logger, Level.DEBUG, SetLevelOptions.withReason("INC-1"));
+        ops.setLogger(logger, Level.DEBUG, SetLevelOptions.withReason("INC-1"));
         LoggerInfo afterSet = row(ops);
         assertEquals(Level.DEBUG, afterSet.effectiveLevel());
         assertEquals("system", afterSet.context());
@@ -132,7 +132,7 @@ class JulLevelControlTest {
     void forOverride_isRevertedByTheExpirySweep() {
         AggregateLevelControl ops = wire(StateStore.noOp());
 
-        ops.setLevel(logger, Level.TRACE, SetLevelOptions.forDuration(Duration.ofMillis(1)));
+        ops.setLogger(logger, Level.TRACE, SetLevelOptions.forDuration(Duration.ofMillis(1)));
         assertEquals(Level.TRACE, row(ops).effectiveLevel());
 
         ops.sweepExpiredOverrides(Instant.now().plusSeconds(60));
@@ -144,7 +144,7 @@ class JulLevelControlTest {
     @Test
     void stickyOverride_resumesAfterASimulatedRestart() throws Exception {
         try (FileStateStore first = FileStateStore.open()) {
-            wire(first).setLevel(logger, Level.DEBUG, SetLevelOptions.sticky());
+            wire(first).setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
         }
         Logger.getLogger(logger).setLevel(null); // "restart": the framework cleared the runtime level
 
@@ -158,7 +158,7 @@ class JulLevelControlTest {
     @Test
     void verificationSweep_reAppliesAnOverrideResetOutFromUnderIt() {
         AggregateLevelControl ops = wire(StateStore.noOp());
-        ops.setLevel(logger, Level.DEBUG, SetLevelOptions.sticky());
+        ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
 
         Logger.getLogger(logger).setLevel(null); // a /subsystem=logging change / :reload
 

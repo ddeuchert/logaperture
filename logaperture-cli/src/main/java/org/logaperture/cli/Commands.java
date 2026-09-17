@@ -46,7 +46,7 @@ import java.util.function.Function;
  * The sub-commands, each a thin renderer over one (occasionally two)
  * {@link org.logaperture.control.jmx.LevelControlMXBean} calls — see
  * doc/specs/cli-transport.md "Command surface", doc/specs/
- * pattern-selection-semantics.md for {@code setLevel}/{@code reset}'s
+ * pattern-selection-semantics.md for {@code setLogger}/{@code reset}'s
  * pattern-target behavior, and doc/specs/handler-floor-control.md "The
  * operation" for {@code handler}/{@code resetHandler}. An exact-name
  * {@code reset} still reads {@code listLoggers} before and after -- {@code
@@ -174,7 +174,7 @@ final class Commands {
 
     /**
      * Whether {@code target} is a pattern rather than an exact logger name --
-     * the one check both {@code setLevel} and {@code reset} branch on before
+     * the one check both {@code setLogger} and {@code reset} branch on before
      * deciding whether they're looking at a one-time selection (doc/specs/
      * pattern-selection-semantics.md). {@code logaperture-core}'s equivalent
      * ({@code NameFilter.isPattern}) isn't reachable from this module --
@@ -187,7 +187,7 @@ final class Commands {
 
     /**
      * Whether {@code target}'s trailing segment is {@code *} -- {@code
-     * setLevel} rejects this outright (doc/specs/
+     * setLogger} rejects this outright (doc/specs/
      * pattern-selection-semantics.md, Decision #5), so the CLI skips its
      * whole preview/confirm dance for one and lets the server's usage error
      * surface instead. Only ever called after {@link #isPattern} is already
@@ -219,7 +219,7 @@ final class Commands {
      * by the server before confirmation is even evaluated, so it skips this
      * whole preview dance entirely.
      */
-    static Command setLevel(String target, String level, String reason, String tierName, long forSeconds,
+    static Command setLogger(String target, String level, String reason, String tierName, long forSeconds,
             boolean yes, boolean json) {
         return (mbean, out, in, interactive) -> {
             boolean isPattern = isPattern(target);
@@ -256,7 +256,7 @@ final class Commands {
                 confirmed = true;
             }
 
-            SetLevelResultData result = mbean.setLevel(target, level, reason, tierName, forSeconds, confirmed);
+            SetLevelResultData result = mbean.setLogger(target, level, reason, tierName, forSeconds, confirmed);
             List<LevelOverrideData> overrides = result.getOverrides();
             if (json) {
                 out.println(Json.setLevelResult(result));
@@ -309,8 +309,8 @@ final class Commands {
      * The actionable warning doc/specs/handler-floor-control.md "Warning on
      * level commands" calls for: names every handler that will still
      * swallow records at the level just applied, and the exact {@code
-     * logctl handler} command to clear each one — one per handler, since a
-     * developer may only want the console lowered, not every sink.
+     * logctl set handler} command to clear each one — one per handler, since
+     * a developer may only want the console lowered, not every sink.
      */
     private static void printBlockingHandlersWarning(java.io.PrintStream out, String level, List<HandlerFloorData> blocking) {
         if (blocking.isEmpty()) {
@@ -320,12 +320,12 @@ final class Commands {
             HandlerFloorData floor = blocking.get(0);
             out.println("WARN: handler " + floor.getHandlerRef() + " is at " + floor.getCurrentLevel()
                     + " and will drop " + level + " records from this logger.");
-            out.println("      To see them: logctl handler " + floor.getHandlerRef() + " " + level);
+            out.println("      To see them: logctl set handler " + floor.getHandlerRef() + " " + level);
         } else {
             out.println("WARN: " + blocking.size() + " handlers are above " + level
                     + " and will drop these records:");
             for (HandlerFloorData floor : blocking) {
-                out.println("      logctl handler " + floor.getHandlerRef() + " " + level
+                out.println("      logctl set handler " + floor.getHandlerRef() + " " + level
                         + "   (currently " + floor.getCurrentLevel() + ")");
             }
             out.println("      Run the ones you actually want -- you may only need one.");
@@ -342,7 +342,7 @@ final class Commands {
                 if (json) {
                     out.println(Json.handlerNoOp(handlerRef));
                 } else {
-                    out.println("logctl handler: this framework's handlers have no level of their own; "
+                    out.println("logctl set handler: this framework's handlers have no level of their own; "
                             + "nothing to change.");
                 }
                 return CliError.OK;
@@ -362,10 +362,10 @@ final class Commands {
      * The actionable warning doc/specs/handler-floor-control.md "Squelch
      * warning" calls for (issue #16) -- {@link #printBlockingHandlersWarning}'s
      * mirror image: names every currently-active logger override that {@code
-     * logctl handler <name> <stricter-level>} just started silencing, and the
-     * one {@code logctl handler} command that would let all of them back
-     * through (the most verbose level among them -- a developer who wants
-     * only some back can always raise it again from there).
+     * logctl set handler <name> <stricter-level>} just started silencing, and
+     * the one {@code logctl set handler} command that would let all of them
+     * back through (the most verbose level among them -- a developer who
+     * wants only some back can always raise it again from there).
      */
     private static void printSquelchedLoggersWarning(java.io.PrintStream out, String handlerRef, String newLevel,
             List<SquelchedLoggerData> squelched) {
@@ -376,14 +376,14 @@ final class Commands {
             SquelchedLoggerData one = squelched.get(0);
             out.println("WARN: handler " + handlerRef + " is now " + newLevel + " and will drop " + one.getLevel()
                     + " records from " + one.getLoggerName() + ".");
-            out.println("      To keep seeing them: logctl handler " + handlerRef + " " + one.getLevel());
+            out.println("      To keep seeing them: logctl set handler " + handlerRef + " " + one.getLevel());
         } else {
             out.println("WARN: handler " + handlerRef + " is now " + newLevel + " and will drop records from "
                     + squelched.size() + " loggers:");
             for (SquelchedLoggerData one : squelched) {
                 out.println("      " + one.getLoggerName() + "   (" + one.getLevel() + ")");
             }
-            out.println("      To keep seeing all of them: logctl handler " + handlerRef + " "
+            out.println("      To keep seeing all of them: logctl set handler " + handlerRef + " "
                     + mostVerboseLevel(squelched));
         }
     }
@@ -400,7 +400,7 @@ final class Commands {
     }
 
     /**
-     * {@code logctl handler <name> AUTO} — doc/specs/handler-floor-control.md
+     * {@code logctl set handler <name> AUTO} — doc/specs/handler-floor-control.md
      * "AUTO handler level" (issue #20). Puts {@code handlerRef} into a
      * self-tracking mode instead of a fixed level.
      */
@@ -411,7 +411,7 @@ final class Commands {
                 if (json) {
                     out.println(Json.handlerNoOp(handlerRef));
                 } else {
-                    out.println("logctl handler: this framework's handlers have no level of their own, or nothing "
+                    out.println("logctl set handler: this framework's handlers have no level of their own, or nothing "
                             + "is active to track yet; nothing to change.");
                 }
                 return CliError.OK;

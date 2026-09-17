@@ -51,7 +51,7 @@ class CommandsTest {
         return captured.toString(StandardCharsets.UTF_8);
     }
 
-    /** Every command but a pattern-targeted {@code setLevel} ignores {@code in}/{@code interactive}. */
+    /** Every command but a pattern-targeted {@code setLogger} ignores {@code in}/{@code interactive}. */
     private int run(Command command) {
         return command.run(mbean, out, InputStream.nullInputStream(), false);
     }
@@ -353,7 +353,7 @@ class CommandsTest {
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(
                 "com.acme", "DEBUG", "INC-1", Instant.now().toString(), "jmx", "FOR", expiresAt), List.of());
 
-        run(Commands.setLevel("com.acme", "DEBUG", "INC-1", "FOR", 1800L, false, false));
+        run(Commands.setLogger("com.acme", "DEBUG", "INC-1", "FOR", 1800L, false, false));
 
         Object[] call = mbean.setLevelCalls.get(0);
         assertEquals("com.acme", call[0]);
@@ -373,13 +373,13 @@ class CommandsTest {
     void setLevelStickyAndSessionConfirmationsReadPlainly() {
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(
                 "com.acme", "WARN", null, Instant.now().toString(), "jmx", "STICKY", null), List.of());
-        run(Commands.setLevel("com.acme", "WARN", null, "STICKY", 0L, false, false));
+        run(Commands.setLogger("com.acme", "WARN", null, "STICKY", 0L, false, false));
         assertTrue(output().contains("(STICKY — until reset)"));
 
         captured.reset();
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(
                 "com.acme", "WARN", null, Instant.now().toString(), "jmx", "SESSION", null), List.of());
-        run(Commands.setLevel("com.acme", "WARN", null, "SESSION", 0L, false, false));
+        run(Commands.setLogger("com.acme", "WARN", null, "SESSION", 0L, false, false));
         assertTrue(output().contains("(SESSION — until the JVM stops)"));
     }
 
@@ -387,7 +387,7 @@ class CommandsTest {
     void setLevelJsonEmitsTheOverrideObject() {
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(
                 "com.acme", "DEBUG", null, "2026-08-25T00:00:00Z", "jmx", "SESSION", null), List.of());
-        run(Commands.setLevel("com.acme", "DEBUG", null, "SESSION", 0L, false, true));
+        run(Commands.setLogger("com.acme", "DEBUG", null, "SESSION", 0L, false, true));
         assertEquals(
                 "{\"overrides\":[{\"loggerName\":\"com.acme\",\"level\":\"DEBUG\","
                         + "\"reason\":null,\"appliedAt\":\"2026-08-25T00:00:00Z\",\"source\":\"jmx\","
@@ -401,11 +401,11 @@ class CommandsTest {
                 "com.acme", "TRACE", null, Instant.now().toString(), "jmx", "SESSION", null),
                 List.of(new HandlerFloorData("CONSOLE", "INFO")));
 
-        run(Commands.setLevel("com.acme", "TRACE", null, "SESSION", 0L, false, false));
+        run(Commands.setLogger("com.acme", "TRACE", null, "SESSION", 0L, false, false));
 
         String text = output();
         assertTrue(text.contains("WARN: handler CONSOLE is at INFO"));
-        assertTrue(text.contains("logctl handler CONSOLE TRACE"));
+        assertTrue(text.contains("logctl set handler CONSOLE TRACE"));
     }
 
     @Test
@@ -414,12 +414,12 @@ class CommandsTest {
                 "com.acme", "TRACE", null, Instant.now().toString(), "jmx", "SESSION", null),
                 List.of(new HandlerFloorData("CONSOLE", "INFO"), new HandlerFloorData("FILE", "DEBUG")));
 
-        run(Commands.setLevel("com.acme", "TRACE", null, "SESSION", 0L, false, false));
+        run(Commands.setLogger("com.acme", "TRACE", null, "SESSION", 0L, false, false));
 
         String text = output();
         assertTrue(text.contains("2 handlers"));
-        assertTrue(text.contains("logctl handler CONSOLE TRACE"));
-        assertTrue(text.contains("logctl handler FILE TRACE"));
+        assertTrue(text.contains("logctl set handler CONSOLE TRACE"));
+        assertTrue(text.contains("logctl set handler FILE TRACE"));
     }
 
     @Test
@@ -427,7 +427,7 @@ class CommandsTest {
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(
                 "com.acme", "DEBUG", null, Instant.now().toString(), "jmx", "SESSION", null), List.of());
 
-        run(Commands.setLevel("com.acme", "DEBUG", null, "SESSION", 0L, false, false));
+        run(Commands.setLogger("com.acme", "DEBUG", null, "SESSION", 0L, false, false));
 
         assertFalse(output().contains("WARN"));
     }
@@ -438,12 +438,12 @@ class CommandsTest {
                 "com.acme", "TRACE", null, "2026-08-25T00:00:00Z", "jmx", "SESSION", null),
                 List.of(new HandlerFloorData("CONSOLE", "INFO")));
 
-        run(Commands.setLevel("com.acme", "TRACE", null, "SESSION", 0L, false, true));
+        run(Commands.setLogger("com.acme", "TRACE", null, "SESSION", 0L, false, true));
 
         assertTrue(output().contains("\"warnings\":[{\"handlerRef\":\"CONSOLE\",\"currentLevel\":\"INFO\"}]"));
     }
 
-    // --- setLevel on a pattern: one-time selection (doc/specs/pattern-selection-semantics.md) -
+    // --- setLogger on a pattern: one-time selection (doc/specs/pattern-selection-semantics.md) -
 
     @Test
     void setLevel_pattern_confirmedViaYesFlag_appliesWithoutPrompting() {
@@ -452,7 +452,7 @@ class CommandsTest {
                 "org.apache.Worker", "DEBUG", null, Instant.now().toString(), "jmx", "SESSION", null),
                 List.of());
 
-        int exit = run(Commands.setLevel("*.Worker", "DEBUG", null, "SESSION", 0L, true, false));
+        int exit = run(Commands.setLogger("*.Worker", "DEBUG", null, "SESSION", 0L, true, false));
 
         assertEquals(CliError.OK, exit);
         Object[] call = mbean.setLevelCalls.get(0);
@@ -468,7 +468,7 @@ class CommandsTest {
                 "org.apache.Worker", "DEBUG", null, Instant.now().toString(), "jmx", "SESSION", null),
                 List.of());
 
-        int exit = run(Commands.setLevel("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "y", true);
+        int exit = run(Commands.setLogger("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "y", true);
 
         assertEquals(CliError.OK, exit);
         String text = output();
@@ -480,7 +480,7 @@ class CommandsTest {
 
     @Test
     void setLevel_pattern_interactiveTypedN_declinesWithoutCallingSetLevel() {
-        int exit = run(Commands.setLevel("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "n", true);
+        int exit = run(Commands.setLogger("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "n", true);
 
         assertEquals(CliError.OK, exit);
         assertTrue(mbean.setLevelCalls.isEmpty(), "declining must never reach the server");
@@ -492,7 +492,7 @@ class CommandsTest {
         // Decision #4: fail fast rather than block forever on a read from a
         // stdin nothing will ever write to.
         CliError error = org.junit.jupiter.api.Assertions.assertThrows(CliError.class,
-                () -> run(Commands.setLevel("*.Worker", "DEBUG", null, "SESSION", 0L, false, false)));
+                () -> run(Commands.setLogger("*.Worker", "DEBUG", null, "SESSION", 0L, false, false)));
 
         assertEquals(CliError.USAGE, error.exitCode());
         String message = error.getMessage();
@@ -507,7 +507,7 @@ class CommandsTest {
     void setLevel_pattern_zeroCurrentMatches_printsNothingToSet() {
         mbean.setLevelResult = new SetLevelResultData(List.of(), List.of());
 
-        int exit = run(Commands.setLevel("*.brandnew", "DEBUG", null, "SESSION", 0L, true, false));
+        int exit = run(Commands.setLogger("*.brandnew", "DEBUG", null, "SESSION", 0L, true, false));
 
         assertEquals(CliError.OK, exit);
         assertTrue(output().contains("matches no currently-known logger; nothing to set."), output());
@@ -522,7 +522,7 @@ class CommandsTest {
                         "jmx", "SESSION", null)),
                 List.of());
 
-        run(Commands.setLevel("*.A", "DEBUG", null, "SESSION", 0L, true, false));
+        run(Commands.setLogger("*.A", "DEBUG", null, "SESSION", 0L, true, false));
 
         String text = output();
         assertTrue(text.contains("org.apache.A → DEBUG"), text);
@@ -536,7 +536,7 @@ class CommandsTest {
                         "jmx", "SESSION", null)),
                 List.of());
 
-        run(Commands.setLevel("*.A", "DEBUG", null, "SESSION", 0L, true, true));
+        run(Commands.setLogger("*.A", "DEBUG", null, "SESSION", 0L, true, true));
 
         String text = output().strip();
         assertTrue(text.startsWith("{\"overrides\":[{"), text);
@@ -549,7 +549,7 @@ class CommandsTest {
         // before confirmation is even evaluated, whether or not --yes was
         // passed and whether or not the call is interactive.
         RuntimeException e = org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class,
-                () -> run(Commands.setLevel("org.apache.*", "DEBUG", null, "SESSION", 0L, false, false)));
+                () -> run(Commands.setLogger("org.apache.*", "DEBUG", null, "SESSION", 0L, false, false)));
 
         assertTrue(e.getMessage().contains("trailing wildcard"), e.getMessage());
         assertFalse(output().contains("Apply? [y/N]"), "no preview is ever shown for a trailing-star target");
@@ -673,7 +673,7 @@ class CommandsTest {
         String text = output();
         assertTrue(text.contains("WARN: handler CONSOLE is now INFO and will drop DEBUG records from "
                 + "com.acme.Worker."), text);
-        assertTrue(text.contains("logctl handler CONSOLE DEBUG"), text);
+        assertTrue(text.contains("logctl set handler CONSOLE DEBUG"), text);
     }
 
     @Test
@@ -689,7 +689,7 @@ class CommandsTest {
         assertTrue(text.contains("will drop records from 2 loggers"), text);
         assertTrue(text.contains("com.acme.Worker"), text);
         assertTrue(text.contains("com.acme.Payments"), text);
-        assertTrue(text.contains("logctl handler CONSOLE TRACE"), text); // most verbose of DEBUG/TRACE
+        assertTrue(text.contains("logctl set handler CONSOLE TRACE"), text); // most verbose of DEBUG/TRACE
     }
 
     @Test

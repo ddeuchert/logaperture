@@ -59,13 +59,13 @@ class LevelControlServiceTest {
         return new LevelControlService(adapter, baselines, overrides, policy, auditLog, stateStore, "alice", "jmx");
     }
 
-    // --- setLevel / resetLevel / resetAll round-trip -----------------------------------------
+    // --- setLogger / resetLevel / resetAll round-trip -----------------------------------------
 
     @Test
     void setLevel_onExistingLogger_appliesAndRecordsOverride() {
         adapter.addKnownLogger("com.acme.Worker");
 
-        LevelOverride override = service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.withReason("INC-1")).overrides().get(0);
+        LevelOverride override = service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.withReason("INC-1")).overrides().get(0);
 
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme.Worker"));
         assertEquals("com.acme.Worker", override.loggerName());
@@ -82,7 +82,7 @@ class LevelControlServiceTest {
         HandlerRef console = new HandlerRef("CONSOLE");
         adapter.addHandler(console, Level.INFO, "com.acme.Worker");
 
-        SetLevelResult result = service.setLevel("com.acme.Worker", Level.TRACE, SetLevelOptions.defaults());
+        SetLevelResult result = service.setLogger("com.acme.Worker", Level.TRACE, SetLevelOptions.defaults());
 
         assertEquals(1, result.blockingHandlers().size());
         assertEquals(console, result.blockingHandlers().get(0).handlerRef());
@@ -101,7 +101,7 @@ class LevelControlServiceTest {
         HandlerRef fileOnOtherOnly = new HandlerRef("FILE");
         adapter.addHandler(fileOnOtherOnly, Level.INFO, "com.other.Worker"); // not on "com.acme.Worker"'s own path
 
-        SetLevelResult result = service.setLevel(
+        SetLevelResult result = service.setLogger(
                 "*.Worker", Level.TRACE, SetLevelOptions.defaults().withConfirmed(true));
 
         assertEquals(1, result.blockingHandlers().size());
@@ -115,7 +115,7 @@ class LevelControlServiceTest {
         HandlerRef console = new HandlerRef("CONSOLE");
         adapter.addHandler(console, Level.INFO, "com.acme.Worker", "com.other.Worker"); // on both paths
 
-        SetLevelResult result = service.setLevel(
+        SetLevelResult result = service.setLogger(
                 "*.Worker", Level.TRACE, SetLevelOptions.defaults().withConfirmed(true));
 
         assertEquals(1, result.blockingHandlers().size(), "reported once, not once per match");
@@ -135,7 +135,7 @@ class LevelControlServiceTest {
         adapter.addHandlerWithPerTargetLevel(allHandlers, Level.INFO, "com.acme.Worker");
         adapter.addHandlerWithPerTargetLevel(allHandlers, Level.WARN, "com.other.Worker"); // stricter
 
-        SetLevelResult result = service.setLevel(
+        SetLevelResult result = service.setLogger(
                 "*.Worker", Level.TRACE, SetLevelOptions.defaults().withConfirmed(true));
 
         assertEquals(1, result.blockingHandlers().size());
@@ -148,7 +148,7 @@ class LevelControlServiceTest {
         adapter.addKnownLogger("com.acme.Worker");
         adapter.addHandler(new HandlerRef("CONSOLE"), Level.TRACE, "com.acme.Worker");
 
-        SetLevelResult result = service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
+        SetLevelResult result = service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
 
         assertTrue(result.blockingHandlers().isEmpty());
     }
@@ -158,7 +158,7 @@ class LevelControlServiceTest {
         adapter.setConfiguredLevel("com.acme.Worker", Level.DEBUG);
         adapter.addHandler(new HandlerRef("CONSOLE"), Level.INFO, "com.acme.Worker");
 
-        SetLevelResult result = service.setLevel("com.acme.Worker", Level.WARN, SetLevelOptions.defaults());
+        SetLevelResult result = service.setLogger("com.acme.Worker", Level.WARN, SetLevelOptions.defaults());
 
         assertTrue(result.blockingHandlers().isEmpty(), "WARN is less verbose than DEBUG -- not a raise");
     }
@@ -166,7 +166,7 @@ class LevelControlServiceTest {
     @Test
     void setLevel_onNotYetExistingLogger_stillWorks() {
         // "com.acme.Later" was never registered with the adapter beforehand.
-        LevelOverride override = service.setLevel("com.acme.Later", Level.TRACE, SetLevelOptions.defaults()).overrides().get(0);
+        LevelOverride override = service.setLogger("com.acme.Later", Level.TRACE, SetLevelOptions.defaults()).overrides().get(0);
 
         assertEquals(Level.TRACE, adapter.effectiveLevel("com.acme.Later"));
         assertEquals(Level.TRACE, override.level());
@@ -174,8 +174,8 @@ class LevelControlServiceTest {
 
     @Test
     void setLevel_calledTwice_replacesRatherThanDuplicates() {
-        service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
-        service.setLevel("com.acme.Worker", Level.WARN, SetLevelOptions.defaults());
+        service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
+        service.setLogger("com.acme.Worker", Level.WARN, SetLevelOptions.defaults());
 
         assertEquals(Level.WARN, overrides.get("com.acme.Worker").orElseThrow().level());
         assertEquals(Level.WARN, adapter.effectiveLevel("com.acme.Worker"));
@@ -189,7 +189,7 @@ class LevelControlServiceTest {
     @Test
     void resetLevel_revertsToBaselineAndRemovesOverride() {
         adapter.setConfiguredLevel("com.acme.Worker", Level.WARN);
-        service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
+        service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
 
         service.resetLogger("com.acme.Worker", false);
 
@@ -200,7 +200,7 @@ class LevelControlServiceTest {
     @Test
     void resetLevel_baselineWasInherited_clearsToInherited() {
         // No explicit configured level for this logger -- baseline is "inherited".
-        service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
+        service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
 
         service.resetLogger("com.acme.Worker", false);
 
@@ -209,8 +209,8 @@ class LevelControlServiceTest {
 
     @Test
     void resetAll_revertsEveryActiveOverride() {
-        service.setLevel("com.acme.A", Level.DEBUG, SetLevelOptions.defaults());
-        service.setLevel("com.acme.B", Level.TRACE, SetLevelOptions.defaults());
+        service.setLogger("com.acme.A", Level.DEBUG, SetLevelOptions.defaults());
+        service.setLogger("com.acme.B", Level.TRACE, SetLevelOptions.defaults());
 
         service.resetAllLoggers(false);
 
@@ -223,8 +223,8 @@ class LevelControlServiceTest {
     void resetAll_persistsInOneBatchedRewrite() {
         // doc/specs/persistence.md "Batch removal" (issue #17): reverting several
         // overrides in one resetAll call should be one state-store write, not one per logger.
-        service.setLevel("com.acme.A", Level.DEBUG, SetLevelOptions.withReason("r"));
-        service.setLevel("com.acme.B", Level.TRACE, SetLevelOptions.withReason("r"));
+        service.setLogger("com.acme.A", Level.DEBUG, SetLevelOptions.withReason("r"));
+        service.setLogger("com.acme.B", Level.TRACE, SetLevelOptions.withReason("r"));
 
         service.resetAllLoggers(false);
 
@@ -239,7 +239,7 @@ class LevelControlServiceTest {
         adapter.addKnownLogger("com.other.Worker");
         adapter.addKnownLogger("com.other.Thing");
 
-        service.setLevel("*.Worker", Level.DEBUG, SetLevelOptions.withReason("reason").withConfirmed(true));
+        service.setLogger("*.Worker", Level.DEBUG, SetLevelOptions.withReason("reason").withConfirmed(true));
 
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme.Worker"));
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.other.Worker"));
@@ -254,7 +254,7 @@ class LevelControlServiceTest {
     void setLevel_exactName_doesNotTouchDescendants() {
         adapter.addKnownLogger("com.acme.http");
 
-        service.setLevel("com.acme", Level.DEBUG, SetLevelOptions.defaults());
+        service.setLogger("com.acme", Level.DEBUG, SetLevelOptions.defaults());
 
         assertTrue(overrides.get("com.acme.http").isEmpty());
     }
@@ -264,7 +264,7 @@ class LevelControlServiceTest {
         adapter.addKnownLogger("org.apache.tomcat");
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> service.setLevel("org.apache.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true)));
+                () -> service.setLogger("org.apache.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true)));
 
         assertTrue(e.getMessage().contains("org.apache.*"), e.getMessage());
         assertTrue(e.getMessage().contains("org.apache"), e.getMessage());
@@ -275,7 +275,7 @@ class LevelControlServiceTest {
     @Test
     void setLevel_leadingAndTrailingWildcard_isRejectedTheSameWay() {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> service.setLevel("*.apache.tomcat.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true)));
+                () -> service.setLogger("*.apache.tomcat.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true)));
 
         // A code-review finding against an earlier version of this message:
         // stripping only the trailing ".*" leaves "*.apache.tomcat", which
@@ -294,31 +294,31 @@ class LevelControlServiceTest {
     }
 
     @Test
-    void setLevel_trailingWildcard_suggestsTheDedicatedLevelSubcommand() {
+    void setLevel_trailingWildcard_suggestsSetLoggerOnTheAncestor() {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> service.setLevel("org.apache.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true)));
+                () -> service.setLogger("org.apache.*", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true)));
 
-        assertTrue(e.getMessage().contains("run 'logctl debug org.apache' instead"), e.getMessage());
+        assertTrue(e.getMessage().contains("run 'logctl set logger org.apache DEBUG' instead"), e.getMessage());
     }
 
     @Test
-    void setLevel_trailingWildcard_withAllOrOff_suggestsTheGenericSetCommand() {
-        // Level.ALL/OFF have no dedicated `logctl <level>` subcommand -- a
-        // code-review finding: the rejection message used to always suggest
-        // "logctl <level-name> <ancestor>", which for ALL/OFF names a
-        // subcommand that doesn't exist ("logctl all ...").
+    void setLevel_trailingWildcard_withAllOrOff_suggestsSetLoggerOnTheAncestor() {
+        // Level.ALL/OFF have no level-named verb even historically -- slice
+        // 2 of #42 retired those verbs entirely, so every level (including
+        // ALL/OFF) now gets the same "logctl set logger <ancestor> <LEVEL>"
+        // suggestion, uniformly.
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> service.setLevel("org.apache.*", Level.ALL, SetLevelOptions.defaults().withConfirmed(true)));
+                () -> service.setLogger("org.apache.*", Level.ALL, SetLevelOptions.defaults().withConfirmed(true)));
 
-        assertTrue(e.getMessage().contains("run 'logctl set org.apache ALL' instead"), e.getMessage());
+        assertTrue(e.getMessage().contains("run 'logctl set logger org.apache ALL' instead"), e.getMessage());
     }
 
     @Test
     void resetLevel_trailingWildcard_isUnaffectedByTheSetLevelRejection() {
-        // Same string setLevel rejects -- reset keeps full selection
+        // Same string setLogger rejects -- reset keeps full selection
         // semantics for both wildcard shapes (Decision #5).
         adapter.addKnownLogger("org.apache.tomcat");
-        service.setLevel("org.apache.tomcat", Level.DEBUG, SetLevelOptions.defaults());
+        service.setLogger("org.apache.tomcat", Level.DEBUG, SetLevelOptions.defaults());
 
         ResetOutcome outcome = service.resetLogger("org.apache.*", false);
 
@@ -340,7 +340,7 @@ class LevelControlServiceTest {
         // The direct negative of the old standing-rule assertion: nothing is
         // left running that would ever reach for a logger created later.
         adapter.addKnownLogger("com.acme.Worker");
-        service.setLevel("*.Worker", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
+        service.setLogger("*.Worker", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
 
         adapter.addKnownLogger("com.other.Worker");
 
@@ -354,9 +354,9 @@ class LevelControlServiceTest {
         // "Precedence, retired") -- a pattern-based set no longer special-
         // cases a match that already carries its own override.
         adapter.addKnownLogger("com.acme.Worker");
-        service.setLevel("com.acme.Worker", Level.WARN, SetLevelOptions.sticky());
+        service.setLogger("com.acme.Worker", Level.WARN, SetLevelOptions.sticky());
 
-        service.setLevel("*.Worker", Level.TRACE, SetLevelOptions.defaults().withConfirmed(true));
+        service.setLogger("*.Worker", Level.TRACE, SetLevelOptions.defaults().withConfirmed(true));
 
         assertEquals(Level.TRACE, overrides.get("com.acme.Worker").orElseThrow().level());
         assertEquals(Level.TRACE, adapter.effectiveLevel("com.acme.Worker"));
@@ -368,8 +368,8 @@ class LevelControlServiceTest {
     void resetLevel_pattern_revertsEveryCurrentlyOverriddenMatch() {
         adapter.addKnownLogger("com.acme.http");
         adapter.addKnownLogger("com.acme.db");
-        service.setLevel("*.http", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
-        service.setLevel("*.db", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
+        service.setLogger("*.http", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
+        service.setLogger("*.db", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
 
         var outcome = service.resetLogger("com.acme.*", false);
 
@@ -385,7 +385,7 @@ class LevelControlServiceTest {
         // match it still finds and reverts it (doc/specs/
         // pattern-selection-semantics.md "Operations").
         adapter.addKnownLogger("org.apache.tomcat");
-        service.setLevel("org.apache.tomcat", Level.DEBUG, SetLevelOptions.defaults());
+        service.setLogger("org.apache.tomcat", Level.DEBUG, SetLevelOptions.defaults());
 
         var outcome = service.resetLogger("org.apache.*", false);
 
@@ -415,7 +415,7 @@ class LevelControlServiceTest {
         LevelControlService denied = newService(capability -> capability != Capability.LEVEL_RAISE);
 
         assertThrows(CapabilityDeniedException.class,
-                () -> denied.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults()));
+                () -> denied.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults()));
 
         assertEquals(Level.INFO, adapter.effectiveLevel("com.acme.Worker")); // unchanged
         assertTrue(overrides.get("com.acme.Worker").isEmpty());
@@ -428,7 +428,7 @@ class LevelControlServiceTest {
         LevelControlService denied = newService(capability -> capability != Capability.LEVEL_LOWER);
 
         assertThrows(CapabilityDeniedException.class,
-                () -> denied.setLevel("com.acme.Worker", Level.WARN, SetLevelOptions.defaults()));
+                () -> denied.setLogger("com.acme.Worker", Level.WARN, SetLevelOptions.defaults()));
 
         assertEquals(Level.DEBUG, adapter.effectiveLevel("com.acme.Worker"));
     }
@@ -446,7 +446,7 @@ class LevelControlServiceTest {
         LevelControlService denied = newService(capability -> capability != Capability.LEVEL_RAISE);
 
         assertThrows(CapabilityDeniedException.class,
-                () -> denied.setLevel("*.Legacy", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true)));
+                () -> denied.setLogger("*.Legacy", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true)));
 
         // The first match passed its own check but must NOT have been
         // mutated -- the whole batch is pre-checked before anything applies.
@@ -464,7 +464,7 @@ class LevelControlServiceTest {
         LevelControlService denied = newService(capability -> capability != Capability.PERSIST);
 
         assertThrows(CapabilityDeniedException.class,
-                () -> denied.setLevel("*.brandnew", Level.DEBUG,
+                () -> denied.setLogger("*.brandnew", Level.DEBUG,
                         SetLevelOptions.sticky().withConfirmed(true)));
 
         assertTrue(overrides.all().isEmpty());
@@ -477,7 +477,7 @@ class LevelControlServiceTest {
     void setLevel_writesMutationAuditRecordWithCorrectValues() {
         adapter.setConfiguredLevel("com.acme.Worker", Level.INFO);
 
-        service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.withReason("INC-1"));
+        service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.withReason("INC-1"));
 
         assertEquals(1, auditLog.records().size());
         AuditRecord record = auditLog.records().get(0);
@@ -493,7 +493,7 @@ class LevelControlServiceTest {
     @Test
     void resetLevel_writesReversionAuditRecord() {
         adapter.setConfiguredLevel("com.acme.Worker", Level.WARN);
-        service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
+        service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
 
         service.resetLogger("com.acme.Worker", false);
 
@@ -510,7 +510,7 @@ class LevelControlServiceTest {
         adapter.throwOnApply("com.acme.Worker");
 
         assertThrows(RuntimeException.class,
-                () -> service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults()));
+                () -> service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults()));
 
         assertTrue(overrides.get("com.acme.Worker").isEmpty());
         assertTrue(auditLog.records().isEmpty());
@@ -525,7 +525,7 @@ class LevelControlServiceTest {
         adapter.throwOnApply("b.Worker");
 
         assertThrows(RuntimeException.class,
-                () -> service.setLevel("*.Worker", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true)));
+                () -> service.setLogger("*.Worker", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true)));
 
         // The first match, processed before the throwing one, is applied and recorded.
         assertEquals(Level.DEBUG, adapter.effectiveLevel("a.Worker"));
@@ -543,7 +543,7 @@ class LevelControlServiceTest {
     void listLoggers_reflectsOverrideStateAndFilter() {
         adapter.addKnownLogger("com.acme.Worker");
         adapter.addKnownLogger("com.other.Thing");
-        service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.withReason("why"));
+        service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.withReason("why"));
 
         List<LoggerInfo> all = service.listLoggers("com.acme");
 
@@ -633,8 +633,8 @@ class LevelControlServiceTest {
     void activeOverrides_returnsEveryTrackedOverride() {
         adapter.addKnownLogger("com.acme.A");
         adapter.addKnownLogger("com.acme.B");
-        service.setLevel("com.acme.A", Level.DEBUG, SetLevelOptions.sticky());
-        service.setLevel("com.acme.B", Level.TRACE, SetLevelOptions.defaults());
+        service.setLogger("com.acme.A", Level.DEBUG, SetLevelOptions.sticky());
+        service.setLogger("com.acme.B", Level.TRACE, SetLevelOptions.defaults());
 
         List<LevelOverride> active = service.activeOverrides();
 
@@ -663,7 +663,7 @@ class LevelControlServiceTest {
     @Test
     void verifyAndReapply_reAppliesAnOverrideThatDrifted_andAuditsIt() {
         adapter.addKnownLogger("com.acme.Drift");
-        service.setLevel("com.acme.Drift", Level.DEBUG, SetLevelOptions.sticky());
+        service.setLogger("com.acme.Drift", Level.DEBUG, SetLevelOptions.sticky());
         adapter.applyLevel("com.acme.Drift", Level.INFO); // something reset it out from under us
 
         int reapplied = service.verifyAndReapply(java.time.Instant.now());
@@ -678,7 +678,7 @@ class LevelControlServiceTest {
     @Test
     void verifyAndReapply_isANoOpWhenEveryOverrideIsStillInForce() {
         adapter.addKnownLogger("com.acme.Steady");
-        service.setLevel("com.acme.Steady", Level.DEBUG, SetLevelOptions.sticky());
+        service.setLogger("com.acme.Steady", Level.DEBUG, SetLevelOptions.sticky());
         int auditBefore = auditLog.records().size();
 
         assertEquals(0, service.verifyAndReapply(java.time.Instant.now()));
@@ -688,7 +688,7 @@ class LevelControlServiceTest {
     @Test
     void verifyAndReapply_doesNotResurrectAnOverrideResetConcurrently() {
         adapter.addKnownLogger("com.acme.Raced");
-        service.setLevel("com.acme.Raced", Level.DEBUG, SetLevelOptions.sticky());
+        service.setLogger("com.acme.Raced", Level.DEBUG, SetLevelOptions.sticky());
 
         // A control-plane resetLogger lands while the sweep is reading this logger.
         // includeSticky=true -- this override was set STICKY above, and the
@@ -708,23 +708,23 @@ class LevelControlServiceTest {
     @Test
     void verifyAndReapply_honoursAnOverrideReplacedConcurrently() {
         adapter.addKnownLogger("com.acme.Swapped");
-        service.setLevel("com.acme.Swapped", Level.DEBUG, SetLevelOptions.sticky());
+        service.setLogger("com.acme.Swapped", Level.DEBUG, SetLevelOptions.sticky());
 
         adapter.runOnEffectiveLevel("com.acme.Swapped",
-                () -> service.setLevel("com.acme.Swapped", Level.TRACE, SetLevelOptions.defaults()));
+                () -> service.setLogger("com.acme.Swapped", Level.TRACE, SetLevelOptions.defaults()));
 
         int reapplied = service.verifyAndReapply(java.time.Instant.now());
 
         assertEquals(0, reapplied);
         assertEquals(Level.TRACE, overrides.get("com.acme.Swapped").orElseThrow().level());
         assertEquals(Level.TRACE, adapter.effectiveLevel("com.acme.Swapped"),
-                "the newer setLevel wins; the sweep did not shadow it with the stale level");
+                "the newer setLogger wins; the sweep did not shadow it with the stale level");
     }
 
     @Test
     void verifyAndReapply_leavesExpiredForOverridesForTheExpirySweep() {
         adapter.addKnownLogger("com.acme.Expired");
-        service.setLevel("com.acme.Expired", Level.DEBUG,
+        service.setLogger("com.acme.Expired", Level.DEBUG,
                 SetLevelOptions.forDuration(java.time.Duration.ofMillis(1)));
         adapter.applyLevel("com.acme.Expired", Level.INFO); // drifted
 
@@ -764,7 +764,7 @@ class LevelControlServiceTest {
         setUpServiceWithListener();
         adapter.addKnownLogger("com.acme.Worker");
 
-        serviceWithListener.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
+        serviceWithListener.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
 
         assertEquals(1, changeCount);
     }
@@ -773,7 +773,7 @@ class LevelControlServiceTest {
     void setLevel_firesTheListenerBeforeComputingBlockingHandlers() {
         // The ordering itself, not just that it fires: the listener runs a
         // recompute (a real AUTO handler would lower itself here) that must
-        // land before setLevel reads handler state for its own
+        // land before setLogger reads handler state for its own
         // blocking-handler answer -- doc/specs/handler-floor-control.md
         // "AUTO handler level", "Recompute trigger".
         adapter.addKnownLogger("com.acme.Worker");
@@ -784,7 +784,7 @@ class LevelControlServiceTest {
                 adapter, baselines, overrides, CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
                 lowerConsoleOnChange);
 
-        SetLevelResult result = withAutoLikeListener.setLevel("com.acme.Worker", Level.TRACE, SetLevelOptions.defaults());
+        SetLevelResult result = withAutoLikeListener.setLogger("com.acme.Worker", Level.TRACE, SetLevelOptions.defaults());
 
         assertTrue(result.blockingHandlers().isEmpty(),
                 "CONSOLE was already lowered by the listener before the floor check ran");
@@ -794,7 +794,7 @@ class LevelControlServiceTest {
     void resetLevel_firesTheChangeListener() {
         setUpServiceWithListener();
         adapter.addKnownLogger("com.acme.Worker");
-        serviceWithListener.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
+        serviceWithListener.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
         changeCount = 0;
 
         serviceWithListener.resetLogger("com.acme.Worker", false);
@@ -816,8 +816,8 @@ class LevelControlServiceTest {
         setUpServiceWithListener();
         adapter.addKnownLogger("a");
         adapter.addKnownLogger("b");
-        serviceWithListener.setLevel("a", Level.DEBUG, SetLevelOptions.defaults());
-        serviceWithListener.setLevel("b", Level.DEBUG, SetLevelOptions.defaults());
+        serviceWithListener.setLogger("a", Level.DEBUG, SetLevelOptions.defaults());
+        serviceWithListener.setLogger("b", Level.DEBUG, SetLevelOptions.defaults());
         changeCount = 0;
 
         serviceWithListener.resetAllLoggers(false);
@@ -830,7 +830,7 @@ class LevelControlServiceTest {
         setUpServiceWithListener();
         adapter.addKnownLogger("com.acme.Worker");
         java.time.Instant now = java.time.Instant.now();
-        serviceWithListener.setLevel("com.acme.Worker", Level.DEBUG,
+        serviceWithListener.setLogger("com.acme.Worker", Level.DEBUG,
                 new SetLevelOptions(null, java.time.Duration.ofMinutes(30), PersistenceTier.FOR, false));
         changeCount = 0;
 
@@ -846,9 +846,9 @@ class LevelControlServiceTest {
         adapter.addKnownLogger("com.acme.A");
         adapter.addKnownLogger("com.acme.B");
         java.time.Instant now = java.time.Instant.now();
-        serviceWithListener.setLevel("com.acme.A", Level.DEBUG,
+        serviceWithListener.setLogger("com.acme.A", Level.DEBUG,
                 new SetLevelOptions(null, java.time.Duration.ofMinutes(30), PersistenceTier.FOR, false));
-        serviceWithListener.setLevel("com.acme.B", Level.TRACE,
+        serviceWithListener.setLogger("com.acme.B", Level.TRACE,
                 new SetLevelOptions(null, java.time.Duration.ofMinutes(30), PersistenceTier.FOR, false));
 
         serviceWithListener.sweepExpiredOverrides(now.plus(java.time.Duration.ofMinutes(31)));
@@ -861,7 +861,7 @@ class LevelControlServiceTest {
     void sweepExpiredOverrides_nothingExpired_doesNotFireTheChangeListener() {
         setUpServiceWithListener();
         adapter.addKnownLogger("com.acme.Worker");
-        serviceWithListener.setLevel("com.acme.Worker", Level.DEBUG,
+        serviceWithListener.setLogger("com.acme.Worker", Level.DEBUG,
                 new SetLevelOptions(null, java.time.Duration.ofMinutes(30), PersistenceTier.FOR, false));
         changeCount = 0;
 

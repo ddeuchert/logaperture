@@ -20,9 +20,10 @@ After this feature, the user will be able to:
 - List loggers and their levels: `logctl levels`, optionally filtered by a name prefix
   or a leading/trailing `*` pattern — `logctl levels *.infinispan` when the log line
   shows only the short category name.
-- Raise or lower a logger with a single dictatable command: `logctl debug com.acme.batch`,
-  `logctl debug com.acme.batch for 30m`, `logctl warn com.acme.chatty sticky`,
-  `logctl set com.acme.batch TRACE for 2h --reason INC-123`.
+- Raise or lower a logger with a single dictatable command: `logctl set logger
+  com.acme.batch DEBUG`, `logctl set logger com.acme.batch DEBUG for 30m`, `logctl set
+  logger com.acme.chatty WARN sticky`, `logctl set logger com.acme.batch TRACE for 2h
+  --reason INC-123` (see [`set-command-surface.md`](set-command-surface.md)).
 - See what is currently overridden, in which tier, and when each one reverts:
   `logctl status`.
 - Clear an override: `logctl reset logger com.acme.batch` for one logger, `logctl reset
@@ -93,10 +94,10 @@ code to the agent beyond a single marker system property (below).
   symmetry that also retires the rule, one audit record per matched logger, a capability
   check per match) are still open — see §18.7. Until it lands, the workflow is `logctl
   levels *.infinispan` to find the category, then `set` on the resolved name.
-- **`set`/`list` namespacing** (slices 2 and 3 of [#42](https://github.com/ddeuchert/logaperture/issues/42)
-  — `set logger`/`set handler`, `list loggers`/`list handlers` replacing `levels`/`handlers`,
-  retiring the `debug`/`trace`/`info`/`warn`/`error` level-named verbs). The reset half of
-  #42 (slice 1) is shipped — see "Command surface" below.
+- **`list` namespacing** (slice 3 of [#42](https://github.com/ddeuchert/logaperture/issues/42)
+  — `list loggers`/`list handlers` replacing `levels`/`handlers`). The reset half of #42
+  (slice 1) is shipped — see "Command surface" below. `set logger`/`set handler` (slice 2)
+  is shipped too: [`set-command-surface.md`](set-command-surface.md).
 - **Shell completion over live logger names** (§14.5). High-value, but it's a separate
   deliverable: completion scripts for bash/zsh/fish plus a fast name-only query path.
   `logctl levels --json` is the data source it will consume.
@@ -190,7 +191,7 @@ existing operation, unchanged by this slice.
 | `--pid <n>` | all | Target this PID; skip discovery. |
 | `--json` | all | Emit machine-readable JSON instead of a table. |
 | `--reason <text>` | mutating commands | Passed through as the override's `reason` (§5, §9.7). Optional; not enforced. |
-| `--include-children` | — | **Superseded (shipped).** §18.7 / [#41](https://github.com/ddeuchert/logaperture/issues/41) dropped this flag from the operations API entirely (this row is stale — not updated at the time #41 shipped). No trailing-wildcard replacement takes its place either: [`pattern-selection-semantics.md`](pattern-selection-semantics.md) (issue #49) makes a trailing-wildcard `set` target a usage error, so `logctl debug org.apache` alone now covers `org.apache` and every descendant, via the logging framework's own level-inheritance. |
+| `--include-children` | — | **Superseded (shipped).** §18.7 / [#41](https://github.com/ddeuchert/logaperture/issues/41) dropped this flag from the operations API entirely (this row is stale — not updated at the time #41 shipped). No trailing-wildcard replacement takes its place either: [`pattern-selection-semantics.md`](pattern-selection-semantics.md) (issue #49) makes a trailing-wildcard `set` target a usage error, so `logctl set logger org.apache DEBUG` alone now covers `org.apache` and every descendant, via the logging framework's own level-inheritance. |
 | `--version` | — | Print the CLI's version and exit 0. |
 | `-h`, `--help` | — | Print usage and exit 0. |
 
@@ -225,72 +226,34 @@ type's own getter names: `name`, `configuredLevel`, `effectiveLevel`, `overrideA
 `overrideSource`, `overrideReason`, `tier`, `expiresAt` (the last two are `null` unless an
 override is active, and `expiresAt` is `null` for a non-`FOR` override).
 
-### `logctl set <logger> <level> [tier]` and the level-named forms
+### `logctl set logger`/`set handler` and the retired level-named forms
 
-`logctl set com.acme.batch DEBUG` is the explicit form. `logctl debug com.acme.batch` and
-its siblings (`trace`, `info`, `warn`, `error`) are sugar for `set <logger> <that level>`
-— the phone-test forms from §14.5. `<level>` is matched against LogAperture's `Level`
-enum case-insensitively; an unknown level is a usage error (exit 2).
-
-**Tier token** — the optional trailing `[tier]`:
-
-| Written | Resulting `SetLevelOptions` |
-|---|---|
-| *(omitted)* | `tier = FOR`, `expiresIn = 4h` |
-| `session` | `tier = SESSION` |
-| `for <duration>` | `tier = FOR`, `expiresIn = <duration>` |
-| `sticky` | `tier = STICKY` |
-
-The omitted case defaults to **`FOR 4h`**. The parent spec's §14.5 originally put this at
-15 minutes; this slice raises it, because 15 minutes is a *support-call* window and the
-CLI's primary user is a developer (§14.5's own framing — "CLI ergonomics are the product",
-competing against "four seconds of typing a println"). A developer sets DEBUG and then
-works: reproduces the bug, reads the output, changes code, rebuilds, tries again. Fifteen
-minutes forces them to re-issue the command mid-investigation — exactly the friction that
-sends people back to `println`. Four hours covers a typical working session and still
-guarantees the override is gone by the next morning, so the "careless path resolves
-itself" property §6.1 wants is intact — it just resolves on a session timescale instead of
-a phone-call one. `--for` remains the default tier (§6.1); `session` must be asked for by
-name; `sticky` is still the only tier with no expiry at all.
-
-This means the common path exercises the `persist` capability (Feature 2) — consistent
-with §6.1's intent and fine under this slice's all-granted local policy; hardened-policy
-implications, including §9.4's sealed-at-boot *maximum* permitted duration (4h is well
-inside any plausible ceiling), are §9.11's concern for a later milestone.
-
-**Duration grammar:** `^\d+(s|m|h|d)$` — an integer and one unit suffix, no spaces inside
-the token, no punctuation. `30m`, `2h`, `90s`, `1d`. Zero and bare integers are usage
-errors (matches `SetLevelOptions`'s "FOR requires a positive `expiresIn`" validation).
-`for` with no following duration is a usage error. `session` or `sticky` followed by a
-duration is a usage error.
-
-The over-the-wire call is `setLevel(logger, level, includeChildren, reason, tierName,
-forSeconds)` — the signature Feature 2 already put on the MXBean; `forSeconds` is
-`Duration.ofX(...).toSeconds()` for `for`, `0` otherwise.
-
-> **Superseded (shipped, then changed again).** §18.7 / [#41](https://github.com/ddeuchert/logaperture/issues/41)
-> dropped `includeChildren` from this signature once its replacement (the standing-rule apply
-> mechanism) shipped (this row wasn't updated at the time). An MXBean parameter removal, not
-> additive, so top-level §11.1's component-versioning policy applies — moot pre-1.0, but worth
-> calling out explicitly rather than incidentally. **Further update:**
-> [`pattern-selection-semantics.md`](pattern-selection-semantics.md) (issue #49) has since retired
-> the standing-rule mechanism that replaced `includeChildren` — a trailing-wildcard target is now
-> a usage error on `set`, not a fan-out; `logctl debug org.apache` alone (no wildcard at all) is
-> what covers "this logger's descendants," via the framework's own inheritance rather than any
-> LogAperture mechanism.
-
-**Confirmation line** (stdout, exit 0):
+**Superseded (shipped).** The bare `logctl set <logger> <level>` / level-named-verb
+(`debug`/`trace`/`info`/`warn`/`error`) / bare `logctl handler <name> <level>` surface this
+section originally specced is retired — [`set-command-surface.md`](set-command-surface.md)
+(issue #42, slice 2) replaces it with two namespace-scoped forms:
 
 ```
-com.acme.batch.Worker → DEBUG   (FOR, reverts 15:42:00 local — in 30m)
-com.acme.chatty       → WARN    (STICKY — until reset)
-com.acme.batch.Worker → DEBUG   (SESSION — until the JVM stops)
+logctl set logger <target> <level> [tier]
+logctl set handler <name> <level>|AUTO [tier]
 ```
 
-The revert time is rendered from the returned `LevelOverrideData.expiresAt` (an ISO-8601
-string, `null` for `SESSION`/`STICKY`), parsed and shown in the CLI host's local zone with
-a relative hint. `--json` emits the `LevelOverrideData` getters instead: `loggerName`,
-`level`, `includeChildren`, `reason`, `appliedAt`, `source`, `tier`, `expiresAt`.
+`set logger <target> <level>` is the direct descendant of this section's old `set
+<logger> <level>`; the level-named verbs are retired entirely, no alias kept.
+`set handler <name> <level>`/`AUTO` is the direct descendant of the old bare `handler
+<name> <level>`/`AUTO` (`handler <name> reset` had already left in slice 1, in favor of
+`reset handler <name>` — nothing remains under a bare `handler` verb after slice 2).
+Every tier, duration, `--reason`, and pattern-preview/confirm behavior below carries over
+unchanged — only the command's noun changed, not what it does once parsed. Full
+command-by-command output shapes and design rationale:
+[`set-command-surface.md`](set-command-surface.md).
+
+`logctl set logger com.acme.batch DEBUG` is the explicit form. `<level>` is matched
+against LogAperture's `Level` enum case-insensitively; an unknown level is a usage error
+(exit 2). The tier grammar (`FOR 4h` default, `session`, `for <duration>`, `sticky`),
+duration syntax, confirmation-line rendering, and `--json` shape are all unchanged from
+this section's original design and are documented in full in
+[`set-command-surface.md`](set-command-surface.md) rather than duplicated here.
 
 ### `logctl status`
 
@@ -345,9 +308,9 @@ phone line without the customer mistyping it. Every command *synopsis* line in `
 output (the `logctl …` usage forms, not the surrounding prose or the sample confirmation
 output, which necessarily shows `→` and clock times) is checked, in a test, to contain
 none of `:` `=` `(` `)` `/` — a crude but sufficient automated proxy (the same way
-`persistence.md`'s lock-collision test pins a prose claim to a check). `logctl debug
-com.acme.batch for 30m` passes; a hypothetical `logctl set --logger=com.acme` would not,
-and the test would catch it.
+`persistence.md`'s lock-collision test pins a prose claim to a check). `logctl set logger
+com.acme.batch DEBUG for 30m` passes; a hypothetical `logctl set --logger=com.acme` would
+not, and the test would catch it.
 
 ## Output and exit codes
 
@@ -583,8 +546,8 @@ shallow cross-process integration test.
 From a plain shell, against a `java -jar` application started with
 `-javaagent:logaperture-agent.jar` and nothing else special:
 
-- `logctl debug com.acme.batch.Worker for 30m --reason INC-123` finds that JVM with no
-  PID argument, sets the level, and prints the local-time revert instant.
+- `logctl set logger com.acme.batch.Worker DEBUG for 30m --reason INC-123` finds that JVM
+  with no PID argument, sets the level, and prints the local-time revert instant.
 - `logctl status` shows that override with its tier and countdown.
 - `logctl levels com.acme` lists the package's loggers with configured vs effective
   levels; `logctl levels '*Worker'` finds the same logger from its suffix alone (the glob

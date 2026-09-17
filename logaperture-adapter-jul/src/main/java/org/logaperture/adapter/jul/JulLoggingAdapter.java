@@ -224,7 +224,7 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         if (!isJBossLogManager() || !anyTokenBlocker) {
             // Plain JUL, or every blocking handler resolved to a configured
             // name (issue #14) -- keep the per-handler warning, one actionable
-            // `logctl handler <name>` command each.
+            // `logctl set handler <name>` command each.
             return List.copyOf(floors);
         }
         // At least one blocking handler still can't be named individually
@@ -334,7 +334,7 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      * populated {@link #handlersByRef} via {@link #refFor} — but {@code
      * setHandlerLevel}/{@code handlerLevel} must also work as the very first
      * call this adapter instance ever sees for that handler (a user typing
-     * {@code logctl handler CONSOLE TRACE} cold, with no prior warning in
+     * {@code logctl set handler CONSOLE TRACE} cold, with no prior warning in
      * this session), when the cache is empty. In that case, fall back to
      * walking every known handler once — which populates the cache as a
      * side effect via {@link #refFor} — before giving up. On WildFly the

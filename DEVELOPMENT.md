@@ -92,8 +92,8 @@ mvn -q -pl logaperture-cli -am package -DskipTests     # build the CLI jar
 
 logaperture-cli/bin/logctl levels [filter]             # list loggers + effective levels
 logaperture-cli/bin/logctl status                      # active overrides
-logaperture-cli/bin/logctl debug <logger> [tier]       # also: trace | info | warn | error
-logaperture-cli/bin/logctl set   <logger> <level> [tier]
+logaperture-cli/bin/logctl set logger <logger> <level> [tier]
+logaperture-cli/bin/logctl set handler <name> <level>  # also: set handler <name> AUTO
 logaperture-cli/bin/logctl reset logger <logger>       # also: reset loggers | reset handler <name> | reset handlers
 ```
 
@@ -125,7 +125,7 @@ then blocks on stdin until you press Enter.
    runs under the debugger from the first instruction, so a `premain` breakpoint
    binds before `premain` runs; no suspend dance needed).
 3. Drive it from a terminal: `logctl levels org.logaperture.agent.it.fixture`,
-   `logctl debug org.logaperture.agent.it.fixture.Worker`, etc. `FixtureApp` only
+   `logctl set logger org.logaperture.agent.it.fixture.Worker DEBUG`, etc. `FixtureApp` only
    logs once, so confirm changes with `logctl levels` / `status`, not console
    output.
 
@@ -223,8 +223,8 @@ python3 dev/wildfly/wildflyctl.py tail &        # stream the log + [logaperture-
 
 # raise the logger past CONSOLE's INFO floor -- the warning names the
 # reserved ALL_HANDLERS ref, not an individual handler
-python3 dev/wildfly/wildflyctl.py logctl -- trace org.logaperture.sample.work.Worker
-#   WARN: handler ALL_HANDLERS is at INFO ... logctl handler ALL_HANDLERS TRACE
+python3 dev/wildfly/wildflyctl.py logctl -- set logger org.logaperture.sample.work.Worker TRACE
+#   WARN: handler ALL_HANDLERS is at INFO ... logctl set handler ALL_HANDLERS TRACE
 
 curl http://localhost:8080/logaperture-sample-war/log      # TRACE/DEBUG lines still suppressed
 

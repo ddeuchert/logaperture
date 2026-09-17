@@ -47,7 +47,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * The literal spec exit criterion (doc/specs/level-control.md): {@code
- * listLoggers}/{@code setLevel}/{@code resetLogger}/{@code resetAllLoggers} work
+ * listLoggers}/{@code setLogger}/{@code resetLogger}/{@code resetAllLoggers} work
  * end-to-end over JMX against a real {@code java -jar} process running
  * Logback, with {@code -javaagent:} attached, run cross-process rather than
  * simulated.
@@ -105,7 +105,7 @@ class LevelControlEndToEndIT {
         assertTrue(byGlob.stream().anyMatch(li -> FIXTURE_LOGGER.equals(li.getName())),
                 "leading-* glob should have matched " + FIXTURE_LOGGER);
 
-        SetLevelResultData result = proxy.setLevel(FIXTURE_LOGGER, "DEBUG", "e2e-test", "SESSION", 0, false);
+        SetLevelResultData result = proxy.setLogger(FIXTURE_LOGGER, "DEBUG", "e2e-test", "SESSION", 0, false);
         assertEquals("DEBUG", result.getOverrides().get(0).getLevel());
         assertEquals(FIXTURE_LOGGER, result.getOverrides().get(0).getLoggerName());
         assertTrue(result.getBlockingHandlers().isEmpty(), "Logback has no handler floors to report");
@@ -160,13 +160,13 @@ class LevelControlEndToEndIT {
 
         org.logaperture.core.ConfirmationRequiredException confirmationRequired = assertThrows(
                 org.logaperture.core.ConfirmationRequiredException.class,
-                () -> proxy.setLevel(pattern, "DEBUG", "e2e-pattern-test", "SESSION", 0, false));
+                () -> proxy.setLogger(pattern, "DEBUG", "e2e-pattern-test", "SESSION", 0, false));
         assertTrue(confirmationRequired.matches().contains(FIXTURE_LOGGER),
                 "unconfirmed call's exception should list the current match: " + confirmationRequired.matches());
         // Confirmed a mutation didn't sneak through anyway.
         assertFalse(proxy.listLoggers(FIXTURE_LOGGER).get(0).isOverrideActive());
 
-        SetLevelResultData result = proxy.setLevel(pattern, "DEBUG", "e2e-pattern-test", "SESSION", 0, true);
+        SetLevelResultData result = proxy.setLogger(pattern, "DEBUG", "e2e-pattern-test", "SESSION", 0, true);
         assertTrue(result.getOverrides().stream().anyMatch(o -> FIXTURE_LOGGER.equals(o.getLoggerName())),
                 "'" + pattern + "' should have matched " + FIXTURE_LOGGER);
         assertEquals("DEBUG", proxy.listLoggers(FIXTURE_LOGGER).get(0).getEffectiveLevel());
@@ -183,7 +183,7 @@ class LevelControlEndToEndIT {
      * The exit criterion this spec replaced the old standing-rule one with
      * (doc/specs/pattern-selection-semantics.md "Exit criterion", "Motivation"):
      * setting the literal ancestor logger — no trailing star, {@code
-     * setLevel} rejects that shape outright — brings every current
+     * setLogger} rejects that shape outright — brings every current
      * <em>and</em> subsequently-created descendant to the same effective
      * level purely through the framework's own inheritance, with no
      * override or audit record on any of them but the ancestor itself. The
@@ -200,7 +200,7 @@ class LevelControlEndToEndIT {
         LevelControlMXBean proxy = pollForMxBeanProxy(attachAndConnect(fixtureProcess.pid()));
         String ancestor = "org.logaperture.agent.it.fixture"; // bare name -- no star at all
 
-        proxy.setLevel(ancestor, "DEBUG", "e2e-inheritance-test", "SESSION", 0, false);
+        proxy.setLogger(ancestor, "DEBUG", "e2e-inheritance-test", "SESSION", 0, false);
         assertEquals("DEBUG", proxy.listLoggers(FIXTURE_LOGGER).get(0).getEffectiveLevel());
         assertFalse(proxy.listLoggers(FIXTURE_LOGGER).get(0).isOverrideActive(),
                 "the already-known descendant inherits DEBUG from the framework -- LogAperture never touched it");
@@ -252,7 +252,7 @@ class LevelControlEndToEndIT {
 
         Process first = launchFixtureProcess(agentJarPath);
         LevelControlMXBean firstProxy = pollForMxBeanProxy(attachAndConnect(first.pid()));
-        firstProxy.setLevel(FIXTURE_LOGGER, "DEBUG", "sticky-e2e-test", "STICKY", 0, false);
+        firstProxy.setLogger(FIXTURE_LOGGER, "DEBUG", "sticky-e2e-test", "STICKY", 0, false);
         stopFixtureProcess(first);
 
         Process second = launchFixtureProcess(agentJarPath);

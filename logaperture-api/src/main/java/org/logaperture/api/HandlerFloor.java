@@ -30,7 +30,7 @@ package org.logaperture.api;
  * adapter.
  *
  * @param handlerRef this handler's stable identity — also the {@code <name>}
- *                    argument to {@code logctl handler <name> <level>}
+ *                    argument to {@code logctl set handler <name> <level>}
  * @param currentLevel the handler's own level right now
  */
 public record HandlerFloor(HandlerRef handlerRef, Level currentLevel) {

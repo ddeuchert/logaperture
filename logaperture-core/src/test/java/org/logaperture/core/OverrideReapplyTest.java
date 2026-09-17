@@ -40,7 +40,7 @@ class OverrideReapplyTest {
                 originalAdapter, baselines, overrides, CapabilityPolicy.allowAll(),
                 new InMemoryAuditLog(), StateStore.noOp(), "alice", "jmx");
 
-        service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
+        service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
 
         // Simulate a framework reset: a brand-new adapter instance, as if
         // the underlying LoggerContext had been thrown away and rebuilt
@@ -62,7 +62,7 @@ class OverrideReapplyTest {
         LevelControlService service = new LevelControlService(
                 adapter, baselines, overrides, CapabilityPolicy.allowAll(),
                 new InMemoryAuditLog(), StateStore.noOp(), "alice", "jmx");
-        service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
+        service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
 
         service.reapplyActiveOverrides(adapter);
         service.reapplyActiveOverrides(adapter);

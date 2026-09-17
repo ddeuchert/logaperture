@@ -55,7 +55,7 @@ public final class Main {
      * The seam a test uses to exercise the confirmation-prompt flow (doc/
      * specs/pattern-level-targeting.md "Confirmation and CLI behavior")
      * through {@code Main} itself, not just directly against {@link
-     * Commands#setLevel} -- {@code interactive} is otherwise derived from
+     * Commands#setLogger} -- {@code interactive} is otherwise derived from
      * {@link System#console()}, which is {@code null} in every test/CI
      * environment (a code-review finding: without this seam, {@code
      * MainRunTest} could reach only the "reject, pass --yes" non-interactive
@@ -100,7 +100,7 @@ public final class Main {
             err.println("Refused: this JVM's policy does not grant " + denied.capability() + ".");
             return CliError.REFUSED;
         } catch (ConfirmationRequiredException e) {
-            // logctl's own setLevel flow always resolves confirmed=true (a
+            // logctl's own setLogger flow always resolves confirmed=true (a
             // typed "y" or --yes) before it ever calls the server for real
             // (doc/specs/pattern-level-targeting.md "Confirmation and CLI
             // behavior") -- reaching here means a race between the preview

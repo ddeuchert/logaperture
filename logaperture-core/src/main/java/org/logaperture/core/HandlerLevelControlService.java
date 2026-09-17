@@ -41,7 +41,7 @@ import java.util.function.Consumer;
 
 /**
  * The handler-level-control engine — the {@link LevelControlService}
- * counterpart for {@code logctl handler <name> <level>}, per doc/specs/
+ * counterpart for {@code logctl set handler <name> <level>}, per doc/specs/
  * handler-floor-control.md. Same ordering discipline as {@link
  * LevelControlService}: <b>capability check &rarr; adapter mutation &rarr;
  * registry commit &rarr; state-store write &rarr; audit record</b>.
@@ -210,7 +210,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     // --- AUTO handler level (doc/specs/handler-floor-control.md "AUTO handler level", issue #20) ---------------
 
     /**
-     * {@code logctl handler <name> AUTO} — puts {@code ref} into a
+     * {@code logctl set handler <name> AUTO} — puts {@code ref} into a
      * self-tracking mode instead of a fixed level: its applied level tracks
      * {@link #activeLoggerFloor} from here on, reactively, until reset or
      * superseded by a fixed {@link #setHandlerLevel}. The initial level is
@@ -286,7 +286,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      * {@link #activeLoggerFloor}'s current answer — the reactive seam
      * (doc/specs/handler-floor-control.md "AUTO handler level", "Recompute
      * trigger") that {@link LevelControlService}'s {@link
-     * LoggerOverrideChangeListener} drives on every {@code setLevel} /
+     * LoggerOverrideChangeListener} drives on every {@code setLogger} /
      * {@code resetLevel} / {@code resetAll} / expiry, and that each
      * container's {@code installContext} / {@link
      * AggregateLevelControl#addContext} drives once after resume /
@@ -301,7 +301,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         // Cheap short-circuit before touching activeLoggerFloor at all: that
         // supplier does its own defensive-copy-and-reduce over the logger
         // OverrideRegistry (a bigger, busier map than this one), and every
-        // setLevel/resetLevel/resetAll/sweep-with-reverts calls this
+        // setLogger/resetLevel/resetAll/sweep-with-reverts calls this
         // unconditionally whether or not AUTO is even in use.
         Map<HandlerRef, HandlerLevelOverride> tracked = overrides.all();
         if (tracked.values().stream().noneMatch(o -> o.mode() == HandlerLevelMode.AUTO)) {

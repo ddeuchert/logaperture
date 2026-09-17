@@ -31,7 +31,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -127,7 +126,7 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     @Override
-    public SetLevelResult setLevel(String target, Level level, SetLevelOptions options) {
+    public SetLevelResult setLogger(String target, Level level, SetLevelOptions options) {
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(level, "level");
         SetLevelOptions opts = options == null ? SetLevelOptions.defaults() : options;
@@ -149,7 +148,7 @@ public final class LevelControlService implements LevelControlOperations {
      * an exact-name target (it always mutates just {@code target} itself,
      * same as the two-arg overload) and is ignored in that case.
      */
-    SetLevelResult setLevel(String target, Level level, SetLevelOptions options, List<String> resolvedMatches) {
+    SetLevelResult setLogger(String target, Level level, SetLevelOptions options, List<String> resolvedMatches) {
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(level, "level");
         SetLevelOptions opts = options == null ? SetLevelOptions.defaults() : options;
@@ -186,7 +185,7 @@ public final class LevelControlService implements LevelControlOperations {
      * pattern-selection-semantics.md "Operations") -- a one-time selection,
      * resolved and applied in the same call, nothing left standing
      * afterward. Only reachable for a target with a leading star and no
-     * trailing star: {@link #setLevel} rejects a trailing-star target
+     * trailing star: {@link #setLogger} rejects a trailing-star target
      * before this is ever called.
      */
     private SetLevelResult setLevelForPattern(String pattern, Level level, SetLevelOptions opts) {
@@ -269,12 +268,12 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     /**
-     * Runs {@code setLevel}'s capability pre-flight without mutating anything —
+     * Runs {@code setLogger}'s capability pre-flight without mutating anything —
      * throws {@link CapabilityDeniedException} (or, for a pattern target,
      * {@link ConfirmationRequiredException}, or {@link IllegalArgumentException}
-     * for a trailing-star target) exactly where {@code setLevel} would.
+     * for a trailing-star target) exactly where {@code setLogger} would.
      * {@link AggregateLevelControl} calls this against <em>every</em>
-     * context before broadcasting a {@code setLevel}, so a denial in any one
+     * context before broadcasting a {@code setLogger}, so a denial in any one
      * context fails the whole broadcast before any context is mutated
      * (doc/specs/wildfly-support.md, "all pass or all fail").
      */
@@ -286,7 +285,7 @@ public final class LevelControlService implements LevelControlOperations {
      * {@link #checkSetLevelPermitted(String, Level, SetLevelOptions)}, plus
      * the resolved match list it already had to compute internally --
      * {@link AggregateLevelControl}'s broadcast keeps this result and hands
-     * it to {@link #setLevel(String, Level, SetLevelOptions, List)} instead
+     * it to {@link #setLogger(String, Level, SetLevelOptions, List)} instead
      * of discarding it and re-resolving the same pattern a second time (a
      * code-review finding).
      */
@@ -328,7 +327,7 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     /**
-     * Throws the usage error {@link #setLevel}/{@link #checkSetLevelPermitted}
+     * Throws the usage error {@link #setLogger}/{@link #checkSetLevelPermitted}
      * share for a trailing-wildcard target (doc/specs/
      * pattern-selection-semantics.md, Decision #5) -- pulled into one place
      * (a code-review finding) so the two call sites can't drift if this rule
@@ -362,29 +361,10 @@ public final class LevelControlService implements LevelControlOperations {
                     + "logger with no common ancestor to set instead -- run 'logctl levels " + ancestor
                     + "' to see the current matches, then set the ones you actually want by their own exact name.");
         }
-        String fix = levelSubcommand(level)
-                .map(word -> "logctl " + word + " " + ancestor)
-                .orElseGet(() -> "logctl set " + ancestor + " " + level.name());
+        String fix = "logctl set logger " + ancestor + " " + level.name();
         return new IllegalArgumentException(header + " Every descendant of '" + ancestor + "' already inherits "
                 + "its level from the logging framework once '" + ancestor + "' itself is set -- run '" + fix
                 + "' instead.");
-    }
-
-    /**
-     * The dedicated {@code logctl} subcommand for {@code level} (doc/specs/
-     * cli-transport.md's level subcommands: {@code debug}/{@code trace}/
-     * {@code info}/{@code warn}/{@code error}), or empty for {@code ALL}/
-     * {@code OFF}, which have no dedicated subcommand -- only the generic
-     * {@code logctl set <target> <LEVEL>} reaches them (a code-review
-     * finding: the trailing-wildcard rejection message used to suggest
-     * {@code "logctl all ..."}/{@code "logctl off ..."}, commands that don't
-     * exist).
-     */
-    private static Optional<String> levelSubcommand(Level level) {
-        return switch (level) {
-            case TRACE, DEBUG, INFO, WARN, ERROR -> Optional.of(level.name().toLowerCase(Locale.ROOT));
-            case ALL, OFF -> Optional.empty();
-        };
     }
 
     @Override
@@ -402,7 +382,7 @@ public final class LevelControlService implements LevelControlOperations {
             // named target refuses outright rather than silently doing
             // nothing -- checked before the capability check below, same
             // "validate the target's shape/eligibility first" ordering
-            // rejectIfTrailingWildcard already uses ahead of setLevel's own
+            // rejectIfTrailingWildcard already uses ahead of setLogger's own
             // capability check.
             throw rejectSticky(target);
         }
@@ -542,12 +522,12 @@ public final class LevelControlService implements LevelControlOperations {
      * FOR} overrides are left to {@link #sweepExpiredOverrides}.
      *
      * <p>Concurrency: this runs on the composition root's sweep thread while
-     * {@code setLevel}/{@code resetLevel} run on a control-plane thread. It
+     * {@code setLogger}/{@code resetLevel} run on a control-plane thread. It
      * follows {@link #sweepExpiredOverrides}'s discipline — iterate a snapshot
      * of <em>names</em>, re-read the registry entry per iteration, and (here)
      * re-check the entry <em>after</em> applying — so a concurrent reset that
      * removed the override cannot be "resurrected" by a stale snapshot value,
-     * and a concurrent {@code setLevel} that replaced it is honoured rather
+     * and a concurrent {@code setLogger} that replaced it is honoured rather
      * than shadowed.
      *
      * @return how many overrides had drifted and were re-applied
@@ -571,7 +551,7 @@ public final class LevelControlService implements LevelControlOperations {
 
             Optional<LevelOverride> afterApply = overrides.get(loggerName);
             if (!afterApply.map(override::equals).orElse(false)) {
-                // A concurrent resetLevel/setLevel won the race between our
+                // A concurrent resetLevel/setLogger won the race between our
                 // read and our apply. Undo what we just did rather than leave
                 // the adapter disagreeing with the registry, and record no
                 // audit for a re-apply that did not stick.
@@ -686,7 +666,7 @@ public final class LevelControlService implements LevelControlOperations {
     public void sweepExpiredOverrides(Instant now) {
         // Iterate a snapshot of names, but re-read each one's CURRENT value
         // right before deciding to revert it -- the snapshot can be stale
-        // by the time this loop reaches an entry (a concurrent setLevel may
+        // by the time this loop reaches an entry (a concurrent setLogger may
         // have already replaced it), and applyReset's compare-and-remove
         // uses this same fresh value, not the (possibly stale) one below.
         List<String> reverted = new ArrayList<>();
@@ -726,7 +706,7 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     /**
-     * The part of "create an override" that a live {@code setLevel} call
+     * The part of "create an override" that a live {@code setLogger} call
      * shares regardless of whether the target was an exact name or a
      * pattern's resolved match -- mutate the adapter, commit to the
      * registry, persist per {@code override}'s tier, and audit it under
@@ -761,7 +741,7 @@ public final class LevelControlService implements LevelControlOperations {
     private boolean applyReset(String loggerName, LevelOverride toRevert, String auditSource, String reasonOverride) {
         // Atomic compare-and-remove first: if the registry's current entry
         // for this logger is no longer exactly `toRevert`, a concurrent
-        // setLevel already replaced it (the expiry sweep's own race, per
+        // setLogger already replaced it (the expiry sweep's own race, per
         // doc/specs/persistence.md's review) -- bail out without touching
         // the adapter, so the newer override is never clobbered.
         if (!overrides.removeIfCurrent(loggerName, toRevert)) {
@@ -769,7 +749,7 @@ public final class LevelControlService implements LevelControlOperations {
         }
 
         String previousValue = toRevert.level().toString();
-        Optional<Level> baseline = baselines.get(loggerName); // always captured -- setLevel/resume guarantees it
+        Optional<Level> baseline = baselines.get(loggerName); // always captured -- setLogger/resume guarantees it
 
         adapter.applyLevel(loggerName, baseline.orElse(null)); // mutation
 

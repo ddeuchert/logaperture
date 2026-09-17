@@ -18,8 +18,8 @@ package org.logaperture.api;
 /**
  * The three durability tiers an override can be set at — see
  * doc/logaperture-spec.md §6.1 and doc/specs/persistence.md. Named at the
- * point of use, per §6.2's phone test ("{@code logctl debug com.acme for
- * 30m}") and §6.1's "the choice is conscious" — replaces the implicit
+ * point of use, per §6.2's phone test ("{@code logctl set logger com.acme
+ * DEBUG for 30m}") and §6.1's "the choice is conscious" — replaces the implicit
  * "non-null {@code expiresIn} means {@code --for}" convention {@link
  * SetLevelOptions}'s Javadoc originally reserved, which had no way to
  * express {@code --sticky}.

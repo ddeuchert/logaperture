@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * {@code logctl handler}'s public contract — the {@link
+ * {@code logctl set handler}'s public contract — the {@link
  * LevelControlOperations} counterpart for handlers (doc/specs/
  * handler-floor-control.md "Operations impact"). Every control surface is a
  * client of this interface, same as {@link LevelControlOperations}.
@@ -51,7 +51,7 @@ public interface HandlerLevelControlOperations {
      * nothing; a caller runs this before the real {@link #setHandlerLevel} call
      * (using the same pre-mutation handler level this reads) and folds the answer
      * into that call's warning, the same "advice, never fails, never re-run to
-     * suppress" contract {@code setLevel}'s own blocking-handler warning already
+     * suppress" contract {@code setLogger}'s own blocking-handler warning already
      * has. Empty for a lower/no-op direction, for the underlying adapter having no
      * handler levels of its own, or for a handler this context can't currently
      * resolve.
@@ -59,7 +59,7 @@ public interface HandlerLevelControlOperations {
     List<SquelchedLogger> squelchedByRaise(HandlerRef ref, Level newLevel);
 
     /**
-     * {@code logctl handler <name> AUTO} — puts {@code ref} into a
+     * {@code logctl set handler <name> AUTO} — puts {@code ref} into a
      * self-tracking mode whose applied level follows the lowest currently
      * active logger override, reverting to {@code ref}'s own baseline once
      * none remain (doc/specs/handler-floor-control.md "AUTO handler level",
@@ -110,7 +110,7 @@ public interface HandlerLevelControlOperations {
     /**
      * The full addressable handler catalog — one row per {@code
      * knownHandlers()} entry (doc/specs/handler-floor-control.md "The handler
-     * catalog", issue #15), feeding {@code logctl handlers}. Read-only.
+     * catalog", issue #15), feeding {@code logctl set handlers}. Read-only.
      * Empty for an adapter whose handlers have no level of their own
      * (Logback, {@code none}).
      */

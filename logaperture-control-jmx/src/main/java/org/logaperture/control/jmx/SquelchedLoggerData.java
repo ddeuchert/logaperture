@@ -22,7 +22,7 @@ import java.beans.ConstructorProperties;
 /**
  * MXBean-friendly mirror of {@link SquelchedLogger} — see {@link
  * LoggerInfoData} for the pattern's rationale. One of these names a logger
- * override that a {@code logctl handler <name> <stricter-level>} call is
+ * override that a {@code logctl set handler <name> <stricter-level>} call is
  * about to newly silence (doc/specs/handler-floor-control.md "Squelch
  * warning", issue #16).
  */

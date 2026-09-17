@@ -26,7 +26,7 @@ import java.time.Instant;
  *                       or {@code "<inherited>"}), not the {@code Level}
  *                       type itself, so the record stays trivially loggable
  * @param newValue      same rendering convention as {@code previousValue}
- * @param action        {@link Action#MUTATION} for {@code setLevel},
+ * @param action        {@link Action#MUTATION} for {@code setLogger},
  *                      {@link Action#REVERSION} for {@code resetLogger}/
  *                      {@code resetAll} — "records the revert as well as
  *                      the change" (§9.7)

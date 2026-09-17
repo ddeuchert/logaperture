@@ -22,8 +22,8 @@ import java.util.Locale;
 /**
  * The one place the sample emits log lines. {@link #emitAllLevels} logs
  * through all three frameworks under the one shared name {@value
- * #LOGGER_NAME}, so a single {@code logctl debug
- * org.logaperture.sample.work.Worker} override lands on every one of them at
+ * #LOGGER_NAME}, so a single {@code logctl set logger
+ * org.logaperture.sample.work.Worker DEBUG} override lands on every one of them at
  * once — which is the whole point of that method: to show one override
  * taking effect across everything JBoss LogManager funnels. {@link #emit}
  * instead logs a caller-chosen message, at a caller-chosen level, through a

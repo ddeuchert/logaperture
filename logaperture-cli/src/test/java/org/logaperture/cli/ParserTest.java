@@ -91,20 +91,34 @@ class ParserTest {
     }
 
     @Test
-    void levelNamedFormNeedsALogger() {
+    void levelNamedVerbsNoLongerExist() {
+        // doc/specs/set-command-surface.md Decision #3 -- debug/trace/info/warn/error
+        // are retired entirely, no alias kept; each names 'set logger' as the fix.
         assertUsage(() -> Parser.parse(new String[] {"debug"}));
+        assertUsage(() -> Parser.parse(new String[] {"debug", "com.acme"}));
+        assertUsage(() -> Parser.parse(new String[] {"trace", "com.acme"}));
+        assertUsage(() -> Parser.parse(new String[] {"info", "com.acme"}));
+        assertUsage(() -> Parser.parse(new String[] {"warn", "com.acme"}));
+        assertUsage(() -> Parser.parse(new String[] {"error", "com.acme"}));
     }
 
     @Test
-    void unknownLevelForSetIsAUsageError() {
-        assertUsage(() -> Parser.parse(new String[] {"set", "com.acme", "LOUD"}));
+    void bareSetOfALoggerNameNoLongerExists() {
+        // The bare "set <target> <level>" spelling is retired; "com.acme" isn't
+        // one of the two recognized nouns (doc/specs/set-command-surface.md).
+        assertUsage(() -> Parser.parse(new String[] {"set", "com.acme", "DEBUG"}));
+        assertUsage(() -> Parser.parse(new String[] {"set"}));
+    }
+
+    @Test
+    void unknownLevelForSetLoggerIsAUsageError() {
+        assertUsage(() -> Parser.parse(new String[] {"set", "logger", "com.acme", "LOUD"}));
     }
 
     @Test
     void levelIsCaseInsensitive() {
         // Parses without throwing — the resolved Command is opaque, so "no exception" is the assertion.
-        Parser.parse(new String[] {"set", "com.acme", "debug"});
-        Parser.parse(new String[] {"debug", "com.acme"});
+        Parser.parse(new String[] {"set", "logger", "com.acme", "debug"});
     }
 
     @Test
@@ -121,13 +135,13 @@ class ParserTest {
     }
 
     @Test
-    void yesIsAcceptedOnEveryLevelMutationForm() {
+    void yesIsAcceptedOnSetLoggerButNotSetHandler() {
         // doc/specs/pattern-level-targeting.md "Confirmation and CLI
         // behavior" -- Parser does no pattern detection of its own (same as
         // a plain logger name, the target string passes through untouched);
         // --yes just needs to not be rejected as out of place here.
-        Parser.parse(new String[] {"debug", "org.apache.*", "--yes"});
-        Parser.parse(new String[] {"set", "org.apache.*", "DEBUG", "--yes"});
+        Parser.parse(new String[] {"set", "logger", "org.apache.*", "DEBUG", "--yes"});
+        assertUsage(() -> Parser.parse(new String[] {"set", "handler", "CONSOLE", "TRACE", "--yes"}));
     }
 
     @Test
@@ -241,59 +255,69 @@ class ParserTest {
         assertTrue(Parser.parse(new String[] {"--debug", "status"}).debug());
     }
 
-    // --- handler command (doc/specs/handler-floor-control.md) --------------------------------------
+    // --- bare 'handler' verb, fully retired (doc/specs/set-command-surface.md) ---------------
 
     @Test
-    void handlerNeedsANameAndALevel() {
+    void bareHandlerVerbNoLongerExists() {
         assertUsage(() -> Parser.parse(new String[] {"handler"}));
         assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE"}));
+        assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "TRACE"}));
+        assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "AUTO"}));
     }
 
     @Test
-    void handlerParsesWithBareTierAndWithATierToken() {
-        Parser.parse(new String[] {"handler", "CONSOLE", "TRACE"}); // bare -- defaults to for 4h, same as levels
-        Parser.parse(new String[] {"handler", "CONSOLE", "TRACE", "session"});
-        Parser.parse(new String[] {"handler", "CONSOLE", "TRACE", "for", "30m"});
-        Parser.parse(new String[] {"handler", "CONSOLE", "TRACE", "sticky"});
-    }
-
-    @Test
-    void handlerResetNoLongerExists() {
+    void bareHandlerResetNamesResetHandlerAsTheFix() {
         // doc/specs/reset-command-surface.md -- retired in favor of
         // "reset handler <name>", no alias kept (pre-1.0).
         assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "reset"}));
     }
 
+    // --- set handler (doc/specs/set-command-surface.md, doc/specs/handler-floor-control.md) ----
+
     @Test
-    void handlerAcceptsReasonButNotYes() {
-        Parser.parse(new String[] {"handler", "CONSOLE", "TRACE", "--reason", "INC-1"}); // fine
-        assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "TRACE", "--yes"}));
+    void setHandlerNeedsANameAndALevel() {
+        assertUsage(() -> Parser.parse(new String[] {"set", "handler"}));
+        assertUsage(() -> Parser.parse(new String[] {"set", "handler", "CONSOLE"}));
     }
 
     @Test
-    void unknownLevelForHandlerIsAUsageError() {
-        assertUsage(() -> Parser.parse(new String[] {"handler", "CONSOLE", "LOUD"}));
-    }
-
-    // --- handler AUTO (doc/specs/handler-floor-control.md "AUTO handler level", issue #20) ----
-
-    @Test
-    void handlerAutoParsesWithBareTierAndWithATierToken() {
-        Parser.parse(new String[] {"handler", "CONSOLE", "AUTO"}); // bare -- defaults to for 4h, same as levels
-        Parser.parse(new String[] {"handler", "CONSOLE", "AUTO", "session"});
-        Parser.parse(new String[] {"handler", "CONSOLE", "AUTO", "for", "30m"});
-        Parser.parse(new String[] {"handler", "CONSOLE", "AUTO", "sticky"});
+    void setHandlerParsesWithBareTierAndWithATierToken() {
+        Parser.parse(new String[] {"set", "handler", "CONSOLE", "TRACE"}); // bare -- defaults to for 4h
+        Parser.parse(new String[] {"set", "handler", "CONSOLE", "TRACE", "session"});
+        Parser.parse(new String[] {"set", "handler", "CONSOLE", "TRACE", "for", "30m"});
+        Parser.parse(new String[] {"set", "handler", "CONSOLE", "TRACE", "sticky"});
     }
 
     @Test
-    void handlerAutoIsCaseInsensitive() {
-        Parser.parse(new String[] {"handler", "CONSOLE", "auto"});
-        Parser.parse(new String[] {"handler", "CONSOLE", "Auto"});
+    void setHandlerAcceptsReasonButNotYes() {
+        Parser.parse(new String[] {"set", "handler", "CONSOLE", "TRACE", "--reason", "INC-1"}); // fine
+        assertUsage(() -> Parser.parse(new String[] {"set", "handler", "CONSOLE", "TRACE", "--yes"}));
     }
 
     @Test
-    void handlerAutoAcceptsReason() {
-        Parser.parse(new String[] {"handler", "CONSOLE", "AUTO", "--reason", "INC-1"}); // fine
+    void unknownLevelForSetHandlerIsAUsageError() {
+        assertUsage(() -> Parser.parse(new String[] {"set", "handler", "CONSOLE", "LOUD"}));
+    }
+
+    // --- set handler AUTO (doc/specs/handler-floor-control.md "AUTO handler level", issue #20) ----
+
+    @Test
+    void setHandlerAutoParsesWithBareTierAndWithATierToken() {
+        Parser.parse(new String[] {"set", "handler", "CONSOLE", "AUTO"}); // bare -- defaults to for 4h
+        Parser.parse(new String[] {"set", "handler", "CONSOLE", "AUTO", "session"});
+        Parser.parse(new String[] {"set", "handler", "CONSOLE", "AUTO", "for", "30m"});
+        Parser.parse(new String[] {"set", "handler", "CONSOLE", "AUTO", "sticky"});
+    }
+
+    @Test
+    void setHandlerAutoIsCaseInsensitive() {
+        Parser.parse(new String[] {"set", "handler", "CONSOLE", "auto"});
+        Parser.parse(new String[] {"set", "handler", "CONSOLE", "Auto"});
+    }
+
+    @Test
+    void setHandlerAutoAcceptsReason() {
+        Parser.parse(new String[] {"set", "handler", "CONSOLE", "AUTO", "--reason", "INC-1"}); // fine
     }
 
     private static void assertUsage(Executable call) {

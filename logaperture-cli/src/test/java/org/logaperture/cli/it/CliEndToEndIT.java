@@ -84,7 +84,7 @@ class CliEndToEndIT {
         assertTrue(levels.out.contains(LOGGER), levels.out);
         assertTrue(levels.out.contains("INFO"), levels.out);
 
-        Result debug = run("debug", LOGGER, "for", "1m", "--reason", "cli-e2e");
+        Result debug = run("set", "logger", LOGGER, "DEBUG", "for", "1m", "--reason", "cli-e2e");
         assertEquals(0, debug.exitCode, debug.err);
         assertTrue(debug.out.contains(LOGGER + " → DEBUG"), debug.out);
         assertTrue(debug.out.contains("FOR, reverts"), debug.out);
