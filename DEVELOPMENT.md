@@ -90,7 +90,7 @@ no restart, nothing written to any config file.
 ```sh
 mvn -q -pl logaperture-cli -am package -DskipTests     # build the CLI jar
 
-logaperture-cli/bin/logctl levels [filter]             # list loggers + effective levels
+logaperture-cli/bin/logctl list loggers [filter] [--show-all]  # list loggers + effective levels
 logaperture-cli/bin/logctl status                      # active overrides
 logaperture-cli/bin/logctl set logger <logger> <level> [tier]
 logaperture-cli/bin/logctl set handler <name> <level>  # also: set handler <name> AUTO
@@ -124,9 +124,9 @@ then blocks on stdin until you press Enter.
 2. Run it (Debug if you also want to breakpoint the agent — `request: launch`
    runs under the debugger from the first instruction, so a `premain` breakpoint
    binds before `premain` runs; no suspend dance needed).
-3. Drive it from a terminal: `logctl levels org.logaperture.agent.it.fixture`,
+3. Drive it from a terminal: `logctl list loggers org.logaperture.agent.it.fixture --show-all`,
    `logctl set logger org.logaperture.agent.it.fixture.Worker DEBUG`, etc. `FixtureApp` only
-   logs once, so confirm changes with `logctl levels` / `status`, not console
+   logs once, so confirm changes with `logctl list loggers` / `status`, not console
    output.
 
 ---

@@ -21,7 +21,7 @@ import javax.servlet.annotation.WebListener;
 
 /**
  * Logs a line on deploy — so {@code org.logaperture.sample.work.Worker} shows
- * up in {@code logctl levels} straight away — and shuts the background timer
+ * up in {@code logctl list loggers} straight away — and shuts the background timer
  * down on undeploy, so a redeploy does not leak its thread (and so the
  * adapter is exercised keeping the logger node, and any override on it, alive
  * across the deployment going away).

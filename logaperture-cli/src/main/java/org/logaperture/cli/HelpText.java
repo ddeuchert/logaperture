@@ -27,8 +27,8 @@ final class HelpText {
 
     /** One synopsis per invocation form. Kept punctuation-free on purpose. */
     static final List<String> SYNOPSES = List.of(
-            "logctl levels [filter]",
-            "logctl handlers",
+            "logctl list loggers [filter] [--show-all]",
+            "logctl list handlers [--show-all]",
             "logctl status",
             "logctl doctor",
             "logctl env",
@@ -56,6 +56,7 @@ final class HelpText {
         sb.append("  --reason <text>      why — shown in status, kept in the audit trail\n");
         sb.append("  --yes                skip the confirmation prompt when <target> is a pattern\n");
         sb.append("  --include-sticky     for 'reset' -- also revert a sticky override, not just skip it\n");
+        sb.append("  --show-all           for 'list' -- every known logger or handler, not just overridden ones\n");
         sb.append("  --limit <n>          for 'top' — worst N offenders, 0 for every one tracked\n");
         sb.append("  --json               machine-readable output\n");
         sb.append("  --version            print version and exit\n");
@@ -68,7 +69,7 @@ final class HelpText {
         sb.append("'set handler' sets a handler's own level directly — the fix when raising a\n");
         sb.append("logger still won't show output because a handler is set stricter. A raise\n");
         sb.append("that hits this prints which handler and the exact command to lower it.\n");
-        sb.append("'reset handler <name>' reverts it on its own. 'logctl handlers' lists\n");
+        sb.append("'reset handler <name>' reverts it on its own. 'logctl list handlers' lists\n");
         sb.append("every handler you can name, its level, and any active override — on\n");
         sb.append("WildFly the individual names (CONSOLE, FILE, …) appear once the server\n");
         sb.append("is up; before that, and always, ALL_HANDLERS means every handler at once.\n");
@@ -78,9 +79,11 @@ final class HelpText {
         sb.append("override on its own, and reverts to its native level the moment none are\n");
         sb.append("left. Setting a fixed level, or resetting it, moves it back out of AUTO.\n");
         sb.append("\n");
-        sb.append("A [filter] for 'levels' is a logger-name prefix, or a pattern with a\n");
-        sb.append("leading and/or trailing * segment — so 'logctl levels *.infinispan'\n");
-        sb.append("finds a logger when the log line shows only the short category name.\n");
+        sb.append("A [filter] for 'list loggers' is a logger-name prefix, or a pattern with a\n");
+        sb.append("leading and/or trailing * segment — so 'logctl list loggers *.infinispan\n");
+        sb.append("--show-all' finds a logger when the log line shows only the short category\n");
+        sb.append("name. Without --show-all, 'list loggers' and 'list handlers' show only\n");
+        sb.append("rows with an active override.\n");
         sb.append("\n");
         sb.append("A <target> for 'set logger' is an exact logger name,\n");
         sb.append("or a leading-* pattern like '*.Worker' — a one-time selection applied\n");
@@ -110,6 +113,9 @@ final class HelpText {
         sb.append("'top' is also read-only. It shows which loggers have written the most\n");
         sb.append("bytes since the agent started, worst first, with a rate, a projected\n");
         sb.append("daily total, and what share of that volume is stack traces.\n");
+        sb.append("\n");
+        sb.append("'status' shows only active overrides; 'env' is the separate, pasteable\n");
+        sb.append("block for a bug report — see below.\n");
         sb.append("\n");
         sb.append("'env' is also read-only. It prints one pasteable block of facts for a\n");
         sb.append("bug report -- agent and logctl versions, Java, OS, the detected logging\n");

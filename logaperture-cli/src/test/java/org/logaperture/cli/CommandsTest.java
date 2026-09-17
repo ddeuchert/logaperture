@@ -67,13 +67,13 @@ class CommandsTest {
     }
 
     @Test
-    void levelsRendersATableAndPassesTheFilterThrough() {
+    void listLoggersRendersATableAndPassesTheFilterThrough() {
         mbean.loggers = List.of(
                 new LoggerInfoData("com.acme.Worker", "INFO", "DEBUG", true, "jmx", "INC-1", "FOR",
                         Instant.now().plus(30, ChronoUnit.MINUTES).toString()),
                 new LoggerInfoData("com.acme.Idle", null, "INFO", false, null, null, null, null));
 
-        assertEquals(CliError.OK, run(Commands.levels("com.acme", false)));
+        assertEquals(CliError.OK, run(Commands.listLoggers("com.acme", true, false)));
 
         assertEquals(List.of("com.acme"), mbean.listLoggersFilters);
         String text = output();
@@ -86,32 +86,88 @@ class CommandsTest {
     }
 
     @Test
-    void levelsPassesAGlobFilterThroughVerbatim() {
+    void listLoggersPassesAGlobFilterThroughVerbatim() {
         // The CLI does no name matching or grammar validation of its own — a
         // pattern must reach listLoggers unchanged for the server-side
         // NameFilter to apply and validate it. (The fake MXBean
         // prefix-matches, so it returns nothing here; what matters is the
         // filter string arriving untouched.)
-        assertEquals(CliError.OK, run(Commands.levels("*.infinispan", false)));
+        assertEquals(CliError.OK, run(Commands.listLoggers("*.infinispan", true, false)));
 
         assertEquals(List.of("*.infinispan"), mbean.listLoggersFilters);
     }
 
     @Test
-    void levelsEmptyResultsGiveAFriendlyLineNotAnError() {
-        assertEquals(CliError.OK, run(Commands.levels("no.such", false)));
+    void listLoggersEmptyResultsGiveAFriendlyLineNotAnError() {
+        assertEquals(CliError.OK, run(Commands.listLoggers("no.such", true, false)));
         assertTrue(output().contains("No loggers match 'no.such'."));
 
         captured.reset();
-        assertEquals(CliError.OK, run(Commands.levels(null, false)));
+        assertEquals(CliError.OK, run(Commands.listLoggers(null, true, false)));
         assertTrue(output().contains("No loggers known yet."));
     }
 
     @Test
-    void levelsJsonEmitsAnArray() {
+    void listLoggersJsonEmitsAnArray() {
         mbean.loggers = List.of(new LoggerInfoData("a", "INFO", "INFO", false, null, null, null, null));
-        run(Commands.levels(null, true));
+        run(Commands.listLoggers(null, true, true));
         assertTrue(output().strip().startsWith("[{"));
+    }
+
+    @Test
+    void listLoggersDefaultsToOverridesOnly() {
+        // doc/specs/list-command-surface.md Decision #2 -- without --show-all,
+        // a row with no active override is dropped before rendering.
+        mbean.loggers = List.of(
+                new LoggerInfoData("com.acme.Loud", "INFO", "DEBUG", true, "jmx", null, "FOR", null),
+                new LoggerInfoData("com.acme.Quiet", "INFO", "INFO", false, null, null, null, null));
+
+        assertEquals(CliError.OK, run(Commands.listLoggers(null, false, false)));
+
+        String text = output();
+        assertTrue(text.contains("com.acme.Loud"));
+        assertFalse(text.contains("com.acme.Quiet"));
+    }
+
+    @Test
+    void listLoggersShowAllRestoresTheFullCatalog() {
+        mbean.loggers = List.of(
+                new LoggerInfoData("com.acme.Loud", "INFO", "DEBUG", true, "jmx", null, "FOR", null),
+                new LoggerInfoData("com.acme.Quiet", "INFO", "INFO", false, null, null, null, null));
+
+        assertEquals(CliError.OK, run(Commands.listLoggers(null, true, false)));
+
+        String text = output();
+        assertTrue(text.contains("com.acme.Loud"));
+        assertTrue(text.contains("com.acme.Quiet"));
+    }
+
+    @Test
+    void listLoggersOverridesOnlyEmptyMessageDiffersFromShowAll() {
+        mbean.loggers = List.of(new LoggerInfoData("com.acme.Quiet", "INFO", "INFO", false, null, null, null, null));
+
+        assertEquals(CliError.OK, run(Commands.listLoggers(null, false, false)));
+        assertTrue(output().contains("No loggers have an active override."));
+
+        captured.reset();
+        mbean.loggers = List.of();
+        assertEquals(CliError.OK, run(Commands.listLoggers(null, true, false)));
+        assertTrue(output().contains("No loggers known yet."));
+    }
+
+    @Test
+    void listLoggersFilterMatchingRealLoggersWithNoOverrideIsNotReportedAsNoMatch() {
+        // A code-review finding against an earlier version: the filter matched
+        // real loggers under com.acme, just none with an active override --
+        // that must not be reported as "No loggers match 'com.acme'." (which
+        // implies the prefix matched nothing).
+        mbean.loggers = List.of(new LoggerInfoData("com.acme.Quiet", "INFO", "INFO", false, null, null, null, null));
+
+        assertEquals(CliError.OK, run(Commands.listLoggers("com.acme", false, false)));
+
+        String text = output();
+        assertFalse(text.contains("No loggers match 'com.acme'."), text);
+        assertTrue(text.contains("No loggers matching 'com.acme' have an active override."), text);
     }
 
     @Test
@@ -223,7 +279,7 @@ class CommandsTest {
     }
 
     @Test
-    void handlers_rendersATableWithLevelSinkTargetAndOverride() {
+    void listHandlers_rendersATableWithLevelSinkTargetAndOverride() {
         mbean.handlerCatalog = List.of(
                 new org.logaperture.control.jmx.HandlerInfoData(
                         "ALL_HANDLERS", null, false, null, null, false, null, null, null, null, null),
@@ -233,7 +289,7 @@ class CommandsTest {
                         "FILE", "DEBUG", true, "/opt/server.log", Boolean.TRUE, true, "DEBUG", "FIXED", "FOR",
                         Instant.now().plus(30, ChronoUnit.MINUTES).toString(), null));
 
-        assertEquals(CliError.OK, run(Commands.handlers(false)));
+        assertEquals(CliError.OK, run(Commands.listHandlers(true, false)));
 
         String text = output();
         assertTrue(text.contains("HANDLER") && text.contains("LEVEL") && text.contains("TARGET"), text);
@@ -244,18 +300,63 @@ class CommandsTest {
     }
 
     @Test
-    void handlers_nothingToList_printsANote() {
+    void listHandlers_defaultsToOverridesOnly() {
+        // doc/specs/list-command-surface.md Decision #2 -- same default as list loggers.
+        mbean.handlerCatalog = List.of(
+                new org.logaperture.control.jmx.HandlerInfoData(
+                        "CONSOLE", "INFO", false, null, Boolean.TRUE, false, null, null, null, null, null),
+                new org.logaperture.control.jmx.HandlerInfoData(
+                        "FILE", "DEBUG", true, "/opt/server.log", Boolean.TRUE, true, "DEBUG", "FIXED", "FOR",
+                        Instant.now().plus(30, ChronoUnit.MINUTES).toString(), null));
+
+        assertEquals(CliError.OK, run(Commands.listHandlers(false, false)));
+
+        String text = output();
+        assertTrue(text.contains("FILE"));
+        assertFalse(text.contains("CONSOLE"));
+    }
+
+    @Test
+    void listHandlers_overridesOnlyEmptyMessageDiffersFromShowAll() {
+        mbean.handlerCatalog = List.of(new org.logaperture.control.jmx.HandlerInfoData(
+                "CONSOLE", "INFO", false, null, Boolean.TRUE, false, null, null, null, null, null));
+
+        assertEquals(CliError.OK, run(Commands.listHandlers(false, false)));
+        assertTrue(output().contains("No handlers have an active override."));
+
+        captured.reset();
         mbean.handlerCatalog = List.of();
-        assertEquals(CliError.OK, run(Commands.handlers(false)));
+        assertEquals(CliError.OK, run(Commands.listHandlers(true, false)));
+        assertTrue(output().contains("no level of their own"));
+    }
+
+    @Test
+    void listHandlers_emptyCatalogPrintsNoLevelNoteEvenWithoutShowAll() {
+        // A code-review finding against an earlier version: a genuinely empty
+        // catalog (e.g. Logback, which has no addressable handlers) must not
+        // be conflated with "nothing overridden" just because --show-all was
+        // omitted -- the showAll flag never even reaches an empty catalog.
+        mbean.handlerCatalog = List.of();
+
+        assertEquals(CliError.OK, run(Commands.listHandlers(false, false)));
+
+        assertTrue(output().contains("no level of their own"), output());
+        assertFalse(output().contains("No handlers have an active override."), output());
+    }
+
+    @Test
+    void listHandlers_nothingToList_printsANote() {
+        mbean.handlerCatalog = List.of();
+        assertEquals(CliError.OK, run(Commands.listHandlers(true, false)));
         assertTrue(output().contains("no level of their own"), output());
     }
 
     @Test
-    void handlers_json_wrapsTheCatalog() {
+    void listHandlers_json_wrapsTheCatalog() {
         mbean.handlerCatalog = List.of(new org.logaperture.control.jmx.HandlerInfoData(
                 "CONSOLE", "INFO", false, null, Boolean.TRUE, false, null, null, null, null, null));
 
-        run(Commands.handlers(true));
+        run(Commands.listHandlers(true, true));
 
         String text = output().strip();
         assertTrue(text.startsWith("{\"handlers\":[{"), text);
@@ -779,11 +880,11 @@ class CommandsTest {
     }
 
     @Test
-    void handlers_catalogRowInAutoMode_showsTheTrackedLevelPrefixed() {
+    void listHandlers_catalogRowInAutoMode_showsTheTrackedLevelPrefixed() {
         mbean.handlerCatalog = List.of(new org.logaperture.control.jmx.HandlerInfoData(
                 "CONSOLE", "DEBUG", false, null, Boolean.TRUE, true, "DEBUG", "AUTO", "STICKY", null, null));
 
-        assertEquals(CliError.OK, run(Commands.handlers(false)));
+        assertEquals(CliError.OK, run(Commands.listHandlers(true, false)));
 
         assertTrue(output().contains("AUTO → DEBUG"), output());
     }
@@ -898,12 +999,12 @@ class CommandsTest {
     // --- CONTEXT column (doc/specs/wildfly-support.md, Slice 3) ------------------------------------
 
     @Test
-    void levels_showsContextColumn_onlyWhenTheResultSpansMoreThanOneContext() {
+    void listLoggers_showsContextColumn_onlyWhenTheResultSpansMoreThanOneContext() {
         mbean.loggers = List.of(
                 new LoggerInfoData("com.shared.Util", "INFO", "DEBUG", true, "jmx", null, "STICKY", null, "system"),
                 new LoggerInfoData("com.myapp.Svc", null, "INFO", false, null, null, null, null, "myapp.war"));
 
-        assertEquals(CliError.OK, run(Commands.levels(null, false)));
+        assertEquals(CliError.OK, run(Commands.listLoggers(null, true, false)));
 
         String text = output();
         assertTrue(text.contains("CONTEXT"), "column header present");
@@ -912,12 +1013,12 @@ class CommandsTest {
     }
 
     @Test
-    void levels_hidesContextColumn_whenEveryRowSharesOneContext() {
+    void listLoggers_hidesContextColumn_whenEveryRowSharesOneContext() {
         mbean.loggers = List.of(
                 new LoggerInfoData("a", "INFO", "DEBUG", true, "jmx", null, "STICKY", null, "system"),
                 new LoggerInfoData("b", "INFO", "INFO", false, null, null, null, null, "system"));
 
-        assertEquals(CliError.OK, run(Commands.levels(null, false)));
+        assertEquals(CliError.OK, run(Commands.listLoggers(null, true, false)));
 
         assertFalse(output().contains("CONTEXT"), "a single-context server never shows the column");
     }

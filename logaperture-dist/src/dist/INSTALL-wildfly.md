@@ -41,14 +41,14 @@ agent's own store and revert on a timer or on `logctl reset`.
 4. Verify — the server log shows a clean start (no "The LogManager was not
    properly installed"), and:
    ```sh
-   /opt/logaperture/bin/logctl levels org.jboss
+   /opt/logaperture/bin/logctl list loggers org.jboss --show-all
    ```
    lists the server's own loggers. `logctl status` shows no overrides yet.
 
 ## Using it
 
 ```sh
-logctl levels [filter]                        # list loggers and their effective levels
+logctl list loggers [filter] [--show-all]     # list overridden loggers (--show-all: every one)
 logctl set logger <logger> <level> [tier]     # <level>: TRACE DEBUG INFO WARN ERROR OFF ALL
 logctl status                                 # what overrides are active
 logctl reset logger <logger>                  # drop one override   (also: reset loggers | reset handler <name> | reset handlers)
@@ -69,7 +69,7 @@ Handy options: `--pid <n>` (if `logctl` can't pick the JVM automatically),
 Example:
 ```sh
 logctl set logger org.hibernate.SQL DEBUG for 15m
-logctl levels org.hibernate            # shows DEBUG, override active
+logctl list loggers org.hibernate      # shows DEBUG, override active
 logctl reset logger org.hibernate.SQL
 ```
 

@@ -666,7 +666,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * carries its owning context's {@code stableKey}; unlike {@link
      * #listHandlerOverrides} it is <em>not</em> unioned by ref, since a
      * catalog is per context (a handler named {@code CONSOLE} in two
-     * contexts is two real handlers). {@code logctl handlers} shows the
+     * contexts is two real handlers). {@code logctl list handlers} shows the
      * {@code [context]} prefix only when the result spans more than one.
      */
     @Override

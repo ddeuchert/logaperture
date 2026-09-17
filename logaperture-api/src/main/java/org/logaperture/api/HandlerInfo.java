@@ -18,7 +18,7 @@ package org.logaperture.api;
 import java.time.Instant;
 
 /**
- * One row of the handler catalog {@code logctl handlers} lists — the {@link
+ * One row of the handler catalog {@code logctl list handlers} lists — the {@link
  * LoggerInfo} counterpart for handlers (doc/specs/handler-floor-control.md
  * "The handler catalog", issue #15). One per name the adapter advertises as
  * addressable ({@code knownHandlers()}): on WildFly that is {@code

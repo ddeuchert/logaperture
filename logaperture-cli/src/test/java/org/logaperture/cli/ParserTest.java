@@ -80,14 +80,36 @@ class ParserTest {
     @Test
     void unknownCommandAndUnknownFlagAreUsageErrors() {
         assertUsage(() -> Parser.parse(new String[] {"wibble"}));
-        assertUsage(() -> Parser.parse(new String[] {"levels", "--nope"}));
+        assertUsage(() -> Parser.parse(new String[] {"list", "loggers", "--nope"}));
+    }
+
+    // --- bare 'levels'/'handlers' verbs, fully retired (doc/specs/list-command-surface.md) ----
+
+    @Test
+    void bareLevelsVerbNoLongerExists() {
+        assertUsage(() -> Parser.parse(new String[] {"levels"}));
+        assertUsage(() -> Parser.parse(new String[] {"levels", "com.acme"}));
     }
 
     @Test
-    void handlersTakesNoArguments() {
-        Parser.parse(new String[] {"handlers"});                       // OK
-        Parser.parse(new String[] {"handlers", "--json"});             // OK
-        assertUsage(() -> Parser.parse(new String[] {"handlers", "CONSOLE"}));
+    void bareHandlersVerbNoLongerExists() {
+        assertUsage(() -> Parser.parse(new String[] {"handlers"}));
+    }
+
+    // --- list (doc/specs/list-command-surface.md) ---------------------------------------------
+
+    @Test
+    void listHandlersTakesOnlyShowAll() {
+        Parser.parse(new String[] {"list", "handlers"});                       // OK
+        Parser.parse(new String[] {"list", "handlers", "--json"});             // OK
+        Parser.parse(new String[] {"list", "handlers", "--show-all"});         // OK
+        assertUsage(() -> Parser.parse(new String[] {"list", "handlers", "CONSOLE"}));
+    }
+
+    @Test
+    void listUnknownNounIsAUsageError() {
+        assertUsage(() -> Parser.parse(new String[] {"list"}));
+        assertUsage(() -> Parser.parse(new String[] {"list", "everything"}));
     }
 
     @Test
@@ -129,7 +151,7 @@ class ParserTest {
 
     @Test
     void reasonAndYesRejectedForNonMutatingCommands() {
-        assertUsage(() -> Parser.parse(new String[] {"levels", "--reason", "x"}));
+        assertUsage(() -> Parser.parse(new String[] {"list", "loggers", "--reason", "x"}));
         assertUsage(() -> Parser.parse(new String[] {"status", "--yes"}));
         assertUsage(() -> Parser.parse(new String[] {"reset", "com.acme", "--reason", "x"}));
     }
@@ -146,8 +168,15 @@ class ParserTest {
 
     @Test
     void includeStickyOnlyAppliesToReset() {
-        assertUsage(() -> Parser.parse(new String[] {"levels", "--include-sticky"}));
+        assertUsage(() -> Parser.parse(new String[] {"list", "loggers", "--include-sticky"}));
         Parser.parse(new String[] {"reset", "logger", "com.acme", "--include-sticky"}); // fine
+    }
+
+    @Test
+    void showAllOnlyAppliesToList() {
+        assertUsage(() -> Parser.parse(new String[] {"status", "--show-all"}));
+        Parser.parse(new String[] {"list", "loggers", "--show-all"}); // fine
+        Parser.parse(new String[] {"list", "handlers", "--show-all"}); // fine
     }
 
     // --- reset (doc/specs/reset-command-surface.md) -------------------------------------------
@@ -203,10 +232,10 @@ class ParserTest {
     }
 
     @Test
-    void levelsTakesAtMostOneFilter() {
-        Parser.parse(new String[] {"levels"});
-        Parser.parse(new String[] {"levels", "com.acme"});
-        assertUsage(() -> Parser.parse(new String[] {"levels", "a", "b"}));
+    void listLoggersTakesAtMostOneFilter() {
+        Parser.parse(new String[] {"list", "loggers"});
+        Parser.parse(new String[] {"list", "loggers", "com.acme"});
+        assertUsage(() -> Parser.parse(new String[] {"list", "loggers", "a", "b"}));
     }
 
     @Test

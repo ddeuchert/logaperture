@@ -358,8 +358,9 @@ public final class LevelControlService implements LevelControlOperations {
         String header = "'" + target + "': a trailing wildcard isn't accepted for a level-setting command.";
         if (NameFilter.isPattern(ancestor)) {
             return new IllegalArgumentException(header + " '" + ancestor + "' still matches more than one "
-                    + "logger with no common ancestor to set instead -- run 'logctl levels " + ancestor
-                    + "' to see the current matches, then set the ones you actually want by their own exact name.");
+                    + "logger with no common ancestor to set instead -- run 'logctl list loggers " + ancestor
+                    + " --show-all' to see the current matches, then set the ones you actually want by their own "
+                    + "exact name.");
         }
         String fix = "logctl set logger " + ancestor + " " + level.name();
         return new IllegalArgumentException(header + " Every descendant of '" + ancestor + "' already inherits "

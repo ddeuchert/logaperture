@@ -152,7 +152,7 @@ class MainRunTest {
         FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
         mbean.throwOnNextCall = new IllegalArgumentException("invalid filter 'org.*apache': bad");
 
-        assertEquals(2, run(new String[] {"levels", "org.*apache"}, connectorFor(mbean)));
+        assertEquals(2, run(new String[] {"list", "loggers", "org.*apache"}, connectorFor(mbean)));
         assertTrue(err().contains("logctl: invalid filter 'org.*apache': bad"), err());
     }
 
@@ -164,7 +164,7 @@ class MainRunTest {
         mbean.throwOnNextCall =
                 new RuntimeMBeanException(new IllegalArgumentException("invalid filter 'org.*apache': bad"));
 
-        assertEquals(2, run(new String[] {"levels", "org.*apache"}, connectorFor(mbean)));
+        assertEquals(2, run(new String[] {"list", "loggers", "org.*apache"}, connectorFor(mbean)));
         assertTrue(err().contains("logctl: invalid filter 'org.*apache': bad"), err());
     }
 
@@ -190,7 +190,7 @@ class MainRunTest {
     void happyPathReturnsTheCommandsExitCode() {
         FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
         mbean.loggers = List.of(new LoggerInfoData("a", "INFO", "INFO", false, null, null, null, null));
-        assertEquals(0, run(new String[] {"levels"}, connectorFor(mbean)));
+        assertEquals(0, run(new String[] {"list", "loggers", "--show-all"}, connectorFor(mbean)));
         assertTrue(out().contains("LOGGER"));
     }
 

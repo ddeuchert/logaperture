@@ -17,9 +17,10 @@ After this feature, the user will be able to:
   without opening `jconsole` or writing any JMX.
 - Do so **without naming a process** — when exactly one LogAperture-enabled JVM is
   running, `logctl` finds it; when several are, it lists them and asks for `--pid`.
-- List loggers and their levels: `logctl levels`, optionally filtered by a name prefix
-  or a leading/trailing `*` pattern — `logctl levels *.infinispan` when the log line
-  shows only the short category name.
+- List loggers and their levels: `logctl list loggers`, optionally filtered by a name
+  prefix or a leading/trailing `*` pattern — `logctl list loggers *.infinispan
+  --show-all` when the log line shows only the short category name (see
+  [`list-command-surface.md`](list-command-surface.md)).
 - Raise or lower a logger with a single dictatable command: `logctl set logger
   com.acme.batch DEBUG`, `logctl set logger com.acme.batch DEBUG for 30m`, `logctl set
   logger com.acme.chatty WARN sticky`, `logctl set logger com.acme.batch TRACE for 2h
@@ -55,7 +56,8 @@ code to the agent beyond a single marker system property (below).
 - **Zero-PID discovery** (§14.5): enumerate candidate JVMs, filter to the ones running the
   agent, target the sole survivor or report the ambiguity.
 - Commands mapping 1:1 onto Feature 1 + Feature 2's surface:
-  - `logctl levels [filter]` &rarr; `listLoggers`
+  - `logctl levels [filter]` &rarr; `listLoggers`, later renamed `logctl list loggers
+    [filter]` — [`list-command-surface.md`](list-command-surface.md) (issue #42, slice 3)
   - `logctl debug|trace|info|warn|error <logger> [session | for <duration> | sticky]`
     and `logctl set <logger> <level> [tier]` &rarr; `setLevel`
   - `logctl status` &rarr; `listLoggers`, pre-filtered to active overrides
@@ -93,11 +95,8 @@ code to the agent beyond a single marker system property (below).
   Its own decisions (a confirmation preview before applying, `logctl reset <pattern>`
   symmetry that also retires the rule, one audit record per matched logger, a capability
   check per match) are still open — see §18.7. Until it lands, the workflow is `logctl
-  levels *.infinispan` to find the category, then `set` on the resolved name.
-- **`list` namespacing** (slice 3 of [#42](https://github.com/ddeuchert/logaperture/issues/42)
-  — `list loggers`/`list handlers` replacing `levels`/`handlers`). The reset half of #42
-  (slice 1) is shipped — see "Command surface" below. `set logger`/`set handler` (slice 2)
-  is shipped too: [`set-command-surface.md`](set-command-surface.md).
+  list loggers *.infinispan --show-all` to find the category, then `set` on the resolved
+  name.
 - **Shell completion over live logger names** (§14.5). High-value, but it's a separate
   deliverable: completion scripts for bash/zsh/fish plus a fast name-only query path.
   `logctl levels --json` is the data source it will consume.
@@ -198,16 +197,24 @@ existing operation, unchanged by this slice.
 Anything unrecognized, or a command with the wrong arity, is a usage error: exit 2, usage
 to stderr.
 
-### `logctl levels [filter]`
+### `logctl list loggers [filter]`/`list handlers`
 
-Calls `listLoggers(filter)`. `filter` is the same name-prefix/pattern Feature 1 defined:
-with no `*` it is a name prefix; with one, it is a segment-anchored pattern — at most one
-leading `*.` and/or one trailing `.*`, every other segment literal — so `logctl levels
-'*.infinispan'` locates a logger from the abbreviated category a log line prints rather
-than its fully-qualified name. An invalid pattern (a `*` mixed into a segment, a middle
-wildcard segment, bare `*`/`*.*`, or a `?`) is a usage error naming the problem and
-suggesting the fix, not a silent no-match. Omitted means "everything discovered so far."
-Default output is a table:
+**Superseded (shipped).** The bare `logctl levels [filter]` / `logctl handlers` surface
+this section originally specced is retired — [`list-command-surface.md`](list-command-surface.md)
+(issue #42, slice 3) replaces it with two namespace-scoped forms:
+
+```
+logctl list loggers [filter] [--show-all]
+logctl list handlers [--show-all]
+```
+
+`list loggers [filter]` is the direct descendant of this section's old `levels [filter]`
+— same filter grammar (`filter` is the same name-prefix/pattern Feature 1 defined: with no
+`*` it is a name prefix; with one, it is a segment-anchored pattern — at most one leading
+`*.` and/or one trailing `.*`, every other segment literal — so `logctl list loggers
+'*.infinispan' --show-all` locates a logger from the abbreviated category a log line
+prints rather than its fully-qualified name; an invalid pattern is a usage error naming
+the problem and suggesting the fix, not a silent no-match), same table shape:
 
 ```
 LOGGER                              CONFIGURED  EFFECTIVE  OVERRIDE
@@ -215,6 +222,11 @@ com.acme.batch.Worker               INFO        DEBUG      FOR, reverts 15:42:00
 com.acme.payments                   —           WARN       STICKY — "known-noisy"
 com.acme.web.RequestFilter          INFO        INFO       —
 ```
+
+**New default: overrides-only.** Without `--show-all`, a row with no active override is
+dropped before rendering — `com.acme.web.RequestFilter` above would not appear. This is a
+genuine behavior change from the old `levels`' always-show-everything default; full
+rationale: [`list-command-surface.md`](list-command-surface.md) Decision #2.
 
 `CONFIGURED` shows `—` when no baseline was ever captured for that logger (Feature 1's
 `configuredLevel == null`, i.e. a "Known" logger not yet instantiated). State labels
@@ -225,6 +237,11 @@ slice's data and aren't shown.
 type's own getter names: `name`, `configuredLevel`, `effectiveLevel`, `overrideActive`,
 `overrideSource`, `overrideReason`, `tier`, `expiresAt` (the last two are `null` unless an
 override is active, and `expiresAt` is `null` for a non-`FOR` override).
+
+`list handlers [--show-all]` is the direct descendant of the old bare `handlers` — same
+handler catalog, same overrides-only default and `--show-all` opt-out. Full
+command-by-command output shapes and design rationale:
+[`list-command-surface.md`](list-command-surface.md).
 
 ### `logctl set logger`/`set handler` and the retired level-named forms
 
@@ -260,7 +277,7 @@ this section's original design and are documented in full in
 `listLoggers(null)` filtered to `overrideActive == true`, sorted by revert time (soonest
 first; `STICKY`/`SESSION` last), then by name. This is the concrete form of §6.1's
 "`logctl status` lists what is active in each tier and when it reverts." Same columns as
-`logctl levels` minus the `CONFIGURED`/`EFFECTIVE` split — just what's overridden, to
+`logctl list loggers` minus the `CONFIGURED`/`EFFECTIVE` split — just what's overridden, to
 what, in which tier, why, and when it goes back:
 
 ```
@@ -269,12 +286,14 @@ com.acme.batch.Worker    DEBUG   FOR      15:42:00 (in 27m)        "INC-123"
 com.acme.payments        WARN    STICKY   until reset              "known-noisy"
 ```
 
-`REASON` is shown quoted (and `—` when none was given), the same rendering `logctl
-levels` uses in its `OVERRIDE` column. Every logger with an active override appears here:
+`REASON` is shown quoted (and `—` when none was given), the same rendering `logctl list
+loggers` uses in its `OVERRIDE` column. Every logger with an active override appears here:
 `setLevel` and persistence-resume both commit the logger to the override registry, so it
 is at least "Known" and `listLoggers` returns it even if nothing has instantiated it yet.
 
-Zero active overrides prints `No active overrides.` and exits 0.
+Zero active overrides prints `No active overrides.` and exits 0. `logctl env` is the
+separate, pasteable bug-report block — see [`environment-report.md`](environment-report.md)
+— not folded into `status`.
 
 ### `logctl reset logger`/`loggers`/`handler`/`handlers`
 
@@ -316,12 +335,12 @@ not, and the test would catch it.
 
 - **Default:** aligned plain-text tables / confirmation lines to stdout; diagnostics to
   stderr.
-- **`--json`:** a single JSON value to stdout (array for `levels`/`status`, object for a
+- **`--json`:** a single JSON value to stdout (array for `list loggers`/`status`, object for a
   `set`, `{"reverted": N}` for `reset`), nothing else on stdout. Hand-written from the
   data objects — no third-party JSON library (the shapes are tiny and fully controlled,
   same reasoning as `persistence.md`'s hand-written state-file reader).
 
-**Multi-context CONTEXT column (added by wildfly-support).** `levels` and `status` prepend
+**Multi-context CONTEXT column (added by wildfly-support).** `list loggers` and `status` prepend
 a `CONTEXT` column to their plain-text table **only when the result spans more than one
 distinct logging context** — a plain `java -jar` app, and a stock standalone WildFly (one
 shared system context), never see it. Display only: there is no `--context` flag and no
@@ -549,9 +568,10 @@ From a plain shell, against a `java -jar` application started with
 - `logctl set logger com.acme.batch.Worker DEBUG for 30m --reason INC-123` finds that JVM
   with no PID argument, sets the level, and prints the local-time revert instant.
 - `logctl status` shows that override with its tier and countdown.
-- `logctl levels com.acme` lists the package's loggers with configured vs effective
-  levels; `logctl levels '*Worker'` finds the same logger from its suffix alone (the glob
-  match is Feature 1's `NameFilter`, reached unchanged through the CLI).
+- `logctl list loggers com.acme --show-all` lists the package's loggers with configured vs
+  effective levels; `logctl list loggers '*Worker' --show-all` finds the same logger from
+  its suffix alone (the glob match is Feature 1's `NameFilter`, reached unchanged through
+  the CLI).
 - `logctl reset logger com.acme.batch.Worker` returns it to baseline; `logctl reset loggers`
   is a safe no-op when nothing is active.
 - Two enabled JVMs make the un-`--pid`'d command exit 4 with both listed; zero make it
