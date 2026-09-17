@@ -195,7 +195,11 @@ class WildFlyContainerIT {
             assertTrue(pollLogctl("levels", APP_LOGGER, out -> out.contains("DEBUG")),
                     "the override is still in force after a redeploy");
         } finally {
-            logctl("reset", "logger", APP_LOGGER);
+            // --include-sticky: the override set above is sticky -- without the
+            // flag this exact-name reset would refuse outright (doc/specs/
+            // reset-command-surface.md, Decision #1), leaving it active for
+            // whichever test runs next against this shared container.
+            logctl("reset", "logger", APP_LOGGER, "--include-sticky");
             undeployProbeWar();
         }
     }
@@ -217,7 +221,8 @@ class WildFlyContainerIT {
                                     && line.contains("logger=" + BOOT_LOGGER)),
                     "a single verification-sweep audit entry names " + BOOT_LOGGER);
         } finally {
-            logctl("reset", "logger", BOOT_LOGGER);
+            // --include-sticky: same reasoning as deployedWarLogger's cleanup above.
+            logctl("reset", "logger", BOOT_LOGGER, "--include-sticky");
             exec(JBOSS_CLI, "--connect", "--command=/subsystem=logging/logger=" + BOOT_LOGGER + ":remove");
         }
     }
@@ -272,7 +277,11 @@ class WildFlyContainerIT {
         assertEquals(0, logctl("debug", BOOT_LOGGER, "sticky").exitCode()); // exact name, not the pattern
         assertTrue(logctl("levels", BOOT_LOGGER).stdout().contains("DEBUG"));
 
-        Logctl reverted = logctl("reset", "logger", "org.jboss.as.*");
+        // --include-sticky: the exact-name override above is sticky, and a
+        // pattern reset leaves a sticky match in place by default (doc/specs/
+        // reset-command-surface.md, Decision #1) -- this test is about
+        // pattern-vs-exact-name selection, not sticky-skip, so it opts in.
+        Logctl reverted = logctl("reset", "logger", "org.jboss.as.*", "--include-sticky");
 
         assertEquals(0, reverted.exitCode(), reverted.stderr());
         assertTrue(logctl("levels", BOOT_LOGGER).stdout().contains("INFO"),
