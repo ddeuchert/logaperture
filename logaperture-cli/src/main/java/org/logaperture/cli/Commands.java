@@ -62,19 +62,19 @@ final class Commands {
 
     static Command listLoggers(String filter, boolean showAll, boolean json) {
         return (mbean, out, in, interactive) -> {
-            List<LoggerInfoData> rows = mbean.listLoggers(filter);
-            if (!showAll) {
-                rows = rows.stream().filter(LoggerInfoData::isOverrideActive).toList();
-            }
+            List<LoggerInfoData> matched = mbean.listLoggers(filter);
+            List<LoggerInfoData> rows = showAll
+                    ? matched
+                    : matched.stream().filter(LoggerInfoData::isOverrideActive).toList();
             if (json) {
                 out.println(Json.loggers(rows));
                 return CliError.OK;
             }
             if (rows.isEmpty()) {
-                if (filter != null) {
-                    out.println("No loggers match '" + filter + "'.");
-                } else if (showAll) {
-                    out.println("No loggers known yet.");
+                if (matched.isEmpty()) {
+                    out.println(filter != null ? "No loggers match '" + filter + "'." : "No loggers known yet.");
+                } else if (filter != null) {
+                    out.println("No loggers matching '" + filter + "' have an active override.");
                 } else {
                     out.println("No loggers have an active override.");
                 }
@@ -677,16 +677,17 @@ final class Commands {
      */
     static Command listHandlers(boolean showAll, boolean json) {
         return (mbean, out, in, interactive) -> {
-            List<HandlerInfoData> rows = mbean.listHandlers();
-            if (!showAll) {
-                rows = rows.stream().filter(HandlerInfoData::isOverrideActive).toList();
-            }
+            List<HandlerInfoData> catalog = mbean.listHandlers();
+            List<HandlerInfoData> rows = showAll
+                    ? catalog
+                    : catalog.stream().filter(HandlerInfoData::isOverrideActive).toList();
             if (json) {
                 out.println(Json.handlers(rows));
                 return CliError.OK;
             }
             if (rows.isEmpty()) {
-                out.println(showAll ? "This framework's handlers have no level of their own — nothing to list."
+                out.println(catalog.isEmpty()
+                        ? "This framework's handlers have no level of their own — nothing to list."
                         : "No handlers have an active override.");
                 return CliError.OK;
             }

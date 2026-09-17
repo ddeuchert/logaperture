@@ -128,14 +128,24 @@ Calls `listLoggers(filter)`, same as today's `levels`. `<filter>` grammar is unc
 name, prefix, or a pattern with a leading `*.` and/or trailing `.*`. Without `--show-all`,
 rows with no active override are dropped from the result before rendering — table columns
 (`CONTEXT` when multi-context, `LOGGER`, `CONFIGURED`, `EFFECTIVE`, `OVERRIDE`) are unchanged.
-Empty-result message: `No loggers match '<filter>'.` (filtered) or `No loggers have an active
-override.` (unfiltered, no `--show-all`) vs. today's `No loggers known yet.` (unfiltered,
-`--show-all`).
+Empty-result message distinguishes "the filter matched nothing" from "it matched, just nothing
+overridden" — the two are different facts and conflating them would mislead:
+
+- `No loggers match '<filter>'.` — the filter itself matched zero loggers, regardless of
+  `--show-all`.
+- `No loggers matching '<filter>' have an active override.` — the filter matched real
+  loggers, but none carry an override (no `--show-all`).
+- `No loggers have an active override.` — unfiltered, no `--show-all`, nothing overridden.
+- `No loggers known yet.` — unfiltered, `--show-all`, nothing known at all (today's message).
 
 ### `logctl list handlers [--show-all]`
 
 Calls the same handler-catalog read `handlers` uses today. Without `--show-all`, only handlers
-carrying an active override are shown.
+carrying an active override are shown. Empty-result message likewise distinguishes the two
+facts: a genuinely empty catalog (a framework with no addressable handlers, e.g. Logback)
+always prints today's `This framework's handlers have no level of their own — nothing to
+list.`, regardless of `--show-all`; a non-empty catalog with nothing overridden (no
+`--show-all`) prints `No handlers have an active override.` instead.
 
 ### Removed
 
@@ -161,8 +171,9 @@ slices 1 and 2's coverage:
 - `Commands.listLoggers`/`Commands.listHandlers` (stubbed MXBean): overrides-only filtering
   applied correctly on top of the existing filter/render logic; `--show-all` restores
   today's full-catalog `CommandsTest` coverage unchanged.
-- Empty-result message selection: filtered vs. unfiltered vs. `--show-all` produce the three
-  distinct messages above.
+- Empty-result message selection: the message depends on whether the filter/catalog itself
+  matched nothing versus matched but had nothing overridden — not solely on `--show-all` —
+  covering all four messages above for `list loggers` and both for `list handlers`.
 
 **Cross-process integration (`CliEndToEndIT`, extending the existing suite):**
 

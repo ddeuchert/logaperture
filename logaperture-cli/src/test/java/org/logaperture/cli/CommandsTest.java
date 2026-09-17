@@ -156,6 +156,21 @@ class CommandsTest {
     }
 
     @Test
+    void listLoggersFilterMatchingRealLoggersWithNoOverrideIsNotReportedAsNoMatch() {
+        // A code-review finding against an earlier version: the filter matched
+        // real loggers under com.acme, just none with an active override --
+        // that must not be reported as "No loggers match 'com.acme'." (which
+        // implies the prefix matched nothing).
+        mbean.loggers = List.of(new LoggerInfoData("com.acme.Quiet", "INFO", "INFO", false, null, null, null, null));
+
+        assertEquals(CliError.OK, run(Commands.listLoggers("com.acme", false, false)));
+
+        String text = output();
+        assertFalse(text.contains("No loggers match 'com.acme'."), text);
+        assertTrue(text.contains("No loggers matching 'com.acme' have an active override."), text);
+    }
+
+    @Test
     void statusShowsOnlyActiveOverridesSortedByRevertTime() {
         String soon = Instant.now().plus(5, ChronoUnit.MINUTES).toString();
         String later = Instant.now().plus(3, ChronoUnit.HOURS).toString();
@@ -313,6 +328,20 @@ class CommandsTest {
         mbean.handlerCatalog = List.of();
         assertEquals(CliError.OK, run(Commands.listHandlers(true, false)));
         assertTrue(output().contains("no level of their own"));
+    }
+
+    @Test
+    void listHandlers_emptyCatalogPrintsNoLevelNoteEvenWithoutShowAll() {
+        // A code-review finding against an earlier version: a genuinely empty
+        // catalog (e.g. Logback, which has no addressable handlers) must not
+        // be conflated with "nothing overridden" just because --show-all was
+        // omitted -- the showAll flag never even reaches an empty catalog.
+        mbean.handlerCatalog = List.of();
+
+        assertEquals(CliError.OK, run(Commands.listHandlers(false, false)));
+
+        assertTrue(output().contains("no level of their own"), output());
+        assertFalse(output().contains("No handlers have an active override."), output());
     }
 
     @Test
