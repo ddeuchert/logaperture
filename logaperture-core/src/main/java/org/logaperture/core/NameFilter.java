@@ -56,7 +56,7 @@ final class NameFilter {
     /**
      * Whether {@code target} is a pattern rather than an exact logger name --
      * one {@code '*'} anywhere in it. The single check every caller on the
-     * {@code setLevel}/{@code resetLogger} path branches on before deciding
+     * {@code setLogger}/{@code resetLogger} path branches on before deciding
      * whether it's looking at a one-time selection or a plain override;
      * pulled out here so that branch is spelled once instead of re-typed at
      * each call site.
@@ -67,7 +67,7 @@ final class NameFilter {
 
     /**
      * Whether {@code target}'s trailing segment is {@code *} — the check
-     * {@code setLevel} rejects on outright (doc/specs/
+     * {@code setLogger} rejects on outright (doc/specs/
      * pattern-selection-semantics.md, Decision #5), since every descendant
      * already inherits a set ancestor's level from the framework itself. A
      * cheap, purely syntactic check, deliberately not full grammar
@@ -75,7 +75,7 @@ final class NameFilter {
      * later, by whichever path actually resolves matches ({@link #compile}/
      * {@code matchesFor}). {@code target.endsWith(".*")} alone already
      * implies {@link #isPattern} — no separate call needed (a code-review
-     * finding: the redundant conjunct cost every {@code setLevel}/{@code
+     * finding: the redundant conjunct cost every {@code setLogger}/{@code
      * checkSetLevelPermitted} call site a second, needless scan of {@code
      * target}).
      */

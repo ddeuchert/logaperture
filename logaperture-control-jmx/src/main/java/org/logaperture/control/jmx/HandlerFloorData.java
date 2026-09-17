@@ -22,7 +22,7 @@ import java.beans.ConstructorProperties;
 /**
  * MXBean-friendly mirror of {@link HandlerFloor} — see {@link
  * LoggerInfoData} for the pattern's rationale. One of these names a handler
- * that will still swallow the level a {@code setLevel} call just applied
+ * that will still swallow the level a {@code setLogger} call just applied
  * (doc/specs/handler-floor-control.md "Warning on level commands").
  */
 public final class HandlerFloorData {

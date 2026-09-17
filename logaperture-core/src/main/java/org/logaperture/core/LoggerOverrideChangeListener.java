@@ -29,7 +29,7 @@ package org.logaperture.core;
  * builds for the same context. Default: {@link #NONE}, for every context
  * that doesn't need this.
  *
- * <p>Firing this from inside {@link LevelControlService#setLevel} happens
+ * <p>Firing this from inside {@link LevelControlService#setLogger} happens
  * <em>before</em> that method computes its blocking-handler floors — not
  * merely for promptness, but because an {@code AUTO} handler that has
  * already tracked down to the new level must no longer appear in that

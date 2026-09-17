@@ -48,7 +48,7 @@ import java.util.Optional;
 /**
  * A small stateful {@link LevelControlOperations} + {@link
  * HandlerLevelControlOperations} for {@link CliFixtureApp} — enough to make
- * {@code listLoggers}/{@code setLevel}/{@code resetLogger}/{@code resetAllLoggers}/
+ * {@code listLoggers}/{@code setLogger}/{@code resetLogger}/{@code resetAllLoggers}/
  * {@code setHandlerLevel}/{@code resetHandler} round-trip over a real
  * cross-process JMX connection so {@link CliEndToEndIT} can assert against
  * real output. No Logback, no agent — the CLI's transport is what's under
@@ -111,7 +111,7 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     }
 
     @Override
-    public synchronized SetLevelResult setLevel(String loggerName, Level level, SetLevelOptions options) {
+    public synchronized SetLevelResult setLogger(String loggerName, Level level, SetLevelOptions options) {
         Instant now = Instant.now();
         Instant expiresAt = options.tier() == PersistenceTier.FOR ? now.plus(options.expiresIn()) : null;
         state.put(loggerName, new LoggerInfo(

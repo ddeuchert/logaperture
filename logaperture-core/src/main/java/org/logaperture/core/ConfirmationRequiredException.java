@@ -18,10 +18,10 @@ package org.logaperture.core;
 import java.util.List;
 
 /**
- * Thrown by {@code setLevel} when {@code target} is a leading-star pattern
+ * Thrown by {@code setLogger} when {@code target} is a leading-star pattern
  * (doc/specs/pattern-selection-semantics.md) and {@code options.confirmed()}
  * is {@code false} — never mutates anything. (A trailing-star target never
- * reaches this at all — {@code setLevel} rejects that shape outright,
+ * reaches this at all — {@code setLogger} rejects that shape outright,
  * before confirmation is even evaluated.) Crosses the JMX boundary the same way
  * {@link CapabilityDeniedException} already does (unwrapped back to itself
  * by {@code JMX.newMXBeanProxy} for a typed caller, per that spec's Decision
@@ -30,7 +30,7 @@ import java.util.List;
  *
  * <p>{@code logctl} never actually triggers this in normal operation — it
  * resolves its own preview via {@code listLoggers} and always passes {@code
- * confirmed = true} by the time it calls {@code setLevel} for real (a user
+ * confirmed = true} by the time it calls {@code setLogger} for real (a user
  * "y" or {@code --yes}). This exception is the safety net for every other
  * caller, JMX-direct included, per top-level §8.1's "no surface is a
  * privileged path" — and for {@code logctl} itself, a defensive
@@ -52,7 +52,7 @@ public final class ConfirmationRequiredException extends RuntimeException {
                 + ". Re-invoke with confirmed=true to apply.";
     }
 
-    /** The pattern {@code setLevel} was called with. */
+    /** The pattern {@code setLogger} was called with. */
     public String pattern() {
         return pattern;
     }

@@ -48,11 +48,10 @@ agent's own store and revert on a timer or on `logctl reset`.
 ## Using it
 
 ```sh
-logctl levels [filter]                 # list loggers and their effective levels
-logctl debug  <logger> [tier]          # raise <logger> to DEBUG   (also: trace|info|warn|error)
-logctl set    <logger> <level> [tier]  # <level>: TRACE DEBUG INFO WARN ERROR OFF ALL
-logctl status                          # what overrides are active
-logctl reset  logger <logger>          # drop one override   (also: reset loggers | reset handler <name> | reset handlers)
+logctl levels [filter]                        # list loggers and their effective levels
+logctl set logger <logger> <level> [tier]     # <level>: TRACE DEBUG INFO WARN ERROR OFF ALL
+logctl status                                 # what overrides are active
+logctl reset logger <logger>                  # drop one override   (also: reset loggers | reset handler <name> | reset handlers)
 ```
 
 **Tier** — how long the change lasts:
@@ -69,7 +68,7 @@ Handy options: `--pid <n>` (if `logctl` can't pick the JVM automatically),
 
 Example:
 ```sh
-logctl debug org.hibernate.SQL for 15m
+logctl set logger org.hibernate.SQL DEBUG for 15m
 logctl levels org.hibernate            # shows DEBUG, override active
 logctl reset logger org.hibernate.SQL
 ```

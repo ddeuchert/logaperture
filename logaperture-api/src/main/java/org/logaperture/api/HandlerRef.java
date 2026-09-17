@@ -22,7 +22,7 @@ package org.logaperture.api;
  * CONSOLE}, {@code FILE} via {@code org.jboss.logmanager}'s {@code
  * ContextConfiguration}), falling back to {@code <class-simple-name>@
  * <identityHashCode-hex>} for a handler with no configured name of its own.
- * This is what a user types on {@code logctl handler <name> <level>} and
+ * This is what a user types on {@code logctl set handler <name> <level>} and
  * what every warning/audit record names a handler by, so a fallback token is
  * still a usable (if less friendly) identifier, not a placeholder.
  *

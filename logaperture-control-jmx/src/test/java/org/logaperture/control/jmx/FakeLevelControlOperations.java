@@ -82,7 +82,7 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     }
 
     @Override
-    public SetLevelResult setLevel(String loggerName, Level level, SetLevelOptions options) {
+    public SetLevelResult setLogger(String loggerName, Level level, SetLevelOptions options) {
         setLevelCalls.add(new Object[] {loggerName, level, options});
         if (throwOnSetLevel != null) {
             throw throwOnSetLevel;

@@ -23,7 +23,7 @@ import org.logaperture.core.spi.LoggingAdapter;
  * "apply, safely re-invokable" operation doc/specs/level-control.md's
  * re-appliability note calls for.
  *
- * <p>Called once from {@link LevelControlService#setLevel}, and available
+ * <p>Called once from {@link LevelControlService#setLogger}, and available
  * to be called again — unchanged — from {@link
  * LevelControlService#reapplyActiveOverrides}, e.g. after a framework
  * reset. The {@code none} container never triggers that second path (no

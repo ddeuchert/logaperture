@@ -38,7 +38,7 @@ public interface LevelControlOperations {
      *         path that will still swallow records at {@code level} — doc/specs/
      *         handler-floor-control.md "Warning on level commands"
      */
-    SetLevelResult setLevel(String loggerName, Level level, SetLevelOptions options);
+    SetLevelResult setLogger(String loggerName, Level level, SetLevelOptions options);
 
     /**
      * {@code target} is an exact logger name or a pattern (doc/specs/

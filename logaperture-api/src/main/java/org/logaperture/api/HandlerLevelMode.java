@@ -28,11 +28,11 @@ package org.logaperture.api;
  * in there would need a special case at every one of those call sites.
  */
 public enum HandlerLevelMode {
-    /** The level the user set directly with {@code logctl handler <name> <level>}. */
+    /** The level the user set directly with {@code logctl set handler <name> <level>}. */
     FIXED,
     /**
      * Tracks the lowest currently-active logger override automatically
-     * ({@code logctl handler <name> AUTO}), reverting to the handler's own
+     * ({@code logctl set handler <name> AUTO}), reverting to the handler's own
      * baseline once none remain.
      */
     AUTO

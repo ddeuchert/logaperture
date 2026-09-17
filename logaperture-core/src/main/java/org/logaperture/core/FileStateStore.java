@@ -221,7 +221,7 @@ public final class FileStateStore implements StateStore, Closeable {
     /**
      * Rewrites the whole state file and {@code fsync}s it -- called once per
      * {@link #save}/{@link #remove}/{@link #removeAll}/etc. A pattern {@code
-     * setLevel} matching N loggers still does N full rewrite-and-fsync
+     * setLogger} matching N loggers still does N full rewrite-and-fsync
      * cycles (each is a genuine upsert, so there's no batch primitive for
      * that direction -- doc/specs/persistence.md "Batch removal"), but a
      * bulk revert ({@code resetAll}, either expiry sweep) collapses to one

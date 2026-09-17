@@ -68,11 +68,11 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
-    public SetLevelResultData setLevel(String target, String level, String reason, String tier, long forSeconds,
+    public SetLevelResultData setLogger(String target, String level, String reason, String tier, long forSeconds,
             boolean confirmed) {
         Level parsedLevel = parseLevel(level);
         SetLevelOptions options = toOptions(reason, tier, forSeconds, confirmed);
-        var result = operations.setLevel(target, parsedLevel, options);
+        var result = operations.setLogger(target, parsedLevel, options);
         return SetLevelResultData.from(result);
     }
 

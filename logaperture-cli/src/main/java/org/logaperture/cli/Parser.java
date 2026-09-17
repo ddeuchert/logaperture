@@ -41,7 +41,7 @@ final class Parser {
     /** doc/specs/top.md Decision #9: worst-10 by default; {@code --limit 0} shows every tracked logger. */
     static final int DEFAULT_TOP_LIMIT = 10;
 
-    private static final Set<String> LEVEL_SUBCOMMANDS = Set.of("debug", "trace", "info", "warn", "error");
+    private static final Set<String> RETIRED_LEVEL_VERBS = Set.of("debug", "trace", "info", "warn", "error");
 
     private Parser() {
     }
@@ -122,19 +122,29 @@ final class Parser {
 
         String command = positionals.get(0);
         List<String> rest = positionals.subList(1, positionals.size());
-        boolean isLevelMutation = command.equals("set") || LEVEL_SUBCOMMANDS.contains(command);
-        boolean isHandlerCommand = command.equals("handler");
-        // "handler <name> reset" is a revert, same as "reset <logger>" -- a
-        // reason attached to it would be silently dropped, so it's rejected
-        // the same way "reset <logger> --reason ..." already is. Only the
-        // "handler <name> <level>" set-form takes --reason.
-        boolean isHandlerReset = isHandlerCommand && rest.size() >= 2 && rest.get(1).equals("reset");
 
-        if (yes && !isLevelMutation) {
-            throw usage("--yes applies only to set/debug/trace/info/warn/error.");
+        if (RETIRED_LEVEL_VERBS.contains(command)) {
+            String target = rest.isEmpty() ? "<target>" : rest.get(0);
+            throw usage("'" + command + "' no longer exists -- use 'set logger " + target + " "
+                    + command.toUpperCase(Locale.ROOT) + "'.");
         }
-        if (reason != null && !isLevelMutation && !(isHandlerCommand && !isHandlerReset)) {
-            throw usage("--reason applies only to set/debug/trace/info/warn/error, or 'handler <name> <level>'.");
+        if (command.equals("handler")) {
+            String handlerRef = rest.isEmpty() ? "<name>" : rest.get(0);
+            if (rest.size() >= 2 && rest.get(1).equals("reset")) {
+                throw usage("'handler <name> reset' no longer exists -- use 'reset handler " + handlerRef + "'.");
+            }
+            String levelToken = rest.size() > 1 ? rest.get(1) : "<level>";
+            throw usage("'handler' no longer exists -- use 'set handler " + handlerRef + " " + levelToken + "'.");
+        }
+
+        boolean isSetLogger = command.equals("set") && !rest.isEmpty() && rest.get(0).equals("logger");
+        boolean isSetHandler = command.equals("set") && !rest.isEmpty() && rest.get(0).equals("handler");
+
+        if (yes && !isSetLogger) {
+            throw usage("--yes applies only to 'set logger'.");
+        }
+        if (reason != null && !isSetLogger && !isSetHandler) {
+            throw usage("--reason applies only to 'set logger' or 'set handler'.");
         }
         if (includeSticky && !command.equals("reset")) {
             throw usage("--include-sticky applies only to 'reset'.");
@@ -216,40 +226,38 @@ final class Parser {
                 };
             }
             case "set" -> {
-                if (rest.size() < 2) {
-                    throw usage("'set' needs <logger> <level> [session | for <duration> | sticky].");
-                }
-                TierChoice tier = resolveTier(rest.subList(2, rest.size()));
-                yield Commands.setLevel(rest.get(0), parseLevel(rest.get(1)), reason,
-                        tier.tierName(), tier.forSeconds(), yes, json);
-            }
-            case "handler" -> {
-                if (rest.size() < 2) {
-                    throw usage("'handler' needs <name> <level> or <name> AUTO.");
-                }
-                String handlerRef = rest.get(0);
-                if (rest.get(1).equals("reset")) {
-                    throw usage("'handler <name> reset' no longer exists -- use 'reset handler " + handlerRef
-                            + "'.");
-                }
-                TierChoice tier = resolveTier(rest.subList(2, rest.size()));
-                if (rest.get(1).equalsIgnoreCase("auto")) {
-                    yield Commands.setHandlerAuto(handlerRef, reason, tier.tierName(), tier.forSeconds(), json);
-                }
-                yield Commands.setHandlerLevel(handlerRef, parseLevel(rest.get(1)), reason,
-                        tier.tierName(), tier.forSeconds(), json);
-            }
-            default -> {
-                if (!LEVEL_SUBCOMMANDS.contains(command)) {
-                    throw usage("Unknown command '" + command + "'.");
-                }
                 if (rest.isEmpty()) {
-                    throw usage("'" + command + "' needs a <logger>.");
+                    throw usage("'set' needs 'logger <target> <level>' or 'handler <name> <level>'.");
                 }
-                TierChoice tier = resolveTier(rest.subList(1, rest.size()));
-                yield Commands.setLevel(rest.get(0), command.toUpperCase(Locale.ROOT), reason,
-                        tier.tierName(), tier.forSeconds(), yes, json);
+                String noun = rest.get(0);
+                List<String> nounRest = rest.subList(1, rest.size());
+                yield switch (noun) {
+                    case "logger" -> {
+                        if (nounRest.size() < 2) {
+                            throw usage("'set logger' needs <target> <level> [session | for <duration> | sticky].");
+                        }
+                        TierChoice tier = resolveTier(nounRest.subList(2, nounRest.size()));
+                        yield Commands.setLogger(nounRest.get(0), parseLevel(nounRest.get(1)), reason,
+                                tier.tierName(), tier.forSeconds(), yes, json);
+                    }
+                    case "handler" -> {
+                        if (nounRest.size() < 2) {
+                            throw usage("'set handler' needs <name> <level> or <name> AUTO.");
+                        }
+                        String handlerRef = nounRest.get(0);
+                        TierChoice tier = resolveTier(nounRest.subList(2, nounRest.size()));
+                        if (nounRest.get(1).equalsIgnoreCase("auto")) {
+                            yield Commands.setHandlerAuto(handlerRef, reason, tier.tierName(), tier.forSeconds(),
+                                    json);
+                        }
+                        yield Commands.setHandlerLevel(handlerRef, parseLevel(nounRest.get(1)), reason,
+                                tier.tierName(), tier.forSeconds(), json);
+                    }
+                    default -> throw usage("'set' needs 'logger <target> <level>' or 'handler <name> <level>', "
+                            + "got '" + noun + "'.");
+                };
             }
+            default -> throw usage("Unknown command '" + command + "'.");
         };
 
         return new Invocation(false, false, debug, pid, resolved);

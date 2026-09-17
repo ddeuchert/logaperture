@@ -56,7 +56,7 @@ public interface LevelControlMXBean {
      *         records at {@code level} — doc/specs/handler-floor-control.md
      *         "Warning on level commands"
      */
-    SetLevelResultData setLevel(String target, String level, String reason, String tier, long forSeconds,
+    SetLevelResultData setLogger(String target, String level, String reason, String tier, long forSeconds,
             boolean confirmed);
 
     /**
@@ -91,7 +91,7 @@ public interface LevelControlMXBean {
     ResetOutcomeData resetAllLoggers(boolean includeSticky);
 
     /**
-     * {@code logctl handler <name> <level>} — doc/specs/
+     * {@code logctl set handler <name> <level>} — doc/specs/
      * handler-floor-control.md "The operation".
      *
      * @param handlerRef the handler's configured name, or its identity-hash
@@ -107,7 +107,7 @@ public interface LevelControlMXBean {
             long forSeconds);
 
     /**
-     * {@code logctl handler <name> AUTO} — puts {@code handlerRef} into a
+     * {@code logctl set handler <name> AUTO} — puts {@code handlerRef} into a
      * self-tracking mode whose applied level follows the lowest currently
      * active logger override (doc/specs/handler-floor-control.md "AUTO
      * handler level", issue #20).
@@ -157,7 +157,7 @@ public interface LevelControlMXBean {
     List<HandlerLevelOverrideData> listHandlerOverrides();
 
     /**
-     * {@code logctl handlers} — the full addressable handler catalog across
+     * {@code logctl set handlers} — the full addressable handler catalog across
      * every registered context (doc/specs/handler-floor-control.md "The
      * handler catalog", issue #15). Read-only; requires only {@code VIEW}.
      */

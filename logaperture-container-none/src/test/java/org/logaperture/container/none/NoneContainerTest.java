@@ -137,7 +137,7 @@ class NoneContainerTest {
         try (NoneContainer root = newRoot()) {
             AggregateLevelControl ops = install(root);
 
-            ops.setLevel("org.logaperture.container.none.roundtrip.Worker", Level.DEBUG, SetLevelOptions.defaults());
+            ops.setLogger("org.logaperture.container.none.roundtrip.Worker", Level.DEBUG, SetLevelOptions.defaults());
             LoggerInfo afterSet = ops.listLoggers("org.logaperture.container.none.roundtrip.Worker").get(0);
             assertEquals(Level.DEBUG, afterSet.effectiveLevel());
             assertTrue(afterSet.overrideActive());
@@ -155,7 +155,7 @@ class NoneContainerTest {
         String loggerName = "org.logaperture.container.none.resume.Sticky";
 
         try (NoneContainer first = newRoot()) {
-            install(first).setLevel(loggerName, Level.DEBUG, SetLevelOptions.sticky());
+            install(first).setLogger(loggerName, Level.DEBUG, SetLevelOptions.sticky());
         } // "restart": releases the instance lock
 
         try (NoneContainer second = newRoot()) {
@@ -170,7 +170,7 @@ class NoneContainerTest {
         String loggerName = "org.logaperture.container.none.resume.ExpiredFor";
 
         try (NoneContainer first = newRoot()) {
-            install(first).setLevel(loggerName, Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMillis(1)));
+            install(first).setLogger(loggerName, Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMillis(1)));
         }
         try {
             Thread.sleep(20); // let the 1ms expiry pass while this "JVM" is "down"
@@ -192,7 +192,7 @@ class NoneContainerTest {
 
         try (NoneContainer root = newRoot(Duration.ofMillis(20))) {
             AggregateLevelControl ops = install(root);
-            ops.setLevel(loggerName, Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMillis(1)));
+            ops.setLogger(loggerName, Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMillis(1)));
 
             LoggerInfo revertedInfo = pollUntilReverted(ops, loggerName);
             assertTrue(!revertedInfo.overrideActive());
@@ -218,7 +218,7 @@ class NoneContainerTest {
 
         try (NoneContainer root = newRoot()) {
             AggregateLevelControl ops = install(root);
-            ops.setLevel(loggerName, Level.DEBUG, SetLevelOptions.sticky());
+            ops.setLogger(loggerName, Level.DEBUG, SetLevelOptions.sticky());
 
             ILoggerFactory factory = LoggerFactory.getILoggerFactory();
             assertTrue(factory instanceof LoggerContext, "test JVM must be bound to a real Logback LoggerContext");
@@ -249,12 +249,12 @@ class NoneContainerTest {
         // `second` can only come from the stale listener under test. TRACE
         // is likewise deliberate: distinct from whatever level Logback's own
         // reset() leaves ROOT at, so a stale reapply is unambiguous.
-        install(first).setLevel(firstLogger, Level.TRACE, SetLevelOptions.defaults());
+        install(first).setLogger(firstLogger, Level.TRACE, SetLevelOptions.defaults());
         first.close();
 
         try (NoneContainer second = newRoot()) {
             AggregateLevelControl ops = install(second);
-            ops.setLevel(secondLogger, Level.DEBUG, SetLevelOptions.sticky());
+            ops.setLogger(secondLogger, Level.DEBUG, SetLevelOptions.sticky());
 
             ILoggerFactory factory = LoggerFactory.getILoggerFactory();
             ((LoggerContext) factory).reset();

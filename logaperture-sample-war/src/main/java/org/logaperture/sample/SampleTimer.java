@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * The sample's background logger. One daemon thread emits a
  * {@link WorkLog#emitAllLevels(String)} burst per period while running — so a
- * {@code logctl debug ... for 2m} override can be watched expiring and the
+ * {@code logctl set logger ... DEBUG for 2m} override can be watched expiring and the
  * verification sweep re-applying it, without hitting an endpoint by hand.
  *
  * <p>Shared by {@link TimerServlet} (start / stop / status over HTTP) and

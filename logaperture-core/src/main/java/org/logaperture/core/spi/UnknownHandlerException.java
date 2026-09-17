@@ -20,7 +20,7 @@ import org.logaperture.api.HandlerRef;
 /**
  * Thrown by {@link LoggingAdapter#setHandlerLevel} when {@code ref} does not
  * resolve to a live handler in any managed context — doc/specs/
- * handler-floor-control.md "The operation": {@code logctl handler <name>
+ * handler-floor-control.md "The operation": {@code logctl set handler <name>
  * <level>} surfaces this as a usage error naming the handlers that are
  * actually known.
  */

@@ -91,7 +91,7 @@ class MainRunTest {
 
     @Test
     void unparseableDurationIsUsageExitTwo() {
-        assertEquals(2, run(new String[] {"debug", "com.acme", "for", "soon"}, unusableConnector()));
+        assertEquals(2, run(new String[] {"set", "logger", "com.acme", "DEBUG", "for", "soon"}, unusableConnector()));
         assertTrue(err().contains("Unparseable duration"));
     }
 
@@ -125,7 +125,7 @@ class MainRunTest {
         FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
         mbean.throwOnNextCall = new RuntimeMBeanException(new CapabilityDeniedException(Capability.LEVEL_RAISE));
 
-        assertEquals(6, run(new String[] {"debug", "com.acme"}, connectorFor(mbean)));
+        assertEquals(6, run(new String[] {"set", "logger", "com.acme", "DEBUG"}, connectorFor(mbean)));
         assertTrue(err().contains("Refused: this JVM's policy does not grant LEVEL_RAISE."), err());
     }
 
@@ -136,7 +136,7 @@ class MainRunTest {
         FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
         mbean.throwOnNextCall = new CapabilityDeniedException(Capability.LEVEL_RAISE);
 
-        assertEquals(6, run(new String[] {"debug", "com.acme"}, connectorFor(mbean)));
+        assertEquals(6, run(new String[] {"set", "logger", "com.acme", "DEBUG"}, connectorFor(mbean)));
         assertTrue(err().contains("Refused: this JVM's policy does not grant LEVEL_RAISE."), err());
     }
 
@@ -202,7 +202,7 @@ class MainRunTest {
         mbean.setHandlerAutoResult = new org.logaperture.control.jmx.HandlerLevelOverrideData(
                 "CONSOLE", "DEBUG", "AUTO", null, "2026-09-12T00:00:00Z", "jmx", "SESSION", null, List.of());
 
-        assertEquals(0, run(new String[] {"handler", "CONSOLE", "AUTO"}, connectorFor(mbean)));
+        assertEquals(0, run(new String[] {"set", "handler", "CONSOLE", "AUTO"}, connectorFor(mbean)));
 
         assertEquals(1, mbean.setHandlerAutoCalls.size());
         Object[] call = mbean.setHandlerAutoCalls.get(0); // {handlerRef, reason, tier, forSeconds}
@@ -219,7 +219,7 @@ class MainRunTest {
         mbean.setHandlerAutoResult = new org.logaperture.control.jmx.HandlerLevelOverrideData(
                 "CONSOLE", "TRACE", "AUTO", "INC-1", "2026-09-12T00:00:00Z", "jmx", "STICKY", null, List.of());
 
-        assertEquals(0, run(new String[] {"handler", "CONSOLE", "auto", "sticky", "--reason", "INC-1"},
+        assertEquals(0, run(new String[] {"set", "handler", "CONSOLE", "auto", "sticky", "--reason", "INC-1"},
                 connectorFor(mbean)));
 
         Object[] call = mbean.setHandlerAutoCalls.get(0);
@@ -233,12 +233,12 @@ class MainRunTest {
         FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
         mbean.setHandlerAutoResult = null; // no level of its own, or nothing active to track yet
 
-        assertEquals(0, run(new String[] {"handler", "CONSOLE", "AUTO"}, connectorFor(mbean)));
+        assertEquals(0, run(new String[] {"set", "handler", "CONSOLE", "AUTO"}, connectorFor(mbean)));
 
         assertTrue(out().contains("nothing to change"), out());
     }
 
-    // --- setLevel on a pattern: the confirmation-prompt flow through Main itself (doc/specs/
+    // --- setLogger on a pattern: the confirmation-prompt flow through Main itself (doc/specs/
     // pattern-selection-semantics.md "Confirmation and CLI behavior") -----------------------
 
     @Test
@@ -249,7 +249,7 @@ class MainRunTest {
         // interactive prompt-and-read test below.
         FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
 
-        assertEquals(2, run(new String[] {"debug", "*.acme"}, connectorFor(mbean)));
+        assertEquals(2, run(new String[] {"set", "logger", "*.acme", "DEBUG"}, connectorFor(mbean)));
 
         String error = err();
         assertTrue(error.contains("--yes"), error);
@@ -265,7 +265,7 @@ class MainRunTest {
         // (and its own trailing-wildcard rejection) directly.
         FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
 
-        assertEquals(2, run(new String[] {"debug", "org.acme.*"}, connectorFor(mbean)));
+        assertEquals(2, run(new String[] {"set", "logger", "org.acme.*", "DEBUG"}, connectorFor(mbean)));
 
         String error = err();
         assertTrue(error.contains("trailing wildcard"), error);
@@ -286,8 +286,8 @@ class MainRunTest {
                 List.of());
         java.io.InputStream typedYes = new java.io.ByteArrayInputStream("y\n".getBytes(StandardCharsets.UTF_8));
 
-        int exitCode = Main.run(new String[] {"debug", "*.acme.Worker", "sticky"}, out, err, connectorFor(mbean),
-                typedYes, true);
+        int exitCode = Main.run(new String[] {"set", "logger", "*.acme.Worker", "DEBUG", "sticky"}, out, err,
+                connectorFor(mbean), typedYes, true);
 
         assertEquals(0, exitCode);
         assertTrue(out().contains("Apply? [y/N]"), out());
@@ -302,7 +302,8 @@ class MainRunTest {
         mbean.loggers = List.of(new LoggerInfoData("org.acme.Worker", "INFO", "INFO", false, null, null, null, null));
         java.io.InputStream typedNo = new java.io.ByteArrayInputStream("n\n".getBytes(StandardCharsets.UTF_8));
 
-        int exitCode = Main.run(new String[] {"debug", "*.acme.Worker"}, out, err, connectorFor(mbean), typedNo, true);
+        int exitCode = Main.run(new String[] {"set", "logger", "*.acme.Worker", "DEBUG"}, out, err,
+                connectorFor(mbean), typedNo, true);
 
         assertEquals(0, exitCode);
         assertTrue(out().contains("Not applied."), out());

@@ -23,7 +23,7 @@ import java.util.List;
 
 /**
  * MXBean-friendly mirror of {@link HandlerLevelOverride} — the {@link
- * LevelOverrideData} counterpart for {@code logctl handler <name> <level>}
+ * LevelOverrideData} counterpart for {@code logctl set handler <name> <level>}
  * (doc/specs/handler-floor-control.md). {@code warnings} was added by
  * "Squelch warning" (issue #16) — empty except right after a raise that
  * newly silences one or more active logger overrides.

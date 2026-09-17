@@ -82,7 +82,7 @@ final class Json {
     }
 
     /**
-     * {@code setLevel}'s full JSON result: {@code overrides} — one entry
+     * {@code setLogger}'s full JSON result: {@code overrides} — one entry
      * for an exact-name target, zero or more for a pattern (doc/specs/
      * pattern-selection-semantics.md) — plus {@code warnings}, one entry per
      * handler that will still swallow records at the new level

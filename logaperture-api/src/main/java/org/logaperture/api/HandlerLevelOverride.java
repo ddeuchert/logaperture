@@ -19,7 +19,7 @@ import java.time.Instant;
 
 /**
  * A recorded handler-level override — the {@link LevelOverride} counterpart
- * for {@code logctl handler <name> <level>} (doc/specs/
+ * for {@code logctl set handler <name> <level>} (doc/specs/
  * handler-floor-control.md "Data model"). Independent lifetime: nothing
  * about a {@link LevelOverride} creates, extends, or reverts one of these,
  * and vice versa (see the spec's "Independent lifetime" semantics note). The

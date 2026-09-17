@@ -115,7 +115,7 @@ class AggregateLevelControlTest {
         assertTrue(rows.stream().allMatch(r -> r.context() != null), "every row is tagged with its context");
     }
 
-    // --- setLevel / resetLevel / resetAll broadcast --------------------------------------------
+    // --- setLogger / resetLevel / resetAll broadcast --------------------------------------------
 
     @Test
     void setLevel_broadcastsToEveryContext_creatingTheLoggerWhereAbsent() {
@@ -125,7 +125,7 @@ class AggregateLevelControlTest {
         aggregate.register(system.control);
         aggregate.register(app.control);
 
-        aggregate.setLevel("com.shared.Util", Level.DEBUG, SetLevelOptions.defaults());
+        aggregate.setLogger("com.shared.Util", Level.DEBUG, SetLevelOptions.defaults());
 
         assertEquals(Level.DEBUG, system.adapter.effectiveLevel("com.shared.Util"));
         assertEquals(Level.DEBUG, app.adapter.effectiveLevel("com.shared.Util"),
@@ -148,7 +148,7 @@ class AggregateLevelControlTest {
         aggregate.register(system.control);
         aggregate.register(app.control);
 
-        var result = aggregate.setLevel("com.shared.Util", Level.TRACE, SetLevelOptions.defaults());
+        var result = aggregate.setLogger("com.shared.Util", Level.TRACE, SetLevelOptions.defaults());
 
         assertEquals(1, result.blockingHandlers().size());
         assertEquals(Level.WARN, result.blockingHandlers().get(0).currentLevel(),
@@ -161,7 +161,7 @@ class AggregateLevelControlTest {
         Ctx app = new Ctx("myapp.war");
         aggregate.register(system.control);
         aggregate.register(app.control);
-        aggregate.setLevel("com.shared.Util", Level.DEBUG, SetLevelOptions.defaults());
+        aggregate.setLogger("com.shared.Util", Level.DEBUG, SetLevelOptions.defaults());
 
         aggregate.resetLogger("com.shared.Util", false);
 
@@ -175,8 +175,8 @@ class AggregateLevelControlTest {
         Ctx app = new Ctx("myapp.war");
         aggregate.register(system.control);
         aggregate.register(app.control);
-        aggregate.setLevel("com.a.One", Level.DEBUG, SetLevelOptions.defaults());
-        aggregate.setLevel("com.b.Two", Level.TRACE, SetLevelOptions.defaults());
+        aggregate.setLogger("com.a.One", Level.DEBUG, SetLevelOptions.defaults());
+        aggregate.setLogger("com.b.Two", Level.TRACE, SetLevelOptions.defaults());
 
         aggregate.resetAllLoggers(false);
 
@@ -195,7 +195,7 @@ class AggregateLevelControlTest {
         HandlerRef console = new HandlerRef("CONSOLE");
         system.adapter.addHandler(console, Level.INFO);
         aggregate.register(system.control);
-        aggregate.setLevel("com.a.One", Level.DEBUG, SetLevelOptions.defaults());
+        aggregate.setLogger("com.a.One", Level.DEBUG, SetLevelOptions.defaults());
         aggregate.setHandlerLevel(console, Level.TRACE, SetHandlerLevelOptions.defaults());
 
         aggregate.resetAllLoggers(false);
@@ -393,7 +393,7 @@ class AggregateLevelControlTest {
     @Test
     void setLevel_withNoContextRegistered_throws() {
         assertThrows(IllegalStateException.class,
-                () -> aggregate.setLevel("com.x.Y", Level.DEBUG, SetLevelOptions.defaults()));
+                () -> aggregate.setLogger("com.x.Y", Level.DEBUG, SetLevelOptions.defaults()));
     }
 
     @Test
@@ -411,7 +411,7 @@ class AggregateLevelControlTest {
         aggregate.register(app.control);
 
         assertThrows(CapabilityDeniedException.class,
-                () -> aggregate.setLevel("com.shared.Util", Level.DEBUG, SetLevelOptions.defaults()));
+                () -> aggregate.setLogger("com.shared.Util", Level.DEBUG, SetLevelOptions.defaults()));
 
         assertTrue(system.service.activeOverrides().isEmpty());
         assertTrue(app.service.activeOverrides().isEmpty(),
@@ -422,7 +422,7 @@ class AggregateLevelControlTest {
     void setLevel_exactName_reportsOneOverride_notOneParContext() {
         // Code-review finding: an exact-name target broadcast across every
         // registered context used to report every context's own override in
-        // the result, so a 2-node WildFly deployment's setLevel appeared to
+        // the result, so a 2-node WildFly deployment's setLogger appeared to
         // create two overrides for one logger. Every other broadcast
         // operation here reports one representative (preferring SYSTEM).
         Ctx system = new Ctx("system", CapabilityPolicy.allowAll(), "system-jmx");
@@ -430,7 +430,7 @@ class AggregateLevelControlTest {
         aggregate.register(system.control);
         aggregate.register(app.control);
 
-        var result = aggregate.setLevel("com.shared.Util", Level.DEBUG, SetLevelOptions.defaults());
+        var result = aggregate.setLogger("com.shared.Util", Level.DEBUG, SetLevelOptions.defaults());
 
         assertEquals(1, result.overrides().size(),
                 "one representative override, not one per context");
@@ -453,7 +453,7 @@ class AggregateLevelControlTest {
         aggregate.register(app.control);
 
         ConfirmationRequiredException ex = assertThrows(ConfirmationRequiredException.class,
-                () -> aggregate.setLevel("*.Shared", Level.DEBUG, SetLevelOptions.defaults()));
+                () -> aggregate.setLogger("*.Shared", Level.DEBUG, SetLevelOptions.defaults()));
 
         assertTrue(ex.matches().contains("system.Shared"));
         assertTrue(ex.matches().contains("app.Shared"),
@@ -468,7 +468,7 @@ class AggregateLevelControlTest {
     void addContext_reBroadcastsActiveOverridesOntoTheNewcomer() {
         Ctx system = new Ctx("system");
         aggregate.register(system.control);
-        aggregate.setLevel("com.shared.Util", Level.DEBUG, SetLevelOptions.sticky());
+        aggregate.setLogger("com.shared.Util", Level.DEBUG, SetLevelOptions.sticky());
 
         Ctx redeployed = new Ctx("myapp.war");
         aggregate.addContext(redeployed.control);
@@ -483,7 +483,7 @@ class AggregateLevelControlTest {
     void addContext_doesNotReBroadcastAnAlreadyExpiredForOverride() throws InterruptedException {
         Ctx system = new Ctx("system");
         aggregate.register(system.control);
-        aggregate.setLevel("com.shared.Util", Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMillis(1)));
+        aggregate.setLogger("com.shared.Util", Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMillis(1)));
         Thread.sleep(10); // the FOR override elapses, but no sweep has run to revert it
 
         Ctx redeployed = new Ctx("myapp.war");
@@ -500,7 +500,7 @@ class AggregateLevelControlTest {
         Ctx app = new Ctx("myapp.war");
         aggregate.register(system.control);
         aggregate.register(app.control);
-        aggregate.setLevel("com.shared.Util", Level.DEBUG, SetLevelOptions.sticky());
+        aggregate.setLogger("com.shared.Util", Level.DEBUG, SetLevelOptions.sticky());
         assertFalse(sharedStore.loadAll().isEmpty());
 
         aggregate.removeContext("myapp.war");
@@ -518,7 +518,7 @@ class AggregateLevelControlTest {
         Ctx app = new Ctx("myapp.war");
         aggregate.register(system.control);
         aggregate.register(app.control);
-        aggregate.setLevel("com.shared.Util", Level.DEBUG, SetLevelOptions.sticky());
+        aggregate.setLogger("com.shared.Util", Level.DEBUG, SetLevelOptions.sticky());
 
         // drift in both contexts
         system.adapter.applyLevel("com.shared.Util", Level.INFO);
@@ -553,7 +553,7 @@ class AggregateLevelControlTest {
         Ctx app = new Ctx("myapp.war");
         aggregate.register(system.control);
         aggregate.register(app.control);
-        aggregate.setLevel("com.shared.Util", Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMillis(1)));
+        aggregate.setLogger("com.shared.Util", Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMillis(1)));
 
         aggregate.sweepExpiredOverrides(Instant.now().plusSeconds(60));
 
@@ -590,8 +590,8 @@ class AggregateLevelControlTest {
         HandlerRef console = new HandlerRef("CONSOLE");
         system.adapter.addHandler(console, Level.TRACE);
         app.adapter.addHandler(console, Level.TRACE);
-        system.service.setLevel("com.acme.SystemWorker", Level.DEBUG, SetLevelOptions.defaults());
-        app.service.setLevel("com.acme.AppWorker", Level.DEBUG, SetLevelOptions.defaults());
+        system.service.setLogger("com.acme.SystemWorker", Level.DEBUG, SetLevelOptions.defaults());
+        app.service.setLogger("com.acme.AppWorker", Level.DEBUG, SetLevelOptions.defaults());
         aggregate.register(app.control);
         aggregate.register(system.control);
 
@@ -607,7 +607,7 @@ class AggregateLevelControlTest {
         Ctx system = new Ctx("system");
         HandlerRef console = new HandlerRef("CONSOLE");
         system.adapter.addHandler(console, Level.TRACE);
-        system.service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
+        system.service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
         aggregate.register(system.control);
 
         aggregate.squelchedByRaise(console, Level.INFO);
@@ -769,7 +769,7 @@ class AggregateLevelControlTest {
         HandlerRef console = new HandlerRef("CONSOLE");
         system.adapter.addHandler(console, Level.INFO);
         aggregate.register(system.control);
-        aggregate.setLevel("com.shared.Util", Level.DEBUG, SetLevelOptions.sticky());
+        aggregate.setLogger("com.shared.Util", Level.DEBUG, SetLevelOptions.sticky());
         aggregate.setHandlerLevel(console, Level.TRACE, SetHandlerLevelOptions.sticky());
 
         Ctx redeployed = new Ctx("myapp.war"); // never gets CONSOLE added

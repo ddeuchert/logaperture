@@ -26,7 +26,7 @@ import java.util.logging.Handler;
  * WildFly's stock {@code FILE} handler is called {@code FILE}; a container
  * that <em>does</em> know its framework (here {@code
  * logaperture-container-wildfly}, reading WildFly's own management model
- * in-VM) supplies one of these so {@code logctl handler FILE …} works by the
+ * in-VM) supplies one of these so {@code logctl set handler FILE …} works by the
  * name an operator actually reads in {@code standalone.xml}.
  *
  * <p>Deliberately a bulk call: an implementation can do one management-model
