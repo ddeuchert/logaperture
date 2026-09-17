@@ -96,7 +96,7 @@ class CliEndToEndIT {
         assertTrue(status.out.contains("FOR"), status.out);
         assertTrue(status.out.contains("cli-e2e"), status.out);
 
-        Result reset = run("reset", LOGGER);
+        Result reset = run("reset", "logger", LOGGER);
         assertEquals(0, reset.exitCode, reset.err);
         assertTrue(reset.out.contains(LOGGER + " → INFO (baseline)"), reset.out);
 
@@ -104,9 +104,9 @@ class CliEndToEndIT {
         assertEquals(0, statusAfter.exitCode, statusAfter.err);
         assertEquals("No active overrides.", statusAfter.out.strip());
 
-        Result resetAll = run("reset", "--all");
+        Result resetAll = run("reset", "loggers");
         assertEquals(0, resetAll.exitCode, resetAll.err);
-        assertTrue(resetAll.out.contains("Reverted 0 override(s)."), resetAll.out);
+        assertTrue(resetAll.out.contains("No overrides to reset."), resetAll.out);
     }
 
     @Test

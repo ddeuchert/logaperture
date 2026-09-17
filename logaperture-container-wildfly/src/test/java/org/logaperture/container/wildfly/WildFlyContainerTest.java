@@ -102,11 +102,11 @@ class WildFlyContainerTest {
             assertEquals("system", afterSet.context());
             assertEquals(java.util.logging.Level.FINE, Logger.getLogger(logger).getLevel());
 
-            ops.resetLevel(logger);
+            ops.resetLogger(logger, false);
             assertFalse(row(ops).overrideActive());
             assertEquals(Level.INFO, row(ops).effectiveLevel());
 
-            ops.resetAll();
+            ops.resetAllLoggers(false);
         }
     }
 

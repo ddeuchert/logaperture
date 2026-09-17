@@ -426,34 +426,26 @@ final class Commands {
         };
     }
 
-    static Command resetHandler(String handlerRef, boolean json) {
-        return (mbean, out, in, interactive) -> {
-            mbean.resetHandler(handlerRef);
-            if (json) {
-                out.println(Json.handlerReset(handlerRef));
-                return CliError.OK;
-            }
-            out.println("handler " + handlerRef + " → reset to its previous level.");
-            return CliError.OK;
-        };
-    }
-
     /**
-     * {@code target} is either an exact logger name or a pattern. Resetting
-     * a pattern reverts every currently-overridden logger it matches
-     * (doc/specs/pattern-selection-semantics.md) — no confirmation either
-     * way, matching {@code reset}'s existing no-prompt convention (reverting
-     * a bounded, current state is the opposite risk shape from applying a
-     * batch mutation).
+     * {@code target} is either an exact logger name or a pattern. An exact
+     * name whose active override is {@code STICKY} and {@code
+     * includeSticky} is {@code false} refuses outright — {@code
+     * mbean.resetLogger} throws {@code IllegalArgumentException}, left to
+     * propagate to {@code Main}'s existing exit-2 mapping (doc/specs/
+     * reset-command-surface.md, Decision #1). A pattern instead reverts
+     * whatever it currently matches and reports any sticky member it left
+     * alone — no confirmation either way, matching {@code reset}'s existing
+     * no-prompt convention (reverting a bounded, current state is the
+     * opposite risk shape from applying a batch mutation).
      */
-    static Command reset(String target, boolean json) {
+    static Command resetLogger(String target, boolean includeSticky, boolean json) {
         return (mbean, out, in, interactive) -> {
             if (isPattern(target)) {
-                return resetPattern(mbean, out, target, json);
+                return resetLoggerPattern(mbean, out, target, includeSticky, json);
             }
             LoggerInfoData before = findLogger(mbean.listLoggers(target), target);
             boolean wasOverridden = before != null && before.isOverrideActive();
-            mbean.resetLevel(target);
+            mbean.resetLogger(target, includeSticky);
             LoggerInfoData after = findLogger(mbean.listLoggers(target), target);
             if (json) {
                 out.println(after != null ? Json.logger(after) : Json.reset(target, wasOverridden));
@@ -476,20 +468,19 @@ final class Commands {
      * reconstructs that by diffing two {@code listLoggers} reads taken
      * before and after a {@code void} call -- that diff was racy against
      * concurrent mutation (a code-review finding against the original
-     * slice). Renders exactly like a scoped {@code resetAll} (doc/specs/
-     * pattern-selection-semantics.md "CLI output") — there is no rule to
-     * report on, only loggers actually reverted.
+     * slice).
      */
-    private static int resetPattern(org.logaperture.control.jmx.LevelControlMXBean mbean, java.io.PrintStream out,
-            String pattern, boolean json) {
-        org.logaperture.control.jmx.ResetOutcomeData outcome = mbean.resetLevel(pattern);
+    private static int resetLoggerPattern(org.logaperture.control.jmx.LevelControlMXBean mbean,
+            java.io.PrintStream out, String pattern, boolean includeSticky, boolean json) {
+        org.logaperture.control.jmx.ResetOutcomeData outcome = mbean.resetLogger(pattern, includeSticky);
         List<String> reverted = outcome.getRevertedLoggerNames();
+        List<String> skippedSticky = outcome.getSkippedStickyLoggerNames();
 
         if (json) {
-            out.println(Json.resetPattern(pattern, reverted));
+            out.println(Json.resetPattern(pattern, reverted, skippedSticky));
             return CliError.OK;
         }
-        if (reverted.isEmpty()) {
+        if (reverted.isEmpty() && skippedSticky.isEmpty()) {
             out.println("'" + pattern + "' — nothing was overridden.");
             return CliError.OK;
         }
@@ -501,20 +492,78 @@ final class Commands {
             LoggerInfoData row = afterByName.get(name);
             out.println(name + " → " + (row != null ? row.getEffectiveLevel() : "baseline") + " (baseline)");
         }
+        printSkippedSticky(out, "sticky override(s)", skippedSticky);
         return CliError.OK;
     }
 
-    static Command resetAll(boolean json) {
+    /** {@code logctl reset loggers} — reverts every currently-overridden logger (doc/specs/reset-command-surface.md). */
+    static Command resetAllLoggers(boolean includeSticky, boolean json) {
         return (mbean, out, in, interactive) -> {
-            long activeBefore = mbean.listLoggers(null).stream().filter(LoggerInfoData::isOverrideActive).count();
-            mbean.resetAll();
+            org.logaperture.control.jmx.ResetOutcomeData outcome = mbean.resetAllLoggers(includeSticky);
+            List<String> reverted = outcome.getRevertedLoggerNames();
+            List<String> skippedSticky = outcome.getSkippedStickyLoggerNames();
             if (json) {
-                out.println(Json.revertedCount(activeBefore));
-            } else {
-                out.println("Reverted " + activeBefore + " override(s).");
+                out.println(Json.resetAllLoggers(reverted, skippedSticky));
+                return CliError.OK;
             }
+            if (reverted.isEmpty() && skippedSticky.isEmpty()) {
+                out.println("No overrides to reset.");
+                return CliError.OK;
+            }
+            out.println("Reverted " + reverted.size() + " override(s).");
+            printSkippedSticky(out, "sticky override(s)", skippedSticky);
             return CliError.OK;
         };
+    }
+
+    /**
+     * {@code logctl reset handler <name>}. A {@code STICKY} override
+     * without {@code includeSticky} refuses outright, same as {@link
+     * #resetLogger}'s exact-name case (doc/specs/reset-command-surface.md,
+     * Decision #1).
+     */
+    static Command resetHandler(String handlerRef, boolean includeSticky, boolean json) {
+        return (mbean, out, in, interactive) -> {
+            org.logaperture.control.jmx.HandlerResetOutcomeData outcome = mbean.resetHandler(handlerRef, includeSticky);
+            boolean reverted = outcome.getRevertedHandlerRefs().contains(handlerRef);
+            if (json) {
+                out.println(Json.handlerReset(handlerRef, reverted));
+                return CliError.OK;
+            }
+            out.println(reverted
+                    ? "handler " + handlerRef + " → reset to its previous level."
+                    : "handler " + handlerRef + " — nothing was overridden.");
+            return CliError.OK;
+        };
+    }
+
+    /** {@code logctl reset handlers} — reverts every currently-overridden handler (doc/specs/reset-command-surface.md). */
+    static Command resetAllHandlers(boolean includeSticky, boolean json) {
+        return (mbean, out, in, interactive) -> {
+            org.logaperture.control.jmx.HandlerResetOutcomeData outcome = mbean.resetAllHandlers(includeSticky);
+            List<String> reverted = outcome.getRevertedHandlerRefs();
+            List<String> skippedSticky = outcome.getSkippedStickyHandlerRefs();
+            if (json) {
+                out.println(Json.resetAllHandlers(reverted, skippedSticky));
+                return CliError.OK;
+            }
+            if (reverted.isEmpty() && skippedSticky.isEmpty()) {
+                out.println("No handler overrides to reset.");
+                return CliError.OK;
+            }
+            out.println("Reverted " + reverted.size() + " handler override(s).");
+            printSkippedSticky(out, "sticky handler override(s)", skippedSticky);
+            return CliError.OK;
+        };
+    }
+
+    /** The "left N sticky override(s) in place" line every bulk/pattern reset form shares (doc/specs/reset-command-surface.md, Decision #1). */
+    private static void printSkippedSticky(java.io.PrintStream out, String noun, List<String> skipped) {
+        if (skipped.isEmpty()) {
+            return;
+        }
+        out.println("Left " + skipped.size() + " " + noun + " in place (pass --include-sticky to include them): "
+                + String.join(", ", skipped));
     }
 
     /**

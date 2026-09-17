@@ -22,6 +22,7 @@ import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerInfo;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
+import org.logaperture.api.HandlerResetOutcome;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerByteCount;
@@ -58,7 +59,7 @@ import java.util.function.Supplier;
  * <ul>
  *   <li>{@code listLoggers} — concatenate every context's rows, each tagged
  *       with its context's {@code stableKey}.</li>
- *   <li>{@code setLevel} / {@code resetLevel} / {@code resetAll} —
+ *   <li>{@code setLevel} / {@code resetLogger} / {@code resetAllLoggers} —
  *       <b>broadcast</b>: apply to the named logger in <em>every</em>
  *       registered context. There is no per-call context selector (override
  *       scoping is a deferred nice-to-have, doc/specs/wildfly-support.md).</li>
@@ -466,25 +467,37 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     }
 
     @Override
-    public ResetOutcome resetLevel(String loggerName) {
+    public ResetOutcome resetLogger(String target, boolean includeSticky) {
         // A dedup by name, not a concatenation: two contexts sharing a
         // logger (or matched by the same pattern) each report reverting it
         // independently, and the caller-facing list should name it once,
         // same reasoning as setLevel's one-override-per-logger fix above.
+        // No "all pass or all fail" pre-flight for the sticky refusal
+        // (Decision #1's IllegalArgumentException) -- same accepted
+        // residual-effect convention this broadcast already has for a
+        // capability denial part-way through (see the class doc's "a
+        // mid-broadcast adapter fault can still leave earlier contexts
+        // changed").
         Set<String> reverted = new LinkedHashSet<>();
+        Set<String> skippedSticky = new LinkedHashSet<>();
         for (ContextControl context : sortedByKey()) {
-            ResetOutcome outcome = context.service().resetLevel(loggerName);
+            ResetOutcome outcome = context.service().resetLogger(target, includeSticky);
             reverted.addAll(outcome.revertedLoggerNames());
+            skippedSticky.addAll(outcome.skippedStickyLoggerNames());
         }
-        return new ResetOutcome(List.copyOf(reverted));
+        return new ResetOutcome(List.copyOf(reverted), List.copyOf(skippedSticky));
     }
 
     @Override
-    public void resetAll() {
+    public ResetOutcome resetAllLoggers(boolean includeSticky) {
+        Set<String> reverted = new LinkedHashSet<>();
+        Set<String> skippedSticky = new LinkedHashSet<>();
         for (ContextControl context : sortedByKey()) {
-            context.service().resetAll();
-            context.handlerService().resetAllHandlers();
+            ResetOutcome outcome = context.service().resetAllLoggers(includeSticky);
+            reverted.addAll(outcome.revertedLoggerNames());
+            skippedSticky.addAll(outcome.skippedStickyLoggerNames());
         }
+        return new ResetOutcome(List.copyOf(reverted), List.copyOf(skippedSticky));
     }
 
     /**
@@ -600,10 +613,29 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     }
 
     @Override
-    public void resetHandler(HandlerRef ref) {
+    public HandlerResetOutcome resetHandler(HandlerRef ref, boolean includeSticky) {
+        // Same "no pre-flight for the sticky refusal" convention as
+        // resetLogger above.
+        Set<HandlerRef> reverted = new LinkedHashSet<>();
+        Set<HandlerRef> skippedSticky = new LinkedHashSet<>();
         for (ContextControl context : sortedByKey()) {
-            context.handlerService().resetHandler(ref);
+            HandlerResetOutcome outcome = context.handlerService().resetHandler(ref, includeSticky);
+            reverted.addAll(outcome.revertedHandlerRefs());
+            skippedSticky.addAll(outcome.skippedStickyHandlerRefs());
         }
+        return new HandlerResetOutcome(List.copyOf(reverted), List.copyOf(skippedSticky));
+    }
+
+    @Override
+    public HandlerResetOutcome resetAllHandlers(boolean includeSticky) {
+        Set<HandlerRef> reverted = new LinkedHashSet<>();
+        Set<HandlerRef> skippedSticky = new LinkedHashSet<>();
+        for (ContextControl context : sortedByKey()) {
+            HandlerResetOutcome outcome = context.handlerService().resetAllHandlers(includeSticky);
+            reverted.addAll(outcome.revertedHandlerRefs());
+            skippedSticky.addAll(outcome.skippedStickyHandlerRefs());
+        }
+        return new HandlerResetOutcome(List.copyOf(reverted), List.copyOf(skippedSticky));
     }
 
     /**

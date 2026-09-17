@@ -187,7 +187,7 @@ public final class DoctorService implements DoctorOperations {
             if (isChattyLevel(configured)) {
                 flagged.add(new DoctorFinding("logger.verbosity-left-on", Severity.WARNING, seedName,
                         seedName + " is explicitly set to " + configured + " — a known-chatty framework logger.",
-                        null, "logctl reset " + seedName));
+                        null, "logctl reset logger " + seedName));
             }
         }
         if (flagged.isEmpty()) {

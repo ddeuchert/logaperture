@@ -38,6 +38,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CommandsTest {
@@ -560,10 +561,10 @@ class CommandsTest {
     @Test
     void reset_pattern_revertsCurrentlyOverriddenMatches() {
         mbean.loggers = List.of(
-                new LoggerInfoData("org.apache.A", "INFO", "DEBUG", true, "jmx", null, "STICKY", null),
+                new LoggerInfoData("org.apache.A", "INFO", "DEBUG", true, "jmx", null, "FOR", null),
                 new LoggerInfoData("org.apache.B", "INFO", "INFO", false, null, null, null, null));
 
-        assertEquals(CliError.OK, run(Commands.reset("org.apache.*", false)));
+        assertEquals(CliError.OK, run(Commands.resetLogger("org.apache.*", false, false)));
 
         assertEquals(List.of("org.apache.*"), mbean.resetLevelCalls);
         String text = output();
@@ -575,7 +576,7 @@ class CommandsTest {
     void reset_pattern_nothingCurrentlyOverridden_printsNothingWasOverridden() {
         mbean.loggers = List.of(new LoggerInfoData("org.apache.A", "INFO", "INFO", false, null, null, null, null));
 
-        assertEquals(CliError.OK, run(Commands.reset("org.apache.*", false)));
+        assertEquals(CliError.OK, run(Commands.resetLogger("org.apache.*", false, false)));
 
         assertEquals("'org.apache.*' — nothing was overridden.", output().strip());
     }
@@ -583,21 +584,50 @@ class CommandsTest {
     @Test
     void reset_pattern_json_reportsRevertedNames() {
         mbean.loggers = List.of(
-                new LoggerInfoData("org.apache.A", "INFO", "DEBUG", true, "jmx", null, "STICKY", null));
+                new LoggerInfoData("org.apache.A", "INFO", "DEBUG", true, "jmx", null, "FOR", null));
 
-        run(Commands.reset("org.apache.*", true));
+        run(Commands.resetLogger("org.apache.*", false, true));
 
         String text = output().strip();
         assertTrue(text.contains("\"pattern\":\"org.apache.*\""), text);
-        assertTrue(text.contains("\"reverted\":[\"org.apache.A\"]"), text);
+        assertTrue(text.contains("\"revertedLoggerNames\":[\"org.apache.A\"]"), text);
     }
 
     @Test
     void reset_pattern_json_nothingOverridden_reportsAnEmptyRevertedList() {
-        run(Commands.reset("org.apache.*", true));
+        run(Commands.resetLogger("org.apache.*", false, true));
 
         String text = output().strip();
-        assertTrue(text.contains("\"reverted\":[]"), text);
+        assertTrue(text.contains("\"revertedLoggerNames\":[]"), text);
+    }
+
+    @Test
+    void reset_pattern_stickyMatch_leftInPlaceAndReported() {
+        // doc/specs/reset-command-surface.md, Decision #1: a pattern names a
+        // set, however large -- a sticky member is skipped and reported, not
+        // refused.
+        mbean.loggers = List.of(
+                new LoggerInfoData("org.apache.A", "INFO", "DEBUG", true, "jmx", null, "FOR", null),
+                new LoggerInfoData("org.apache.Sticky", "WARN", "TRACE", true, "jmx", null, "STICKY", null));
+
+        assertEquals(CliError.OK, run(Commands.resetLogger("org.apache.*", false, false)));
+
+        String text = output();
+        assertTrue(text.contains("org.apache.A → INFO (baseline)"), text);
+        assertTrue(text.contains("Left 1 sticky override(s) in place (pass --include-sticky to include them): "
+                + "org.apache.Sticky"), text);
+    }
+
+    @Test
+    void reset_pattern_includeSticky_revertsTheStickyMatchToo() {
+        mbean.loggers = List.of(
+                new LoggerInfoData("org.apache.Sticky", "WARN", "TRACE", true, "jmx", null, "STICKY", null));
+
+        assertEquals(CliError.OK, run(Commands.resetLogger("org.apache.*", true, false)));
+
+        String text = output();
+        assertTrue(text.contains("org.apache.Sticky → WARN (baseline)"), text);
+        assertFalse(text.contains("Left"), text);
     }
 
     // --- handler (doc/specs/handler-floor-control.md) -----------------------------------------
@@ -760,38 +790,53 @@ class CommandsTest {
 
     @Test
     void handlerResetCallsResetHandler() {
-        assertEquals(CliError.OK, run(Commands.resetHandler("CONSOLE", false)));
+        assertEquals(CliError.OK, run(Commands.resetHandler("CONSOLE", false, false)));
         assertEquals(List.of("CONSOLE"), mbean.resetHandlerCalls);
         assertEquals("handler CONSOLE → reset to its previous level.", output().strip());
     }
 
     @Test
+    void handlerReset_noActiveOverride_saysNothingWasOverridden() {
+        mbean.handlerHasOverrideToReset = false;
+
+        assertEquals(CliError.OK, run(Commands.resetHandler("CONSOLE", false, false)));
+        assertEquals("handler CONSOLE — nothing was overridden.", output().strip());
+    }
+
+    @Test
     void handlerResetJsonEmitsAnObject() {
-        assertEquals(CliError.OK, run(Commands.resetHandler("CONSOLE", true)));
+        assertEquals(CliError.OK, run(Commands.resetHandler("CONSOLE", false, true)));
         assertEquals("{\"handlerRef\":\"CONSOLE\",\"reset\":true}", output().strip());
     }
 
     @Test
-    void resetCallsResetLevelThenReportsTheRestoredLevel() {
+    void resetAllHandlersJsonEmitsRevertedAndSkippedStickyArrays() {
+        assertEquals(CliError.OK, run(Commands.resetAllHandlers(false, true)));
+        assertEquals("{\"revertedHandlerRefs\":[\"CONSOLE\"],\"skippedStickyHandlerRefs\":[]}", output().strip());
+        assertEquals(1, mbean.resetAllHandlersCalls);
+    }
+
+    @Test
+    void resetCallsResetLoggerThenReportsTheRestoredLevel() {
         mbean.loggers = List.of(new LoggerInfoData("com.acme", "INFO", "INFO", false, null, null, null, null));
-        assertEquals(CliError.OK, run(Commands.reset("com.acme", false)));
+        assertEquals(CliError.OK, run(Commands.resetLogger("com.acme", false, false)));
         assertEquals(List.of("com.acme"), mbean.resetLevelCalls);
         assertEquals("com.acme → INFO (baseline)", output().strip());
     }
 
     @Test
     void resetOfAnUnknownLoggerSaysNothingWasOverridden() {
-        assertEquals(CliError.OK, run(Commands.reset("com.acme.ghost", false)));
+        assertEquals(CliError.OK, run(Commands.resetLogger("com.acme.ghost", false, false)));
         assertEquals("com.acme.ghost — nothing was overridden.", output().strip());
     }
 
     @Test
     void resetOfAnOverriddenButNotYetInstantiatedLoggerReportsTheRevertNotNothing() {
         mbean.loggers = new ArrayList<>(List.of(
-                new LoggerInfoData("com.acme.Known", null, "DEBUG", true, "jmx", "resumed", "STICKY", null)));
+                new LoggerInfoData("com.acme.Known", null, "DEBUG", true, "jmx", "resumed", "FOR", null)));
         mbean.forgetOnReset.add("com.acme.Known");
 
-        assertEquals(CliError.OK, run(Commands.reset("com.acme.Known", false)));
+        assertEquals(CliError.OK, run(Commands.resetLogger("com.acme.Known", false, false)));
         assertEquals(List.of("com.acme.Known"), mbean.resetLevelCalls);
         assertEquals("com.acme.Known → baseline (not yet instantiated, so no level to show)", output().strip());
     }
@@ -799,31 +844,55 @@ class CommandsTest {
     @Test
     void resetJsonEmitsAnObjectEvenWhenNoPostResetLoggerRemains() {
         mbean.loggers = new ArrayList<>(List.of(
-                new LoggerInfoData("com.acme.Known", null, "DEBUG", true, "jmx", null, "STICKY", null)));
+                new LoggerInfoData("com.acme.Known", null, "DEBUG", true, "jmx", null, "FOR", null)));
         mbean.forgetOnReset.add("com.acme.Known");
 
-        assertEquals(CliError.OK, run(Commands.reset("com.acme.Known", true)));
+        assertEquals(CliError.OK, run(Commands.resetLogger("com.acme.Known", false, true)));
         assertEquals(
                 "{\"name\":\"com.acme.Known\",\"overrideActive\":false,\"wasOverridden\":true}",
                 output().strip());
     }
 
     @Test
-    void resetAllCountsActiveOverridesFirstThenClears() {
-        mbean.loggers = List.of(
-                new LoggerInfoData("a", "INFO", "DEBUG", true, "jmx", null, "STICKY", null),
-                new LoggerInfoData("b", "INFO", "INFO", false, null, null, null, null),
-                new LoggerInfoData("c", "INFO", "TRACE", true, "jmx", null, "SESSION", null));
+    void resetOfAStickyExactNameTarget_propagatesTheRefusal() {
+        // doc/specs/reset-command-surface.md, Decision #1: naming one
+        // specific sticky target without --include-sticky refuses outright
+        // -- Commands lets the server's IllegalArgumentException propagate,
+        // same as every other usage-shaped server rejection (Main maps it
+        // to exit 2).
+        mbean.loggers = List.of(new LoggerInfoData("com.acme.Payments", "WARN", "TRACE", true, "jmx", null,
+                "STICKY", null));
 
-        assertEquals(CliError.OK, run(Commands.resetAll(false)));
-        assertEquals(1, mbean.resetAllCalls);
-        assertEquals("Reverted 2 override(s).", output().strip());
+        assertThrows(IllegalArgumentException.class,
+                () -> run(Commands.resetLogger("com.acme.Payments", false, false)));
     }
 
     @Test
-    void resetAllJsonEmitsTheCount() {
-        assertEquals(CliError.OK, run(Commands.resetAll(true)));
-        assertEquals("{\"reverted\":0}", output().strip());
+    void resetAllLoggers_revertsAndReportsSkippedSticky() {
+        mbean.loggers = List.of(
+                new LoggerInfoData("a", "INFO", "DEBUG", true, "jmx", null, "FOR", null),
+                new LoggerInfoData("b", "INFO", "INFO", false, null, null, null, null),
+                new LoggerInfoData("c", "INFO", "TRACE", true, "jmx", null, "SESSION", null),
+                new LoggerInfoData("d", "WARN", "DEBUG", true, "jmx", null, "STICKY", null));
+
+        assertEquals(CliError.OK, run(Commands.resetAllLoggers(false, false)));
+        assertEquals(1, mbean.resetAllLoggersCalls);
+        String text = output();
+        assertTrue(text.contains("Reverted 2 override(s)."), text);
+        assertTrue(text.contains("Left 1 sticky override(s) in place (pass --include-sticky to include them): d"),
+                text);
+    }
+
+    @Test
+    void resetAllLoggersJsonEmitsRevertedAndSkippedStickyArrays() {
+        assertEquals(CliError.OK, run(Commands.resetAllLoggers(false, true)));
+        assertEquals("{\"revertedLoggerNames\":[],\"skippedStickyLoggerNames\":[]}", output().strip());
+    }
+
+    @Test
+    void resetAllLoggers_nothingToReset_printsNoOverridesLine() {
+        assertEquals(CliError.OK, run(Commands.resetAllLoggers(false, false)));
+        assertEquals("No overrides to reset.", output().strip());
     }
 
     // --- CONTEXT column (doc/specs/wildfly-support.md, Slice 3) ------------------------------------

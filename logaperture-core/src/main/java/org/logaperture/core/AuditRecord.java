@@ -27,7 +27,7 @@ import java.time.Instant;
  *                       type itself, so the record stays trivially loggable
  * @param newValue      same rendering convention as {@code previousValue}
  * @param action        {@link Action#MUTATION} for {@code setLevel},
- *                      {@link Action#REVERSION} for {@code resetLevel}/
+ *                      {@link Action#REVERSION} for {@code resetLogger}/
  *                      {@code resetAll} — "records the revert as well as
  *                      the change" (§9.7)
  */

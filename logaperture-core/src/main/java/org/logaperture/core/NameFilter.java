@@ -56,7 +56,7 @@ final class NameFilter {
     /**
      * Whether {@code target} is a pattern rather than an exact logger name --
      * one {@code '*'} anywhere in it. The single check every caller on the
-     * {@code setLevel}/{@code resetLevel} path branches on before deciding
+     * {@code setLevel}/{@code resetLogger} path branches on before deciding
      * whether it's looking at a one-time selection or a plain override;
      * pulled out here so that branch is spelled once instead of re-typed at
      * each call site.

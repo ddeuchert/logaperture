@@ -21,7 +21,7 @@ import java.beans.ConstructorProperties;
 import java.util.List;
 
 /**
- * MXBean-friendly mirror of {@link ResetOutcome} — {@code resetLevel}'s
+ * MXBean-friendly mirror of {@link ResetOutcome} — {@code resetLogger}'s
  * return type. Reports exactly what the server reverted, so a caller (the
  * CLI's {@code reset} command) never needs to reconstruct that by diffing
  * {@code listLoggers} before and after the call.
@@ -29,17 +29,24 @@ import java.util.List;
 public final class ResetOutcomeData {
 
     private final List<String> revertedLoggerNames;
+    private final List<String> skippedStickyLoggerNames;
 
-    @ConstructorProperties({"revertedLoggerNames"})
-    public ResetOutcomeData(List<String> revertedLoggerNames) {
+    @ConstructorProperties({"revertedLoggerNames", "skippedStickyLoggerNames"})
+    public ResetOutcomeData(List<String> revertedLoggerNames, List<String> skippedStickyLoggerNames) {
         this.revertedLoggerNames = revertedLoggerNames;
+        this.skippedStickyLoggerNames = skippedStickyLoggerNames;
     }
 
     public static ResetOutcomeData from(ResetOutcome outcome) {
-        return new ResetOutcomeData(outcome.revertedLoggerNames());
+        return new ResetOutcomeData(outcome.revertedLoggerNames(), outcome.skippedStickyLoggerNames());
     }
 
     public List<String> getRevertedLoggerNames() {
         return revertedLoggerNames;
+    }
+
+    /** Loggers whose {@code STICKY} override was left in place (doc/specs/reset-command-surface.md). */
+    public List<String> getSkippedStickyLoggerNames() {
+        return skippedStickyLoggerNames;
     }
 }

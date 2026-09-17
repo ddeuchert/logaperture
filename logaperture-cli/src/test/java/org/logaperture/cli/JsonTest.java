@@ -70,8 +70,15 @@ class JsonTest {
     }
 
     @Test
-    void revertedCountIsABareNumber() {
-        assertEquals("{\"reverted\":3}", Json.revertedCount(3));
+    void resetAllLoggersReportsRevertedAndSkippedSticky() {
+        assertEquals("{\"revertedLoggerNames\":[\"a\",\"b\"],\"skippedStickyLoggerNames\":[\"c\"]}",
+                Json.resetAllLoggers(List.of("a", "b"), List.of("c")));
+    }
+
+    @Test
+    void resetAllHandlersReportsRevertedAndSkippedSticky() {
+        assertEquals("{\"revertedHandlerRefs\":[\"CONSOLE\"],\"skippedStickyHandlerRefs\":[]}",
+                Json.resetAllHandlers(List.of("CONSOLE"), List.of()));
     }
 
     @Test

@@ -183,7 +183,7 @@ class LevelControlServiceTest {
 
     @Test
     void resetLevel_noOverride_isNoOpNotError() {
-        service.resetLevel("com.acme.NeverTouched"); // must not throw
+        service.resetLogger("com.acme.NeverTouched", false); // must not throw
     }
 
     @Test
@@ -191,7 +191,7 @@ class LevelControlServiceTest {
         adapter.setConfiguredLevel("com.acme.Worker", Level.WARN);
         service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
 
-        service.resetLevel("com.acme.Worker");
+        service.resetLogger("com.acme.Worker", false);
 
         assertEquals(Level.WARN, adapter.effectiveLevel("com.acme.Worker"));
         assertTrue(overrides.get("com.acme.Worker").isEmpty());
@@ -202,7 +202,7 @@ class LevelControlServiceTest {
         // No explicit configured level for this logger -- baseline is "inherited".
         service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
 
-        service.resetLevel("com.acme.Worker");
+        service.resetLogger("com.acme.Worker", false);
 
         assertEquals(Level.INFO, adapter.effectiveLevel("com.acme.Worker")); // falls back to ROOT
     }
@@ -212,7 +212,7 @@ class LevelControlServiceTest {
         service.setLevel("com.acme.A", Level.DEBUG, SetLevelOptions.defaults());
         service.setLevel("com.acme.B", Level.TRACE, SetLevelOptions.defaults());
 
-        service.resetAll();
+        service.resetAllLoggers(false);
 
         assertTrue(overrides.all().isEmpty());
         assertEquals(Level.INFO, adapter.effectiveLevel("com.acme.A"));
@@ -226,7 +226,7 @@ class LevelControlServiceTest {
         service.setLevel("com.acme.A", Level.DEBUG, SetLevelOptions.withReason("r"));
         service.setLevel("com.acme.B", Level.TRACE, SetLevelOptions.withReason("r"));
 
-        service.resetAll();
+        service.resetAllLoggers(false);
 
         assertEquals(1, stateStore.removeAllCalls());
     }
@@ -320,7 +320,7 @@ class LevelControlServiceTest {
         adapter.addKnownLogger("org.apache.tomcat");
         service.setLevel("org.apache.tomcat", Level.DEBUG, SetLevelOptions.defaults());
 
-        ResetOutcome outcome = service.resetLevel("org.apache.*");
+        ResetOutcome outcome = service.resetLogger("org.apache.*", false);
 
         assertEquals(List.of("org.apache.tomcat"), outcome.revertedLoggerNames());
     }
@@ -371,7 +371,7 @@ class LevelControlServiceTest {
         service.setLevel("*.http", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
         service.setLevel("*.db", Level.DEBUG, SetLevelOptions.defaults().withConfirmed(true));
 
-        var outcome = service.resetLevel("com.acme.*");
+        var outcome = service.resetLogger("com.acme.*", false);
 
         assertEquals(Set.of("com.acme.http", "com.acme.db"), Set.copyOf(outcome.revertedLoggerNames()));
         assertEquals(Level.INFO, adapter.effectiveLevel("com.acme.http"));
@@ -387,7 +387,7 @@ class LevelControlServiceTest {
         adapter.addKnownLogger("org.apache.tomcat");
         service.setLevel("org.apache.tomcat", Level.DEBUG, SetLevelOptions.defaults());
 
-        var outcome = service.resetLevel("org.apache.*");
+        var outcome = service.resetLogger("org.apache.*", false);
 
         assertEquals(List.of("org.apache.tomcat"), outcome.revertedLoggerNames());
         assertEquals(Level.INFO, adapter.effectiveLevel("org.apache.tomcat"));
@@ -395,7 +395,7 @@ class LevelControlServiceTest {
 
     @Test
     void resetLevel_pattern_noCurrentMatchWithAnOverride_isANoOpNotAnError() {
-        var outcome = service.resetLevel("com.never.seen.*");
+        var outcome = service.resetLogger("com.never.seen.*", false);
 
         assertEquals(ResetOutcome.nothingReset(), outcome);
     }
@@ -495,7 +495,7 @@ class LevelControlServiceTest {
         adapter.setConfiguredLevel("com.acme.Worker", Level.WARN);
         service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
 
-        service.resetLevel("com.acme.Worker");
+        service.resetLogger("com.acme.Worker", false);
 
         AuditRecord record = auditLog.records().get(auditLog.records().size() - 1);
         assertEquals(AuditRecord.Action.REVERSION, record.action());
@@ -690,8 +690,10 @@ class LevelControlServiceTest {
         adapter.addKnownLogger("com.acme.Raced");
         service.setLevel("com.acme.Raced", Level.DEBUG, SetLevelOptions.sticky());
 
-        // A control-plane resetLevel lands while the sweep is reading this logger.
-        adapter.runOnEffectiveLevel("com.acme.Raced", () -> service.resetLevel("com.acme.Raced"));
+        // A control-plane resetLogger lands while the sweep is reading this logger.
+        // includeSticky=true -- this override was set STICKY above, and the
+        // race this test is about is orthogonal to Decision #1's sticky-skip.
+        adapter.runOnEffectiveLevel("com.acme.Raced", () -> service.resetLogger("com.acme.Raced", true));
 
         int reapplied = service.verifyAndReapply(java.time.Instant.now());
 
@@ -795,7 +797,7 @@ class LevelControlServiceTest {
         serviceWithListener.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.defaults());
         changeCount = 0;
 
-        serviceWithListener.resetLevel("com.acme.Worker");
+        serviceWithListener.resetLogger("com.acme.Worker", false);
 
         assertEquals(1, changeCount);
     }
@@ -804,7 +806,7 @@ class LevelControlServiceTest {
     void resetLevel_withNothingToReset_doesNotFireTheChangeListener() {
         setUpServiceWithListener();
 
-        serviceWithListener.resetLevel("com.acme.NeverOverridden");
+        serviceWithListener.resetLogger("com.acme.NeverOverridden", false);
 
         assertEquals(0, changeCount);
     }
@@ -818,7 +820,7 @@ class LevelControlServiceTest {
         serviceWithListener.setLevel("b", Level.DEBUG, SetLevelOptions.defaults());
         changeCount = 0;
 
-        serviceWithListener.resetAll();
+        serviceWithListener.resetAllLoggers(false);
 
         assertEquals(1, changeCount);
     }

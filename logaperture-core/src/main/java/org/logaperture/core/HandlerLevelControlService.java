@@ -20,6 +20,7 @@ import org.logaperture.api.HandlerInfo;
 import org.logaperture.api.HandlerLevelMode;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
+import org.logaperture.api.HandlerResetOutcome;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.PersistenceTier;
@@ -440,32 +441,52 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     }
 
     @Override
-    public void resetHandler(HandlerRef ref) {
+    public HandlerResetOutcome resetHandler(HandlerRef ref, boolean includeSticky) {
         Objects.requireNonNull(ref, "ref");
         Optional<HandlerLevelOverride> existing = overrides.get(ref);
         if (existing.isEmpty()) {
-            return; // no-op, not an error -- matches resetLevel
+            return HandlerResetOutcome.nothingReset(); // no-op, not an error -- matches resetLogger
         }
-        // Simplification for this slice, matching LevelControlService.resetLevel:
+        if (existing.get().tier() == PersistenceTier.STICKY && !includeSticky) {
+            // Decision #1 (doc/specs/reset-command-surface.md): a single
+            // named target refuses outright -- same reasoning and same
+            // exception type as LevelControlService.resetLogger's exact-name
+            // case, checked ahead of the capability check below.
+            throw rejectSticky(ref);
+        }
+        // Simplification for this slice, matching LevelControlService.resetLogger:
         // every reset requires HANDLER_LOWER, regardless of whether reverting
         // to baseline happens to raise or lower this particular handler.
         requireCapability(Capability.HANDLER_LOWER);
         if (applyReset(ref, existing.get(), source)) {
             safePersist(() -> stateStore.removeHandler(ref));
         }
+        return new HandlerResetOutcome(List.of(ref), List.of());
     }
 
     /**
      * Reverts every active handler override — the {@link
-     * LevelControlService#resetAll} counterpart for handlers, called by
-     * {@link AggregateLevelControl#resetAll} alongside the logger reset so
-     * {@code logctl reset --all} covers both (doc/specs/
-     * handler-floor-control.md "The operation").
+     * LevelControlService#resetAllLoggers} counterpart for handlers, called
+     * by {@link AggregateLevelControl#resetAllHandlers} for {@code logctl
+     * reset handlers} (doc/specs/reset-command-surface.md). A {@code
+     * STICKY} entry is left alone and reported rather than refused, same as
+     * {@link LevelControlService#resetAllLoggers}'s bulk-target reasoning
+     * (Decision #1 -- a bulk reset names a set, however large, not one
+     * specific thing).
      */
-    public void resetAllHandlers() {
+    @Override
+    public HandlerResetOutcome resetAllHandlers(boolean includeSticky) {
+        // Unconditional capability check up front, matching this method's
+        // pre-existing convention (unlike LevelControlService.resetLogger's
+        // pattern branch, which checks lazily).
         requireCapability(Capability.HANDLER_LOWER);
         List<HandlerRef> reverted = new ArrayList<>();
+        List<HandlerRef> skippedSticky = new ArrayList<>();
         for (Map.Entry<HandlerRef, HandlerLevelOverride> entry : overrides.all().entrySet()) {
+            if (entry.getValue().tier() == PersistenceTier.STICKY && !includeSticky) {
+                skippedSticky.add(entry.getKey());
+                continue;
+            }
             if (applyReset(entry.getKey(), entry.getValue(), source)) {
                 reverted.add(entry.getKey());
             }
@@ -473,6 +494,13 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (!reverted.isEmpty()) {
             safePersist(() -> stateStore.removeAllHandlers(reverted)); // one rewrite, not one per handler (issue #17)
         }
+        return new HandlerResetOutcome(reverted, skippedSticky);
+    }
+
+    /** {@link LevelControlService}'s {@code rejectSticky}, mirrored for a {@link HandlerRef} target. */
+    private static IllegalArgumentException rejectSticky(HandlerRef ref) {
+        return new IllegalArgumentException(
+                "'" + ref.value() + "' is STICKY -- reset refused without --include-sticky.");
     }
 
     /**

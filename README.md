@@ -42,7 +42,7 @@ Working today:
 - **`logctl handler <name> <level>`** / **`logctl handlers`** — set a handler's own level (the fix when a raised logger still shows nothing because a handler is pinned stricter) and list the handler catalogue. On WildFly the handlers resolve to their real configured names (`CONSOLE`, `FILE`, …), read in-VM from the server's own model.
 - **`logctl doctor`** — flag common logging-config problems: unbounded file-handler growth, verbosity left on, the same content written twice, autoflush on a busy handler, disk headroom vs. write rate.
 - **`logctl top`** — bytes written per logger, worst-first, with a projected daily total and the stack-trace-byte fraction.
-- **`logctl status`** / **`logctl reset --all`** — what LogAperture has changed, and undo all of it.
+- **`logctl status`** / **`logctl reset loggers`** / **`logctl reset handlers`** — what LogAperture has changed, and undo all of it.
 
 `doctor`, `top`, and `logctl handlers` currently inspect `java.util.logging` / JBoss LogManager only — on a Logback application they report nothing yet (a Logback pass is on the roadmap). Every change is capability-checked and written to a tamper-evident audit trail. The agent opens no sockets; `logctl` reaches it over the local attach API, UID-gated by the OS.
 

@@ -18,6 +18,7 @@ package org.logaperture.core;
 import org.logaperture.api.HandlerInfo;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
+import org.logaperture.api.HandlerResetOutcome;
 import org.logaperture.api.Level;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SquelchedLogger;
@@ -71,7 +72,32 @@ public interface HandlerLevelControlOperations {
      */
     Optional<HandlerLevelOverride> setHandlerAuto(HandlerRef ref, SetHandlerLevelOptions options);
 
-    void resetHandler(HandlerRef ref);
+    /**
+     * @param includeSticky whether a {@code STICKY}-tier override is
+     *                      reverted too, instead of left in place — new
+     *                      default is to skip it (doc/specs/
+     *                      reset-command-surface.md)
+     * @return exactly what was reverted, and what was left alone for being
+     *         sticky — see {@link HandlerResetOutcome}
+     * @throws IllegalArgumentException if {@code ref}'s active override is
+     *                                   {@code STICKY} and {@code
+     *                                   includeSticky} is {@code false}
+     *                                   (Decision #1 — a single named target
+     *                                   refuses outright rather than
+     *                                   silently skipping)
+     */
+    HandlerResetOutcome resetHandler(HandlerRef ref, boolean includeSticky);
+
+    /**
+     * Reverts every currently-overridden handler — the bulk counterpart to
+     * {@link #resetHandler} (doc/specs/reset-command-surface.md).
+     *
+     * @param includeSticky whether a {@code STICKY}-tier override is
+     *                      reverted too, instead of left in place
+     * @return exactly what was reverted, and what was left alone for being
+     *         sticky
+     */
+    HandlerResetOutcome resetAllHandlers(boolean includeSticky);
 
     /**
      * Every handler override currently active — the {@link

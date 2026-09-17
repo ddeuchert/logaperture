@@ -60,16 +60,35 @@ public interface LevelControlMXBean {
             boolean confirmed);
 
     /**
-     * {@code target} is either an exact logger name or a pattern
-     * (doc/specs/pattern-level-targeting.md) — resetting a pattern reverts
-     * every logger it currently covers <em>and</em> retires the standing
-     * rule, so it stops covering loggers discovered later too.
+     * {@code target} is either an exact logger name or a pattern (doc/specs/
+     * pattern-selection-semantics.md) — resetting a pattern reverts every
+     * currently-matched logger that carries an active override, a one-time
+     * selection like every other pattern operation. Renamed from {@code
+     * resetLevel} (doc/specs/reset-command-surface.md, Decision #2a).
      *
-     * @return exactly what was reverted — see {@link ResetOutcomeData}
+     * @param includeSticky whether a {@code STICKY}-tier override is
+     *                      reverted too, instead of left in place (new
+     *                      default: skipped)
+     * @return exactly what was reverted, and what was left alone for being
+     *         sticky — see {@link ResetOutcomeData}
+     * @throws IllegalArgumentException if {@code target} is an exact name
+     *                                   whose active override is {@code
+     *                                   STICKY} and {@code includeSticky} is
+     *                                   {@code false}
      */
-    ResetOutcomeData resetLevel(String target);
+    ResetOutcomeData resetLogger(String target, boolean includeSticky);
 
-    void resetAll();
+    /**
+     * {@code logctl reset loggers} — reverts every currently-overridden
+     * logger (doc/specs/reset-command-surface.md), replacing the removed
+     * {@code resetAll()}.
+     *
+     * @param includeSticky whether a {@code STICKY}-tier override is
+     *                      reverted too, instead of left in place
+     * @return exactly what was reverted, and what was left alone for being
+     *         sticky
+     */
+    ResetOutcomeData resetAllLoggers(boolean includeSticky);
 
     /**
      * {@code logctl handler <name> <level>} — doc/specs/
@@ -104,8 +123,31 @@ public interface LevelControlMXBean {
      */
     HandlerLevelOverrideData setHandlerAuto(String handlerRef, String reason, String tier, long forSeconds);
 
-    /** {@code logctl handler <name> reset}. A no-op, not an error, if {@code handlerRef} has no active override. */
-    void resetHandler(String handlerRef);
+    /**
+     * {@code logctl reset handler <name>}. A no-op, not an error, if {@code
+     * handlerRef} has no active override.
+     *
+     * @param includeSticky whether a {@code STICKY}-tier override is
+     *                      reverted too, instead of left in place
+     * @return exactly what was reverted, and what was left alone for being
+     *         sticky — see {@link HandlerResetOutcomeData}
+     * @throws IllegalArgumentException if {@code handlerRef}'s active
+     *                                   override is {@code STICKY} and
+     *                                   {@code includeSticky} is {@code
+     *                                   false}
+     */
+    HandlerResetOutcomeData resetHandler(String handlerRef, boolean includeSticky);
+
+    /**
+     * {@code logctl reset handlers} — reverts every currently-overridden
+     * handler (doc/specs/reset-command-surface.md).
+     *
+     * @param includeSticky whether a {@code STICKY}-tier override is
+     *                      reverted too, instead of left in place
+     * @return exactly what was reverted, and what was left alone for being
+     *         sticky
+     */
+    HandlerResetOutcomeData resetAllHandlers(boolean includeSticky);
 
     /**
      * Every handler override currently active, across every registered

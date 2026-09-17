@@ -18,6 +18,7 @@ package org.logaperture.cli;
 import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.EnvironmentReportData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
+import org.logaperture.control.jmx.HandlerResetOutcomeData;
 import org.logaperture.control.jmx.LevelControlMXBean;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.ResetOutcomeData;
@@ -36,9 +37,13 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     final List<Object[]> setHandlerLevelCalls = new ArrayList<>();
     final List<Object[]> setHandlerAutoCalls = new ArrayList<>();
     final List<String> resetHandlerCalls = new ArrayList<>();
-    /** Names dropped from {@link #loggers} when {@link #resetLevel} clears them — a "Known" but not "Live" logger. */
+    /** Names dropped from {@link #loggers} when {@link #resetLogger} clears them — a "Known" but not "Live" logger. */
     final List<String> forgetOnReset = new ArrayList<>();
-    int resetAllCalls;
+    int resetAllLoggersCalls;
+    int resetAllHandlersCalls;
+    boolean lastIncludeSticky;
+    /** Whether the fake's {@link #resetHandler} simulates an active override to revert. */
+    boolean handlerHasOverrideToReset = true;
 
     List<LoggerInfoData> loggers = new ArrayList<>();
     List<HandlerLevelOverrideData> handlerOverrides = new ArrayList<>();
@@ -135,42 +140,68 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     }
 
     @Override
-    public ResetOutcomeData resetLevel(String target) {
+    public ResetOutcomeData resetLogger(String target, boolean includeSticky) {
         resetLevelCalls.add(target);
+        lastIncludeSticky = includeSticky;
         maybeThrow();
         if (target.indexOf('*') >= 0) {
-            // Simulates a real pattern reset's effect (doc/specs/
-            // pattern-selection-semantics.md) well enough for CommandsTest's
-            // before/after rendering: every currently-active match reverts
-            // to its configured (baseline) level, everything else is
-            // untouched. No rule identity to look up any more -- current
-            // matches with an active override, full stop.
-            List<LoggerInfoData> reverted = new ArrayList<>();
-            List<String> revertedNames = new ArrayList<>();
-            for (LoggerInfoData row : loggers) {
-                if (matchesFilter(target, row.getName()) && row.isOverrideActive()) {
-                    String baseline = row.getConfiguredLevel() != null ? row.getConfiguredLevel() : "INFO";
-                    reverted.add(new LoggerInfoData(row.getName(), row.getConfiguredLevel(), baseline,
-                            false, null, null, null, null, row.getContext()));
-                    revertedNames.add(row.getName());
-                } else {
-                    reverted.add(row);
-                }
+            return resetMatching(row -> matchesFilter(target, row.getName()), includeSticky);
+        }
+        LoggerInfoData row = loggers.stream().filter(r -> r.getName().equals(target)).findFirst().orElse(null);
+        if (row != null && row.isOverrideActive()) {
+            if ("STICKY".equals(row.getTier()) && !includeSticky) {
+                // Decision #1 (doc/specs/reset-command-surface.md): a single
+                // named sticky target refuses outright.
+                throw new IllegalArgumentException(
+                        "'" + target + "' is STICKY -- reset refused without --include-sticky.");
             }
-            loggers = reverted;
-            return new ResetOutcomeData(revertedNames);
         }
         if (forgetOnReset.contains(target)) {
             loggers.removeIf(logger -> logger.getName().equals(target));
-            return new ResetOutcomeData(List.of(target));
+            return new ResetOutcomeData(List.of(target), List.of());
         }
-        return new ResetOutcomeData(List.of());
+        return new ResetOutcomeData(List.of(), List.of());
     }
 
     @Override
-    public void resetAll() {
-        resetAllCalls++;
+    public ResetOutcomeData resetAllLoggers(boolean includeSticky) {
+        resetAllLoggersCalls++;
+        lastIncludeSticky = includeSticky;
         maybeThrow();
+        return resetMatching(row -> true, includeSticky);
+    }
+
+    /**
+     * Simulates reverting every currently-active-override row {@code
+     * matches} selects (doc/specs/pattern-selection-semantics.md /
+     * reset-command-surface.md): a {@code STICKY} row is left alone and
+     * reported instead of reverted unless {@code includeSticky}. Shared by
+     * the pattern branch of {@link #resetLogger} and {@link
+     * #resetAllLoggers} -- both are "revert whatever currently qualifies"
+     * operations over the same {@link #loggers} list.
+     */
+    private ResetOutcomeData resetMatching(java.util.function.Predicate<LoggerInfoData> matches,
+            boolean includeSticky) {
+        List<LoggerInfoData> updated = new ArrayList<>();
+        List<String> revertedNames = new ArrayList<>();
+        List<String> skippedStickyNames = new ArrayList<>();
+        for (LoggerInfoData row : loggers) {
+            if (matches.test(row) && row.isOverrideActive()) {
+                if ("STICKY".equals(row.getTier()) && !includeSticky) {
+                    skippedStickyNames.add(row.getName());
+                    updated.add(row);
+                    continue;
+                }
+                String baseline = row.getConfiguredLevel() != null ? row.getConfiguredLevel() : "INFO";
+                updated.add(new LoggerInfoData(row.getName(), row.getConfiguredLevel(), baseline,
+                        false, null, null, null, null, row.getContext()));
+                revertedNames.add(row.getName());
+            } else {
+                updated.add(row);
+            }
+        }
+        loggers = updated;
+        return new ResetOutcomeData(revertedNames, skippedStickyNames);
     }
 
     @Override
@@ -189,9 +220,23 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     }
 
     @Override
-    public void resetHandler(String handlerRef) {
+    public HandlerResetOutcomeData resetHandler(String handlerRef, boolean includeSticky) {
         resetHandlerCalls.add(handlerRef);
+        lastIncludeSticky = includeSticky;
         maybeThrow();
+        return handlerHasOverrideToReset
+                ? new HandlerResetOutcomeData(List.of(handlerRef), List.of())
+                : new HandlerResetOutcomeData(List.of(), List.of());
+    }
+
+    @Override
+    public HandlerResetOutcomeData resetAllHandlers(boolean includeSticky) {
+        resetAllHandlersCalls++;
+        lastIncludeSticky = includeSticky;
+        maybeThrow();
+        return handlerHasOverrideToReset
+                ? new HandlerResetOutcomeData(List.of("CONSOLE"), List.of())
+                : new HandlerResetOutcomeData(List.of(), List.of());
     }
 
     @Override

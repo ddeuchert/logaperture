@@ -19,6 +19,7 @@ import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.EnvironmentReport;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
+import org.logaperture.api.HandlerResetOutcome;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
@@ -47,7 +48,7 @@ import java.util.Optional;
 /**
  * A small stateful {@link LevelControlOperations} + {@link
  * HandlerLevelControlOperations} for {@link CliFixtureApp} — enough to make
- * {@code listLoggers}/{@code setLevel}/{@code resetLevel}/{@code resetAll}/
+ * {@code listLoggers}/{@code setLevel}/{@code resetLogger}/{@code resetAllLoggers}/
  * {@code setHandlerLevel}/{@code resetHandler} round-trip over a real
  * cross-process JMX connection so {@link CliEndToEndIT} can assert against
  * real output. No Logback, no agent — the CLI's transport is what's under
@@ -121,19 +122,25 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     }
 
     @Override
-    public synchronized ResetOutcome resetLevel(String loggerName) {
-        if (state.containsKey(loggerName)) {
-            state.put(loggerName, baseline(loggerName));
-            return new ResetOutcome(List.of(loggerName));
+    public synchronized ResetOutcome resetLogger(String target, boolean includeSticky) {
+        LoggerInfo info = state.get(target);
+        if (info != null && info.overrideActive()) {
+            state.put(target, baseline(target));
+            return new ResetOutcome(List.of(target), List.of());
         }
         return ResetOutcome.nothingReset();
     }
 
     @Override
-    public synchronized void resetAll() {
+    public synchronized ResetOutcome resetAllLoggers(boolean includeSticky) {
+        List<String> reverted = new ArrayList<>();
         for (String name : List.copyOf(state.keySet())) {
+            if (state.get(name).overrideActive()) {
+                reverted.add(name);
+            }
             state.put(name, baseline(name));
         }
+        return new ResetOutcome(reverted, List.of());
     }
 
     @Override
@@ -165,9 +172,18 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     }
 
     @Override
-    public synchronized void resetHandler(HandlerRef ref) {
+    public synchronized HandlerResetOutcome resetHandler(HandlerRef ref, boolean includeSticky) {
+        boolean hadOverride = handlerOverrides.remove(ref) != null;
         handlerBaselines.remove(ref);
-        handlerOverrides.remove(ref);
+        return hadOverride ? new HandlerResetOutcome(List.of(ref), List.of()) : HandlerResetOutcome.nothingReset();
+    }
+
+    @Override
+    public synchronized HandlerResetOutcome resetAllHandlers(boolean includeSticky) {
+        List<HandlerRef> reverted = List.copyOf(handlerOverrides.keySet());
+        handlerOverrides.clear();
+        handlerBaselines.clear();
+        return new HandlerResetOutcome(reverted, List.of());
     }
 
     @Override

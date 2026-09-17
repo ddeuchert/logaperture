@@ -88,7 +88,7 @@ class HandlerLevelControlServiceTest {
     void resetHandler_restoresTheCapturedBaseline() {
         service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
 
-        service.resetHandler(CONSOLE);
+        service.resetHandler(CONSOLE, false);
 
         assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow());
         assertTrue(overrides.get(CONSOLE).isEmpty());
@@ -102,7 +102,7 @@ class HandlerLevelControlServiceTest {
         service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
         service.setHandlerLevel(file, Level.DEBUG, SetHandlerLevelOptions.defaults());
 
-        service.resetAllHandlers();
+        service.resetAllHandlers(false);
 
         assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow());
         assertEquals(Level.INFO, adapter.handlerLevel(file).orElseThrow());
@@ -116,7 +116,7 @@ class HandlerLevelControlServiceTest {
         service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
         service.setHandlerLevel(file, Level.DEBUG, SetHandlerLevelOptions.defaults());
 
-        service.resetAllHandlers();
+        service.resetAllHandlers(false);
 
         assertEquals(1, ((InMemoryStateStore) stateStore).removeAllHandlersCalls());
     }
@@ -131,7 +131,7 @@ class HandlerLevelControlServiceTest {
         service.setHandlerLevel(file, Level.DEBUG, SetHandlerLevelOptions.defaults());
         assertEquals(2, service.listHandlerOverrides().size());
 
-        service.resetHandler(CONSOLE);
+        service.resetHandler(CONSOLE, false);
         HandlerLevelOverride remaining = service.listHandlerOverrides().get(0);
         assertEquals(file, remaining.handlerRef());
     }
@@ -171,7 +171,7 @@ class HandlerLevelControlServiceTest {
 
     @Test
     void resetHandler_noActiveOverride_isANoOp() {
-        service.resetHandler(CONSOLE); // no-op, not an error
+        service.resetHandler(CONSOLE, false); // no-op, not an error
 
         assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow());
         assertTrue(auditLog.records().isEmpty());
@@ -182,7 +182,7 @@ class HandlerLevelControlServiceTest {
         service.setHandlerLevel(CONSOLE, Level.DEBUG, SetHandlerLevelOptions.defaults());
         service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
 
-        service.resetHandler(CONSOLE);
+        service.resetHandler(CONSOLE, false);
 
         assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow(),
                 "reset lands on the pre-LogAperture baseline, not the DEBUG the first call captured as 'previous'");
@@ -289,7 +289,7 @@ class HandlerLevelControlServiceTest {
         HandlerLevelControlService denied = new HandlerLevelControlService(adapter, baselines, overrides,
                 c -> c != Capability.HANDLER_LOWER, auditLog, stateStore, "alice", "jmx");
 
-        assertThrows(CapabilityDeniedException.class, () -> denied.resetHandler(CONSOLE));
+        assertThrows(CapabilityDeniedException.class, () -> denied.resetHandler(CONSOLE, false));
     }
 
     @Test
@@ -513,7 +513,7 @@ class HandlerLevelControlServiceTest {
         service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
         adapter.vanishHandler(CONSOLE);
 
-        service.resetHandler(CONSOLE); // must not throw -- code-review finding
+        service.resetHandler(CONSOLE, false); // must not throw -- code-review finding
 
         assertTrue(overrides.get(CONSOLE).isEmpty(), "dropped, not retried forever");
     }
@@ -527,7 +527,7 @@ class HandlerLevelControlServiceTest {
         adapter.vanishHandler(CONSOLE); // sorted-map iteration order isn't guaranteed, but this must not
                                          // stop FILE from being reverted regardless of which comes first
 
-        service.resetAllHandlers(); // must not throw and must not abort partway through
+        service.resetAllHandlers(false); // must not throw and must not abort partway through
 
         assertTrue(overrides.get(CONSOLE).isEmpty());
         assertTrue(overrides.get(file).isEmpty());
@@ -585,7 +585,7 @@ class HandlerLevelControlServiceTest {
         adapter.addHandler(file, Level.DEBUG); // a different starting level than CONSOLE's INFO
         service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
 
-        service.resetHandler(HandlerRef.ALL_HANDLERS);
+        service.resetHandler(HandlerRef.ALL_HANDLERS, false);
 
         assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow(), "back to its own baseline");
         assertEquals(Level.DEBUG, adapter.handlerLevel(file).orElseThrow(), "back to ITS own baseline, not CONSOLE's");
@@ -689,7 +689,7 @@ class HandlerLevelControlServiceTest {
         service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
         service.setHandlerLevel(other, Level.DEBUG, SetHandlerLevelOptions.defaults());
 
-        service.resetAllHandlers();
+        service.resetAllHandlers(false);
 
         assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow());
         assertEquals(Level.INFO, adapter.handlerLevel(file).orElseThrow());
@@ -704,7 +704,7 @@ class HandlerLevelControlServiceTest {
         service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
         adapter.vanishHandler(CONSOLE);
 
-        service.resetHandler(HandlerRef.ALL_HANDLERS); // must not throw or abort partway through
+        service.resetHandler(HandlerRef.ALL_HANDLERS, false); // must not throw or abort partway through
 
         assertEquals(Level.INFO, adapter.handlerLevel(file).orElseThrow());
         assertTrue(overrides.get(HandlerRef.ALL_HANDLERS).isEmpty());

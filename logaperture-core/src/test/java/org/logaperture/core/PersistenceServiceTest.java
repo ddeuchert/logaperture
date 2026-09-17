@@ -92,7 +92,7 @@ class PersistenceServiceTest {
     void resetLevel_removesAPersistedOverrideFromTheStateStore() {
         service.setLevel("com.acme.Worker", Level.DEBUG, SetLevelOptions.sticky());
 
-        service.resetLevel("com.acme.Worker");
+        service.resetLogger("com.acme.Worker", true); // sticky -- includeSticky=true to actually revert it
 
         assertTrue(stateStore.loadAll().isEmpty());
     }
@@ -102,7 +102,7 @@ class PersistenceServiceTest {
         service.setLevel("com.acme.A", Level.DEBUG, SetLevelOptions.sticky());
         service.setLevel("com.acme.B", Level.TRACE, SetLevelOptions.forDuration(Duration.ofMinutes(5)));
 
-        service.resetAll();
+        service.resetAllLoggers(true); // includeSticky=true -- com.acme.A is sticky
 
         assertTrue(stateStore.loadAll().isEmpty());
     }
