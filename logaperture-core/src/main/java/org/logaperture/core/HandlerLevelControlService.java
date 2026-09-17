@@ -37,6 +37,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
@@ -64,6 +66,20 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     private final String principal;
     private final String source;
     private final ActiveLoggerFloor activeLoggerFloor;
+
+    /**
+     * Handler refs resumed from persisted state whose adapter application
+     * has not yet succeeded even once this process (doc/specs/
+     * handler-floor-control.md "Resume resilience and baseline-key
+     * migration", issue #29) -- a ref in this set is left alone by {@link
+     * #verifyAndReapply} on {@link UnknownHandlerException} instead of being
+     * dropped, unlike a ref that resolved before and has since genuinely
+     * vanished. In-memory only, one context's lifetime; no grace window --
+     * a pending ref waits indefinitely, same "no permanent give-up"
+     * discipline {@code JulLoggingAdapter.ensureNamesResolved} applies to
+     * name resolution itself.
+     */
+    private final Set<HandlerRef> pendingResume = ConcurrentHashMap.newKeySet();
 
     /** Convenience overload for every context that doesn't need {@code AUTO} (doc/specs/handler-floor-control.md "AUTO handler level"). */
     public HandlerLevelControlService(
@@ -518,6 +534,26 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     }
 
     /**
+     * The composition root's {@link LoggingAdapter#onHandlerRenamed} target
+     * (doc/specs/handler-floor-control.md "Resume resilience and
+     * baseline-key migration", issue #29): {@code oldRef}'s baseline and
+     * override, if either is tracked, move to {@code newRef} rather than
+     * staying orphaned once the adapter itself only recognises {@code
+     * newRef} as current -- otherwise a baseline captured (via an {@code
+     * ALL_HANDLERS} fan-out) before the handler's name resolved would sit
+     * under the pre-resolution identity token forever, and a later baseline
+     * capture against the now-current friendly ref would wrongly mint a
+     * second one by reading back whatever level is active right now.
+     */
+    public void migrateHandlerRef(HandlerRef oldRef, HandlerRef newRef) {
+        baselines.migrateKey(oldRef, newRef);
+        overrides.migrateKey(oldRef, newRef);
+        if (pendingResume.remove(oldRef)) {
+            pendingResume.add(newRef);
+        }
+    }
+
+    /**
      * The verification sweep — the {@link LevelControlService#verifyAndReapply}
      * counterpart for handlers, closing the gap doc/specs/
      * handler-floor-control.md's "Reconfiguration re-application" flagged: for
@@ -563,6 +599,13 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                 try {
                     current = adapter.handlerLevel(ref);
                 } catch (UnknownHandlerException e) {
+                    if (pendingResume.contains(ref)) {
+                        // Resumed but never yet resolved (#29) -- not "gone",
+                        // just not here yet. Leave it for the next tick
+                        // rather than reaping a resume that hasn't had its
+                        // first chance to apply.
+                        continue;
+                    }
                     System.err.println("[logaperture-core] verification sweep: handler '" + ref
                             + "' no longer resolves, dropping it from tracking: " + e);
                     overrides.removeIfCurrent(ref, override);
@@ -582,6 +625,15 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             try {
                 HandlerOverrideApplier.apply(override, adapter);
             } catch (UnknownHandlerException e) {
+                if (pendingResume.contains(ref)) {
+                    // Same "not yet, not gone" guard as the drift check above
+                    // -- a resumed override's very first apply attempt can
+                    // land here too, once resolution starts returning a
+                    // handler for handlerLevel() but setHandlerLevel() still
+                    // races it, or for an adapter whose handlerLevel() never
+                    // throws in the first place (JulLoggingAdapter).
+                    continue;
+                }
                 // The handler itself is gone (context torn down, config
                 // dropped it) -- not a transient failure, so don't leave a
                 // permanently-undead override that fails every future tick.
@@ -594,6 +646,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                         + ref + "', leaving it drifted for the next tick: " + e);
                 continue;
             }
+            pendingResume.remove(ref); // resolved and applied -- no longer pending
 
             Optional<HandlerLevelOverride> afterApply = overrides.get(ref);
             if (!afterApply.map(override::equals).orElse(false)) {
@@ -775,7 +828,18 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return;
         }
 
-        HandlerOverrideApplier.apply(persisted, adapter);
+        try {
+            HandlerOverrideApplier.apply(persisted, adapter);
+        } catch (UnknownHandlerException e) {
+            // Name resolution hasn't happened yet (#29) -- track it anyway,
+            // as pending, so the verification sweep applies it once the ref
+            // resolves, instead of silently dropping it the way the old
+            // catch-all in resumeFromStateStore used to. No audit record:
+            // nothing was actually applied.
+            overrides.put(persisted);
+            pendingResume.add(persisted.handlerRef());
+            return;
+        }
         overrides.put(persisted);
         auditLog.record(new AuditRecord(
                 now, principal, "resume", persisted.handlerRef().value(), null,
@@ -936,6 +1000,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         HandlerLevelOverride override = HandlerLevelOverride.fixed(
                 ref, level, opts.reason(), now, source, opts.tier(), expiresAt);
         HandlerOverrideApplier.apply(override, adapter); // mutation: the point of no return
+        pendingResume.remove(ref); // a direct, successful apply proves ref resolves now, if it was ever pending
 
         overrides.put(override); // commit
         if (opts.tier() != PersistenceTier.SESSION) {
@@ -966,6 +1031,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (!overrides.removeIfCurrent(ref, toRevert)) {
             return false; // a concurrent setHandlerLevel already replaced it
         }
+        pendingResume.remove(ref); // untracked either way -- pending status is moot now
 
         if (HandlerRef.ALL_HANDLERS.equals(ref)) {
             applyGroupReset(auditSource);

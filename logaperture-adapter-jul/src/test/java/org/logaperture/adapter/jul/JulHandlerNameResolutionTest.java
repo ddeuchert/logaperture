@@ -247,6 +247,53 @@ class JulHandlerNameResolutionTest {
     }
 
     @Test
+    void aLateResolution_firesTheHandlerRenamedListener() {
+        ConsoleHandler console = consoleAtInfo();
+        Logger logger = isolatedLoggerWith(console);
+        try {
+            FakeResolver resolver = new FakeResolver();
+            resolver.emptyFirst = 1; // token minted before the name is known
+            resolver.names.put(console, "FILE");
+            JulLoggingAdapter adapter = new JulLoggingAdapter(resolver);
+
+            List<HandlerRef[]> renames = new java.util.ArrayList<>();
+            adapter.onHandlerRenamed((oldRef, newRef) -> renames.add(new HandlerRef[] {oldRef, newRef}));
+
+            HandlerRef token = soleFloorRef(adapter, logger); // attempt 1: still a token
+            soleFloorRef(adapter, logger); // attempt 2: resolves, fires the rename
+
+            assertEquals(1, renames.size(), "exactly one rename, for the one promoted instance");
+            assertEquals(token, renames.get(0)[0]);
+            assertEquals(new HandlerRef("FILE"), renames.get(0)[1]);
+        } finally {
+            logger.removeHandler(console);
+        }
+    }
+
+    @Test
+    void clearHandlerRenameListener_stopsFiringFutureRenames() {
+        ConsoleHandler first = consoleAtInfo();
+        Logger logger = isolatedLoggerWith(first);
+        try {
+            FakeResolver resolver = new FakeResolver();
+            resolver.emptyFirst = 1;
+            resolver.names.put(first, "FIRST");
+            JulLoggingAdapter adapter = new JulLoggingAdapter(resolver);
+
+            AtomicInteger renameCount = new AtomicInteger();
+            adapter.onHandlerRenamed((oldRef, newRef) -> renameCount.incrementAndGet());
+            adapter.clearHandlerRenameListener();
+
+            soleFloorRef(adapter, logger); // attempt 1: token
+            soleFloorRef(adapter, logger); // attempt 2: resolves -- would have fired
+
+            assertEquals(0, renameCount.get(), "a cleared listener must not fire");
+        } finally {
+            logger.removeHandler(first);
+        }
+    }
+
+    @Test
     void invalidateNameCache_rearmsResolutionForANewlyAttachedHandler() {
         ConsoleHandler first = consoleAtInfo();
         ConsoleHandler second = consoleAtInfo();

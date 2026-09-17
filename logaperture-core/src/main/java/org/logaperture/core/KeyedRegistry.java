@@ -60,4 +60,21 @@ final class KeyedRegistry<K, V> {
     Map<K, V> all() {
         return Map.copyOf(entries);
     }
+
+    /**
+     * Moves {@code oldKey}'s entry, if any, to {@code newKey} — for a caller
+     * whose key identity itself changed underneath it (doc/specs/
+     * handler-floor-control.md "Resume resilience and baseline-key
+     * migration", issue #29: a {@code HandlerRef} renamed in place by the
+     * adapter). A no-op if {@code oldKey} has no entry. If {@code newKey}
+     * already holds one, that entry wins — it reflects the current key more
+     * directly than whatever was captured under the stale one — and the
+     * {@code oldKey} entry is simply dropped rather than overwriting it.
+     */
+    void migrateKey(K oldKey, K newKey) {
+        entries.computeIfPresent(oldKey, (k, oldValue) -> {
+            entries.putIfAbsent(newKey, oldValue);
+            return null; // removes oldKey
+        });
+    }
 }
