@@ -60,15 +60,24 @@ final class Commands {
     private Commands() {
     }
 
-    static Command levels(String filter, boolean json) {
+    static Command listLoggers(String filter, boolean showAll, boolean json) {
         return (mbean, out, in, interactive) -> {
             List<LoggerInfoData> rows = mbean.listLoggers(filter);
+            if (!showAll) {
+                rows = rows.stream().filter(LoggerInfoData::isOverrideActive).toList();
+            }
             if (json) {
                 out.println(Json.loggers(rows));
                 return CliError.OK;
             }
             if (rows.isEmpty()) {
-                out.println(filter == null ? "No loggers known yet." : "No loggers match '" + filter + "'.");
+                if (filter != null) {
+                    out.println("No loggers match '" + filter + "'.");
+                } else if (showAll) {
+                    out.println("No loggers known yet.");
+                } else {
+                    out.println("No loggers have an active override.");
+                }
                 return CliError.OK;
             }
             boolean showContext = spansMultipleContexts(rows, LoggerInfoData::getContext);
@@ -211,7 +220,7 @@ final class Commands {
     /**
      * {@code target} is either an exact logger name or a pattern (doc/specs/
      * pattern-selection-semantics.md) — a {@code *} anywhere in it means the
-     * latter, resolved the same way {@code logctl levels} already detects
+     * latter, resolved the same way {@code logctl list loggers} already detects
      * one. A leading-star pattern is a one-time selection: it previews its
      * current matches and asks for confirmation ({@code --yes} skips the
      * prompt) before applying, since a single wildcard can match more
@@ -661,20 +670,24 @@ final class Commands {
     }
 
     /**
-     * {@code logctl handlers} — the addressable handler catalog (doc/specs/
+     * {@code logctl list handlers} — the addressable handler catalog (doc/specs/
      * handler-floor-control.md "The handler catalog", issue #15). Read-only,
      * no target, nothing to confirm — the counterpart to {@code logctl
      * levels} for handlers.
      */
-    static Command handlers(boolean json) {
+    static Command listHandlers(boolean showAll, boolean json) {
         return (mbean, out, in, interactive) -> {
             List<HandlerInfoData> rows = mbean.listHandlers();
+            if (!showAll) {
+                rows = rows.stream().filter(HandlerInfoData::isOverrideActive).toList();
+            }
             if (json) {
                 out.println(Json.handlers(rows));
                 return CliError.OK;
             }
             if (rows.isEmpty()) {
-                out.println("This framework's handlers have no level of their own — nothing to list.");
+                out.println(showAll ? "This framework's handlers have no level of their own — nothing to list."
+                        : "No handlers have an active override.");
                 return CliError.OK;
             }
             boolean showContext = spansMultipleContexts(rows, HandlerInfoData::getContext);

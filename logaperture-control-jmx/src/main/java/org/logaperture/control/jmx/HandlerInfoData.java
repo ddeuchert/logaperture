@@ -21,7 +21,7 @@ import java.beans.ConstructorProperties;
 
 /**
  * MXBean-friendly mirror of {@link HandlerInfo} — the {@link LoggerInfoData}
- * counterpart for {@code logctl handlers} (doc/specs/handler-floor-control.md
+ * counterpart for {@code logctl list handlers} (doc/specs/handler-floor-control.md
  * "The handler catalog", issue #15). Plain class with a {@link
  * ConstructorProperties} constructor and JavaBean getters; levels are {@code
  * String} at this boundary, matching the rest of {@link LevelControlMXBean}.

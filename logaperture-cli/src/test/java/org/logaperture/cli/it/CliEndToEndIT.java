@@ -79,7 +79,7 @@ class CliEndToEndIT {
         Process fixture = launchFixture();
         awaitReady(fixture);
 
-        Result levels = run("levels", "com.acme");
+        Result levels = run("list", "loggers", "com.acme", "--show-all");
         assertEquals(0, levels.exitCode, levels.err);
         assertTrue(levels.out.contains(LOGGER), levels.out);
         assertTrue(levels.out.contains("INFO"), levels.out);
@@ -118,7 +118,7 @@ class CliEndToEndIT {
         Process fixture = launchFixture();
         awaitReady(fixture);
 
-        Result result = run("levels", "org.*apache");
+        Result result = run("list", "loggers", "org.*apache");
         assertEquals(2, result.exitCode, result.out + result.err);
         assertTrue(result.err.contains("invalid filter 'org.*apache'"), result.err);
     }
@@ -128,7 +128,7 @@ class CliEndToEndIT {
         Process fixture = launchFixture();
         awaitReady(fixture);
 
-        Result levels = run("levels", "--json");
+        Result levels = run("list", "loggers", "--show-all", "--json");
         assertEquals(0, levels.exitCode, levels.err);
         assertTrue(levels.out.strip().startsWith("[{"), levels.out);
         assertTrue(levels.out.contains("\"effectiveLevel\":\"INFO\""), levels.out);
@@ -141,12 +141,12 @@ class CliEndToEndIT {
         awaitReady(first);
         awaitReady(second);
 
-        Result ambiguous = run("levels");
+        Result ambiguous = run("list", "loggers");
         assertEquals(4, ambiguous.exitCode, ambiguous.out + ambiguous.err);
         assertTrue(ambiguous.err.contains(Long.toString(first.pid())), ambiguous.err);
         assertTrue(ambiguous.err.contains(Long.toString(second.pid())), ambiguous.err);
 
-        Result targeted = run("--pid", Long.toString(first.pid()), "levels", "com.acme");
+        Result targeted = run("--pid", Long.toString(first.pid()), "list", "loggers", "com.acme", "--show-all");
         assertEquals(0, targeted.exitCode, targeted.err);
         assertTrue(targeted.out.contains(LOGGER), targeted.out);
     }

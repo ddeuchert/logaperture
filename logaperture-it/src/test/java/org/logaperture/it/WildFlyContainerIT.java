@@ -144,19 +144,19 @@ class WildFlyContainerIT {
 
         // The agent installs only if java.util.logging.manager is genuinely JBoss LogManager
         // by the time it runs (its readiness gate) -- so a working `logctl` implies a clean boot.
-        assertTrue(logctl("levels", "org.jboss").stdout().contains(BOOT_LOGGER),
+        assertTrue(logctl("list", "loggers", "org.jboss", "--show-all").stdout().contains(BOOT_LOGGER),
                 "logctl lists the server's own loggers");
     }
 
     @Test
     void forOverride_raisesABootLoggerThenResetRestoresIt() {
-        Logctl before = logctl("levels", BOOT_LOGGER);
+        Logctl before = logctl("list", "loggers", BOOT_LOGGER, "--show-all");
         assertTrue(before.stdout().contains("INFO"), "org.jboss.as.server starts at INFO:\n" + before.stdout());
 
         Logctl raised = logctl("set", "logger", BOOT_LOGGER, "DEBUG", "for", "30m");
         assertEquals(0, raised.exitCode(), raised.stderr());
-        assertTrue(logctl("levels", BOOT_LOGGER).stdout().contains("DEBUG"),
-                "logctl levels shows the raised level");
+        assertTrue(logctl("list", "loggers", BOOT_LOGGER).stdout().contains("DEBUG"),
+                "logctl list loggers shows the raised level");
         assertTrue(logctl("status").stdout().contains(BOOT_LOGGER),
                 "logctl status shows the active override");
 
@@ -181,18 +181,18 @@ class WildFlyContainerIT {
     void deployedWarLogger_isVisibleUnderSystem_andSurvivesRedeploy() throws Exception {
         deployProbeWar();
         try {
-            String levels = logctl("levels", "com.myapp.probe").stdout();
+            String levels = logctl("list", "loggers", "com.myapp.probe", "--show-all").stdout();
             assertTrue(levels.contains(APP_LOGGER),
                     "a deployed app's logger is visible:\n" + levels);
             assertFalse(levels.contains("CONTEXT"),
                     "stock WildFly routes the deployment to the one shared system context");
 
             assertEquals(0, logctl("set", "logger", APP_LOGGER, "DEBUG", "sticky").exitCode());
-            assertTrue(logctl("levels", APP_LOGGER).stdout().contains("DEBUG"));
+            assertTrue(logctl("list", "loggers", APP_LOGGER).stdout().contains("DEBUG"));
 
             redeployProbeWar();
 
-            assertTrue(pollLogctl("levels", APP_LOGGER, out -> out.contains("DEBUG")),
+            assertTrue(pollLogctl(out -> out.contains("DEBUG"), "list", "loggers", APP_LOGGER),
                     "the override is still in force after a redeploy");
         } finally {
             // --include-sticky: the override set above is sticky -- without the
@@ -207,14 +207,14 @@ class WildFlyContainerIT {
     @Test
     void managementCliLoggingChange_isCorrectedByTheVerificationSweep() throws Exception {
         assertEquals(0, logctl("set", "logger", BOOT_LOGGER, "DEBUG", "sticky").exitCode());
-        assertTrue(logctl("levels", BOOT_LOGGER).stdout().contains("DEBUG"));
+        assertTrue(logctl("list", "loggers", BOOT_LOGGER).stdout().contains("DEBUG"));
 
         // A /subsystem=logging change (as a management console does) clobbers the override.
         ExecResult added = exec(JBOSS_CLI, "--connect",
                 "--command=/subsystem=logging/logger=" + BOOT_LOGGER + ":add(level=WARN)");
         assertEquals(0, added.getExitCode(), added.getStdout() + added.getStderr());
         try {
-            assertTrue(pollLogctl("levels", BOOT_LOGGER, out -> out.contains("DEBUG")),
+            assertTrue(pollLogctl(out -> out.contains("DEBUG"), "list", "loggers", BOOT_LOGGER),
                     "the verification sweep re-applied the override after the management change");
             assertTrue(wildfly.getLogs().lines().anyMatch(line ->
                             line.contains("source=verification-sweep")
@@ -257,7 +257,7 @@ class WildFlyContainerIT {
         try {
             assertEquals(0, logctl("set", "logger", "org.jboss.as", "DEBUG").exitCode());
 
-            assertTrue(pollLogctl("levels", BOOT_LOGGER, out -> out.contains("DEBUG")),
+            assertTrue(pollLogctl(out -> out.contains("DEBUG"), "list", "loggers", BOOT_LOGGER, "--show-all"),
                     "org.jboss.as.server inherits DEBUG from org.jboss.as with no override of its own");
             assertFalse(logctl("status").stdout().contains(BOOT_LOGGER),
                     "only 'org.jboss.as' itself was ever set -- its descendant carries no override");
@@ -275,7 +275,7 @@ class WildFlyContainerIT {
         // current matches finds (doc/specs/pattern-selection-semantics.md
         // "Operations").
         assertEquals(0, logctl("set", "logger", BOOT_LOGGER, "DEBUG", "sticky").exitCode()); // exact name, not the pattern
-        assertTrue(logctl("levels", BOOT_LOGGER).stdout().contains("DEBUG"));
+        assertTrue(logctl("list", "loggers", BOOT_LOGGER).stdout().contains("DEBUG"));
 
         // --include-sticky: the exact-name override above is sticky, and a
         // pattern reset leaves a sticky match in place by default (doc/specs/
@@ -284,7 +284,7 @@ class WildFlyContainerIT {
         Logctl reverted = logctl("reset", "logger", "org.jboss.as.*", "--include-sticky");
 
         assertEquals(0, reverted.exitCode(), reverted.stderr());
-        assertTrue(logctl("levels", BOOT_LOGGER).stdout().contains("INFO"),
+        assertTrue(logctl("list", "loggers", BOOT_LOGGER, "--show-all").stdout().contains("INFO"),
                 "the exact-name override under the trailing-star scope was reverted too");
         assertFalse(logctl("status").stdout().contains(BOOT_LOGGER));
     }
@@ -330,9 +330,9 @@ class WildFlyContainerIT {
 
     @Test
     void handlers_listsTheResolvedCatalog_withLevelsAndAnActiveOverride() {
-        // Issue #15: `logctl handlers` enumerates every addressable handler.
+        // Issue #15: `logctl list handlers` enumerates every addressable handler.
         // On real WildFly that is ALL_HANDLERS + the resolved CONSOLE / FILE.
-        Logctl catalog = logctl("handlers");
+        Logctl catalog = logctl("list", "handlers", "--show-all");
         assertEquals(0, catalog.exitCode(), catalog.stderr());
         String out = catalog.stdout();
         assertTrue(out.contains("HANDLER") && out.contains("LEVEL") && out.contains("TARGET"), out);
@@ -345,14 +345,14 @@ class WildFlyContainerIT {
 
         try {
             assertEquals(0, logctl("set", "handler", "CONSOLE", "TRACE", "for", "10m").exitCode());
-            String withOverride = logctl("handlers").stdout();
+            String withOverride = logctl("list", "handlers").stdout();
             assertTrue(withOverride.contains("CONSOLE") && withOverride.contains("TRACE"),
                     "the CONSOLE row reflects the active override:\n" + withOverride);
         } finally {
             logctl("reset", "handler", "CONSOLE");
         }
 
-        Logctl json = logctl("handlers", "--json");
+        Logctl json = logctl("list", "handlers", "--show-all", "--json");
         assertEquals(0, json.exitCode(), json.stderr());
         assertTrue(json.stdout().contains("\"handlers\":[{") && json.stdout().contains("\"ref\":\"CONSOLE\""),
                 json.stdout());
@@ -527,7 +527,7 @@ class WildFlyContainerIT {
         Path war = buildProbeWar();
         wildfly.copyFileToContainer(MountableFile.forHostPath(war), DEPLOYMENTS + "/probe.war");
         assertTrue(awaitFile(DEPLOYMENTS + "/probe.war.deployed"), "probe.war deployed");
-        assertTrue(pollLogctl("levels", "com.myapp.probe", out -> out.contains(APP_LOGGER)),
+        assertTrue(pollLogctl(out -> out.contains(APP_LOGGER), "list", "loggers", "com.myapp.probe", "--show-all"),
                 "the app logger appeared after deploy");
     }
 
@@ -636,8 +636,8 @@ class WildFlyContainerIT {
     private record Logctl(int exitCode, String stdout, String stderr) {
     }
 
-    private boolean pollLogctl(String arg1, String arg2, java.util.function.Predicate<String> until) {
-        return pollUntil(() -> until.test(logctl(arg1, arg2).stdout()));
+    private boolean pollLogctl(java.util.function.Predicate<String> until, String... args) {
+        return pollUntil(() -> until.test(logctl(args).stdout()));
     }
 
     /** Poll a condition for up to 30s (1s between checks). */
@@ -679,7 +679,7 @@ class WildFlyContainerIT {
 
     private void awaitControlPlane() throws InterruptedException {
         for (int attempt = 0; attempt < 60; attempt++) {
-            Logctl probe = logctl("levels", "org.jboss.as");
+            Logctl probe = logctl("list", "loggers", "org.jboss.as", "--show-all");
             if (probe.exitCode() == 0 && probe.stdout().contains("org.jboss.as")) {
                 return;
             }

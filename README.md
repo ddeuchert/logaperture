@@ -37,14 +37,14 @@
 
 Working today:
 
-- **`logctl levels [glob]`** — every logger and its effective level; the glob finds a logger from the abbreviated name a log line actually printed.
+- **`logctl list loggers [glob] [--show-all]`** — every overridden logger and its effective level by default; the glob finds a logger from the abbreviated name a log line actually printed; `--show-all` shows the full catalog, overridden or not.
 - **`logctl set logger <logger> DEBUG for 30m`** / `sticky` — change a level at runtime. It reverts on its own timer, survives a restart if you ask (`sticky`), and never touches `standalone.xml`, `logback-spring.xml`, or anything your application owns.
-- **`logctl set handler <name> <level>`** / **`logctl handlers`** — set a handler's own level (the fix when a raised logger still shows nothing because a handler is pinned stricter) and list the handler catalogue. On WildFly the handlers resolve to their real configured names (`CONSOLE`, `FILE`, …), read in-VM from the server's own model.
+- **`logctl set handler <name> <level>`** / **`logctl list handlers [--show-all]`** — set a handler's own level (the fix when a raised logger still shows nothing because a handler is pinned stricter) and list the handler catalogue. On WildFly the handlers resolve to their real configured names (`CONSOLE`, `FILE`, …), read in-VM from the server's own model.
 - **`logctl doctor`** — flag common logging-config problems: unbounded file-handler growth, verbosity left on, the same content written twice, autoflush on a busy handler, disk headroom vs. write rate.
 - **`logctl top`** — bytes written per logger, worst-first, with a projected daily total and the stack-trace-byte fraction.
 - **`logctl status`** / **`logctl reset loggers`** / **`logctl reset handlers`** — what LogAperture has changed, and undo all of it.
 
-`doctor`, `top`, and `logctl handlers` currently inspect `java.util.logging` / JBoss LogManager only — on a Logback application they report nothing yet (a Logback pass is on the roadmap). Every change is capability-checked and written to a tamper-evident audit trail. The agent opens no sockets; `logctl` reaches it over the local attach API, UID-gated by the OS.
+`doctor`, `top`, and `logctl list handlers` currently inspect `java.util.logging` / JBoss LogManager only — on a Logback application they report nothing yet (a Logback pass is on the roadmap). Every change is capability-checked and written to a tamper-evident audit trail. The agent opens no sockets; `logctl` reaches it over the local attach API, UID-gated by the OS.
 
 **Not in this build:** automatic storm collapse or any suppression, per-rule squelching, the Log4j 2 adapter, and any Spring Boot / Tomcat / Quarkus-JVM integration (a Spring Boot fat-jar attaches as a plain JVM, so level control *may* work against its Logback, but it is untested).
 

@@ -55,6 +55,7 @@ final class Parser {
         boolean version = false;
         boolean debug = false;
         boolean includeSticky = false;
+        boolean showAll = false;
         String reason = null;
         Integer limit = null;
 
@@ -67,6 +68,7 @@ final class Parser {
                 case "--debug" -> debug = true;
                 case "--yes" -> yes = true;
                 case "--include-sticky" -> includeSticky = true;
+                case "--show-all" -> showAll = true;
                 case "--all" -> throw usage("'reset --all' no longer exists -- use 'reset loggers' and "
                         + "'reset handlers'.");
                 case "--pid" -> {
@@ -136,6 +138,13 @@ final class Parser {
             String levelToken = rest.size() > 1 ? rest.get(1) : "<level>";
             throw usage("'handler' no longer exists -- use 'set handler " + handlerRef + " " + levelToken + "'.");
         }
+        if (command.equals("levels")) {
+            String filter = rest.isEmpty() ? "" : " " + rest.get(0);
+            throw usage("'levels' no longer exists -- use 'list loggers" + filter + "'.");
+        }
+        if (command.equals("handlers")) {
+            throw usage("'handlers' no longer exists -- use 'list handlers'.");
+        }
 
         boolean isSetLogger = command.equals("set") && !rest.isEmpty() && rest.get(0).equals("logger");
         boolean isSetHandler = command.equals("set") && !rest.isEmpty() && rest.get(0).equals("handler");
@@ -152,13 +161,32 @@ final class Parser {
         if (limit != null && !command.equals("top")) {
             throw usage("--limit applies only to 'top'.");
         }
+        if (showAll && !command.equals("list")) {
+            throw usage("--show-all applies only to 'list loggers' or 'list handlers'.");
+        }
 
         Command resolved = switch (command) {
-            case "levels" -> {
-                if (rest.size() > 1) {
-                    throw usage("'levels' takes at most one filter.");
+            case "list" -> {
+                if (rest.isEmpty()) {
+                    throw usage("'list' needs 'loggers [filter]' or 'handlers'.");
                 }
-                yield Commands.levels(rest.isEmpty() ? null : rest.get(0), json);
+                String noun = rest.get(0);
+                List<String> nounRest = rest.subList(1, rest.size());
+                yield switch (noun) {
+                    case "loggers" -> {
+                        if (nounRest.size() > 1) {
+                            throw usage("'list loggers' takes at most one filter.");
+                        }
+                        yield Commands.listLoggers(nounRest.isEmpty() ? null : nounRest.get(0), showAll, json);
+                    }
+                    case "handlers" -> {
+                        if (!nounRest.isEmpty()) {
+                            throw usage("'list handlers' takes no arguments.");
+                        }
+                        yield Commands.listHandlers(showAll, json);
+                    }
+                    default -> throw usage("'list' needs 'loggers [filter]' or 'handlers', got '" + noun + "'.");
+                };
             }
             case "status" -> {
                 if (!rest.isEmpty()) {
@@ -183,12 +211,6 @@ final class Parser {
                     throw usage("'env' takes no arguments.");
                 }
                 yield Commands.env(json);
-            }
-            case "handlers" -> {
-                if (!rest.isEmpty()) {
-                    throw usage("'handlers' takes no arguments.");
-                }
-                yield Commands.handlers(json);
             }
             case "reset" -> {
                 if (rest.isEmpty()) {

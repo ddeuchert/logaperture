@@ -43,7 +43,7 @@ public interface ContextHandle {
      */
     String stableKey();
 
-    /** Human-readable, for {@code logctl levels}' CONTEXT column. Often the same as {@link #stableKey()}. */
+    /** Human-readable, for {@code logctl list loggers}' CONTEXT column. Often the same as {@link #stableKey()}. */
     String displayName();
 
     /** The bound adapter for this context. One {@link LoggingAdapter} instance per context (§15.4). */

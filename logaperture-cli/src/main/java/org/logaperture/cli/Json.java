@@ -231,7 +231,7 @@ final class Json {
     }
 
     /**
-     * {@code logctl handlers --json} — the addressable handler catalog
+     * {@code logctl list handlers --json} — the addressable handler catalog
      * (doc/specs/handler-floor-control.md "The handler catalog", issue #15).
      * {@code level} / {@code autoFlush} / the override fields are {@code null}
      * where they don't apply (the {@code ALL_HANDLERS} row, a console
