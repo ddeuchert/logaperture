@@ -38,6 +38,7 @@ __pycache__/
 # Personal, uncommitted notes
 daves-cheatsheet.txt
 .claude/skills/git-side/
+DaveNotes.md
 
 # Cross-machine handoff notes (checkpoint/resume skills) - tracked via git-side, not this repo
 RESUME.md
