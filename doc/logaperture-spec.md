@@ -1109,6 +1109,8 @@ The important change from the previous draft: **M1 ships nothing that modifies b
 
 **Pulled forward: pattern-based level targeting (`logctl error <pattern>`).** `logctl levels` already lets a developer find a logger from the abbreviated category a log line actually printed (`*.infinispan`); this closes the loop by letting that same pattern *set* the level, as a standing rule that also catches loggers registered afterward, not just a one-shot over loggers live at call time — reusing the existing glob matcher, override/persistence tiers, and expiry-sweep thread rather than pulling the squelch engine (§7 / Feature 3) forward. Full write-up and open questions: §18.7; tracked as [#41](https://github.com/ddeuchert/logaperture/issues/41).
 
+**Vendor configuration file.** A vendor bundling LogAperture wants to ship default logging settings — level adjustments and keyword-based hiding — via a file referenced on the LogAperture command line, so a customer doesn't inherit noisy defaults or need `logctl` commands run after every install. Spans level-control and squelch/filter (§7 / Feature 3) territory; full write-up and open questions: §18.10; targeted for alpha-3; tracked as [#60](https://github.com/ddeuchert/logaperture/issues/60). Phase 2 — `logctl reset` falls back to the vendor default instead of clearing it, mirroring how reset falls back to native config today — is §18.11, tracked as [#61](https://github.com/ddeuchert/logaperture/issues/61), depending on #60. Phase 3 — a `logctl` command to export current sticky overrides as a vendor config file, so a vendor can tune live and capture the result rather than hand-authoring it — is §18.12, tracked as [#62](https://github.com/ddeuchert/logaperture/issues/62).
+
 **Pulled forward: reset command surface split + `--include-sticky`.** `logctl reset` and `logctl handler <name> reset` grew independently and now can't scope a reset to just loggers or just handlers, and can't protect a deliberately-set `--sticky` override from a broad reset. Restructures reset into `reset logger <pattern>` / `reset loggers` / `reset handler <name>` / `reset handlers`, all taking `--include-sticky` (new default: sticky is skipped unless asked for) — a breaking rename of the already-shipped `handler <name> reset`, accepted pre-1.0. Reuses #41/#49's glob matcher for the logger form rather than duplicating it. Now slice 1 of a broader `set`/`reset`/`list` command-surface refactor. Full write-up: §18.9, [`reset-command-surface.md`](specs/reset-command-surface.md); tracked as [#42](https://github.com/ddeuchert/logaperture/issues/42).
 
 ---
@@ -1244,6 +1246,99 @@ logctl reset handlers             # every handler override — handlers only
 - No confirmation/preview added to the broad forms — `reset loggers`/`reset handlers` keep today's `reset --all` "just works, no prompt" behavior; reverting a bounded, currently-active set is the opposite risk shape from applying a batch mutation (which is what #41/#49's `set` preview guards against).
 
 **Status note.** An implementation of this section was built (issue #42, PR #48) but never merged — closed unmerged after field-testing it surfaced the standing-rule rethink described in §18.7's own note above. Redrafted as slice 1 of a broader `set`/`reset`/`list` command-surface refactor — see [#42](https://github.com/ddeuchert/logaperture/issues/42) — with this section's open questions now resolved above. `reset logger <pattern>` targets [`pattern-selection-semantics.md`](specs/pattern-selection-semantics.md) (issue #49)'s pure-selection `resetLogger` (renamed from `resetLevel` — [`reset-command-surface.md`](specs/reset-command-surface.md)'s Decision #2a), not the standing-rule/`PatternRule` mechanism this section's "Ownership split" paragraph above still describes for historical reference — that mechanism is retired. Slice 1 (reset) is implemented, [PR #53](https://github.com/ddeuchert/logaperture/pull/53); slice 2 (`set logger`/`set handler`, retiring the level-named verbs) is implemented — [`set-command-surface.md`](specs/set-command-surface.md); slice 3 (`list loggers`/`list handlers`, replacing `levels`/`handlers`, plus their new overrides-only default) is implemented — [`list-command-surface.md`](specs/list-command-surface.md).
+
+### 18.10 Vendor configuration file
+
+A vendor bundling LogAperture with a product wants to ship a set of default
+logging settings — quieter than the framework's own defaults, or noisier for
+categories the vendor's support team routinely needs — without hand-editing
+`standalone.xml` or asking every customer to run a batch of `logctl` commands
+after every install. The proposal: a file the vendor authors and references
+on the LogAperture command line (an agent JVM argument, e.g.
+`-javaagent:logaperture-agent.jar=config=/path/to/vendor-defaults.conf`,
+exact spelling deferred), holding a set of default overrides applied at
+attach: raise or lower a logger's level, and hide output matching a keyword
+or pattern. It *extends* the native logging configuration rather than
+replacing it — the vendor's file supplies defaults, not a competing
+source of truth, and anything it sets is layered under the existing
+override/persistence tiers (§6) so a user's own `logctl` commands still win.
+
+**Overlap to resolve when this is specced, not now:**
+
+- **Level defaults** are level-control-shaped ([`level-control.md`](specs/level-control.md))
+  — a vendor-authored initial override per logger/pattern, applied once at
+  attach, at the bottom of the existing tier stack.
+- **Keyword-based hiding** is squelch/filter territory (§7 / Feature 3) —
+  "hide output containing X" is a gate- or render-stage rule, not a level
+  change, and needs that engine's matcher rather than a new one.
+- Whether a vendor default sits *below* every persisted user override (so a
+  user who never touched a logger sees the vendor's choice, but any override
+  they've made — sticky or not — wins), or is itself expressed as a
+  distinct, lowest-priority tier, is an open design question.
+- File format is unspecified — reusing an existing rule-pack shape (were
+  one to exist, see §18.6's community rule-pack registry, which this item
+  is a close cousin of) versus a bespoke vendor format.
+- How a vendor default composes with §9's capability/audit model: does
+  applying it require a capability check the way a live `logctl` command
+  does, and does it show up in `logctl status`/audit as "set by
+  vendor-config" rather than "set by user"?
+
+Targeted for **alpha-3**; tracked as [#60](https://github.com/ddeuchert/logaperture/issues/60). Phase 2 — reset falls back to the vendor default instead of clearing it — is a separate item: §18.11.
+
+### 18.11 Reset falls back to vendor-config baseline, not native config
+
+Phase 2 of §18.10 / #60, tracked as [#61](https://github.com/ddeuchert/logaperture/issues/61) and
+depending on it. Once a vendor-config default exists for a logger or
+handler, it should behave the way the *native* logging configuration
+behaves today: a floor an operator can freely override with `logctl`, and
+the value `reset` returns to — not a one-time initial value that `reset`
+discards on the way back to native config.
+
+- `logctl` overrides a target with a vendor default exactly as it does any
+  other target; the operator's override always wins, same as it wins over
+  native config today.
+- `logctl reset` on a target with a vendor default falls back to that
+  default rather than clearing to "no override." A target with no vendor
+  default resets exactly as it does today (falls through to native
+  config).
+
+**Open questions, deferred until this is specced:**
+
+- Where the vendor baseline sits in the tier stack (`persistence.md`) and
+  how it interacts with the reset-scoping surface (§18.9 / #42) —
+  a new lowest tier, or metadata on "no override"?
+- How `logctl status` / audit distinguishes "at vendor default," "at
+  native config," and "overridden by operator."
+- Whether a vendor default can be pattern/glob-targeted (mirroring
+  §18.7's #41/#49) and how that composes with pattern-based user
+  overrides.
+
+### 18.12 `logctl` command to export sticky overrides as a vendor config file
+
+Phase 3 of §18.10 / #60, tracked as [#62](https://github.com/ddeuchert/logaperture/issues/62).
+Hand-authoring the vendor config file is friction a vendor shouldn't pay
+for: the natural workflow is to start the app, use `logctl` interactively
+until the logging output is right, then capture that state as the file to
+ship, rather than transcribing commands into the vendor format by hand.
+
+A `logctl` command reads the currently running overrides — **sticky
+overrides only** (§6.1's "known-noisy, I decided about it" tier, the same
+tier §18.9's `--include-sticky` protects from a routine reset) — and
+generates a vendor configuration file in §18.10's format, covering both
+logger- and handler-level sticky overrides and whatever keyword/pattern
+rules #60 ends up specifying.
+
+**Open questions, deferred until this is specced:**
+
+- Command spelling, fitting the logger/handler command-surface
+  conventions from §18.9 / #42's refactor.
+- Behavior when the target file already exists — overwrite, merge, or
+  refuse.
+- Whether vendor-default entries already active (loaded from a config
+  file at attach) get re-emitted, or only overrides set live this
+  session.
+- Round-tripping with §18.11 / #61: a target already at a vendor default
+  that's re-stickied and exported should produce a sensible result.
 
 ---
 
