@@ -342,7 +342,7 @@ A rule is `{ id, description, enabled, when, then, terminal, dryRun }`.
 | `marker` | name matchers (where supported) |
 | `frame` | a stack frame matching a class/package pattern is present — expensive, opt-in only |
 
-**Prior art to weigh when the matcher/expression syntax is actually designed:** JBoss/WildFly's own LogManager has shipped a message-regex gate for years via its `filter-spec` grammar — e.g. `not(match("UT005108"))` on a `<logger category="io.undertow">` element, silencing one known-benign message code by regex without touching the category's level. The composable forms (`not(...)`, and the `all(...)`/`any(...)` conjunction/disjunction JBoss LogManager also supports) are a mature, battle-tested precedent for exactly this table's `message.regex`-style matching, and worth a direct look given WildFly is already a first-class target elsewhere in this project.
+**Prior art to weigh when the matcher/expression syntax is actually designed:** JBoss/WildFly's own LogManager has shipped a message-regex gate for years via its `filter-spec` grammar — e.g. `not(match("UT005108"))` on a `<logger category="io.undertow">` element, silencing one known-benign message code by regex without touching the category's level. The composable forms (`not(...)`, and the `all(...)`/`any(...)` conjunction/disjunction JBoss LogManager also supports) are a mature, battle-tested precedent for exactly this table's `message.regex`-style matching, and worth a direct look given WildFly is already a first-class target elsewhere in this project. §18.13 / #63 proposes carrying the same idea one step further — content matching driving logger *configuration*, not just a gate action.
 
 **Actions (`then`)** — ordered list, applied in sequence.
 
@@ -1111,6 +1111,8 @@ The important change from the previous draft: **M1 ships nothing that modifies b
 
 **Vendor configuration file.** A vendor bundling LogAperture wants to ship default logging settings — level adjustments and keyword-based hiding — via a file referenced on the LogAperture command line, so a customer doesn't inherit noisy defaults or need `logctl` commands run after every install. Spans level-control and squelch/filter (§7 / Feature 3) territory; full write-up and open questions: §18.10; targeted for alpha-3; tracked as [#60](https://github.com/ddeuchert/logaperture/issues/60). Phase 2 — `logctl reset` falls back to the vendor default instead of clearing it, mirroring how reset falls back to native config today — is §18.11, tracked as [#61](https://github.com/ddeuchert/logaperture/issues/61), depending on #60. Phase 3 — a `logctl` command to export current sticky overrides as a vendor config file, so a vendor can tune live and capture the result rather than hand-authoring it — is §18.12, tracked as [#62](https://github.com/ddeuchert/logaperture/issues/62).
 
+**Content-based targeting: configure loggers by keyword match on message/exception/stack.** A standalone companion to the above: every targeting mechanism so far selects a logger by name (exact or glob, §18.7 / #41); this lets an operator instead target based on what a logger is actually emitting — a message keyword, an exception type, or a class appearing in a stack trace — reusing §7.2's squelch-engine matcher vocabulary to drive configuration rather than gate/render actions. Full write-up and open questions: §18.13; targeted for alpha-3; tracked as [#63](https://github.com/ddeuchert/logaperture/issues/63).
+
 **Pulled forward: reset command surface split + `--include-sticky`.** `logctl reset` and `logctl handler <name> reset` grew independently and now can't scope a reset to just loggers or just handlers, and can't protect a deliberately-set `--sticky` override from a broad reset. Restructures reset into `reset logger <pattern>` / `reset loggers` / `reset handler <name>` / `reset handlers`, all taking `--include-sticky` (new default: sticky is skipped unless asked for) — a breaking rename of the already-shipped `handler <name> reset`, accepted pre-1.0. Reuses #41/#49's glob matcher for the logger form rather than duplicating it. Now slice 1 of a broader `set`/`reset`/`list` command-surface refactor. Full write-up: §18.9, [`reset-command-surface.md`](specs/reset-command-surface.md); tracked as [#42](https://github.com/ddeuchert/logaperture/issues/42).
 
 ---
@@ -1339,6 +1341,48 @@ rules #60 ends up specifying.
   session.
 - Round-tripping with §18.11 / #61: a target already at a vendor default
   that's re-stickied and exported should produce a sensible result.
+
+### 18.13 Content-based targeting: configure loggers by keyword match on message/exception/stack
+
+Tracked as [#63](https://github.com/ddeuchert/logaperture/issues/63). Every
+targeting mechanism on the roadmap so far selects a logger by its *name* —
+exact, or glob (§18.7 / #41). None let an operator target based on what a
+logger is actually *emitting*: "raise/lower/hide whatever is producing a
+message containing X," "whatever is throwing exception type Y," or
+"whatever exception's stack trace mentions class Z" — without knowing or
+caring which logger category is responsible.
+
+§7.2's squelch engine already has the matcher vocabulary this needs —
+`message` (`contains`/`containsIgnoreCase`/`startsWith`/`regex`),
+`throwable` (`type`/`message`/`anyCause`), `frame` (stack-frame
+class/package match) — but drives gate/render *actions* on individual
+events, not logger-level *configuration*. This item reuses that same
+content matching to drive configuration decisions instead: which
+logger(s) to adjust, based on observed output, rather than name. §7.2's
+own prior-art note already points at the precedent to weigh: JBoss/WildFly's
+LogManager `filter-spec` grammar (`not(match("UT005108"))` on a
+`<logger>` element) is a mature, battle-tested message-regex gate, though
+it's a native gate action, not logger-level configuration — this item is
+what applying that same content-matching idea to *configuration* would
+look like.
+
+**Open questions, deferred until this is specced:**
+
+- Whether this is `logctl`-driven, persisted configuration, or belongs
+  entirely inside the squelch engine (§7) as more matcher types on an
+  authored rule — the two overlap and one may subsume the other.
+- One-shot (apply now, to loggers currently producing a match) vs. a
+  standing rule (apply automatically going forward) — §18.7's
+  standing-rule mechanism was explored and then retired
+  (`pattern-selection-semantics.md`, #49); the same tradeoffs likely
+  apply here, more sharply, since content isn't known until an event is
+  emitted.
+- Performance: content matching runs per-event, unlike a name glob
+  resolved once against known loggers — needs the same "expensive,
+  opt-in only" treatment §7.2 gives `frame` matching.
+- Relationship to §18.10 / #60's keyword-based hiding — likely the same
+  underlying mechanism, with vendor-config just one caller of it.
+- Interaction with the suppression floor (§9.5) for protected categories.
 
 ---
 
