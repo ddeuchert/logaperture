@@ -707,10 +707,28 @@ by resolved name where available and identity token otherwise.
   concurrent first-callers make one attempt between them, not one each.
 - **Caching.** A resolved name↔instance map is cached on the adapter. `refFor`
   reads it; once `resolution == DONE` no further model reads happen on the
-  hot-ish `realHandlers()` path (`doctor`/`top`/the sweep all call it). The
-  per-handler ref maps are not pruned when a handler instance is discarded —
-  slow, reconfiguration-count-bounded growth, tracked as issue
-  [#31](https://github.com/ddeuchert/logaperture/issues/31).
+  hot-ish `realHandlers()` path (`doctor`/`top`/the sweep all call it).
+  **Pruned (issue [#31](https://github.com/ddeuchert/logaperture/issues/31)):**
+  `realHandlers()` diffs its fresh `liveHandlers()` snapshot against
+  `refByHandler`'s keys on every call and evicts `refByHandler` /
+  `handlersByRef` / `tokenRefs` / `resolvedNames` entries for any `Handler`
+  instance no longer attached anywhere — otherwise, on a long-lived server
+  whose `/subsystem=logging` config is repeatedly changed (a handler removed
+  and re-added as a fresh instance each time), every instance ever seen would
+  keep a permanent entry. Safe against a handler merely *transiently* absent
+  mid-reconfiguration: JBoss LogManager doesn't resurrect the same `Handler`
+  object across a reconfig, a removed-then-re-added handler comes back (if at
+  all) as a brand-new instance, so a dead instance's entry is never "the same
+  handler momentarily missing" — and a `HandlerRef` an operator still has
+  tracked in `core` (a baseline, an override) is unaffected either way, since
+  that's keyed by the ref's string value, not this adapter's internal
+  instance cache, and `core` already treats a ref that stops resolving as
+  gone. Pruning also closes a latent correctness gap `mintRef`'s
+  `handlersByRef.putIfAbsent` left open: without it, a handler re-added under
+  the *same* configured name (a fresh instance) would lose the race to claim
+  that name in `handlersByRef` to the stale, now-dead prior instance, and
+  `resolveHandler` would keep silently resolving to a handler no longer
+  attached to anything.
 - **Re-resolution.** The `LogManager` configuration-change listener
   (`WildFlyContainerIntegration.wireConfigurationListener`) and the periodic
   verification sweep re-run on a `/subsystem=logging` change or `:reload`; the

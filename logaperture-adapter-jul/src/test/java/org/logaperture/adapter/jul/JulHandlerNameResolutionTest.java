@@ -293,6 +293,40 @@ class JulHandlerNameResolutionTest {
         }
     }
 
+    // --- stale-entry pruning (doc/specs/handler-floor-control.md "Lifecycle", issue #31) -----------
+
+    @Test
+    void aHandlerReplacedUnderTheSameResolvedName_afterPruning_mutatesTheNewInstanceNotTheStaleOne() {
+        ConsoleHandler first = consoleAtInfo();
+        Logger logger = isolatedLoggerWith(first);
+        ConsoleHandler second = null;
+        try {
+            FakeResolver resolver = new FakeResolver();
+            resolver.names.put(first, "CONSOLE");
+            JulLoggingAdapter adapter = new JulLoggingAdapter(resolver);
+            assertTrue(adapter.realHandlers().contains(new HandlerRef("CONSOLE")));
+
+            logger.removeHandler(first); // torn down, as a real /subsystem=logging reconfig would do
+            second = consoleAtInfo();
+            logger.addHandler(second);
+            resolver.names.put(second, "CONSOLE"); // the reconfig re-creates the same configured name
+            adapter.invalidateNameCache(); // WildFly's own reconfig signal
+            adapter.realHandlers(); // re-resolves names AND prunes the now-dead `first` entry
+
+            adapter.setHandlerLevel(new HandlerRef("CONSOLE"), Level.DEBUG);
+
+            assertEquals(java.util.logging.Level.FINE, second.getLevel(), "the live replacement was mutated");
+            assertEquals(java.util.logging.Level.INFO, first.getLevel(),
+                    "the stale, detached instance must be left alone -- without pruning, handlersByRef's "
+                            + "putIfAbsent would have kept 'CONSOLE' pointing at it forever");
+        } finally {
+            logger.removeHandler(first);
+            if (second != null) {
+                logger.removeHandler(second);
+            }
+        }
+    }
+
     @Test
     void invalidateNameCache_rearmsResolutionForANewlyAttachedHandler() {
         ConsoleHandler first = consoleAtInfo();

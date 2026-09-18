@@ -340,6 +340,31 @@ class JulLoggingAdapterTest {
         }
     }
 
+    // --- stale-entry pruning (doc/specs/handler-floor-control.md "Lifecycle", issue #31) -----------
+
+    @Test
+    void realHandlers_prunesADetachedHandler_soItNoLongerResolves() {
+        ConsoleHandler console = testConsoleAtInfo();
+        Logger logger = Logger.getLogger(name("handler.Pruned"));
+        logger.addHandler(console);
+        try {
+            HandlerRef ref = adapter.realHandlers().stream()
+                    .filter(candidate -> candidate.equals(HandlerRef.anonymous(console)))
+                    .findFirst().orElseThrow();
+            assertEquals(Optional.of(Level.INFO), adapter.setHandlerLevel(ref, Level.TRACE),
+                    "sanity: the ref resolves while the handler is still attached");
+
+            logger.removeHandler(console); // detached -- no longer live anywhere
+            adapter.realHandlers(); // pruning runs here
+
+            assertThrows(org.logaperture.core.spi.UnknownHandlerException.class,
+                    () -> adapter.setHandlerLevel(ref, Level.DEBUG),
+                    "a pruned ref's cache entry must not keep resolving to the now-detached instance");
+        } finally {
+            logger.removeHandler(console);
+        }
+    }
+
     @Test
     void realHandlers_neverIncludesTheAllHandlersMarker() {
         ConsoleHandler console = testConsoleAtInfo();
