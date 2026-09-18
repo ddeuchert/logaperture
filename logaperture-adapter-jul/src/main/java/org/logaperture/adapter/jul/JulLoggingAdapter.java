@@ -34,6 +34,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiConsumer;
 import java.util.logging.Formatter;
 import java.util.logging.Handler;
 import java.util.logging.LogManager;
@@ -128,6 +129,15 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     /** Serialises the resolution attempt + {@link #upgradeTokenRefs()} so concurrent first-callers don't race. */
     private final Object resolutionLock = new Object();
 
+    /**
+     * {@link #onHandlerRenamed}'s registered listener, fired by {@link
+     * #upgradeTokenRefs()} (doc/specs/handler-floor-control.md "Resume
+     * resilience and baseline-key migration", issue #29). No-op until a
+     * caller registers one -- this adapter has no compile-time knowledge of
+     * {@code core}'s baseline/override registries, only this seam.
+     */
+    private volatile BiConsumer<HandlerRef, HandlerRef> handlerRenameListener = (oldRef, newRef) -> { };
+
     /** Package-visible: constructed by {@link JulAdapterFactory}. */
     JulLoggingAdapter() {
         this(HandlerNameResolver.NONE);
@@ -185,6 +195,16 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     }
 
     // onReset / clearResetListener: SPI no-op default -- see class doc.
+
+    @Override
+    public void onHandlerRenamed(BiConsumer<HandlerRef, HandlerRef> listener) {
+        this.handlerRenameListener = Objects.requireNonNull(listener, "listener");
+    }
+
+    @Override
+    public void clearHandlerRenameListener() {
+        this.handlerRenameListener = (oldRef, newRef) -> { };
+    }
 
     @Override
     public boolean hasHandlerLevels() {
@@ -528,6 +548,7 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             tokenRefs.remove(old);
             handlersByRef.remove(old);
             handlersByRef.putIfAbsent(friendly, entry.getKey());
+            handlerRenameListener.accept(old, friendly);
         }
     }
 

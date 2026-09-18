@@ -64,4 +64,9 @@ public final class HandlerOverrideRegistry {
     public Map<HandlerRef, HandlerLevelOverride> all() {
         return registry.all();
     }
+
+    /** {@link KeyedRegistry#migrateKey} for a handler ref renamed in place (issue #29). */
+    public void migrateKey(HandlerRef oldRef, HandlerRef newRef) {
+        registry.migrateKey(oldRef, newRef);
+    }
 }

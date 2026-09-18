@@ -96,4 +96,47 @@ class HandlerBaselineRegistryTest {
 
         assertEquals(Optional.of(Level.INFO), second);
     }
+
+    // --- migrateKey (doc/specs/handler-floor-control.md "Resume resilience and baseline-key migration", issue #29) ---
+
+    @Test
+    void migrateKey_movesACapturedBaselineToTheNewRef() {
+        HandlerRef token = new HandlerRef("ConsoleHandler@abc123");
+        FakeLoggingAdapter adapter = new FakeLoggingAdapter(Level.INFO);
+        adapter.addHandler(token, Level.WARN);
+        HandlerBaselineRegistry registry = new HandlerBaselineRegistry();
+        registry.captureIfAbsent(token, adapter);
+
+        registry.migrateKey(token, CONSOLE);
+
+        assertFalse(registry.isCaptured(token), "the old key no longer holds it");
+        assertTrue(registry.isCaptured(CONSOLE));
+        assertEquals(Optional.of(Level.WARN), registry.get(CONSOLE));
+    }
+
+    @Test
+    void migrateKey_oldRefNeverCaptured_isANoOp() {
+        HandlerRef token = new HandlerRef("ConsoleHandler@abc123");
+        HandlerBaselineRegistry registry = new HandlerBaselineRegistry();
+
+        registry.migrateKey(token, CONSOLE);
+
+        assertFalse(registry.isCaptured(CONSOLE));
+    }
+
+    @Test
+    void migrateKey_newRefAlreadyCaptured_currentEntryWinsOverTheStaleOne() {
+        HandlerRef token = new HandlerRef("ConsoleHandler@abc123");
+        FakeLoggingAdapter adapter = new FakeLoggingAdapter(Level.INFO);
+        adapter.addHandler(token, Level.WARN);
+        adapter.addHandler(CONSOLE, Level.ERROR);
+        HandlerBaselineRegistry registry = new HandlerBaselineRegistry();
+        registry.captureIfAbsent(token, adapter);
+        registry.captureIfAbsent(CONSOLE, adapter);
+
+        registry.migrateKey(token, CONSOLE);
+
+        assertEquals(Optional.of(Level.ERROR), registry.get(CONSOLE),
+                "the already-correct entry under the current key must not be clobbered by the stale one");
+    }
 }

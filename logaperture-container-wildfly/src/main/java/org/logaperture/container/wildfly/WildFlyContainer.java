@@ -150,6 +150,11 @@ public final class WildFlyContainer implements AutoCloseable {
         HandlerLevelControlService handlerService = new HandlerLevelControlService(adapter,
                 new HandlerBaselineRegistry(), new HandlerOverrideRegistry(), policy, auditLog, stateStore,
                 principal(), "jmx", activeLoggerFloor);
+        // doc/specs/handler-floor-control.md "Resume resilience and
+        // baseline-key migration" (issue #29): keep the baseline/override
+        // registries in step with JulLoggingAdapter's own token->friendly-name
+        // promotion, the one case a HandlerRef changes after minting.
+        adapter.onHandlerRenamed(handlerService::migrateHandlerRef);
 
         LoggerOverrideChangeListener autoRecomputeListener = handlerService::recomputeAuto;
         LevelControlService service = new LevelControlService(

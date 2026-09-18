@@ -24,6 +24,7 @@ import org.logaperture.api.LoggerByteCount;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BiConsumer;
 
 /**
  * The one extension point {@code core} defines into a real logging
@@ -95,6 +96,37 @@ public interface LoggingAdapter {
      * repeated install()/close() cycles must not accumulate listeners).
      */
     default void clearResetListener() {
+        // no-op by default
+    }
+
+    /**
+     * Registers {@code listener} to run whenever this adapter renames a live
+     * handler's {@link HandlerRef} in place — today, only {@code
+     * JulLoggingAdapter} promoting an identity-token ref to a resolved
+     * configured name (doc/specs/handler-floor-control.md "Resume resilience
+     * and baseline-key migration", issue #29). The listener is called with
+     * {@code (oldRef, newRef)} after the adapter's own bookkeeping has moved
+     * on to {@code newRef}, so a caller that keys anything by {@link
+     * HandlerRef} (a baseline, an override) can migrate that key in the same
+     * step rather than being left pointing at a ref the adapter no longer
+     * recognises as current. Default no-op — an adapter whose refs never
+     * change after minting (Logback, {@code none}, and JUL itself when no
+     * name resolver is in play) never fires this.
+     *
+     * <p>Callers may register at most one listener; a second call replaces
+     * the first, same discipline as {@link #onReset} (one composition root,
+     * once, at install time).
+     */
+    default void onHandlerRenamed(BiConsumer<HandlerRef, HandlerRef> listener) {
+        // no-op by default
+    }
+
+    /**
+     * Unregisters the listener most recently passed to {@link
+     * #onHandlerRenamed}, if any. Default no-op, mirroring {@link
+     * #clearResetListener}.
+     */
+    default void clearHandlerRenameListener() {
         // no-op by default
     }
 

@@ -82,4 +82,20 @@ public final class HandlerBaselineRegistry {
         }
         return value;
     }
+
+    /**
+     * Moves {@code oldRef}'s captured baseline, if any, to {@code newRef} —
+     * for a handler renamed in place by the adapter (doc/specs/
+     * handler-floor-control.md "Resume resilience and baseline-key
+     * migration", issue #29). A no-op if {@code oldRef} was never captured.
+     * If {@code newRef} already has a captured baseline, that one wins and
+     * {@code oldRef}'s is simply dropped, same {@link KeyedRegistry#migrateKey}
+     * "current key wins" rule.
+     */
+    public void migrateKey(HandlerRef oldRef, HandlerRef newRef) {
+        captured.computeIfPresent(oldRef, (k, oldValue) -> {
+            captured.putIfAbsent(newRef, oldValue);
+            return null; // removes oldRef
+        });
+    }
 }

@@ -429,6 +429,97 @@ class HandlerLevelControlServiceTest {
         assertTrue(stateStore.loadAllHandlers().isEmpty());
     }
 
+    // --- resume resilience: name resolution races resume (issue #29) ------------------------------
+
+    @Test
+    void resumeFromStateStore_handlerNotYetResolvable_trackedAsPendingNotDropped() {
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.sticky());
+
+        FakeLoggingAdapter freshAdapter = new FakeLoggingAdapter(Level.INFO); // CONSOLE deliberately not registered yet
+        HandlerLevelControlService resumed = new HandlerLevelControlService(freshAdapter,
+                new HandlerBaselineRegistry(), new HandlerOverrideRegistry(),
+                CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
+        int auditBefore = auditLog.records().size();
+
+        assertDoesNotThrow(() -> resumed.resumeFromStateStore(Instant.now()));
+
+        assertEquals(1, resumed.listHandlerOverrides().size(),
+                "must still be tracked, not silently dropped, so the sweep can retry it once it resolves");
+        assertEquals(auditBefore, auditLog.records().size(), "nothing was actually applied -- no audit record");
+    }
+
+    @Test
+    void resumeFromStateStore_pendingHandler_verifyAndReapplyLeavesItPendingInsteadOfDroppingIt() {
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.sticky());
+        FakeLoggingAdapter freshAdapter = new FakeLoggingAdapter(Level.INFO);
+        HandlerLevelControlService resumed = new HandlerLevelControlService(freshAdapter,
+                new HandlerBaselineRegistry(), new HandlerOverrideRegistry(),
+                CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
+        resumed.resumeFromStateStore(Instant.now());
+
+        int reapplied = resumed.verifyAndReapply(Instant.now());
+
+        assertEquals(0, reapplied, "still unresolved -- nothing to report yet");
+        assertEquals(1, resumed.listHandlerOverrides().size(), "a pending ref must not be reaped like a vanished one");
+    }
+
+    @Test
+    void resumeFromStateStore_pendingHandler_resolvesLater_verifyAndReapplyThenAppliesIt() {
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.sticky());
+        FakeLoggingAdapter freshAdapter = new FakeLoggingAdapter(Level.INFO);
+        HandlerLevelControlService resumed = new HandlerLevelControlService(freshAdapter,
+                new HandlerBaselineRegistry(), new HandlerOverrideRegistry(),
+                CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
+        resumed.resumeFromStateStore(Instant.now());
+
+        freshAdapter.addHandler(CONSOLE, Level.INFO); // name resolution "catches up"
+        int reapplied = resumed.verifyAndReapply(Instant.now());
+
+        assertEquals(1, reapplied);
+        assertEquals(Level.TRACE, freshAdapter.handlerLevel(CONSOLE).orElseThrow());
+        AuditRecord last = auditLog.records().get(auditLog.records().size() - 1);
+        assertEquals("verification-sweep", last.source());
+        assertEquals(AuditRecord.Action.MUTATION, last.action());
+    }
+
+    @Test
+    void resumeFromStateStore_pendingHandler_afterItFirstResolves_aLaterVanishStillDropsIt() {
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.sticky());
+        FakeLoggingAdapter freshAdapter = new FakeLoggingAdapter(Level.INFO);
+        HandlerLevelControlService resumed = new HandlerLevelControlService(freshAdapter,
+                new HandlerBaselineRegistry(), new HandlerOverrideRegistry(),
+                CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
+        resumed.resumeFromStateStore(Instant.now());
+        freshAdapter.addHandler(CONSOLE, Level.INFO);
+        resumed.verifyAndReapply(Instant.now()); // resolves and applies once -- no longer pending
+
+        freshAdapter.vanishHandler(CONSOLE); // genuinely gone now, not merely late
+        int reapplied = resumed.verifyAndReapply(Instant.now());
+
+        assertEquals(0, reapplied);
+        assertTrue(resumed.listHandlerOverrides().isEmpty(),
+                "a ref that resolved once and has since vanished must still be dropped, same as before #29");
+    }
+
+    // --- migrateHandlerRef: baseline/override key migration on a token->friendly-name rename (issue #29) ----------
+
+    @Test
+    void migrateHandlerRef_movesTheOverrideAndBaselineToTheNewRef() {
+        HandlerRef token = new HandlerRef("ConsoleHandler@abc123");
+        adapter.addHandler(token, Level.INFO);
+        service.setHandlerLevel(token, Level.TRACE, SetHandlerLevelOptions.defaults());
+        assertTrue(overrides.get(token).isPresent());
+
+        // The adapter now recognises this same live handler as CONSOLE instead of the token.
+        adapter.addHandler(CONSOLE, Level.TRACE);
+        service.migrateHandlerRef(token, CONSOLE);
+
+        assertTrue(overrides.get(token).isEmpty(), "the old key no longer holds the override");
+        assertEquals(Level.TRACE, overrides.get(CONSOLE).orElseThrow().level());
+        assertEquals(Optional.of(Level.INFO), baselines.get(CONSOLE),
+                "the baseline captured before the rename (handler's real prior level) must follow the ref too");
+    }
+
     @Test
     void resumeFromStateStore_expiredWhileStopped_isRecordedNotApplied() {
         HandlerLevelOverride expired = HandlerLevelOverride.fixed(CONSOLE, Level.TRACE, null,

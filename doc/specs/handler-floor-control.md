@@ -121,6 +121,11 @@ After this feature, the user will be able to:
   CONSOLE INFO` prints `WARN: handler CONSOLE is now INFO and will drop DEBUG
   records from com.acme.Worker` and the exact command to see them again. The
   level change still takes effect; the warning is advice, not an error.
+- On WildFly, trust that a `sticky` handler override (single handler or
+  `ALL_HANDLERS`) survives a server restart: it re-applies once the handler's
+  name resolves, even if that happens after the agent has already come up,
+  and `ALL_HANDLERS reset` still reverts to each handler's true original
+  level rather than the override value.
 
 ## Scope of this slice
 
@@ -561,8 +566,8 @@ could not have caught; only the real cross-process, real-server run did.
 
 ## WildFly handler name resolution (issue [#14](https://github.com/ddeuchert/logaperture/issues/14))
 
-Status: **sign-off complete** (alpha-1) — all nine decisions resolved and
-folded into the prose below. Not yet implemented.
+Status: **implemented** (alpha-1, issue #14 closed) — all nine decisions
+resolved and folded into the prose below.
 
 The retired reflection path (see "Adapter SPI" above) failed because WildFly
 does not drive JBoss LogManager through its declarative `ContextConfiguration`
@@ -753,39 +758,75 @@ Verified on **WildFly 26.1.3.Final** (`WildFlyContainerIT`). The spec claims
 "best-effort, and degrades cleanly to `ALL_HANDLERS`-only elsewhere" — it does
 not claim EAP or pre-26 coverage without a real run on them.
 
-### Known limitation — handler-override resume races name resolution (issue [#29](https://github.com/ddeuchert/logaperture/issues/29))
+### Resume resilience and baseline-key migration (issue [#29](https://github.com/ddeuchert/logaperture/issues/29))
 
-`resumeFromStateStore` runs at `installContext`, before WildFly's management
-model is queryable, so name resolution hasn't happened and `realHandlers()`
-still returns identity tokens. Two consequences, deferred to #29:
+Status: **implemented**. `resumeFromStateStore` runs at `installContext`,
+before WildFly's management model is queryable, so name resolution hasn't
+happened yet and a friendly ref like `CONSOLE` doesn't resolve. Two
+consequences follow from that timing, both fixed here rather than deferred:
 
-- **A persisted per-handler sticky override is dropped on restart.**
-  `logctl handler CONSOLE INFO sticky` — possible now that #14 makes per-handler
-  addressing work — fails to re-apply on the next restart (`CONSOLE` doesn't
-  resolve yet → `UnknownHandlerException` → "failed to resume … skipping it"),
-  and isn't re-tried by the verification sweep because it was never tracked.
-  The state-store entry survives, so it fails identically every restart until
-  re-issued.
-- **A sticky `ALL_HANDLERS` override orphans its per-real baseline.** It's
-  fanned out over token refs and baselines are captured under those tokens;
-  once `upgradeTokenRefs()` promotes the instances to `CONSOLE` / `FILE`, the
-  next sweep re-captures a baseline against the friendly ref that reads back
-  the already-applied override level. `logctl handler ALL_HANDLERS reset` then
-  reverts to the override level, not the true original.
+- **A persisted per-handler sticky override no longer drops on restart.**
+  `logctl handler CONSOLE INFO sticky` — possible now that #14 makes
+  per-handler addressing work — used to fail to re-apply on the next restart:
+  `CONSOLE` doesn't resolve yet, `HandlerOverrideApplier.apply` throws
+  `UnknownHandlerException`, and `resumeFromStateStore`'s catch-all just
+  logged "failed to resume … skipping it" — `overrides.put` never ran, so the
+  override wasn't tracked and the verification sweep never retried it. Fixed:
+  `resumeOne` catches `UnknownHandlerException` for the single-ref case
+  specifically. The override is still `overrides.put` — tracked, with no
+  audit record since nothing was actually applied — and its ref is added to a
+  new **pending** set on `HandlerLevelControlService` (in-memory, one
+  context's lifetime, nothing persisted). `verifyAndReapply`'s existing
+  "handler no longer resolves → drop from tracking" path checks that set
+  first: an `UnknownHandlerException` on a *pending* ref leaves it for the
+  next tick instead of dropping it, exactly like any other transient
+  re-apply failure; a ref that was never pending (previously resolved, now
+  genuinely gone) still drops as before. A pending ref is cleared from the
+  set the moment it first resolves and applies successfully. There is no
+  grace window or timeout — a pending entry waits indefinitely, the same "no
+  permanent give-up" discipline `ensureNamesResolved` already applies to name
+  resolution itself.
+- **A sticky `ALL_HANDLERS` override no longer orphans its per-real
+  baseline.** The gap: `JulLoggingAdapter.upgradeTokenRefs()` renames a
+  handler's `HandlerRef` inside the *adapter's own* maps the moment its name
+  resolves, but `HandlerBaselineRegistry` and `HandlerOverrideRegistry` live
+  in `core` and had no way to learn the rename happened. A baseline captured
+  under the old identity token (from an `ALL_HANDLERS` fan-out that ran
+  before resolution) stayed keyed there while every later adapter call
+  addressed the same handler by its new friendly name — so the next
+  `captureBaselineFor` call minted a *second*, wrong baseline against the
+  friendly ref by reading back the already-applied override level. `logctl
+  handler ALL_HANDLERS reset` then reverted to the override level, not the
+  true original. Fixed with a new SPI hook,
+  `LoggingAdapter.onHandlerRenamed(BiConsumer<HandlerRef, HandlerRef>
+  listener)` / `clearHandlerRenameListener()` (default no-op, mirroring
+  `onReset`/`clearResetListener`'s "at most one listener, composition root
+  registers once at install time"), fired by `upgradeTokenRefs()` once per
+  promoted instance. `WildFlyContainer.installContext` wires it to
+  `HandlerLevelControlService.migrateHandlerRef(old, new)`, which moves both
+  registries' entries (and any pending-set membership) from the old ref to
+  the new one. `KeyedRegistry` — already the shared backing map for both
+  registries — gained `migrateKey(K oldKey, K newKey)`: a no-op if `oldKey`
+  has no entry, and if `newKey` already holds one, that entry wins and the
+  stale `oldKey` entry is simply dropped, so migration never clobbers a value
+  already correctly captured under the new key.
+
+This corrects an over-narrow claim in "Ref stability across a late
+resolution" above: that section is right that no *advertised* ref changes
+under a user (no identity token is ever addressable on WildFly), but it
+missed that `ALL_HANDLERS`'s internal fan-out baseline is captured against
+the *unadvertised* token ref regardless of what's addressable — exactly the
+gap this section closes.
 
 Unaffected: a live `logctl handler CONSOLE …` / `ALL_HANDLERS …`, an
-`ALL_HANDLERS reset` / `reset --all` issued before the upgrade, and every
-non-WildFly adapter.
+`ALL_HANDLERS reset` / `reset --all` issued before the rename, and every
+non-WildFly adapter (`onHandlerRenamed` is never fired for Logback / `none`).
 
 **Not fixed by delaying resume** (a considered option, rejected): resume runs
 at the earliest point the agent can set a level at all, and the ~10 s until the
 management model is up is full of subsystem/deployment boot logging a sticky
 *logger* override exists to capture — the agent can't pause the JVM, and
-widening that hole to close a rare baseline bug is the wrong trade. The
-direction in #29 keeps resume early and instead (a) keeps an un-resolvable-yet
-handler override tracked as *pending* so the verification sweep applies it once
-resolution catches up, and (b) migrates the `HandlerBaselineRegistry` /
-`HandlerOverrideRegistry` key when `upgradeTokenRefs()` renames a ref.
+widening that hole to close this bug would be the wrong trade.
 
 ### Sign-off — resolved
 
