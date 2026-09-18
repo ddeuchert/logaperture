@@ -112,10 +112,12 @@ public final class JulLoggingAdapter implements LoggingAdapter {
 
     /**
      * Each live {@link Handler} instance's {@link HandlerRef}, memoised for
-     * this adapter's lifetime so a ref never changes under a captured
-     * baseline/override (doc/specs/handler-floor-control.md "Ref stability
-     * across a late resolution"). {@link Handler} has no {@code
-     * equals}/{@code hashCode} override, so this keys by identity.
+     * as long as that instance stays attached so a ref never changes under a
+     * captured baseline/override (doc/specs/handler-floor-control.md "Ref
+     * stability across a late resolution"). {@link Handler} has no {@code
+     * equals}/{@code hashCode} override, so this keys by identity. Pruned by
+     * {@link #pruneStaleHandlerEntries} once an instance is no longer
+     * attached anywhere (issue #31) — not kept forever.
      */
     private final Map<Handler, HandlerRef> refByHandler = new ConcurrentHashMap<>();
     /** The subset of {@link #refByHandler} values that are identity-token fallbacks, not resolved names. */
@@ -424,11 +426,50 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     @Override
     public List<HandlerRef> realHandlers() {
         ensureNamesResolved();
-        List<HandlerRef> refs = new ArrayList<>();
-        for (Handler handler : liveHandlers()) {
+        List<Handler> live = liveHandlers();
+        pruneStaleHandlerEntries(live);
+        List<HandlerRef> refs = new ArrayList<>(live.size());
+        for (Handler handler : live) {
             refs.add(refFor(handler));
         }
         return List.copyOf(refs);
+    }
+
+    /**
+     * Evicts {@link #refByHandler} / {@link #handlersByRef} / {@link
+     * #tokenRefs} / {@link #resolvedNames} entries for a {@link Handler}
+     * instance no longer in {@code live} — doc/specs/handler-floor-control.md
+     * "Lifecycle: when it runs, caching, re-resolution", issue #31. Reuses
+     * the {@link #liveHandlers()} snapshot {@link #realHandlers()} already
+     * needed, so this adds no extra traversal of the logger tree.
+     *
+     * <p>Safe against a handler merely <em>transiently</em> absent
+     * mid-reconfiguration: JBoss LogManager doesn't resurrect the same
+     * {@link Handler} object across a reconfig — a removed-then-re-added
+     * handler comes back, if at all, as a brand-new instance — so a dead
+     * instance's entry is never "the same handler momentarily missing." A
+     * {@link HandlerRef} {@code core} still has a baseline/override tracked
+     * against is unaffected either way, since that's keyed by the ref's
+     * string value, not this adapter's internal instance cache.
+     */
+    private void pruneStaleHandlerEntries(List<Handler> live) {
+        if (refByHandler.isEmpty()) {
+            return; // the common steady-state case -- nothing to diff
+        }
+        Set<Handler> liveSet = Collections.newSetFromMap(new IdentityHashMap<>());
+        liveSet.addAll(live);
+        for (Handler handler : refByHandler.keySet()) {
+            if (liveSet.contains(handler)) {
+                continue;
+            }
+            HandlerRef ref = refByHandler.remove(handler);
+            if (ref == null) {
+                continue; // a concurrent prune already claimed it
+            }
+            tokenRefs.remove(ref);
+            handlersByRef.remove(ref, handler); // only if still pointing at this exact dead instance
+            resolvedNames.remove(handler);
+        }
     }
 
     /**
