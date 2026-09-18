@@ -349,28 +349,36 @@ class ParserTest {
         Parser.parse(new String[] {"set", "handler", "CONSOLE", "AUTO", "--reason", "INC-1"}); // fine
     }
 
-    // --- set handlers default (doc/specs/handler-floor-control.md "Default handler group", issue #28) --------
+    // --- set/reset default-handler (doc/specs/handler-floor-control.md "Default handler group", issue #28) ----
 
     @Test
-    void setHandlersDefaultParsesWithNamesAndWithNoneAtAll() {
-        Parser.parse(new String[] {"set", "handlers", "default", "FILE", "CONSOLE"});
-        Parser.parse(new String[] {"set", "handlers", "default", "CONSOLE"});
-        Parser.parse(new String[] {"set", "handlers", "default"}); // no names: clears
+    void setDefaultHandlerParsesWithNames() {
+        Parser.parse(new String[] {"set", "default-handler", "FILE", "CONSOLE"});
+        Parser.parse(new String[] {"set", "default-handler", "CONSOLE"});
     }
 
     @Test
-    void setHandlersNeedsTheDefaultNoun() {
-        assertUsage(() -> Parser.parse(new String[] {"set", "handlers"}));
-        assertUsage(() -> Parser.parse(new String[] {"set", "handlers", "CONSOLE"}));
+    void resetDefaultHandlerParsesWithNoArguments() {
+        Parser.parse(new String[] {"reset", "default-handler"});
     }
 
     @Test
-    void setHandlersDefaultRejectsReasonAndYes() {
+    void setDefaultHandlerNeedsAtLeastOneName() {
+        assertUsage(() -> Parser.parse(new String[] {"set", "default-handler"}));
+    }
+
+    @Test
+    void resetDefaultHandlerRejectsArguments() {
+        assertUsage(() -> Parser.parse(new String[] {"reset", "default-handler", "CONSOLE"}));
+    }
+
+    @Test
+    void setDefaultHandlerRejectsReasonAndYes() {
         // No --reason/tier token for this command (doc/specs/handler-floor-control.md
         // "Default handler group": always persisted, no lifetime to reason about).
         assertUsage(() -> Parser.parse(
-                new String[] {"set", "handlers", "default", "CONSOLE", "--reason", "INC-1"}));
-        assertUsage(() -> Parser.parse(new String[] {"set", "handlers", "default", "CONSOLE", "--yes"}));
+                new String[] {"set", "default-handler", "CONSOLE", "--reason", "INC-1"}));
+        assertUsage(() -> Parser.parse(new String[] {"set", "default-handler", "CONSOLE", "--yes"}));
     }
 
     private static void assertUsage(Executable call) {

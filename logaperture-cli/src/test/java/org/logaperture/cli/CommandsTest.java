@@ -1105,7 +1105,7 @@ class CommandsTest {
         assertTrue(text.contains("\"stateFilePath\":null"), text);
     }
 
-    // --- set handlers default (doc/specs/handler-floor-control.md "Default handler group", issue #28) --------
+    // --- set/reset default-handler (doc/specs/handler-floor-control.md "Default handler group", issue #28) ----
 
     @Test
     void setDefaultHandlerMembers_forwardsNamesAndPrintsTheNewMembership() {

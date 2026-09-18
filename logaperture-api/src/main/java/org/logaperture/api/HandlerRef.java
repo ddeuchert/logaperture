@@ -59,7 +59,7 @@ public record HandlerRef(String value) {
      * default" — doc/specs/handler-floor-control.md "Default handler
      * group", issue #28. Like {@link #ALL_HANDLERS}, never refers to a
      * handler instance directly; unlike it, membership is a settable
-     * subset (explicitly assigned via {@code logctl set handlers default},
+     * subset (explicitly assigned via {@code logctl set default-handler},
      * or — absent an explicit assignment — resolved fresh each time by a
      * deterministic rule), tracked by {@code core}'s {@code
      * DefaultHandlerGroupRegistry} rather than fanning out over every real

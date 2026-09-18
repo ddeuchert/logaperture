@@ -305,7 +305,8 @@ final class Json {
     }
 
     /**
-     * {@code set handlers default --json} (doc/specs/handler-floor-control.md
+     * {@code set default-handler --json} / {@code reset default-handler --json}
+     * (doc/specs/handler-floor-control.md
      * "Default handler group", issue #28) -- an empty array either means
      * "cleared, now rule-derived" (empty {@code names} was passed) or "set to
      * nothing," which {@code Commands.setDefaultHandlerMembers} never actually

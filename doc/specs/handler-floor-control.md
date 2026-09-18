@@ -1231,11 +1231,11 @@ had to solve once, for no clear benefit.
   touching it — a deterministic rule (below) picks the one obvious console
   handler when there is one, rather than silently meaning "every handler."
 - Point `DEFAULT_HANDLERS` at the real handlers they care about instead —
-  `logctl set handlers default FILE CONSOLE` — overriding the rule's pick
+  `logctl set default-handler FILE CONSOLE` — overriding the rule's pick
   with an explicit, persisted assignment.
-- Undo that assignment with a bare `logctl set handlers default` (no names),
-  reverting to the deterministic rule rather than needing to re-list every
-  handler that should count.
+- Undo that assignment with `logctl reset default-handler`, reverting to
+  the deterministic rule rather than needing to re-list every handler that
+  should count.
 - Narrow which handlers a `logctl set logger <target> <level>` command's
   blocking-handler warning even considers, once membership has been
   assigned (explicitly, or by the rule) — a handler outside
@@ -1282,7 +1282,7 @@ from the original draft).** `DefaultHandlerGroupRegistry` holds an
   changes mid-session (a WildFly reconfiguration, say), the very next call
   to `members()` already reflects it, with no explicit recompute step
   needed anywhere.
-- **`logctl set handlers default <name>...` has been run.** That set is
+- **`logctl set default-handler <name>...` has been run.** That set is
   persisted (state file, same section as handler overrides in
   `persistence.md`'s shape) and used as-is — `members()` returns it
   directly, no rule involved, until superseded or cleared.
@@ -1366,12 +1366,12 @@ same cost as any other `members()` call):
   persist it": nothing is written back automatically. A user who wants a
   specific handler locked in again has to say so.
 
-### `logctl set handlers default <name> [<name> ...]`
+### `logctl set default-handler <name> [<name> ...]` / `logctl reset default-handler`
 
 ```
-logctl set handlers default FILE CONSOLE   # DEFAULT_HANDLERS = {FILE, CONSOLE}, explicit, persisted
-logctl set handlers default CONSOLE        # replaces the set above, not additive
-logctl set handlers default                # no names: clears the explicit assignment, reverts to the rule
+logctl set default-handler FILE CONSOLE    # DEFAULT_HANDLERS = {FILE, CONSOLE}, explicit, persisted
+logctl set default-handler CONSOLE         # replaces the set above, not additive
+logctl reset default-handler               # clears the explicit assignment, reverts to the rule
 ```
 
 - Each `<name>` is validated against `realHandlers()` exactly like a `logctl
@@ -1380,6 +1380,9 @@ logctl set handlers default                # no names: clears the explicit assig
   unknown-handler message, same as today. Since every name must validate,
   there is no way to end up with an explicit-but-empty assignment through
   this command (resolves DH-5, below).
+- `logctl set default-handler` requires at least one name — clearing has its
+  own noun (`reset default-handler`, no arguments), matching the `set`/
+  `reset` split every other mutation in this spec already follows.
 - **Replaces, not merges** — a second call with a different name list is the
   new membership, not a union. Consistent with every other "set" operation in
   this spec (a second `logctl handler CONSOLE ...` replaces the first).
@@ -1443,15 +1446,19 @@ current pick — so an operator can tell at a glance whether today's
 
 ### Open decisions (sign-off)
 
-- **DH-1. Command spelling.** **Resolved** (2026-09-18): **`logctl set
-  handlers default ...`**, matching the `set`/`reset`/`list` split #42
-  already established for every other mutation — `logctl handlers default`
-  (no `set`) sits awkwardly next to `logctl handlers` being otherwise
-  strictly read-only ("The handler catalog": "VIEW only, no audit"), and now
-  stays a documented error pointing at the right spelling, same courtesy #42
-  gave every other retired form. Already used throughout this section.
+- **DH-1. Command spelling.** ~~Resolved (2026-09-18): `logctl set handlers
+  default ...`~~ **Revised** (2026-09-18, during regression testing, before
+  #28 merged): **`logctl set default-handler <name>...`** /
+  **`logctl reset default-handler`** — a dedicated noun rather than a
+  sub-noun of `handlers`, matching the `set`/`reset`/`list` split #42
+  already established for every other mutation, and giving clearing its own
+  spelling instead of overloading a bare `set` with zero names to mean
+  "clear" (`logctl handlers default` and `logctl handlers` sat too close
+  together to read comfortably side by side once written out). `logctl
+  handlers` stays retired in favor of `logctl list handlers`, unaffected by
+  this. Already used throughout this section.
 - **DH-2. Clearing membership.** ~~Leaning: clears back to "everything."~~
-  **Resolved** (2026-09-18): a bare `logctl set handlers default` clears the
+  **Resolved** (2026-09-18): `logctl reset default-handler` clears the
   *explicit* assignment and reverts to the deterministic rule — which is
   usually not "everything" anymore, since the rule prefers a single console
   handler when one is identifiable. Folded into "Mechanism" and the command
@@ -1463,7 +1470,8 @@ current pick — so an operator can tell at a glance whether today's
   full-discard "start over" behavior in "Staleness" above — stay silent, no
   audit record, matching the verification sweep's own "a handler
   disappearing on its own is not noise-worthy" bar. Only a genuine `logctl
-  set handlers default` call ever produces a record.
+  set default-handler` / `logctl reset default-handler` call ever produces
+  a record.
 - **DH-4. `knownHandlers()` visibility pre-#14 on WildFly.** **Resolved —
   moot:** this assumed #14 (WildFly friendly-name resolution) hadn't shipped
   yet. It has (closed, implemented) — see "WildFly handler name resolution"

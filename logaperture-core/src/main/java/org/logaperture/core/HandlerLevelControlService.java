@@ -301,9 +301,10 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     }
 
     /**
-     * {@code logctl set handlers default <name>...} -- assigns {@code
-     * DEFAULT_HANDLERS}'s explicit membership, or (empty {@code names})
-     * clears it, reverting to the deterministic rule (doc/specs/
+     * {@code logctl set default-handler <name>...} -- assigns {@code
+     * DEFAULT_HANDLERS}'s explicit membership. {@code logctl reset
+     * default-handler} calls this with an empty {@code names} to clear it,
+     * reverting to the deterministic rule (doc/specs/
      * handler-floor-control.md "Default handler group", DH-2). Each name
      * must resolve against {@code adapter.realHandlers()}, exactly like a
      * single-handler target -- an unresolved name throws {@code

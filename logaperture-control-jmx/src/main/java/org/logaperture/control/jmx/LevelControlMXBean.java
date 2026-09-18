@@ -164,7 +164,7 @@ public interface LevelControlMXBean {
     List<HandlerInfoData> listHandlers();
 
     /**
-     * {@code logctl set handlers default <name>...} — assigns {@code
+     * {@code logctl set default-handler <name>...} — assigns {@code
      * DEFAULT_HANDLERS}'s explicit membership, across every registered
      * context (doc/specs/handler-floor-control.md "Default handler group",
      * issue #28). An empty {@code names} clears the explicit assignment,

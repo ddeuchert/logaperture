@@ -409,10 +409,11 @@ final class Commands {
     }
 
     /**
-     * {@code logctl set handlers default [<name> ...]} — assigns {@code
-     * DEFAULT_HANDLERS}'s explicit membership, or (empty {@code names})
-     * clears it, reverting to the deterministic selection rule (doc/specs/
-     * handler-floor-control.md "Default handler group", issue #28).
+     * {@code logctl set default-handler <name> ...} — assigns {@code
+     * DEFAULT_HANDLERS}'s explicit membership. {@code logctl reset
+     * default-handler} clears it (empty {@code names}), reverting to the
+     * deterministic selection rule (doc/specs/handler-floor-control.md
+     * "Default handler group", issue #28).
      */
     static Command setDefaultHandlerMembers(List<String> names, boolean json) {
         return (mbean, out, in, interactive) -> {

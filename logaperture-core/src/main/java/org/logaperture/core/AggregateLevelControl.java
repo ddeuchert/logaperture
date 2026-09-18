@@ -681,7 +681,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     }
 
     /**
-     * {@code logctl set handlers default <name>...}'s multi-context
+     * {@code logctl set default-handler <name>...}'s multi-context
      * broadcast (doc/specs/handler-floor-control.md "Default handler
      * group", issue #28) -- membership is assigned per context ("Multi-
      * context (WildFly)": the same real-handler name can validate in one
