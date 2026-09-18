@@ -38,10 +38,11 @@ public final class HandlerInfoData {
     private final String overrideMode;
     private final String overrideTier;
     private final String overrideExpiresAt;
+    private final String membersSummary;
     private final String context;
 
     @ConstructorProperties({"ref", "level", "persistent", "targetPath", "autoFlush", "overrideActive",
-            "overrideLevel", "overrideMode", "overrideTier", "overrideExpiresAt", "context"})
+            "overrideLevel", "overrideMode", "overrideTier", "overrideExpiresAt", "membersSummary", "context"})
     public HandlerInfoData(
             String ref,
             String level,
@@ -53,6 +54,7 @@ public final class HandlerInfoData {
             String overrideMode,
             String overrideTier,
             String overrideExpiresAt,
+            String membersSummary,
             String context) {
         this.ref = ref;
         this.level = level;
@@ -64,6 +66,7 @@ public final class HandlerInfoData {
         this.overrideMode = overrideMode;
         this.overrideTier = overrideTier;
         this.overrideExpiresAt = overrideExpiresAt;
+        this.membersSummary = membersSummary;
         this.context = context;
     }
 
@@ -79,6 +82,7 @@ public final class HandlerInfoData {
                 info.overrideMode() == null ? null : info.overrideMode().name(),
                 info.overrideTier() == null ? null : info.overrideTier().name(),
                 info.overrideExpiresAt() == null ? null : info.overrideExpiresAt().toString(),
+                info.membersSummary(),
                 info.context());
     }
 
@@ -121,6 +125,16 @@ public final class HandlerInfoData {
 
     public String getOverrideExpiresAt() {
         return overrideExpiresAt;
+    }
+
+    /**
+     * {@code DEFAULT_HANDLERS}'s current membership, display-ready ({@code
+     * "FILE, CONSOLE"} or {@code "(auto: CONSOLE)"}) -- doc/specs/
+     * handler-floor-control.md "Default handler group", issue #28. {@code
+     * null} for every other row.
+     */
+    public String getMembersSummary() {
+        return membersSummary;
     }
 
     public String getContext() {

@@ -31,6 +31,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -61,13 +62,15 @@ public final class FileStateStore implements StateStore, Closeable {
     private final FileLock lock;
     private final Map<String, LevelOverride> cache;
     private final Map<HandlerRef, HandlerLevelOverride> handlerCache;
+    private final List<String> defaultHandlerMembersCache;
 
     private FileStateStore(Path stateFile, FileLock lock, Map<String, LevelOverride> initial,
-            Map<HandlerRef, HandlerLevelOverride> initialHandlers) {
+            Map<HandlerRef, HandlerLevelOverride> initialHandlers, List<String> initialDefaultHandlerMembers) {
         this.stateFile = stateFile;
         this.lock = lock;
         this.cache = new LinkedHashMap<>(initial);
         this.handlerCache = new LinkedHashMap<>(initialHandlers);
+        this.defaultHandlerMembersCache = new ArrayList<>(initialDefaultHandlerMembers);
     }
 
     /**
@@ -103,7 +106,7 @@ public final class FileStateStore implements StateStore, Closeable {
             for (HandlerLevelOverride override : existing.handlerOverrides()) {
                 initialHandlers.put(override.handlerRef(), override);
             }
-            return new FileStateStore(stateFile, lock, initial, initialHandlers);
+            return new FileStateStore(stateFile, lock, initial, initialHandlers, existing.defaultHandlerMembers());
         } catch (IOException | RuntimeException e) {
             // Don't leak the lock if anything after acquiring it fails --
             // otherwise this identity looks permanently held for the rest
@@ -181,10 +184,31 @@ public final class FileStateStore implements StateStore, Closeable {
     }
 
     @Override
+    public synchronized List<String> loadDefaultHandlerMembers() {
+        return List.copyOf(defaultHandlerMembersCache);
+    }
+
+    @Override
+    public synchronized void saveDefaultHandlerMembers(Collection<String> memberNames) {
+        defaultHandlerMembersCache.clear();
+        defaultHandlerMembersCache.addAll(memberNames);
+        persist();
+    }
+
+    @Override
+    public synchronized void removeDefaultHandlerMembers() {
+        if (!defaultHandlerMembersCache.isEmpty()) {
+            defaultHandlerMembersCache.clear();
+            persist();
+        }
+    }
+
+    @Override
     public synchronized void clear() {
-        if (!cache.isEmpty() || !handlerCache.isEmpty()) {
+        if (!cache.isEmpty() || !handlerCache.isEmpty() || !defaultHandlerMembersCache.isEmpty()) {
             cache.clear();
             handlerCache.clear();
+            defaultHandlerMembersCache.clear();
             persist();
         }
     }
@@ -229,7 +253,8 @@ public final class FileStateStore implements StateStore, Closeable {
      */
     private void persist() {
         try {
-            String content = StateFileFormat.write(List.copyOf(cache.values()), List.copyOf(handlerCache.values()));
+            String content = StateFileFormat.write(List.copyOf(cache.values()), List.copyOf(handlerCache.values()),
+                    List.copyOf(defaultHandlerMembersCache));
             Path tmp = Files.createTempFile(stateFile.getParent(), stateFile.getFileName().toString(), ".tmp");
             try {
                 Files.writeString(tmp, content, StandardCharsets.UTF_8);
@@ -252,7 +277,7 @@ public final class FileStateStore implements StateStore, Closeable {
 
     private static StateFileFormat.Parsed readExisting(Path stateFile) {
         if (!Files.exists(stateFile)) {
-            return new StateFileFormat.Parsed(List.of(), List.of());
+            return new StateFileFormat.Parsed(List.of(), List.of(), List.of());
         }
         try {
             return StateFileFormat.parse(Files.readString(stateFile, StandardCharsets.UTF_8));
@@ -261,7 +286,7 @@ public final class FileStateStore implements StateStore, Closeable {
             // refusing to start -- fail-open, per doc/logaperture-spec.md §9.
             System.err.println("[logaperture-state] failed to load state file '" + stateFile
                     + "', resuming with nothing persisted: " + e);
-            return new StateFileFormat.Parsed(List.of(), List.of());
+            return new StateFileFormat.Parsed(List.of(), List.of(), List.of());
         }
     }
 

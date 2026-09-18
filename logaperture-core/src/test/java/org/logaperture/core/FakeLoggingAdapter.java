@@ -54,6 +54,8 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     private final Set<HandlerRef> registeredHandlers = new LinkedHashSet<>();
     private final Map<String, List<HandlerRef>> handlersOnPath = new LinkedHashMap<>();
     private final Set<HandlerRef> vanishedHandlers = new LinkedHashSet<>();
+    /** Insertion-ordered -- doc/specs/handler-floor-control.md "Deterministic initial-membership rule" needs real attachment order. */
+    private final Set<HandlerRef> handlersOnRoot = new LinkedHashSet<>();
     /** Per-(loggerName, ref) level, checked before the shared handlerLevels entry -- see addHandlerWithPerTargetLevel. */
     private final Map<String, Map<HandlerRef, Level>> perTargetHandlerLevel = new LinkedHashMap<>();
     private HandlerRef throwOnSetHandlerLevelFor;
@@ -169,6 +171,22 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     /** Makes the next {@link #setHandlerLevel} call for this ref throw, to exercise chaos-case behavior. */
     void throwOnSetHandlerLevel(HandlerRef ref) {
         this.throwOnSetHandlerLevelFor = ref;
+    }
+
+    /**
+     * Marks an already-{@link #addHandler}ed ref as directly attached to the
+     * root logger, in the order this is called -- doc/specs/
+     * handler-floor-control.md "Deterministic initial-membership rule",
+     * issue #28. Not implied by {@link #addHandler} itself: most tests
+     * don't care about root attachment specifically, only real membership.
+     */
+    void attachToRoot(HandlerRef ref) {
+        handlersOnRoot.add(ref);
+    }
+
+    @Override
+    public List<HandlerRef> handlersOnRoot() {
+        return List.copyOf(handlersOnRoot);
     }
 
     /** Models a framework whose handlers have no level of their own (Logback, {@code none}). */

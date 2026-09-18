@@ -243,13 +243,20 @@ final class Parser {
                         }
                         yield Commands.resetAllHandlers(includeSticky, json);
                     }
-                    default -> throw usage("'reset' needs 'logger <target>', 'loggers', 'handler <name>', or "
-                            + "'handlers', got '" + noun + "'.");
+                    case "default-handler" -> {
+                        if (!nounRest.isEmpty()) {
+                            throw usage("'reset default-handler' takes no arguments.");
+                        }
+                        yield Commands.setDefaultHandlerMembers(List.of(), json);
+                    }
+                    default -> throw usage("'reset' needs 'logger <target>', 'loggers', 'handler <name>', "
+                            + "'handlers', or 'default-handler', got '" + noun + "'.");
                 };
             }
             case "set" -> {
                 if (rest.isEmpty()) {
-                    throw usage("'set' needs 'logger <target> <level>' or 'handler <name> <level>'.");
+                    throw usage("'set' needs 'logger <target> <level>', 'handler <name> <level>', "
+                            + "or 'default-handler <name> ...'.");
                 }
                 String noun = rest.get(0);
                 List<String> nounRest = rest.subList(1, rest.size());
@@ -275,8 +282,19 @@ final class Parser {
                         yield Commands.setHandlerLevel(handlerRef, parseLevel(nounRest.get(1)), reason,
                                 tier.tierName(), tier.forSeconds(), json);
                     }
-                    default -> throw usage("'set' needs 'logger <target> <level>' or 'handler <name> <level>', "
-                            + "got '" + noun + "'.");
+                    case "default-handler" -> {
+                        if (nounRest.isEmpty()) {
+                            throw usage("'set default-handler' needs one or more handler names -- "
+                                    + "use 'reset default-handler' to clear it.");
+                        }
+                        // No tier token here (doc/specs/handler-floor-control.md "Default
+                        // handler group": membership is a standing config value, always
+                        // persisted, not a reverting override) -- everything after
+                        // "default-handler" is a handler name.
+                        yield Commands.setDefaultHandlerMembers(nounRest, json);
+                    }
+                    default -> throw usage("'set' needs 'logger <target> <level>', 'handler <name> <level>', "
+                            + "or 'default-handler <name> ...', got '" + noun + "'.");
                 };
             }
             default -> throw usage("Unknown command '" + command + "'.");

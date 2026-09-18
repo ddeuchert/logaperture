@@ -135,20 +135,20 @@ class JsonTest {
     @Test
     void handlersEmitsNullsWhereFieldsDoNotApply() {
         org.logaperture.control.jmx.HandlerInfoData allHandlers = new org.logaperture.control.jmx.HandlerInfoData(
-                "ALL_HANDLERS", null, false, null, null, false, null, null, null, null, "system");
+                "ALL_HANDLERS", null, false, null, null, false, null, null, null, null, null, "system");
         org.logaperture.control.jmx.HandlerInfoData file = new org.logaperture.control.jmx.HandlerInfoData(
                 "FILE", "INFO", true, "/var/log/server.log", Boolean.TRUE, true, "DEBUG", "FIXED", "FOR",
-                "2026-09-07T14:32:00Z", "system");
+                "2026-09-07T14:32:00Z", null, "system");
 
         assertEquals(
                 "{\"handlers\":[{\"ref\":\"ALL_HANDLERS\",\"level\":null,\"persistent\":false,\"targetPath\":null,"
                         + "\"autoFlush\":null,\"overrideActive\":false,\"overrideLevel\":null,\"overrideMode\":null,"
                         + "\"overrideTier\":null,"
-                        + "\"overrideExpiresAt\":null,\"context\":\"system\"},"
+                        + "\"overrideExpiresAt\":null,\"membersSummary\":null,\"context\":\"system\"},"
                         + "{\"ref\":\"FILE\",\"level\":\"INFO\",\"persistent\":true,\"targetPath\":\"/var/log/server.log\","
                         + "\"autoFlush\":true,\"overrideActive\":true,\"overrideLevel\":\"DEBUG\",\"overrideMode\":\"FIXED\","
                         + "\"overrideTier\":\"FOR\","
-                        + "\"overrideExpiresAt\":\"2026-09-07T14:32:00Z\",\"context\":\"system\"}]}",
+                        + "\"overrideExpiresAt\":\"2026-09-07T14:32:00Z\",\"membersSummary\":null,\"context\":\"system\"}]}",
                 Json.handlers(List.of(allHandlers, file)));
     }
 

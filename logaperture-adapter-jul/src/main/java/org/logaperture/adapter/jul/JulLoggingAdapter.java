@@ -436,6 +436,24 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     }
 
     /**
+     * The subset of {@link #realHandlers()} directly attached to the root
+     * logger, in attachment order — doc/specs/handler-floor-control.md
+     * "Deterministic initial-membership rule", issue #28.
+     * {@code Logger.getHandlers()} returns its own backing array, which JUL
+     * only ever appends to, so this order is genuinely the order the
+     * handlers were attached in, not best-effort.
+     */
+    @Override
+    public List<HandlerRef> handlersOnRoot() {
+        ensureNamesResolved();
+        List<HandlerRef> refs = new ArrayList<>();
+        for (Handler handler : logger(ROOT_ALIAS).getHandlers()) {
+            refs.add(refFor(handler));
+        }
+        return List.copyOf(refs);
+    }
+
+    /**
      * Evicts {@link #refByHandler} / {@link #handlersByRef} / {@link
      * #tokenRefs} / {@link #resolvedNames} entries for a {@link Handler}
      * instance no longer in {@code live} — doc/specs/handler-floor-control.md

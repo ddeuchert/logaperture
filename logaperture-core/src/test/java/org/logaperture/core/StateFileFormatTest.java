@@ -46,7 +46,7 @@ class StateFileFormatTest {
                 "com.acme.Worker", Level.DEBUG, "line one\nline two\r\nline three",
                 Instant.parse("2026-08-21T03:14:02Z"), "jmx", PersistenceTier.STICKY, null);
 
-        String content = StateFileFormat.write(List.of(withMultilineReason), List.of());
+        String content = StateFileFormat.write(List.of(withMultilineReason), List.of(), List.of());
         StateFileFormat.Parsed parsed = StateFileFormat.parse(content);
 
         assertEquals(1, parsed.overrides().size());
@@ -63,7 +63,7 @@ class StateFileFormatTest {
                 Instant.parse("2026-08-21T04:00:00Z"), "jmx", PersistenceTier.STICKY, null);
 
         StateFileFormat.Parsed parsed =
-                StateFileFormat.parse(StateFileFormat.write(List.of(first, second), List.of()));
+                StateFileFormat.parse(StateFileFormat.write(List.of(first, second), List.of(), List.of()));
 
         // The bug this guards against: a raw embedded newline used to shift
         // every subsequent line, corrupting (or losing) records after it.
@@ -78,7 +78,7 @@ class StateFileFormatTest {
                 "com.acme.Worker", Level.DEBUG, "a \"quoted\" path C:\\logs",
                 Instant.parse("2026-08-21T03:14:02Z"), "jmx", PersistenceTier.STICKY, null);
 
-        StateFileFormat.Parsed parsed = StateFileFormat.parse(StateFileFormat.write(List.of(override), List.of()));
+        StateFileFormat.Parsed parsed = StateFileFormat.parse(StateFileFormat.write(List.of(override), List.of(), List.of()));
 
         assertEquals(override, parsed.overrides().get(0));
     }
@@ -94,7 +94,7 @@ class StateFileFormatTest {
                 Instant.parse("2026-08-21T03:45:00Z"));
 
         StateFileFormat.Parsed parsed =
-                StateFileFormat.parse(StateFileFormat.write(List.of(logger), List.of(handler)));
+                StateFileFormat.parse(StateFileFormat.write(List.of(logger), List.of(handler), List.of()));
 
         assertEquals(List.of(logger), parsed.overrides());
         assertEquals(List.of(handler), parsed.handlerOverrides());
@@ -102,7 +102,7 @@ class StateFileFormatTest {
 
     @Test
     void roundTrips_aSchema5FileWithNoPatternRulesKeyAtAll() {
-        String content = StateFileFormat.write(List.of(), List.of());
+        String content = StateFileFormat.write(List.of(), List.of(), List.of());
 
         assertEquals(-1, content.indexOf("patternRules"));
         StateFileFormat.Parsed parsed = StateFileFormat.parse(content);

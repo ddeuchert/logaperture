@@ -54,6 +54,19 @@ public record HandlerRef(String value) {
      */
     public static final HandlerRef ALL_HANDLERS = new HandlerRef("ALL_HANDLERS");
 
+    /**
+     * The reserved ref meaning "the handler(s) an operator cares about by
+     * default" — doc/specs/handler-floor-control.md "Default handler
+     * group", issue #28. Like {@link #ALL_HANDLERS}, never refers to a
+     * handler instance directly; unlike it, membership is a settable
+     * subset (explicitly assigned via {@code logctl set default-handler},
+     * or — absent an explicit assignment — resolved fresh each time by a
+     * deterministic rule), tracked by {@code core}'s {@code
+     * DefaultHandlerGroupRegistry} rather than fanning out over every real
+     * handler unconditionally.
+     */
+    public static final HandlerRef DEFAULT_HANDLERS = new HandlerRef("DEFAULT_HANDLERS");
+
     @Override
     public String toString() {
         return value;

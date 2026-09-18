@@ -93,9 +93,9 @@ public final class HandlerBaselineRegistry {
      * "current key wins" rule.
      */
     public void migrateKey(HandlerRef oldRef, HandlerRef newRef) {
-        captured.computeIfPresent(oldRef, (k, oldValue) -> {
+        Optional<Level> oldValue = captured.remove(oldRef);
+        if (oldValue != null) {
             captured.putIfAbsent(newRef, oldValue);
-            return null; // removes oldRef
-        });
+        }
     }
 }

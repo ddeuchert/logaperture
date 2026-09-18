@@ -251,6 +251,7 @@ final class Json {
                     .str("overrideMode", row.getOverrideMode())
                     .str("overrideTier", row.getOverrideTier())
                     .str("overrideExpiresAt", row.getOverrideExpiresAt())
+                    .str("membersSummary", row.getMembersSummary())
                     .str("context", row.getContext())
                     .toString());
         }
@@ -300,6 +301,21 @@ final class Json {
         return new Obj()
                 .raw("revertedHandlerRefs", stringArray(reverted))
                 .raw("skippedStickyHandlerRefs", stringArray(skippedSticky))
+                .toString();
+    }
+
+    /**
+     * {@code set default-handler --json} / {@code reset default-handler --json}
+     * (doc/specs/handler-floor-control.md
+     * "Default handler group", issue #28) -- an empty array either means
+     * "cleared, now rule-derived" (empty {@code names} was passed) or "set to
+     * nothing," which {@code Commands.setDefaultHandlerMembers} never actually
+     * allows through; the caller distinguishes those two by what it passed in,
+     * not by this response.
+     */
+    static String defaultHandlerMembers(List<String> members) {
+        return new Obj()
+                .raw("defaultHandlerMembers", stringArray(members))
                 .toString();
     }
 

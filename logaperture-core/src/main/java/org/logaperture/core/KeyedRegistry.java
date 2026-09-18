@@ -72,9 +72,9 @@ final class KeyedRegistry<K, V> {
      * {@code oldKey} entry is simply dropped rather than overwriting it.
      */
     void migrateKey(K oldKey, K newKey) {
-        entries.computeIfPresent(oldKey, (k, oldValue) -> {
+        V oldValue = entries.remove(oldKey);
+        if (oldValue != null) {
             entries.putIfAbsent(newKey, oldValue);
-            return null; // removes oldKey
-        });
+        }
     }
 }

@@ -164,6 +164,21 @@ public interface LevelControlMXBean {
     List<HandlerInfoData> listHandlers();
 
     /**
+     * {@code logctl set default-handler <name>...} — assigns {@code
+     * DEFAULT_HANDLERS}'s explicit membership, across every registered
+     * context (doc/specs/handler-floor-control.md "Default handler group",
+     * issue #28). An empty {@code names} clears the explicit assignment,
+     * reverting to the deterministic selection rule. Requires only {@link
+     * org.logaperture.core.Capability#PERSIST} — membership is always
+     * persisted once assigned, there is no lower/raise direction to judge.
+     *
+     * @param names each must resolve against a real handler; an unresolved
+     *              name throws before anything changes
+     * @return the new explicit membership, empty when cleared
+     */
+    List<String> setDefaultHandlerMembers(List<String> names);
+
+    /**
      * {@code logctl doctor} — a read-only configuration diagnosis, across
      * every registered context (doc/specs/doctor.md). Never mutates
      * anything; requires only the {@code VIEW} capability.

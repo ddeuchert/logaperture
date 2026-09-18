@@ -22,6 +22,7 @@ import org.logaperture.core.AggregateLevelControl.ContextControl;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.BaselineRegistry;
 import org.logaperture.core.CapabilityPolicy;
+import org.logaperture.core.DefaultHandlerGroupRegistry;
 import org.logaperture.core.DoctorService;
 import org.logaperture.core.EnvironmentReportService;
 import org.logaperture.core.FileStateStore;
@@ -134,10 +135,11 @@ public final class NoneContainer implements AutoCloseable {
         OverrideRegistry overrides = new OverrideRegistry();
         HandlerBaselineRegistry handlerBaselines = new HandlerBaselineRegistry();
         HandlerOverrideRegistry handlerOverrides = new HandlerOverrideRegistry();
+        DefaultHandlerGroupRegistry defaultHandlerGroup = new DefaultHandlerGroupRegistry();
         ActiveLoggerFloor activeLoggerFloor = () -> List.copyOf(overrides.all().values());
         HandlerLevelControlService handlerService = new HandlerLevelControlService(
-                adapter, handlerBaselines, handlerOverrides, policy, auditLog, stateStore, principal(), "jmx",
-                activeLoggerFloor);
+                adapter, handlerBaselines, handlerOverrides, defaultHandlerGroup, policy, auditLog, stateStore,
+                principal(), "jmx", activeLoggerFloor);
 
         LoggerOverrideChangeListener autoRecomputeListener = handlerService::recomputeAuto;
         LevelControlService service = new LevelControlService(

@@ -681,6 +681,47 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     }
 
     /**
+     * {@code logctl set default-handler <name>...}'s multi-context
+     * broadcast (doc/specs/handler-floor-control.md "Default handler
+     * group", issue #28) -- membership is assigned per context ("Multi-
+     * context (WildFly)": the same real-handler name can validate in one
+     * context and not another), so this applies to every context and
+     * tolerates one context's {@code UnknownHandlerException}/capability
+     * failure without aborting the rest, same fault isolation {@link
+     * #setHandlerLevel} uses. Representative answer: the {@code system}
+     * context's result when it has one, else the first context's.
+     */
+    @Override
+    public List<HandlerRef> setDefaultHandlerMembers(List<HandlerRef> names) {
+        List<ContextControl> contexts = sortedByKey();
+        if (contexts.isEmpty()) {
+            throw new IllegalStateException("no logging context is registered yet");
+        }
+        List<HandlerRef> fromSystem = null;
+        List<HandlerRef> fromAny = null;
+        int succeeded = 0;
+        for (ContextControl context : contexts) {
+            try {
+                List<HandlerRef> result = context.handlerService().setDefaultHandlerMembers(names);
+                succeeded++;
+                if (fromAny == null) {
+                    fromAny = result;
+                }
+                if (ContextHandle.SYSTEM.equals(context.stableKey())) {
+                    fromSystem = result;
+                }
+            } catch (RuntimeException e) {
+                System.err.println("[logaperture-core] setDefaultHandlerMembers failed in context '"
+                        + context.stableKey() + "', that context is unchanged: " + e);
+            }
+        }
+        if (succeeded == 0) {
+            throw new IllegalStateException("setDefaultHandlerMembers failed in every context");
+        }
+        return fromSystem != null ? fromSystem : fromAny;
+    }
+
+    /**
      * Runs the expiry sweep across every context — the composition root's
      * single scheduled task drives this instead of one-per-context (§15.5;
      * doc/specs/persistence.md's "the composition root owns <em>when</em>").

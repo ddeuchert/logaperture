@@ -69,16 +69,28 @@ import java.util.Map;
  * ignored, the same convention {@code includeChildren:} already set. A
  * version-1/2/3 file (no {@code patternRules:} section at all) still
  * parses, as it always has.
+ *
+ * <p>Schema version 6 (doc/specs/handler-floor-control.md "Default handler
+ * group", issue #28) adds a {@code defaultHandlerMembers:} list alongside
+ * {@code overrides:}/{@code handlerOverrides:} — {@code DEFAULT_HANDLERS}'s
+ * explicit membership, when one has been assigned. Unlike the other two
+ * sections this is a flat list of quoted names, not a list of multi-field
+ * records: membership is a single config value, not N independent things
+ * each with their own reason/tier/etc. A version-1..5 file (no {@code
+ * defaultHandlerMembers:} section at all) still parses, as an empty list —
+ * "nothing explicitly assigned yet", exactly {@code
+ * DefaultHandlerGroupRegistry}'s own stateless-by-default starting point.
  */
 final class StateFileFormat {
 
-    private static final int SCHEMA_VERSION = 5;
+    private static final int SCHEMA_VERSION = 6;
     private static final int MIN_SUPPORTED_SCHEMA_VERSION = 1;
 
     private StateFileFormat() {
     }
 
-    static String write(List<LevelOverride> overrides, List<HandlerLevelOverride> handlerOverrides) {
+    static String write(List<LevelOverride> overrides, List<HandlerLevelOverride> handlerOverrides,
+            List<String> defaultHandlerMembers) {
         StringBuilder out = new StringBuilder();
         out.append("schemaVersion: ").append(SCHEMA_VERSION).append('\n');
 
@@ -112,11 +124,21 @@ final class StateFileFormat {
                 out.append("    expiresAt: ").append(override.expiresAt() == null ? "null" : override.expiresAt()).append('\n');
             }
         }
+
+        if (defaultHandlerMembers.isEmpty()) {
+            out.append("defaultHandlerMembers: []\n");
+        } else {
+            out.append("defaultHandlerMembers:\n");
+            for (String name : defaultHandlerMembers) {
+                out.append("  - ").append(quote(name)).append('\n');
+            }
+        }
         return out.toString();
     }
 
     /** Everything {@link #parse} recovered from one file. */
-    record Parsed(List<LevelOverride> overrides, List<HandlerLevelOverride> handlerOverrides) {
+    record Parsed(List<LevelOverride> overrides, List<HandlerLevelOverride> handlerOverrides,
+            List<String> defaultHandlerMembers) {
     }
 
     /**
@@ -141,6 +163,7 @@ final class StateFileFormat {
 
         List<LevelOverride> overrides = new ArrayList<>();
         List<HandlerLevelOverride> handlerOverrides = new ArrayList<>();
+        List<String> defaultHandlerMembers = new ArrayList<>();
         Map<String, String> current = null;
         Section section = Section.OVERRIDES;
 
@@ -161,6 +184,12 @@ final class StateFileFormat {
                 section = Section.HANDLER_OVERRIDES;
                 continue;
             }
+            if (line.startsWith("defaultHandlerMembers:")) {
+                flush(current, section, overrides, handlerOverrides);
+                current = null;
+                section = Section.DEFAULT_HANDLER_MEMBERS;
+                continue; // "defaultHandlerMembers:" header, or "defaultHandlerMembers: []"
+            }
             if (line.startsWith("patternRules:")) {
                 // A schema-4-only section (doc/specs/pattern-level-targeting.md,
                 // now retired). Recognized here only so its records don't leak
@@ -173,6 +202,13 @@ final class StateFileFormat {
                 continue;
             }
             if (line.startsWith("- ")) {
+                if (section == Section.DEFAULT_HANDLER_MEMBERS) {
+                    // A flat scalar list, not a multi-field record -- one
+                    // name per "- " line, added straight away rather than
+                    // accumulated into `current`.
+                    defaultHandlerMembers.add(unquote(line.substring(2).trim()));
+                    continue;
+                }
                 flush(current, section, overrides, handlerOverrides);
                 current = new LinkedHashMap<>();
                 line = line.substring(2);
@@ -187,11 +223,11 @@ final class StateFileFormat {
             current.put(line.substring(0, colon).trim(), line.substring(colon + 1).trim());
         }
         flush(current, section, overrides, handlerOverrides);
-        return new Parsed(overrides, handlerOverrides);
+        return new Parsed(overrides, handlerOverrides, defaultHandlerMembers);
     }
 
     private enum Section {
-        OVERRIDES, HANDLER_OVERRIDES, PATTERN_RULES_LEGACY
+        OVERRIDES, HANDLER_OVERRIDES, PATTERN_RULES_LEGACY, DEFAULT_HANDLER_MEMBERS
     }
 
     private static void flush(Map<String, String> current, Section section,
@@ -201,9 +237,13 @@ final class StateFileFormat {
         }
         switch (section) {
             case HANDLER_OVERRIDES -> handlerOverrides.add(toHandlerOverride(current));
-            case PATTERN_RULES_LEGACY -> {
-                // Dropped entirely -- doc/specs/pattern-selection-semantics.md
-                // "Persistence — state file schema".
+            case PATTERN_RULES_LEGACY, DEFAULT_HANDLER_MEMBERS -> {
+                // PATTERN_RULES_LEGACY: dropped entirely -- doc/specs/
+                // pattern-selection-semantics.md "Persistence — state file
+                // schema". DEFAULT_HANDLER_MEMBERS: never reaches here --
+                // its "- " lines are handled directly in the loop above,
+                // never accumulated into `current` -- listed only so this
+                // switch stays exhaustive over every Section value.
             }
             default -> overrides.add(toOverride(current));
         }

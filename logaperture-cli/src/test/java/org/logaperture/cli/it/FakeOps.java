@@ -197,6 +197,11 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     }
 
     @Override
+    public synchronized List<HandlerRef> setDefaultHandlerMembers(List<HandlerRef> names) {
+        return List.copyOf(names);
+    }
+
+    @Override
     public synchronized List<DoctorFinding> diagnose() {
         return List.of(new DoctorFinding("logger.verbosity-left-on", Severity.OK, "ROOT",
                 "no excess verbosity found at root or on a known-chatty logger.", null, null));

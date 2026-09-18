@@ -349,6 +349,38 @@ class ParserTest {
         Parser.parse(new String[] {"set", "handler", "CONSOLE", "AUTO", "--reason", "INC-1"}); // fine
     }
 
+    // --- set/reset default-handler (doc/specs/handler-floor-control.md "Default handler group", issue #28) ----
+
+    @Test
+    void setDefaultHandlerParsesWithNames() {
+        Parser.parse(new String[] {"set", "default-handler", "FILE", "CONSOLE"});
+        Parser.parse(new String[] {"set", "default-handler", "CONSOLE"});
+    }
+
+    @Test
+    void resetDefaultHandlerParsesWithNoArguments() {
+        Parser.parse(new String[] {"reset", "default-handler"});
+    }
+
+    @Test
+    void setDefaultHandlerNeedsAtLeastOneName() {
+        assertUsage(() -> Parser.parse(new String[] {"set", "default-handler"}));
+    }
+
+    @Test
+    void resetDefaultHandlerRejectsArguments() {
+        assertUsage(() -> Parser.parse(new String[] {"reset", "default-handler", "CONSOLE"}));
+    }
+
+    @Test
+    void setDefaultHandlerRejectsReasonAndYes() {
+        // No --reason/tier token for this command (doc/specs/handler-floor-control.md
+        // "Default handler group": always persisted, no lifetime to reason about).
+        assertUsage(() -> Parser.parse(
+                new String[] {"set", "default-handler", "CONSOLE", "--reason", "INC-1"}));
+        assertUsage(() -> Parser.parse(new String[] {"set", "default-handler", "CONSOLE", "--yes"}));
+    }
+
     private static void assertUsage(Executable call) {
         CliError error = assertThrows(CliError.class, call);
         assertSame(CliError.class, error.getClass());

@@ -129,6 +129,12 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
+    public List<String> setDefaultHandlerMembers(List<String> names) {
+        List<HandlerRef> refs = names.stream().map(HandlerRef::new).toList();
+        return handlerOperations.setDefaultHandlerMembers(refs).stream().map(HandlerRef::value).toList();
+    }
+
+    @Override
     public List<DoctorFindingData> diagnose() {
         return doctorOperations.diagnose().stream().map(DoctorFindingData::from).toList();
     }
