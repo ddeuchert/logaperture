@@ -73,6 +73,11 @@ services:
       - ../../logaperture-agent/target/logaperture-agent.jar:/opt/logaperture-agent.jar:ro,z
       - ../../logaperture-cli/target/logaperture-cli.jar:/opt/logctl.jar:ro,z
       - ./deployments:/opt/jboss/wildfly/standalone/deployments:z
+      # Match the container's clock to the host's, not the image default (UTC)
+      # -- otherwise a 'logctl' run inside the container (wildflyctl.py's
+      # docker exec) prints override-expiry times in the wrong zone, which
+      # reads as a logctl bug when it's really just the container's TZ.
+      - /etc/localtime:/etc/localtime:ro
     healthcheck:
       # Passes once WildFly logs a clean start. Never passes under
       # --debug-suspend until a debugger attaches — expected; wildflyctl skips
