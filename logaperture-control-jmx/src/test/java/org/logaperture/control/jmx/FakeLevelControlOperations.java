@@ -167,6 +167,15 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
         return handlersToReturn;
     }
 
+    final List<List<HandlerRef>> setDefaultHandlerMembersCalls = new ArrayList<>();
+    List<HandlerRef> defaultHandlerMembersToReturn = List.of();
+
+    @Override
+    public List<HandlerRef> setDefaultHandlerMembers(List<HandlerRef> names) {
+        setDefaultHandlerMembersCalls.add(names);
+        return defaultHandlerMembersToReturn;
+    }
+
     @Override
     public List<DoctorFinding> diagnose() {
         diagnoseCalled = true;

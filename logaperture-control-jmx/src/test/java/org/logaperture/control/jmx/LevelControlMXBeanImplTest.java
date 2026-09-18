@@ -281,6 +281,20 @@ class LevelControlMXBeanImplTest {
     }
 
     @Test
+    void setDefaultHandlerMembers_wrapsNamesAndUnwrapsTheResult() {
+        // doc/specs/handler-floor-control.md "Default handler group", issue #28.
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+        fake.defaultHandlerMembersToReturn = List.of(new HandlerRef("FILE"), new HandlerRef("CONSOLE"));
+        LevelControlMXBeanImpl bean = bean(fake);
+
+        List<String> result = bean.setDefaultHandlerMembers(List.of("FILE", "CONSOLE"));
+
+        assertEquals(List.of("FILE", "CONSOLE"), result);
+        assertEquals(List.of(new HandlerRef("FILE"), new HandlerRef("CONSOLE")),
+                fake.setDefaultHandlerMembersCalls.get(0));
+    }
+
+    @Test
     void setHandlerLevel_operationsThrows_propagatesToCaller() {
         FakeLevelControlOperations fake = new FakeLevelControlOperations();
         fake.throwOnSetHandlerLevel = new RuntimeException("unknown handler: CONSOLE");

@@ -40,11 +40,29 @@ import java.nio.file.Path;
  *                         with no {@code targetPath} (a console/stdout
  *                         handler, most concretely) is not a persistent
  *                         sink, per doc/specs/doctor.md Decision #3
+ * @param isConsole        whether this handler is structurally a console
+ *                         handler (JUL's {@code java.util.logging.
+ *                         ConsoleHandler}), independent of whether its
+ *                         configured name has resolved — doc/specs/
+ *                         handler-floor-control.md "Deterministic
+ *                         initial-membership rule", issue #28: the fact
+ *                         the {@code DEFAULT_HANDLERS} selection rule's
+ *                         console tiers need and {@code core} has no other
+ *                         way to ask, since it never sees the real {@code
+ *                         Handler} class. {@code false} where the concept
+ *                         doesn't apply (Logback, a file handler, a
+ *                         framework this adapter can't introspect at all)
  */
-public record HandlerDiagnostics(Long maxFileSizeBytes, Integer backupCount, Boolean autoFlush, Path targetPath) {
+public record HandlerDiagnostics(
+        Long maxFileSizeBytes, Integer backupCount, Boolean autoFlush, Path targetPath, boolean isConsole) {
 
-    /** Every field {@code null} — the default for a handler/framework this can't introspect at all. */
-    public static final HandlerDiagnostics EMPTY = new HandlerDiagnostics(null, null, null, null);
+    /** Every field absent/{@code false} — same as the 4-arg form, {@code isConsole} defaults to {@code false}. */
+    public HandlerDiagnostics(Long maxFileSizeBytes, Integer backupCount, Boolean autoFlush, Path targetPath) {
+        this(maxFileSizeBytes, backupCount, autoFlush, targetPath, false);
+    }
+
+    /** Every field {@code null}/{@code false} — the default for a handler/framework this can't introspect at all. */
+    public static final HandlerDiagnostics EMPTY = new HandlerDiagnostics(null, null, null, null, false);
 
     /** Whether this handler persists to disk — the signal doc/specs/doctor.md Decision #3 keys the duplicate-output check on. */
     public boolean isPersistent() {

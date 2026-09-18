@@ -25,6 +25,7 @@ import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SquelchedLogger;
 import org.logaperture.core.spi.StateStore;
+import org.logaperture.core.spi.UnknownHandlerException;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -68,7 +69,7 @@ class HandlerLevelControlServiceTest {
 
     private HandlerLevelControlService newService(CapabilityPolicy policy) {
         return new HandlerLevelControlService(
-                adapter, baselines, overrides, policy, auditLog, stateStore, "alice", "jmx");
+                adapter, baselines, overrides, new DefaultHandlerGroupRegistry(), policy, auditLog, stateStore, "alice", "jmx");
     }
 
     // --- setHandlerLevel / resetHandler round-trip ------------------------------------------------
@@ -145,7 +146,7 @@ class HandlerLevelControlServiceTest {
         service.setHandlerLevel(file, Level.DEBUG, SetHandlerLevelOptions.defaults());
 
         List<org.logaperture.api.HandlerInfo> rows = service.listHandlers();
-        assertEquals(2, rows.size());
+        assertEquals(3, rows.size(), "CONSOLE, FILE, and the always-advertised DEFAULT_HANDLERS row (issue #28)");
 
         org.logaperture.api.HandlerInfo consoleRow = rows.stream()
                 .filter(r -> r.ref().equals("CONSOLE")).findFirst().orElseThrow();
@@ -195,7 +196,7 @@ class HandlerLevelControlServiceTest {
         FakeActiveLoggerFloor floor = new FakeActiveLoggerFloor();
         floor.setActive(List.of(sampleLevelOverride("com.acme.Worker", Level.DEBUG)));
         HandlerLevelControlService squelchService = new HandlerLevelControlService(
-                adapter, baselines, overrides, CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
+                adapter, baselines, overrides, new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
                 floor);
         // CONSOLE starts at INFO -- TRACE is a lower (more verbose), not a raise.
         assertTrue(squelchService.squelchedByRaise(CONSOLE, Level.TRACE).isEmpty());
@@ -206,7 +207,7 @@ class HandlerLevelControlServiceTest {
         FakeActiveLoggerFloor floor = new FakeActiveLoggerFloor();
         floor.setActive(List.of(sampleLevelOverride("com.acme.Worker", Level.DEBUG)));
         HandlerLevelControlService squelchService = new HandlerLevelControlService(
-                adapter, baselines, overrides, CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
+                adapter, baselines, overrides, new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
                 floor);
         adapter.setHandlerLevel(CONSOLE, Level.TRACE); // CONSOLE currently lets DEBUG through
 
@@ -222,7 +223,7 @@ class HandlerLevelControlServiceTest {
         FakeActiveLoggerFloor floor = new FakeActiveLoggerFloor();
         floor.setActive(List.of(sampleLevelOverride("com.acme.Worker", Level.DEBUG)));
         HandlerLevelControlService squelchService = new HandlerLevelControlService(
-                adapter, baselines, overrides, CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
+                adapter, baselines, overrides, new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
                 floor);
         adapter.setHandlerLevel(CONSOLE, Level.INFO); // already blocking DEBUG before this raise
 
@@ -252,7 +253,7 @@ class HandlerLevelControlServiceTest {
                 sampleLevelOverride("com.acme.Worker", Level.DEBUG),
                 sampleLevelOverride("com.acme.Other", Level.TRACE)));
         HandlerLevelControlService squelchService = new HandlerLevelControlService(
-                adapter, baselines, overrides, CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
+                adapter, baselines, overrides, new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
                 floor);
 
         List<SquelchedLogger> squelched = squelchService.squelchedByRaise(HandlerRef.ALL_HANDLERS, Level.INFO);
@@ -287,7 +288,7 @@ class HandlerLevelControlServiceTest {
         service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
         // Same registry/adapter as `service`, so the override set above is visible to this one too.
         HandlerLevelControlService denied = new HandlerLevelControlService(adapter, baselines, overrides,
-                c -> c != Capability.HANDLER_LOWER, auditLog, stateStore, "alice", "jmx");
+                new DefaultHandlerGroupRegistry(), c -> c != Capability.HANDLER_LOWER, auditLog, stateStore, "alice", "jmx");
 
         assertThrows(CapabilityDeniedException.class, () -> denied.resetHandler(CONSOLE, false));
     }
@@ -295,7 +296,7 @@ class HandlerLevelControlServiceTest {
     @Test
     void setHandlerLevel_persistedTier_requiresPersist() {
         HandlerLevelControlService denied = new HandlerLevelControlService(adapter, baselines, overrides,
-                c -> c == Capability.HANDLER_LOWER, auditLog, stateStore, "alice", "jmx");
+                new DefaultHandlerGroupRegistry(), c -> c == Capability.HANDLER_LOWER, auditLog, stateStore, "alice", "jmx");
 
         assertThrows(CapabilityDeniedException.class, () -> denied.setHandlerLevel(
                 CONSOLE, Level.TRACE, SetHandlerLevelOptions.sticky()));
@@ -348,7 +349,7 @@ class HandlerLevelControlServiceTest {
     void checkSetHandlerLevelPermitted_handlerUnresolvable_stillRequiresPersistForNonSessionTier() {
         HandlerRef notHere = new HandlerRef("NOT-HERE");
         HandlerLevelControlService noPersist = new HandlerLevelControlService(adapter, baselines, overrides,
-                c -> c == Capability.HANDLER_LOWER || c == Capability.HANDLER_RAISE, auditLog, stateStore,
+                new DefaultHandlerGroupRegistry(), c -> c == Capability.HANDLER_LOWER || c == Capability.HANDLER_RAISE, auditLog, stateStore,
                 "alice", "jmx");
 
         assertThrows(CapabilityDeniedException.class, () -> noPersist.checkSetHandlerLevelPermitted(
@@ -415,7 +416,7 @@ class HandlerLevelControlServiceTest {
         freshAdapter.addHandler(CONSOLE, Level.INFO);
         HandlerLevelControlService resumed = new HandlerLevelControlService(freshAdapter,
                 new HandlerBaselineRegistry(), new HandlerOverrideRegistry(),
-                CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
+                new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
 
         resumed.resumeFromStateStore(Instant.now());
 
@@ -438,7 +439,7 @@ class HandlerLevelControlServiceTest {
         FakeLoggingAdapter freshAdapter = new FakeLoggingAdapter(Level.INFO); // CONSOLE deliberately not registered yet
         HandlerLevelControlService resumed = new HandlerLevelControlService(freshAdapter,
                 new HandlerBaselineRegistry(), new HandlerOverrideRegistry(),
-                CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
+                new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
         int auditBefore = auditLog.records().size();
 
         assertDoesNotThrow(() -> resumed.resumeFromStateStore(Instant.now()));
@@ -454,7 +455,7 @@ class HandlerLevelControlServiceTest {
         FakeLoggingAdapter freshAdapter = new FakeLoggingAdapter(Level.INFO);
         HandlerLevelControlService resumed = new HandlerLevelControlService(freshAdapter,
                 new HandlerBaselineRegistry(), new HandlerOverrideRegistry(),
-                CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
+                new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
         resumed.resumeFromStateStore(Instant.now());
 
         int reapplied = resumed.verifyAndReapply(Instant.now());
@@ -469,7 +470,7 @@ class HandlerLevelControlServiceTest {
         FakeLoggingAdapter freshAdapter = new FakeLoggingAdapter(Level.INFO);
         HandlerLevelControlService resumed = new HandlerLevelControlService(freshAdapter,
                 new HandlerBaselineRegistry(), new HandlerOverrideRegistry(),
-                CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
+                new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
         resumed.resumeFromStateStore(Instant.now());
 
         freshAdapter.addHandler(CONSOLE, Level.INFO); // name resolution "catches up"
@@ -488,7 +489,7 @@ class HandlerLevelControlServiceTest {
         FakeLoggingAdapter freshAdapter = new FakeLoggingAdapter(Level.INFO);
         HandlerLevelControlService resumed = new HandlerLevelControlService(freshAdapter,
                 new HandlerBaselineRegistry(), new HandlerOverrideRegistry(),
-                CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
+                new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
         resumed.resumeFromStateStore(Instant.now());
         freshAdapter.addHandler(CONSOLE, Level.INFO);
         resumed.verifyAndReapply(Instant.now()); // resolves and applies once -- no longer pending
@@ -581,7 +582,7 @@ class HandlerLevelControlServiceTest {
     void setHandlerLevel_adapterHasNoHandlerLevels_needsNoCapability() {
         adapter.disableHandlerLevels();
         HandlerLevelControlService denied = new HandlerLevelControlService(adapter, baselines, overrides,
-                CapabilityPolicy.denyAll(), auditLog, stateStore, "alice", "jmx");
+                new DefaultHandlerGroupRegistry(), CapabilityPolicy.denyAll(), auditLog, stateStore, "alice", "jmx");
 
         assertTrue(denied.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults()).isEmpty());
     }
@@ -690,12 +691,12 @@ class HandlerLevelControlServiceTest {
         adapter.addHandler(CONSOLE, Level.WARN); // target DEBUG is more verbose -- CONSOLE needs a lower
         adapter.addHandler(file, Level.TRACE); // target DEBUG is less verbose -- FILE needs a raise
         HandlerLevelControlService onlyLower = new HandlerLevelControlService(adapter, new HandlerBaselineRegistry(),
-                new HandlerOverrideRegistry(), c -> c == Capability.HANDLER_LOWER, auditLog, stateStore, "alice", "jmx");
+                new HandlerOverrideRegistry(), new DefaultHandlerGroupRegistry(), c -> c == Capability.HANDLER_LOWER, auditLog, stateStore, "alice", "jmx");
         HandlerLevelControlService onlyRaise = new HandlerLevelControlService(adapter, new HandlerBaselineRegistry(),
-                new HandlerOverrideRegistry(), c -> c == Capability.HANDLER_RAISE, auditLog, stateStore, "alice", "jmx");
+                new HandlerOverrideRegistry(), new DefaultHandlerGroupRegistry(), c -> c == Capability.HANDLER_RAISE, auditLog, stateStore, "alice", "jmx");
         HandlerLevelControlService both = new HandlerLevelControlService(adapter, new HandlerBaselineRegistry(),
                 new HandlerOverrideRegistry(),
-                c -> c == Capability.HANDLER_LOWER || c == Capability.HANDLER_RAISE, auditLog, stateStore, "alice", "jmx");
+                new DefaultHandlerGroupRegistry(), c -> c == Capability.HANDLER_LOWER || c == Capability.HANDLER_RAISE, auditLog, stateStore, "alice", "jmx");
 
         assertThrows(CapabilityDeniedException.class, () -> onlyLower.checkSetHandlerLevelPermitted(
                 HandlerRef.ALL_HANDLERS, Level.DEBUG, SetHandlerLevelOptions.defaults()));
@@ -763,7 +764,7 @@ class HandlerLevelControlServiceTest {
         freshAdapter.addHandler(file, Level.DEBUG);
         HandlerLevelControlService resumed = new HandlerLevelControlService(freshAdapter,
                 new HandlerBaselineRegistry(), new HandlerOverrideRegistry(),
-                CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
+                new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
 
         resumed.resumeFromStateStore(Instant.now());
 
@@ -813,7 +814,7 @@ class HandlerLevelControlServiceTest {
         InMemoryAuditLog resumeAuditLog = new InMemoryAuditLog();
         HandlerLevelControlService resumed = new HandlerLevelControlService(freshAdapter,
                 new HandlerBaselineRegistry(), new HandlerOverrideRegistry(),
-                CapabilityPolicy.allowAll(), resumeAuditLog, stateStore, "alice", "resume");
+                new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(), resumeAuditLog, stateStore, "alice", "resume");
 
         resumed.resumeFromStateStore(Instant.now());
 
@@ -890,7 +891,7 @@ class HandlerLevelControlServiceTest {
     private void setUpAutoService() {
         activeLoggerFloor = new FakeActiveLoggerFloor();
         autoService = new HandlerLevelControlService(
-                adapter, baselines, overrides, CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
+                adapter, baselines, overrides, new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx",
                 activeLoggerFloor);
     }
 
@@ -1026,7 +1027,7 @@ class HandlerLevelControlServiceTest {
     void setHandlerAuto_capabilityWithheld_deniesActivation() {
         setUpAutoService();
         HandlerLevelControlService restricted = new HandlerLevelControlService(
-                adapter, baselines, overrides, CapabilityPolicy.denyAll(), auditLog, stateStore, "alice", "jmx",
+                adapter, baselines, overrides, new DefaultHandlerGroupRegistry(), CapabilityPolicy.denyAll(), auditLog, stateStore, "alice", "jmx",
                 activeLoggerFloor);
 
         assertThrows(CapabilityDeniedException.class,
@@ -1073,12 +1074,126 @@ class HandlerLevelControlServiceTest {
         setUpAutoService();
         autoService.setHandlerAuto(CONSOLE, SetHandlerLevelOptions.defaults());
         HandlerLevelControlService restricted = new HandlerLevelControlService(
-                adapter, baselines, overrides, CapabilityPolicy.denyAll(), auditLog, stateStore, "alice", "jmx",
+                adapter, baselines, overrides, new DefaultHandlerGroupRegistry(), CapabilityPolicy.denyAll(), auditLog, stateStore, "alice", "jmx",
                 activeLoggerFloor);
 
         activeLoggerFloor.set(Level.TRACE);
         assertDoesNotThrow(restricted::recomputeAuto, "a reactive recompute is not a new operator action");
 
         assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
+    }
+
+    // --- DEFAULT_HANDLERS (doc/specs/handler-floor-control.md "Default handler group", issue #28) --------------
+
+    @Test
+    void setDefaultHandlerMembers_assignsExplicitMembership_persistsAndAudits() {
+        int auditBefore = auditLog.records().size();
+
+        List<HandlerRef> result = service.setDefaultHandlerMembers(List.of(CONSOLE));
+
+        assertEquals(List.of(CONSOLE), result);
+        assertEquals(List.of("CONSOLE"), stateStore.loadDefaultHandlerMembers());
+        assertEquals(auditBefore + 1, auditLog.records().size());
+        AuditRecord last = auditLog.records().get(auditLog.records().size() - 1);
+        assertEquals("DEFAULT_HANDLERS", last.loggerName());
+        assertEquals(AuditRecord.Action.MUTATION, last.action());
+    }
+
+    @Test
+    void setDefaultHandlerMembers_unresolvedName_throwsAndChangesNothing() {
+        assertThrows(UnknownHandlerException.class,
+                () -> service.setDefaultHandlerMembers(List.of(new HandlerRef("NOPE"))));
+
+        assertTrue(stateStore.loadDefaultHandlerMembers().isEmpty());
+    }
+
+    @Test
+    void setDefaultHandlerMembers_emptyNames_clearsTheExplicitAssignment() {
+        service.setDefaultHandlerMembers(List.of(CONSOLE));
+
+        List<HandlerRef> result = service.setDefaultHandlerMembers(List.of());
+
+        assertTrue(result.isEmpty());
+        assertTrue(stateStore.loadDefaultHandlerMembers().isEmpty(), "cleared, not re-persisted as a fresh pick");
+    }
+
+    @Test
+    void setDefaultHandlerMembers_requiresPersistCapabilityOnly() {
+        HandlerLevelControlService denied = new HandlerLevelControlService(adapter, baselines, overrides,
+                new DefaultHandlerGroupRegistry(), c -> c != Capability.PERSIST, auditLog, stateStore, "alice",
+                "jmx");
+
+        assertThrows(CapabilityDeniedException.class, () -> denied.setDefaultHandlerMembers(List.of(CONSOLE)));
+    }
+
+    @Test
+    void setHandlerLevel_defaultHandlers_fansOutOverCurrentMembersOnly() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setDefaultHandlerMembers(List.of(file)); // narrows away from the auto-picked CONSOLE
+
+        HandlerLevelOverride override = service
+                .setHandlerLevel(HandlerRef.DEFAULT_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults())
+                .orElseThrow();
+
+        assertEquals(Level.TRACE, adapter.handlerLevel(file).orElseThrow());
+        assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow(), "not a member -- untouched");
+        assertEquals(HandlerRef.DEFAULT_HANDLERS, override.handlerRef());
+    }
+
+    @Test
+    void resetHandler_defaultHandlers_revertsItsMembersToTheirOwnBaseline() {
+        service.setHandlerLevel(HandlerRef.DEFAULT_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+
+        service.resetHandler(HandlerRef.DEFAULT_HANDLERS, false);
+
+        assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow());
+    }
+
+    @Test
+    void listHandlers_defaultHandlersRow_showsTheAutoPickWhenUnassigned() {
+        org.logaperture.api.HandlerInfo row = service.listHandlers().stream()
+                .filter(r -> r.ref().equals("DEFAULT_HANDLERS")).findFirst().orElseThrow();
+
+        assertEquals("(auto: CONSOLE)", row.membersSummary());
+    }
+
+    @Test
+    void listHandlers_defaultHandlersRow_showsExplicitMembersWhenAssigned() {
+        service.setDefaultHandlerMembers(List.of(CONSOLE));
+
+        org.logaperture.api.HandlerInfo row = service.listHandlers().stream()
+                .filter(r -> r.ref().equals("DEFAULT_HANDLERS")).findFirst().orElseThrow();
+
+        assertEquals("CONSOLE", row.membersSummary());
+    }
+
+    @Test
+    void resumeFromStateStore_loadsDefaultHandlerMembersBeforeAnyHandlerOverride() {
+        stateStore.saveDefaultHandlerMembers(List.of("CONSOLE"));
+        HandlerLevelControlService resumed = new HandlerLevelControlService(adapter, new HandlerBaselineRegistry(),
+                new HandlerOverrideRegistry(), new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(),
+                auditLog, stateStore, "alice", "resume");
+
+        resumed.resumeFromStateStore(Instant.now());
+
+        org.logaperture.api.HandlerInfo row = resumed.listHandlers().stream()
+                .filter(r -> r.ref().equals("DEFAULT_HANDLERS")).findFirst().orElseThrow();
+        assertEquals("CONSOLE", row.membersSummary());
+    }
+
+    @Test
+    void migrateHandlerRef_alsoMigratesAnExplicitDefaultHandlerMember() {
+        HandlerRef token = new HandlerRef("ConsoleHandler@abc123");
+        adapter.addHandler(token, Level.INFO);
+        service.setDefaultHandlerMembers(List.of(token));
+
+        adapter.addHandler(CONSOLE, Level.INFO); // adapter now also knows the friendly name
+        service.migrateHandlerRef(token, CONSOLE);
+
+        org.logaperture.api.HandlerInfo row = service.listHandlers().stream()
+                .filter(r -> r.ref().equals("DEFAULT_HANDLERS")).findFirst().orElseThrow();
+        assertEquals("CONSOLE", row.membersSummary());
+        assertEquals(List.of("CONSOLE"), stateStore.loadDefaultHandlerMembers());
     }
 }

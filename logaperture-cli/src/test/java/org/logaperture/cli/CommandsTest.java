@@ -282,12 +282,12 @@ class CommandsTest {
     void listHandlers_rendersATableWithLevelSinkTargetAndOverride() {
         mbean.handlerCatalog = List.of(
                 new org.logaperture.control.jmx.HandlerInfoData(
-                        "ALL_HANDLERS", null, false, null, null, false, null, null, null, null, null),
+                        "ALL_HANDLERS", null, false, null, null, false, null, null, null, null, null, null),
                 new org.logaperture.control.jmx.HandlerInfoData(
-                        "CONSOLE", "INFO", false, null, Boolean.TRUE, false, null, null, null, null, null),
+                        "CONSOLE", "INFO", false, null, Boolean.TRUE, false, null, null, null, null, null, null),
                 new org.logaperture.control.jmx.HandlerInfoData(
                         "FILE", "DEBUG", true, "/opt/server.log", Boolean.TRUE, true, "DEBUG", "FIXED", "FOR",
-                        Instant.now().plus(30, ChronoUnit.MINUTES).toString(), null));
+                        Instant.now().plus(30, ChronoUnit.MINUTES).toString(), null, null));
 
         assertEquals(CliError.OK, run(Commands.listHandlers(true, false)));
 
@@ -300,14 +300,30 @@ class CommandsTest {
     }
 
     @Test
+    void listHandlers_defaultHandlersRow_showsMembersSummaryInTheTargetColumn() {
+        // doc/specs/handler-floor-control.md "Data model", issue #28 -- the
+        // TARGET column is otherwise unused for a group ref.
+        mbean.handlerCatalog = List.of(
+                new org.logaperture.control.jmx.HandlerInfoData(
+                        "DEFAULT_HANDLERS", null, false, null, null, false, null, null, null, null,
+                        "(auto: CONSOLE)", null));
+
+        assertEquals(CliError.OK, run(Commands.listHandlers(true, false)));
+
+        String text = output();
+        assertTrue(text.contains("DEFAULT_HANDLERS"), text);
+        assertTrue(text.contains("(auto: CONSOLE)"), text);
+    }
+
+    @Test
     void listHandlers_defaultsToOverridesOnly() {
         // doc/specs/list-command-surface.md Decision #2 -- same default as list loggers.
         mbean.handlerCatalog = List.of(
                 new org.logaperture.control.jmx.HandlerInfoData(
-                        "CONSOLE", "INFO", false, null, Boolean.TRUE, false, null, null, null, null, null),
+                        "CONSOLE", "INFO", false, null, Boolean.TRUE, false, null, null, null, null, null, null),
                 new org.logaperture.control.jmx.HandlerInfoData(
                         "FILE", "DEBUG", true, "/opt/server.log", Boolean.TRUE, true, "DEBUG", "FIXED", "FOR",
-                        Instant.now().plus(30, ChronoUnit.MINUTES).toString(), null));
+                        Instant.now().plus(30, ChronoUnit.MINUTES).toString(), null, null));
 
         assertEquals(CliError.OK, run(Commands.listHandlers(false, false)));
 
@@ -319,7 +335,7 @@ class CommandsTest {
     @Test
     void listHandlers_overridesOnlyEmptyMessageDiffersFromShowAll() {
         mbean.handlerCatalog = List.of(new org.logaperture.control.jmx.HandlerInfoData(
-                "CONSOLE", "INFO", false, null, Boolean.TRUE, false, null, null, null, null, null));
+                "CONSOLE", "INFO", false, null, Boolean.TRUE, false, null, null, null, null, null, null));
 
         assertEquals(CliError.OK, run(Commands.listHandlers(false, false)));
         assertTrue(output().contains("No handlers have an active override."));
@@ -354,7 +370,7 @@ class CommandsTest {
     @Test
     void listHandlers_json_wrapsTheCatalog() {
         mbean.handlerCatalog = List.of(new org.logaperture.control.jmx.HandlerInfoData(
-                "CONSOLE", "INFO", false, null, Boolean.TRUE, false, null, null, null, null, null));
+                "CONSOLE", "INFO", false, null, Boolean.TRUE, false, null, null, null, null, null, null));
 
         run(Commands.listHandlers(true, true));
 
@@ -882,7 +898,7 @@ class CommandsTest {
     @Test
     void listHandlers_catalogRowInAutoMode_showsTheTrackedLevelPrefixed() {
         mbean.handlerCatalog = List.of(new org.logaperture.control.jmx.HandlerInfoData(
-                "CONSOLE", "DEBUG", false, null, Boolean.TRUE, true, "DEBUG", "AUTO", "STICKY", null, null));
+                "CONSOLE", "DEBUG", false, null, Boolean.TRUE, true, "DEBUG", "AUTO", "STICKY", null, null, null));
 
         assertEquals(CliError.OK, run(Commands.listHandlers(true, false)));
 
@@ -1087,5 +1103,36 @@ class CommandsTest {
         assertTrue(text.contains("\"cliVersion\":"), "logctl's own version is a JSON field too: " + text);
         assertTrue(text.contains("\"backendName\":null"), text);
         assertTrue(text.contains("\"stateFilePath\":null"), text);
+    }
+
+    // --- set handlers default (doc/specs/handler-floor-control.md "Default handler group", issue #28) --------
+
+    @Test
+    void setDefaultHandlerMembers_forwardsNamesAndPrintsTheNewMembership() {
+        mbean.defaultHandlerMembersResult = List.of("FILE", "CONSOLE");
+
+        run(Commands.setDefaultHandlerMembers(List.of("FILE", "CONSOLE"), false));
+
+        assertEquals(List.of("FILE", "CONSOLE"), mbean.setDefaultHandlerMembersCalls.get(0));
+        assertEquals("DEFAULT_HANDLERS → FILE, CONSOLE", output().strip());
+    }
+
+    @Test
+    void setDefaultHandlerMembers_noNames_printsClearedNotAnEmptyList() {
+        mbean.defaultHandlerMembersResult = List.of();
+
+        run(Commands.setDefaultHandlerMembers(List.of(), false));
+
+        assertEquals(List.of(), mbean.setDefaultHandlerMembersCalls.get(0));
+        assertTrue(output().contains("DEFAULT_HANDLERS cleared"), output());
+    }
+
+    @Test
+    void setDefaultHandlerMembers_json_emitsTheMemberArray() {
+        mbean.defaultHandlerMembersResult = List.of("CONSOLE");
+
+        run(Commands.setDefaultHandlerMembers(List.of("CONSOLE"), true));
+
+        assertEquals("{\"defaultHandlerMembers\":[\"CONSOLE\"]}", output().strip());
     }
 }

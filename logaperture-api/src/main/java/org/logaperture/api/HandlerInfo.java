@@ -50,6 +50,16 @@ import java.time.Instant;
  * @param overrideExpiresAt the override's revert deadline; {@code null}
  *                          unless {@code overrideActive} and {@code
  *                          overrideTier} is {@link PersistenceTier#FOR}
+ * @param membersSummary    for the {@code DEFAULT_HANDLERS} row only
+ *                          (doc/specs/handler-floor-control.md "Default
+ *                          handler group", issue #28), a display-ready
+ *                          rendering of its current members -- a
+ *                          comma-joined name list for an explicit
+ *                          assignment, or {@code "(auto: <name>)"} for the
+ *                          deterministic rule's current pick, matching
+ *                          {@code core}'s audit-record convention of a
+ *                          pre-rendered display string, not the raw type.
+ *                          {@code null} for every other row.
  * @param context           the owning logging context's stable key, or
  *                          {@code null} on a single-context service's own
  *                          rows ({@code AggregateLevelControl} stamps it)
@@ -65,6 +75,7 @@ public record HandlerInfo(
         HandlerLevelMode overrideMode,
         PersistenceTier overrideTier,
         Instant overrideExpiresAt,
+        String membersSummary,
         String context) {
 
     public HandlerInfo {
@@ -77,14 +88,14 @@ public record HandlerInfo(
     public HandlerInfo(
             String ref, Level level, boolean persistent, String targetPath, Boolean autoFlush,
             boolean overrideActive, Level overrideLevel, HandlerLevelMode overrideMode, PersistenceTier overrideTier,
-            Instant overrideExpiresAt) {
+            Instant overrideExpiresAt, String membersSummary) {
         this(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel, overrideMode, overrideTier,
-                overrideExpiresAt, null);
+                overrideExpiresAt, membersSummary, null);
     }
 
     /** This same row, tagged with its owning context's stable key. */
     public HandlerInfo withContext(String context) {
         return new HandlerInfo(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel,
-                overrideMode, overrideTier, overrideExpiresAt, context);
+                overrideMode, overrideTier, overrideExpiresAt, membersSummary, context);
     }
 }

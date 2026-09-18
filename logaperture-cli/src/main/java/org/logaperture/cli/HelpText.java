@@ -36,6 +36,7 @@ final class HelpText {
             "logctl set logger <target> <level> [session | for <duration> | sticky]",
             "logctl set handler <name> <level> [session | for <duration> | sticky]",
             "logctl set handler <name> AUTO [session | for <duration> | sticky]",
+            "logctl set handlers default [<name> ...]",
             "logctl reset logger <target> [--include-sticky]",
             "logctl reset loggers [--include-sticky]",
             "logctl reset handler <name> [--include-sticky]",
@@ -78,6 +79,13 @@ final class HelpText {
         sb.append("of a fixed level — it tracks the lowest currently active debug or trace\n");
         sb.append("override on its own, and reverts to its native level the moment none are\n");
         sb.append("left. Setting a fixed level, or resetting it, moves it back out of AUTO.\n");
+        sb.append("\n");
+        sb.append("DEFAULT_HANDLERS is a handler name usable anywhere ALL_HANDLERS is, but its\n");
+        sb.append("membership isn't 'every handler' — before it's ever assigned, a\n");
+        sb.append("deterministic rule picks the one obvious handler (usually the console) so it\n");
+        sb.append("already means something sensible. 'set handlers default FILE CONSOLE' assigns\n");
+        sb.append("an explicit membership instead, persisted like a sticky override; a bare\n");
+        sb.append("'set handlers default' with no names clears it, reverting to the rule.\n");
         sb.append("\n");
         sb.append("A [filter] for 'list loggers' is a logger-name prefix, or a pattern with a\n");
         sb.append("leading and/or trailing * segment — so 'logctl list loggers *.infinispan\n");

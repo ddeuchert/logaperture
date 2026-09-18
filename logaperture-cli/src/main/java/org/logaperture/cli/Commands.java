@@ -409,6 +409,29 @@ final class Commands {
     }
 
     /**
+     * {@code logctl set handlers default [<name> ...]} — assigns {@code
+     * DEFAULT_HANDLERS}'s explicit membership, or (empty {@code names})
+     * clears it, reverting to the deterministic selection rule (doc/specs/
+     * handler-floor-control.md "Default handler group", issue #28).
+     */
+    static Command setDefaultHandlerMembers(List<String> names, boolean json) {
+        return (mbean, out, in, interactive) -> {
+            List<String> result = mbean.setDefaultHandlerMembers(names);
+            if (json) {
+                out.println(Json.defaultHandlerMembers(result));
+                return CliError.OK;
+            }
+            if (names.isEmpty()) {
+                out.println("DEFAULT_HANDLERS cleared -- back to the automatic pick "
+                        + "(see 'logctl list handlers --show-all').");
+            } else {
+                out.println("DEFAULT_HANDLERS → " + String.join(", ", result));
+            }
+            return CliError.OK;
+        };
+    }
+
+    /**
      * {@code logctl set handler <name> AUTO} — doc/specs/handler-floor-control.md
      * "AUTO handler level" (issue #20). Puts {@code handlerRef} into a
      * self-tracking mode instead of a fixed level.
@@ -703,7 +726,9 @@ final class Commands {
                 cells.add(orDash(row.getRef()));
                 cells.add(orDash(row.getLevel()));
                 cells.add(notALiveHandler ? Format.NONE : (row.isPersistent() ? "file" : "no"));
-                cells.add(orDash(row.getTargetPath()));
+                // DEFAULT_HANDLERS (issue #28) has no target path of its own -- this
+                // otherwise-unused cell shows its current members instead.
+                cells.add(row.getMembersSummary() != null ? row.getMembersSummary() : orDash(row.getTargetPath()));
                 cells.add(handlerCatalogOverrideCell(row));
                 table.add(cells);
             }

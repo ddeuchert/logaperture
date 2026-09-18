@@ -38,17 +38,22 @@ Verified by unit tests (`HandlerLevelControlServiceTest`,
 **signed off, not yet implemented** — see "WildFly handler name resolution" below.
 
 **Planned extension (issue [#28](https://github.com/ddeuchert/logaperture/issues/28),
-alpha-2).** A well-known `DEFAULT_HANDLERS` logical ref alongside
-`ALL_HANDLERS` (user-assigned members, persisted sticky) and an additive
-`logctl debug <logger> --to <group>` delivery target are still spec-section-
-not-yet-written — see #28 for the full three-piece workflow. The **`AUTO`
-handler level** ([#20](https://github.com/ddeuchert/logaperture/issues/20))
-piece is specced below ("AUTO handler level"), scoped deliberately narrower
-than #28's own framing: AUTO works on any `HandlerRef` you can already name
-(a real handler, or `ALL_HANDLERS`) with no dependency on `DEFAULT_HANDLERS`
-existing yet — a named group is simply one more valid `HandlerRef` once #28
-lands, so nothing here needs rework when it does. **Status: implemented,
-unit-tested** — see "AUTO handler level" below for the full account.
+alpha-2).** #28 was trimmed to two pieces once its `AUTO` and `--to`
+delivery-targeting material were split out (below). The well-known
+`DEFAULT_HANDLERS` logical ref alongside `ALL_HANDLERS` (user-assigned
+members, persisted) is specced below in "Default handler group —
+`DEFAULT_HANDLERS`" — **status: implemented, unit-tested; no real-WildFly
+verification yet.** The additive
+`logctl debug <logger> --to <group>` delivery target moved to issue
+[#56](https://github.com/ddeuchert/logaperture/issues/56) (alpha-3), not yet
+specced. The **`AUTO` handler level**
+([#20](https://github.com/ddeuchert/logaperture/issues/20)) piece is specced
+below ("AUTO handler level"), scoped deliberately narrower than #28's own
+original framing: AUTO works on any `HandlerRef` you can already name (a real
+handler, or `ALL_HANDLERS`) with no dependency on `DEFAULT_HANDLERS` existing
+yet — a named group is simply one more valid `HandlerRef` once #28 lands, so
+nothing here needs rework when it does. **Status: implemented, unit-tested**
+— see "AUTO handler level" below for the full account.
 
 Priority: **high** — pulled forward in §17 as the first behaviour-modifying feature
 after M1. "Make this class TRACE and let me see it on the console" is a primary
@@ -1196,6 +1201,283 @@ leaning as drafted — no changes requested:*
 - **AUTO-7 (new — precedence with a manual override, raised while drafting
   this section, not originally in #20).** Last-writer-wins on the same ref,
   no "manual as a ceiling" model.
+
+## Default handler group — `DEFAULT_HANDLERS` (issue [#28](https://github.com/ddeuchert/logaperture/issues/28))
+
+Status: **implemented, unit-tested** (2026-09-18) — all six decisions (DH-1
+through DH-6) resolved and folded into the prose below. Not yet verified
+against a real WildFly (no `WildFlyContainerIT` coverage in this pass — the
+mechanism is adapter-generic and exercised against `FakeLoggingAdapter`, but
+the real-server exit criterion other features in this doc hold themselves to
+is still open).
+Trimmed from #28's original three-piece framing (see the "Planned
+extension" note at the top of this doc) to the alpha-2 half only:
+resolving/defining the group and narrowing the blocking-handler warning to
+it. `--to <handler>` delivery targeting on `set`/`reset` and the `logctl
+handlers` catalog update it needs are split out to issue
+[#56](https://github.com/ddeuchert/logaperture/issues/56) (alpha-3).
+Overriding group membership per-call/in-flight is **not planned for any
+milestone** — David judged it not worthwhile: changing membership while
+active overrides or `AUTO` tracking are live against the group reopens the
+same state-consistency risk baseline capture and `ALL_HANDLERS` reset already
+had to solve once, for no clear benefit.
+
+**After this feature, the user will be able to:**
+
+- See a well-known `DEFAULT_HANDLERS` handler name everywhere a `HandlerRef`
+  shows up — `logctl handler DEFAULT_HANDLERS TRACE`, `logctl handlers`,
+  `logctl status` — right alongside `ALL_HANDLERS`.
+- Trust that `DEFAULT_HANDLERS` already means something sensible before ever
+  touching it — a deterministic rule (below) picks the one obvious console
+  handler when there is one, rather than silently meaning "every handler."
+- Point `DEFAULT_HANDLERS` at the real handlers they care about instead —
+  `logctl set handlers default FILE CONSOLE` — overriding the rule's pick
+  with an explicit, persisted assignment.
+- Undo that assignment with a bare `logctl set handlers default` (no names),
+  reverting to the deterministic rule rather than needing to re-list every
+  handler that should count.
+- Narrow which handlers a `logctl set logger <target> <level>` command's
+  blocking-handler warning even considers, once membership has been
+  assigned (explicitly, or by the rule) — a handler outside
+  `DEFAULT_HANDLERS` no longer shows up in the warning or its suggested
+  command, even if it would still swallow the new records.
+- Run `logctl handler DEFAULT_HANDLERS TRACE` / `... AUTO` / `... reset`
+  exactly like `ALL_HANDLERS`, fanned out over whichever real handlers are
+  its current members.
+
+**Explicitly not delivered here** (see #56 and the "not planned" note above):
+
+- `logctl debug <logger> --to <group>` or any other per-call handler
+  targeting.
+- Changing `DEFAULT_HANDLERS` membership while it has an active override or
+  `AUTO` tracking running against it — not blocked by this feature (nothing
+  in scope needs to touch that path), but not a design goal either.
+
+### Mechanism: a third reserved `HandlerRef`, stateless until explicitly assigned
+
+`DEFAULT_HANDLERS` reuses `ALL_HANDLERS`'s entire mechanism (issue #13,
+Decision #2: "fan-out lives in core, not the adapter") with one difference:
+`ALL_HANDLERS` fans out over `adapter.realHandlers()` — every real handler,
+unconditionally — while `DEFAULT_HANDLERS` fans out over a **settable
+subset**, tracked by a new registry (`DefaultHandlerGroupRegistry`, one per
+logging context, mirroring `HandlerBaselineRegistry`'s per-context shape).
+`HandlerLevelControlService` recognizes `DEFAULT_HANDLERS` as a target
+exactly where it already recognizes `ALL_HANDLERS`, substituting
+`defaultHandlerGroup.members()` for `realHandlers()` at that one call site —
+capability check, baseline capture, apply, and audit all reuse the identical
+per-real-handler path `ALL_HANDLERS` already established (issue #13
+Decisions #3/#4: one tracked override under the `DEFAULT_HANDLERS` key, N
+audit rows; reset restores each member to its own baseline, never a shared
+value).
+
+**Stateless until the user explicitly assigns it (design decision, revised
+from the original draft).** `DefaultHandlerGroupRegistry` holds an
+*optional* membership set, not an always-present one:
+
+- **No explicit assignment ever made, for this context.** Nothing is
+  persisted at all. `members()` computes the answer **fresh, every single
+  call**, by running the deterministic rule below against the adapter's
+  current `realHandlers()` / root-attachment / handler-type facts. There is
+  nothing to cache and nothing that can go stale — if the real handler set
+  changes mid-session (a WildFly reconfiguration, say), the very next call
+  to `members()` already reflects it, with no explicit recompute step
+  needed anywhere.
+- **`logctl set handlers default <name>...` has been run.** That set is
+  persisted (state file, same section as handler overrides in
+  `persistence.md`'s shape) and used as-is — `members()` returns it
+  directly, no rule involved, until superseded or cleared.
+
+This replaces the original draft's "`DEFAULT_HANDLERS` == `ALL_HANDLERS`
+until narrowed" framing, which had two problems in hindsight: it meant
+`DEFAULT_HANDLERS` would silently absorb any handler added later (since it
+was a live alias, not a real membership decision), and "everything" is a
+poor stand-in for "the one console handler a developer actually cares
+about" — the whole reason #28 exists. The rule below is the
+"deterministic algorithm for locating `DEFAULT_HANDLERS`" the issue asks
+for, in the literal sense: no framework-specific guessing, no persisted
+state to require a migration or a schema bump, and it degrades gracefully
+by design — an adapter with only one handler never even reaches the
+console-specific tiers.
+
+### Deterministic initial-membership rule
+
+Evaluated fresh every time `members()` is called with nothing explicitly
+assigned. Each step only runs if the previous one didn't produce an answer:
+
+1. **Exactly one real handler known** (`realHandlers().size() == 1`) → that
+   one.
+2. **Exactly one real handler is attached to the root logger** → that one,
+   even if other real handlers exist elsewhere in the hierarchy (a
+   dedicated per-logger handler, say — not a default in any useful sense).
+3. **Two or more real handlers are attached to the root logger** → rank
+   them by tier, most to least specific, and take the first match:
+   1. A `ConsoleHandler` instance whose resolved name is `CONSOLE`.
+   2. A `ConsoleHandler` instance, any name (including an unresolved
+      identity token).
+   3. Any handler — regardless of actual class — whose resolved name is
+      `CONSOLE`.
+
+   A tier with more than one candidate (two `ConsoleHandler`s on root,
+   say) is broken by **root-attachment order** — the order
+   `Logger.getHandlers()` returns them in, which JUL's own handler array
+   preserves as insertion order, so this is genuinely deterministic, not
+   just best-effort. No tier matches at all → first root-attached handler
+   in that same attachment order.
+4. **Two or more real handlers, none attached to the root logger** → first
+   handler in `realHandlers()`'s own natural (adapter enumeration) order.
+
+Every step is evaluated per context independently, same as baseline
+capture — a multi-context WildFly deployment can land on a different single
+handler in one context than another, which is correct: they may not share
+the same root-handler layout at all.
+
+**New adapter-SPI facts this needs**, alongside the existing
+`realHandlers()`/`handlerDiagnostics()`: a `handlersOnRoot()` method
+(default empty, mirroring `realHandlers()`'s own default) returning the
+subset of `realHandlers()` directly attached to the root logger, and an
+`isConsole()` flag added to `HandlerDiagnostics` (alongside `isPersistent()`
+et al.) answering the structural "is this actually a
+`java.util.logging.ConsoleHandler` instance" question independently of
+whether its name has resolved — steps 1/2/4 above are pure `core` logic over
+facts the adapter already exposes; only the tier-2/3 "is a `ConsoleHandler`"
+check needs this one new fact, since `core` has no visibility into the real
+`Handler` class.
+
+### Staleness: only a fully-vanished explicit assignment reverts
+
+Applies only to an **explicit** assignment — the stateless case above has
+nothing to go stale, by construction. Checked whenever `members()` is
+called (not just at startup, and not on a periodic sweep — a plain read,
+same cost as any other `members()` call):
+
+- **Every persisted member still resolves.** Used as-is.
+- **Some, but not all, persisted members no longer resolve** (a partial
+  WildFly reconfiguration, say). The vanished ones are pruned — silently,
+  no audit noise for a handler disappearing on its own, same bar the
+  verification sweep already holds itself to — and the survivors remain the
+  explicit assignment. The persisted record is rewritten to the pruned set
+  so a later restart doesn't re-discover the same already-known-gone
+  members.
+- **Every persisted member is gone.** The explicit assignment is discarded
+  outright — the persisted record is removed, not merely emptied — and
+  `DEFAULT_HANDLERS` reverts to the stateless/rule-driven case above, for
+  the rest of this session *and* every future restart, until the user
+  explicitly assigns a new one. "Start over," not "pick a new one and
+  persist it": nothing is written back automatically. A user who wants a
+  specific handler locked in again has to say so.
+
+### `logctl set handlers default <name> [<name> ...]`
+
+```
+logctl set handlers default FILE CONSOLE   # DEFAULT_HANDLERS = {FILE, CONSOLE}, explicit, persisted
+logctl set handlers default CONSOLE        # replaces the set above, not additive
+logctl set handlers default                # no names: clears the explicit assignment, reverts to the rule
+```
+
+- Each `<name>` is validated against `realHandlers()` exactly like a `logctl
+  handler <name> ...` target — an unresolved name (a WildFly identity token
+  not yet a friendly name, or simply wrong) fails with the adapter's own
+  unknown-handler message, same as today. Since every name must validate,
+  there is no way to end up with an explicit-but-empty assignment through
+  this command (resolves DH-5, below).
+- **Replaces, not merges** — a second call with a different name list is the
+  new membership, not a union. Consistent with every other "set" operation in
+  this spec (a second `logctl handler CONSOLE ...` replaces the first).
+- **No tier token** — membership is a standing configuration fact, not a
+  reverting override; there is no baseline to restore it to, so `session` /
+  `for` / `sticky` don't apply here. Once assigned it is **always
+  persisted** and re-applied on resume — the closest existing analogue is a
+  config value, not an override (resolves DH-6, below: there is no
+  `SESSION`-tier "auto default" to have a persistence-tier question about in
+  the first place, since nothing is persisted until this command runs).
+- Multi-context (WildFly): membership is set per context, exactly like a
+  handler override — the same real-handler name can be a member in one
+  context and not another, following `wildfly-support.md`'s existing
+  broadcast semantics.
+
+### Interaction with the blocking-handler warning
+
+`handlerFloorsBelow(loggerName, target)` (the call every `logctl set logger`
+command already makes) is the one call site this feature changes: today it
+checks every entry `realHandlers()` returns; after this feature it checks
+`defaultHandlerGroup.members()` instead — the deterministic rule's answer
+until an explicit assignment exists, so in the common single-console-handler
+case **there is no meaningful behavior change to notice**, just a narrower
+(and more honestly-scoped) set backing the same warning. Once narrowed
+further, or once a genuinely multi-handler root picks something via the
+rule, a real handler outside the group simply never appears in the warning
+or in the `logctl handler` command it suggests, even if it would in fact
+still swallow the new records — this is the "non-pollution falls out of
+scoping the group" idea the "AUTO handler level" section above already
+forward-referenced (see its "Scope of 'lowest active override'" note).
+
+**`AUTO`'s own scope is unchanged by this feature** — `recomputeAuto()`
+still considers every active logger override in the context (AUTO-3), with
+no narrowing by group membership. Wiring `DEFAULT_HANDLERS` membership into
+`AUTO`'s scope is exactly the generalization the `AUTO` section already
+flagged as `DEFAULT_HANDLERS`'s eventual job, but it is **not required by
+#28's trimmed scope** and is left for a follow-up once real usage shows
+whether it's actually needed.
+
+### Data model
+
+```
+DefaultHandlerGroupRegistry (per context, mirrors HandlerBaselineRegistry)
+    explicit: Optional<Set<HandlerRef>>   // absent = stateless/rule-driven; present = user-assigned, persisted
+```
+
+`members()` returns `explicit` verbatim when present (after pruning any
+vanished entries, per "Staleness" above); otherwise it evaluates the
+deterministic rule fresh, uncached. No new fields on `HandlerLevelOverride`
+— `DEFAULT_HANDLERS` is a `handlerRef` value on that record exactly like
+`ALL_HANDLERS` is (issue #13's Data model section), with no changes needed
+there. `knownHandlers()` gains `DEFAULT_HANDLERS` as an always-advertised
+entry (unlike `ALL_HANDLERS` on WildFly, `DEFAULT_HANDLERS` is never
+suppressed — it's meaningful, even pre-assignment, on every adapter that has
+`hasHandlerLevels() == true`). `logctl handlers` gains a `DEFAULT_HANDLERS`
+row alongside `ALL_HANDLERS`; its `TARGET` cell (unused by `ALL_HANDLERS`)
+lists current members, tagged to distinguish the two sources — e.g. `FILE,
+CONSOLE` for an explicit assignment vs. `(auto: CONSOLE)` for the rule's
+current pick — so an operator can tell at a glance whether today's
+`DEFAULT_HANDLERS` is a deliberate choice or just where the rule landed.
+
+### Open decisions (sign-off)
+
+- **DH-1. Command spelling.** **Resolved** (2026-09-18): **`logctl set
+  handlers default ...`**, matching the `set`/`reset`/`list` split #42
+  already established for every other mutation — `logctl handlers default`
+  (no `set`) sits awkwardly next to `logctl handlers` being otherwise
+  strictly read-only ("The handler catalog": "VIEW only, no audit"), and now
+  stays a documented error pointing at the right spelling, same courtesy #42
+  gave every other retired form. Already used throughout this section.
+- **DH-2. Clearing membership.** ~~Leaning: clears back to "everything."~~
+  **Resolved** (2026-09-18): a bare `logctl set handlers default` clears the
+  *explicit* assignment and reverts to the deterministic rule — which is
+  usually not "everything" anymore, since the rule prefers a single console
+  handler when one is identifiable. Folded into "Mechanism" and the command
+  section above.
+- **DH-3. Audit shape.** **Resolved** (2026-09-18): one audit record per
+  explicit membership change (not one per handler added/removed), since
+  there's no "revert" concept to key per-handler audit rows off, unlike a
+  `FIXED` override. The *implicit* events — the partial-prune and
+  full-discard "start over" behavior in "Staleness" above — stay silent, no
+  audit record, matching the verification sweep's own "a handler
+  disappearing on its own is not noise-worthy" bar. Only a genuine `logctl
+  set handlers default` call ever produces a record.
+- **DH-4. `knownHandlers()` visibility pre-#14 on WildFly.** **Resolved —
+  moot:** this assumed #14 (WildFly friendly-name resolution) hadn't shipped
+  yet. It has (closed, implemented) — see "WildFly handler name resolution"
+  above. There is no sequencing gap left to document.
+- **DH-5. Should narrowing be allowed to produce an empty group?**
+  **Resolved — moot:** with the command validating every name against
+  `realHandlers()` before accepting it (see the command section above),
+  there is no path to an explicit-but-empty assignment through normal
+  usage; the question doesn't arise.
+- **DH-6. Persistence tier for the group-definition record itself.**
+  **Resolved** (2026-09-18): always persisted once explicitly assigned, and
+  never persisted before that — there is no `SESSION`-tier "auto default"
+  to offer a tier choice about, since the stateless case is never written to
+  the state file at all. Folded into the command section above.
 
 ## Semantics to pin down
 

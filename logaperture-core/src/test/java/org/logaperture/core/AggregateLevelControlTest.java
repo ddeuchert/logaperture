@@ -84,7 +84,8 @@ class AggregateLevelControlTest {
                     policy, auditLog, sharedStore, "alice", source);
             ActiveLoggerFloor activeLoggerFloor = () -> List.copyOf(overrides.all().values());
             handlerService = new HandlerLevelControlService(adapter, new HandlerBaselineRegistry(),
-                    new HandlerOverrideRegistry(), policy, auditLog, sharedStore, "alice", "jmx", activeLoggerFloor);
+                    new HandlerOverrideRegistry(), new DefaultHandlerGroupRegistry(), policy, auditLog, sharedStore,
+                    "alice", "jmx", activeLoggerFloor);
             doctorService = new DoctorService(adapter, policy);
             topService = new TopService(adapter, policy);
             environmentReportService = new EnvironmentReportService(adapter, policy);
@@ -577,6 +578,42 @@ class AggregateLevelControlTest {
 
         assertEquals(Level.TRACE, system.adapter.handlerLevel(console).orElseThrow());
         assertEquals(Level.TRACE, app.adapter.handlerLevel(console).orElseThrow());
+    }
+
+    // --- setDefaultHandlerMembers broadcast (doc/specs/handler-floor-control.md "Default handler group", issue #28) --
+
+    @Test
+    void setDefaultHandlerMembers_broadcastsToEveryContext() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        HandlerRef console = new HandlerRef("CONSOLE");
+        system.adapter.addHandler(console, Level.INFO);
+        app.adapter.addHandler(console, Level.INFO);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        aggregate.setDefaultHandlerMembers(List.of(console));
+
+        assertEquals("CONSOLE", system.handlerService.listHandlers().stream()
+                .filter(h -> h.ref().equals("DEFAULT_HANDLERS")).findFirst().orElseThrow().membersSummary());
+        assertEquals("CONSOLE", app.handlerService.listHandlers().stream()
+                .filter(h -> h.ref().equals("DEFAULT_HANDLERS")).findFirst().orElseThrow().membersSummary());
+    }
+
+    @Test
+    void setDefaultHandlerMembers_oneContextLacksTheHandler_theOtherStillSucceeds() {
+        Ctx system = new Ctx("system"); // does NOT have CONSOLE
+        Ctx app = new Ctx("myapp.war");
+        HandlerRef console = new HandlerRef("CONSOLE");
+        app.adapter.addHandler(console, Level.INFO);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        List<HandlerRef> result = aggregate.setDefaultHandlerMembers(List.of(console));
+
+        assertEquals(List.of(console), result, "the app context's answer, since system's failed");
+        assertEquals("CONSOLE", app.handlerService.listHandlers().stream()
+                .filter(h -> h.ref().equals("DEFAULT_HANDLERS")).findFirst().orElseThrow().membersSummary());
     }
 
     @Test

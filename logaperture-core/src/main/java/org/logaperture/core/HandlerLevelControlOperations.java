@@ -115,4 +115,17 @@ public interface HandlerLevelControlOperations {
      * (Logback, {@code none}).
      */
     List<HandlerInfo> listHandlers();
+
+    /**
+     * {@code logctl set handlers default <name>...} — assigns {@code
+     * DEFAULT_HANDLERS}'s explicit membership, or (empty {@code names})
+     * clears it, reverting to the deterministic selection rule (doc/specs/
+     * handler-floor-control.md "Default handler group", issue #28). Each
+     * name must resolve against this context's own {@code
+     * realHandlers()}.
+     *
+     * @return the new explicit membership, or empty when cleared
+     * @throws org.logaperture.core.spi.UnknownHandlerException if any name doesn't resolve
+     */
+    List<HandlerRef> setDefaultHandlerMembers(List<HandlerRef> names);
 }

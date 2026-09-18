@@ -253,6 +253,16 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         return handlerCatalog;
     }
 
+    final List<List<String>> setDefaultHandlerMembersCalls = new ArrayList<>();
+    List<String> defaultHandlerMembersResult = new ArrayList<>();
+
+    @Override
+    public List<String> setDefaultHandlerMembers(List<String> names) {
+        maybeThrow();
+        setDefaultHandlerMembersCalls.add(names);
+        return defaultHandlerMembersResult;
+    }
+
     @Override
     public List<DoctorFindingData> diagnose() {
         maybeThrow();

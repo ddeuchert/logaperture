@@ -33,6 +33,7 @@ import org.logaperture.core.spi.UnknownHandlerException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,6 +41,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * The handler-level-control engine — the {@link LevelControlService}
@@ -60,6 +62,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     private final LoggingAdapter adapter;
     private final HandlerBaselineRegistry baselines;
     private final HandlerOverrideRegistry overrides;
+    private final DefaultHandlerGroupRegistry defaultHandlerGroup;
     private final CapabilityPolicy policy;
     private final AuditLog auditLog;
     private final StateStore stateStore;
@@ -86,18 +89,21 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             LoggingAdapter adapter,
             HandlerBaselineRegistry baselines,
             HandlerOverrideRegistry overrides,
+            DefaultHandlerGroupRegistry defaultHandlerGroup,
             CapabilityPolicy policy,
             AuditLog auditLog,
             StateStore stateStore,
             String principal,
             String source) {
-        this(adapter, baselines, overrides, policy, auditLog, stateStore, principal, source, ActiveLoggerFloor.NONE);
+        this(adapter, baselines, overrides, defaultHandlerGroup, policy, auditLog, stateStore, principal, source,
+                ActiveLoggerFloor.NONE);
     }
 
     public HandlerLevelControlService(
             LoggingAdapter adapter,
             HandlerBaselineRegistry baselines,
             HandlerOverrideRegistry overrides,
+            DefaultHandlerGroupRegistry defaultHandlerGroup,
             CapabilityPolicy policy,
             AuditLog auditLog,
             StateStore stateStore,
@@ -107,6 +113,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.baselines = Objects.requireNonNull(baselines, "baselines");
         this.overrides = Objects.requireNonNull(overrides, "overrides");
+        this.defaultHandlerGroup = Objects.requireNonNull(defaultHandlerGroup, "defaultHandlerGroup");
         this.policy = Objects.requireNonNull(policy, "policy");
         this.auditLog = Objects.requireNonNull(auditLog, "auditLog");
         this.stateStore = Objects.requireNonNull(stateStore, "stateStore");
@@ -125,8 +132,8 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return Optional.empty(); // doc/specs/handler-floor-control.md "Logback / none" -- documented no-op
         }
         checkSetHandlerLevelPermitted(ref, level, opts);
-        if (HandlerRef.ALL_HANDLERS.equals(ref)) {
-            return Optional.of(applyAndRecordGroupMutation(level, opts));
+        if (isGroupRef(ref)) {
+            return Optional.of(applyAndRecordGroupMutation(ref, level, opts));
         }
         return Optional.of(applyAndRecordMutation(ref, level, opts));
     }
@@ -149,9 +156,9 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (!adapter.hasHandlerLevels()) {
             return List.of();
         }
-        if (HandlerRef.ALL_HANDLERS.equals(ref)) {
+        if (isGroupRef(ref)) {
             Map<String, SquelchedLogger> squelched = new LinkedHashMap<>();
-            for (HandlerRef real : adapter.realHandlers()) {
+            for (HandlerRef real : membersOf(ref)) {
                 for (SquelchedLogger one : squelchedByRaiseForOneRef(real, newLevel)) {
                     squelched.putIfAbsent(one.loggerName(), one);
                 }
@@ -195,12 +202,12 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return;
         }
         SetHandlerLevelOptions opts = options == null ? SetHandlerLevelOptions.defaults() : options;
-        if (HandlerRef.ALL_HANDLERS.equals(ref)) {
+        if (isGroupRef(ref)) {
             // Decision #5 (issue #13): no invented aggregate "current level"
             // for the group -- direction is judged per real handler with the
             // exact single-ref logic below, and the union of whichever
             // capabilities the reals need must all be granted.
-            for (HandlerRef real : adapter.realHandlers()) {
+            for (HandlerRef real : membersOf(ref)) {
                 requireCapabilityIfNeeded(real, level);
             }
         } else {
@@ -221,6 +228,126 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (required.isPresent() && !policy.isGranted(required.get())) {
             throw new CapabilityDeniedException(required.get());
         }
+    }
+
+    // --- DEFAULT_HANDLERS (doc/specs/handler-floor-control.md "Default handler group", issue #28) ---------------
+
+    /** Whether {@code ref} is a group ref (fans out over more than one real handler), not a single addressable one. */
+    private boolean isGroupRef(HandlerRef ref) {
+        return HandlerRef.ALL_HANDLERS.equals(ref) || HandlerRef.DEFAULT_HANDLERS.equals(ref);
+    }
+
+    /**
+     * The real handlers {@code ref} fans out over, against this service's
+     * own {@link #adapter} -- the common case every group-handling method
+     * below uses. A non-group ref fans out over just itself.
+     */
+    private List<HandlerRef> membersOf(HandlerRef ref) {
+        return membersOf(ref, adapter);
+    }
+
+    /**
+     * {@link #membersOf(HandlerRef)}, against a caller-supplied adapter
+     * instead of this service's own -- the shape {@link
+     * HandlerOverrideApplier#apply} needs, since it may be re-applying to a
+     * fresh post-reconfiguration adapter ({@link #reapplyActiveOverrides}),
+     * not necessarily {@link #adapter}. The one seam {@link
+     * HandlerRef#ALL_HANDLERS} and {@link HandlerRef#DEFAULT_HANDLERS} share
+     * the exact same mutation/reset/audit machinery through, with only their
+     * membership source differing.
+     */
+    private List<HandlerRef> membersOf(HandlerRef ref, LoggingAdapter forAdapter) {
+        if (HandlerRef.ALL_HANDLERS.equals(ref)) {
+            return forAdapter.realHandlers();
+        }
+        if (HandlerRef.DEFAULT_HANDLERS.equals(ref)) {
+            return resolveDefaultHandlerMembers(forAdapter);
+        }
+        return List.of(ref);
+    }
+
+    /**
+     * {@link DefaultHandlerGroupRegistry#members} plus this service's own
+     * responsibility for the side effect it can trigger: a staleness-driven
+     * prune or full discard changes what's persisted, not just what's
+     * in-memory (doc/specs/handler-floor-control.md "Staleness"). Compares
+     * the registry's explicit assignment before/after the call and persists
+     * only when it actually changed -- silently, no audit record, matching
+     * this method's own "a handler disappearing on its own isn't
+     * noise-worthy" bar. {@code forAdapter} lets this run against a fresh
+     * post-reconfiguration adapter too (see {@link #membersOf(HandlerRef,
+     * LoggingAdapter)}) -- membership itself is adapter-independent state,
+     * only its staleness check needs to know which adapter is current.
+     */
+    private List<HandlerRef> resolveDefaultHandlerMembers(LoggingAdapter forAdapter) {
+        Optional<Set<HandlerRef>> before = defaultHandlerGroup.explicit();
+        List<HandlerRef> result = defaultHandlerGroup.members(forAdapter);
+        Optional<Set<HandlerRef>> after = defaultHandlerGroup.explicit();
+        if (!after.equals(before)) {
+            if (after.isPresent()) {
+                safePersist(() -> stateStore.saveDefaultHandlerMembers(toNames(after.get())));
+            } else {
+                safePersist(stateStore::removeDefaultHandlerMembers);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * {@code logctl set handlers default <name>...} -- assigns {@code
+     * DEFAULT_HANDLERS}'s explicit membership, or (empty {@code names})
+     * clears it, reverting to the deterministic rule (doc/specs/
+     * handler-floor-control.md "Default handler group", DH-2). Each name
+     * must resolve against {@code adapter.realHandlers()}, exactly like a
+     * single-handler target -- an unresolved name throws {@code
+     * UnknownHandlerException} before anything is changed, so a typo never
+     * partially commits. Gated on {@link Capability#PERSIST} alone (DH-6):
+     * membership is always persisted once assigned, there is no lower/raise
+     * direction to judge the way a level change has. One audit record for
+     * the whole change (DH-3), keyed by {@code DEFAULT_HANDLERS} itself
+     * rather than any one member.
+     *
+     * @return the new explicit membership, or empty when cleared
+     */
+    @Override
+    public List<HandlerRef> setDefaultHandlerMembers(List<HandlerRef> names) {
+        Objects.requireNonNull(names, "names");
+        if (!adapter.hasHandlerLevels()) {
+            return List.of(); // doc/specs/handler-floor-control.md "Logback / none" -- same documented no-op
+        }
+        if (!policy.isGranted(Capability.PERSIST)) {
+            throw new CapabilityDeniedException(Capability.PERSIST);
+        }
+        String previousValue = describeMembers(defaultHandlerGroup.explicit());
+        if (names.isEmpty()) {
+            defaultHandlerGroup.clearExplicit();
+            safePersist(stateStore::removeDefaultHandlerMembers);
+            auditLog.record(new AuditRecord(Instant.now(), principal, source, HandlerRef.DEFAULT_HANDLERS.value(),
+                    previousValue, "<rule-derived>", null, AuditRecord.Action.MUTATION));
+            return List.of();
+        }
+        Set<HandlerRef> known = Set.copyOf(adapter.realHandlers());
+        Set<HandlerRef> resolved = new LinkedHashSet<>();
+        for (HandlerRef name : names) {
+            if (!known.contains(name)) {
+                throw new UnknownHandlerException(name);
+            }
+            resolved.add(name);
+        }
+        defaultHandlerGroup.setExplicit(resolved);
+        safePersist(() -> stateStore.saveDefaultHandlerMembers(toNames(resolved)));
+        auditLog.record(new AuditRecord(Instant.now(), principal, source, HandlerRef.DEFAULT_HANDLERS.value(),
+                previousValue, describeMembers(Optional.of(resolved)), null, AuditRecord.Action.MUTATION));
+        return List.copyOf(resolved);
+    }
+
+    private static String describeMembers(Optional<Set<HandlerRef>> members) {
+        return members.map(HandlerLevelControlService::toNames).map(names -> String.join(", ", names))
+                .orElse("<rule-derived>");
+    }
+
+    private static List<String> toNames(Set<HandlerRef> refs) {
+        return refs.stream().map(HandlerRef::value).toList();
     }
 
     // --- AUTO handler level (doc/specs/handler-floor-control.md "AUTO handler level", issue #20) ---------------
@@ -247,13 +374,13 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         Instant now = Instant.now();
         Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
 
-        if (HandlerRef.ALL_HANDLERS.equals(ref)) {
-            Optional<Level> tracked = applyAutoToGroup(explicit, source, opts.reason());
+        if (isGroupRef(ref)) {
+            Optional<Level> tracked = applyAutoToGroup(ref, explicit, source, opts.reason());
             if (tracked.isEmpty()) {
                 return Optional.empty(); // no real handler resolved anything to track -- nothing to activate
             }
             HandlerLevelOverride override = new HandlerLevelOverride(
-                    HandlerRef.ALL_HANDLERS, tracked.get(), HandlerLevelMode.AUTO, opts.reason(), now, source,
+                    ref, tracked.get(), HandlerLevelMode.AUTO, opts.reason(), now, source,
                     opts.tier(), expiresAt);
             return Optional.of(trackAutoOverride(override));
         }
@@ -349,8 +476,8 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return; // already superseded before this tick started
         }
 
-        Optional<Level> resolved = HandlerRef.ALL_HANDLERS.equals(ref)
-                ? applyAutoToGroup(explicit, "auto-recompute", current.reason())
+        Optional<Level> resolved = isGroupRef(ref)
+                ? applyAutoToGroup(ref, explicit, "auto-recompute", current.reason())
                 : applyAutoTarget(ref, explicit, "auto-recompute", current.reason());
         Level tracked = resolved.orElse(current.level()); // nothing resolvable this tick -- keep displaying the last known value
         if (tracked == current.level()) {
@@ -365,9 +492,9 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             // adapter disagreeing with whatever won; no audit for an apply
             // that did not stick, same as verifyAndReapply's own undo.
             if (afterApply.isPresent()) {
-                HandlerOverrideApplier.apply(afterApply.get(), adapter);
-            } else if (HandlerRef.ALL_HANDLERS.equals(ref)) {
-                restoreGroupToBaselinesSilently();
+                HandlerOverrideApplier.apply(afterApply.get(), adapter, this::membersOf);
+            } else if (isGroupRef(ref)) {
+                restoreGroupToBaselinesSilently(ref);
             } else {
                 trySetHandlerLevel(ref, baselines.get(ref).orElse(null), "undo");
             }
@@ -441,9 +568,10 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      *         individually overridden, or none known yet) -- never a
      *         fabricated placeholder value.
      */
-    private Optional<Level> applyAutoToGroup(Optional<Level> explicitTarget, String auditSource, String reason) {
+    private Optional<Level> applyAutoToGroup(HandlerRef groupRef, Optional<Level> explicitTarget, String auditSource,
+            String reason) {
         Level summary = null;
-        for (HandlerRef real : adapter.realHandlers()) {
+        for (HandlerRef real : membersOf(groupRef)) {
             if (overrides.get(real).isPresent()) {
                 continue; // a more-specific individual override wins -- see the javadoc above
             }
@@ -529,7 +657,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      */
     public void reapplyActiveOverrides(LoggingAdapter targetAdapter) {
         for (HandlerLevelOverride override : overrides.all().values()) {
-            HandlerOverrideApplier.apply(override, targetAdapter);
+            HandlerOverrideApplier.apply(override, targetAdapter, this::membersOf);
         }
     }
 
@@ -550,6 +678,16 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         overrides.migrateKey(oldRef, newRef);
         if (pendingResume.remove(oldRef)) {
             pendingResume.add(newRef);
+        }
+        // DEFAULT_HANDLERS' explicit membership needs the same treatment
+        // (issue #28) -- otherwise a rename looks identical to the member
+        // vanishing, and the next resolution silently prunes a handler the
+        // user explicitly chose.
+        boolean wasExplicitMember = defaultHandlerGroup.explicit().map(m -> m.contains(oldRef)).orElse(false);
+        if (wasExplicitMember) {
+            defaultHandlerGroup.migrateMember(oldRef, newRef);
+            defaultHandlerGroup.explicit().ifPresent(
+                    updated -> safePersist(() -> stateStore.saveDefaultHandlerMembers(toNames(updated))));
         }
     }
 
@@ -585,12 +723,12 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             String currentDescription;
             boolean drifted;
             Map<HandlerRef, String> groupPreviousValues = null;
-            if (HandlerRef.ALL_HANDLERS.equals(ref)) {
-                // Decision #1/#2 (issue #13): ALL_HANDLERS isn't itself a
+            if (isGroupRef(ref)) {
+                // Decision #1/#2 (issue #13): a group ref isn't itself a
                 // live handler, so there is no single adapter.handlerLevel(ref)
                 // to compare -- drift means *any* real handler disagreeing
                 // with the tracked group level.
-                DriftCheck check = checkGroupDrift(override.level());
+                DriftCheck check = checkGroupDrift(ref, override.level());
                 drifted = check.drifted();
                 currentDescription = check.description();
                 groupPreviousValues = check.perRealCurrent();
@@ -623,7 +761,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             }
 
             try {
-                HandlerOverrideApplier.apply(override, adapter);
+                HandlerOverrideApplier.apply(override, adapter, this::membersOf);
             } catch (UnknownHandlerException e) {
                 if (pendingResume.contains(ref)) {
                     // Same "not yet, not gone" guard as the drift check above
@@ -655,22 +793,22 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                 // the adapter disagreeing with the registry, no audit for a
                 // re-apply that did not stick.
                 if (afterApply.isPresent()) {
-                    HandlerOverrideApplier.apply(afterApply.get(), adapter);
-                } else if (HandlerRef.ALL_HANDLERS.equals(ref)) {
-                    restoreGroupToBaselinesSilently();
+                    HandlerOverrideApplier.apply(afterApply.get(), adapter, this::membersOf);
+                } else if (isGroupRef(ref)) {
+                    restoreGroupToBaselinesSilently(ref);
                 } else {
                     adapter.setHandlerLevel(ref, baselines.get(ref).orElse(null));
                 }
                 continue;
             }
 
-            if (HandlerRef.ALL_HANDLERS.equals(ref)) {
+            if (isGroupRef(ref)) {
                 // Decision #3 (issue #13): the audit trail stays as granular
                 // as ever, one row per real handler re-applied -- never a
-                // single ALL_HANDLERS-keyed row standing in for the whole
-                // group (code-review finding: this used to write exactly
-                // one row here, unlike every other ALL_HANDLERS mutation
-                // path in this class).
+                // single group-keyed row standing in for the whole group
+                // (code-review finding: this used to write exactly one row
+                // here, unlike every other group mutation path in this
+                // class).
                 for (Map.Entry<HandlerRef, String> entry : groupPreviousValues.entrySet()) {
                     auditLog.record(new AuditRecord(now, principal, "verification-sweep", entry.getKey().value(),
                             entry.getValue(), override.level().toString(), override.reason(),
@@ -699,11 +837,11 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      * handler (Decision #3) instead of one row for the whole group (issue
      * #13, Decisions #1/#2).
      */
-    private DriftCheck checkGroupDrift(Level overrideLevel) {
+    private DriftCheck checkGroupDrift(HandlerRef groupRef, Level overrideLevel) {
         Map<HandlerRef, String> perReal = new LinkedHashMap<>();
         List<String> currentValues = new ArrayList<>();
         boolean drifted = false;
-        for (HandlerRef real : adapter.realHandlers()) {
+        for (HandlerRef real : membersOf(groupRef)) {
             Optional<Level> current = adapter.handlerLevel(real);
             String value = current.map(Level::toString).orElse("<none>");
             perReal.put(real, value);
@@ -727,6 +865,10 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      * with its own current level, the static facts {@code doctor} already
      * reads ({@code handlerDiagnostics}), and any active override. {@code
      * ALL_HANDLERS} is included as a row with no level of its own.
+     * {@code DEFAULT_HANDLERS} (issue #28) is always advertised here too,
+     * even though it never comes from {@code adapter.knownHandlers()} --
+     * membership is {@code core}'s own concept, not the adapter's, unlike
+     * {@code ALL_HANDLERS}.
      */
     @Override
     public List<HandlerInfo> listHandlers() {
@@ -748,9 +890,45 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                     override == null ? null : override.level(),
                     override == null ? null : override.mode(),
                     override == null ? null : override.tier(),
-                    override == null ? null : override.expiresAt()));
+                    override == null ? null : override.expiresAt(),
+                    null));
         }
+        HandlerLevelOverride defaultHandlersOverride = overrides.get(HandlerRef.DEFAULT_HANDLERS).orElse(null);
+        rows.add(new HandlerInfo(
+                HandlerRef.DEFAULT_HANDLERS.value(),
+                null, // not a live handler, same as ALL_HANDLERS
+                false,
+                null,
+                null,
+                defaultHandlersOverride != null,
+                defaultHandlersOverride == null ? null : defaultHandlersOverride.level(),
+                defaultHandlersOverride == null ? null : defaultHandlersOverride.mode(),
+                defaultHandlersOverride == null ? null : defaultHandlersOverride.tier(),
+                defaultHandlersOverride == null ? null : defaultHandlersOverride.expiresAt(),
+                defaultHandlersMembersSummary()));
         return List.copyOf(rows);
+    }
+
+    /**
+     * The {@code DEFAULT_HANDLERS} catalog row's {@code membersSummary} --
+     * doc/specs/handler-floor-control.md "Data model": a comma-joined name
+     * list for an explicit assignment, or {@code "(auto: <name>)"} for the
+     * deterministic rule's current pick, so an operator can tell at a glance
+     * whether today's default is a deliberate choice or just where the rule
+     * landed. Calls {@link #membersOf} first so an empty-adapter edge case
+     * and an explicit-vs-rule-derived read are both taken from the exact
+     * same, freshly-resolved state (staleness pruning/discarding, if any,
+     * has already happened by the time {@link
+     * DefaultHandlerGroupRegistry#explicit} is checked below).
+     */
+    private String defaultHandlersMembersSummary() {
+        List<HandlerRef> members = membersOf(HandlerRef.DEFAULT_HANDLERS);
+        boolean explicit = defaultHandlerGroup.explicit().isPresent();
+        if (members.isEmpty()) {
+            return explicit ? "(none)" : "(auto -- no handlers yet)";
+        }
+        String names = members.stream().map(HandlerRef::value).collect(Collectors.joining(", "));
+        return explicit ? names : "(auto: " + names + ")";
     }
 
     /**
@@ -767,11 +945,11 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     public void adoptOverride(HandlerLevelOverride override) {
         Objects.requireNonNull(override, "override");
         captureBaselineFor(override.handlerRef());
-        boolean group = HandlerRef.ALL_HANDLERS.equals(override.handlerRef());
-        List<HandlerRef> reals = group ? adapter.realHandlers() : null;
+        boolean group = isGroupRef(override.handlerRef());
+        List<HandlerRef> reals = group ? membersOf(override.handlerRef()) : null;
         List<String> previousValues = group ? previousValuesOf(reals) : null;
         try {
-            HandlerOverrideApplier.apply(override, adapter);
+            HandlerOverrideApplier.apply(override, adapter, this::membersOf);
         } catch (RuntimeException e) {
             System.err.println("[logaperture-core] failed to adopt handler override for '"
                     + override.handlerRef() + "' onto this context, skipping it: " + e);
@@ -798,6 +976,15 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      *            override was persisted" without a real sleep
      */
     public void resumeFromStateStore(Instant now) {
+        List<String> savedMembers = stateStore.loadDefaultHandlerMembers();
+        if (!savedMembers.isEmpty()) {
+            // Loaded first, before any persisted handler override, so a
+            // sticky override keyed by DEFAULT_HANDLERS (resumed below)
+            // fans out over the right membership from the start (doc/specs/
+            // handler-floor-control.md "Default handler group", issue #28).
+            defaultHandlerGroup.setExplicit(
+                    savedMembers.stream().map(HandlerRef::new).collect(Collectors.toCollection(LinkedHashSet::new)));
+        }
         for (HandlerLevelOverride persisted : stateStore.loadAllHandlers()) {
             try {
                 resumeOne(persisted, now);
@@ -817,10 +1004,10 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return;
         }
 
-        if (HandlerRef.ALL_HANDLERS.equals(persisted.handlerRef())) {
-            List<HandlerRef> reals = adapter.realHandlers();
+        if (isGroupRef(persisted.handlerRef())) {
+            List<HandlerRef> reals = membersOf(persisted.handlerRef());
             List<String> previousValues = previousValuesOf(reals);
-            HandlerOverrideApplier.apply(persisted, adapter);
+            HandlerOverrideApplier.apply(persisted, adapter, this::membersOf);
             overrides.put(persisted);
             // Decision #3 (issue #13): one audit row per real handler, not
             // one for the group (code-review finding).
@@ -829,7 +1016,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         }
 
         try {
-            HandlerOverrideApplier.apply(persisted, adapter);
+            HandlerOverrideApplier.apply(persisted, adapter, this::membersOf);
         } catch (UnknownHandlerException e) {
             // Name resolution hasn't happened yet (#29) -- track it anyway,
             // as pending, so the verification sweep applies it once the ref
@@ -918,8 +1105,8 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      * real's own captured value).
      */
     private void captureBaselineFor(HandlerRef ref) {
-        if (HandlerRef.ALL_HANDLERS.equals(ref)) {
-            for (HandlerRef real : adapter.realHandlers()) {
+        if (isGroupRef(ref)) {
+            for (HandlerRef real : membersOf(ref)) {
                 baselines.captureIfAbsent(real, adapter);
             }
         } else {
@@ -941,32 +1128,33 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      * {@link AggregateLevelControl#setHandlerLevel} uses across contexts --
      * applied here across the real handlers within one context instead.
      */
-    private HandlerLevelOverride applyAndRecordGroupMutation(Level level, SetHandlerLevelOptions opts) {
+    private HandlerLevelOverride applyAndRecordGroupMutation(HandlerRef groupRef, Level level,
+            SetHandlerLevelOptions opts) {
         Instant now = Instant.now();
         int mutated = 0;
-        List<HandlerRef> reals = adapter.realHandlers();
+        List<HandlerRef> reals = membersOf(groupRef);
         for (HandlerRef real : reals) {
             baselines.captureIfAbsent(real, adapter);
             String previousValue = adapter.handlerLevel(real).map(Level::toString).orElse("<none>");
             try {
                 adapter.setHandlerLevel(real, level); // mutation
             } catch (RuntimeException e) {
-                System.err.println("[logaperture-core] ALL_HANDLERS: failed to set handler '" + real
+                System.err.println("[logaperture-core] " + groupRef + ": failed to set handler '" + real
                         + "', leaving it unchanged: " + e);
                 continue;
             }
             mutated++;
             // An individually-tracked override on this same real handler
-            // (plain JUL, where a real ref stays addressable alongside
-            // ALL_HANDLERS) is now stale: the group mutation just applied a
-            // new value directly to it, and the row below already audits
-            // that change. Drop it so `logctl status` doesn't show two
-            // overrides disagreeing about the same handler's level
-            // (code-review finding). The reverse ordering -- an individual
-            // override set *after* ALL_HANDLERS, deliberately peeling one
-            // handler off the group -- is left alone; that override still
-            // wins and this class does not currently guard the group's own
-            // reset/reapply from also touching that handler.
+            // (plain JUL, where a real ref stays addressable alongside the
+            // group) is now stale: the group mutation just applied a new
+            // value directly to it, and the row below already audits that
+            // change. Drop it so `logctl status` doesn't show two overrides
+            // disagreeing about the same handler's level (code-review
+            // finding). The reverse ordering -- an individual override set
+            // *after* the group, deliberately peeling one handler off it --
+            // is left alone; that override still wins and this class does
+            // not currently guard the group's own reset/reapply from also
+            // touching that handler.
             if (overrides.get(real).isPresent()) {
                 overrides.remove(real);
                 safePersist(() -> stateStore.removeHandler(real));
@@ -976,17 +1164,17 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                     AuditRecord.Action.MUTATION));
         }
         if (mutated == 0 && !reals.isEmpty()) {
-            throw new IllegalStateException("setHandlerLevel(ALL_HANDLERS) failed for every real handler");
+            throw new IllegalStateException("setHandlerLevel(" + groupRef + ") failed for every real handler");
         }
 
         Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
         HandlerLevelOverride override = HandlerLevelOverride.fixed(
-                HandlerRef.ALL_HANDLERS, level, opts.reason(), now, source, opts.tier(), expiresAt);
+                groupRef, level, opts.reason(), now, source, opts.tier(), expiresAt);
         overrides.put(override); // one tracked entry for the whole group
         if (opts.tier() != PersistenceTier.SESSION) {
             safePersist(() -> stateStore.saveHandler(override));
         } else {
-            safePersist(() -> stateStore.removeHandler(HandlerRef.ALL_HANDLERS));
+            safePersist(() -> stateStore.removeHandler(groupRef));
         }
         return override;
     }
@@ -999,7 +1187,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
         HandlerLevelOverride override = HandlerLevelOverride.fixed(
                 ref, level, opts.reason(), now, source, opts.tier(), expiresAt);
-        HandlerOverrideApplier.apply(override, adapter); // mutation: the point of no return
+        HandlerOverrideApplier.apply(override, adapter, this::membersOf); // mutation: the point of no return
         pendingResume.remove(ref); // a direct, successful apply proves ref resolves now, if it was ever pending
 
         overrides.put(override); // commit
@@ -1033,8 +1221,8 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         }
         pendingResume.remove(ref); // untracked either way -- pending status is moot now
 
-        if (HandlerRef.ALL_HANDLERS.equals(ref)) {
-            applyGroupReset(auditSource);
+        if (isGroupRef(ref)) {
+            applyGroupReset(ref, auditSource);
             return true;
         }
 
@@ -1075,9 +1263,9 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      * failure, is logged and skipped rather than aborting the rest of the
      * group (doc/specs/handler-floor-control.md "Failure handling").
      */
-    private void applyGroupReset(String auditSource) {
+    private void applyGroupReset(HandlerRef groupRef, String auditSource) {
         Instant now = Instant.now();
-        for (HandlerRef real : adapter.realHandlers()) {
+        for (HandlerRef real : membersOf(groupRef)) {
             if (!baselines.isCaptured(real)) {
                 continue; // never touched by the group mutation -- nothing to revert
             }
@@ -1100,8 +1288,8 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      * as the single-ref undo in {@link #verifyAndReapply} ("no audit for a
      * re-apply that did not stick").
      */
-    private void restoreGroupToBaselinesSilently() {
-        for (HandlerRef real : adapter.realHandlers()) {
+    private void restoreGroupToBaselinesSilently(HandlerRef groupRef) {
+        for (HandlerRef real : membersOf(groupRef)) {
             if (baselines.isCaptured(real)) {
                 trySetHandlerLevel(real, baselines.get(real).orElse(null), "undo");
             }
@@ -1116,7 +1304,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             }
             return true;
         } catch (RuntimeException e) {
-            System.err.println("[logaperture-core] ALL_HANDLERS: failed to " + action + " handler '" + ref
+            System.err.println("[logaperture-core] group reset: failed to " + action + " handler '" + ref
                     + "', leaving it unchanged: " + e);
             return false;
         }
@@ -1131,11 +1319,11 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     }
 
     private void recordReversionForNeverApplied(HandlerLevelOverride persisted, Instant now) {
-        if (HandlerRef.ALL_HANDLERS.equals(persisted.handlerRef())) {
+        if (isGroupRef(persisted.handlerRef())) {
             // One record per real handler, symmetric with every other
-            // ALL_HANDLERS audit trail (Decision #3) -- captureBaselineFor
-            // already populated a baseline for each real handler, above.
-            for (HandlerRef real : adapter.realHandlers()) {
+            // group audit trail (Decision #3) -- captureBaselineFor already
+            // populated a baseline for each real handler, above.
+            for (HandlerRef real : membersOf(persisted.handlerRef())) {
                 String newValue = baselines.isCaptured(real)
                         ? baselines.get(real).map(Level::toString).orElse("<none>")
                         : "<none>";

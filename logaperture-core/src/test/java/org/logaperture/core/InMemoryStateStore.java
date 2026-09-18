@@ -34,6 +34,7 @@ final class InMemoryStateStore implements StateStore {
 
     private final Map<String, LevelOverride> saved = new LinkedHashMap<>();
     private final Map<HandlerRef, HandlerLevelOverride> savedHandlers = new LinkedHashMap<>();
+    private List<String> savedDefaultHandlerMembers = List.of();
     private RuntimeException throwOnSave;
     private int removeAllCalls;
     private int removeAllHandlersCalls;
@@ -102,8 +103,24 @@ final class InMemoryStateStore implements StateStore {
     }
 
     @Override
+    public List<String> loadDefaultHandlerMembers() {
+        return savedDefaultHandlerMembers;
+    }
+
+    @Override
+    public void saveDefaultHandlerMembers(Collection<String> memberNames) {
+        savedDefaultHandlerMembers = List.copyOf(memberNames);
+    }
+
+    @Override
+    public void removeDefaultHandlerMembers() {
+        savedDefaultHandlerMembers = List.of();
+    }
+
+    @Override
     public void clear() {
         saved.clear();
         savedHandlers.clear();
+        savedDefaultHandlerMembers = List.of();
     }
 }

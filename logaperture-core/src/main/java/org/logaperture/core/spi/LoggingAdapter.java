@@ -204,6 +204,19 @@ public interface LoggingAdapter {
     }
 
     /**
+     * The subset of {@link #realHandlers()} directly attached to the root
+     * logger — doc/specs/handler-floor-control.md "Deterministic
+     * initial-membership rule", issue #28: one of the facts {@code
+     * DEFAULT_HANDLERS}'s selection rule needs and only the adapter can
+     * answer (root attachment is a hierarchy fact, not a per-handler
+     * diagnostic). Default empty, for a framework this adapter can't
+     * introspect at all.
+     */
+    default List<HandlerRef> handlersOnRoot() {
+        return List.of();
+    }
+
+    /**
      * Best-effort static facts about {@code ref}'s own configuration — file
      * size caps, backup counts, autoflush, target path — for {@code
      * doctor}'s checks (doc/specs/doctor.md "Adapter SPI"). Never a level;

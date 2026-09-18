@@ -26,6 +26,7 @@ import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AggregateLevelControl.ContextControl;
 import org.logaperture.core.BaselineRegistry;
 import org.logaperture.core.CapabilityPolicy;
+import org.logaperture.core.DefaultHandlerGroupRegistry;
 import org.logaperture.core.DoctorService;
 import org.logaperture.core.EnvironmentReportService;
 import org.logaperture.core.FileStateStore;
@@ -93,7 +94,8 @@ class JulLevelControlTest {
                 auditLog, store, "alice", "jmx");
         service.resumeFromStateStore(Instant.now());
         HandlerLevelControlService handlerService = new HandlerLevelControlService(
-                adapter, new HandlerBaselineRegistry(), new HandlerOverrideRegistry(), CapabilityPolicy.allowAll(),
+                adapter, new HandlerBaselineRegistry(), new HandlerOverrideRegistry(),
+                new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(),
                 auditLog, store, "alice", "jmx");
         handlerService.resumeFromStateStore(Instant.now());
         DoctorService doctorService = new DoctorService(adapter, CapabilityPolicy.allowAll());

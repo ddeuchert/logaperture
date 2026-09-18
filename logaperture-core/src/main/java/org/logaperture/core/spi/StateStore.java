@@ -77,7 +77,24 @@ public interface StateStore {
         }
     }
 
-    /** Removes every persisted entry — logger overrides and handler overrides alike. */
+    /**
+     * {@code DEFAULT_HANDLERS}'s persisted explicit membership (doc/specs/
+     * handler-floor-control.md "Default handler group", issue #28) -- names,
+     * not {@code HandlerRef}s, matching the on-the-wire shape a config value
+     * (not an override registry) actually needs. Empty when nothing has
+     * ever been explicitly assigned, or the last assignment was cleared /
+     * discarded outright by staleness (never a distinct "unset" marker to
+     * round-trip).
+     */
+    List<String> loadDefaultHandlerMembers();
+
+    /** Replaces the whole persisted set in one write -- membership is a single config value, not N independent records. */
+    void saveDefaultHandlerMembers(Collection<String> memberNames);
+
+    /** No-op if nothing was persisted. */
+    void removeDefaultHandlerMembers();
+
+    /** Removes every persisted entry — logger overrides, handler overrides, and {@code DEFAULT_HANDLERS} membership alike. */
     void clear();
 
     /**
@@ -127,6 +144,21 @@ public interface StateStore {
 
             @Override
             public void removeHandler(HandlerRef ref) {
+                // nothing to remove
+            }
+
+            @Override
+            public List<String> loadDefaultHandlerMembers() {
+                return List.of();
+            }
+
+            @Override
+            public void saveDefaultHandlerMembers(Collection<String> memberNames) {
+                // discarded, deliberately
+            }
+
+            @Override
+            public void removeDefaultHandlerMembers() {
                 // nothing to remove
             }
 

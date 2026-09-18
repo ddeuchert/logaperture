@@ -21,6 +21,7 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
+import java.util.logging.ConsoleHandler;
 import java.util.logging.Handler;
 
 /**
@@ -63,7 +64,7 @@ final class JulHandlerDiagnostics {
         Boolean autoFlush = autoFlushOf(handler);
         Long maxFileSizeBytes = (Long) fieldOf(handler, "rotateSize");
         Integer backupCount = (Integer) fieldOf(handler, "maxBackupIndex");
-        return new HandlerDiagnostics(maxFileSizeBytes, backupCount, autoFlush, targetPath);
+        return new HandlerDiagnostics(maxFileSizeBytes, backupCount, autoFlush, targetPath, handler instanceof ConsoleHandler);
     }
 
     private static Path targetPathOf(Handler handler) {

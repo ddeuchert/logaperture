@@ -249,7 +249,8 @@ final class Parser {
             }
             case "set" -> {
                 if (rest.isEmpty()) {
-                    throw usage("'set' needs 'logger <target> <level>' or 'handler <name> <level>'.");
+                    throw usage("'set' needs 'logger <target> <level>', 'handler <name> <level>', "
+                            + "or 'handlers default [<name> ...]'.");
                 }
                 String noun = rest.get(0);
                 List<String> nounRest = rest.subList(1, rest.size());
@@ -275,8 +276,18 @@ final class Parser {
                         yield Commands.setHandlerLevel(handlerRef, parseLevel(nounRest.get(1)), reason,
                                 tier.tierName(), tier.forSeconds(), json);
                     }
-                    default -> throw usage("'set' needs 'logger <target> <level>' or 'handler <name> <level>', "
-                            + "got '" + noun + "'.");
+                    case "handlers" -> {
+                        if (nounRest.isEmpty() || !nounRest.get(0).equals("default")) {
+                            throw usage("'set handlers' needs 'default [<name> ...]'.");
+                        }
+                        // No tier token here (doc/specs/handler-floor-control.md "Default
+                        // handler group": membership is a standing config value, always
+                        // persisted, not a reverting override) -- everything after
+                        // "default" is a handler name, zero names clears it.
+                        yield Commands.setDefaultHandlerMembers(nounRest.subList(1, nounRest.size()), json);
+                    }
+                    default -> throw usage("'set' needs 'logger <target> <level>', 'handler <name> <level>', "
+                            + "or 'handlers default [<name> ...]', got '" + noun + "'.");
                 };
             }
             default -> throw usage("Unknown command '" + command + "'.");

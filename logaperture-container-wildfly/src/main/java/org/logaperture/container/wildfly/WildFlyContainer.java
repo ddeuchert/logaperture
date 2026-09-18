@@ -22,6 +22,7 @@ import org.logaperture.core.AggregateLevelControl.ContextControl;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.BaselineRegistry;
 import org.logaperture.core.CapabilityPolicy;
+import org.logaperture.core.DefaultHandlerGroupRegistry;
 import org.logaperture.core.DoctorService;
 import org.logaperture.core.EnvironmentReportService;
 import org.logaperture.core.FileStateStore;
@@ -148,8 +149,8 @@ public final class WildFlyContainer implements AutoCloseable {
         OverrideRegistry overrides = new OverrideRegistry();
         ActiveLoggerFloor activeLoggerFloor = () -> List.copyOf(overrides.all().values());
         HandlerLevelControlService handlerService = new HandlerLevelControlService(adapter,
-                new HandlerBaselineRegistry(), new HandlerOverrideRegistry(), policy, auditLog, stateStore,
-                principal(), "jmx", activeLoggerFloor);
+                new HandlerBaselineRegistry(), new HandlerOverrideRegistry(), new DefaultHandlerGroupRegistry(),
+                policy, auditLog, stateStore, principal(), "jmx", activeLoggerFloor);
         // doc/specs/handler-floor-control.md "Resume resilience and
         // baseline-key migration" (issue #29): keep the baseline/override
         // registries in step with JulLoggingAdapter's own token->friendly-name
