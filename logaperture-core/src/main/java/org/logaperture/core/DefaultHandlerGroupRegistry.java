@@ -82,14 +82,18 @@ public final class DefaultHandlerGroupRegistry {
      * stored, nothing to rename.
      */
     public void migrateMember(HandlerRef oldRef, HandlerRef newRef) {
-        Set<HandlerRef> current = explicit.get();
-        if (current == null || !current.contains(oldRef)) {
-            return;
+        while (true) {
+            Set<HandlerRef> current = explicit.get();
+            if (current == null || !current.contains(oldRef)) {
+                return;
+            }
+            Set<HandlerRef> updated = new LinkedHashSet<>(current);
+            updated.remove(oldRef);
+            updated.add(newRef);
+            if (explicit.compareAndSet(current, Set.copyOf(updated))) {
+                return;
+            }
         }
-        Set<HandlerRef> updated = new LinkedHashSet<>(current);
-        updated.remove(oldRef);
-        updated.add(newRef);
-        explicit.set(Set.copyOf(updated));
     }
 
     /**
@@ -99,30 +103,36 @@ public final class DefaultHandlerGroupRegistry {
      * picks exactly one handler when no explicit assignment survives.
      */
     public List<HandlerRef> members(LoggingAdapter adapter) {
-        Set<HandlerRef> current = explicit.get();
-        if (current == null) {
-            return DefaultHandlerSelector.select(adapter).map(List::of).orElse(List.of());
-        }
-        Set<HandlerRef> reals = Set.copyOf(adapter.realHandlers());
-        Set<HandlerRef> survivors = new LinkedHashSet<>();
-        for (HandlerRef ref : current) {
-            if (reals.contains(ref)) {
-                survivors.add(ref);
+        while (true) {
+            Set<HandlerRef> current = explicit.get();
+            if (current == null) {
+                return DefaultHandlerSelector.select(adapter).map(List::of).orElse(List.of());
             }
+            Set<HandlerRef> reals = Set.copyOf(adapter.realHandlers());
+            Set<HandlerRef> survivors = new LinkedHashSet<>();
+            for (HandlerRef ref : current) {
+                if (reals.contains(ref)) {
+                    survivors.add(ref);
+                }
+            }
+            if (survivors.isEmpty()) {
+                // Total staleness -- "start over": discard, don't re-persist a
+                // freshly-computed value (doc/specs/handler-floor-control.md
+                // "Staleness"). The caller (HandlerLevelControlService) is
+                // responsible for clearing the state-file record too.
+                if (!explicit.compareAndSet(current, null)) {
+                    continue; // lost the race to a concurrent assignment/migration -- reread and retry
+                }
+                return DefaultHandlerSelector.select(adapter).map(List::of).orElse(List.of());
+            }
+            if (survivors.size() < current.size()) {
+                // Partial staleness -- prune and keep the rest as the explicit
+                // assignment; the caller persists the pruned set.
+                if (!explicit.compareAndSet(current, Set.copyOf(survivors))) {
+                    continue; // lost the race -- reread and retry against the newer value
+                }
+            }
+            return List.copyOf(survivors);
         }
-        if (survivors.isEmpty()) {
-            // Total staleness -- "start over": discard, don't re-persist a
-            // freshly-computed value (doc/specs/handler-floor-control.md
-            // "Staleness"). The caller (HandlerLevelControlService) is
-            // responsible for clearing the state-file record too.
-            explicit.set(null);
-            return DefaultHandlerSelector.select(adapter).map(List::of).orElse(List.of());
-        }
-        if (survivors.size() < current.size()) {
-            // Partial staleness -- prune and keep the rest as the explicit
-            // assignment; the caller persists the pruned set.
-            explicit.set(survivors);
-        }
-        return List.copyOf(survivors);
     }
 }

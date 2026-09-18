@@ -278,12 +278,19 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      * post-reconfiguration adapter too (see {@link #membersOf(HandlerRef,
      * LoggingAdapter)}) -- membership itself is adapter-independent state,
      * only its staleness check needs to know which adapter is current.
+     *
+     * <p>This is invoked from read-only paths too ({@code listHandlers}), so
+     * the state-file write is gated on {@link Capability#PERSIST} exactly
+     * like {@link #setDefaultHandlerMembers} -- a read must never perform a
+     * privileged write just because staleness happened to be discovered
+     * during it. The in-memory prune/discard on {@code defaultHandlerGroup}
+     * itself still applies either way; only persisting it to disk is gated.
      */
     private List<HandlerRef> resolveDefaultHandlerMembers(LoggingAdapter forAdapter) {
         Optional<Set<HandlerRef>> before = defaultHandlerGroup.explicit();
         List<HandlerRef> result = defaultHandlerGroup.members(forAdapter);
         Optional<Set<HandlerRef>> after = defaultHandlerGroup.explicit();
-        if (!after.equals(before)) {
+        if (!after.equals(before) && policy.isGranted(Capability.PERSIST)) {
             if (after.isPresent()) {
                 safePersist(() -> stateStore.saveDefaultHandlerMembers(toNames(after.get())));
             } else {
