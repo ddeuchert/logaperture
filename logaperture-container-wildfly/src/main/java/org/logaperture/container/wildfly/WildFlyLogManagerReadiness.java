@@ -26,12 +26,22 @@ import org.logaperture.bridge.Diagnostics;
  * if that happens too early it is the JDK default, not JBoss LogManager,
  * and WildFly's logging bootstrap breaks.
  *
- * <p>So this class polls a <em>side channel</em> — the {@code
- * java.util.logging.manager} system property string — never a JUL method,
- * until it reads {@code org.jboss.logmanager.LogManager}. Only then, after
- * a short settle, does it touch {@code LogManager.getLogManager()} for the
- * first time (which at that point simply returns the already-installed
- * JBoss one).
+ * <p>So this class polls two <em>side channels</em> — never a JUL method —
+ * until both agree JBoss LogManager is really in place: the {@code
+ * java.util.logging.manager} system property string, and (issue: an
+ * intermittent "Could not load Logmanager" against real WildFly) whether
+ * {@code org.jboss.logmanager.LogManager} is actually loadable yet. jboss-
+ * modules sets the property and makes the class loadable in two separate,
+ * non-atomic steps of its own bootstrap; polling only the property lost that
+ * race under load — property already flipped, class not yet resolvable via
+ * the system classloader — which drove {@code java.util.logging.LogManager}'s
+ * own static initializer to fail loading the named class and silently fall
+ * back to the JDK default manager instead. That happens exactly once per JVM
+ * and cannot be undone once it happens, so a fixed-delay guess ("settle a
+ * bit, then hope") is not good enough here — the class-loadable check is the
+ * real precondition. Only once both checks pass, after a short settle, does
+ * this touch {@code LogManager.getLogManager()} for the first time (which at
+ * that point simply returns the already-installed JBoss one).
  */
 final class WildFlyLogManagerReadiness {
 
@@ -54,11 +64,12 @@ final class WildFlyLogManagerReadiness {
      */
     static void awaitJBossLogManagerThen(Runnable onReady) {
         for (int attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++) {
-            if (JBOSS_LOG_MANAGER.equals(System.getProperty(MANAGER_PROPERTY))) {
+            if (JBOSS_LOG_MANAGER.equals(System.getProperty(MANAGER_PROPERTY)) && jbossLogManagerClassIsLoadable()) {
                 sleep(SETTLE_MS);
-                // First JUL touch -- safe now: the property says JBoss, so
-                // this returns the already-installed JBoss LogManager rather
-                // than installing the JDK default.
+                // First JUL touch -- safe now: the property says JBoss AND
+                // the class is confirmed loadable, so this returns the
+                // already-installed JBoss LogManager rather than installing
+                // the JDK default.
                 String installed = java.util.logging.LogManager.getLogManager().getClass().getName();
                 if (JBOSS_LOG_MANAGER.equals(installed)) {
                     onReady.run();
@@ -72,6 +83,25 @@ final class WildFlyLogManagerReadiness {
         }
         Diagnostics.warn("LogAperture: java.util.logging.manager never became " + JBOSS_LOG_MANAGER
                 + " within " + (MAX_POLL_ATTEMPTS * POLL_INTERVAL_MS) + "ms; not installing WildFly level control");
+    }
+
+    /**
+     * True once {@code org.jboss.logmanager.LogManager} is actually
+     * resolvable via the system classloader — the same lookup {@code
+     * java.util.logging.LogManager}'s own static initializer performs
+     * internally the moment something first touches it. Non-initializing
+     * ({@code Class.forName(..., false, ...)}): no static block runs, no
+     * {@code java.util.logging} class is touched, only class *presence* is
+     * checked — same discipline as {@code WildFlyContainerIntegration
+     * .isClassPresent}. Package-visible so a test can call it directly.
+     */
+    static boolean jbossLogManagerClassIsLoadable() {
+        try {
+            Class.forName(JBOSS_LOG_MANAGER, false, ClassLoader.getSystemClassLoader());
+            return true;
+        } catch (Throwable notYetLoadable) {
+            return false;
+        }
     }
 
     private static void sleep(long millis) {

@@ -25,7 +25,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The test JVM runs with {@code java.util.logging.manager} already set to
  * JBoss LogManager (see the pom), so this is the "already installed" happy
- * path — the readiness gate proceeds and runs the callback.
+ * path — the readiness gate proceeds and runs the callback. That leaves the
+ * property-vs-class-loadable race (the intermittent "Could not load
+ * Logmanager" against real WildFly, fixed by checking both) uncovered here —
+ * it needs two independently-timed bootstrap steps that only a real
+ * jboss-modules launch produces, not something this in-process test can
+ * fake — so {@link #jbossLogManagerClassIsLoadable_trueOnThisTestJvm} locks
+ * in just the new precondition check in isolation instead.
  */
 class WildFlyLogManagerReadinessTest {
 
@@ -39,5 +45,13 @@ class WildFlyLogManagerReadinessTest {
         WildFlyLogManagerReadiness.awaitJBossLogManagerThen(() -> ran.set(true));
 
         assertTrue(ran.get());
+    }
+
+    @Test
+    void jbossLogManagerClassIsLoadable_trueOnThisTestJvm() {
+        // The pom puts jboss-logmanager on the test classpath, so it is
+        // loadable here the same way it is on a real WildFly once
+        // jboss-modules has finished its own bootstrap.
+        assertTrue(WildFlyLogManagerReadiness.jbossLogManagerClassIsLoadable());
     }
 }
