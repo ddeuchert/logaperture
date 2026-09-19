@@ -17,41 +17,99 @@ package org.logaperture.container.wildfly;
 
 import org.junit.jupiter.api.Test;
 
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The test JVM runs with {@code java.util.logging.manager} already set to
- * JBoss LogManager (see the pom), so this is the "already installed" happy
- * path — the readiness gate proceeds and runs the callback. That leaves the
- * property-vs-class-loadable race (the intermittent "Could not load
- * Logmanager" against real WildFly, fixed by checking both) uncovered here —
- * it needs two independently-timed bootstrap steps that only a real
- * jboss-modules launch produces, not something this in-process test can
- * fake — so {@link #jbossLogManagerClassIsLoadable_trueOnThisTestJvm} locks
- * in just the new precondition check in isolation instead.
+ * JBoss LogManager (see the pom), so the gate's "already installed" path is
+ * exercised for real. What an in-process test cannot fake is jboss-modules'
+ * actual bootstrap — the class visible only through a module classloader —
+ * so that is left to the real-WildFly IT; the pieces of the gate are covered
+ * individually here.
  */
 class WildFlyLogManagerReadinessTest {
 
+    private static final Class<?> JBOSS_MANAGER_CLASS = org.jboss.logmanager.LogManager.class;
+
     @Test
-    void awaitJBossLogManagerThen_runsTheCallbackWhenTheManagerIsInstalled() {
-        assertEquals("org.jboss.logmanager.LogManager",
+    void awaitJBossLogManagerThen_runsTheCallbackOnceTheClassIsLoaded() {
+        assertEquals(WildFlyLogManagerReadiness.JBOSS_LOG_MANAGER,
                 java.util.logging.LogManager.getLogManager().getClass().getName(),
                 "the pom installs JBoss LogManager for this test JVM");
 
         AtomicBoolean ran = new AtomicBoolean(false);
-        WildFlyLogManagerReadiness.awaitJBossLogManagerThen(() -> ran.set(true));
+        AtomicInteger polls = new AtomicInteger();
+        Supplier<Class<?>> appearsOnThirdPoll = () -> polls.incrementAndGet() < 3 ? null : JBOSS_MANAGER_CLASS;
+
+        WildFlyLogManagerReadiness.awaitJBossLogManagerThen(appearsOnThirdPoll, 1, 5_000, () -> ran.set(true));
 
         assertTrue(ran.get());
+        assertEquals(3, polls.get());
     }
 
     @Test
-    void jbossLogManagerClassIsLoadable_trueOnThisTestJvm() {
-        // The pom puts jboss-logmanager on the test classpath, so it is
-        // loadable here the same way it is on a real WildFly once
-        // jboss-modules has finished its own bootstrap.
-        assertTrue(WildFlyLogManagerReadiness.jbossLogManagerClassIsLoadable());
+    void awaitJBossLogManagerThen_givesUpWithoutRunningTheCallbackWhenTheClassNeverLoads() {
+        AtomicBoolean ran = new AtomicBoolean(false);
+
+        WildFlyLogManagerReadiness.awaitJBossLogManagerThen(() -> null, 1, 50, () -> ran.set(true));
+
+        assertFalse(ran.get());
+    }
+
+    @Test
+    void findClassByName_findsAPresentClassAndReturnsNullForAnAbsentOne() {
+        Class<?>[] loaded = {String.class, JBOSS_MANAGER_CLASS, Integer.class};
+
+        assertSame(JBOSS_MANAGER_CLASS,
+                WildFlyLogManagerReadiness.findClassByName(loaded, WildFlyLogManagerReadiness.JBOSS_LOG_MANAGER));
+        assertNull(WildFlyLogManagerReadiness.findClassByName(loaded, "no.such.Manager"));
+        assertNull(WildFlyLogManagerReadiness.findClassByName(new Class<?>[0], "java.lang.String"));
+    }
+
+    @Test
+    void callWithContextClassLoader_setsTheLoaderForTheCallAndRestoresTheOriginalAfter() {
+        ClassLoader original = Thread.currentThread().getContextClassLoader();
+        ClassLoader moduleLoader = new URLClassLoader(new URL[0], null);
+
+        Supplier<ClassLoader> readContextLoader = () -> Thread.currentThread().getContextClassLoader();
+        ClassLoader seenDuringCall = WildFlyLogManagerReadiness.callWithContextClassLoader(moduleLoader, readContextLoader);
+
+        assertSame(moduleLoader, seenDuringCall);
+        assertSame(original, Thread.currentThread().getContextClassLoader());
+    }
+
+    @Test
+    void callWithContextClassLoader_restoresTheOriginalWhenTheCallThrows() {
+        ClassLoader original = Thread.currentThread().getContextClassLoader();
+        ClassLoader moduleLoader = new URLClassLoader(new URL[0], null);
+
+        Supplier<String> failing = () -> {
+            throw new IllegalStateException("boom");
+        };
+        assertThrows(IllegalStateException.class,
+                () -> WildFlyLogManagerReadiness.callWithContextClassLoader(moduleLoader, failing));
+
+        assertSame(original, Thread.currentThread().getContextClassLoader());
+    }
+
+    @Test
+    void callWithContextClassLoader_leavesTheContextLoaderAloneForABootstrapLoadedClass() {
+        ClassLoader original = Thread.currentThread().getContextClassLoader();
+
+        Supplier<ClassLoader> readContextLoader = () -> Thread.currentThread().getContextClassLoader();
+        ClassLoader seenDuringCall = WildFlyLogManagerReadiness.callWithContextClassLoader(null, readContextLoader);
+
+        assertSame(original, seenDuringCall);
     }
 }

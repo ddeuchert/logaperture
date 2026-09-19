@@ -641,27 +641,51 @@ Therefore:
   `org.jboss.as.host-controller` / `process-controller` launch) is declined with a
   diagnostic (§15.6: v1 is standalone only).
 - **Discovery** (`WildFlyLogManagerReadiness`, driven on a daemon thread from `activate`)
-  does the M0 spike point 2 discipline: poll `System.getProperty("java.util.logging.manager")`
-  (a side channel — never `java.util.logging` itself) until it reads
-  `org.jboss.logmanager.LogManager` **and** `org.jboss.logmanager.LogManager` is confirmed
-  loadable (a non-initializing `Class.forName` against the system classloader — same
-  class-presence discipline as `detect()`, never `java.util.logging`), wait a short settle,
-  *then* make the first JUL call — `LogManager.getLogManager()` — and confirm the installed
-  manager really is the JBoss one before installing anything. Then `installContext` a
-  `JulLoggingAdapter` (over the now-installed `java.util.logging.LogManager`) as `stableKey`
-  `"system"`.
+  does the M0 spike point 2 discipline — never a `java.util.logging` call until it is safe —
+  in three steps:
+  1. **Wait for JBoss to have loaded its LogManager.** Poll (100ms, up to 60s) until
+     `System.getProperty("java.util.logging.manager")` reads `org.jboss.logmanager.LogManager`
+     **and** `org.jboss.logmanager.LogManager` has been loaded by *some* classloader, found by
+     scanning `Instrumentation.getAllLoadedClasses()` (the agent always has the
+     `Instrumentation` — it is passed to `activate`; LogAperture only runs as an agent). The
+     scan only starts once the cheap property check passes, so it runs a handful of times, not
+     for the whole 60s.
+  2. **Make the first JUL call ourselves, the way WildFly does.** On the detection thread,
+     temporarily set the thread's context classloader to the loaded class's own classloader,
+     call `LogManager.getLogManager()`, then restore the original context classloader. Confirm
+     the installed manager really is the JBoss one before installing anything. If JBoss's
+     thread already initialized JUL this just returns the installed manager; if JBoss's thread
+     is mid-initialization we block on the JDK class-init lock until it finishes; and if we
+     get there first, JUL's own lookup still succeeds, so whichever thread wins, JUL gets the
+     JBoss LogManager.
+  3. `installContext` a `JulLoggingAdapter` (over the now-installed
+     `java.util.logging.LogManager`) as `stableKey` `"system"`.
 
-  **Both checks, not just the property — found against a real deployment.** jboss-modules
-  sets `java.util.logging.manager` and makes the class loadable in two separate, non-atomic
-  steps of its own bootstrap. Polling only the property (the original Slice 3 design) lost
-  that race intermittently under load: property already read `org.jboss.logmanager
-  .LogManager`, but the class wasn't yet resolvable via the system classloader when this
-  gate made the first JUL call, so `java.util.logging.LogManager`'s own static initializer
-  failed to load the class it was told to and silently fell back to installing the JDK
-  default — printing a "Could not load Logmanager" diagnostic of its own. That install
-  happens exactly once per JVM and cannot be undone, so the fixed 500ms settle was a guess,
-  not a real synchronization point. The class-loadable check is the real precondition and
-  closes the race instead of widening the guess.
+  No fixed settle delay: step 2 removes the race the delay was guessing at.
+
+  **Why not "the class is loadable via the system classloader" — found against a real
+  WildFly 33.** Two earlier designs failed against real deployments:
+  - *Property only* (original Slice 3): jboss-modules sets `java.util.logging.manager` and
+    gets the class in place in separate, non-atomic steps. Our gate lost that race
+    intermittently under load and made the first JUL call before the class was resolvable, so
+    `java.util.logging.LogManager`'s static initializer (which tries the system classloader,
+    then the *calling thread's* context classloader) failed and silently installed the JDK
+    default — printing "Could not load Logmanager". That install happens once per JVM and
+    cannot be undone.
+  - *Property plus a `Class.forName(..., systemClassLoader)` check* (the intermediate fix):
+    this **never** succeeds on WildFly. `org.jboss.logmanager.LogManager` is not visible to
+    the system classloader there; WildFly's own main thread gets it because jboss-modules sets
+    a module classloader as that thread's context classloader. So the gate always timed out
+    (`java.util.logging.manager never became org.jboss.logmanager.LogManager within 60000ms`)
+    and level control was never installed. Observed in a real `server.log`.
+
+  The system-classloader check is not a usable signal on WildFly, and the JDK's
+  context-classloader fallback is invisible from our own thread's default context
+  classloader. Step 1 uses the signal that *is* observable (the class has been loaded
+  somewhere) and step 2 supplies the context classloader the fallback needs. The perfmon4j
+  agent hit and fixed the same problem (`JBossLogManagerReadiness`); this follows its design
+  minus its "not running as an agent" and system-classloader ("Quarkus-style") cases, neither
+  of which applies to a WildFly-only, agent-only container.
 - **Regression test:** the Testcontainers IT boots WildFly with the agent attached and
   asserts `server.log` shows a clean start (no "The LogManager was not properly installed",
   no premature-JUL-access warning) and that `logctl` reaches the agent — which it can only
@@ -792,10 +816,13 @@ In-process (no Docker) — all run by `mvn verify`:
     `jboss.home.dir`, false without it, false in domain mode; `guidance()` is the
     one-`-javaagent`-line story and states `standalone.xml` is untouched.
   - `WildFlyLogManagerReadinessTest` — the readiness gate runs its callback once the
-    manager is confirmed installed (the test JVM is the "already installed" case); the
-    class-loadable precondition check is true on this test JVM (jboss-logmanager is on the
-    test classpath). The property-vs-loadable race itself needs a real jboss-modules launch
-    to reproduce and isn't covered here — see the real-WildFly IT below.
+    manager is confirmed installed (the test JVM is the "already installed" case); finding a
+    loaded class by name in a `Class<?>[]` (present and absent); the first-JUL-call step sets
+    the context classloader to the loaded class's loader for the call and restores the
+    original one afterwards, even if the call throws; and the polling loop times out with a
+    warning when the readiness check never passes. The real jboss-modules behaviour — the
+    class only loadable through a module classloader, two-step bootstrap — cannot be faked
+    in-process; the real-WildFly IT below is what proves the gate actually passes there.
   - `WildFlyContainerTest` — the composition root against real JBoss LogManager nodes
     (unique-prefixed names): the full list/set/reset/resetAll loop with the level mapped
     exactly to `FINE`; the verification sweep re-applies an override cleared out from under
