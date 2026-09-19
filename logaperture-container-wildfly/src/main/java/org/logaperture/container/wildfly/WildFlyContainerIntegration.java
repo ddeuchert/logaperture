@@ -121,7 +121,7 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
             }
         };
         Thread detector = new Thread(
-                () -> WildFlyLogManagerReadiness.awaitJBossLogManagerThen(install), "logaperture-wildfly-detect");
+                () -> WildFlyLogManagerReadiness.awaitJBossLogManagerThen(inst, install), "logaperture-wildfly-detect");
         detector.setDaemon(true);
         detector.start();
 
