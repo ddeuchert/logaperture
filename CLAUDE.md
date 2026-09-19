@@ -39,7 +39,7 @@ divergence — don't let them drift apart.
 A feature branch is named for the issue it implements (`feature/<issue>-<slug>`) and its PR
 title/body reference that issue (e.g. `(issue #32)`) — deliberately never GitHub's `Closes #32`
 keyword, since merging to `develop` is not a release. The moment that PR merges into `develop`,
-add the `code-complete-on-develop` label to the issue, as part of finishing the merge, not a
+add the `on develop` label to the issue, as part of finishing the merge, not a
 separate followup step.
 
 The label means exactly what its own description says: code complete, will be part of the next
