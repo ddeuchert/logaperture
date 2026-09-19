@@ -258,11 +258,12 @@ The container publishes JDWP on **8787**. Two attach configs in
 | Phase | Thread | Path |
 |---|---|---|
 | **A — premain** | `main` | `LogApertureAgent.premain` → `AgentBootstrap.start` → `WildFlyContainerIntegration.detect()` → `.activate()`, which constructs `WildFlyContainer`, starts the `logaperture-wildfly-detect` daemon, and **returns immediately** |
-| **B — install** | `logaperture-wildfly-detect` | `WildFlyLogManagerReadiness.awaitJBossLogManagerThen` polls the `java.util.logging.manager` property (a side channel, never JUL itself); once it reads `org.jboss.logmanager.LogManager` → `JulAdapterFactory.forCurrentContext()` → `installContext` → `wireConfigurationListener` → `JmxRegistrar.register` → sets `-Dlogaperture.version` |
+| **B — install** | `logaperture-wildfly-detect` | `WildFlyLogManagerReadiness.awaitJBossLogManagerThen` polls the `java.util.logging.manager` property and `Instrumentation.getAllLoadedClasses()` (side channels, never JUL itself) until the property reads `org.jboss.logmanager.LogManager` and jboss-modules has loaded that class; it then makes the first JUL call itself, with the context classloader set to the class's loader → `JulAdapterFactory.forCurrentContext()` → `installContext` → `wireConfigurationListener` → `JmxRegistrar.register` → sets `-Dlogaperture.version` |
 
-Between the two, WildFly's own boot runs (~1s) until jboss-modules installs
+Between the two, WildFly's own boot runs (~1s) until jboss-modules loads
 JBoss LogManager. The premain gotcha (spec §15.6) is that phase B must not touch
-`java.util.logging` before then.
+`java.util.logging` before then, and its own first JUL call must run with the
+right context classloader (spec: wildfly-support.md, "Detection and the premain gotcha").
 
 ### The `-agentlib:jdwp` ordering gotcha
 
