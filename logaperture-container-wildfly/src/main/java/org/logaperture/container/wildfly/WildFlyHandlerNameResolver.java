@@ -118,6 +118,11 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
         Class<?> modelControllerIface = Class.forName("org.jboss.as.controller.ModelController", false, loader);
         ModelExecutor executor = ModelExecutor.forServer(loader, modelControllerIface, modelController);
 
+        if (!serverIsRunning(loader, executor)) {
+            dbg("server not fully running yet -- deferring subsystem=logging reads");
+            return Map.of();
+        }
+
         Map<String, String> nameToType = readLoggingHandlerNames(loader, executor);
         dbg("model handler names=" + nameToType);
         Map<String, String> fileNameByHandlerName = readFileNames(loader, executor, nameToType);
@@ -161,6 +166,38 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
     }
 
     // --- model reads --------------------------------------------------------------------------------
+
+    /**
+     * {@code read-attribute(name=server-state)} at the root address. Unlike
+     * probing {@code /subsystem=logging} directly, or even asking the root
+     * for its registered {@code subsystem} child names, this is safe to call
+     * the instant {@code jboss.as.server-controller} comes UP: {@code
+     * server-state} is a core attribute the root resource is built with, not
+     * something an extension registers later during boot — probing the
+     * {@code subsystem} child-type instead was tried first and still raced
+     * (WFLYCTL0202, "No known child type named subsystem") before extensions
+     * finish loading. Only once the server reports {@code running} do the
+     * per-handler-type reads below run, so they never hit a subsystem that
+     * boot hasn't installed yet and trigger WildFly's own {@code WFLYCTL0013}
+     * ERROR logging (issue #66).
+     */
+    private static boolean serverIsRunning(ClassLoader loader, ModelExecutor executor) throws Exception {
+        Class<?> modelNode = Class.forName("org.jboss.dmr.ModelNode", false, loader);
+        Method mnGet = modelNode.getMethod("get", String.class);
+        Method mnSetString = modelNode.getMethod("set", String.class);
+        Method mnAsString = modelNode.getMethod("asString");
+        Method mnHasDefined = modelNode.getMethod("hasDefined", String.class);
+
+        Object op = modelNode.getConstructor().newInstance();
+        mnSetString.invoke(mnGet.invoke(op, "operation"), "read-attribute");
+        mnSetString.invoke(mnGet.invoke(op, "name"), "server-state");
+
+        Object result = executor.execute(op);
+        if (!(boolean) mnHasDefined.invoke(result, "result")) {
+            return false;
+        }
+        return "running".equals(mnAsString.invoke(mnGet.invoke(result, "result")));
+    }
 
     /** {@code read-children-names} per handler resource type; returns name -> resource type. */
     private static Map<String, String> readLoggingHandlerNames(ClassLoader loader, ModelExecutor executor)
@@ -357,7 +394,10 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
 
     private static void dbg(String message) {
         if (DEBUG) {
-            System.err.println("[#14 resolver] " + message);
+            // stdout, not stderr: WildFly tags every [stderr] line ERROR
+            // regardless of content, and this is opt-in trace output, not a
+            // failure -- issue #66.
+            System.out.println("[#14 resolver] " + message);
         }
     }
 }

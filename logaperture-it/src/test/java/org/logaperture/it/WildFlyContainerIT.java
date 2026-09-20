@@ -149,6 +149,23 @@ class WildFlyContainerIT {
     }
 
     @Test
+    void handlerNameResolution_probesTheModelOnlyOnceLoggingSubsystemIsRegistered() throws Exception {
+        // Issue #66: the resolver used to issue read-children-names under
+        // /subsystem=logging on its first sweep, before that subsystem's
+        // management resources exist -- WildFly itself logs WFLYCTL0013 at
+        // ERROR for each one (7 handler resource types) on every boot. The
+        // resolver now checks the root's child-type=subsystem names first
+        // (always valid) and skips the per-handler-type reads until
+        // "logging" appears there.
+        String bootLog = exec("cat", SERVER_LOG).getStdout();
+        assertFalse(bootLog.contains("WFLYCTL0013"), "no failed management-operation logging at boot:\n" + bootLog);
+
+        // ... and resolution still succeeds once the subsystem is up.
+        assertTrue(logctl("list", "handlers", "--show-all").stdout().contains("CONSOLE"),
+                "CONSOLE is still resolved by name after the boot-time gate");
+    }
+
+    @Test
     void forOverride_raisesABootLoggerThenResetRestoresIt() {
         Logctl before = logctl("list", "loggers", BOOT_LOGGER, "--show-all");
         assertTrue(before.stdout().contains("INFO"), "org.jboss.as.server starts at INFO:\n" + before.stdout());
