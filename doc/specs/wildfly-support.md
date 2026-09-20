@@ -835,10 +835,15 @@ In-process (no Docker) — all run by `mvn verify`:
 - `logaperture-cli` (`CommandsTest`): the CONTEXT column appears in `levels` / `status`
   iff the result spans more than one distinct context, and is absent otherwise.
 
-**`logaperture-it` — `WildFlyContainerIT`, real WildFly 26.1.3.Final via Testcontainers,
-PASSING.** Self-skips without Docker (`disabledWithoutDocker`); CI runs it on an ubuntu
-runner. `logctl` runs *inside* the container (attaches to the WildFly JVM locally, as a
-real operator would), so there is no JMX-over-Docker plumbing. With the agent attached by a
+**`logaperture-it` — `WildFlyContainerIT`, real WildFly via Testcontainers, PASSING.**
+Self-skips without Docker (`disabledWithoutDocker`); CI runs it on an ubuntu runner. The
+image is a Maven property (`-Dwildfly.image`, default `26.1.3.Final-jdk17`) rather than
+hard-coded — issue #65: the suite derives the expected `env`/`env --json` container
+version and the probe WAR's servlet namespace (`javax.servlet` through WildFly 26,
+`jakarta.servlet` from WildFly 27's Jakarta EE 10 jump) from that same image tag, so it
+runs unmodified against `-Dwildfly.image=quay.io/wildfly/wildfly:33.0.0.Final-jdk21` too.
+`logctl` runs *inside* the container (attaches to the WildFly JVM locally, as a real
+operator would), so there is no JMX-over-Docker plumbing. With the agent attached by a
 bare `-javaagent`:
   - WildFly boots clean (no "LogManager not properly installed", no premature-JUL warning)
     and `logctl levels org.jboss` lists the server's own loggers.
