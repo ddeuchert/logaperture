@@ -28,8 +28,9 @@
   <artifactId>logaperture-it</artifactId>
 
   <description>
-    Real-server integration tests. Currently: a standalone WildFly
-    26.1.3.Final booted with the agent attached, via Testcontainers. The
+    Real-server integration tests. Currently: a standalone WildFly (image
+    configurable via -Dwildfly.image / -Dlogaperture.wildfly.image, default
+    26.1.3.Final) booted with the agent attached, via Testcontainers. The
     whole module's tests self-skip when Docker is not available
     (@Testcontainers(disabledWithoutDocker = true)), so `mvn verify` stays
     green without Docker; CI opts in on an ubuntu runner. See
@@ -38,9 +39,23 @@
 
   <dependencies>
     <!--
-      No logaperture module deps: the IT drives the pre-built agent + logctl
-      jars (by path) against a real WildFly, and asserts on logctl's output.
+      Not used by the test code (it drives the pre-built agent + logctl jars
+      by path against a real WildFly), but declared so `-pl logaperture-it -am`
+      builds and installs fresh ones instead of silently reusing whatever
+      already sits in target/ (issue #65).
     -->
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-agent</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-cli</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>testcontainers</artifactId>
@@ -58,18 +73,25 @@
       <scope>test</scope>
     </dependency>
     <!--
-      Compile-time only: the probe WAR's @WebListener is compiled against this
-      in-test. WildFly 26.1.3.Final is Jakarta EE 8 (Servlet 4.0, javax.servlet
-      namespace, Weld 3.1.9), so the probe must use javax.servlet, not jakarta.
-      maven-dependency-plugin:properties (below) exposes this artifact's local
-      path as ${javax.servlet:javax.servlet-api:jar}, which the IT hands to the
-      in-process compiler explicitly, so the probe compile does not depend on
-      the shape of the forked JVM's java.class.path.
+      Compile-time only: the probe WAR's @WebListener is compiled against one
+      of these, whichever matches the WildFly image under test (issue #65):
+      WildFly <=26 is Jakarta EE 8 (Servlet 4.0, javax.servlet namespace);
+      WildFly 27+ jumped straight to Jakarta EE 10 (Servlet 6.0, jakarta.servlet
+      namespace). maven-dependency-plugin:properties (below) exposes each
+      artifact's local path as ${<groupId>:<artifactId>:jar}, which the IT
+      hands to the in-process compiler explicitly, so the probe compile does
+      not depend on the shape of the forked JVM's java.class.path (issue #65).
     -->
     <dependency>
       <groupId>javax.servlet</groupId>
       <artifactId>javax.servlet-api</artifactId>
       <version>4.0.1</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>jakarta.servlet</groupId>
+      <artifactId>jakarta.servlet-api</artifactId>
+      <version>6.0.0</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -96,10 +118,13 @@
         <configuration>
           <systemPropertyVariables>
             <!--
-              The javax.servlet-api jar the in-test probe WAR compiles against;
-              passed explicitly so the compile does not rely on java.class.path.
+              The servlet-api jars the in-test probe WAR can compile against,
+              one per namespace; passed explicitly so the compile does not
+              rely on java.class.path. The IT picks whichever matches the
+              WildFly image under test (issue #65).
             -->
-            <probe.compile.classpath>${javax.servlet:javax.servlet-api:jar}</probe.compile.classpath>
+            <probe.compile.classpath.javax>${javax.servlet:javax.servlet-api:jar}</probe.compile.classpath.javax>
+            <probe.compile.classpath.jakarta>${jakarta.servlet:jakarta.servlet-api:jar}</probe.compile.classpath.jakarta>
             <!--
               The shaded agent jar from logaperture-agent, which the reactor
               builds before this module. finalName there is "logaperture-agent",

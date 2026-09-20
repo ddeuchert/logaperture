@@ -32,6 +32,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -42,8 +44,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * The Slice 3 exit criterion, against a real standalone WildFly 26.1.3.Final:
- * agent attached by a bare {@code -javaagent}, driven entirely through
+ * The Slice 3 exit criterion, against a real standalone WildFly (image
+ * configurable via {@code -Dwildfly.image}, default 26.1.3.Final, per issue
+ * #65): agent attached by a bare {@code -javaagent}, driven entirely through
  * {@code logctl} — see doc/specs/wildfly-support.md.
  *
  * <p>{@code logctl} runs <em>inside</em> the container (it attaches to the
@@ -84,10 +87,26 @@ class WildFlyContainerIT {
     private static final String BOOT_LOGGER = "org.jboss.as.server";
     private static final String APP_LOGGER = "com.myapp.probe.Worker";
 
+    /**
+     * Matches the version tag out of an image reference like
+     * {@code quay.io/wildfly/wildfly:33.0.0.Final-jdk21} -- group 1 is the
+     * full version ({@code 33.0.0.Final}), group 2 its major ({@code 33}).
+     */
+    private static final Pattern IMAGE_VERSION = Pattern.compile(":(?<version>(?<major>\\d+)[\\w.]*)-jdk\\d+$");
+
+    /**
+     * WildFly 27 jumped straight from Jakarta EE 8 (javax.servlet) to Jakarta
+     * EE 10 (jakarta.servlet) -- there was no EE9/jakarta-namespace release in
+     * between (issue #65).
+     */
+    private static final int FIRST_JAKARTA_NAMESPACE_MAJOR = 27;
+
     @TempDir
     private Path scratch;
 
     private GenericContainer<?> wildfly;
+    private String expectedContainerVersion;
+    private boolean jakartaServletNamespace;
 
     @BeforeAll
     void startWildFly() throws Exception {
@@ -97,6 +116,10 @@ class WildFlyContainerIT {
                 System.getProperty("logaperture.cli.jar"));
 
         String image = System.getProperty("logaperture.wildfly.image", "quay.io/wildfly/wildfly:26.1.3.Final-jdk17");
+        Matcher versionMatch = IMAGE_VERSION.matcher(image);
+        assertTrue(versionMatch.find(), "expected a recognizable WildFly version tag in " + image);
+        expectedContainerVersion = versionMatch.group("version");
+        jakartaServletNamespace = Integer.parseInt(versionMatch.group("major")) >= FIRST_JAKARTA_NAMESPACE_MAJOR;
 
         // This image ignores JAVA_OPTS_APPEND, and setting JAVA_OPTS would wipe
         // its --add-opens/--add-exports -- so append one line to standalone.conf.
@@ -511,7 +534,7 @@ class WildFlyContainerIT {
         // this test still passed.
         assertTrue(out.contains("Logging backend") && out.matches("(?s).*JBoss LogManager \\d[\\w.]*Final.*"),
                 "expected the real logging backend line with a version:\n" + out);
-        assertTrue(out.contains("Framework/container") && out.contains("WildFly 26.1.3.Final"),
+        assertTrue(out.contains("Framework/container") && out.contains("WildFly " + expectedContainerVersion),
                 "expected the real container line with its actual version, not just the name:\n" + out);
         assertTrue(out.contains("Diagnostics level"), "shown either way, per Decision #5:\n" + out);
         // doc/specs/environment-report.md "State file" -- an absolute path
@@ -532,7 +555,7 @@ class WildFlyContainerIT {
         assertTrue(out.contains("\"backendName\":\"JBoss LogManager\""), out);
         assertFalse(out.contains("\"backendVersion\":null"), "expected a real backend version, not absent:\n" + out);
         assertTrue(out.contains("\"containerName\":\"WildFly\""), out);
-        assertTrue(out.contains("\"containerVersion\":\"26.1.3.Final\""),
+        assertTrue(out.contains("\"containerVersion\":\"" + expectedContainerVersion + "\""),
                 "expected the real container version, not absent:\n" + out);
         assertTrue(out.matches("(?s).*\"stateFilePath\":\"/\\S*\\.state\\.yaml\".*"),
                 "expected a real, absolute state file path, not absent:\n" + out);
@@ -580,11 +603,12 @@ class WildFlyContainerIT {
     }
 
     private Path buildProbeWar() throws IOException {
+        String servletPackage = jakartaServletNamespace ? "jakarta.servlet" : "javax.servlet";
         String source = """
                 package com.myapp.probe;
-                import javax.servlet.ServletContextEvent;
-                import javax.servlet.ServletContextListener;
-                import javax.servlet.annotation.WebListener;
+                import %s.ServletContextEvent;
+                import %s.ServletContextListener;
+                import %s.annotation.WebListener;
                 import java.util.logging.Level;
                 import java.util.logging.Logger;
                 @WebListener
@@ -597,7 +621,7 @@ class WildFlyContainerIT {
                         Logger.getLogger("com.myapp.probe.Worker").log(Level.FINEST, "probe trace marker");
                     }
                 }
-                """;
+                """.formatted(servletPackage, servletPackage, servletPackage);
         Path src = scratch.resolve("com/myapp/probe/Probe.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, source);
@@ -606,7 +630,7 @@ class WildFlyContainerIT {
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         assertNotNull(compiler, "a JDK (not JRE) is required to build the probe WAR");
         int rc = compiler.run(null, null, null,
-                "--release", "17", // the WildFly image runs JDK 17
+                "--release", "17", // class-file target only; every supported image runs JDK 17+
                 "-classpath", probeCompileClasspath(),
                 "-d", classes.toString(), src.toString());
         assertEquals(0, rc, "probe compile failed");
@@ -625,13 +649,16 @@ class WildFlyContainerIT {
     }
 
     /**
-     * The javax.servlet-api jar to compile the probe against. Maven's
-     * dependency:properties goal sets {@code probe.compile.classpath} to that
-     * artifact's local path (see logaperture-it/pom.xml); fall back to the
-     * forked JVM's full classpath only if that wiring is absent.
+     * The servlet-api jar to compile the probe against, matching the
+     * WildFly image under test (issue #65): {@code javax.servlet} through
+     * WildFly 26, {@code jakarta.servlet} from 27 on. Maven's
+     * dependency:properties goal sets {@code probe.compile.classpath.<ns>} to
+     * that artifact's local path (see logaperture-it/pom.xml); fall back to
+     * the forked JVM's full classpath only if that wiring is absent.
      */
-    private static String probeCompileClasspath() {
-        String explicit = System.getProperty("probe.compile.classpath", "");
+    private String probeCompileClasspath() {
+        String property = jakartaServletNamespace ? "probe.compile.classpath.jakarta" : "probe.compile.classpath.javax";
+        String explicit = System.getProperty(property, "");
         if (!explicit.isBlank() && Files.isReadable(Path.of(explicit))) {
             return explicit;
         }
