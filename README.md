@@ -8,6 +8,8 @@
 >
 > Bug reports from an alpha run, prior-art pointers, and war stories about log volume in constrained environments are all useful — [open an issue](../../issues).
 
+**Have a WildFly server handy?** [Test-drive the current feature set](doc/wildfly-test-drive.md) in about 15 minutes — attach, toggle trace logging on and off, compare `for`/`session`/`sticky`, look at `doctor` and `top`. Feedback from that run is exactly what this alpha needs.
+
 ---
 
 ## The problem
@@ -75,6 +77,7 @@ If you know of something that does, please say so. Finding out early is worth mo
 ## Documentation
 
 - [Design document](doc/logaperture-spec.md) — architecture, feature specification, security model, and roadmap.
+- [Test-driving LogAperture on WildFly](doc/wildfly-test-drive.md) — a hands-on, ~15-minute walkthrough of the current feature set against a real WildFly server.
 - [DEVELOPMENT.md](DEVELOPMENT.md) — building, testing, running `logctl`, and the WildFly dev environment.
 
 ## Contributing
