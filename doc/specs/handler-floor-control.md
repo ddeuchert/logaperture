@@ -676,6 +676,24 @@ the management model; instances are matched by shape as above. This is the
 
 Two reflection disciplines the IT forced, both classic JBoss-Modules traps:
 
+- **Gated on `server-state == running` (issue [#66](https://github.com/ddeuchert/logaperture/issues/66)).**
+  The resolver runs on the sweep thread as soon as `jboss.as.server-controller`
+  is UP, which on real boot is well before the logging subsystem's management
+  resources are registered — every `read-children-names` under
+  `/subsystem=logging` failed, and WildFly itself logs each of those 7 failures
+  at ERROR (`WFLYCTL0013`), every boot, though behavior was never affected
+  (best-effort, next sweep retries). The resolver now issues one
+  `read-attribute(name=server-state)` at the root address first — a core
+  attribute the root resource is built with, present from the instant the
+  controller service comes UP, unlike an extension-registered child type — and
+  skips the per-handler-type reads entirely until it reports `running`.
+  (Probing for `logging` in the root's own `subsystem` child-type list was
+  tried first and still raced: that child type itself isn't registered until
+  extensions finish loading, so it traded 7 ERRORs for 1 dressed the same
+  way.) Its own opt-in trace output (`-Dlogaperture.wildfly.handlerNames.debug`)
+  moved from stderr to stdout for the same reason — WildFly tags every
+  `[stderr]` line ERROR regardless of content, so even successful trace lines
+  showed up looking like failures.
 - **Load through the boot module loader.** `org.jboss.modules.Module` is the
   one WildFly class on the system class path; `getBootModuleLoader()
   .loadModule("org.jboss.as.server").getClassLoader()` is the loader that can
