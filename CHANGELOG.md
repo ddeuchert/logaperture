@@ -21,6 +21,8 @@ still change between builds without a migration path.
   `logctl list loggers|handlers`. The level-named verbs (`debug`, `trace`, ...) are
   retired. `list loggers` shows overrides only by default (`--show-all` for
   everything); `reset loggers --include-sticky` also clears sticky overrides.
+  **Breaking:** commands and scripts written for alpha.1 (e.g. `logctl debug <logger>`)
+  will stop working and must be updated to the new forms.
 - **Pattern targeting is pure selection.** Glob patterns select the loggers a
   command applies to; standing rules are retired.
 
