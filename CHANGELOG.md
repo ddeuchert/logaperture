@@ -7,6 +7,52 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ## [Unreleased]
 
+## [0.1.0-alpha.2] — 2026-09-20
+
+Developer handler workflow, a reworked command surface, and WildFly fixes.
+**Evaluation only — not for production.** The override store's on-disk format may
+still change between builds without a migration path.
+
+### Changed
+
+- **`logctl` command surface refactor.** `set`, `reset` and `list` are now
+  namespaced by target: `logctl set logger <logger> <level>`,
+  `logctl set handler <name> <level>`, `logctl reset logger|loggers|handler|handlers`,
+  `logctl list loggers|handlers`. The level-named verbs (`debug`, `trace`, ...) are
+  retired. `list loggers` shows overrides only by default (`--show-all` for
+  everything); `reset loggers --include-sticky` also clears sticky overrides.
+- **Pattern targeting is pure selection.** Glob patterns select the loggers a
+  command applies to; standing rules are retired.
+
+### Added
+
+- **`AUTO` handler level** — `logctl set handler CONSOLE AUTO` makes a handler
+  track the lowest active logger override.
+- **`DEFAULT_HANDLERS`** — a deterministic default handler group for handler
+  targeting.
+- **Squelch warning** — warns when raising a handler's level would silence an
+  active logger override.
+- **`logctl env`** — read-only environment report for bug reports, including the
+  fully-qualified state file path.
+- **WildFly test-drive walkthrough** (`doc/wildfly-test-drive.md`).
+
+### Fixed
+
+- WildFly handler-name resolution on newer WildFly (#39) and the readiness gate
+  that never passed (#64); boot-time resolver noise (#66); an intermittent
+  JBoss LogManager install race.
+- Handler override resume resilience across restarts: pending overrides and
+  baseline-key migration (#29).
+- `StateStore` batches removals in reset and expiry sweeps (#17).
+- `WildFlyContainerIT` runs against any WildFly image (#65).
+
+### Known limitations
+
+- The adapter's handler-ref maps are not pruned across repeated
+  `/subsystem=logging` reconfiguration
+  ([#31](https://github.com/ddeuchert/logaperture/issues/31)).
+- Still no log suppression; see the alpha.1 "Not yet in this build" list.
+
 ## [0.1.0-alpha.1] — 2026-09-07
 
 First tagged build. **Evaluation only — not for production.** The override
@@ -67,5 +113,6 @@ store's on-disk format may still change between builds without a migration path.
   `/subsystem=logging` reconfiguration
   ([#31](https://github.com/ddeuchert/logaperture/issues/31)).
 
-[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v0.1.0-alpha.1...HEAD
+[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v0.1.0-alpha.2...HEAD
+[0.1.0-alpha.2]: https://github.com/ddeuchert/logaperture/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/ddeuchert/logaperture/releases/tag/v0.1.0-alpha.1

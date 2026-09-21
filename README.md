@@ -2,9 +2,9 @@
 
 **Runtime logging control for the JVM.** See, tune, and bound what your application logs — without restarting it, editing its configuration, or knowing in advance what will go wrong.
 
-> ### Status: 0.1.0-alpha.1 — early, evaluation only
+> ### Status: 0.1.0-alpha.2 — early, evaluation only
 >
-> **Not for production.** This is the first tagged build. It does real work on a running JVM — see [Try the alpha](#try-the-alpha) — but the feature set is partial, the override store's on-disk format may still change between builds with no migration, and there is no support commitment.
+> **Not for production.** It does real work on a running JVM — see [Try the alpha](#try-the-alpha) — but the feature set is partial, the override store's on-disk format may still change between builds with no migration, and there is no support commitment.
 >
 > Bug reports from an alpha run, prior-art pointers, and war stories about log volume in constrained environments are all useful — [open an issue](../../issues).
 
@@ -30,7 +30,7 @@
 
 ## Try the alpha
 
-`0.1.0-alpha.1` is a **measure-and-control** slice — it reads what your app logs, and it changes log levels. It does not suppress anything yet.
+`0.1.0-alpha.2` is a **measure-and-control** slice — it reads what your app logs, and it changes log levels. It does not suppress anything yet.
 
 **Tested on:**
 
@@ -50,7 +50,7 @@ Working today:
 
 **Not in this build:** automatic storm collapse or any suppression, per-rule squelching, the Log4j 2 adapter, and any Spring Boot / Tomcat / Quarkus-JVM integration (a Spring Boot fat-jar attaches as a plain JVM, so level control *may* work against its Logback, but it is untested).
 
-**Getting it:** download [`logaperture-0.1.0-alpha.1.zip`](https://github.com/ddeuchert/logaperture/releases/download/v0.1.0-alpha.1/logaperture-0.1.0-alpha.1.zip) (or browse [all releases](../../releases)), unzip, and follow the bundled `INSTALL-wildfly.md`. [DEVELOPMENT.md](DEVELOPMENT.md) covers a plain-JVM setup and running `logctl`.
+**Getting it:** download [`logaperture-0.1.0-alpha.2.zip`](https://github.com/ddeuchert/logaperture/releases/download/v0.1.0-alpha.2/logaperture-0.1.0-alpha.2.zip) (or browse [all releases](../../releases)), unzip, and follow the bundled `INSTALL-wildfly.md`. [DEVELOPMENT.md](DEVELOPMENT.md) covers a plain-JVM setup and running `logctl`.
 
 ## Design principles
 
