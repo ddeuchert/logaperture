@@ -22,7 +22,14 @@ agent's own store and revert on a timer or on `logctl reset`.
 
 ## Install
 
-1. Unzip this bundle somewhere on the server, e.g. `/opt/logaperture`.
+1. Unzip this bundle somewhere on the server, e.g. `/opt/logaperture`, and put
+   its `bin/` directory on your `PATH` so you can type plain `logctl`
+   (add the line to `~/.bashrc` or your shell's profile to make it stick):
+   ```sh
+   export PATH="$PATH:/opt/logaperture/bin"
+   ```
+   (Windows: add `C:\opt\logaperture\bin` to `PATH`.) The examples below
+   assume this; otherwise substitute the full path to `logctl`.
 
 2. Add the agent to the server's JVM options — **one line**, appended:
 
@@ -41,7 +48,7 @@ agent's own store and revert on a timer or on `logctl reset`.
 4. Verify — the server log shows a clean start (no "The LogManager was not
    properly installed"), and:
    ```sh
-   /opt/logaperture/bin/logctl list loggers org.jboss --show-all
+   logctl list loggers org.jboss --show-all
    ```
    lists the server's own loggers. `logctl status` shows no overrides yet.
 

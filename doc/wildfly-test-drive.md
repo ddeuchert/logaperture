@@ -16,8 +16,10 @@ exactly as it started.
 
 **Prerequisites:** a standalone WildFly (26.x+) you can restart and don't mind
 experimenting on, JDK 17+ on that host, and the LogAperture distribution
-unzipped there (or built locally — see [DEVELOPMENT.md](../DEVELOPMENT.md)).
-`logctl` must run as the same OS user, on the same host, as the WildFly
+unzipped there (or built locally — see [DEVELOPMENT.md](../DEVELOPMENT.md)),
+with its `bin/` directory on your `PATH` (e.g.
+`export PATH="$PATH:/opt/logaperture/bin"`) — every command below is a bare
+`logctl`. `logctl` must run as the same OS user, on the same host, as the WildFly
 process.
 
 Every command block below is real output — this was run start to finish
