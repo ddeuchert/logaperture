@@ -139,20 +139,23 @@ Landed on `feature/72-drop-rule`, unit-tested, full reactor build green:
 **Deliberately deferred past this pass** (not silently dropped — recorded here so it isn't
 mistaken for "done"):
 
-- **Multi-context fan-out and leading-star pattern-target expansion for `add rule drop`.**
+- **Multi-context fan-out and leading-star pattern-target expansion for `add rule drop`**
+  ([#79](https://github.com/ddeuchert/logaperture/issues/79)).
   `AggregateLevelControl.addRuleDrop` attaches to the first registered context only; a pattern
   target is rejected client-side with a clear error rather than mishandled. Real parity with
   `set logger`'s preview/confirm/multi-context broadcast is real additional scope, not folded
   in silently here — a fast-follow, same discipline `rule-pipeline-foundation.md`'s own
   "reset logger's rule-removal side effect is scoped to the exact-name path only" used.
-- **`WildFlyContainerIT`** — the epic's own required real-WildFly scenario (ERROR trimmed...
-  restated for drop: INFO dropped, ERROR kept, non-matching/other-logger kept, survives
+- **`WildFlyContainerIT`** ([#80](https://github.com/ddeuchert/logaperture/issues/80)) — the
+  epic's own required real-WildFly scenario (ERROR trimmed... restated for drop: INFO dropped,
+  ERROR kept, non-matching/other-logger kept, survives
   `filter-spec`/`pattern-formatter`/new-handler/`:reload`, `sampleFull` and the summary line
   observed for real, a `STICKY` drop resumes after a restart) needs a running WildFly container
   this pass didn't have. Remains this issue's own open exit criterion.
-- **`top`'s bytes-saved figure for a drop rule** — the epic's "`top` shows the bytes a rule
-  saved" is not wired up; `top`'s existing byte-counting formatter wrap is untouched by this
-  slice.
+- **`top`'s bytes-saved figure for a drop rule**
+  ([#81](https://github.com/ddeuchert/logaperture/issues/81)) — the epic's "`top` shows the
+  bytes a rule saved" is not wired up; `top`'s existing byte-counting formatter wrap is
+  untouched by this slice.
 - **`--dry-run`** — deferred by the epic itself, unchanged.
 
 ## Divergence from prior specs
