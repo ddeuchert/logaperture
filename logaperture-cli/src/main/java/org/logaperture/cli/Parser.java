@@ -158,8 +158,8 @@ final class Parser {
         if (includeSticky && !command.equals("reset")) {
             throw usage("--include-sticky applies only to 'reset'.");
         }
-        if (limit != null && !command.equals("top")) {
-            throw usage("--limit applies only to 'top'.");
+        if (limit != null && !command.equals("top") && !command.equals("storms")) {
+            throw usage("--limit applies only to 'top' or 'storms'.");
         }
         if (showAll && !command.equals("list")) {
             throw usage("--show-all applies only to 'list loggers' or 'list handlers'.");
@@ -205,6 +205,12 @@ final class Parser {
                     throw usage("'doctor' takes no arguments.");
                 }
                 yield Commands.doctor(json);
+            }
+            case "storms" -> {
+                if (!rest.isEmpty()) {
+                    throw usage("'storms' takes no arguments.");
+                }
+                yield Commands.storms(limit == null ? 0 : limit, json);
             }
             case "env" -> {
                 if (!rest.isEmpty()) {

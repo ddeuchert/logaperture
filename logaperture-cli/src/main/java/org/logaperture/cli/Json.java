@@ -25,6 +25,8 @@ import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.SetLevelResultData;
 import org.logaperture.control.jmx.SquelchedLoggerData;
+import org.logaperture.control.jmx.StormData;
+import org.logaperture.control.jmx.StormReportData;
 import org.logaperture.control.jmx.TopReportData;
 
 import java.util.LinkedHashSet;
@@ -227,6 +229,38 @@ final class Json {
                 .raw("loggers", array.toString())
                 .str("measurementStartedAt", report.getMeasurementStartedAt())
                 .raw("trackedCount", String.valueOf(report.getTrackedCount()))
+                .toString();
+    }
+
+    /**
+     * {@code logctl storms --json} — doc/specs/storm-detection.md "The
+     * operation": {@code trackedCount}/{@code ongoingCount} are the true
+     * pre-{@code --limit} counts, same discipline as {@code top}'s.
+     */
+    static String storms(StormReportData report) {
+        StringJoiner array = new StringJoiner(",", "[", "]");
+        for (StormData storm : report.getStorms()) {
+            array.add(new Obj()
+                    .str("loggerName", storm.getLoggerName())
+                    .str("level", storm.getLevel())
+                    .str("throwableClass", storm.getThrowableClass())
+                    .str("normalizedMessage", storm.getNormalizedMessage())
+                    .raw("topFrames", storm.getTopFrames() == null ? "null" : stringArray(storm.getTopFrames()))
+                    .str("status", storm.getStatus())
+                    .str("firstEventAt", storm.getFirstEventAt())
+                    .str("lastEventAt", storm.getLastEventAt())
+                    .str("endedAt", storm.getEndedAt())
+                    .raw("eventCount", String.valueOf(storm.getEventCount()))
+                    .str("firstOccurrence", storm.getFirstOccurrence())
+                    .str("context", storm.getContext())
+                    .toString());
+        }
+        return new Obj()
+                .raw("storms", array.toString())
+                .raw("trackedCount", String.valueOf(report.getTrackedCount()))
+                .raw("ongoingCount", String.valueOf(report.getOngoingCount()))
+                .str("measurementStartedAt", report.getMeasurementStartedAt())
+                .raw("notRetainedCount", String.valueOf(report.getNotRetainedCount()))
                 .toString();
     }
 

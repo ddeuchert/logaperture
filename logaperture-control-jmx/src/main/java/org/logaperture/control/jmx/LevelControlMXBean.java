@@ -196,6 +196,16 @@ public interface LevelControlMXBean {
     TopReportData topLoggers(int limit);
 
     /**
+     * {@code logctl storms} — report-only log storm detection, across every
+     * registered context (doc/specs/storm-detection.md). Never mutates
+     * anything; requires only the {@code VIEW} capability.
+     *
+     * @param limit keep only the {@code limit} worst storms; {@code limit <=
+     *              0} means "every tracked storm"
+     */
+    StormReportData activeStorms(int limit);
+
+    /**
      * {@code logctl env} — a read-only environment report for a bug report
      * (doc/specs/environment-report.md). Never mutates anything; requires
      * only the {@code VIEW} capability. A fact this JVM can't resolve is

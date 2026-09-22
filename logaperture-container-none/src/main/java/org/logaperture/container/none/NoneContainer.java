@@ -32,6 +32,7 @@ import org.logaperture.core.HandlerOverrideRegistry;
 import org.logaperture.core.LevelControlService;
 import org.logaperture.core.LoggerOverrideChangeListener;
 import org.logaperture.core.OverrideRegistry;
+import org.logaperture.core.StormService;
 import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.TopService;
 import org.logaperture.core.spi.ContextHandle;
@@ -165,6 +166,7 @@ public final class NoneContainer implements AutoCloseable {
 
         DoctorService doctorService = new DoctorService(adapter, policy);
         TopService topService = new TopService(adapter, policy);
+        StormService stormService = new StormService(adapter, policy);
         EnvironmentReportService environmentReportService = new EnvironmentReportService(adapter, policy);
 
         // doc/specs/persistence.md "Reconfiguration re-application": Logback's
@@ -181,6 +183,7 @@ public final class NoneContainer implements AutoCloseable {
             service.reapplyActiveOverrides(adapter);
             handlerService.reapplyActiveOverrides(adapter);
             topService.startMeasuring();
+            stormService.startDetection();
         };
         adapter.onReset(reapplyOnReset);
 
@@ -188,9 +191,11 @@ public final class NoneContainer implements AutoCloseable {
         // by the time an operator runs `logctl top`, the volume that mattered
         // already happened, so measurement can't start on demand.
         topService.startMeasuring();
+        // doc/specs/storm-detection.md: same "always-on from context-install" discipline.
+        stormService.startDetection();
 
         aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService,
-                environmentReportService));
+                stormService, environmentReportService));
     }
 
     /**

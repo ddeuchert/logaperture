@@ -344,4 +344,17 @@ final class FakeLoggingAdapter implements LoggingAdapter {
         }
         return backendInfoToReturn;
     }
+
+    // --- storm detection support (doc/specs/storm-detection.md) -------------------------------
+
+    private int installStormDetectionCalls;
+
+    int installStormDetectionCallCount() {
+        return installStormDetectionCalls;
+    }
+
+    @Override
+    public void installStormDetection(StormObserver detector) {
+        installStormDetectionCalls++;
+    }
 }

@@ -33,6 +33,8 @@ import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
 import org.logaperture.api.SquelchedLogger;
+import org.logaperture.api.Storm;
+import org.logaperture.api.StormReport;
 import org.logaperture.core.spi.ContextHandle;
 
 import java.time.Instant;
@@ -70,23 +72,25 @@ import java.util.function.Supplier;
  * call. The multi-context paths are exercised by tests with fake contexts.
  */
 public final class AggregateLevelControl implements LevelControlOperations, HandlerLevelControlOperations,
-        DoctorOperations, TopOperations, EnvironmentReportOperations {
+        DoctorOperations, TopOperations, StormOperations, EnvironmentReportOperations {
 
     /**
      * One context: its {@link ContextHandle}, the single-context logger
      * service, the single-context handler service, the single-context
-     * doctor service, the single-context top service, and the
-     * single-context environment-report service that drive it.
+     * doctor service, the single-context top service, the single-context
+     * storm service, and the single-context environment-report service that
+     * drive it.
      */
     public record ContextControl(ContextHandle handle, LevelControlService service,
             HandlerLevelControlService handlerService, DoctorService doctorService, TopService topService,
-            EnvironmentReportService environmentReportService) {
+            StormService stormService, EnvironmentReportService environmentReportService) {
         public ContextControl {
             Objects.requireNonNull(handle, "handle");
             Objects.requireNonNull(service, "service");
             Objects.requireNonNull(handlerService, "handlerService");
             Objects.requireNonNull(doctorService, "doctorService");
             Objects.requireNonNull(topService, "topService");
+            Objects.requireNonNull(stormService, "stormService");
             Objects.requireNonNull(environmentReportService, "environmentReportService");
         }
 
@@ -306,6 +310,43 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         merged.sort(Comparator.comparingLong(LoggerByteCount::totalBytes).reversed());
         List<LoggerByteCount> limited = limit > 0 && merged.size() > limit ? merged.subList(0, limit) : merged;
         return new TopReport(List.copyOf(limited), earliest, merged.size());
+    }
+
+    /**
+     * {@code logctl storms} across every registered context — the {@link
+     * #topLoggers} counterpart for storm detection (doc/specs/
+     * storm-detection.md). Every context's storms are merged, each tagged
+     * with its context's {@code stableKey}, then re-sorted worst-first and
+     * truncated to {@code limit} over the merged set (not per context).
+     * {@code trackedCount}/{@code ongoingCount}/{@code notRetainedCount} are
+     * summed across contexts, pre-truncation. {@code measurementStartedAt}
+     * reports the earliest window among registered contexts, same convention
+     * as {@link #topLoggers}.
+     */
+    @Override
+    public StormReport activeStorms(int limit) {
+        List<Storm> merged = new ArrayList<>();
+        Instant earliest = null;
+        int trackedCount = 0;
+        int ongoingCount = 0;
+        int notRetainedCount = 0;
+        for (ContextControl context : sortedByKey()) {
+            String key = context.stableKey();
+            StormReport report = context.stormService().activeStorms(0); // unlimited -- limit applies after merging
+            for (Storm storm : report.storms()) {
+                merged.add(storm.withContext(key));
+            }
+            trackedCount += report.trackedCount();
+            ongoingCount += report.ongoingCount();
+            notRetainedCount += report.notRetainedCount();
+            Instant started = report.measurementStartedAt();
+            if (started != null && (earliest == null || started.isBefore(earliest))) {
+                earliest = started;
+            }
+        }
+        merged.sort(StormDetector.worstFirst());
+        List<Storm> limited = limit > 0 && merged.size() > limit ? merged.subList(0, limit) : merged;
+        return new StormReport(List.copyOf(limited), trackedCount, ongoingCount, earliest, notRetainedCount);
     }
 
     /**
@@ -757,6 +798,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             reapplied += context.service().verifyAndReapply(now);
             reapplied += context.handlerService().verifyAndReapply(now);
             context.topService().startMeasuring();
+            context.stormService().startDetection();
         }
         return reapplied;
     }

@@ -512,6 +512,123 @@ class WildFlyContainerIT {
         assertFalse(out.contains("\"measurementStartedAt\":null"), "measurement must already be running by now");
     }
 
+    // --- storms (doc/specs/storm-detection.md) -----------------------------------------------------
+
+    /**
+     * The exit criterion: a probe deployment driven into two independent
+     * tight exception-throwing loops is reported as two separate {@code
+     * ONGOING} storms with a plausible count/rate, the right logger and
+     * exception class, and a non-empty first occurrence; {@code logctl
+     * storms --json} round-trips with the documented shape.
+     *
+     * <p>NOTE: unverified in this environment (no Docker available to run
+     * Testcontainers here) — written to the same pattern as every other test
+     * in this class and intended to run in CI, where Docker is present.
+     */
+    @Test
+    void storms_tightExceptionLoop_reportedAsOngoingWithPlausibleCountAndFirstOccurrence() throws Exception {
+        deployStormProbeWar();
+        try {
+            assertTrue(pollLogctl(out -> out.contains("[ONGOING]") && out.contains("com.myapp.probe.StormA"),
+                    "storms"), "expected StormA's loop to be reported ongoing: " + logctl("storms").stdout());
+
+            Logctl result = logctl("storms");
+            String out = result.stdout();
+            assertTrue(out.contains("com.myapp.probe.StormA"), out);
+            assertTrue(out.contains("com.myapp.probe.StormB"), out);
+            assertTrue(out.contains("java.lang.RuntimeException"), out);
+            assertTrue(out.contains("events"), out);
+            assertTrue(out.contains("first occurrence:"), out);
+        } finally {
+            undeployStormProbeWar();
+        }
+    }
+
+    @Test
+    void stormsJson_roundTripsWithTheDocumentedShape() throws Exception {
+        deployStormProbeWar();
+        try {
+            assertTrue(pollLogctl(out -> out.contains("\"status\":\"ONGOING\""), "storms", "--json"),
+                    "expected an ongoing storm in --json: " + logctl("storms", "--json").stdout());
+
+            Logctl result = logctl("storms", "--json");
+            assertEquals(0, result.exitCode(), result.stderr());
+            String out = result.stdout();
+            assertTrue(out.contains("\"storms\":["), out);
+            assertTrue(out.contains("\"trackedCount\":"), out);
+            assertTrue(out.contains("\"ongoingCount\":"), out);
+            assertTrue(out.contains("\"loggerName\":\"com.myapp.probe.StormA\"")
+                    || out.contains("\"loggerName\":\"com.myapp.probe.StormB\""), out);
+        } finally {
+            undeployStormProbeWar();
+        }
+    }
+
+    private void deployStormProbeWar() throws Exception {
+        Path war = buildStormProbeWar();
+        wildfly.copyFileToContainer(MountableFile.forHostPath(war), DEPLOYMENTS + "/stormprobe.war");
+        assertTrue(awaitFile(DEPLOYMENTS + "/stormprobe.war.deployed"), "stormprobe.war deployed");
+    }
+
+    private void undeployStormProbeWar() {
+        exec("rm", "-f", DEPLOYMENTS + "/stormprobe.war");
+        awaitFile(DEPLOYMENTS + "/stormprobe.war.undeployed");
+    }
+
+    /**
+     * Two independent tight loops (distinct loggers, distinct messages), each
+     * well past the default 1,000-event / 10s threshold, fired synchronously
+     * at deploy time -- doc/specs/storm-detection.md's exit criterion's "two
+     * independent loops are reported as two separate storms".
+     */
+    private Path buildStormProbeWar() throws IOException {
+        String servletPackage = jakartaServletNamespace ? "jakarta.servlet" : "javax.servlet";
+        String source = """
+                package com.myapp.probe;
+                import %s.ServletContextEvent;
+                import %s.ServletContextListener;
+                import %s.annotation.WebListener;
+                import java.util.logging.Logger;
+                @WebListener
+                public class StormProbe implements ServletContextListener {
+                    @Override public void contextInitialized(ServletContextEvent e) {
+                        Logger a = Logger.getLogger("com.myapp.probe.StormA");
+                        Logger b = Logger.getLogger("com.myapp.probe.StormB");
+                        for (int i = 0; i < 1_200; i++) {
+                            a.log(java.util.logging.Level.SEVERE, "storm A failed for order " + i,
+                                    new RuntimeException("no capacity"));
+                            b.log(java.util.logging.Level.SEVERE, "storm B connection reset " + i,
+                                    new RuntimeException("peer reset"));
+                        }
+                    }
+                }
+                """.formatted(servletPackage, servletPackage, servletPackage);
+        Path src = scratch.resolve("com/myapp/probe/StormProbe.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, source);
+        Path classes = Files.createDirectories(scratch.resolve("storm-classes"));
+
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        assertNotNull(compiler, "a JDK (not JRE) is required to build the probe WAR");
+        int rc = compiler.run(null, null, null,
+                "--release", "17",
+                "-classpath", probeCompileClasspath(),
+                "-d", classes.toString(), src.toString());
+        assertEquals(0, rc, "storm probe compile failed");
+
+        Path war = scratch.resolve("stormprobe.war");
+        Path probeClass = classes.resolve("com/myapp/probe/StormProbe.class");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(war))) {
+            zip.putNextEntry(new ZipEntry("WEB-INF/classes/com/myapp/probe/StormProbe.class"));
+            zip.write(Files.readAllBytes(probeClass));
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("WEB-INF/beans.xml"));
+            zip.write("<beans/>".getBytes());
+            zip.closeEntry();
+        }
+        return war;
+    }
+
     // --- env (doc/specs/environment-report.md) -----------------------------------------------
 
     @Test

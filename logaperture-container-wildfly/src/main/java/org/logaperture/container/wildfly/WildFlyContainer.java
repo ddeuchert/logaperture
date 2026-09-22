@@ -32,6 +32,7 @@ import org.logaperture.core.HandlerOverrideRegistry;
 import org.logaperture.core.LevelControlService;
 import org.logaperture.core.LoggerOverrideChangeListener;
 import org.logaperture.core.OverrideRegistry;
+import org.logaperture.core.StormService;
 import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.TopService;
 import org.logaperture.core.spi.ContextHandle;
@@ -181,8 +182,13 @@ public final class WildFlyContainer implements AutoCloseable {
         // re-confirms the byte-counting wrap on every tick regardless.
         topService.startMeasuring();
 
+        StormService stormService = new StormService(adapter, policy);
+        // doc/specs/storm-detection.md: same always-on discipline as top; the
+        // periodic verification sweep re-confirms the gate-stage observer.
+        stormService.startDetection();
+
         aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService,
-                environmentReportService));
+                stormService, environmentReportService));
     }
 
     /**

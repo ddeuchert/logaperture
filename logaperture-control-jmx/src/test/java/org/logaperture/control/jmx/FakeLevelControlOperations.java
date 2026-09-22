@@ -31,10 +31,12 @@ import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
 import org.logaperture.api.SquelchedLogger;
+import org.logaperture.api.StormReport;
 import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.EnvironmentReportOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
+import org.logaperture.core.StormOperations;
 import org.logaperture.core.TopOperations;
 import org.logaperture.core.TopReport;
 
@@ -50,7 +52,7 @@ import java.util.Optional;
  * AggregateLevelControl} does in production.
  */
 final class FakeLevelControlOperations implements LevelControlOperations, HandlerLevelControlOperations,
-        DoctorOperations, TopOperations, EnvironmentReportOperations {
+        DoctorOperations, TopOperations, StormOperations, EnvironmentReportOperations {
 
     final List<String> listLoggersCalls = new ArrayList<>();
     final List<Object[]> setLevelCalls = new ArrayList<>();
@@ -194,5 +196,14 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     @Override
     public EnvironmentReport environmentReport() {
         return environmentReportToReturn;
+    }
+
+    StormReport stormReportToReturn = new StormReport(List.of(), 0, 0, null, 0);
+    Integer activeStormsLimitRequested;
+
+    @Override
+    public StormReport activeStorms(int limit) {
+        activeStormsLimitRequested = limit;
+        return stormReportToReturn;
     }
 }

@@ -21,6 +21,8 @@ import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
+import org.logaperture.control.jmx.StormData;
+import org.logaperture.control.jmx.StormReportData;
 import org.logaperture.control.jmx.TopReportData;
 
 import java.util.List;
@@ -128,6 +130,45 @@ class JsonTest {
                 "2026-09-05T14:02:11Z", 200);
 
         assertTrue(Json.top(report).contains("\"trackedCount\":200"), Json.top(report));
+    }
+
+    // --- storms (doc/specs/storm-detection.md) ---------------------------------------------------
+
+    @Test
+    void stormsEmitsRawCountsAndTrueTrackedAndOngoingCounts() {
+        StormReportData report = new StormReportData(List.of(
+                new StormData("com.acme.Worker", "ERROR", "org.acme.SlotException", "no capacity", null, "ONGOING",
+                        "2026-09-05T03:14:02Z", "2026-09-05T03:15:02Z", null, 1_000L, "boom", null)),
+                5, 3, "2026-09-05T14:02:11Z", 0);
+
+        String json = Json.storms(report);
+
+        assertTrue(json.startsWith("{\"storms\":[{\"loggerName\":\"com.acme.Worker\""), json);
+        assertTrue(json.contains("\"trackedCount\":5"), json);
+        assertTrue(json.contains("\"ongoingCount\":3"), json);
+        assertTrue(json.contains("\"measurementStartedAt\":\"2026-09-05T14:02:11Z\""), json);
+        assertTrue(json.contains("\"notRetainedCount\":0"), json);
+    }
+
+    @Test
+    void stormsWithNoStorms_emitsAnEmptyArray() {
+        StormReportData report = new StormReportData(List.of(), 0, 0, null, 0);
+
+        assertEquals("{\"storms\":[],\"trackedCount\":0,\"ongoingCount\":0,\"measurementStartedAt\":null,"
+                + "\"notRetainedCount\":0}", Json.storms(report));
+    }
+
+    @Test
+    void stormsEmitsTopFramesArray_whenFrameEscalationRan() {
+        StormReportData report = new StormReportData(List.of(
+                new StormData("com.acme.Worker", "ERROR", "java.lang.RuntimeException", "boom",
+                        List.of("com.acme.Worker.reserve(Worker.java:88)"), "ONGOING",
+                        "2026-09-05T03:14:02Z", "2026-09-05T03:15:02Z", null, 1_000L, null, null)),
+                1, 1, null, 0);
+
+        String json = Json.storms(report);
+
+        assertTrue(json.contains("\"topFrames\":[\"com.acme.Worker.reserve(Worker.java:88)\"]"), json);
     }
 
     // --- handlers (doc/specs/handler-floor-control.md "The handler catalog") -------------------
