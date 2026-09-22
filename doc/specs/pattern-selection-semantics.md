@@ -15,6 +15,20 @@ the foundation).
 Tracks: [issue #49](https://github.com/ddeuchert/logaperture/issues/49), which supersedes issue
 [#41](https://github.com/ddeuchert/logaperture/issues/41)'s slice 3.
 
+## The shorthand principle, stated once
+
+Cited by name from every command and every other spec that accepts a pattern target (`set`,
+`reset`, and [`filtering-epic.md`](filtering-epic.md)'s `add rule`), rather than restated per
+command:
+
+> **A leading-star pattern target is shorthand only.** It expands exactly once, at the moment the
+> command runs, into one concrete action per currently-known matching logger — the same result as
+> typing that action against each match by hand. It never introduces per-event matching, a
+> standing rule, or coverage of a logger created afterward. (This is distinct from — and not to be
+> confused with — genuine tree inheritance, such as a level's cascade to descendants or, per
+> `filtering-epic.md`, a rule's cascade via `useParentRules`: inheritance *does* reach a logger
+> created later, because it isn't pattern matching at all.)
+
 ## Functional summary
 
 After this feature, the user will be able to:
