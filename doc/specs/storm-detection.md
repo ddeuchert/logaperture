@@ -273,7 +273,10 @@ exactly **one** `Filter` per `Logger` and one per `Handler`. The installed filte
 any filter already present and delegates to it for the actual allow/deny verdict, so the
 observer is verdict-transparent; on teardown it restores the captured filter. The
 frame-escalation `getStackTrace()` runs only on a sampled event once the cheap key already
-indicates a storm — never on the hot path.
+indicates a storm — never on the hot path — and, per its "invoked at most once per
+fingerprint" contract, only once per burst: two throw sites storming *concurrently* under the
+same cheap key are not distinguished by it (sequential, non-overlapping bursts are). See
+[issue #77](https://github.com/ddeuchert/logaperture/issues/77).
 
 ## Reconfiguration and lifecycle
 
@@ -361,7 +364,10 @@ that per context.
   the next event or a sweep, transitions it to `ENDED` with `endedAt == lastEventAt`; a
   fingerprint that resets after a gap and then re-crosses the threshold is a *new* storm, not
   a revival of the ended one; two events with the same exception type but different throw
-  sites split via the sampled frame sub-key; normalization merges numeric-variant messages
+  sites, in **sequential, non-overlapping bursts**, split via the sampled frame sub-key —
+  **known gap:** two *concurrently interleaved* bursts sharing a cheap key are not split;
+  see [issue #77](https://github.com/ddeuchert/logaperture/issues/77); normalization merges
+  numeric-variant messages
   and keeps genuinely different ones apart; the counter map evicts least-recently-updated at
   capacity; storm history keeps `ONGOING` ahead of `ENDED`; a throwing observation is
   swallowed and the event passes through.
