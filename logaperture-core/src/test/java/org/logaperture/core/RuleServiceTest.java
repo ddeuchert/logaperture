@@ -18,6 +18,7 @@ package org.logaperture.core;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.logaperture.api.CompiledMatchers;
+import org.logaperture.api.Level;
 import org.logaperture.api.LogRule;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.RuleAttachOptions;
@@ -40,13 +41,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RuleServiceTest {
 
+    private FakeLoggingAdapter adapter;
     private InMemoryAuditLog auditLog;
     private RuleService service;
 
     @BeforeEach
     void setUp() {
+        adapter = new FakeLoggingAdapter(Level.INFO);
         auditLog = new InMemoryAuditLog();
-        service = new RuleService(CapabilityPolicy.allowAll(), auditLog, "alice", "jmx");
+        service = new RuleService(adapter, CapabilityPolicy.allowAll(), auditLog, "alice", "jmx");
     }
 
     private LogRule attach(String loggerName) {
@@ -78,7 +81,7 @@ class RuleServiceTest {
 
     @Test
     void attach_requiresRulesAuthor() {
-        RuleService denied = new RuleService(CapabilityPolicy.denyAll(), auditLog, "alice", "jmx");
+        RuleService denied = new RuleService(adapter, CapabilityPolicy.denyAll(), auditLog, "alice", "jmx");
         CapabilityDeniedException ex = assertThrows(CapabilityDeniedException.class,
                 () -> denied.attach("com.acme.Worker", CompiledMatchers.matchAll(), RuleAttachOptions.defaults(),
                         TestRule.FACTORY));
@@ -88,7 +91,7 @@ class RuleServiceTest {
     @Test
     void attach_nonSessionTierAlsoRequiresPersist() {
         CapabilityPolicy rulesAuthorOnly = capability -> capability == Capability.RULES_AUTHOR;
-        RuleService noPersist = new RuleService(rulesAuthorOnly, auditLog, "alice", "jmx");
+        RuleService noPersist = new RuleService(adapter, rulesAuthorOnly, auditLog, "alice", "jmx");
         CapabilityDeniedException ex = assertThrows(CapabilityDeniedException.class,
                 () -> noPersist.attach("com.acme.Worker", CompiledMatchers.matchAll(),
                         RuleAttachOptions.sticky(), TestRule.FACTORY));
@@ -97,12 +100,12 @@ class RuleServiceTest {
 
     @Test
     void attach_refusesAProtectedCategoryAndMutatesNothing() {
-        RuleService protectedService = new RuleService(CapabilityPolicy.allowAll(), auditLog, "alice", "jmx",
-                loggerName -> loggerName.startsWith("security."));
+        RuleService protectedService = new RuleService(adapter, CapabilityPolicy.allowAll(), auditLog, "alice",
+                "jmx", loggerName -> loggerName.startsWith("security."));
         assertThrows(IllegalArgumentException.class,
                 () -> protectedService.attach("security.auth", CompiledMatchers.matchAll(),
                         RuleAttachOptions.defaults(), TestRule.FACTORY));
-        assertTrue(protectedService.list().isEmpty());
+        assertTrue(protectedService.listRules().isEmpty());
         assertTrue(auditLog.records().isEmpty());
     }
 
@@ -171,7 +174,7 @@ class RuleServiceTest {
         LogRule rule = attach("com.acme.Worker");
         Optional<LogRule> removed = service.resetRule(rule.id(), false);
         assertTrue(removed.isPresent());
-        assertTrue(service.list().isEmpty());
+        assertTrue(service.listRules().isEmpty());
     }
 
     @Test
@@ -211,7 +214,7 @@ class RuleServiceTest {
         RuleResetOutcome outcome = service.resetRulesForLogger("com.acme.batch", false);
         assertEquals(List.of(direct.id()), outcome.removedIds());
         // The ancestor's own rule (attached to "com.acme") is untouched.
-        assertEquals(1, service.list().size());
+        assertEquals(1, service.listRules().size());
     }
 
     @Test
@@ -254,10 +257,10 @@ class RuleServiceTest {
             pool.shutdownNow();
         }
         assertEquals(0, failures.get());
-        assertEquals(threads * perThread, service.list().size());
+        assertEquals(threads * perThread, service.listRules().size());
         assertEquals(threads * perThread, service.planSource().currentPlan().rules().size());
         // No two attachments raced into the same id.
-        long distinctIds = service.list().stream().map(LogRule::id).distinct().count();
+        long distinctIds = service.listRules().stream().map(view -> view.rule().id()).distinct().count();
         assertEquals(threads * perThread, distinctIds);
     }
 

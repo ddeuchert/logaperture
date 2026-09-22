@@ -168,7 +168,7 @@ final class Parser {
         Command resolved = switch (command) {
             case "list" -> {
                 if (rest.isEmpty()) {
-                    throw usage("'list' needs 'loggers [filter]' or 'handlers'.");
+                    throw usage("'list' needs 'loggers [filter]', 'handlers', or 'rules'.");
                 }
                 String noun = rest.get(0);
                 List<String> nounRest = rest.subList(1, rest.size());
@@ -185,7 +185,20 @@ final class Parser {
                         }
                         yield Commands.listHandlers(showAll, json);
                     }
-                    default -> throw usage("'list' needs 'loggers [filter]' or 'handlers', got '" + noun + "'.");
+                    case "rules" -> {
+                        if (!nounRest.isEmpty()) {
+                            throw usage("'list rules' takes no arguments.");
+                        }
+                        if (showAll) {
+                            // doc/specs/rule-pipeline-foundation.md Decision #4: no distinct
+                            // "overrides-only vs. full catalog" split for rules in this slice --
+                            // every attached rule already is the "overridden" state.
+                            throw usage("--show-all does not apply to 'list rules'.");
+                        }
+                        yield Commands.listRules(json);
+                    }
+                    default -> throw usage(
+                            "'list' needs 'loggers [filter]', 'handlers', or 'rules', got '" + noun + "'.");
                 };
             }
             case "status" -> {
@@ -220,7 +233,8 @@ final class Parser {
             }
             case "reset" -> {
                 if (rest.isEmpty()) {
-                    throw usage("'reset' needs 'logger <target>', 'loggers', 'handler <name>', or 'handlers'.");
+                    throw usage("'reset' needs 'logger <target>', 'loggers', 'handler <name>', 'handlers', "
+                            + "'rule <id>', or 'rules'.");
                 }
                 String noun = rest.get(0);
                 List<String> nounRest = rest.subList(1, rest.size());
@@ -249,6 +263,18 @@ final class Parser {
                         }
                         yield Commands.resetAllHandlers(includeSticky, json);
                     }
+                    case "rule" -> {
+                        if (nounRest.size() != 1) {
+                            throw usage("'reset rule' needs exactly one id.");
+                        }
+                        yield Commands.resetRule(nounRest.get(0), includeSticky, json);
+                    }
+                    case "rules" -> {
+                        if (!nounRest.isEmpty()) {
+                            throw usage("'reset rules' takes no arguments.");
+                        }
+                        yield Commands.resetAllRules(includeSticky, json);
+                    }
                     case "default-handler" -> {
                         if (!nounRest.isEmpty()) {
                             throw usage("'reset default-handler' takes no arguments.");
@@ -256,7 +282,7 @@ final class Parser {
                         yield Commands.setDefaultHandlerMembers(List.of(), json);
                     }
                     default -> throw usage("'reset' needs 'logger <target>', 'loggers', 'handler <name>', "
-                            + "'handlers', or 'default-handler', got '" + noun + "'.");
+                            + "'handlers', 'rule <id>', 'rules', or 'default-handler', got '" + noun + "'.");
                 };
             }
             case "set" -> {

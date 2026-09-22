@@ -32,6 +32,7 @@ import org.logaperture.core.HandlerOverrideRegistry;
 import org.logaperture.core.LevelControlService;
 import org.logaperture.core.LoggerOverrideChangeListener;
 import org.logaperture.core.OverrideRegistry;
+import org.logaperture.core.RuleService;
 import org.logaperture.core.StormService;
 import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.TopService;
@@ -195,8 +196,17 @@ public final class WildFlyContainer implements AutoCloseable {
             Diagnostics.warn("LogAperture: failed to arm storm detection for this context, continuing without it", e);
         }
 
+        RuleService ruleService = new RuleService(adapter, policy, auditLog, principal(), "jmx");
+        // doc/specs/rule-pipeline-foundation.md: same always-on discipline and same guard as storm
+        // detection above.
+        try {
+            ruleService.installPipeline();
+        } catch (RuntimeException e) {
+            Diagnostics.warn("LogAperture: failed to install the rule pipeline for this context, continuing without it", e);
+        }
+
         aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService,
-                stormService, environmentReportService));
+                stormService, ruleService, environmentReportService));
     }
 
     /**

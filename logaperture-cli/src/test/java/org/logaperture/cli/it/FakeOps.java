@@ -28,7 +28,9 @@ import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
+import org.logaperture.api.LogRule;
 import org.logaperture.api.LoggerByteCount;
+import org.logaperture.api.RuleResetOutcome;
 import org.logaperture.api.Severity;
 import org.logaperture.api.SquelchedLogger;
 import org.logaperture.api.StormReport;
@@ -36,6 +38,8 @@ import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.EnvironmentReportOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
+import org.logaperture.core.RuleOperations;
+import org.logaperture.core.RuleView;
 import org.logaperture.core.StormOperations;
 import org.logaperture.core.TopOperations;
 import org.logaperture.core.TopReport;
@@ -57,7 +61,7 @@ import java.util.Optional;
  * test, not the engine.
  */
 final class FakeOps implements LevelControlOperations, HandlerLevelControlOperations, DoctorOperations,
-        TopOperations, EnvironmentReportOperations, StormOperations {
+        TopOperations, EnvironmentReportOperations, StormOperations, RuleOperations {
 
     private static final Level BASELINE = Level.INFO;
 
@@ -225,5 +229,25 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     @Override
     public synchronized StormReport activeStorms(int limit) {
         return new StormReport(List.of(), 0, 0, measurementStartedAt);
+    }
+
+    @Override
+    public synchronized List<RuleView> listRules() {
+        return List.of();
+    }
+
+    @Override
+    public synchronized Optional<LogRule> resetRule(String id, boolean includeSticky) {
+        return Optional.empty();
+    }
+
+    @Override
+    public synchronized RuleResetOutcome resetAllRules(boolean includeSticky) {
+        return RuleResetOutcome.nothingReset();
+    }
+
+    @Override
+    public synchronized RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky) {
+        return RuleResetOutcome.nothingReset();
     }
 }

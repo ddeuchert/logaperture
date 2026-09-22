@@ -20,6 +20,7 @@ import org.logaperture.api.LogRule;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.RuleAttachOptions;
 import org.logaperture.api.RuleResetOutcome;
+import org.logaperture.core.spi.LoggingAdapter;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -42,9 +43,17 @@ import java.util.concurrent.atomic.AtomicLong;
  * {@link LevelControlService} already establishes: capability check &rarr;
  * suppression-floor check &rarr; registry commit &rarr; audit record — so a
  * denial at any step leaves no partial state.
+ *
+ * <p>Mirrors {@link StormService}/{@link TopService}'s shape: {@link
+ * #installPipeline()} installs the gate-stage filter the moment a context
+ * comes up, and is safe to call again on every reconfiguration re-arm
+ * (folded into the same {@code reapplyOnReset} lambda those two join) since
+ * {@link LoggingAdapter#installRulePipeline} is itself required to be
+ * idempotent.
  */
-public final class RuleService {
+public final class RuleService implements RuleOperations {
 
+    private final LoggingAdapter adapter;
     private final RuleRegistry registry = new RuleRegistry();
     private final CapabilityPolicy policy;
     private final AuditLog auditLog;
@@ -55,17 +64,29 @@ public final class RuleService {
 
     private volatile RulePlan plan = RulePlan.empty();
 
-    public RuleService(CapabilityPolicy policy, AuditLog auditLog, String principal, String source) {
-        this(policy, auditLog, principal, source, ProtectedCategories.none());
+    public RuleService(LoggingAdapter adapter, CapabilityPolicy policy, AuditLog auditLog, String principal,
+            String source) {
+        this(adapter, policy, auditLog, principal, source, ProtectedCategories.none());
     }
 
-    public RuleService(CapabilityPolicy policy, AuditLog auditLog, String principal, String source,
-            ProtectedCategories protectedCategories) {
+    public RuleService(LoggingAdapter adapter, CapabilityPolicy policy, AuditLog auditLog, String principal,
+            String source, ProtectedCategories protectedCategories) {
+        this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.policy = Objects.requireNonNull(policy, "policy");
         this.auditLog = Objects.requireNonNull(auditLog, "auditLog");
         this.principal = Objects.requireNonNull(principal, "principal");
         this.source = Objects.requireNonNull(source, "source");
         this.protectedCategories = Objects.requireNonNull(protectedCategories, "protectedCategories");
+    }
+
+    /**
+     * Installs (or re-confirms) the gate-stage rule filter. Called once at
+     * context-install time, and again on every reconfiguration re-arm — safe
+     * either way, since {@link LoggingAdapter#installRulePipeline} is itself
+     * required to be idempotent.
+     */
+    public void installPipeline() {
+        adapter.installRulePipeline(planSource());
     }
 
     /**
@@ -118,6 +139,7 @@ public final class RuleService {
      * error, same "unknown target" discipline every other reset already
      * follows).
      */
+    @Override
     public Optional<LogRule> resetRule(String id, boolean includeSticky) {
         Objects.requireNonNull(id, "id");
         requireCapability(Capability.RULES_AUTHOR);
@@ -136,6 +158,7 @@ public final class RuleService {
     }
 
     /** {@code reset rules} — bulk, skip-and-report shape (mirrors {@code reset loggers}). */
+    @Override
     public RuleResetOutcome resetAllRules(boolean includeSticky) {
         requireCapability(Capability.RULES_AUTHOR);
         return removeMatching(registry.all(), includeSticky);
@@ -146,6 +169,7 @@ public final class RuleService {
      * descendants' own separately-attached rules) — {@code reset logger X}'s
      * side effect, doc/specs/rule-pipeline-foundation.md "Command surface".
      */
+    @Override
     public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky) {
         Objects.requireNonNull(loggerName, "loggerName");
         requireCapability(Capability.RULES_AUTHOR);
@@ -179,10 +203,11 @@ public final class RuleService {
         return rule.id() + " (" + rule.actionName() + ")";
     }
 
-    /** Every attached rule, across every logger — {@code logctl list rules}. */
-    public List<LogRule> list() {
+    /** Every attached rule, across every logger — {@code logctl list rules}. Untagged ({@code context == null}); {@link AggregateLevelControl} stamps the real key. */
+    @Override
+    public List<RuleView> listRules() {
         requireCapability(Capability.VIEW);
-        return registry.all();
+        return registry.all().stream().map(rule -> new RuleView(rule, null)).toList();
     }
 
     public Optional<LogRule> find(String id) {

@@ -18,13 +18,17 @@ package org.logaperture.core;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.logaperture.api.BackendInfo;
+import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.EnvironmentReport;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
+import org.logaperture.api.LogRule;
 import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.LoggerInfo;
+import org.logaperture.api.RuleAttachOptions;
+import org.logaperture.api.RuleResetOutcome;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.core.AggregateLevelControl.ContextControl;
@@ -70,6 +74,7 @@ class AggregateLevelControlTest {
         final StormDetector stormDetector = new StormDetector(3, Duration.ofSeconds(10), Duration.ofSeconds(60),
                 4_000, 100, 8 * 1024);
         final StormService stormService;
+        final RuleService ruleService;
         final EnvironmentReportService environmentReportService;
         final ContextControl control;
 
@@ -92,9 +97,10 @@ class AggregateLevelControlTest {
             doctorService = new DoctorService(adapter, policy);
             topService = new TopService(adapter, policy);
             stormService = new StormService(adapter, policy, stormDetector);
+            ruleService = new RuleService(adapter, policy, auditLog, "alice", "jmx");
             environmentReportService = new EnvironmentReportService(adapter, policy);
             control = new ContextControl(ContextHandle.of(key, key, adapter), service, handlerService,
-                    doctorService, topService, stormService, environmentReportService);
+                    doctorService, topService, stormService, ruleService, environmentReportService);
         }
 
         void stormBurst(String loggerName, int times) {
@@ -435,6 +441,55 @@ class AggregateLevelControlTest {
         assertEquals(1, report.storms().size());
         assertEquals(2, report.trackedCount());
         assertEquals(2, report.ongoingCount());
+    }
+
+    // --- listRules/resetRule (doc/specs/rule-pipeline-foundation.md) -----------------------------
+
+    @Test
+    void listRules_mergesEveryContext_eachTaggedWithItsContext() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        LogRule systemRule = system.ruleService.attach("com.acme.Worker", CompiledMatchers.matchAll(),
+                RuleAttachOptions.defaults(), TestRule.FACTORY);
+        LogRule appRule = app.ruleService.attach("com.acme.Other", CompiledMatchers.matchAll(),
+                RuleAttachOptions.defaults(), TestRule.FACTORY);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        List<RuleView> views = aggregate.listRules();
+        assertEquals(2, views.size());
+        assertTrue(views.stream().anyMatch(v -> v.rule().id().equals(systemRule.id()) && "system".equals(v.context())));
+        assertTrue(views.stream().anyMatch(v -> v.rule().id().equals(appRule.id()) && "myapp.war".equals(v.context())));
+    }
+
+    @Test
+    void resetRule_findsAndRemovesFromWhicheverContextActuallyHoldsIt() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        LogRule appRule = app.ruleService.attach("com.acme.Other", CompiledMatchers.matchAll(),
+                RuleAttachOptions.defaults(), TestRule.FACTORY);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        Optional<LogRule> removed = aggregate.resetRule(appRule.id(), false);
+        assertTrue(removed.isPresent());
+        assertTrue(aggregate.listRules().isEmpty());
+    }
+
+    @Test
+    void resetAllRules_mergesRemovedAndSkippedStickyAcrossContexts() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        LogRule sessionRule = system.ruleService.attach("com.acme.a", CompiledMatchers.matchAll(),
+                RuleAttachOptions.defaults(), TestRule.FACTORY);
+        LogRule stickyRule = app.ruleService.attach("com.acme.b", CompiledMatchers.matchAll(),
+                RuleAttachOptions.sticky(), TestRule.FACTORY);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        RuleResetOutcome outcome = aggregate.resetAllRules(false);
+        assertEquals(List.of(sessionRule.id()), outcome.removedIds());
+        assertEquals(List.of(stickyRule.id()), outcome.skippedStickyIds());
     }
 
     @Test

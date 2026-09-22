@@ -36,6 +36,7 @@ import org.logaperture.core.HandlerOverrideRegistry;
 import org.logaperture.core.InMemoryAuditLog;
 import org.logaperture.core.LevelControlService;
 import org.logaperture.core.OverrideRegistry;
+import org.logaperture.core.RuleService;
 import org.logaperture.core.StormService;
 import org.logaperture.core.TopService;
 import org.logaperture.core.spi.ContextHandle;
@@ -102,12 +103,13 @@ class JulLevelControlTest {
         DoctorService doctorService = new DoctorService(adapter, CapabilityPolicy.allowAll());
         TopService topService = new TopService(adapter, CapabilityPolicy.allowAll());
         StormService stormService = new StormService(adapter, CapabilityPolicy.allowAll());
+        RuleService ruleService = new RuleService(adapter, CapabilityPolicy.allowAll(), auditLog, "alice", "jmx");
         EnvironmentReportService environmentReportService =
                 new EnvironmentReportService(adapter, CapabilityPolicy.allowAll());
 
         AggregateLevelControl aggregate = new AggregateLevelControl();
         aggregate.register(new ContextControl(ContextHandle.of(ContextHandle.SYSTEM, "system", adapter), service,
-                handlerService, doctorService, topService, stormService, environmentReportService));
+                handlerService, doctorService, topService, stormService, ruleService, environmentReportService));
         return aggregate;
     }
 

@@ -32,6 +32,7 @@ import org.logaperture.core.HandlerOverrideRegistry;
 import org.logaperture.core.LevelControlService;
 import org.logaperture.core.LoggerOverrideChangeListener;
 import org.logaperture.core.OverrideRegistry;
+import org.logaperture.core.RuleService;
 import org.logaperture.core.StormService;
 import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.TopService;
@@ -167,6 +168,7 @@ public final class NoneContainer implements AutoCloseable {
         DoctorService doctorService = new DoctorService(adapter, policy);
         TopService topService = new TopService(adapter, policy);
         StormService stormService = new StormService(adapter, policy);
+        RuleService ruleService = new RuleService(adapter, policy, auditLog, principal(), "jmx");
         EnvironmentReportService environmentReportService = new EnvironmentReportService(adapter, policy);
 
         // doc/specs/persistence.md "Reconfiguration re-application": Logback's
@@ -184,6 +186,7 @@ public final class NoneContainer implements AutoCloseable {
             handlerService.reapplyActiveOverrides(adapter);
             topService.startMeasuring();
             stormService.startDetection();
+            ruleService.installPipeline();
         };
         adapter.onReset(reapplyOnReset);
 
@@ -200,9 +203,16 @@ public final class NoneContainer implements AutoCloseable {
         } catch (RuntimeException e) {
             Diagnostics.warn("LogAperture: failed to arm storm detection for this context, continuing without it", e);
         }
+        // doc/specs/rule-pipeline-foundation.md: same always-on-from-install discipline, same guard
+        // -- an uncaught throw here would drop this entire context's registration otherwise.
+        try {
+            ruleService.installPipeline();
+        } catch (RuntimeException e) {
+            Diagnostics.warn("LogAperture: failed to install the rule pipeline for this context, continuing without it", e);
+        }
 
         aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService,
-                stormService, environmentReportService));
+                stormService, ruleService, environmentReportService));
     }
 
     /**

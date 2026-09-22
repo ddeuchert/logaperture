@@ -1,11 +1,13 @@
 # Rule pipeline foundation: `LogRule`, `useParentRules`, matcher library
 
-Status: **signed off 2026-09-22; partially implemented.** `core` (`RuleRegistry`/
-`RuleService`/matcher library/`useParentRules` resolution) and the JUL/JBoss LogManager gate
-`Filter` are implemented and unit-tested on `feature/71-rule-pipeline-foundation`. Not yet
-implemented: the JMX/CLI surface (`list rules`/`reset rule`/`reset rules`), state-file
-persistence round-tripping, and container `installContext` wiring — see "Implementation
-status" below. No concrete rule type
+Status: **signed off 2026-09-22; implemented except persistence.** `core` (`RuleRegistry`/
+`RuleService`/matcher library/`useParentRules` resolution/`AggregateLevelControl` multi-context
+merge), the JUL/JBoss LogManager gate `Filter`, the JMX surface, the CLI (`list rules`/`reset
+rule`/`reset rules`, and `reset logger X`'s rule-removal side effect), and container
+`installContext` wiring are all implemented and tested on
+`feature/71-rule-pipeline-foundation`. Not yet implemented: state-file persistence
+round-tripping (a `STICKY` rule does not yet survive a restart) — see "Implementation status"
+below. No concrete rule type
 (`drop`, `trim`) ships in this slice — this is the shared machinery every later rule is built
 on, per [`filtering-epic.md`](filtering-epic.md)'s build order (step 2 of 4).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §4.2 (gate/render stages),
@@ -110,26 +112,47 @@ Landed on `feature/71-rule-pipeline-foundation`, unit-tested, full reactor build
 - `logaperture-core`: `Capability.RULES_AUTHOR`; `RuleRegistry` (attachment +
   `useParentRules` state); `RuleService` (id assignment, capability/suppression-floor checks,
   audit, `effectiveRules` tree-inheritance resolution, `resetRule`/`resetAllRules`/
-  `resetRulesForLogger`); `RulePlan`/`RulePlanSource` (the atomically-swapped compiled plan).
+  `resetRulesForLogger`, `installPipeline`); `RulePlan`/`RulePlanSource` (the atomically-swapped
+  compiled plan); `RuleOperations`/`RuleView` (the multi-context contract and context-tagged row
+  shape — see "One implementation-level addition" below); `AggregateLevelControl` fans
+  `listRules`/`resetRule`/`resetAllRules`/`resetRulesForLogger` out across every registered
+  context, mirroring `activeStorms`'s merge-and-tag shape.
 - `logaperture-adapter-jul`: `installRulePipeline`, `JulRuleFilter` — a second, independent,
   verdict-transparent `Filter` from storm detection's, proven to compose with it in either
   install order.
+- `logaperture-control-jmx`: `RuleData`/`RuleResetOutcomeData`; `LevelControlMXBean` gains
+  `listRules`/`resetRule`/`resetAllRules`/`resetRulesForLogger`.
+- `logaperture-cli`: `logctl list rules [--json]`, `logctl reset rule <id> [--include-sticky]
+  [--json]`, `logctl reset rules [--include-sticky] [--json]`; `logctl reset logger <target>`
+  (exact-name path only — see the note below) now also removes and reports rules attached
+  directly to the target, reusing that command's own `--include-sticky`.
+- `logaperture-container-none`/`logaperture-container-wildfly`: construct a `RuleService` per
+  context, call `installPipeline()` at install time (guarded, same discipline as storm
+  detection) and again from `AggregateLevelControl.verificationSweep`'s per-tick re-arm; `none`
+  also re-arms it from the `reapplyOnReset` hook.
 
-**One spec gap resolved during implementation:** `LogRule` gained a `reason()` field, not
-listed in this document's original "Data model" — `AuditRecord`'s `reason` field needs
-somewhere to read it from, and `LevelOverride` already carries the equivalent field for the
-same reason. `RuleAttachOptions.reason` flows into it at attach time.
+**Spec gaps/refinements resolved during implementation:**
+
+1. `LogRule` gained a `reason()` field, not listed in this document's original "Data model" —
+   `AuditRecord`'s `reason` field needs somewhere to read it from, and `LevelOverride` already
+   carries the equivalent field for the same reason. `RuleAttachOptions.reason` flows into it
+   at attach time.
+2. **`RuleView`, not `LogRule::withContext`.** Every other multi-context row type (`Storm`,
+   `LoggerByteCount`, `LoggerInfo`) is a record with its own `withContext` copy method; `LogRule`
+   is an interface implemented by varying concrete types, so it has no such method to add.
+   Context-stamping for `list rules` happens instead via a small wrapper record, `RuleView(LogRule
+   rule, String context)`, introduced in `core` — `RuleOperations.listRules()` returns
+   `List<RuleView>`, not `List<LogRule>`. Not a decision the spec's own sign-off round covered;
+   recorded here as the implementation-level resolution.
+3. **`reset logger <target>`'s rule-removal side effect is scoped to the exact-name path only**
+   in this slice, not a pattern target — a pattern `reset logger` can revert several loggers in
+   one call, and cleaning up each one's directly-attached rules too is real additional scope
+   left for a fast-follow rather than folded in silently here.
 
 **Not yet implemented** (same branch, before this issue is ready to merge):
 
-- The JMX surface (`LevelControlMXBean` additions) and the CLI (`logctl list rules`/`reset
-  rule <id>`/`reset rules`, and `reset logger X`'s rule-removal side effect) — "Command
-  surface"'s generic forms, exercised in the spec's own testing plan against a
-  `CommandsTest`-style stub.
 - State-file persistence round-tripping (the `rules:` schema, resume ordering) — "Persistence".
-- Container `installContext` wiring (`NoneContainer`/`WildFlyContainer` constructing a
-  `RuleService` per context and calling `installRulePipeline` alongside `installStormDetection`)
-  and `AggregateLevelControl` multi-context merge for `list rules`.
+  A `STICKY` rule does not yet survive a JVM restart.
 
 ## Logger scope and inheritance
 
