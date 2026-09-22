@@ -16,6 +16,7 @@
 package org.logaperture.api;
 
 import java.time.Instant;
+import java.util.Map;
 
 /**
  * The on-disk shape of an attached {@link LogRule} — doc/specs/
@@ -40,6 +41,14 @@ import java.time.Instant;
  *                schema having never shipped without it) or a hand-edited
  *                file — treated as "resume anywhere" for tolerance, the
  *                same convention every other optional field here follows
+ * @param payload the attaching {@link LogRule}'s own {@link
+ *                LogRule#persistedPayload()} — opaque to this type, decoded
+ *                only by the {@link RuleFactory} its {@code action}
+ *                discriminator resolves to on resume (doc/specs/
+ *                drop-rule.md Decision #4). {@code null} only for a row
+ *                written before this field existed, or a hand-edited file —
+ *                read back as an empty map, same tolerant convention as
+ *                every other optional field here
  */
 public record PersistedRule(
         String id,
@@ -50,5 +59,10 @@ public record PersistedRule(
         PersistenceTier tier,
         Instant expiresAt,
         Instant createdAt,
-        String context) {
+        String context,
+        Map<String, String> payload) {
+
+    public PersistedRule {
+        payload = payload == null ? Map.of() : Map.copyOf(payload);
+    }
 }

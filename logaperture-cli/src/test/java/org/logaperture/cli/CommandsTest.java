@@ -1241,7 +1241,7 @@ class CommandsTest {
     void listRules_rendersATableWithIdLoggerActionTierExpiry() {
         mbean.rules = List.of(new org.logaperture.control.jmx.RuleData(
                 "r1", "com.acme.Worker", "TestRule", "ERROR", "This happens a lot", false, null, null, false,
-                "INC-123", "STICKY", null, Instant.now().toString(), null));
+                "INC-123", "STICKY", null, Instant.now().toString(), null, 0L));
 
         assertEquals(CliError.OK, run(Commands.listRules(false)));
 
@@ -1260,7 +1260,7 @@ class CommandsTest {
     void listRules_json_wrapsTheRows() {
         mbean.rules = List.of(new org.logaperture.control.jmx.RuleData(
                 "r1", "com.acme.Worker", "TestRule", null, null, false, null, null, false, null, "SESSION", null,
-                Instant.now().toString(), null));
+                Instant.now().toString(), null, 0L));
 
         run(Commands.listRules(true));
 
@@ -1273,7 +1273,7 @@ class CommandsTest {
     void resetRule_removed_reportsIt() {
         mbean.resetRuleResult = new org.logaperture.control.jmx.RuleData(
                 "r1", "com.acme.Worker", "TestRule", null, null, false, null, null, false, null, "SESSION", null,
-                Instant.now().toString(), null);
+                Instant.now().toString(), null, 0L);
 
         assertEquals(CliError.OK, run(Commands.resetRule("r1", false, false)));
 

@@ -15,6 +15,7 @@
  */
 package org.logaperture.cli.it;
 
+import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.EnvironmentReport;
 import org.logaperture.api.HandlerLevelOverride;
@@ -25,6 +26,8 @@ import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.ResetOutcome;
+import org.logaperture.api.RuleAttachOptions;
+import org.logaperture.api.SampleFullPolicy;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
@@ -248,5 +251,11 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     @Override
     public synchronized RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky) {
         return RuleResetOutcome.nothingReset();
+    }
+
+    @Override
+    public synchronized RuleView addRuleDrop(String loggerName, CompiledMatchers matchers,
+            RuleAttachOptions options, SampleFullPolicy sampleFull) {
+        throw new UnsupportedOperationException("not exercised by CliEndToEndIT yet");
     }
 }

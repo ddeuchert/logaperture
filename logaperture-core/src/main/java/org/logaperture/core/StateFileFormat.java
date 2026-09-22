@@ -90,10 +90,23 @@ import java.util.Map;
  * rule can share a logger). A version-1..6 file (no {@code rules:} section
  * at all) still parses, as an empty list — no rule was ever attachable
  * before this schema existed.
+ *
+ * <p>Schema version 8 (doc/specs/drop-rule.md "Persistence", Decision #4)
+ * adds a {@code payload:} field to each {@code rules:} record — an opaque,
+ * action-specific bag ({@code Drop}'s own {@code sampleFull} policy, for
+ * instance) encoded as a flat {@code key\u0002value} list joined by
+ * {@code \u0001}, decoded only by the {@link org.logaperture.api.LogRule}'s
+ * own {@code RuleFactory} on resume; this format never inspects it. A
+ * version-≤7 rule record (no {@code payload:} line) reads as an empty map —
+ * every rule type in existence before this field did had no action-specific
+ * state to carry anyway (there was no concrete rule type at all until
+ * {@code Drop}).
  */
 final class StateFileFormat {
 
-    private static final int SCHEMA_VERSION = 7;
+    private static final int SCHEMA_VERSION = 8;
+    private static final char PAYLOAD_ENTRY_SEPARATOR = '\u0001';
+    private static final char PAYLOAD_KV_SEPARATOR = '\u0002';
     private static final int MIN_SUPPORTED_SCHEMA_VERSION = 1;
 
     private StateFileFormat() {
@@ -165,6 +178,9 @@ final class StateFileFormat {
                 out.append("    expiresAt: ").append(rule.expiresAt() == null ? "null" : rule.expiresAt()).append('\n');
                 out.append("    createdAt: ").append(rule.createdAt()).append('\n');
                 out.append("    context: ").append(rule.context() == null ? "null" : quote(rule.context())).append('\n');
+                out.append("    payload: ")
+                        .append(rule.payload().isEmpty() ? "null" : quote(encodePayload(rule.payload())))
+                        .append('\n');
             }
         }
         return out.toString();
@@ -357,7 +373,47 @@ final class StateFileFormat {
                 // No "context:" line at all (there is no such file in practice -- this schema never
                 // shipped without it) reads as null, same tolerant convention as every other optional
                 // field here.
-                nullable(fields.get("context")) == null ? null : unquote(fields.get("context")));
+                nullable(fields.get("context")) == null ? null : unquote(fields.get("context")),
+                // A version-<=7 file has no "payload:" line at all -- reads as empty, per this
+                // schema bump's own javadoc paragraph above.
+                nullable(fields.get("payload")) == null ? Map.of() : decodePayload(unquote(fields.get("payload"))));
+    }
+
+    /**
+     * A flat {@code key<0x02>value} list joined by {@code <0x01>} -- avoids
+     * a second nesting level this line-oriented format has no syntax for
+     * (every other record here is a flat map of scalar fields), while
+     * staying robust to arbitrary key/value text: these two control
+     * characters are vanishingly unlikely to appear in a real payload
+     * value, and {@link #quote}/{@link #unquote} around the whole encoded
+     * string still handles backslash/quote/newline safely regardless.
+     */
+    private static String encodePayload(Map<String, String> payload) {
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (Map.Entry<String, String> entry : payload.entrySet()) {
+            if (!first) {
+                sb.append(PAYLOAD_ENTRY_SEPARATOR);
+            }
+            first = false;
+            sb.append(entry.getKey()).append(PAYLOAD_KV_SEPARATOR).append(entry.getValue());
+        }
+        return sb.toString();
+    }
+
+    private static Map<String, String> decodePayload(String encoded) {
+        if (encoded.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> result = new LinkedHashMap<>();
+        for (String entry : encoded.split(String.valueOf(PAYLOAD_ENTRY_SEPARATOR))) {
+            int kv = entry.indexOf(PAYLOAD_KV_SEPARATOR);
+            if (kv < 0) {
+                continue; // malformed entry -- tolerated, not fatal, same discipline as the rest of this reader
+            }
+            result.put(entry.substring(0, kv), entry.substring(kv + 1));
+        }
+        return result;
     }
 
     private static String nullable(String value) {

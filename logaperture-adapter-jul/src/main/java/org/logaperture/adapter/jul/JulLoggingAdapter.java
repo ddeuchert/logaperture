@@ -21,7 +21,7 @@ import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LoggerByteCount;
-import org.logaperture.core.RulePlanSource;
+import org.logaperture.core.RuleGate;
 import org.logaperture.core.StormObserver;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.UnknownHandlerException;
@@ -352,19 +352,21 @@ public final class JulLoggingAdapter implements LoggingAdapter {
 
     /**
      * doc/specs/rule-pipeline-foundation.md "Relationship to the
-     * storm-detection filter". A deliberately separate {@link Filter} from
-     * {@link #installStormDetection}'s own — both chain and compose on the
-     * same handler regardless of install order, each independently
-     * idempotent by checking for its own filter type only.
+     * storm-detection filter", doc/specs/drop-rule.md "Evaluation". A
+     * deliberately separate {@link Filter} from {@link
+     * #installStormDetection}'s own — both chain and compose on the same
+     * handler regardless of install order, each independently idempotent by
+     * checking for its own filter type only. The container decides install
+     * order (storm detection first, so this filter ends up outermost).
      */
     @Override
-    public void installRulePipeline(RulePlanSource plan) {
+    public void installRulePipeline(RuleGate gate) {
         for (HandlerRef ref : realHandlers()) {
             Handler handler = handlersByRef.get(ref);
             if (handler == null || handler.getFilter() instanceof JulRuleFilter) {
                 continue; // already wrapped, or no longer resolvable
             }
-            handler.setFilter(new JulRuleFilter(handler.getFilter(), plan));
+            handler.setFilter(new JulRuleFilter(handler.getFilter(), gate));
         }
     }
 

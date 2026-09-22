@@ -28,8 +28,11 @@ import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
+import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.ResetOutcome;
+import org.logaperture.api.RuleAttachOptions;
 import org.logaperture.api.RuleResetOutcome;
+import org.logaperture.api.SampleFullPolicy;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
@@ -429,6 +432,45 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             skippedSticky.addAll(outcome.skippedStickyIds());
         }
         return new RuleResetOutcome(removed, skippedSticky);
+    }
+
+    /**
+     * {@code logctl add rule drop} — doc/specs/drop-rule.md "Command
+     * surface". Attaches to the first registered context only (deterministic
+     * by {@code stableKey}, same ordering every other fan-out here uses) —
+     * multi-context fan-out and leading-star pattern-target expansion are
+     * deferred past this pass, per {@link RuleOperations#addRuleDrop}'s own
+     * note.
+     *
+     * @throws IllegalStateException if no context is registered
+     */
+    @Override
+    public RuleView addRuleDrop(String loggerName, CompiledMatchers matchers, RuleAttachOptions options,
+            SampleFullPolicy sampleFull) {
+        List<ContextControl> contexts = sortedByKey();
+        if (contexts.isEmpty()) {
+            throw new IllegalStateException("no logging context registered -- nothing to attach a rule to");
+        }
+        return contexts.get(0).ruleService().addRuleDrop(loggerName, matchers, options, sampleFull);
+    }
+
+    /**
+     * The periodic drop-summary line's scheduling entry point (doc/specs/
+     * drop-rule.md "Periodic summary line") — fanned out to every
+     * registered context's own {@link RuleService#reportDueDropSummaries},
+     * called from the same sweep tick that already drives expiry and
+     * reconfiguration re-application. A misbehaving context must not stop
+     * its siblings from reporting.
+     */
+    public void reportDueDropSummaries(Instant now) {
+        for (ContextControl context : sortedByKey()) {
+            try {
+                context.ruleService().reportDueDropSummaries(now);
+            } catch (RuntimeException e) {
+                System.err.println("[logaperture] failed to report drop summaries for context '"
+                        + context.handle().stableKey() + "', continuing: " + e);
+            }
+        }
     }
 
     /**

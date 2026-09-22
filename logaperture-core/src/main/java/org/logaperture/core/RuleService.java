@@ -16,22 +16,27 @@
 package org.logaperture.core;
 
 import org.logaperture.api.CompiledMatchers;
+import org.logaperture.api.Drop;
 import org.logaperture.api.LogRule;
 import org.logaperture.api.PersistedRule;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.RuleAttachOptions;
 import org.logaperture.api.RuleResetOutcome;
+import org.logaperture.api.SampleFullPolicy;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * The rule-pipeline engine — framework- and action-agnostic, per
@@ -68,6 +73,16 @@ public final class RuleService implements RuleOperations {
     private final ProtectedCategories protectedCategories;
     private final AtomicLong idSequence = new AtomicLong(1);
     private final Map<String, RuleFactory> actionFactories = new ConcurrentHashMap<>();
+
+    // --- Evaluation-time state (doc/specs/drop-rule.md "Evaluation") -- keyed by rule id, so it
+    // survives a rule's own recompiled RulePlan entries being swapped for equal-but-new instances.
+    /** Per-event, not per-handler (rule-pipeline-foundation.md "Evaluation"): a verdict computed for one handler's filter is reused by every sibling handler's filter evaluating the same framework record. */
+    private final Map<Object, GateVerdict> decisionCache = Collections.synchronizedMap(new WeakHashMap<>());
+    private final Map<String, LongAdder> hitCounters = new ConcurrentHashMap<>();
+    /** {@code Long.MIN_VALUE} sentinel = "never sampled yet" -- doc/specs/drop-rule.md "The keep-one-in-N escape hatch": the very first match is always kept. */
+    private final Map<String, AtomicLong> nextSampleAtNanos = new ConcurrentHashMap<>();
+    private final Map<String, LongAdder> pendingSummaryCounters = new ConcurrentHashMap<>();
+    private final Map<String, AtomicLong> lastSummaryAtNanos = new ConcurrentHashMap<>();
 
     private volatile RulePlan plan = RulePlan.empty();
 
@@ -111,13 +126,24 @@ public final class RuleService implements RuleOperations {
     }
 
     /**
+     * Registers {@link Drop}'s own resume factory under its {@code
+     * actionName()} ({@code "drop"}) — doc/specs/drop-rule.md "Persistence".
+     * Each container's composition root calls this once, before {@link
+     * #resumeFromStateStore}, the same way this slice's own tests call
+     * {@link #registerActionFactory} directly for {@code TestRule}.
+     */
+    public void registerDropSupport() {
+        registerActionFactory("drop", DropFactories.resume()); // matches Drop#actionName()'s literal
+    }
+
+    /**
      * Installs (or re-confirms) the gate-stage rule filter. Called once at
      * context-install time, and again on every reconfiguration re-arm — safe
      * either way, since {@link LoggingAdapter#installRulePipeline} is itself
      * required to be idempotent.
      */
     public void installPipeline() {
-        adapter.installRulePipeline(planSource());
+        adapter.installRulePipeline(gate());
     }
 
     /**
@@ -136,12 +162,29 @@ public final class RuleService implements RuleOperations {
      */
     public LogRule attach(String loggerName, CompiledMatchers matchers, RuleAttachOptions options,
             RuleFactory factory) {
+        return attach(loggerName, matchers, options, factory, null);
+    }
+
+    /**
+     * Same as the four-arg {@link #attach}, requiring one additional
+     * capability beyond {@link Capability#RULES_AUTHOR} (and, for a
+     * non-{@code SESSION} tier, {@link Capability#PERSIST}) -- {@link Drop}'s
+     * own attach path requires {@link Capability#SUPPRESS} this way
+     * (doc/specs/drop-rule.md "Capability and audit"). {@code
+     * additionalRequired} is {@code null} for a rule type with no
+     * action-specific capability of its own.
+     */
+    public LogRule attach(String loggerName, CompiledMatchers matchers, RuleAttachOptions options,
+            RuleFactory factory, Capability additionalRequired) {
         Objects.requireNonNull(loggerName, "loggerName");
         Objects.requireNonNull(matchers, "matchers");
         Objects.requireNonNull(factory, "factory");
         RuleAttachOptions opts = options == null ? RuleAttachOptions.defaults() : options;
 
         requireCapability(Capability.RULES_AUTHOR);
+        if (additionalRequired != null) {
+            requireCapability(additionalRequired);
+        }
         if (opts.tier() != PersistenceTier.SESSION && !policy.isGranted(Capability.PERSIST)) {
             throw new CapabilityDeniedException(Capability.PERSIST);
         }
@@ -153,7 +196,8 @@ public final class RuleService implements RuleOperations {
         String id = "r" + idSequence.getAndIncrement();
         Instant now = Instant.now();
         Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
-        LogRule rule = factory.create(id, loggerName, matchers, opts.reason(), opts.tier(), expiresAt, now);
+        LogRule rule = factory.create(id, loggerName, matchers, opts.reason(), opts.tier(), expiresAt, now,
+                Map.of());
 
         registry.attach(rule);
         recompilePlan();
@@ -163,6 +207,19 @@ public final class RuleService implements RuleOperations {
         auditLog.record(new AuditRecord(now, principal, source, loggerName, null, describe(rule), opts.reason(),
                 AuditRecord.Action.MUTATION));
         return rule;
+    }
+
+    /**
+     * {@code logctl add rule drop} -- doc/specs/drop-rule.md "Command
+     * surface". The first action type with a real CLI verb to create one
+     * with; requires {@link Capability#SUPPRESS} in addition to {@link
+     * Capability#RULES_AUTHOR}.
+     */
+    @Override
+    public RuleView addRuleDrop(String loggerName, CompiledMatchers matchers, RuleAttachOptions options,
+            SampleFullPolicy sampleFull) {
+        LogRule rule = attach(loggerName, matchers, options, DropFactories.attach(sampleFull), Capability.SUPPRESS);
+        return new RuleView(rule, context, hitCount(rule.id()));
     }
 
     /**
@@ -189,7 +246,7 @@ public final class RuleService implements RuleOperations {
         recompilePlan();
         safePersist(() -> stateStore.removeRule(id));
         auditRemoval(rule);
-        return Optional.of(new RuleView(rule, context));
+        return Optional.of(new RuleView(rule, context, hitCount(id)));
     }
 
     /** {@code reset rules} — bulk, skip-and-report shape (mirrors {@code reset loggers}). */
@@ -312,7 +369,8 @@ public final class RuleService implements RuleOperations {
             return;
         }
         LogRule rule = factory.create(persisted.id(), persisted.loggerName(), persisted.matchers(),
-                persisted.reason(), persisted.tier(), persisted.expiresAt(), persisted.createdAt());
+                persisted.reason(), persisted.tier(), persisted.expiresAt(), persisted.createdAt(),
+                persisted.payload());
         registry.attach(rule);
         recompilePlan();
         auditLog.record(new AuditRecord(now, principal, "resume", persisted.loggerName(), null, describe(rule),
@@ -334,7 +392,7 @@ public final class RuleService implements RuleOperations {
 
     private PersistedRule toPersisted(LogRule rule) {
         return new PersistedRule(rule.id(), rule.loggerName(), rule.actionName(), rule.matchers(), rule.reason(),
-                rule.tier(), rule.expiresAt(), rule.createdAt(), context);
+                rule.tier(), rule.expiresAt(), rule.createdAt(), context, rule.persistedPayload());
     }
 
     /**
@@ -355,7 +413,13 @@ public final class RuleService implements RuleOperations {
     @Override
     public List<RuleView> listRules() {
         requireCapability(Capability.VIEW);
-        return registry.all().stream().map(rule -> new RuleView(rule, context)).toList();
+        return registry.all().stream().map(rule -> new RuleView(rule, context, hitCount(rule.id()))).toList();
+    }
+
+    /** How many candidate events {@code ruleId} has matched so far -- {@code 0} for a rule that's never matched. */
+    public long hitCount(String ruleId) {
+        LongAdder counter = hitCounters.get(ruleId);
+        return counter == null ? 0L : counter.sum();
     }
 
     public Optional<LogRule> find(String id) {
@@ -403,9 +467,114 @@ public final class RuleService implements RuleOperations {
         registry.setUseParentRules(loggerName, useParentRules);
     }
 
-    /** The live, swapped-on-every-mutation plan reader an adapter's gate filter is installed with. */
-    public RulePlanSource planSource() {
+    /** The live, swapped-on-every-mutation plan reader -- used internally by {@link #gate()} only now (doc/specs/drop-rule.md "Evaluation" retired this as the adapter-facing SPI in favor of {@link RuleGate}). */
+    RulePlanSource planSource() {
         return () -> plan;
+    }
+
+    /**
+     * The seam an adapter's gate {@code Filter} evaluates every candidate
+     * event against -- doc/specs/drop-rule.md "Evaluation".
+     */
+    public RuleGate gate() {
+        return this::evaluateGate;
+    }
+
+    private GateVerdict evaluateGate(Object recordIdentity, RuleCandidateEvent event) {
+        GateVerdict cached = decisionCache.get(recordIdentity);
+        if (cached != null) {
+            return cached;
+        }
+        GateVerdict verdict = computeVerdict(event);
+        decisionCache.put(recordIdentity, verdict);
+        return verdict;
+    }
+
+    /**
+     * First-match-terminal among the event's effective rules (doc/specs/
+     * filtering-epic.md "Evaluation") -- only {@link Drop} denies in this
+     * slice; any other {@link LogRule} type reaching this loop (none exist
+     * yet) is simply not a candidate for a gate-stage verdict.
+     */
+    private GateVerdict computeVerdict(RuleCandidateEvent event) {
+        for (LogRule rule : effectiveRules(event.loggerName())) {
+            if (!(rule instanceof Drop drop)) {
+                continue;
+            }
+            if (!RuleMatching.matches(drop.matchers(), event)) {
+                continue;
+            }
+            recordHit(drop.id());
+            if (shouldSampleFull(drop)) {
+                return GateVerdict.allow();
+            }
+            return GateVerdict.deny(drop.id());
+        }
+        return GateVerdict.allow();
+    }
+
+    private void recordHit(String ruleId) {
+        hitCounters.computeIfAbsent(ruleId, id -> new LongAdder()).increment();
+        pendingSummaryCounters.computeIfAbsent(ruleId, id -> new LongAdder()).increment();
+    }
+
+    /**
+     * doc/specs/drop-rule.md "The keep-one-in-N escape hatch": the very
+     * first match is always kept; after that, one kept event per {@link
+     * SampleFullPolicy#every()}, resetting the clock from the kept event.
+     */
+    private boolean shouldSampleFull(Drop drop) {
+        SampleFullPolicy policy = drop.sampleFull();
+        if (!policy.enabled()) {
+            return false;
+        }
+        AtomicLong next = nextSampleAtNanos.computeIfAbsent(drop.id(), id -> new AtomicLong(Long.MIN_VALUE));
+        long now = System.nanoTime();
+        long current = next.get();
+        boolean due = current == Long.MIN_VALUE || now - current >= 0;
+        if (!due) {
+            return false;
+        }
+        // Lost a race with another thread's concurrent sample on this same rule -- treat as "not
+        // due" rather than double-sampling; the next matching event re-checks against whichever
+        // clock won.
+        return next.compareAndSet(current, now + policy.every().toNanos());
+    }
+
+    /**
+     * The periodic drop-summary line (doc/specs/drop-rule.md "Periodic
+     * summary line") -- called from the same sweep tick that already drives
+     * expiry and reconfiguration re-application (see {@link
+     * AggregateLevelControl#reportDueDropSummaries}), never a background
+     * thread of this class's own. Routed through this process's own stderr
+     * diagnostic convention (the same one {@link #resumeFromStateStore}
+     * already uses), not the target application's own logging pipeline --
+     * writing into a framework this agent instruments from inside it is a
+     * re-entrancy risk {@code logaperture-bridge}'s {@code Diagnostics}
+     * class doc already calls out, and {@code core} does not depend on that
+     * module (doc/specs/drop-rule.md "Divergence from prior specs").
+     */
+    public void reportDueDropSummaries(Instant now) {
+        long nowNanos = System.nanoTime();
+        for (LogRule rule : registry.all()) {
+            if (!(rule instanceof Drop drop)) {
+                continue;
+            }
+            LongAdder pending = pendingSummaryCounters.get(drop.id());
+            long count = pending == null ? 0L : pending.sum();
+            if (count == 0L) {
+                continue;
+            }
+            AtomicLong lastAt = lastSummaryAtNanos.computeIfAbsent(drop.id(), id -> new AtomicLong(Long.MIN_VALUE));
+            long last = lastAt.get();
+            boolean due = last == Long.MIN_VALUE || nowNanos - last >= SampleFullPolicy.DEFAULT_INTERVAL.toNanos();
+            if (!due || !lastAt.compareAndSet(last, nowNanos)) {
+                continue;
+            }
+            pending.reset();
+            System.err.println("[logaperture] " + now + " WARN drop summary: " + drop.id() + " ("
+                    + drop.loggerName() + ") -- " + count + " suppressed since the last summary");
+        }
     }
 
     private void recompilePlan() {

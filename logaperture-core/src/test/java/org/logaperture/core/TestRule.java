@@ -48,8 +48,9 @@ final class TestRule implements LogRule {
         this.createdAt = createdAt;
     }
 
-    /** A {@link RuleFactory} that builds a plain {@code TestRule}, ignoring nothing it's handed. */
-    static final RuleFactory FACTORY = TestRule::new;
+    /** A {@link RuleFactory} that builds a plain {@code TestRule} — ignores {@code payload}, which it has no use for. */
+    static final RuleFactory FACTORY = (id, loggerName, matchers, reason, tier, expiresAt, createdAt, payload) ->
+            new TestRule(id, loggerName, matchers, reason, tier, expiresAt, createdAt);
 
     @Override
     public String id() {

@@ -16,6 +16,7 @@
 package org.logaperture.api;
 
 import java.time.Instant;
+import java.util.Map;
 
 /**
  * The shared shape every content-based rule implements — doc/specs/
@@ -63,5 +64,18 @@ public interface LogRule {
      */
     default String actionName() {
         return getClass().getSimpleName();
+    }
+
+    /**
+     * This rule's own action-specific fields, opaque to everything but its
+     * own {@link RuleFactory} — doc/specs/drop-rule.md Decision #4. {@code
+     * PersistedRule} carries whatever this returns verbatim, so a future
+     * action's own fields never need another state-file schema bump.
+     * Defaults to empty, adequate for a rule with no action-specific state
+     * of its own (this slice's own {@code TestRule}); {@link Drop}
+     * overrides it.
+     */
+    default Map<String, String> persistedPayload() {
+        return Map.of();
     }
 }

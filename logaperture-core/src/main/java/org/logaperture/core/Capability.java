@@ -60,5 +60,14 @@ public enum Capability {
      * is not yet in this enum — this slice never denies an event on its
      * own, so nothing needs it yet.
      */
-    RULES_AUTHOR
+    RULES_AUTHOR,
+    /**
+     * The drop/trim actions themselves, separable from {@link
+     * #RULES_AUTHOR} — §9.3 "drop/trim actions specifically, separable
+     * from rate limiting". Required in addition to {@link #RULES_AUTHOR}
+     * to attach a {@link org.logaperture.api.Drop} (doc/specs/drop-rule.md
+     * "Capability and audit", supersedes rule-pipeline-foundation.md's own
+     * deferral of this capability to here).
+     */
+    SUPPRESS
 }

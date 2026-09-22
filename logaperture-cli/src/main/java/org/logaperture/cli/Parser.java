@@ -16,6 +16,7 @@
 package org.logaperture.cli;
 
 import org.logaperture.api.Level;
+import org.logaperture.api.SampleFullPolicy;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -58,6 +59,14 @@ final class Parser {
         boolean showAll = false;
         String reason = null;
         Integer limit = null;
+        String messageContains = null;
+        boolean messageIgnoreCase = false;
+        String throwableType = null;
+        String throwableMessageContains = null;
+        boolean anyCause = false;
+        String belowLevel = null;
+        Long sampleFullEveryMillis = null;
+        boolean noSampleFull = false;
 
         for (int i = 0; i < argv.length; i++) {
             String arg = argv[i];
@@ -69,6 +78,57 @@ final class Parser {
                 case "--yes" -> yes = true;
                 case "--include-sticky" -> includeSticky = true;
                 case "--show-all" -> showAll = true;
+                case "--any-cause" -> anyCause = true;
+                case "--no-sample-full" -> noSampleFull = true;
+                case "--message-contains" -> {
+                    i++;
+                    if (i >= argv.length) {
+                        throw usage("--message-contains needs a value.");
+                    }
+                    if (messageContains != null) {
+                        throw usage("only one of --message-contains / --message-contains-ignore-case.");
+                    }
+                    messageContains = argv[i];
+                }
+                case "--message-contains-ignore-case" -> {
+                    i++;
+                    if (i >= argv.length) {
+                        throw usage("--message-contains-ignore-case needs a value.");
+                    }
+                    if (messageContains != null) {
+                        throw usage("only one of --message-contains / --message-contains-ignore-case.");
+                    }
+                    messageContains = argv[i];
+                    messageIgnoreCase = true;
+                }
+                case "--throwable" -> {
+                    i++;
+                    if (i >= argv.length) {
+                        throw usage("--throwable needs a fully-qualified exception class name.");
+                    }
+                    throwableType = argv[i];
+                }
+                case "--throwable-message-contains" -> {
+                    i++;
+                    if (i >= argv.length) {
+                        throw usage("--throwable-message-contains needs a value.");
+                    }
+                    throwableMessageContains = argv[i];
+                }
+                case "--below" -> {
+                    i++;
+                    if (i >= argv.length) {
+                        throw usage("--below needs a level (or FATAL).");
+                    }
+                    belowLevel = parseBelowLevel(argv[i]);
+                }
+                case "--sample-full" -> {
+                    i++;
+                    if (i >= argv.length) {
+                        throw usage("--sample-full needs a duration, e.g. --sample-full 5m.");
+                    }
+                    sampleFullEveryMillis = Durations.parse(argv[i]).toMillis();
+                }
                 case "--all" -> throw usage("'reset --all' no longer exists -- use 'reset loggers' and "
                         + "'reset handlers'.");
                 case "--pid" -> {
@@ -148,12 +208,14 @@ final class Parser {
 
         boolean isSetLogger = command.equals("set") && !rest.isEmpty() && rest.get(0).equals("logger");
         boolean isSetHandler = command.equals("set") && !rest.isEmpty() && rest.get(0).equals("handler");
+        boolean isAddRuleDrop = command.equals("add") && rest.size() >= 2 && rest.get(0).equals("rule")
+                && rest.get(1).equals("drop");
 
         if (yes && !isSetLogger) {
             throw usage("--yes applies only to 'set logger'.");
         }
-        if (reason != null && !isSetLogger && !isSetHandler) {
-            throw usage("--reason applies only to 'set logger' or 'set handler'.");
+        if (reason != null && !isSetLogger && !isSetHandler && !isAddRuleDrop) {
+            throw usage("--reason applies only to 'set logger', 'set handler', or 'add rule drop'.");
         }
         if (includeSticky && !command.equals("reset")) {
             throw usage("--include-sticky applies only to 'reset'.");
@@ -163,6 +225,15 @@ final class Parser {
         }
         if (showAll && !command.equals("list")) {
             throw usage("--show-all applies only to 'list loggers' or 'list handlers'.");
+        }
+        if (!isAddRuleDrop) {
+            if (messageContains != null || throwableType != null || throwableMessageContains != null || anyCause
+                    || belowLevel != null || sampleFullEveryMillis != null || noSampleFull) {
+                throw usage("the drop-matcher options apply only to 'add rule drop'.");
+            }
+        }
+        if (sampleFullEveryMillis != null && noSampleFull) {
+            throw usage("only one of --sample-full / --no-sample-full.");
         }
 
         Command resolved = switch (command) {
@@ -329,6 +400,40 @@ final class Parser {
                             + "or 'default-handler <name> ...', got '" + noun + "'.");
                 };
             }
+            case "add" -> {
+                if (rest.size() < 2 || !rest.get(0).equals("rule")) {
+                    throw usage("'add' needs 'rule drop <target> ...'.");
+                }
+                String action = rest.get(1);
+                List<String> actionRest = rest.subList(2, rest.size());
+                yield switch (action) {
+                    case "drop" -> {
+                        if (actionRest.isEmpty()) {
+                            throw usage("'add rule drop' needs <target>, e.g. 'add rule drop com.acme.Worker "
+                                    + "--message-contains \"...\"'.");
+                        }
+                        if (messageContains == null && throwableType == null && throwableMessageContains == null) {
+                            throw usage("'add rule drop' needs at least one content matcher "
+                                    + "(--message-contains, --message-contains-ignore-case, --throwable, or "
+                                    + "--throwable-message-contains) -- use 'set logger' to change a logger's "
+                                    + "level instead.");
+                        }
+                        String target = actionRest.get(0);
+                        if (target.endsWith(".*")) {
+                            throw usage("'add rule drop' rejects a trailing '.*' -- a bare name already reaches "
+                                    + "every descendant.");
+                        }
+                        TierChoice tier = resolveTier(actionRest.subList(1, actionRest.size()));
+                        boolean sampleFullEnabled = !noSampleFull;
+                        long everyMillis = sampleFullEveryMillis != null ? sampleFullEveryMillis
+                                : SampleFullPolicy.DEFAULT_INTERVAL.toMillis();
+                        yield Commands.addRuleDrop(target, messageContains, messageIgnoreCase, throwableType,
+                                throwableMessageContains, anyCause, belowLevel, sampleFullEnabled, everyMillis,
+                                reason, tier.tierName(), tier.forSeconds(), json);
+                    }
+                    default -> throw usage("'add rule' needs 'drop', got '" + action + "'.");
+                };
+            }
             default -> throw usage("Unknown command '" + command + "'.");
         };
 
@@ -361,6 +466,28 @@ final class Parser {
             String known = java.util.Arrays.stream(Level.values()).map(Enum::name).collect(Collectors.joining(", "));
             throw usage("Unknown level '" + token + "' — expected one of " + known + ".");
         }
+    }
+
+    /**
+     * {@code --below LEVEL}, resolved to the {@link
+     * org.logaperture.api.CompiledMatchers#levelAtMost()} bound that
+     * excludes {@code LEVEL} itself -- doc/specs/drop-rule.md "Data model":
+     * "below ERROR" means ERROR and above are spared, so the compiled bound
+     * is the level one step more verbose than the one named. {@code FATAL}
+     * is accepted as a pseudo-token even though {@link Level} has no such
+     * member (this codebase's {@code Level} model tops out at {@code
+     * ERROR}; see that spec's "Divergence from prior specs") — it resolves
+     * to {@code ERROR} itself, since nothing more severe exists to spare.
+     */
+    private static String parseBelowLevel(String token) {
+        if (token.equalsIgnoreCase("FATAL")) {
+            return Level.ERROR.name();
+        }
+        Level level = Level.valueOf(parseLevel(token));
+        if (level.ordinal() == 0) {
+            throw usage("'--below " + token + "' leaves nothing more verbose to drop.");
+        }
+        return Level.values()[level.ordinal() - 1].name();
     }
 
     private static CliError usage(String message) {
