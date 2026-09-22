@@ -163,10 +163,15 @@ public final class WildFlyContainer implements AutoCloseable {
         LevelControlService service = new LevelControlService(
                 adapter, baselines, overrides, policy, auditLog, stateStore, principal(), "jmx",
                 autoRecomputeListener);
+        RuleService ruleService = new RuleService(adapter, policy, auditLog, stateStore, principal(), "jmx");
 
         try {
             service.resumeFromStateStore(Instant.now());
             handlerService.resumeFromStateStore(Instant.now());
+            // doc/specs/rule-pipeline-foundation.md "Persistence" -- see
+            // NoneContainer's identical call for why every row is currently
+            // reported "not resumed" (no action factory registered yet).
+            ruleService.resumeFromStateStore(Instant.now());
             // doc/specs/handler-floor-control.md "AUTO handler level", AUTO-5.
             handlerService.recomputeAuto();
         } catch (RuntimeException e) {
@@ -196,7 +201,6 @@ public final class WildFlyContainer implements AutoCloseable {
             Diagnostics.warn("LogAperture: failed to arm storm detection for this context, continuing without it", e);
         }
 
-        RuleService ruleService = new RuleService(adapter, policy, auditLog, principal(), "jmx");
         // doc/specs/rule-pipeline-foundation.md: same always-on discipline and same guard as storm
         // detection above.
         try {

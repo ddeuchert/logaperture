@@ -97,7 +97,7 @@ class AggregateLevelControlTest {
             doctorService = new DoctorService(adapter, policy);
             topService = new TopService(adapter, policy);
             stormService = new StormService(adapter, policy, stormDetector);
-            ruleService = new RuleService(adapter, policy, auditLog, "alice", "jmx");
+            ruleService = new RuleService(adapter, policy, auditLog, sharedStore, "alice", "jmx");
             environmentReportService = new EnvironmentReportService(adapter, policy);
             control = new ContextControl(ContextHandle.of(key, key, adapter), service, handlerService,
                     doctorService, topService, stormService, ruleService, environmentReportService);

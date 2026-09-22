@@ -1,13 +1,11 @@
 # Rule pipeline foundation: `LogRule`, `useParentRules`, matcher library
 
-Status: **signed off 2026-09-22; implemented except persistence.** `core` (`RuleRegistry`/
-`RuleService`/matcher library/`useParentRules` resolution/`AggregateLevelControl` multi-context
-merge), the JUL/JBoss LogManager gate `Filter`, the JMX surface, the CLI (`list rules`/`reset
-rule`/`reset rules`, and `reset logger X`'s rule-removal side effect), and container
-`installContext` wiring are all implemented and tested on
-`feature/71-rule-pipeline-foundation`. Not yet implemented: state-file persistence
-round-tripping (a `STICKY` rule does not yet survive a restart) — see "Implementation status"
-below. No concrete rule type
+Status: **signed off 2026-09-22; implemented.** `core` (`RuleRegistry`/`RuleService`/matcher
+library/`useParentRules` resolution/`AggregateLevelControl` multi-context merge), the
+JUL/JBoss LogManager gate `Filter`, the JMX surface, the CLI (`list rules`/`reset rule`/`reset
+rules`, and `reset logger X`'s rule-removal side effect), container `installContext` wiring,
+and state-file persistence (round-trip, resume, expiry) are all implemented and tested on
+`feature/71-rule-pipeline-foundation` — see "Implementation status" below. No concrete rule type
 (`drop`, `trim`) ships in this slice — this is the shared machinery every later rule is built
 on, per [`filtering-epic.md`](filtering-epic.md)'s build order (step 2 of 4).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §4.2 (gate/render stages),
@@ -129,7 +127,21 @@ Landed on `feature/71-rule-pipeline-foundation`, unit-tested, full reactor build
 - `logaperture-container-none`/`logaperture-container-wildfly`: construct a `RuleService` per
   context, call `installPipeline()` at install time (guarded, same discipline as storm
   detection) and again from `AggregateLevelControl.verificationSweep`'s per-tick re-arm; `none`
-  also re-arms it from the `reapplyOnReset` hook.
+  also re-arms it from the `reapplyOnReset` hook; both call `resumeFromStateStore` alongside
+  the logger/handler services' own resume, in the same fail-open try/catch.
+- **Persistence:** `PersistedRule` (`logaperture-api`) — the generic, action-agnostic on-disk
+  row shape; `StateStore` gains `loadAllRules`/`saveRule`/`removeRule`/`removeAllRules`;
+  `StateFileFormat`/`FileStateStore` bump to schema 7 with a `rules:` section, tolerant of a
+  version ≤6 file (no such section). `RuleService.attach` persists a non-`SESSION` rule;
+  removal persists the row's deletion (batched for `resetAllRules`/`resetRulesForLogger`, one
+  rewrite per call — issue #17's precedent). `RuleService.resumeFromStateStore` mirrors
+  `LevelControlService`'s own: an expired `FOR` row is never reapplied, only recorded as a
+  `REVERSION` and dropped; a live row is reconstructed via a `RuleFactory` looked up by its
+  persisted `action` string through the new `registerActionFactory` — since this slice
+  registers none, every persisted row today is reported "not resumed" and left untouched in
+  the store (not discarded), ready for a later resume once #72/#34 register one. A resumed
+  rule keeps its exact persisted id; the id sequence is advanced past every resumed id so a
+  later fresh attach never collides with one.
 
 **Spec gaps/refinements resolved during implementation:**
 
@@ -148,11 +160,14 @@ Landed on `feature/71-rule-pipeline-foundation`, unit-tested, full reactor build
    in this slice, not a pattern target — a pattern `reset logger` can revert several loggers in
    one call, and cleaning up each one's directly-attached rules too is real additional scope
    left for a fast-follow rather than folded in silently here.
+4. **`RuleService.registerActionFactory`** is a new primitive this document's original
+   "Persistence" section didn't name — resuming a generic `PersistedRule` back into a live
+   `LogRule` needs a way to map its `action` discriminator to the right concrete constructor,
+   and nothing in the epic or this spec's sign-off round specified one. #72/#34 are expected to
+   call it once, at their own composition-root wiring, the same way this slice's own tests do.
 
-**Not yet implemented** (same branch, before this issue is ready to merge):
-
-- State-file persistence round-tripping (the `rules:` schema, resume ordering) — "Persistence".
-  A `STICKY` rule does not yet survive a JVM restart.
+Nothing is left unimplemented from this spec's own scope. `add rule` itself, the render-stage
+seam, and pattern-target rule cleanup remain #72/#34's own work, as scoped from the start.
 
 ## Logger scope and inheritance
 

@@ -147,6 +147,7 @@ public final class NoneContainer implements AutoCloseable {
         LevelControlService service = new LevelControlService(
                 adapter, baselines, overrides, policy, auditLog, stateStore, principal(), "jmx",
                 autoRecomputeListener);
+        RuleService ruleService = new RuleService(adapter, policy, auditLog, stateStore, principal(), "jmx");
 
         try {
             // Per-entry failures are already isolated inside
@@ -155,6 +156,11 @@ public final class NoneContainer implements AutoCloseable {
             // (doc/logaperture-spec.md §9).
             service.resumeFromStateStore(Instant.now());
             handlerService.resumeFromStateStore(Instant.now());
+            // doc/specs/rule-pipeline-foundation.md "Persistence" -- no
+            // action factory is registered by this slice, so every resumed
+            // row is (for now) reported "not resumed" and left in the state
+            // file, per that method's own "skipped, not failed" discipline.
+            ruleService.resumeFromStateStore(Instant.now());
             // One AUTO recompute pass now that both halves have resumed --
             // doc/specs/handler-floor-control.md "AUTO handler level",
             // AUTO-5: an AUTO override's persisted level is a cache, never
@@ -168,7 +174,6 @@ public final class NoneContainer implements AutoCloseable {
         DoctorService doctorService = new DoctorService(adapter, policy);
         TopService topService = new TopService(adapter, policy);
         StormService stormService = new StormService(adapter, policy);
-        RuleService ruleService = new RuleService(adapter, policy, auditLog, principal(), "jmx");
         EnvironmentReportService environmentReportService = new EnvironmentReportService(adapter, policy);
 
         // doc/specs/persistence.md "Reconfiguration re-application": Logback's

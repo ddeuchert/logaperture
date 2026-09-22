@@ -16,10 +16,12 @@
 package org.logaperture.core;
 
 import org.junit.jupiter.api.Test;
+import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
+import org.logaperture.api.PersistedRule;
 import org.logaperture.api.PersistenceTier;
 
 import java.time.Instant;
@@ -46,7 +48,7 @@ class StateFileFormatTest {
                 "com.acme.Worker", Level.DEBUG, "line one\nline two\r\nline three",
                 Instant.parse("2026-08-21T03:14:02Z"), "jmx", PersistenceTier.STICKY, null);
 
-        String content = StateFileFormat.write(List.of(withMultilineReason), List.of(), List.of());
+        String content = StateFileFormat.write(List.of(withMultilineReason), List.of(), List.of(), List.of());
         StateFileFormat.Parsed parsed = StateFileFormat.parse(content);
 
         assertEquals(1, parsed.overrides().size());
@@ -63,7 +65,7 @@ class StateFileFormatTest {
                 Instant.parse("2026-08-21T04:00:00Z"), "jmx", PersistenceTier.STICKY, null);
 
         StateFileFormat.Parsed parsed =
-                StateFileFormat.parse(StateFileFormat.write(List.of(first, second), List.of(), List.of()));
+                StateFileFormat.parse(StateFileFormat.write(List.of(first, second), List.of(), List.of(), List.of()));
 
         // The bug this guards against: a raw embedded newline used to shift
         // every subsequent line, corrupting (or losing) records after it.
@@ -78,7 +80,7 @@ class StateFileFormatTest {
                 "com.acme.Worker", Level.DEBUG, "a \"quoted\" path C:\\logs",
                 Instant.parse("2026-08-21T03:14:02Z"), "jmx", PersistenceTier.STICKY, null);
 
-        StateFileFormat.Parsed parsed = StateFileFormat.parse(StateFileFormat.write(List.of(override), List.of(), List.of()));
+        StateFileFormat.Parsed parsed = StateFileFormat.parse(StateFileFormat.write(List.of(override), List.of(), List.of(), List.of()));
 
         assertEquals(override, parsed.overrides().get(0));
     }
@@ -94,7 +96,7 @@ class StateFileFormatTest {
                 Instant.parse("2026-08-21T03:45:00Z"));
 
         StateFileFormat.Parsed parsed =
-                StateFileFormat.parse(StateFileFormat.write(List.of(logger), List.of(handler), List.of()));
+                StateFileFormat.parse(StateFileFormat.write(List.of(logger), List.of(handler), List.of(), List.of()));
 
         assertEquals(List.of(logger), parsed.overrides());
         assertEquals(List.of(handler), parsed.handlerOverrides());
@@ -102,7 +104,7 @@ class StateFileFormatTest {
 
     @Test
     void roundTrips_aSchema5FileWithNoPatternRulesKeyAtAll() {
-        String content = StateFileFormat.write(List.of(), List.of(), List.of());
+        String content = StateFileFormat.write(List.of(), List.of(), List.of(), List.of());
 
         assertEquals(-1, content.indexOf("patternRules"));
         StateFileFormat.Parsed parsed = StateFileFormat.parse(content);
@@ -210,5 +212,61 @@ class StateFileFormatTest {
 
         assertEquals(List.of(), parsed.overrides());
         assertEquals(List.of(), parsed.handlerOverrides());
+    }
+
+    // --- rules: (doc/specs/rule-pipeline-foundation.md "Persistence") -----------------------------
+
+    @Test
+    void roundTrips_aRuleWithEveryMatcherFieldSet() {
+        PersistedRule rule = new PersistedRule(
+                "r1", "com.acme.Worker", "Drop",
+                new CompiledMatchers(Level.ERROR, "This happens a lot", true, "java.net.ConnectException",
+                        "connection refused", true),
+                "INC-123", PersistenceTier.STICKY, null, Instant.parse("2026-09-22T03:14:02Z"));
+
+        String content = StateFileFormat.write(List.of(), List.of(), List.of(), List.of(rule));
+        StateFileFormat.Parsed parsed = StateFileFormat.parse(content);
+
+        assertEquals(List.of(rule), parsed.rules());
+    }
+
+    @Test
+    void roundTrips_aRuleWithNoMatcherFieldsSet_andAForTierExpiry() {
+        PersistedRule rule = new PersistedRule(
+                "r2", "com.acme.Other", "Trim", CompiledMatchers.matchAll(), null, PersistenceTier.FOR,
+                Instant.parse("2026-09-22T03:44:02Z"), Instant.parse("2026-09-22T03:14:02Z"));
+
+        StateFileFormat.Parsed parsed =
+                StateFileFormat.parse(StateFileFormat.write(List.of(), List.of(), List.of(), List.of(rule)));
+
+        assertEquals(List.of(rule), parsed.rules());
+    }
+
+    @Test
+    void roundTrips_rulesAlongsideEverySection() {
+        LevelOverride logger = new LevelOverride(
+                "com.acme.Worker", Level.DEBUG, "why",
+                Instant.parse("2026-08-21T03:14:02Z"), "jmx", PersistenceTier.STICKY, null);
+        PersistedRule rule = new PersistedRule(
+                "r1", "com.acme.Worker", "Drop", CompiledMatchers.matchAll(), null, PersistenceTier.SESSION, null,
+                Instant.parse("2026-09-22T03:14:02Z"));
+
+        StateFileFormat.Parsed parsed =
+                StateFileFormat.parse(StateFileFormat.write(List.of(logger), List.of(), List.of(), List.of(rule)));
+
+        assertEquals(List.of(logger), parsed.overrides());
+        assertEquals(List.of(rule), parsed.rules());
+    }
+
+    @Test
+    void roundTrips_aSchema6FileWithNoRulesKeyAtAll() {
+        String v6 = "schemaVersion: 6\n"
+                + "overrides: []\n"
+                + "handlerOverrides: []\n"
+                + "defaultHandlerMembers: []\n";
+
+        StateFileFormat.Parsed parsed = StateFileFormat.parse(v6);
+
+        assertEquals(List.of(), parsed.rules());
     }
 }

@@ -17,16 +17,20 @@ package org.logaperture.core;
 
 import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.LogRule;
+import org.logaperture.api.PersistedRule;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.RuleAttachOptions;
 import org.logaperture.api.RuleResetOutcome;
 import org.logaperture.core.spi.LoggingAdapter;
+import org.logaperture.core.spi.StateStore;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -57,26 +61,41 @@ public final class RuleService implements RuleOperations {
     private final RuleRegistry registry = new RuleRegistry();
     private final CapabilityPolicy policy;
     private final AuditLog auditLog;
+    private final StateStore stateStore;
     private final String principal;
     private final String source;
     private final ProtectedCategories protectedCategories;
     private final AtomicLong idSequence = new AtomicLong(1);
+    private final Map<String, RuleFactory> actionFactories = new ConcurrentHashMap<>();
 
     private volatile RulePlan plan = RulePlan.empty();
 
-    public RuleService(LoggingAdapter adapter, CapabilityPolicy policy, AuditLog auditLog, String principal,
-            String source) {
-        this(adapter, policy, auditLog, principal, source, ProtectedCategories.none());
+    public RuleService(LoggingAdapter adapter, CapabilityPolicy policy, AuditLog auditLog, StateStore stateStore,
+            String principal, String source) {
+        this(adapter, policy, auditLog, stateStore, principal, source, ProtectedCategories.none());
     }
 
-    public RuleService(LoggingAdapter adapter, CapabilityPolicy policy, AuditLog auditLog, String principal,
-            String source, ProtectedCategories protectedCategories) {
+    public RuleService(LoggingAdapter adapter, CapabilityPolicy policy, AuditLog auditLog, StateStore stateStore,
+            String principal, String source, ProtectedCategories protectedCategories) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.policy = Objects.requireNonNull(policy, "policy");
         this.auditLog = Objects.requireNonNull(auditLog, "auditLog");
+        this.stateStore = Objects.requireNonNull(stateStore, "stateStore");
         this.principal = Objects.requireNonNull(principal, "principal");
         this.source = Objects.requireNonNull(source, "source");
         this.protectedCategories = Objects.requireNonNull(protectedCategories, "protectedCategories");
+    }
+
+    /**
+     * Registers the {@link RuleFactory} used to reconstruct a resumed {@code
+     * action}'s concrete rule type on {@link #resumeFromStateStore} — doc/specs/
+     * rule-pipeline-foundation.md "Persistence". Nothing calls this in this
+     * slice (there is no concrete rule type yet); #72/#34 register their own
+     * ({@code "Drop"}/{@code "Trim"}) at composition-root time, the same way
+     * this slice's own tests register {@code TestRule}'s.
+     */
+    public void registerActionFactory(String action, RuleFactory factory) {
+        actionFactories.put(Objects.requireNonNull(action, "action"), Objects.requireNonNull(factory, "factory"));
     }
 
     /**
@@ -126,6 +145,9 @@ public final class RuleService implements RuleOperations {
 
         registry.attach(rule);
         recompilePlan();
+        if (rule.tier() != PersistenceTier.SESSION) {
+            safePersist(() -> stateStore.saveRule(toPersisted(rule)));
+        }
         auditLog.record(new AuditRecord(now, principal, source, loggerName, null, describe(rule), opts.reason(),
                 AuditRecord.Action.MUTATION));
         return rule;
@@ -153,6 +175,7 @@ public final class RuleService implements RuleOperations {
         }
         registry.removeById(id);
         recompilePlan();
+        safePersist(() -> stateStore.removeRule(id));
         auditRemoval(rule);
         return Optional.of(rule);
     }
@@ -190,6 +213,9 @@ public final class RuleService implements RuleOperations {
         }
         if (!removed.isEmpty()) {
             recompilePlan();
+            // One rewrite for the whole batch, not one per rule -- doc/specs/
+            // persistence.md "Batch removal" (issue #17)'s precedent.
+            safePersist(() -> stateStore.removeAllRules(removed));
         }
         return new RuleResetOutcome(removed, skippedSticky);
     }
@@ -201,6 +227,93 @@ public final class RuleService implements RuleOperations {
 
     private static String describe(LogRule rule) {
         return rule.id() + " (" + rule.actionName() + ")";
+    }
+
+    /**
+     * Runs once, at composition-root install time, after {@link
+     * #registerActionFactory} calls have been made — doc/specs/
+     * rule-pipeline-foundation.md "Persistence", mirroring {@link
+     * LevelControlService#resumeFromStateStore}'s ordering and "bypasses
+     * capability checks deliberately" reasoning exactly: this reinstates
+     * state a previous, already-authorized session persisted, not a new
+     * operator action.
+     *
+     * @param now injected so tests can simulate "time has passed since the
+     *            rule was persisted" without a real sleep
+     */
+    public void resumeFromStateStore(Instant now) {
+        for (PersistedRule persisted : stateStore.loadAllRules()) {
+            try {
+                resumeOne(persisted, now);
+            } catch (RuntimeException e) {
+                System.err.println("[logaperture-state] failed to resume persisted rule '" + persisted.id()
+                        + "', skipping it: " + e);
+            }
+        }
+    }
+
+    private void resumeOne(PersistedRule persisted, Instant now) {
+        advanceIdSequencePast(persisted.id());
+
+        if (persisted.tier() == PersistenceTier.FOR && !persisted.expiresAt().isAfter(now)) {
+            // Expired while this JVM was down -- never (re-)applied this
+            // session, but still recorded as a reversion and dropped from
+            // the store, mirroring LevelControlService's identical case.
+            auditLog.record(new AuditRecord(now, principal, "resume", persisted.loggerName(),
+                    persisted.id() + " (" + persisted.action() + ")", null, "expired while stopped",
+                    AuditRecord.Action.REVERSION));
+            safePersist(() -> stateStore.removeRule(persisted.id()));
+            return;
+        }
+
+        RuleFactory factory = actionFactories.get(persisted.action());
+        if (factory == null) {
+            // No rule type registered for this action (this slice ships none)
+            // -- leave the persisted row untouched so a later resume, once
+            // #72/#34 register one, picks it up. "Skipped, not failed" --
+            // doc/specs/doctor.md's own discipline for an unresolvable fact.
+            System.err.println("[logaperture-state] rule '" + persisted.id() + "' (" + persisted.action()
+                    + ") not resumed: no rule type registered for that action");
+            return;
+        }
+        LogRule rule = factory.create(persisted.id(), persisted.loggerName(), persisted.matchers(),
+                persisted.reason(), persisted.tier(), persisted.expiresAt(), persisted.createdAt());
+        registry.attach(rule);
+        recompilePlan();
+        auditLog.record(new AuditRecord(now, principal, "resume", persisted.loggerName(), null, describe(rule),
+                persisted.reason(), AuditRecord.Action.MUTATION));
+    }
+
+    /** So a fresh {@link #attach} after resume never mints an id that collides with a just-resumed one. */
+    private void advanceIdSequencePast(String id) {
+        if (id == null || !id.startsWith("r")) {
+            return; // not one of this service's own ids (e.g. a hand-edited state file) -- leave the sequence alone
+        }
+        try {
+            long n = Long.parseLong(id.substring(1));
+            idSequence.updateAndGet(current -> Math.max(current, n + 1));
+        } catch (NumberFormatException ignored) {
+            // not a plain "r<N>" id -- nothing to advance past
+        }
+    }
+
+    private static PersistedRule toPersisted(LogRule rule) {
+        return new PersistedRule(rule.id(), rule.loggerName(), rule.actionName(), rule.matchers(), rule.reason(),
+                rule.tier(), rule.expiresAt(), rule.createdAt());
+    }
+
+    /**
+     * Guards a {@link StateStore} call against a misbehaving implementation
+     * -- same discipline as {@link LevelControlService#safePersist}: the
+     * in-memory mutation this call follows already succeeded, so degrading
+     * silently to session-only behavior here is a safe direction to fail in.
+     */
+    private void safePersist(Runnable stateStoreCall) {
+        try {
+            stateStoreCall.run();
+        } catch (RuntimeException e) {
+            System.err.println("[logaperture-state] state store operation failed, continuing in-memory only: " + e);
+        }
     }
 
     /** Every attached rule, across every logger — {@code logctl list rules}. Untagged ({@code context == null}); {@link AggregateLevelControl} stamps the real key. */

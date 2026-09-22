@@ -18,6 +18,7 @@ package org.logaperture.core;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.LevelOverride;
+import org.logaperture.api.PersistedRule;
 import org.logaperture.core.spi.StateStore;
 
 import java.io.Closeable;
@@ -63,14 +64,17 @@ public final class FileStateStore implements StateStore, Closeable {
     private final Map<String, LevelOverride> cache;
     private final Map<HandlerRef, HandlerLevelOverride> handlerCache;
     private final List<String> defaultHandlerMembersCache;
+    private final Map<String, PersistedRule> ruleCache;
 
     private FileStateStore(Path stateFile, FileLock lock, Map<String, LevelOverride> initial,
-            Map<HandlerRef, HandlerLevelOverride> initialHandlers, List<String> initialDefaultHandlerMembers) {
+            Map<HandlerRef, HandlerLevelOverride> initialHandlers, List<String> initialDefaultHandlerMembers,
+            Map<String, PersistedRule> initialRules) {
         this.stateFile = stateFile;
         this.lock = lock;
         this.cache = new LinkedHashMap<>(initial);
         this.handlerCache = new LinkedHashMap<>(initialHandlers);
         this.defaultHandlerMembersCache = new ArrayList<>(initialDefaultHandlerMembers);
+        this.ruleCache = new LinkedHashMap<>(initialRules);
     }
 
     /**
@@ -106,7 +110,12 @@ public final class FileStateStore implements StateStore, Closeable {
             for (HandlerLevelOverride override : existing.handlerOverrides()) {
                 initialHandlers.put(override.handlerRef(), override);
             }
-            return new FileStateStore(stateFile, lock, initial, initialHandlers, existing.defaultHandlerMembers());
+            Map<String, PersistedRule> initialRules = new LinkedHashMap<>();
+            for (PersistedRule rule : existing.rules()) {
+                initialRules.put(rule.id(), rule);
+            }
+            return new FileStateStore(stateFile, lock, initial, initialHandlers, existing.defaultHandlerMembers(),
+                    initialRules);
         } catch (IOException | RuntimeException e) {
             // Don't leak the lock if anything after acquiring it fails --
             // otherwise this identity looks permanently held for the rest
@@ -204,11 +213,42 @@ public final class FileStateStore implements StateStore, Closeable {
     }
 
     @Override
+    public synchronized List<PersistedRule> loadAllRules() {
+        return List.copyOf(ruleCache.values());
+    }
+
+    @Override
+    public synchronized void saveRule(PersistedRule rule) {
+        ruleCache.put(rule.id(), rule);
+        persist();
+    }
+
+    @Override
+    public synchronized void removeRule(String id) {
+        if (ruleCache.remove(id) != null) {
+            persist();
+        }
+    }
+
+    @Override
+    public synchronized void removeAllRules(Collection<String> ids) {
+        boolean changed = false;
+        for (String id : ids) {
+            changed |= ruleCache.remove(id) != null;
+        }
+        if (changed) {
+            persist();
+        }
+    }
+
+    @Override
     public synchronized void clear() {
-        if (!cache.isEmpty() || !handlerCache.isEmpty() || !defaultHandlerMembersCache.isEmpty()) {
+        if (!cache.isEmpty() || !handlerCache.isEmpty() || !defaultHandlerMembersCache.isEmpty()
+                || !ruleCache.isEmpty()) {
             cache.clear();
             handlerCache.clear();
             defaultHandlerMembersCache.clear();
+            ruleCache.clear();
             persist();
         }
     }
@@ -254,7 +294,7 @@ public final class FileStateStore implements StateStore, Closeable {
     private void persist() {
         try {
             String content = StateFileFormat.write(List.copyOf(cache.values()), List.copyOf(handlerCache.values()),
-                    List.copyOf(defaultHandlerMembersCache));
+                    List.copyOf(defaultHandlerMembersCache), List.copyOf(ruleCache.values()));
             Path tmp = Files.createTempFile(stateFile.getParent(), stateFile.getFileName().toString(), ".tmp");
             try {
                 Files.writeString(tmp, content, StandardCharsets.UTF_8);
@@ -277,7 +317,7 @@ public final class FileStateStore implements StateStore, Closeable {
 
     private static StateFileFormat.Parsed readExisting(Path stateFile) {
         if (!Files.exists(stateFile)) {
-            return new StateFileFormat.Parsed(List.of(), List.of(), List.of());
+            return new StateFileFormat.Parsed(List.of(), List.of(), List.of(), List.of());
         }
         try {
             return StateFileFormat.parse(Files.readString(stateFile, StandardCharsets.UTF_8));
@@ -286,7 +326,7 @@ public final class FileStateStore implements StateStore, Closeable {
             // refusing to start -- fail-open, per doc/logaperture-spec.md §9.
             System.err.println("[logaperture-state] failed to load state file '" + stateFile
                     + "', resuming with nothing persisted: " + e);
-            return new StateFileFormat.Parsed(List.of(), List.of(), List.of());
+            return new StateFileFormat.Parsed(List.of(), List.of(), List.of(), List.of());
         }
     }
 
