@@ -1,6 +1,11 @@
 # Rule pipeline foundation: `LogRule`, `useParentRules`, matcher library
 
-Status: **signed off 2026-09-22.** Nothing is implemented yet. No concrete rule type
+Status: **signed off 2026-09-22; partially implemented.** `core` (`RuleRegistry`/
+`RuleService`/matcher library/`useParentRules` resolution) and the JUL/JBoss LogManager gate
+`Filter` are implemented and unit-tested on `feature/71-rule-pipeline-foundation`. Not yet
+implemented: the JMX/CLI surface (`list rules`/`reset rule`/`reset rules`), state-file
+persistence round-tripping, and container `installContext` wiring — see "Implementation
+status" below. No concrete rule type
 (`drop`, `trim`) ships in this slice — this is the shared machinery every later rule is built
 on, per [`filtering-epic.md`](filtering-epic.md)'s build order (step 2 of 4).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §4.2 (gate/render stages),
@@ -96,6 +101,35 @@ operator actually reaches for. What lands here, visible once either of those exi
 - **The periodic suppression-summary line** (§9.6) — its *shape* depends on which action is
   doing the suppressing (a drop count reads differently from a trim count); this slice's hit
   counter is the data it will be built from, but the line itself is #72/#34's to write.
+
+## Implementation status
+
+Landed on `feature/71-rule-pipeline-foundation`, unit-tested, full reactor build green:
+
+- `logaperture-api`: `LogRule`, `CompiledMatchers`, `RuleAttachOptions`, `RuleResetOutcome`.
+- `logaperture-core`: `Capability.RULES_AUTHOR`; `RuleRegistry` (attachment +
+  `useParentRules` state); `RuleService` (id assignment, capability/suppression-floor checks,
+  audit, `effectiveRules` tree-inheritance resolution, `resetRule`/`resetAllRules`/
+  `resetRulesForLogger`); `RulePlan`/`RulePlanSource` (the atomically-swapped compiled plan).
+- `logaperture-adapter-jul`: `installRulePipeline`, `JulRuleFilter` — a second, independent,
+  verdict-transparent `Filter` from storm detection's, proven to compose with it in either
+  install order.
+
+**One spec gap resolved during implementation:** `LogRule` gained a `reason()` field, not
+listed in this document's original "Data model" — `AuditRecord`'s `reason` field needs
+somewhere to read it from, and `LevelOverride` already carries the equivalent field for the
+same reason. `RuleAttachOptions.reason` flows into it at attach time.
+
+**Not yet implemented** (same branch, before this issue is ready to merge):
+
+- The JMX surface (`LevelControlMXBean` additions) and the CLI (`logctl list rules`/`reset
+  rule <id>`/`reset rules`, and `reset logger X`'s rule-removal side effect) — "Command
+  surface"'s generic forms, exercised in the spec's own testing plan against a
+  `CommandsTest`-style stub.
+- State-file persistence round-tripping (the `rules:` schema, resume ordering) — "Persistence".
+- Container `installContext` wiring (`NoneContainer`/`WildFlyContainer` constructing a
+  `RuleService` per context and calling `installRulePipeline` alongside `installStormDetection`)
+  and `AggregateLevelControl` multi-context merge for `list rules`.
 
 ## Logger scope and inheritance
 

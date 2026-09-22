@@ -18,9 +18,10 @@ package org.logaperture.core;
 /**
  * The capability slice implemented so far — see doc/specs/level-control.md
  * "Capability and audit", doc/specs/persistence.md "Capability and audit",
- * and doc/logaperture-spec.md §9.3 for the full set this is drawn from.
- * {@code capture}/{@code rules.*}/{@code suppress}/{@code guard.override}
- * remain out of scope here.
+ * doc/specs/rule-pipeline-foundation.md "Capability and audit", and
+ * doc/logaperture-spec.md §9.3 for the full set this is drawn from.
+ * {@code capture}/{@code suppress}/{@code guard.override} remain out of
+ * scope here.
  */
 public enum Capability {
     /** Reading logger names and levels. Low risk. */
@@ -32,8 +33,9 @@ public enum Capability {
     /**
      * Making a change outlive the process, rather than expiring with it —
      * required in addition to {@link #LEVEL_RAISE}/{@link #LEVEL_LOWER}
-     * (or {@link #HANDLER_RAISE}/{@link #HANDLER_LOWER}) whenever a {@code
-     * setLogger}/{@code setHandlerLevel} call's tier isn't {@code SESSION}
+     * (or {@link #HANDLER_RAISE}/{@link #HANDLER_LOWER}, or {@link
+     * #RULES_AUTHOR}) whenever a {@code setLogger}/{@code setHandlerLevel}/
+     * {@code add rule} call's tier isn't {@code SESSION}
      * (doc/specs/persistence.md).
      */
     PERSIST,
@@ -47,5 +49,16 @@ public enum Capability {
      */
     HANDLER_LOWER,
     /** Making a handler's own level stricter (squelching output). */
-    HANDLER_RAISE
+    HANDLER_RAISE,
+    /**
+     * Attaching a content-based {@link org.logaperture.api.LogRule} at
+     * runtime — §9.3's "writing arbitrary new rules at runtime... a much
+     * larger grant than applying one", required for {@code add rule}
+     * regardless of action. Distinct from §9.3's {@code suppress}, which
+     * gates the drop/trim actions themselves (doc/specs/
+     * rule-pipeline-foundation.md "Capability and audit", Decision #2) and
+     * is not yet in this enum — this slice never denies an event on its
+     * own, so nothing needs it yet.
+     */
+    RULES_AUTHOR
 }
