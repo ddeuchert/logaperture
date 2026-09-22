@@ -32,6 +32,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -226,7 +227,7 @@ class FileStateStoreTest {
     void rules_roundTripThroughARealReopenedFile() throws IOException {
         PersistedRule rule = new PersistedRule("r1", "com.acme.Worker", "Drop",
                 new CompiledMatchers(Level.ERROR, "This happens a lot", false, null, null, false),
-                "INC-123", PersistenceTier.STICKY, null, Instant.parse("2026-09-22T03:14:02Z"), "system");
+                "INC-123", PersistenceTier.STICKY, null, Instant.parse("2026-09-22T03:14:02Z"), "system", Map.of());
 
         try (FileStateStore store = FileStateStore.open()) {
             store.saveRule(rule);
@@ -240,7 +241,7 @@ class FileStateStoreTest {
     @Test
     void removeRule_dropsItAndSurvivesReopen() throws IOException {
         PersistedRule rule = new PersistedRule("r1", "com.acme.Worker", "Drop", CompiledMatchers.matchAll(), null,
-                PersistenceTier.STICKY, null, Instant.now(), "system");
+                PersistenceTier.STICKY, null, Instant.now(), "system", Map.of());
 
         try (FileStateStore store = FileStateStore.open()) {
             store.saveRule(rule);

@@ -15,9 +15,12 @@
  */
 package org.logaperture.control.jmx;
 
+import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.PersistenceTier;
+import org.logaperture.api.RuleAttachOptions;
+import org.logaperture.api.SampleFullPolicy;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.core.DoctorOperations;
@@ -183,6 +186,23 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
         return RuleResetOutcomeData.from(ruleOperations.resetRulesForLogger(loggerName, includeSticky));
     }
 
+    @Override
+    public RuleData addRuleDrop(String target, String messageContains, boolean messageIgnoreCase,
+            String throwableType, String throwableMessageContains, boolean anyCause, String belowLevel,
+            boolean sampleFullEnabled, long sampleFullEveryMillis, String reason, String tier, long forSeconds) {
+        if (messageContains == null && throwableType == null && throwableMessageContains == null) {
+            throw new IllegalArgumentException(
+                    "'add rule drop' needs at least one content matcher (message or throwable) -- "
+                            + "use 'set logger' to change a logger's level instead.");
+        }
+        CompiledMatchers matchers = new CompiledMatchers(belowLevel == null ? null : parseLevel(belowLevel),
+                messageContains, messageIgnoreCase, throwableType, throwableMessageContains, anyCause);
+        SampleFullPolicy sampleFull =
+                new SampleFullPolicy(sampleFullEnabled, Duration.ofMillis(sampleFullEveryMillis));
+        RuleAttachOptions options = toRuleAttachOptions(reason, tier, forSeconds);
+        return RuleData.from(ruleOperations.addRuleDrop(target, matchers, options, sampleFull));
+    }
+
     private static SetLevelOptions toOptions(String reason, String tier, long forSeconds, boolean confirmed) {
         PersistenceTier parsedTier = parseTier(tier);
         Duration expiresIn = parsedTier == PersistenceTier.FOR ? Duration.ofSeconds(forSeconds) : null;
@@ -193,6 +213,12 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
         PersistenceTier parsedTier = parseTier(tier);
         Duration expiresIn = parsedTier == PersistenceTier.FOR ? Duration.ofSeconds(forSeconds) : null;
         return new SetHandlerLevelOptions(reason, expiresIn, parsedTier);
+    }
+
+    private static RuleAttachOptions toRuleAttachOptions(String reason, String tier, long forSeconds) {
+        PersistenceTier parsedTier = parseTier(tier);
+        Duration expiresIn = parsedTier == PersistenceTier.FOR ? Duration.ofSeconds(forSeconds) : null;
+        return new RuleAttachOptions(reason, expiresIn, parsedTier);
     }
 
     private static PersistenceTier parseTier(String tier) {

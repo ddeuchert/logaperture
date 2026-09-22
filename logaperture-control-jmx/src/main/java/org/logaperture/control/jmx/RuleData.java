@@ -46,13 +46,14 @@ public final class RuleData {
     private final String expiresAt;
     private final String createdAt;
     private final String context;
+    private final long hitCount;
 
     @ConstructorProperties({"id", "loggerName", "action", "levelAtMost", "messageContains", "messageIgnoreCase",
             "throwableType", "throwableMessageContains", "anyCause", "reason", "tier", "expiresAt", "createdAt",
-            "context"})
+            "context", "hitCount"})
     public RuleData(String id, String loggerName, String action, String levelAtMost, String messageContains,
             boolean messageIgnoreCase, String throwableType, String throwableMessageContains, boolean anyCause,
-            String reason, String tier, String expiresAt, String createdAt, String context) {
+            String reason, String tier, String expiresAt, String createdAt, String context, long hitCount) {
         this.id = id;
         this.loggerName = loggerName;
         this.action = action;
@@ -67,6 +68,7 @@ public final class RuleData {
         this.expiresAt = expiresAt;
         this.createdAt = createdAt;
         this.context = context;
+        this.hitCount = hitCount;
     }
 
     public static RuleData from(RuleView view) {
@@ -86,7 +88,8 @@ public final class RuleData {
                 rule.tier().name(),
                 rule.expiresAt() == null ? null : rule.expiresAt().toString(),
                 rule.createdAt().toString(),
-                view.context());
+                view.context(),
+                view.hitCount());
     }
 
     public String getId() {
@@ -143,5 +146,9 @@ public final class RuleData {
 
     public String getContext() {
         return context;
+    }
+
+    public long getHitCount() {
+        return hitCount;
     }
 }

@@ -402,6 +402,7 @@ final class Json {
                 .str("expiresAt", row.getExpiresAt())
                 .str("createdAt", row.getCreatedAt())
                 .str("context", row.getContext())
+                .raw("hitCount", String.valueOf(row.getHitCount()))
                 .toString();
     }
 

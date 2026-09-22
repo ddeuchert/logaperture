@@ -15,19 +15,23 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.CompiledMatchers;
+import org.logaperture.api.RuleAttachOptions;
 import org.logaperture.api.RuleResetOutcome;
+import org.logaperture.api.SampleFullPolicy;
 
 import java.util.List;
 import java.util.Optional;
 
 /**
- * {@code logctl list rules}/{@code reset rule}/{@code reset rules}'s public
- * contract — the {@link StormOperations}/{@link TopOperations} counterpart
- * for the rule pipeline (doc/specs/rule-pipeline-foundation.md "Command
- * surface"). No {@code attach} here: this slice has no concrete rule type
- * to attach yet (see that spec's "Explicitly out of scope") — {@link
- * RuleService#attach} is called directly by whichever issue (#72's {@code
- * Drop}, #34's {@code Trim}) adds a CLI verb for it.
+ * {@code logctl list rules}/{@code reset rule}/{@code reset rules}/{@code
+ * add rule drop}'s public contract — the {@link StormOperations}/{@link
+ * TopOperations} counterpart for the rule pipeline (doc/specs/
+ * rule-pipeline-foundation.md "Command surface", doc/specs/drop-rule.md).
+ * {@code Trim}'s own attach path (#34) is expected to call {@link
+ * RuleService#attach} directly, the same way {@link #addRuleDrop} does
+ * internally — a generic {@code attach} has no fixed shape to declare here
+ * across every future action's own option set.
  */
 public interface RuleOperations {
 
@@ -58,4 +62,19 @@ public interface RuleOperations {
      * "Command surface").
      */
     RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky);
+
+    /**
+     * {@code logctl add rule drop} — doc/specs/drop-rule.md "Command
+     * surface". Requires {@link Capability#RULES_AUTHOR} and {@link
+     * Capability#SUPPRESS} (and, for a non-{@code SESSION} {@code tier},
+     * {@link Capability#PERSIST}).
+     *
+     * @implNote The {@link AggregateLevelControl} implementation attaches to
+     * the first registered context only — multi-context fan-out and
+     * leading-star pattern-target expansion (filtering-epic.md "Targeting
+     * by pattern is shorthand") are deferred past this pass; see
+     * doc/specs/drop-rule.md "Divergence from prior specs".
+     */
+    RuleView addRuleDrop(String loggerName, CompiledMatchers matchers, RuleAttachOptions options,
+            SampleFullPolicy sampleFull);
 }

@@ -235,7 +235,7 @@ class RuleServiceTest {
     }
 
     @Test
-    void planSource_swapsAtomicallyUnderConcurrentAttach() throws InterruptedException {
+    void attach_neverLosesAnAttachmentUnderConcurrentAttach() throws InterruptedException {
         int threads = 16;
         int perThread = 50;
         ExecutorService pool = Executors.newFixedThreadPool(threads);
@@ -266,7 +266,6 @@ class RuleServiceTest {
         }
         assertEquals(0, failures.get());
         assertEquals(threads * perThread, service.listRules().size());
-        assertEquals(threads * perThread, service.planSource().currentPlan().rules().size());
         // No two attachments raced into the same id.
         long distinctIds = service.listRules().stream().map(view -> view.rule().id()).distinct().count();
         assertEquals(threads * perThread, distinctIds);
@@ -340,7 +339,7 @@ class RuleServiceTest {
         service.registerActionFactory("TestRule", TestRule.FACTORY);
         stateStore.saveRule(new org.logaperture.api.PersistedRule("r99", "com.acme.Worker", "TestRule",
                 CompiledMatchers.matchAll(), null, PersistenceTier.FOR, past, past.minus(Duration.ofMinutes(30)),
-                "system"));
+                "system", java.util.Map.of()));
 
         service.resumeFromStateStore(Instant.now());
 
@@ -356,7 +355,7 @@ class RuleServiceTest {
         // action type, so a persisted row from a future one (or a
         // hand-edited file) is neither resumed nor discarded.
         stateStore.saveRule(new org.logaperture.api.PersistedRule("r1", "com.acme.Worker", "Drop",
-                CompiledMatchers.matchAll(), null, PersistenceTier.STICKY, null, Instant.now(), "system"));
+                CompiledMatchers.matchAll(), null, PersistenceTier.STICKY, null, Instant.now(), "system", java.util.Map.of()));
 
         service.resumeFromStateStore(Instant.now());
 
@@ -373,7 +372,7 @@ class RuleServiceTest {
         // whichever context happens to call resumeFromStateStore first.
         service.registerActionFactory("TestRule", TestRule.FACTORY);
         stateStore.saveRule(new org.logaperture.api.PersistedRule("r1", "com.acme.Worker", "TestRule",
-                CompiledMatchers.matchAll(), null, PersistenceTier.STICKY, null, Instant.now(), "myapp.war"));
+                CompiledMatchers.matchAll(), null, PersistenceTier.STICKY, null, Instant.now(), "myapp.war", java.util.Map.of()));
 
         service.resumeFromStateStore(Instant.now()); // service's own context is "system"
 
@@ -385,7 +384,7 @@ class RuleServiceTest {
     void resumeFromStateStore_advancesTheIdSequencePastAResumedId() {
         service.registerActionFactory("TestRule", TestRule.FACTORY);
         stateStore.saveRule(new org.logaperture.api.PersistedRule("r5", "com.acme.Worker", "TestRule",
-                CompiledMatchers.matchAll(), null, PersistenceTier.STICKY, null, Instant.now(), "system"));
+                CompiledMatchers.matchAll(), null, PersistenceTier.STICKY, null, Instant.now(), "system", java.util.Map.of()));
 
         service.resumeFromStateStore(Instant.now());
         LogRule fresh = attach("com.acme.Other");

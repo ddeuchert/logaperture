@@ -15,6 +15,7 @@
  */
 package org.logaperture.control.jmx;
 
+import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.EnvironmentReport;
 import org.logaperture.api.HandlerFloor;
@@ -27,7 +28,9 @@ import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.ResetOutcome;
+import org.logaperture.api.RuleAttachOptions;
 import org.logaperture.api.RuleResetOutcome;
+import org.logaperture.api.SampleFullPolicy;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
@@ -233,5 +236,13 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     @Override
     public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky) {
         return resetRulesForLoggerToReturn;
+    }
+
+    RuleView addRuleDropToReturn;
+
+    @Override
+    public RuleView addRuleDrop(String loggerName, CompiledMatchers matchers, RuleAttachOptions options,
+            SampleFullPolicy sampleFull) {
+        return addRuleDropToReturn;
     }
 }

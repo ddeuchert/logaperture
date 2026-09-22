@@ -26,6 +26,7 @@ import org.logaperture.api.PersistenceTier;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -222,7 +223,8 @@ class StateFileFormatTest {
                 "r1", "com.acme.Worker", "Drop",
                 new CompiledMatchers(Level.ERROR, "This happens a lot", true, "java.net.ConnectException",
                         "connection refused", true),
-                "INC-123", PersistenceTier.STICKY, null, Instant.parse("2026-09-22T03:14:02Z"), "system");
+                "INC-123", PersistenceTier.STICKY, null, Instant.parse("2026-09-22T03:14:02Z"), "system",
+                Map.of("sampleFullEnabled", "true", "sampleFullEveryMillis", "300000"));
 
         String content = StateFileFormat.write(List.of(), List.of(), List.of(), List.of(rule));
         StateFileFormat.Parsed parsed = StateFileFormat.parse(content);
@@ -234,7 +236,7 @@ class StateFileFormatTest {
     void roundTrips_aRuleWithNoMatcherFieldsSet_andAForTierExpiry() {
         PersistedRule rule = new PersistedRule(
                 "r2", "com.acme.Other", "Trim", CompiledMatchers.matchAll(), null, PersistenceTier.FOR,
-                Instant.parse("2026-09-22T03:44:02Z"), Instant.parse("2026-09-22T03:14:02Z"), "myapp.war");
+                Instant.parse("2026-09-22T03:44:02Z"), Instant.parse("2026-09-22T03:14:02Z"), "myapp.war", Map.of());
 
         StateFileFormat.Parsed parsed =
                 StateFileFormat.parse(StateFileFormat.write(List.of(), List.of(), List.of(), List.of(rule)));
@@ -249,7 +251,7 @@ class StateFileFormatTest {
                 Instant.parse("2026-08-21T03:14:02Z"), "jmx", PersistenceTier.STICKY, null);
         PersistedRule rule = new PersistedRule(
                 "r1", "com.acme.Worker", "Drop", CompiledMatchers.matchAll(), null, PersistenceTier.SESSION, null,
-                Instant.parse("2026-09-22T03:14:02Z"), "system");
+                Instant.parse("2026-09-22T03:14:02Z"), "system", Map.of());
 
         StateFileFormat.Parsed parsed =
                 StateFileFormat.parse(StateFileFormat.write(List.of(logger), List.of(), List.of(), List.of(rule)));

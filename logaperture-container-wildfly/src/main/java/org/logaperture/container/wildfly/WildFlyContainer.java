@@ -165,13 +165,14 @@ public final class WildFlyContainer implements AutoCloseable {
                 autoRecomputeListener);
         RuleService ruleService = new RuleService(adapter, policy, auditLog, stateStore, handle.stableKey(),
                 principal(), "jmx");
+        // doc/specs/drop-rule.md "Persistence" -- see NoneContainer's identical call.
+        ruleService.registerDropSupport();
 
         try {
             service.resumeFromStateStore(Instant.now());
             handlerService.resumeFromStateStore(Instant.now());
-            // doc/specs/rule-pipeline-foundation.md "Persistence" -- see
-            // NoneContainer's identical call for why every row is currently
-            // reported "not resumed" (no action factory registered yet).
+            // doc/specs/drop-rule.md "Persistence" -- a persisted STICKY/unexpired-FOR Drop now
+            // resumes as a live, denying rule (the "drop" factory was registered just above).
             ruleService.resumeFromStateStore(Instant.now());
             // doc/specs/handler-floor-control.md "AUTO handler level", AUTO-5.
             handlerService.recomputeAuto();
@@ -233,6 +234,8 @@ public final class WildFlyContainer implements AutoCloseable {
         Instant now = Instant.now();
         aggregate.sweepExpiredOverrides(now);
         aggregate.verificationSweep(now);
+        // doc/specs/drop-rule.md "Periodic summary line".
+        aggregate.reportDueDropSummaries(now);
     }
 
     private static StateStore openStateStore() {

@@ -64,7 +64,7 @@ the child specs fix; the behaviour is what this epic agrees.
 |---|---|---|
 | 1 | Storm detection supplies the always-on gate observer this epic builds on | #26 (spec signed off) |
 | 2 | **Rule foundation:** matcher library, compiled rule plan, safety scaffolding, rule management | new |
-| 3 | **`drop`** | new |
+| 3 | **`drop`** | [#72](https://github.com/ddeuchert/logaperture/issues/72) — spec signed off: [`drop-rule.md`](drop-rule.md) |
 | 4 | **`trim`** — #34 reshaped: a rule with a "below LEVEL" bound, not a knob beside `level` | #34 |
 
 Each gets its own spec, branch and PR. The epic gets a tracking issue listing them. Automatic storm

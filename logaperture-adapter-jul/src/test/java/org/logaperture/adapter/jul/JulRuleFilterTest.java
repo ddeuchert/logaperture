@@ -18,7 +18,8 @@ package org.logaperture.adapter.jul;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.logaperture.core.RulePlan;
+import org.logaperture.core.GateVerdict;
+import org.logaperture.core.RuleGate;
 import org.logaperture.core.StormObservation;
 import org.logaperture.core.StormObserver;
 
@@ -39,10 +40,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * doc/specs/rule-pipeline-foundation.md "Relationship to the
- * storm-detection filter" + "Testing" -- same technique {@code
- * JulStormObserverTest} uses, no JBoss LogManager needed.
+ * storm-detection filter" + doc/specs/drop-rule.md "Evaluation" -- same
+ * technique {@code JulStormObserverTest} uses, no JBoss LogManager needed.
  */
 class JulRuleFilterTest {
+
+    private static final RuleGate ALWAYS_ALLOW = (recordIdentity, event) -> GateVerdict.allow();
+    private static final RuleGate ALWAYS_DENY = (recordIdentity, event) -> GateVerdict.deny("r1");
 
     private static final class FakePersistentHandler extends Handler {
         FakePersistentHandler() {
@@ -107,7 +111,7 @@ class JulRuleFilterTest {
         Logger logger = Logger.getLogger(name("allow"));
         logger.addHandler(handler);
         try {
-            adapter.installRulePipeline(RulePlan::empty);
+            adapter.installRulePipeline(ALWAYS_ALLOW);
 
             LogRecord record = new LogRecord(Level.INFO, "hello");
             record.setLoggerName(name("allow"));
@@ -125,29 +129,63 @@ class JulRuleFilterTest {
         Logger logger = Logger.getLogger(name("deny"));
         logger.addHandler(handler);
         try {
-            adapter.installRulePipeline(RulePlan::empty);
+            adapter.installRulePipeline(ALWAYS_ALLOW);
 
             LogRecord record = new LogRecord(Level.INFO, "hello");
             record.setLoggerName(name("deny"));
             assertFalse(handler.getFilter().isLoggable(record),
-                    "this slice's own filter must never override a pre-existing deny into an allow");
+                    "this filter must never override a pre-existing deny into an allow");
         } finally {
             logger.removeHandler(handler);
         }
     }
 
     @Test
-    void installedFilter_withNoPreExistingFilter_alwaysAllows() {
-        // No concrete rule type exists yet -- an empty plan denies nothing.
+    void installedFilter_withNoPreExistingFilter_allowsWhenGateAllows() {
         FakePersistentHandler handler = new FakePersistentHandler();
         Logger logger = Logger.getLogger(name("nofilter"));
         logger.addHandler(handler);
         try {
-            adapter.installRulePipeline(RulePlan::empty);
+            adapter.installRulePipeline(ALWAYS_ALLOW);
 
             LogRecord record = new LogRecord(Level.INFO, "hello");
             record.setLoggerName(name("nofilter"));
             assertTrue(handler.getFilter().isLoggable(record));
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
+    @Test
+    void installedFilter_deniesWhenGateDenies() {
+        FakePersistentHandler handler = new FakePersistentHandler();
+        Logger logger = Logger.getLogger(name("denygate"));
+        logger.addHandler(handler);
+        try {
+            adapter.installRulePipeline(ALWAYS_DENY);
+
+            LogRecord record = new LogRecord(Level.INFO, "hello");
+            record.setLoggerName(name("denygate"));
+            assertFalse(handler.getFilter().isLoggable(record));
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
+    @Test
+    void installedFilter_gateFailure_failsOpen() {
+        FakePersistentHandler handler = new FakePersistentHandler();
+        Logger logger = Logger.getLogger(name("gatefails"));
+        logger.addHandler(handler);
+        RuleGate throwing = (recordIdentity, event) -> {
+            throw new RuntimeException("boom");
+        };
+        try {
+            adapter.installRulePipeline(throwing);
+
+            LogRecord record = new LogRecord(Level.INFO, "hello");
+            record.setLoggerName(name("gatefails"));
+            assertTrue(handler.getFilter().isLoggable(record), "a gate-evaluation bug must never itself drop an event");
         } finally {
             logger.removeHandler(handler);
         }
@@ -159,9 +197,9 @@ class JulRuleFilterTest {
         Logger logger = Logger.getLogger(name("idempotent"));
         logger.addHandler(handler);
         try {
-            adapter.installRulePipeline(RulePlan::empty);
+            adapter.installRulePipeline(ALWAYS_ALLOW);
             Filter afterFirst = handler.getFilter();
-            adapter.installRulePipeline(RulePlan::empty);
+            adapter.installRulePipeline(ALWAYS_ALLOW);
 
             assertEquals(afterFirst, handler.getFilter(), "re-installing leaves an already-wrapped handler's filter alone");
         } finally {
@@ -177,7 +215,7 @@ class JulRuleFilterTest {
         logger.setUseParentHandlers(false);
         RecordingObserver observer = new RecordingObserver();
         try {
-            adapter.installRulePipeline(RulePlan::empty);
+            adapter.installRulePipeline(ALWAYS_ALLOW);
             adapter.installStormDetection(observer);
 
             LogRecord record = new LogRecord(Level.INFO, "hello");
@@ -200,13 +238,67 @@ class JulRuleFilterTest {
         RecordingObserver observer = new RecordingObserver();
         try {
             adapter.installStormDetection(observer);
-            adapter.installRulePipeline(RulePlan::empty);
+            adapter.installRulePipeline(ALWAYS_ALLOW);
 
             LogRecord record = new LogRecord(Level.INFO, "hello");
             record.setLoggerName(name("compose-storm-first"));
             assertTrue(handler.getFilter().isLoggable(record));
 
             logger.info("both filters see this");
+            assertEquals(1, observer.observed.size());
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
+    /**
+     * doc/specs/drop-rule.md "Interaction with storm detection", Decision
+     * #3: when the rule filter actually denies (production install order:
+     * storm detection first, so it ends up the inner delegate), storm
+     * detection's observer must <b>never</b> see the event -- an operator
+     * who attached a drop already took a deliberate mitigation step, and
+     * storm detection re-reporting the same noise through a second surface
+     * would add confusion, not value. A deny short-circuits before the
+     * delegate is ever reached.
+     */
+    @Test
+    void ruleFilterDenies_stormDetectionInnerDelegate_neverObserves() {
+        FakePersistentHandler handler = new FakePersistentHandler();
+        Logger logger = Logger.getLogger(name("deny-storm-inner"));
+        logger.addHandler(handler);
+        logger.setUseParentHandlers(false);
+        RecordingObserver observer = new RecordingObserver();
+        try {
+            adapter.installStormDetection(observer); // inner
+            adapter.installRulePipeline(ALWAYS_DENY); // outer -- production order
+
+            // A bare Handler subclass's own publish() (this fake included) doesn't call isLoggable
+            // itself -- Logger.log() doesn't check it centrally either, unlike StreamHandler's real
+            // publish() -- so the filter chain is exercised directly, same as every other test above.
+            LogRecord record = new LogRecord(Level.INFO, "dropped, and never reaches storm detection");
+            record.setLoggerName(name("deny-storm-inner"));
+            assertFalse(handler.getFilter().isLoggable(record), "the outer rule filter denies");
+            assertEquals(0, observer.observed.size(), "the inner storm-detection delegate never sees a denied event");
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
+    /** The allow path is unaffected: a non-matching event still reaches storm detection's observer. */
+    @Test
+    void ruleFilterAllows_stormDetectionInnerDelegate_stillObserves() {
+        FakePersistentHandler handler = new FakePersistentHandler();
+        Logger logger = Logger.getLogger(name("allow-storm-inner"));
+        logger.addHandler(handler);
+        logger.setUseParentHandlers(false);
+        RecordingObserver observer = new RecordingObserver();
+        try {
+            adapter.installStormDetection(observer); // inner
+            adapter.installRulePipeline(ALWAYS_ALLOW); // outer -- production order
+
+            LogRecord record = new LogRecord(Level.INFO, "kept, and observed by storm detection");
+            record.setLoggerName(name("allow-storm-inner"));
+            assertTrue(handler.getFilter().isLoggable(record));
             assertEquals(1, observer.observed.size());
         } finally {
             logger.removeHandler(handler);

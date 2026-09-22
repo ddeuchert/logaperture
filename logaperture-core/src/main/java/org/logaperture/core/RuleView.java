@@ -18,15 +18,26 @@ package org.logaperture.core;
 import org.logaperture.api.LogRule;
 
 /**
- * A {@link LogRule} tagged with its owning context's stable key — {@link
- * AggregateLevelControl#listRules()}'s row shape. {@link LogRule} is an
- * interface implemented by varying concrete types (unlike {@code Storm}/
- * {@code LoggerByteCount}, which are records with their own {@code
- * withContext} copy method), so context-stamping happens at this wrapper
- * level instead of on the domain object itself. {@code context} is {@code
- * null} only when produced directly by a single-context {@link RuleService}
- * — {@code AggregateLevelControl} always stamps the real key, same
- * convention as every other multi-context row in this codebase.
+ * A {@link LogRule} tagged with its owning context's stable key and its
+ * current hit count -- {@link AggregateLevelControl#listRules()}'s row
+ * shape. {@link LogRule} is an interface implemented by varying concrete
+ * types (unlike {@code Storm}/{@code LoggerByteCount}, which are records
+ * with their own {@code withContext} copy method), so context-stamping
+ * happens at this wrapper level instead of on the domain object itself.
+ * {@code context} is {@code null} only when produced directly by a
+ * single-context {@link RuleService} -- {@code AggregateLevelControl}
+ * always stamps the real key, same convention as every other multi-context
+ * row in this codebase.
+ *
+ * @param hitCount how many candidate events this rule has matched so far --
+ *                 doc/specs/drop-rule.md "Safety set", filtering-epic.md
+ *                 Decision #9 ("hit counts are per event"). {@code 0} for a
+ *                 rule that has never matched.
  */
-public record RuleView(LogRule rule, String context) {
+public record RuleView(LogRule rule, String context, long hitCount) {
+
+    /** {@code hitCount} defaults to {@code 0} -- most call sites outside {@link RuleService} itself just tag a context. */
+    public RuleView(LogRule rule, String context) {
+        this(rule, context, 0L);
+    }
 }

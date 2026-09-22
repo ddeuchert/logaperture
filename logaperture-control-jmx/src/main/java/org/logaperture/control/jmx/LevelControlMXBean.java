@@ -248,4 +248,24 @@ public interface LevelControlMXBean {
      * own separately-attached rules.
      */
     RuleResetOutcomeData resetRulesForLogger(String loggerName, boolean includeSticky);
+
+    /**
+     * {@code logctl add rule drop} — doc/specs/drop-rule.md "Command
+     * surface". {@code target} is an exact logger name (leading-star
+     * pattern-target expansion is deferred past this pass — see that
+     * spec's "Divergence from prior specs"). {@code belowLevel} is the
+     * keep-floor bound already resolved to a real {@link
+     * org.logaperture.api.Level} name by the caller (the CLI/JMX boundary
+     * accepts the {@code FATAL} pseudo-token client-side, since {@code
+     * Level} itself has none — see that same section). At least one of
+     * {@code messageContains}/{@code throwableType}/{@code
+     * throwableMessageContains} must be non-null.
+     *
+     * @throws IllegalArgumentException if no content matcher is given, or
+     *                                   {@code target} is a protected
+     *                                   category
+     */
+    RuleData addRuleDrop(String target, String messageContains, boolean messageIgnoreCase, String throwableType,
+            String throwableMessageContains, boolean anyCause, String belowLevel, boolean sampleFullEnabled,
+            long sampleFullEveryMillis, String reason, String tier, long forSeconds);
 }

@@ -336,6 +336,20 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         return resetRulesForLoggerResult;
     }
 
+    final List<Object[]> addRuleDropCalls = new ArrayList<>();
+    RuleData addRuleDropResult;
+
+    @Override
+    public RuleData addRuleDrop(String target, String messageContains, boolean messageIgnoreCase,
+            String throwableType, String throwableMessageContains, boolean anyCause, String belowLevel,
+            boolean sampleFullEnabled, long sampleFullEveryMillis, String reason, String tier, long forSeconds) {
+        addRuleDropCalls.add(new Object[] {target, messageContains, messageIgnoreCase, throwableType,
+                throwableMessageContains, anyCause, belowLevel, sampleFullEnabled, sampleFullEveryMillis, reason,
+                tier, forSeconds});
+        maybeThrow();
+        return addRuleDropResult;
+    }
+
     private void maybeThrow() {
         if (throwOnNextCall != null) {
             RuntimeException toThrow = throwOnNextCall;

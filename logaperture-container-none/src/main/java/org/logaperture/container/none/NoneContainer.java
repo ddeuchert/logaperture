@@ -105,6 +105,9 @@ public final class NoneContainer implements AutoCloseable {
         Instant now = Instant.now();
         aggregate.sweepExpiredOverrides(now);
         aggregate.verificationSweep(now);
+        // doc/specs/drop-rule.md "Periodic summary line" -- reuses this same tick rather than a
+        // thread of its own.
+        aggregate.reportDueDropSummaries(now);
     }
 
     /** The surface a control plane (JMX) binds to. */
@@ -149,6 +152,10 @@ public final class NoneContainer implements AutoCloseable {
                 autoRecomputeListener);
         RuleService ruleService = new RuleService(adapter, policy, auditLog, stateStore, handle.stableKey(),
                 principal(), "jmx");
+        // doc/specs/drop-rule.md "Persistence" -- the first real caller of this primitive; a
+        // persisted STICKY/unexpired-FOR Drop now actually resumes instead of being left "not
+        // resumed" the way rule-pipeline-foundation.md's own slice always reported it.
+        ruleService.registerDropSupport();
 
         try {
             // Per-entry failures are already isolated inside
@@ -157,10 +164,8 @@ public final class NoneContainer implements AutoCloseable {
             // (doc/logaperture-spec.md §9).
             service.resumeFromStateStore(Instant.now());
             handlerService.resumeFromStateStore(Instant.now());
-            // doc/specs/rule-pipeline-foundation.md "Persistence" -- no
-            // action factory is registered by this slice, so every resumed
-            // row is (for now) reported "not resumed" and left in the state
-            // file, per that method's own "skipped, not failed" discipline.
+            // doc/specs/drop-rule.md "Persistence" -- a persisted STICKY/unexpired-FOR Drop now
+            // resumes as a live, denying rule (the "drop" factory was registered just above).
             ruleService.resumeFromStateStore(Instant.now());
             // One AUTO recompute pass now that both halves have resumed --
             // doc/specs/handler-floor-control.md "AUTO handler level",

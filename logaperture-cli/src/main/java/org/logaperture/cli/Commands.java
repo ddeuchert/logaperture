@@ -810,13 +810,14 @@ final class Commands {
                 cells.add(row.getAction());
                 cells.add(row.getTier());
                 cells.add(orDash(row.getExpiresAt()));
+                cells.add(String.valueOf(row.getHitCount()));
                 table.add(cells);
             }
             List<String> headers = new ArrayList<>();
             if (showContext) {
                 headers.add("CONTEXT");
             }
-            headers.addAll(List.of("ID", "LOGGER", "ACTION", "TIER", "EXPIRES"));
+            headers.addAll(List.of("ID", "LOGGER", "ACTION", "TIER", "EXPIRES", "HITS"));
             out.println(Format.table(headers, table));
             return CliError.OK;
         };
@@ -838,6 +839,36 @@ final class Commands {
             out.println(removed != null
                     ? "rule " + id + " → reset."
                     : "rule " + id + " — no such rule.");
+            return CliError.OK;
+        };
+    }
+
+    /**
+     * {@code logctl add rule drop} — doc/specs/drop-rule.md "Command
+     * surface". {@code target} is an exact logger name in this slice
+     * (leading-star pattern-target expansion is deferred — see that spec's
+     * "Divergence from prior specs"); a target containing {@code *} is
+     * rejected here rather than silently attached to a logger literally
+     * named with an asterisk in it.
+     */
+    static Command addRuleDrop(String target, String messageContains, boolean messageIgnoreCase,
+            String throwableType, String throwableMessageContains, boolean anyCause, String belowLevel,
+            boolean sampleFullEnabled, long sampleFullEveryMillis, String reason, String tierName, long forSeconds,
+            boolean json) {
+        return (mbean, out, in, interactive) -> {
+            if (isPattern(target)) {
+                throw new CliError(CliError.USAGE, "'add rule drop' does not yet support a pattern target ('"
+                        + target + "') -- attach to each currently-known logger by its exact name instead.");
+            }
+            org.logaperture.control.jmx.RuleData created = mbean.addRuleDrop(target, messageContains,
+                    messageIgnoreCase, throwableType, throwableMessageContains, anyCause, belowLevel,
+                    sampleFullEnabled, sampleFullEveryMillis, reason, tierName, forSeconds);
+            if (json) {
+                out.println(Json.rule(created));
+                return CliError.OK;
+            }
+            out.println(created.getId() + "   " + created.getLoggerName() + " → drop   ("
+                    + tierDetail(created.getTier(), created.getExpiresAt()) + ")");
             return CliError.OK;
         };
     }
