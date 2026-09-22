@@ -15,7 +15,6 @@
  */
 package org.logaperture.core;
 
-import org.logaperture.api.LogRule;
 import org.logaperture.api.RuleResetOutcome;
 
 import java.util.List;
@@ -44,8 +43,11 @@ public interface RuleOperations {
      * {@code reset rule <id>} — a single named id is "one specific thing":
      * refuses if it's {@code STICKY} and {@code includeSticky} wasn't
      * passed. Empty if no rule with this id exists (a no-op, not an error).
+     * Returns the removed rule tagged with the context it was actually
+     * removed from, since ids are only unique per context (doc/specs/
+     * rule-pipeline-foundation.md "Rule identity").
      */
-    Optional<LogRule> resetRule(String id, boolean includeSticky);
+    Optional<RuleView> resetRule(String id, boolean includeSticky);
 
     /** {@code reset rules} — bulk, skip-and-report shape. */
     RuleResetOutcome resetAllRules(boolean includeSticky);

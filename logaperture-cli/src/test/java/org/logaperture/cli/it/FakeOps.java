@@ -28,7 +28,6 @@ import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
-import org.logaperture.api.LogRule;
 import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.RuleResetOutcome;
 import org.logaperture.api.Severity;
@@ -237,7 +236,7 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     }
 
     @Override
-    public synchronized Optional<LogRule> resetRule(String id, boolean includeSticky) {
+    public synchronized Optional<RuleView> resetRule(String id, boolean includeSticky) {
         return Optional.empty();
     }
 

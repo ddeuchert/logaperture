@@ -97,7 +97,7 @@ class AggregateLevelControlTest {
             doctorService = new DoctorService(adapter, policy);
             topService = new TopService(adapter, policy);
             stormService = new StormService(adapter, policy, stormDetector);
-            ruleService = new RuleService(adapter, policy, auditLog, sharedStore, "alice", "jmx");
+            ruleService = new RuleService(adapter, policy, auditLog, sharedStore, key, "alice", "jmx");
             environmentReportService = new EnvironmentReportService(adapter, policy);
             control = new ContextControl(ContextHandle.of(key, key, adapter), service, handlerService,
                     doctorService, topService, stormService, ruleService, environmentReportService);
@@ -471,9 +471,42 @@ class AggregateLevelControlTest {
         aggregate.register(system.control);
         aggregate.register(app.control);
 
-        Optional<LogRule> removed = aggregate.resetRule(appRule.id(), false);
+        Optional<RuleView> removed = aggregate.resetRule(appRule.id(), false);
         assertTrue(removed.isPresent());
+        assertEquals("myapp.war", removed.get().context());
         assertTrue(aggregate.listRules().isEmpty());
+    }
+
+    @Test
+    void resetRule_aStickyRefusalInOneContextDoesNotBlockAMatchInAnother() {
+        // A code-review finding: rule ids are only unique per context (each
+        // RuleService mints its own sequence independently), so the first
+        // context's own id "r1" can collide with a different, removable
+        // rule "r1" that happens to live in a second context.
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        system.ruleService.attach("com.acme.Sticky", CompiledMatchers.matchAll(), RuleAttachOptions.sticky(),
+                TestRule.FACTORY); // becomes "r1" in system's own sequence
+        LogRule collidingId = app.ruleService.attach("com.acme.Other", CompiledMatchers.matchAll(),
+                RuleAttachOptions.defaults(), TestRule.FACTORY); // also "r1", in app's own sequence
+        assertEquals("r1", collidingId.id());
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        Optional<RuleView> removed = aggregate.resetRule("r1", false);
+
+        assertTrue(removed.isPresent(), "system's sticky refusal on the same bare id must not block app's own match");
+        assertEquals("myapp.war", removed.get().context());
+    }
+
+    @Test
+    void resetRule_refusesWhenTheOnlyMatchAnywhereIsSticky() {
+        Ctx system = new Ctx("system");
+        LogRule sticky = system.ruleService.attach("com.acme.Sticky", CompiledMatchers.matchAll(),
+                RuleAttachOptions.sticky(), TestRule.FACTORY);
+        aggregate.register(system.control);
+
+        assertThrows(IllegalArgumentException.class, () -> aggregate.resetRule(sticky.id(), false));
     }
 
     @Test

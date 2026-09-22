@@ -147,7 +147,8 @@ public final class NoneContainer implements AutoCloseable {
         LevelControlService service = new LevelControlService(
                 adapter, baselines, overrides, policy, auditLog, stateStore, principal(), "jmx",
                 autoRecomputeListener);
-        RuleService ruleService = new RuleService(adapter, policy, auditLog, stateStore, principal(), "jmx");
+        RuleService ruleService = new RuleService(adapter, policy, auditLog, stateStore, handle.stableKey(),
+                principal(), "jmx");
 
         try {
             // Per-entry failures are already isolated inside

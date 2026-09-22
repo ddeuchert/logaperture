@@ -103,7 +103,8 @@ class JulLevelControlTest {
         DoctorService doctorService = new DoctorService(adapter, CapabilityPolicy.allowAll());
         TopService topService = new TopService(adapter, CapabilityPolicy.allowAll());
         StormService stormService = new StormService(adapter, CapabilityPolicy.allowAll());
-        RuleService ruleService = new RuleService(adapter, CapabilityPolicy.allowAll(), auditLog, store, "alice", "jmx");
+        RuleService ruleService = new RuleService(adapter, CapabilityPolicy.allowAll(), auditLog, store, "system",
+                "alice", "jmx");
         EnvironmentReportService environmentReportService =
                 new EnvironmentReportService(adapter, CapabilityPolicy.allowAll());
 

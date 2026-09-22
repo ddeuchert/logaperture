@@ -62,6 +62,7 @@ public final class RuleService implements RuleOperations {
     private final CapabilityPolicy policy;
     private final AuditLog auditLog;
     private final StateStore stateStore;
+    private final String context;
     private final String principal;
     private final String source;
     private final ProtectedCategories protectedCategories;
@@ -71,16 +72,27 @@ public final class RuleService implements RuleOperations {
     private volatile RulePlan plan = RulePlan.empty();
 
     public RuleService(LoggingAdapter adapter, CapabilityPolicy policy, AuditLog auditLog, StateStore stateStore,
-            String principal, String source) {
-        this(adapter, policy, auditLog, stateStore, principal, source, ProtectedCategories.none());
+            String context, String principal, String source) {
+        this(adapter, policy, auditLog, stateStore, context, principal, source, ProtectedCategories.none());
     }
 
+    /**
+     * @param context this instance's owning logging context's stable key
+     *                (e.g. {@code "system"}, a deployment name) — every
+     *                context in a JVM shares one {@code stateStore}, so
+     *                this is what {@link #resumeFromStateStore} filters a
+     *                persisted row by (a row belongs to the context that
+     *                wrote it, never resumed into a different one sharing
+     *                the same store) and what {@link #toPersisted} stamps
+     *                on save.
+     */
     public RuleService(LoggingAdapter adapter, CapabilityPolicy policy, AuditLog auditLog, StateStore stateStore,
-            String principal, String source, ProtectedCategories protectedCategories) {
+            String context, String principal, String source, ProtectedCategories protectedCategories) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.policy = Objects.requireNonNull(policy, "policy");
         this.auditLog = Objects.requireNonNull(auditLog, "auditLog");
         this.stateStore = Objects.requireNonNull(stateStore, "stateStore");
+        this.context = Objects.requireNonNull(context, "context");
         this.principal = Objects.requireNonNull(principal, "principal");
         this.source = Objects.requireNonNull(source, "source");
         this.protectedCategories = Objects.requireNonNull(protectedCategories, "protectedCategories");
@@ -162,7 +174,7 @@ public final class RuleService implements RuleOperations {
      * follows).
      */
     @Override
-    public Optional<LogRule> resetRule(String id, boolean includeSticky) {
+    public Optional<RuleView> resetRule(String id, boolean includeSticky) {
         Objects.requireNonNull(id, "id");
         requireCapability(Capability.RULES_AUTHOR);
         Optional<LogRule> existing = registry.findById(id);
@@ -177,7 +189,7 @@ public final class RuleService implements RuleOperations {
         recompilePlan();
         safePersist(() -> stateStore.removeRule(id));
         auditRemoval(rule);
-        return Optional.of(rule);
+        return Optional.of(new RuleView(rule, context));
     }
 
     /** {@code reset rules} — bulk, skip-and-report shape (mirrors {@code reset loggers}). */
@@ -191,12 +203,24 @@ public final class RuleService implements RuleOperations {
      * The rules attached <em>directly</em> to {@code loggerName} (not its
      * descendants' own separately-attached rules) — {@code reset logger X}'s
      * side effect, doc/specs/rule-pipeline-foundation.md "Command surface".
+     * Unlike {@link #resetRule}/{@link #resetAllRules} (an operator's own
+     * direct, deliberate call), this runs unconditionally as a side effect
+     * of a plain {@code reset logger} — a caller who was already authorized
+     * for that (via {@code LEVEL_LOWER}) must not be newly blocked by a
+     * capability {@code reset logger} never used to need, just because rule
+     * cleanup exists now. So the {@link Capability#RULES_AUTHOR} check runs
+     * only when there is actually something to remove; a target with no
+     * attached rules costs nothing to authorize (a code-review finding).
      */
     @Override
     public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky) {
         Objects.requireNonNull(loggerName, "loggerName");
+        List<LogRule> candidates = registry.directRulesFor(loggerName);
+        if (candidates.isEmpty()) {
+            return RuleResetOutcome.nothingReset();
+        }
         requireCapability(Capability.RULES_AUTHOR);
-        return removeMatching(registry.directRulesFor(loggerName), includeSticky);
+        return removeMatching(candidates, includeSticky);
     }
 
     private RuleResetOutcome removeMatching(List<LogRule> candidates, boolean includeSticky) {
@@ -253,6 +277,17 @@ public final class RuleService implements RuleOperations {
     }
 
     private void resumeOne(PersistedRule persisted, Instant now) {
+        if (persisted.context() != null && !persisted.context().equals(context)) {
+            // Belongs to a different context sharing this JVM's one StateStore
+            // -- doc/specs/rule-pipeline-foundation.md "Persistence": a rule
+            // is attached to exactly one context's RuleService, never
+            // broadcast the way a level override is, so resuming it must be
+            // scoped the same way (a code-review finding: without this
+            // check, every context resumed every other context's rules
+            // too). Left untouched in the store for whichever context's own
+            // resumeFromStateStore call actually matches it.
+            return;
+        }
         advanceIdSequencePast(persisted.id());
 
         if (persisted.tier() == PersistenceTier.FOR && !persisted.expiresAt().isAfter(now)) {
@@ -297,9 +332,9 @@ public final class RuleService implements RuleOperations {
         }
     }
 
-    private static PersistedRule toPersisted(LogRule rule) {
+    private PersistedRule toPersisted(LogRule rule) {
         return new PersistedRule(rule.id(), rule.loggerName(), rule.actionName(), rule.matchers(), rule.reason(),
-                rule.tier(), rule.expiresAt(), rule.createdAt());
+                rule.tier(), rule.expiresAt(), rule.createdAt(), context);
     }
 
     /**
@@ -316,11 +351,11 @@ public final class RuleService implements RuleOperations {
         }
     }
 
-    /** Every attached rule, across every logger — {@code logctl list rules}. Untagged ({@code context == null}); {@link AggregateLevelControl} stamps the real key. */
+    /** Every attached rule, across every logger — {@code logctl list rules}. */
     @Override
     public List<RuleView> listRules() {
         requireCapability(Capability.VIEW);
-        return registry.all().stream().map(rule -> new RuleView(rule, null)).toList();
+        return registry.all().stream().map(rule -> new RuleView(rule, context)).toList();
     }
 
     public Optional<LogRule> find(String id) {

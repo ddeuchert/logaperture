@@ -1064,7 +1064,8 @@ class CommandsTest {
 
         assertEquals(CliError.OK, run(Commands.resetLogger("com.acme.Known", false, true)));
         assertEquals(
-                "{\"name\":\"com.acme.Known\",\"overrideActive\":false,\"wasOverridden\":true}",
+                "{\"name\":\"com.acme.Known\",\"overrideActive\":false,\"wasOverridden\":true,"
+                        + "\"removedRuleIds\":[],\"skippedStickyRuleIds\":[]}",
                 output().strip());
     }
 
@@ -1325,5 +1326,21 @@ class CommandsTest {
         assertEquals(CliError.OK, run(Commands.resetLogger("com.acme", false, false)));
 
         assertEquals("com.acme → INFO (baseline)", output().strip());
+    }
+
+    @Test
+    void resetLogger_json_includesTheRuleRemovalOutcome() {
+        // A code-review finding: the JSON branch used to compute rulesOutcome
+        // and then never write it, making a real server-side removal
+        // invisible to any script consuming --json output.
+        mbean.loggers = List.of(new LoggerInfoData("com.acme", "INFO", "INFO", false, null, null, null, null));
+        mbean.resetRulesForLoggerResult = new org.logaperture.control.jmx.RuleResetOutcomeData(
+                List.of("r1"), List.of("r2"));
+
+        run(Commands.resetLogger("com.acme", false, true));
+
+        String text = output().strip();
+        assertTrue(text.contains("\"removedRuleIds\":[\"r1\"]"), text);
+        assertTrue(text.contains("\"skippedStickyRuleIds\":[\"r2\"]"), text);
     }
 }

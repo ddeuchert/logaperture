@@ -25,7 +25,6 @@ import org.logaperture.api.HandlerRef;
 import org.logaperture.api.HandlerResetOutcome;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
-import org.logaperture.api.LogRule;
 import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
@@ -374,19 +373,36 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     }
 
     /**
-     * Broadcasts {@code reset rule <id>} across every registered context —
-     * same "no all-pass-or-all-fail pre-flight for the sticky refusal"
-     * convention {@link #resetLogger}/{@link #resetHandler} already use. A
+     * Broadcasts {@code reset rule <id>} across every registered context. A
      * rule lives in exactly one context's registry, so only one context's
      * call actually finds and removes it; the others are no-ops.
+     *
+     * <p>Rule ids are scoped per context and can collide across contexts
+     * (doc/specs/rule-pipeline-foundation.md "Rule identity": each {@code
+     * RuleService} mints its own sequence independently, disambiguated on
+     * read by {@code context}, same as a {@code HandlerRef}). So a {@code
+     * STICKY} refusal from the <em>first</em> context whose id happens to
+     * match must not stop a later context's own, unrelated match under the
+     * same bare id from being tried — that refusal is remembered and
+     * surfaced only if no other context yields a real match (a code-review
+     * finding against an earlier version of this method, which let the
+     * first refusal abort the whole call).
      */
     @Override
-    public Optional<LogRule> resetRule(String id, boolean includeSticky) {
+    public Optional<RuleView> resetRule(String id, boolean includeSticky) {
+        IllegalArgumentException stickyRefusal = null;
         for (ContextControl context : sortedByKey()) {
-            Optional<LogRule> removed = context.ruleService().resetRule(id, includeSticky);
-            if (removed.isPresent()) {
-                return removed;
+            try {
+                Optional<RuleView> removed = context.ruleService().resetRule(id, includeSticky);
+                if (removed.isPresent()) {
+                    return removed;
+                }
+            } catch (IllegalArgumentException e) {
+                stickyRefusal = e;
             }
+        }
+        if (stickyRefusal != null) {
+            throw stickyRefusal;
         }
         return Optional.empty();
     }

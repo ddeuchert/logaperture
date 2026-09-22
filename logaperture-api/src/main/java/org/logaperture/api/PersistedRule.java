@@ -28,6 +28,18 @@ import java.time.Instant;
  * round-trips through this shape; a resumed rule keeps this exact {@code
  * id}, never a freshly-generated one (doc/specs/rule-pipeline-foundation.md
  * "Rule identity").
+ *
+ * @param context the owning logging context's stable key (e.g. {@code
+ *                "system"}) this rule was attached in — every context in a
+ *                JVM shares one {@code StateStore}, so this is what a
+ *                single-context {@code RuleService} filters {@code
+ *                resumeFromStateStore} by: a row belongs to the context
+ *                that wrote it, never resumed into a different one sharing
+ *                the same store. {@code null} only for a row written before
+ *                this field existed (there are none in practice, this
+ *                schema having never shipped without it) or a hand-edited
+ *                file — treated as "resume anywhere" for tolerance, the
+ *                same convention every other optional field here follows
  */
 public record PersistedRule(
         String id,
@@ -37,5 +49,6 @@ public record PersistedRule(
         String reason,
         PersistenceTier tier,
         Instant expiresAt,
-        Instant createdAt) {
+        Instant createdAt,
+        String context) {
 }

@@ -166,8 +166,42 @@ Landed on `feature/71-rule-pipeline-foundation`, unit-tested, full reactor build
    and nothing in the epic or this spec's sign-off round specified one. #72/#34 are expected to
    call it once, at their own composition-root wiring, the same way this slice's own tests do.
 
-Nothing is left unimplemented from this spec's own scope. `add rule` itself, the render-stage
-seam, and pattern-target rule cleanup remain #72/#34's own work, as scoped from the start.
+**Fixes from `/code-review high` on this slice's own PR** (all applied on the same branch before
+merge, not left as follow-up):
+
+- **`PersistedRule` gained a `context` field.** Every context in a JVM shares one `StateStore`,
+  but a rule is attached to exactly one context's `RuleService` — unlike a level override, never
+  broadcast to every context. Without a context tag, `resumeFromStateStore` had no way to tell
+  "mine" from "some other context's, sharing my file," and would have resumed *every* persisted
+  rule into *every* context the moment #72/#34 register a factory. `RuleService` now takes its
+  owning context's stable key at construction, stamps it on every row it persists, and skips a
+  resumed row whose `context` doesn't match its own.
+- **`resetRule` no longer lets one context's `STICKY` refusal block another's real match.** Rule
+  ids are scoped per context and can collide (each `RuleService` mints its own sequence
+  independently) — `AggregateLevelControl.resetRule` now remembers a refusal and keeps trying
+  other contexts, surfacing it only if nothing else matches. It also now returns the removed
+  rule's owning context (`RuleOperations.resetRule` returns `Optional<RuleView>`, not
+  `Optional<LogRule>`), which `logctl reset rule <id>`'s JMX/`--json` path had no way to report
+  before this.
+- **`reset logger <target>`'s rule-cleanup no longer requires `RULES_AUTHOR` on a logger with no
+  rules.** `resetRulesForLogger` used to check the capability unconditionally, so a caller
+  granted only `LEVEL_LOWER` (previously sufficient for `reset logger`) started failing the
+  command outright — after the level reset had already committed — the moment this slice landed.
+  The capability is now checked only when there is actually something to authorize.
+- **`reset logger <target> --json` now includes the rule-removal outcome.** The JSON branch
+  computed it and then never wrote it to the response, making a real server-side removal
+  invisible to a script consuming `--json`.
+- **`RuleRegistry.findById`/`removeById` are now O(1)**, backed by a companion `id -> LogRule`
+  map instead of a linear scan under one lock — matches `KeyedRegistry`'s existing precedent for
+  every other id-addressed registry in this codebase.
+
+Two further review findings were judged pre-existing/out of scope for this slice and are
+recorded as design notes instead of fixed here — see "Relationship to the storm-detection
+filter"'s two bullets on install order and the non-atomic filter install.
+
+Nothing else is left unimplemented from this spec's own scope. `add rule` itself, the
+render-stage seam, and pattern-target rule cleanup remain #72/#34's own work, as scoped from the
+start.
 
 ## Logger scope and inheritance
 
@@ -225,6 +259,8 @@ LogRule {                                     — logaperture-api, new interface
     expiresAt: Instant?                        // non-null iff tier == FOR
     createdAt: Instant
     hitCount: long                              // per-event, not per-handler (epic Decision #9)
+                                                 // -- DEFERRED, not implemented by this slice; see
+                                                 // "Implementation status"
 }
 ```
 
@@ -328,6 +364,28 @@ point as `installStormDetection`/`installByteCounting`, re-armed via the existin
 matching event that a later `drop` rule would deny is *not* denied. This slice's own filter
 denying nothing yet means the gap is currently unobservable; it becomes real once #72 ships and
 is already documented, not a new finding at that point.
+
+**Two more design notes surfaced by `/code-review high` on this slice's own PR, neither a defect
+in this slice (nothing here denies an event yet), both real constraints #72 needs to design
+against:**
+
+- **Install order decides which filter is outer.** `JulRuleFilter`/`JulStormFilter` chain onto
+  whichever was installed first (that one becomes the delegate, wrapped by whichever installs
+  second). Once `Drop` makes `installRulePipeline`'s filter actually deny an event, a deny
+  short-circuits the chain *before* reaching whichever filter ended up as the inner delegate —
+  if the rule filter ends up outer, a dropped event never reaches storm detection's observer,
+  silently under-counting storms for exactly the events being dropped. `#72`'s spec needs to
+  either fix install order deliberately (rule filter always innermost, so storm detection sees
+  every candidate event regardless of verdict) or accept and document the gap.
+- **`Handler.getFilter()`/`setFilter()` is a non-atomic read-then-write**, shared by both
+  `install*` methods. Two re-arm paths (a framework reset callback and the scheduled
+  `verificationSweep` tick) can in principle call `installStormDetection`/`installRulePipeline`
+  on the same handler from different threads at once; whichever `setFilter()` lands last
+  silently discards the other's wrap until the next re-arm interleaves differently. Pre-existing
+  in `installStormDetection` alone before this slice — not introduced here, just widened by a
+  second filter type going through the same unsynchronized path. Not fixed in this slice
+  (fixing it means synchronizing every `install*` method, including `storm-detection.md`'s and
+  `top.md`'s already-shipped ones — a cross-cutting change out of this issue's own scope).
 
 ## Capability and audit
 

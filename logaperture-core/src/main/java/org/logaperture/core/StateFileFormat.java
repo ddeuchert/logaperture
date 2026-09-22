@@ -164,6 +164,7 @@ final class StateFileFormat {
                 out.append("    tier: ").append(rule.tier().name()).append('\n');
                 out.append("    expiresAt: ").append(rule.expiresAt() == null ? "null" : rule.expiresAt()).append('\n');
                 out.append("    createdAt: ").append(rule.createdAt()).append('\n');
+                out.append("    context: ").append(rule.context() == null ? "null" : quote(rule.context())).append('\n');
             }
         }
         return out.toString();
@@ -352,7 +353,11 @@ final class StateFileFormat {
                 nullable(fields.get("reason")) == null ? null : unquote(fields.get("reason")),
                 PersistenceTier.valueOf(fields.get("tier")),
                 nullable(fields.get("expiresAt")) == null ? null : Instant.parse(fields.get("expiresAt")),
-                Instant.parse(fields.get("createdAt")));
+                Instant.parse(fields.get("createdAt")),
+                // No "context:" line at all (there is no such file in practice -- this schema never
+                // shipped without it) reads as null, same tolerant convention as every other optional
+                // field here.
+                nullable(fields.get("context")) == null ? null : unquote(fields.get("context")));
     }
 
     private static String nullable(String value) {

@@ -17,7 +17,6 @@ package org.logaperture.core;
 
 import org.logaperture.api.LogRule;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -35,59 +34,43 @@ import java.util.concurrent.CopyOnWriteArrayList;
 final class RuleRegistry {
 
     private final Map<String, List<LogRule>> rulesByLogger = new ConcurrentHashMap<>();
+    /** Kept in step with {@link #rulesByLogger} under the same lock, so {@link #findById}/{@link #removeById} are O(1) instead of a full scan (a code-review finding). */
+    private final Map<String, LogRule> byId = new ConcurrentHashMap<>();
     private final Map<String, Boolean> useParentRulesByLogger = new ConcurrentHashMap<>();
 
     synchronized void attach(LogRule rule) {
         rulesByLogger.computeIfAbsent(rule.loggerName(), name -> new CopyOnWriteArrayList<>()).add(rule);
+        byId.put(rule.id(), rule);
     }
 
-    synchronized Optional<LogRule> findById(String id) {
-        for (List<LogRule> rules : rulesByLogger.values()) {
-            for (LogRule rule : rules) {
-                if (rule.id().equals(id)) {
-                    return Optional.of(rule);
-                }
-            }
-        }
-        return Optional.empty();
+    Optional<LogRule> findById(String id) {
+        return Optional.ofNullable(byId.get(id));
     }
 
     /** Removes the rule with this id, if any. Returns it so the caller can audit/report what was removed. */
     synchronized Optional<LogRule> removeById(String id) {
-        for (Map.Entry<String, List<LogRule>> entry : rulesByLogger.entrySet()) {
-            for (LogRule rule : entry.getValue()) {
-                if (rule.id().equals(id)) {
-                    entry.getValue().remove(rule);
-                    return Optional.of(rule);
-                }
-            }
+        LogRule rule = byId.remove(id);
+        if (rule == null) {
+            return Optional.empty();
         }
-        return Optional.empty();
-    }
-
-    /** Every rule attached directly to {@code loggerName} (not its descendants' own), removed and returned. */
-    synchronized List<LogRule> removeAllForLogger(String loggerName) {
-        List<LogRule> removed = rulesByLogger.remove(loggerName);
-        return removed == null ? List.of() : List.copyOf(removed);
+        List<LogRule> rules = rulesByLogger.get(rule.loggerName());
+        if (rules != null) {
+            rules.remove(rule);
+        }
+        return Optional.of(rule);
     }
 
     /** Every attached rule, across every logger, removed and returned. */
     synchronized List<LogRule> removeAll() {
-        List<LogRule> all = new ArrayList<>();
-        for (List<LogRule> rules : rulesByLogger.values()) {
-            all.addAll(rules);
-        }
+        List<LogRule> all = List.copyOf(byId.values());
         rulesByLogger.clear();
-        return List.copyOf(all);
+        byId.clear();
+        return all;
     }
 
     /** A point-in-time snapshot of every attached rule, across every logger. */
     List<LogRule> all() {
-        List<LogRule> all = new ArrayList<>();
-        for (List<LogRule> rules : rulesByLogger.values()) {
-            all.addAll(rules);
-        }
-        return List.copyOf(all);
+        return List.copyOf(byId.values());
     }
 
     /** The rules attached directly to {@code loggerName} — not inherited ones. */

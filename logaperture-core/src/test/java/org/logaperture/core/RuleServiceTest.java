@@ -52,7 +52,8 @@ class RuleServiceTest {
         adapter = new FakeLoggingAdapter(Level.INFO);
         auditLog = new InMemoryAuditLog();
         stateStore = new InMemoryStateStore();
-        service = new RuleService(adapter, CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx");
+        service = new RuleService(adapter, CapabilityPolicy.allowAll(), auditLog, stateStore, "system", "alice",
+                "jmx");
     }
 
     private LogRule attach(String loggerName) {
@@ -84,7 +85,8 @@ class RuleServiceTest {
 
     @Test
     void attach_requiresRulesAuthor() {
-        RuleService denied = new RuleService(adapter, CapabilityPolicy.denyAll(), auditLog, stateStore, "alice", "jmx");
+        RuleService denied = new RuleService(adapter, CapabilityPolicy.denyAll(), auditLog, stateStore, "system",
+                "alice", "jmx");
         CapabilityDeniedException ex = assertThrows(CapabilityDeniedException.class,
                 () -> denied.attach("com.acme.Worker", CompiledMatchers.matchAll(), RuleAttachOptions.defaults(),
                         TestRule.FACTORY));
@@ -94,7 +96,8 @@ class RuleServiceTest {
     @Test
     void attach_nonSessionTierAlsoRequiresPersist() {
         CapabilityPolicy rulesAuthorOnly = capability -> capability == Capability.RULES_AUTHOR;
-        RuleService noPersist = new RuleService(adapter, rulesAuthorOnly, auditLog, stateStore, "alice", "jmx");
+        RuleService noPersist = new RuleService(adapter, rulesAuthorOnly, auditLog, stateStore, "system", "alice",
+                "jmx");
         CapabilityDeniedException ex = assertThrows(CapabilityDeniedException.class,
                 () -> noPersist.attach("com.acme.Worker", CompiledMatchers.matchAll(),
                         RuleAttachOptions.sticky(), TestRule.FACTORY));
@@ -104,7 +107,7 @@ class RuleServiceTest {
     @Test
     void attach_refusesAProtectedCategoryAndMutatesNothing() {
         RuleService protectedService = new RuleService(adapter, CapabilityPolicy.allowAll(), auditLog, stateStore,
-                "alice", "jmx", loggerName -> loggerName.startsWith("security."));
+                "system", "alice", "jmx", loggerName -> loggerName.startsWith("security."));
         assertThrows(IllegalArgumentException.class,
                 () -> protectedService.attach("security.auth", CompiledMatchers.matchAll(),
                         RuleAttachOptions.defaults(), TestRule.FACTORY));
@@ -175,8 +178,9 @@ class RuleServiceTest {
     @Test
     void resetRule_removesById() {
         LogRule rule = attach("com.acme.Worker");
-        Optional<LogRule> removed = service.resetRule(rule.id(), false);
+        Optional<RuleView> removed = service.resetRule(rule.id(), false);
         assertTrue(removed.isPresent());
+        assertEquals(rule.id(), removed.get().rule().id());
         assertTrue(service.listRules().isEmpty());
     }
 
@@ -192,7 +196,7 @@ class RuleServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.resetRule(sticky.id(), false));
         assertTrue(service.find(sticky.id()).isPresent());
 
-        Optional<LogRule> removed = service.resetRule(sticky.id(), true);
+        Optional<RuleView> removed = service.resetRule(sticky.id(), true);
         assertTrue(removed.isPresent());
     }
 
@@ -238,19 +242,20 @@ class RuleServiceTest {
         CountDownLatch ready = new CountDownLatch(threads);
         CountDownLatch go = new CountDownLatch(1);
         AtomicInteger failures = new AtomicInteger();
+        Runnable attachBurstAfterReleased = () -> {
+            ready.countDown();
+            try {
+                go.await();
+                for (int i = 0; i < perThread; i++) {
+                    attach("com.acme.Worker");
+                }
+            } catch (Exception e) {
+                failures.incrementAndGet();
+            }
+        };
         try {
             for (int t = 0; t < threads; t++) {
-                pool.submit(() -> {
-                    ready.countDown();
-                    try {
-                        go.await();
-                        for (int i = 0; i < perThread; i++) {
-                            attach("com.acme.Worker");
-                        }
-                    } catch (Exception e) {
-                        failures.incrementAndGet();
-                    }
-                });
+                pool.submit(attachBurstAfterReleased);
             }
             ready.await();
             go.countDown();
@@ -316,8 +321,8 @@ class RuleServiceTest {
         LogRule original = service.attach("com.acme.Worker", CompiledMatchers.matchAll(),
                 RuleAttachOptions.sticky(), TestRule.FACTORY);
 
-        RuleService resumed = new RuleService(adapter, CapabilityPolicy.allowAll(), auditLog, stateStore, "alice",
-                "jmx");
+        RuleService resumed = new RuleService(adapter, CapabilityPolicy.allowAll(), auditLog, stateStore, "system",
+                "alice", "jmx");
         resumed.registerActionFactory("TestRule", TestRule.FACTORY);
         resumed.resumeFromStateStore(Instant.now());
 
@@ -334,7 +339,8 @@ class RuleServiceTest {
         Instant past = Instant.now().minus(Duration.ofMinutes(5));
         service.registerActionFactory("TestRule", TestRule.FACTORY);
         stateStore.saveRule(new org.logaperture.api.PersistedRule("r99", "com.acme.Worker", "TestRule",
-                CompiledMatchers.matchAll(), null, PersistenceTier.FOR, past, past.minus(Duration.ofMinutes(30))));
+                CompiledMatchers.matchAll(), null, PersistenceTier.FOR, past, past.minus(Duration.ofMinutes(30)),
+                "system"));
 
         service.resumeFromStateStore(Instant.now());
 
@@ -350,7 +356,7 @@ class RuleServiceTest {
         // action type, so a persisted row from a future one (or a
         // hand-edited file) is neither resumed nor discarded.
         stateStore.saveRule(new org.logaperture.api.PersistedRule("r1", "com.acme.Worker", "Drop",
-                CompiledMatchers.matchAll(), null, PersistenceTier.STICKY, null, Instant.now()));
+                CompiledMatchers.matchAll(), null, PersistenceTier.STICKY, null, Instant.now(), "system"));
 
         service.resumeFromStateStore(Instant.now());
 
@@ -359,10 +365,27 @@ class RuleServiceTest {
     }
 
     @Test
+    void resumeFromStateStore_neverResumesARowPersistedByAnotherContextSharingTheSameStore() {
+        // A code-review finding: every context in a JVM shares one
+        // StateStore, but a rule is attached to exactly one context's own
+        // RuleService, never broadcast the way a level override is -- so
+        // resuming must filter by context, not resume every row into
+        // whichever context happens to call resumeFromStateStore first.
+        service.registerActionFactory("TestRule", TestRule.FACTORY);
+        stateStore.saveRule(new org.logaperture.api.PersistedRule("r1", "com.acme.Worker", "TestRule",
+                CompiledMatchers.matchAll(), null, PersistenceTier.STICKY, null, Instant.now(), "myapp.war"));
+
+        service.resumeFromStateStore(Instant.now()); // service's own context is "system"
+
+        assertTrue(service.listRules().isEmpty(), "a row persisted under a different context is never resumed here");
+        assertEquals(1, stateStore.loadAllRules().size(), "and is left untouched, for that other context's own resume");
+    }
+
+    @Test
     void resumeFromStateStore_advancesTheIdSequencePastAResumedId() {
         service.registerActionFactory("TestRule", TestRule.FACTORY);
         stateStore.saveRule(new org.logaperture.api.PersistedRule("r5", "com.acme.Worker", "TestRule",
-                CompiledMatchers.matchAll(), null, PersistenceTier.STICKY, null, Instant.now()));
+                CompiledMatchers.matchAll(), null, PersistenceTier.STICKY, null, Instant.now(), "system"));
 
         service.resumeFromStateStore(Instant.now());
         LogRule fresh = attach("com.acme.Other");

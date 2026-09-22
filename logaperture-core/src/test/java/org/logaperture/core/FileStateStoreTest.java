@@ -226,7 +226,7 @@ class FileStateStoreTest {
     void rules_roundTripThroughARealReopenedFile() throws IOException {
         PersistedRule rule = new PersistedRule("r1", "com.acme.Worker", "Drop",
                 new CompiledMatchers(Level.ERROR, "This happens a lot", false, null, null, false),
-                "INC-123", PersistenceTier.STICKY, null, Instant.parse("2026-09-22T03:14:02Z"));
+                "INC-123", PersistenceTier.STICKY, null, Instant.parse("2026-09-22T03:14:02Z"), "system");
 
         try (FileStateStore store = FileStateStore.open()) {
             store.saveRule(rule);
@@ -240,7 +240,7 @@ class FileStateStoreTest {
     @Test
     void removeRule_dropsItAndSurvivesReopen() throws IOException {
         PersistedRule rule = new PersistedRule("r1", "com.acme.Worker", "Drop", CompiledMatchers.matchAll(), null,
-                PersistenceTier.STICKY, null, Instant.now());
+                PersistenceTier.STICKY, null, Instant.now(), "system");
 
         try (FileStateStore store = FileStateStore.open()) {
             store.saveRule(rule);

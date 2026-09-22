@@ -490,7 +490,8 @@ final class Commands {
             org.logaperture.control.jmx.RuleResetOutcomeData rulesOutcome =
                     mbean.resetRulesForLogger(target, includeSticky);
             if (json) {
-                out.println(after != null ? Json.logger(after) : Json.reset(target, wasOverridden));
+                out.println(Json.resetLoggerWithRules(after, target, wasOverridden, rulesOutcome.getRemovedIds(),
+                        rulesOutcome.getSkippedStickyIds()));
                 return CliError.OK;
             }
             if (after != null) {

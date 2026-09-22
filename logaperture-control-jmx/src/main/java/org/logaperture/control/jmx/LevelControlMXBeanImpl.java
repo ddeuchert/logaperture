@@ -20,7 +20,6 @@ import org.logaperture.api.Level;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
-import org.logaperture.api.LogRule;
 import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.EnvironmentReportOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
@@ -170,8 +169,8 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
 
     @Override
     public RuleData resetRule(String id, boolean includeSticky) {
-        Optional<LogRule> removed = ruleOperations.resetRule(id, includeSticky);
-        return removed.map(rule -> RuleData.from(new RuleView(rule, null))).orElse(null);
+        Optional<RuleView> removed = ruleOperations.resetRule(id, includeSticky);
+        return removed.map(RuleData::from).orElse(null);
     }
 
     @Override

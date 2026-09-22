@@ -163,7 +163,8 @@ public final class WildFlyContainer implements AutoCloseable {
         LevelControlService service = new LevelControlService(
                 adapter, baselines, overrides, policy, auditLog, stateStore, principal(), "jmx",
                 autoRecomputeListener);
-        RuleService ruleService = new RuleService(adapter, policy, auditLog, stateStore, principal(), "jmx");
+        RuleService ruleService = new RuleService(adapter, policy, auditLog, stateStore, handle.stableKey(),
+                principal(), "jmx");
 
         try {
             service.resumeFromStateStore(Instant.now());

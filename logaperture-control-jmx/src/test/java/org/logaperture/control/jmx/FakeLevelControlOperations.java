@@ -23,7 +23,6 @@ import org.logaperture.api.HandlerRef;
 import org.logaperture.api.HandlerResetOutcome;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
-import org.logaperture.api.LogRule;
 import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
@@ -212,7 +211,7 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     }
 
     List<RuleView> rulesToReturn = List.of();
-    Optional<LogRule> resetRuleToReturn = Optional.empty();
+    Optional<RuleView> resetRuleToReturn = Optional.empty();
     RuleResetOutcome resetAllRulesToReturn = RuleResetOutcome.nothingReset();
     RuleResetOutcome resetRulesForLoggerToReturn = RuleResetOutcome.nothingReset();
 
@@ -222,7 +221,7 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     }
 
     @Override
-    public Optional<LogRule> resetRule(String id, boolean includeSticky) {
+    public Optional<RuleView> resetRule(String id, boolean includeSticky) {
         return resetRuleToReturn;
     }
 
