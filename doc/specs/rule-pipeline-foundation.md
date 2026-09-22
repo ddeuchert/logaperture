@@ -1,6 +1,6 @@
 # Rule pipeline foundation: `LogRule`, `useParentRules`, matcher library
 
-Status: **draft for sign-off** (2026-09-22). Nothing is implemented. No concrete rule type
+Status: **signed off 2026-09-22.** Nothing is implemented yet. No concrete rule type
 (`drop`, `trim`) ships in this slice — this is the shared machinery every later rule is built
 on, per [`filtering-epic.md`](filtering-epic.md)'s build order (step 2 of 4).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §4.2 (gate/render stages),
@@ -436,16 +436,21 @@ Unit-level only, for the reason given above — the concrete cross-process proof
 
 ## Decisions (sign-off)
 
-| # | Decision | Proposed resolution |
+| # | Decision | Status |
 |---|---|---|
-| 1 | Rule id scheme: per-context monotonic `r<N>`, persisted verbatim across a `STICKY` resume, disambiguated by `context` the same way a `HandlerRef` already is in a multi-context merge | Proposed as written in "Rule identity" |
-| 2 | New `Capability.RULES_AUTHOR`, required to attach any `LogRule` regardless of action; `SUPPRESS` deferred to `Drop`'s own spec (#72) rather than added by this slice | Proposed as written in "Capability and audit" |
-| 3 | The gate seam is a **second, independent** handler `Filter` (`installRulePipeline`), not a shared/merged filter with storm detection's `installStormDetection` | Proposed as written in "Relationship to the storm-detection filter" — keeps #26's "never denies" contract literally, provably true forever |
-| 4 | `logctl list rules` ships in this slice against a test double, with no `add rule` to produce a real row until #72/#34 land | Proposed — the alternative (holding `list`/`reset rule` back until #72 ships) delays their own review/testing for no real benefit, since the machinery is action-agnostic |
-| 5 | State-file `rules:` schema shape (id, loggerName, tier, createdAt, plus an `action` discriminator #72/#34 will define) | Proposed as sketched in "Persistence" — the discriminator field itself is left for #72 to name, not blocked on here |
+| 1 | Rule id scheme: per-context monotonic `r<N>`, persisted verbatim across a `STICKY` resume, disambiguated by `context` the same way a `HandlerRef` already is in a multi-context merge | **Agreed** — as written in "Rule identity" |
+| 2 | New `Capability.RULES_AUTHOR`, required to attach any `LogRule` regardless of action; `SUPPRESS` deferred to `Drop`'s own spec (#72) rather than added by this slice | **Agreed** — as written in "Capability and audit" |
+| 3 | The gate seam is a **second, independent** handler `Filter` (`installRulePipeline`), not a shared/merged filter with storm detection's `installStormDetection` | **Agreed** — as written in "Relationship to the storm-detection filter" — keeps #26's "never denies" contract literally, provably true forever |
+| 4 | `logctl list rules` ships in this slice against a test double, with no `add rule` to produce a real row until #72/#34 land | **Agreed** — the machinery is action-agnostic; holding it back would delay its own review/testing for no benefit |
+| 5 | State-file `rules:` schema shape (id, loggerName, tier, createdAt, plus an `action` discriminator #72/#34 will define) | **Agreed** — as sketched in "Persistence"; the discriminator field itself is left for #72 to name |
 
 ## Divergence from prior specs
 
 None — this is new machinery with no shipped precedent to supersede. `filtering-epic.md` itself
 is updated once this slice's decisions are agreed, per that document's own "each member still
 gets its own spec and sign-off" statement: fold any changes back into both files together.
+
+## Sign-off
+
+Signed off 2026-09-22. All five decisions accepted as proposed, no changes requested. Review
+artifact: <https://claude.ai/artifact/LKAHWf5rUchJi5ch4JdrmF>. Implementation may begin.
