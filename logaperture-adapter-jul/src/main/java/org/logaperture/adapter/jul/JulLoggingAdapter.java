@@ -21,6 +21,7 @@ import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LoggerByteCount;
+import org.logaperture.core.StormObserver;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.UnknownHandlerException;
 
@@ -326,6 +327,26 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     @Override
     public List<LoggerByteCount> byteCounts() {
         return topCounters.snapshot();
+    }
+
+    /**
+     * doc/specs/storm-detection.md "Adapter SPI". Installs a {@link
+     * JulStormFilter} on every real handler this adapter can act on right
+     * now — the one-Filter-per-Handler attach point every enabled record
+     * reaches regardless of originating logger. Idempotent: a handler whose
+     * filter is already a {@link JulStormFilter} is left alone, so a
+     * re-invocation (context-install retry, or {@code core}'s periodic
+     * re-verification) never double-installs or loses the captured delegate.
+     */
+    @Override
+    public void installStormDetection(StormObserver detector) {
+        for (HandlerRef ref : realHandlers()) {
+            Handler handler = handlersByRef.get(ref);
+            if (handler == null || handler.getFilter() instanceof JulStormFilter) {
+                continue; // already wrapped, or no longer resolvable
+            }
+            handler.setFilter(new JulStormFilter(handler.getFilter(), detector));
+        }
     }
 
     /**

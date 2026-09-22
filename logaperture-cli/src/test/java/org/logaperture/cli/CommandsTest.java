@@ -24,6 +24,8 @@ import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.SetLevelResultData;
 import org.logaperture.control.jmx.SquelchedLoggerData;
+import org.logaperture.control.jmx.StormData;
+import org.logaperture.control.jmx.StormReportData;
 import org.logaperture.control.jmx.TopReportData;
 
 import java.io.ByteArrayInputStream;
@@ -276,6 +278,101 @@ class CommandsTest {
         String text = output().strip();
         assertTrue(text.startsWith("{\"findings\":[{"), text);
         assertTrue(text.contains("\"checksRun\":1"), text);
+    }
+
+    @Test
+    void doctor_printsAPointerLine_whenStormsAreOngoing() {
+        mbean.findings = List.of(new DoctorFindingData("logger.verbosity-left-on", "OK", "ROOT",
+                "no excess verbosity found at root or on a known-chatty logger.", null, null, null));
+        mbean.stormReport = new StormReportData(List.of(
+                new StormData("com.acme.Worker", "ERROR", "org.acme.SlotException", "no capacity", null, "ONGOING",
+                        Instant.now().toString(), Instant.now().toString(), null, 5000L, null, null)),
+                1, 1, Instant.now().toString(), 0);
+
+        assertEquals(CliError.OK, run(Commands.doctor(false)));
+
+        assertTrue(output().contains("logctl storms"), output());
+    }
+
+    @Test
+    void doctor_noPointerLine_whenNoStormsAreOngoing() {
+        mbean.findings = List.of(new DoctorFindingData("logger.verbosity-left-on", "OK", "ROOT",
+                "no excess verbosity found at root or on a known-chatty logger.", null, null, null));
+
+        assertEquals(CliError.OK, run(Commands.doctor(false)));
+
+        assertFalse(output().contains("logctl storms"), output());
+    }
+
+    // --- storms (doc/specs/storm-detection.md) -----------------------------------------------------
+
+    @Test
+    void storms_rendersOngoingAndEndedEntries() {
+        Instant firstEventAt = Instant.now().minus(27, ChronoUnit.MINUTES);
+        Instant endedAt = Instant.now().minus(12, ChronoUnit.MINUTES);
+        Instant endedFirst = endedAt.minus(7, ChronoUnit.MINUTES).minus(29, ChronoUnit.SECONDS);
+        mbean.stormReport = new StormReportData(List.of(
+                new StormData("com.acme.batch.Worker", "ERROR", "org.acme.SlotException", "no capacity", null,
+                        "ONGOING", firstEventAt.toString(), Instant.now().toString(), null, 3_104_772L,
+                        "03:14:02 ERROR [com.acme.batch.Worker] Unable to reserve slot", null),
+                new StormData("org.apache.http.impl.conn", "ERROR", null, "connection reset by peer", null,
+                        "ENDED", endedFirst.toString(), endedAt.toString(), endedAt.toString(), 812_004L, null,
+                        null)),
+                2, 1, Instant.now().toString(), 0);
+
+        assertEquals(CliError.OK, run(Commands.storms(0, false)));
+
+        String text = output();
+        assertTrue(text.contains("[ONGOING]"), text);
+        assertTrue(text.contains("com.acme.batch.Worker"), text);
+        assertTrue(text.contains("org.acme.SlotException"), text);
+        assertTrue(text.contains("3,104,772 events"), text);
+        assertTrue(text.contains("first occurrence:"), text);
+        assertTrue(text.contains("[ENDED]"), text);
+        assertTrue(text.contains("(no exception)"), text);
+        assertTrue(text.contains("812,004 events"), text);
+        assertTrue(text.contains("2 storms tracked — 1 ongoing, 1 ended."), text);
+    }
+
+    @Test
+    void storms_noStormsDetected_printsANoteInsteadOfThrowing() {
+        mbean.stormReport = new StormReportData(List.of(), 0, 0, null, 0);
+
+        assertEquals(CliError.OK, run(Commands.storms(0, false)));
+
+        assertTrue(output().contains("No log storms detected."));
+    }
+
+    @Test
+    void storms_json_usesTrueTrackedAndOngoingCounts_notStormsSize() {
+        mbean.stormReport = new StormReportData(List.of(
+                new StormData("a.Logger", "ERROR", null, "boom", null, "ONGOING",
+                        Instant.now().toString(), Instant.now().toString(), null, 10L, null, null)),
+                5, 3, Instant.now().toString(), 0);
+
+        run(Commands.storms(1, true));
+
+        String text = output().strip();
+        assertTrue(text.startsWith("{\"storms\":[{"), text);
+        assertTrue(text.contains("\"trackedCount\":5"), text);
+        assertTrue(text.contains("\"ongoingCount\":3"), text);
+        assertEquals(List.of(1), mbean.activeStormsLimits);
+    }
+
+    @Test
+    void storms_showsContextPrefixOnlyWhenResultSpansMultipleContexts() {
+        mbean.stormReport = new StormReportData(List.of(
+                new StormData("a.Logger", "ERROR", null, "boom", null, "ONGOING",
+                        Instant.now().toString(), Instant.now().toString(), null, 10L, null, "system"),
+                new StormData("b.Logger", "ERROR", null, "boom", null, "ONGOING",
+                        Instant.now().toString(), Instant.now().toString(), null, 10L, null, "myapp.war")),
+                2, 2, Instant.now().toString(), 0);
+
+        run(Commands.storms(0, false));
+
+        String text = output();
+        assertTrue(text.contains("[system]"), text);
+        assertTrue(text.contains("[myapp.war]"), text);
     }
 
     @Test

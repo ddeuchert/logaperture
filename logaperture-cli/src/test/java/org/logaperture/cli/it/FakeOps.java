@@ -31,10 +31,12 @@ import org.logaperture.api.SetLevelResult;
 import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.Severity;
 import org.logaperture.api.SquelchedLogger;
+import org.logaperture.api.StormReport;
 import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.EnvironmentReportOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
+import org.logaperture.core.StormOperations;
 import org.logaperture.core.TopOperations;
 import org.logaperture.core.TopReport;
 
@@ -55,7 +57,7 @@ import java.util.Optional;
  * test, not the engine.
  */
 final class FakeOps implements LevelControlOperations, HandlerLevelControlOperations, DoctorOperations,
-        TopOperations, EnvironmentReportOperations {
+        TopOperations, EnvironmentReportOperations, StormOperations {
 
     private static final Level BASELINE = Level.INFO;
 
@@ -218,5 +220,10 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     public synchronized EnvironmentReport environmentReport() {
         return new EnvironmentReport("0.1.0-alpha.2", "21.0.4", "Eclipse Adoptium", "Linux", "6.10.3", "x86_64",
                 null, null, null, null, null, null);
+    }
+
+    @Override
+    public synchronized StormReport activeStorms(int limit) {
+        return new StormReport(List.of(), 0, 0, measurementStartedAt);
     }
 }

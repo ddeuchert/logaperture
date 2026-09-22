@@ -67,6 +67,9 @@ class AggregateLevelControlTest {
         final HandlerLevelControlService handlerService;
         final DoctorService doctorService;
         final TopService topService;
+        final StormDetector stormDetector = new StormDetector(3, Duration.ofSeconds(10), Duration.ofSeconds(60),
+                4_000, 100, 8 * 1024);
+        final StormService stormService;
         final EnvironmentReportService environmentReportService;
         final ContextControl control;
 
@@ -88,9 +91,17 @@ class AggregateLevelControlTest {
                     "alice", "jmx", activeLoggerFloor);
             doctorService = new DoctorService(adapter, policy);
             topService = new TopService(adapter, policy);
+            stormService = new StormService(adapter, policy, stormDetector);
             environmentReportService = new EnvironmentReportService(adapter, policy);
             control = new ContextControl(ContextHandle.of(key, key, adapter), service, handlerService,
-                    doctorService, topService, environmentReportService);
+                    doctorService, topService, stormService, environmentReportService);
+        }
+
+        void stormBurst(String loggerName, int times) {
+            for (int i = 0; i < times; i++) {
+                stormDetector.observe(new StormObservation(loggerName, Level.ERROR, null, "boom " + loggerName,
+                        false, null, () -> "rendered", Instant.now()));
+            }
         }
     }
 
@@ -389,6 +400,41 @@ class AggregateLevelControlTest {
 
         assertEquals(early.topService.topLoggers(0).measurementStartedAt(),
                 aggregate.topLoggers(0).measurementStartedAt());
+    }
+
+    // --- activeStorms (doc/specs/storm-detection.md) ----------------------------------------------
+
+    @Test
+    void activeStorms_mergesEveryContext_taggedWithItsContext_reSortedAndTruncatedOverTheMergedSet() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        system.stormBurst("quiet.Logger", 3);
+        app.stormBurst("loud.Logger", 9);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        var report = aggregate.activeStorms(1);
+
+        assertEquals(1, report.storms().size());
+        assertEquals("loud.Logger", report.storms().get(0).fingerprint().loggerName());
+        assertEquals("myapp.war", report.storms().get(0).context());
+        assertEquals(2, report.trackedCount(), "the true count across both contexts, unaffected by --limit");
+    }
+
+    @Test
+    void activeStorms_trackedAndOngoingCounts_areSummedAcrossContexts_preTruncation() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        system.stormBurst("a.Logger", 3);
+        app.stormBurst("b.Logger", 3);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        var report = aggregate.activeStorms(1);
+
+        assertEquals(1, report.storms().size());
+        assertEquals(2, report.trackedCount());
+        assertEquals(2, report.ongoingCount());
     }
 
     @Test

@@ -21,6 +21,8 @@ import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LoggerByteCount;
+import org.logaperture.api.Storm;
+import org.logaperture.core.StormObserver;
 
 import java.util.List;
 import java.util.Optional;
@@ -262,5 +264,30 @@ public interface LoggingAdapter {
      */
     default BackendInfo backendInfo() {
         return BackendInfo.EMPTY;
+    }
+
+    /**
+     * Installs an always-on gate-stage observer on every context this
+     * adapter can act on right now, feeding each candidate log event to
+     * {@code detector} reduced to a framework-independent observation —
+     * doc/specs/storm-detection.md "Adapter SPI". The observer MUST NOT deny
+     * any event: it returns exactly the result the framework would have
+     * produced without it, chaining to any filter already installed.
+     * Idempotent: safe to call again (context-install retry, or {@code
+     * core}'s periodic re-verification standing in for a reconfiguration
+     * hook this framework doesn't have) without installing a second observer
+     * or losing state. Default no-op, for a framework this slice doesn't
+     * instrument (Logback, {@code none}).
+     */
+    default void installStormDetection(StormObserver detector) {
+        // no-op by default
+    }
+
+    /**
+     * Everything the detector has accumulated — one entry per fingerprint
+     * that reached storm state. Default empty.
+     */
+    default List<Storm> storms() {
+        return List.of();
     }
 }

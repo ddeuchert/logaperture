@@ -24,6 +24,7 @@ import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.EnvironmentReportOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
+import org.logaperture.core.StormOperations;
 import org.logaperture.core.TopOperations;
 
 import java.time.Duration;
@@ -50,15 +51,17 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     private final HandlerLevelControlOperations handlerOperations;
     private final DoctorOperations doctorOperations;
     private final TopOperations topOperations;
+    private final StormOperations stormOperations;
     private final EnvironmentReportOperations environmentReportOperations;
 
     public LevelControlMXBeanImpl(LevelControlOperations operations, HandlerLevelControlOperations handlerOperations,
-            DoctorOperations doctorOperations, TopOperations topOperations,
+            DoctorOperations doctorOperations, TopOperations topOperations, StormOperations stormOperations,
             EnvironmentReportOperations environmentReportOperations) {
         this.operations = Objects.requireNonNull(operations, "operations");
         this.handlerOperations = Objects.requireNonNull(handlerOperations, "handlerOperations");
         this.doctorOperations = Objects.requireNonNull(doctorOperations, "doctorOperations");
         this.topOperations = Objects.requireNonNull(topOperations, "topOperations");
+        this.stormOperations = Objects.requireNonNull(stormOperations, "stormOperations");
         this.environmentReportOperations = Objects.requireNonNull(environmentReportOperations, "environmentReportOperations");
     }
 
@@ -142,6 +145,11 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     @Override
     public TopReportData topLoggers(int limit) {
         return TopReportData.from(topOperations.topLoggers(limit));
+    }
+
+    @Override
+    public StormReportData activeStorms(int limit) {
+        return StormReportData.from(stormOperations.activeStorms(limit));
     }
 
     @Override

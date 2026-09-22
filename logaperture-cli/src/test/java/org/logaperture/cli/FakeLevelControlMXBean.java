@@ -23,6 +23,7 @@ import org.logaperture.control.jmx.LevelControlMXBean;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.ResetOutcomeData;
 import org.logaperture.control.jmx.SetLevelResultData;
+import org.logaperture.control.jmx.StormReportData;
 import org.logaperture.control.jmx.TopReportData;
 
 import java.util.ArrayList;
@@ -285,6 +286,16 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         environmentReportCalls++;
         maybeThrow();
         return environmentReport;
+    }
+
+    StormReportData stormReport = new StormReportData(new ArrayList<>(), 0, 0, null, 0);
+    final List<Integer> activeStormsLimits = new ArrayList<>();
+
+    @Override
+    public StormReportData activeStorms(int limit) {
+        activeStormsLimits.add(limit);
+        maybeThrow();
+        return stormReport;
     }
 
     private void maybeThrow() {

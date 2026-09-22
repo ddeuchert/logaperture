@@ -26,6 +26,8 @@ import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.SetLevelResultData;
 import org.logaperture.control.jmx.SquelchedLoggerData;
+import org.logaperture.control.jmx.StormData;
+import org.logaperture.control.jmx.StormReportData;
 import org.logaperture.control.jmx.TopReportData;
 
 import java.io.BufferedReader;
@@ -38,6 +40,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
@@ -612,6 +615,7 @@ final class Commands {
             }
             if (findings.isEmpty()) {
                 out.println("No checks could run against this JVM.");
+                printStormPointer(mbean, out);
                 return CliError.OK;
             }
             boolean showContext = spansMultipleContexts(findings, DoctorFindingData::getContext);
@@ -644,8 +648,30 @@ final class Commands {
             out.println();
             out.println(Json.checksRun(findings) + " checks run — " + critical + " critical, " + warning
                     + " warning, " + info + " info, " + clean + " clean.");
+            printStormPointer(mbean, out);
             return CliError.OK;
         };
+    }
+
+    /**
+     * doc/specs/storm-detection.md Decision #10: a standalone {@code storms}
+     * command, with {@code doctor} printing a one-line pointer when storms
+     * are active -- read-only, no effect on findings/checksRun. Guarded: an
+     * older agent that predates this operation, or any failure reaching it,
+     * must never turn {@code doctor}'s "never exits non-zero for what it
+     * finds" guarantee into a hard failure over a pointer line.
+     */
+    private static void printStormPointer(org.logaperture.control.jmx.LevelControlMXBean mbean, java.io.PrintStream out) {
+        int ongoingStorms;
+        try {
+            ongoingStorms = mbean.activeStorms(0).getOngoingCount();
+        } catch (RuntimeException e) {
+            return;
+        }
+        if (ongoingStorms > 0) {
+            out.println(ongoingStorms + (ongoingStorms == 1 ? " log storm is" : " log storms are")
+                    + " currently ongoing — see `logctl storms`.");
+        }
     }
 
     /**
@@ -787,6 +813,90 @@ final class Commands {
                     + (report.getTrackedCount() == 1 ? " logger" : " loggers") + " tracked.");
             return CliError.OK;
         };
+    }
+
+    /**
+     * {@code logctl storms} — doc/specs/storm-detection.md "The operation".
+     * Read-only, like {@code doctor}/{@code top}: no target, no tier, nothing
+     * to confirm, never exits non-zero for what it finds.
+     */
+    static Command storms(int limit, boolean json) {
+        return (mbean, out, in, interactive) -> {
+            StormReportData report = mbean.activeStorms(limit);
+            if (json) {
+                out.println(Json.storms(report));
+                return CliError.OK;
+            }
+            List<StormData> storms = report.getStorms();
+            if (storms.isEmpty()) {
+                out.println("No log storms detected.");
+                return CliError.OK;
+            }
+            boolean showContext = spansMultipleContexts(storms, StormData::getContext);
+            Instant now = Instant.now();
+            for (int i = 0; i < storms.size(); i++) {
+                StormData storm = storms.get(i);
+                boolean ongoing = "ONGOING".equals(storm.getStatus());
+                StringBuilder header = new StringBuilder();
+                if (showContext) {
+                    header.append('[').append(orDash(storm.getContext())).append("] ");
+                }
+                header.append(ongoing ? "[ONGOING]  " : "[ENDED]    ");
+                header.append(storm.getLoggerName()).append("  ")
+                        .append(storm.getThrowableClass() != null ? storm.getThrowableClass() : "(no exception)")
+                        .append("  \"").append(storm.getNormalizedMessage()).append('"');
+                out.println(header);
+
+                Instant firstEventAt = Instant.parse(storm.getFirstEventAt());
+                Instant lastEventAt = Instant.parse(storm.getLastEventAt());
+                String eventsFormatted = String.format(Locale.ROOT, "%,d", storm.getEventCount());
+                if (ongoing) {
+                    Duration elapsed = Duration.between(firstEventAt, now);
+                    double minutes = Math.max(1.0 / 60, elapsed.toMillis() / 60_000.0);
+                    long perMinute = Math.round(storm.getEventCount() / minutes);
+                    out.println("           started " + firstEventAt + " (" + agoCoarse(elapsed) + " ago) — "
+                            + eventsFormatted + " events — ~" + String.format(Locale.ROOT, "%,d", perMinute) + "/min");
+                    if (storm.getFirstOccurrence() != null && !storm.getFirstOccurrence().isEmpty()) {
+                        out.println("           first occurrence:");
+                        for (String line : storm.getFirstOccurrence().split("\n", -1)) {
+                            out.println("             " + line);
+                        }
+                    }
+                } else {
+                    Instant endedAt = Instant.parse(storm.getEndedAt());
+                    Duration span = Duration.between(firstEventAt, endedAt);
+                    Duration since = Duration.between(endedAt, now);
+                    out.println("           " + firstEventAt + "–" + endedAt + " (" + agoCoarse(span) + ") — "
+                            + eventsFormatted + " events — ended " + agoCoarse(since) + " ago");
+                }
+                if (i < storms.size() - 1) {
+                    out.println();
+                }
+            }
+            out.println();
+            String startedAt = report.getMeasurementStartedAt();
+            out.println(report.getTrackedCount() + (report.getTrackedCount() == 1 ? " storm" : " storms")
+                    + " tracked — " + report.getOngoingCount() + " ongoing, "
+                    + (report.getTrackedCount() - report.getOngoingCount()) + " ended."
+                    + (startedAt != null ? " measured since agent start, " + startedAt + "." : "")
+                    + (report.getNotRetainedCount() > 0
+                            ? " (" + report.getNotRetainedCount() + " detected, not retained)" : ""));
+            return CliError.OK;
+        };
+    }
+
+    /** Coarse elapsed rendering for {@code storms} -- seconds-precision below a minute, matching the spec's worked example ({@code 7m29s}). */
+    private static String agoCoarse(Duration duration) {
+        long totalSeconds = Math.max(0, duration.getSeconds());
+        long minutes = totalSeconds / 60;
+        long seconds = totalSeconds % 60;
+        if (minutes == 0) {
+            return seconds + "s";
+        }
+        if (seconds == 0) {
+            return minutes + "m";
+        }
+        return minutes + "m" + seconds + "s";
     }
 
     /** {@code WARNING} renders as {@code WARN} in text mode (matching the blocking-handler warning's own convention); {@code --json} keeps the full enum name. */
