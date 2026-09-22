@@ -185,7 +185,15 @@ public final class WildFlyContainer implements AutoCloseable {
         StormService stormService = new StormService(adapter, policy);
         // doc/specs/storm-detection.md: same always-on discipline as top; the
         // periodic verification sweep re-confirms the gate-stage observer.
-        stormService.startDetection();
+        // Guarded, unlike topService.startMeasuring() above: this call sits before
+        // aggregate.register() below, so a throw here (unlike an adapter bug reached from the
+        // sweep, which only affects one tick) would otherwise drop this entire deployment's
+        // context -- levels, handlers, doctor and top included, not just storm tracking.
+        try {
+            stormService.startDetection();
+        } catch (RuntimeException e) {
+            Diagnostics.warn("LogAperture: failed to arm storm detection for this context, continuing without it", e);
+        }
 
         aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService,
                 stormService, environmentReportService));

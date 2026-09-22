@@ -798,7 +798,17 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             reapplied += context.service().verifyAndReapply(now);
             reapplied += context.handlerService().verifyAndReapply(now);
             context.topService().startMeasuring();
-            context.stormService().startDetection();
+            try {
+                // Newer, less battle-tested than startMeasuring() above, and this runs from a
+                // ScheduledExecutorService.scheduleAtFixedRate task with nothing above it to catch a
+                // throw -- an uncaught exception here would silently cancel every future sweep tick
+                // for every context, not just storm tracking (doc/specs/storm-detection.md "Failure
+                // handling": a detector bug must never break anything else).
+                context.stormService().startDetection();
+            } catch (RuntimeException e) {
+                System.err.println("[logaperture-core] failed to (re-)arm storm detection for context '"
+                        + context.stableKey() + "', that context is unchanged: " + e);
+            }
         }
         return reapplied;
     }

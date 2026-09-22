@@ -159,6 +159,30 @@ class StormDetectorTest {
     }
 
     @Test
+    void counterMap_neverEvictsAnEntryWithAnActiveStorm() {
+        // Cap the map tight enough that a 4th distinct fingerprint forces an eviction, with the
+        // first 3 all ONGOING (active). An ONGOING entry must never be the victim: evicting it would
+        // orphan its HistoryRecord permanently ONGOING (unreachable by any future event for the same
+        // fingerprint, and invisible to the quiet-period sweep, which only walks live entries).
+        StormDetector detector = new StormDetector(THRESHOLD, WINDOW, QUIET, 3, 100, 8 * 1024);
+        feed(detector, "storming.A", "boom", (int) THRESHOLD);
+        feed(detector, "storming.B", "boom", (int) THRESHOLD);
+        feed(detector, "storming.C", "boom", (int) THRESHOLD);
+        feed(detector, "fresh.D", "boom", 1); // forces eviction pressure at the cap
+
+        // If storming.A's entry had been wrongly evicted, this next event would land on a brand-new
+        // entry instead of the still-ONGOING one, and the two would show up as two separate storms.
+        feed(detector, "storming.A", "boom", 1);
+
+        List<Storm> stormsForA = detector.snapshot().stream()
+                .filter(s -> s.fingerprint().loggerName().equals("storming.A"))
+                .toList();
+        assertEquals(1, stormsForA.size(), "storming.A's ongoing storm must not be duplicated/orphaned by eviction");
+        assertEquals(StormStatus.ONGOING, stormsForA.get(0).status());
+        assertEquals(THRESHOLD + 1, stormsForA.get(0).eventCount());
+    }
+
+    @Test
     void history_keepsOngoingAheadOfEnded() throws InterruptedException {
         StormDetector detector = newDetector();
         feed(detector, "ended.Logger", "boom", (int) THRESHOLD);
@@ -212,6 +236,23 @@ class StormDetectorTest {
         assertEquals("failed for order <n>", StormDetector.normalize("failed for order 4821"));
         assertEquals("failed for order <n>", StormDetector.normalize("failed for order 9134"));
         assertEquals("id <uuid> missing", StormDetector.normalize("id 123e4567-e89b-12d3-a456-426614174000 missing"));
+    }
+
+    @Test
+    void normalize_longPurelyDecimalRun_isDigitsNotHex() {
+        // A 6+ digit id is still a decimal run, not hex, even though every digit it contains is
+        // technically a valid hex digit -- the same underlying message with a wider numeric id must
+        // normalize to the same fingerprint as the narrower one, or a real storm with a widening id
+        // fragments into sub-threshold fingerprints that never individually trip.
+        assertEquals("failed for order <n>", StormDetector.normalize("failed for order 482156"));
+        assertEquals(StormDetector.normalize("failed for order 4821"),
+                StormDetector.normalize("failed for order 482156"));
+    }
+
+    @Test
+    void normalize_genuineHexRun_isStillHex() {
+        assertEquals("checksum <hex> mismatch", StormDetector.normalize("checksum deadbeef mismatch"));
+        assertEquals("addr <hex>", StormDetector.normalize("addr 0x1a2b3c"));
     }
 
     @Test

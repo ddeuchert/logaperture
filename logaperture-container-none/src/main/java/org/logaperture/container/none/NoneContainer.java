@@ -191,8 +191,15 @@ public final class NoneContainer implements AutoCloseable {
         // by the time an operator runs `logctl top`, the volume that mattered
         // already happened, so measurement can't start on demand.
         topService.startMeasuring();
-        // doc/specs/storm-detection.md: same "always-on from context-install" discipline.
-        stormService.startDetection();
+        // doc/specs/storm-detection.md: same "always-on from context-install" discipline. Guarded,
+        // unlike topService.startMeasuring() above: this runs before aggregate.register() below, so
+        // an uncaught throw here would drop this entire context's registration -- levels, handlers,
+        // doctor and top included, not just storm tracking.
+        try {
+            stormService.startDetection();
+        } catch (RuntimeException e) {
+            Diagnostics.warn("LogAperture: failed to arm storm detection for this context, continuing without it", e);
+        }
 
         aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService,
                 stormService, environmentReportService));

@@ -78,7 +78,13 @@ public final class StormDetector implements StormObserver {
 
     private static final Pattern UUID_PATTERN = Pattern.compile(
             "\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b");
-    private static final Pattern HEX_RUN_PATTERN = Pattern.compile("\\b0[xX][0-9a-fA-F]+\\b|\\b[0-9a-fA-F]{6,}\\b");
+    // The bare-hex alternative requires at least one a-f/A-F letter in the run (a lookahead), so a
+    // purely-decimal run of 6+ digits (e.g. a long numeric id) is left for DIGIT_RUN_PATTERN instead
+    // of being misread as hex -- every digit is technically a valid hex digit, so without this guard
+    // "order 482156" and "order 4821" would normalize to different placeholders (<hex> vs <n>) for
+    // what is otherwise the identical message shape.
+    private static final Pattern HEX_RUN_PATTERN = Pattern.compile(
+            "\\b0[xX][0-9a-fA-F]+\\b|\\b(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{6,}\\b");
     private static final Pattern DIGIT_RUN_PATTERN = Pattern.compile("\\d+");
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
@@ -150,8 +156,13 @@ public final class StormDetector implements StormObserver {
             if (active != null) {
                 long gap = now - entry.lastSeenNanos;
                 if (gap > quietNanos) {
-                    active.status = StormStatus.ENDED;
-                    active.endedAt = entry.lastEventInstant;
+                    // Both fields must become visible together: Storm's own constructor requires
+                    // endedAt set iff status == ENDED, and a reader (toStorm(), synchronized on the
+                    // same record) must never observe one written without the other.
+                    synchronized (active) {
+                        active.status = StormStatus.ENDED;
+                        active.endedAt = entry.lastEventInstant;
+                    }
                     entry.active = null;
                     active = null;
                     entry.count = 0;
@@ -278,8 +289,10 @@ public final class StormDetector implements StormObserver {
                     continue;
                 }
                 if (now - entry.lastSeenNanos > quietNanos) {
-                    current.status = StormStatus.ENDED;
-                    current.endedAt = entry.lastEventInstant;
+                    synchronized (current) {
+                        current.status = StormStatus.ENDED;
+                        current.endedAt = entry.lastEventInstant;
+                    }
                     entry.active = null;
                     entry.count = 0;
                     entry.burstStart = null;
@@ -292,11 +305,20 @@ public final class StormDetector implements StormObserver {
         if (counters.size() <= maxTrackedFingerprints) {
             return;
         }
+        // Only an entry with no active (ONGOING) storm is eligible: evicting an ONGOING entry would
+        // orphan its HistoryRecord permanently in the ONGOING state -- neither a future event (which
+        // would land on a fresh Entry) nor sweepEnded() (which only walks live counters.values())
+        // could ever transition it to ENDED. If every sampled candidate is currently storming, skip
+        // eviction this round rather than evict one -- a transient overshoot of the cap is preferable
+        // to a phantom, permanently-stuck storm.
         Map.Entry<Long, Entry> victim = null;
         int sampled = 0;
         for (Map.Entry<Long, Entry> candidate : counters.entrySet()) {
             if (sampled++ >= EVICTION_SAMPLE_SIZE) {
                 break;
+            }
+            if (candidate.getValue().active != null) {
+                continue;
             }
             if (victim == null || candidate.getValue().lastTouchedNanos < victim.getValue().lastTouchedNanos) {
                 victim = candidate;
@@ -377,6 +399,10 @@ public final class StormDetector implements StormObserver {
 
         Entry(StormFingerprint cheapFingerprint) {
             this.cheapFingerprint = cheapFingerprint;
+            // Stamped at construction, not left at the field default of 0, so a brand-new entry is
+            // never mistaken for the oldest (and therefore most evictable) one by evictIfOverCapacity
+            // before its first event has run.
+            this.lastTouchedNanos = System.nanoTime();
         }
     }
 
@@ -400,7 +426,16 @@ public final class StormDetector implements StormObserver {
         }
 
         Storm toStorm() {
-            return new Storm(fingerprint, status, firstEventAt, lastEventAt, endedAt, eventCount,
+            // status and endedAt are written together, under synchronized(this), by the ENDED
+            // transition above -- read them the same way so a concurrent reader can never observe
+            // one updated without the other (Storm's own constructor enforces they agree).
+            StormStatus statusSnapshot;
+            Instant endedAtSnapshot;
+            synchronized (this) {
+                statusSnapshot = status;
+                endedAtSnapshot = endedAt;
+            }
+            return new Storm(fingerprint, statusSnapshot, firstEventAt, lastEventAt, endedAtSnapshot, eventCount,
                     firstOccurrenceText.get());
         }
     }

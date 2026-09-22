@@ -615,6 +615,7 @@ final class Commands {
             }
             if (findings.isEmpty()) {
                 out.println("No checks could run against this JVM.");
+                printStormPointer(mbean, out);
                 return CliError.OK;
             }
             boolean showContext = spansMultipleContexts(findings, DoctorFindingData::getContext);
@@ -647,16 +648,30 @@ final class Commands {
             out.println();
             out.println(Json.checksRun(findings) + " checks run — " + critical + " critical, " + warning
                     + " warning, " + info + " info, " + clean + " clean.");
-            // doc/specs/storm-detection.md Decision #10: a standalone `storms`
-            // command, with `doctor` printing a one-line pointer when storms
-            // are active -- read-only, no effect on findings/checksRun.
-            int ongoingStorms = mbean.activeStorms(0).getOngoingCount();
-            if (ongoingStorms > 0) {
-                out.println(ongoingStorms + (ongoingStorms == 1 ? " log storm is" : " log storms are")
-                        + " currently ongoing — see `logctl storms`.");
-            }
+            printStormPointer(mbean, out);
             return CliError.OK;
         };
+    }
+
+    /**
+     * doc/specs/storm-detection.md Decision #10: a standalone {@code storms}
+     * command, with {@code doctor} printing a one-line pointer when storms
+     * are active -- read-only, no effect on findings/checksRun. Guarded: an
+     * older agent that predates this operation, or any failure reaching it,
+     * must never turn {@code doctor}'s "never exits non-zero for what it
+     * finds" guarantee into a hard failure over a pointer line.
+     */
+    private static void printStormPointer(org.logaperture.control.jmx.LevelControlMXBean mbean, java.io.PrintStream out) {
+        int ongoingStorms;
+        try {
+            ongoingStorms = mbean.activeStorms(0).getOngoingCount();
+        } catch (RuntimeException e) {
+            return;
+        }
+        if (ongoingStorms > 0) {
+            out.println(ongoingStorms + (ongoingStorms == 1 ? " log storm is" : " log storms are")
+                    + " currently ongoing — see `logctl storms`.");
+        }
     }
 
     /**
