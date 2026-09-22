@@ -74,12 +74,18 @@ final class JulRuleFilter implements Filter {
             System.err.println("[logaperture-adapter-jul] rule evaluation failed, event passes through unaffected: "
                     + e);
         }
-        // The delegate is always evaluated, deny or not (no short-circuit on `allowed`) -- doc/specs/
-        // drop-rule.md "Interaction with storm detection", Decision #3: with storm detection
-        // installed first (inner delegate) and this filter installed second (outer), a denied event
-        // must still reach storm detection's own observer. Only the final verdict differs.
-        boolean delegateAllows = delegate == null || delegate.isLoggable(record);
-        return allowed && delegateAllows;
+        if (!allowed) {
+            // A code-review finding caught this session's own earlier draft getting this
+            // backwards: doc/specs/drop-rule.md "Interaction with storm detection", Decision #3
+            // requires a Drop-denied event to never reach storm detection's observer at all --
+            // an operator who attached a drop already took a deliberate mitigation step, and
+            // storm detection re-reporting the same noise through a second surface adds
+            // confusion, not value. So a deny short-circuits here, before the delegate (storm
+            // detection's own filter, installed first and so captured as this filter's inner
+            // delegate in production) is ever reached.
+            return false;
+        }
+        return delegate == null || delegate.isLoggable(record);
     }
 
     private static RuleCandidateEvent toEvent(LogRecord record) {

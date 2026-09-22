@@ -42,10 +42,15 @@ import java.util.concurrent.atomic.LongAdder;
  * The rule-pipeline engine — framework- and action-agnostic, per
  * doc/specs/rule-pipeline-foundation.md. Owns attachment (id assignment,
  * capability/suppression-floor checks, audit), {@code useParentRules}
- * inheritance resolution, and the compiled {@link RulePlan} every gate
- * filter reads. No concrete rule type is built here — {@link #attach}
- * takes a {@link RuleFactory} so #72's {@code Drop} and #34's {@code Trim}
- * (and this slice's own test double) all go through the identical
+ * inheritance resolution, and gate-stage evaluation ({@link #gate()}),
+ * read live off the registry rather than a separately compiled plan
+ * (doc/specs/drop-rule.md "Evaluation" retired the compiled-{@code
+ * RulePlan}-swap design {@code rule-pipeline-foundation.md} originally
+ * sketched, once real evaluation turned out to need mutable per-rule state
+ * — hit counters, {@code sampleFull} clocks — a plan snapshot doesn't
+ * carry anyway). No concrete rule type is built here — {@link #attach}
+ * takes a {@link RuleFactory} so {@link Drop} and #34's {@code Trim} (and
+ * this slice's own test double) all go through the identical
  * identity-assignment and safety-check path.
  *
  * <p>Every mutating method follows the same ordering
@@ -74,17 +79,20 @@ public final class RuleService implements RuleOperations {
     private final AtomicLong idSequence = new AtomicLong(1);
     private final Map<String, RuleFactory> actionFactories = new ConcurrentHashMap<>();
 
-    // --- Evaluation-time state (doc/specs/drop-rule.md "Evaluation") -- keyed by rule id, so it
-    // survives a rule's own recompiled RulePlan entries being swapped for equal-but-new instances.
+    // --- Evaluation-time state (doc/specs/drop-rule.md "Evaluation") -- keyed by rule id;
+    // cleaned up in forgetEvaluationState whenever a rule is removed, so a long-running process
+    // doing ordinary attach/reset traffic doesn't grow these maps without bound (a code-review
+    // finding).
     /** Per-event, not per-handler (rule-pipeline-foundation.md "Evaluation"): a verdict computed for one handler's filter is reused by every sibling handler's filter evaluating the same framework record. */
     private final Map<Object, GateVerdict> decisionCache = Collections.synchronizedMap(new WeakHashMap<>());
     private final Map<String, LongAdder> hitCounters = new ConcurrentHashMap<>();
     /** {@code Long.MIN_VALUE} sentinel = "never sampled yet" -- doc/specs/drop-rule.md "The keep-one-in-N escape hatch": the very first match is always kept. */
     private final Map<String, AtomicLong> nextSampleAtNanos = new ConcurrentHashMap<>();
+    /** Suppressed (denied) hits since the rule's last-emitted summary line -- distinct from {@link #hitCounters}, which never resets. */
     private final Map<String, LongAdder> pendingSummaryCounters = new ConcurrentHashMap<>();
+    /** {@code sampleFull}-kept hits since the rule's last-emitted summary line -- doc/specs/drop-rule.md's own worked example ("41,209 suppressed ..., 8 sampled through") reports these as a separate figure, never folded into "suppressed". */
+    private final Map<String, LongAdder> pendingSampledCounters = new ConcurrentHashMap<>();
     private final Map<String, AtomicLong> lastSummaryAtNanos = new ConcurrentHashMap<>();
-
-    private volatile RulePlan plan = RulePlan.empty();
 
     public RuleService(LoggingAdapter adapter, CapabilityPolicy policy, AuditLog auditLog, StateStore stateStore,
             String context, String principal, String source) {
@@ -200,7 +208,6 @@ public final class RuleService implements RuleOperations {
                 Map.of());
 
         registry.attach(rule);
-        recompilePlan();
         if (rule.tier() != PersistenceTier.SESSION) {
             safePersist(() -> stateStore.saveRule(toPersisted(rule)));
         }
@@ -242,11 +249,12 @@ public final class RuleService implements RuleOperations {
         if (rule.tier() == PersistenceTier.STICKY && !includeSticky) {
             throw new IllegalArgumentException(id + " is STICKY -- reset refused without --include-sticky.");
         }
+        long finalHitCount = hitCount(id);
         registry.removeById(id);
-        recompilePlan();
+        forgetEvaluationState(id);
         safePersist(() -> stateStore.removeRule(id));
         auditRemoval(rule);
-        return Optional.of(new RuleView(rule, context, hitCount(id)));
+        return Optional.of(new RuleView(rule, context, finalHitCount));
     }
 
     /** {@code reset rules} — bulk, skip-and-report shape (mirrors {@code reset loggers}). */
@@ -289,11 +297,11 @@ public final class RuleService implements RuleOperations {
                 continue;
             }
             registry.removeById(rule.id());
+            forgetEvaluationState(rule.id());
             removed.add(rule.id());
             auditRemoval(rule);
         }
         if (!removed.isEmpty()) {
-            recompilePlan();
             // One rewrite for the whole batch, not one per rule -- doc/specs/
             // persistence.md "Batch removal" (issue #17)'s precedent.
             safePersist(() -> stateStore.removeAllRules(removed));
@@ -372,7 +380,6 @@ public final class RuleService implements RuleOperations {
                 persisted.reason(), persisted.tier(), persisted.expiresAt(), persisted.createdAt(),
                 persisted.payload());
         registry.attach(rule);
-        recompilePlan();
         auditLog.record(new AuditRecord(now, principal, "resume", persisted.loggerName(), null, describe(rule),
                 persisted.reason(), AuditRecord.Action.MUTATION));
     }
@@ -467,11 +474,6 @@ public final class RuleService implements RuleOperations {
         registry.setUseParentRules(loggerName, useParentRules);
     }
 
-    /** The live, swapped-on-every-mutation plan reader -- used internally by {@link #gate()} only now (doc/specs/drop-rule.md "Evaluation" retired this as the adapter-facing SPI in favor of {@link RuleGate}). */
-    RulePlanSource planSource() {
-        return () -> plan;
-    }
-
     /**
      * The seam an adapter's gate {@code Filter} evaluates every candidate
      * event against -- doc/specs/drop-rule.md "Evaluation".
@@ -480,14 +482,20 @@ public final class RuleService implements RuleOperations {
         return this::evaluateGate;
     }
 
+    /**
+     * {@code computeIfAbsent} on the (synchronized) cache, not a separate
+     * {@code get}-then-{@code put} pair -- doc/specs/rule-pipeline-foundation.md
+     * "Evaluation" requires one verdict per event across every sibling
+     * handler's filter, and a plain get/put pair lets two threads racing on
+     * the same {@code recordIdentity} (e.g. an async handler dispatching to
+     * a delegate on another thread) both miss the cache, both run {@link
+     * #computeVerdict}, and double-count a single event (a code-review
+     * finding). {@code Collections.synchronizedMap}'s {@code
+     * computeIfAbsent} holds its lock for the whole call, including the
+     * mapping function, making this atomic.
+     */
     private GateVerdict evaluateGate(Object recordIdentity, RuleCandidateEvent event) {
-        GateVerdict cached = decisionCache.get(recordIdentity);
-        if (cached != null) {
-            return cached;
-        }
-        GateVerdict verdict = computeVerdict(event);
-        decisionCache.put(recordIdentity, verdict);
-        return verdict;
+        return decisionCache.computeIfAbsent(recordIdentity, identity -> computeVerdict(event));
     }
 
     /**
@@ -504,18 +512,15 @@ public final class RuleService implements RuleOperations {
             if (!RuleMatching.matches(drop.matchers(), event)) {
                 continue;
             }
-            recordHit(drop.id());
+            hitCounters.computeIfAbsent(drop.id(), id -> new LongAdder()).increment();
             if (shouldSampleFull(drop)) {
+                pendingSampledCounters.computeIfAbsent(drop.id(), id -> new LongAdder()).increment();
                 return GateVerdict.allow();
             }
+            pendingSummaryCounters.computeIfAbsent(drop.id(), id -> new LongAdder()).increment();
             return GateVerdict.deny(drop.id());
         }
         return GateVerdict.allow();
-    }
-
-    private void recordHit(String ruleId) {
-        hitCounters.computeIfAbsent(ruleId, id -> new LongAdder()).increment();
-        pendingSummaryCounters.computeIfAbsent(ruleId, id -> new LongAdder()).increment();
     }
 
     /**
@@ -561,24 +566,42 @@ public final class RuleService implements RuleOperations {
                 continue;
             }
             LongAdder pending = pendingSummaryCounters.get(drop.id());
-            long count = pending == null ? 0L : pending.sum();
-            if (count == 0L) {
+            if (pending == null) {
                 continue;
             }
             AtomicLong lastAt = lastSummaryAtNanos.computeIfAbsent(drop.id(), id -> new AtomicLong(Long.MIN_VALUE));
             long last = lastAt.get();
             boolean due = last == Long.MIN_VALUE || nowNanos - last >= SampleFullPolicy.DEFAULT_INTERVAL.toNanos();
-            if (!due || !lastAt.compareAndSet(last, nowNanos)) {
+            if (!due) {
                 continue;
             }
-            pending.reset();
+            // sumThenReset(), not a separate sum() followed by reset() -- LongAdder's own
+            // documented pattern for exactly this "read the interval's total, then start the next
+            // one" use, closing the window where a recordHit landing between a plain sum() and
+            // reset() would be silently dropped from every future summary (a code-review finding).
+            long suppressed = pending.sumThenReset();
+            LongAdder sampledAdder = pendingSampledCounters.get(drop.id());
+            long sampled = sampledAdder == null ? 0L : sampledAdder.sumThenReset();
+            if (suppressed == 0L && sampled == 0L) {
+                continue;
+            }
+            if (!lastAt.compareAndSet(last, nowNanos)) {
+                continue; // lost a race with a concurrent tick -- the counts above are already
+                          // consumed either way, and the next due tick reports whatever accrues next
+            }
             System.err.println("[logaperture] " + now + " WARN drop summary: " + drop.id() + " ("
-                    + drop.loggerName() + ") -- " + count + " suppressed since the last summary");
+                    + drop.loggerName() + ") -- " + suppressed + " suppressed since the last summary, " + sampled
+                    + " sampled through");
         }
     }
 
-    private void recompilePlan() {
-        plan = new RulePlan(registry.all());
+    /** Drops every per-rule evaluation-time entry keyed by {@code ruleId} -- called whenever a rule is actually removed, so these maps don't grow for the life of the process (a code-review finding). {@link #decisionCache} needs no equivalent: it's keyed by framework record identity, already bounded by {@link WeakHashMap}'s own GC-driven eviction. */
+    private void forgetEvaluationState(String ruleId) {
+        hitCounters.remove(ruleId);
+        nextSampleAtNanos.remove(ruleId);
+        pendingSummaryCounters.remove(ruleId);
+        pendingSampledCounters.remove(ruleId);
+        lastSummaryAtNanos.remove(ruleId);
     }
 
     private void requireCapability(Capability capability) {

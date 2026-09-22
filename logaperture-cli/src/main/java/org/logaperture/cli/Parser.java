@@ -427,9 +427,14 @@ final class Parser {
                         boolean sampleFullEnabled = !noSampleFull;
                         long everyMillis = sampleFullEveryMillis != null ? sampleFullEveryMillis
                                 : SampleFullPolicy.DEFAULT_INTERVAL.toMillis();
+                        // Omitted --below defaults to the ERROR keep-floor (doc/specs/drop-rule.md
+                        // "Safety set") -- resolved here, not left null, so a bare "add rule drop"
+                        // never compiles into an unbounded matcher that would also drop ERROR and
+                        // above (a code-review finding).
+                        String belowLevelOrDefault = belowLevel != null ? belowLevel : parseBelowLevel("ERROR");
                         yield Commands.addRuleDrop(target, messageContains, messageIgnoreCase, throwableType,
-                                throwableMessageContains, anyCause, belowLevel, sampleFullEnabled, everyMillis,
-                                reason, tier.tierName(), tier.forSeconds(), json);
+                                throwableMessageContains, anyCause, belowLevelOrDefault, sampleFullEnabled,
+                                everyMillis, reason, tier.tierName(), tier.forSeconds(), json);
                     }
                     default -> throw usage("'add rule' needs 'drop', got '" + action + "'.");
                 };

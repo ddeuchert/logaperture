@@ -369,7 +369,11 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         for (ContextControl context : sortedByKey()) {
             String key = context.stableKey();
             for (RuleView view : context.ruleService().listRules()) {
-                result.add(new RuleView(view.rule(), key));
+                // The 3-arg constructor -- re-stamping context via the 2-arg one silently
+                // defaulted hitCount back to 0, discarding what RuleService just computed (a
+                // code-review finding: every rule showed HITS=0 in production regardless of how
+                // many events it had actually matched).
+                result.add(new RuleView(view.rule(), key, view.hitCount()));
             }
         }
         return List.copyOf(result);

@@ -44,7 +44,16 @@ import java.util.function.Supplier;
  *                                 finding 6/7: this is the one real cost a
  *                                 candidate logger pays, and it's the same
  *                                 formatting work the layout would have
- *                                 done anyway for a kept event)
+ *                                 done anyway for a kept event). The
+ *                                 compact constructor wraps whatever
+ *                                 caller-supplied {@link Supplier} is given
+ *                                 in a memoizing one, so this guarantee
+ *                                 holds even when a logger has several
+ *                                 effective rules with a message matcher
+ *                                 (a code-review finding: the raw supplier
+ *                                 on its own gets re-invoked once per rule
+ *                                 tried, not once per event, the first time
+ *                                 an earlier rule's message check misses)
  * @param timestamp                when the event occurred
  */
 public record RuleCandidateEvent(
@@ -59,5 +68,25 @@ public record RuleCandidateEvent(
         Objects.requireNonNull(level, "level");
         Objects.requireNonNull(formattedMessageSupplier, "formattedMessageSupplier");
         Objects.requireNonNull(timestamp, "timestamp");
+        formattedMessageSupplier = memoize(formattedMessageSupplier);
+    }
+
+    /**
+     * Not thread-safe, deliberately: this event (and the supplier it wraps)
+     * is only ever touched by the single thread that won {@link
+     * RuleService}'s per-record decision-cache race -- every sibling
+     * handler's filter reuses the already-computed {@link GateVerdict}
+     * instead of touching this supplier again.
+     */
+    private static Supplier<String> memoize(Supplier<String> original) {
+        boolean[] computed = {false};
+        String[] cached = {null};
+        return () -> {
+            if (!computed[0]) {
+                cached[0] = original.get();
+                computed[0] = true;
+            }
+            return cached[0];
+        };
     }
 }

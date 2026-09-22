@@ -238,4 +238,66 @@ class DropRuleTest {
         Drop resumedDrop = (Drop) resumed.listRules().get(0).rule();
         assertEquals(sampleFull, resumedDrop.sampleFull());
     }
+
+    // --- Evaluation-state cleanup on removal (a code-review finding) --------------------------
+
+    @Test
+    void resetRule_forgetsTheRulesEvaluationState_notJustTheRegistryEntry() {
+        Drop drop = attachDrop("com.acme.Worker", new CompiledMatchers(Level.WARN, "noisy", false, null, null,
+                false), SampleFullPolicy.disabled());
+        service.gate().evaluate(new Object(), event("com.acme.Worker", Level.INFO, "noisy", null));
+        assertEquals(1L, service.hitCount(drop.id()));
+
+        service.resetRule(drop.id(), false);
+
+        // Re-attaching a new rule that happens to reuse the same evaluation-time id space must
+        // start from a clean slate -- if the old rule's map entries had leaked, a hit recorded
+        // against a long-gone rule id would be invisible (no rule left to read it back from) but
+        // still sitting in every one of RuleService's per-rule maps forever (a code-review
+        // finding: unbounded growth under ordinary attach/reset traffic).
+        assertEquals(0L, service.hitCount(drop.id()), "hit count for a removed rule's id reads back as 0");
+    }
+
+    // --- Periodic drop-summary line: suppressed vs. sampled (a code-review finding) -----------
+
+    @Test
+    void reportDueDropSummaries_separatesSuppressedFromSampled() {
+        Drop drop = attachDrop("com.acme.Worker", new CompiledMatchers(Level.WARN, "noisy", false, null, null,
+                false), new SampleFullPolicy(true, Duration.ofHours(1)));
+        RuleCandidateEvent noisy = event("com.acme.Worker", Level.INFO, "noisy", null);
+        service.gate().evaluate(new Object(), noisy); // sampled through (the first match)
+        service.gate().evaluate(new Object(), noisy); // denied
+        service.gate().evaluate(new Object(), noisy); // denied
+
+        java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
+        java.io.PrintStream originalErr = System.err;
+        System.setErr(new java.io.PrintStream(captured, true, java.nio.charset.StandardCharsets.UTF_8));
+        try {
+            service.reportDueDropSummaries(Instant.now());
+        } finally {
+            System.setErr(originalErr);
+        }
+
+        String line = captured.toString(java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(line.contains(drop.id()), line);
+        assertTrue(line.contains("2 suppressed"), "two denied events, not folded in with the sample: " + line);
+        assertTrue(line.contains("1 sampled through"), "the sampled-through event reported separately: " + line);
+    }
+
+    @Test
+    void reportDueDropSummaries_silentForAnIdleRule() {
+        attachDrop("com.acme.Worker", new CompiledMatchers(Level.WARN, "noisy", false, null, null, false),
+                SampleFullPolicy.disabled());
+
+        java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
+        java.io.PrintStream originalErr = System.err;
+        System.setErr(new java.io.PrintStream(captured, true, java.nio.charset.StandardCharsets.UTF_8));
+        try {
+            service.reportDueDropSummaries(Instant.now());
+        } finally {
+            System.setErr(originalErr);
+        }
+
+        assertEquals("", captured.toString(java.nio.charset.StandardCharsets.UTF_8));
+    }
 }

@@ -17,12 +17,8 @@ package org.logaperture.core;
 
 /**
  * The seam an adapter's gate-stage {@code Filter} evaluates every candidate
- * event against -- doc/specs/drop-rule.md "Evaluation", superseding {@link
- * RulePlanSource}'s role as the adapter-facing SPI (that type stays, used
- * internally by {@link RuleService} only, now that real evaluation --
- * matching, hit counting, {@code sampleFull} -- needs mutable state beyond
- * a plain immutable-plan read). {@link RuleService} is the only production
- * implementation.
+ * event against -- doc/specs/drop-rule.md "Evaluation". {@link RuleService}
+ * is the only production implementation.
  *
  * <p>{@code recordIdentity} is the adapter's own framework record object
  * (e.g. a JUL {@code LogRecord}), used purely as an identity key so a

@@ -255,11 +255,14 @@ class JulRuleFilterTest {
      * doc/specs/drop-rule.md "Interaction with storm detection", Decision
      * #3: when the rule filter actually denies (production install order:
      * storm detection first, so it ends up the inner delegate), storm
-     * detection's observer must still see the event -- a dropped event is
-     * not silently invisible to storm detection.
+     * detection's observer must <b>never</b> see the event -- an operator
+     * who attached a drop already took a deliberate mitigation step, and
+     * storm detection re-reporting the same noise through a second surface
+     * would add confusion, not value. A deny short-circuits before the
+     * delegate is ever reached.
      */
     @Test
-    void ruleFilterDenies_stormDetectionInnerDelegate_stillObserves() {
+    void ruleFilterDenies_stormDetectionInnerDelegate_neverObserves() {
         FakePersistentHandler handler = new FakePersistentHandler();
         Logger logger = Logger.getLogger(name("deny-storm-inner"));
         logger.addHandler(handler);
@@ -272,10 +275,31 @@ class JulRuleFilterTest {
             // A bare Handler subclass's own publish() (this fake included) doesn't call isLoggable
             // itself -- Logger.log() doesn't check it centrally either, unlike StreamHandler's real
             // publish() -- so the filter chain is exercised directly, same as every other test above.
-            LogRecord record = new LogRecord(Level.INFO, "dropped, but still observed by storm detection");
+            LogRecord record = new LogRecord(Level.INFO, "dropped, and never reaches storm detection");
             record.setLoggerName(name("deny-storm-inner"));
-            assertFalse(handler.getFilter().isLoggable(record), "the outer rule filter still denies");
-            assertEquals(1, observer.observed.size(), "the inner storm-detection delegate still observed it");
+            assertFalse(handler.getFilter().isLoggable(record), "the outer rule filter denies");
+            assertEquals(0, observer.observed.size(), "the inner storm-detection delegate never sees a denied event");
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
+    /** The allow path is unaffected: a non-matching event still reaches storm detection's observer. */
+    @Test
+    void ruleFilterAllows_stormDetectionInnerDelegate_stillObserves() {
+        FakePersistentHandler handler = new FakePersistentHandler();
+        Logger logger = Logger.getLogger(name("allow-storm-inner"));
+        logger.addHandler(handler);
+        logger.setUseParentHandlers(false);
+        RecordingObserver observer = new RecordingObserver();
+        try {
+            adapter.installStormDetection(observer); // inner
+            adapter.installRulePipeline(ALWAYS_ALLOW); // outer -- production order
+
+            LogRecord record = new LogRecord(Level.INFO, "kept, and observed by storm detection");
+            record.setLoggerName(name("allow-storm-inner"));
+            assertTrue(handler.getFilter().isLoggable(record));
+            assertEquals(1, observer.observed.size());
         } finally {
             logger.removeHandler(handler);
         }

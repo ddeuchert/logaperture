@@ -30,7 +30,10 @@ final class RuleMatching {
     }
 
     static boolean matches(CompiledMatchers matchers, RuleCandidateEvent event) {
-        if (matchers.levelAtMost() != null && event.level().compareTo(matchers.levelAtMost()) > 0) {
+        // matchers.levelAtMost().isMoreVerboseThan(event.level()) -- not the reverse -- reuses
+        // Level's own named comparator (every other severity comparison in this codebase does)
+        // instead of re-deriving the ordinal-comparison direction by hand (a code-review finding).
+        if (matchers.levelAtMost() != null && matchers.levelAtMost().isMoreVerboseThan(event.level())) {
             return false; // event is more severe than the keep-floor bound -- spared
         }
         if (matchers.throwableType() != null || matchers.throwableMessageContains() != null) {

@@ -235,7 +235,7 @@ class RuleServiceTest {
     }
 
     @Test
-    void planSource_swapsAtomicallyUnderConcurrentAttach() throws InterruptedException {
+    void attach_neverLosesAnAttachmentUnderConcurrentAttach() throws InterruptedException {
         int threads = 16;
         int perThread = 50;
         ExecutorService pool = Executors.newFixedThreadPool(threads);
@@ -266,7 +266,6 @@ class RuleServiceTest {
         }
         assertEquals(0, failures.get());
         assertEquals(threads * perThread, service.listRules().size());
-        assertEquals(threads * perThread, service.planSource().currentPlan().rules().size());
         // No two attachments raced into the same id.
         long distinctIds = service.listRules().stream().map(view -> view.rule().id()).distinct().count();
         assertEquals(threads * perThread, distinctIds);

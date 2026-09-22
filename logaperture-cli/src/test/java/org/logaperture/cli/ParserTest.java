@@ -410,6 +410,71 @@ class ParserTest {
         assertUsage(() -> Parser.parse(new String[] {"set", "default-handler", "CONSOLE", "--yes"}));
     }
 
+    // --- add rule drop (doc/specs/drop-rule.md) -------------------------------
+
+    @Test
+    void addRuleDropNeedsAContentMatcher() {
+        assertUsage(() -> Parser.parse(new String[] {"add", "rule", "drop", "com.acme.Worker"}));
+    }
+
+    @Test
+    void addRuleDropRejectsATrailingWildcard() {
+        assertUsage(() -> Parser.parse(
+                new String[] {"add", "rule", "drop", "com.acme.*", "--message-contains", "x"}));
+    }
+
+    @Test
+    void addRuleDropRejectsBothMessageContainsForms() {
+        assertUsage(() -> Parser.parse(new String[] {"add", "rule", "drop", "com.acme.Worker",
+                "--message-contains", "x", "--message-contains-ignore-case", "y"}));
+    }
+
+    @Test
+    void addRuleDropRejectsBothSampleFullForms() {
+        assertUsage(() -> Parser.parse(new String[] {"add", "rule", "drop", "com.acme.Worker",
+                "--message-contains", "x", "--sample-full", "5m", "--no-sample-full"}));
+    }
+
+    /**
+     * A code-review finding against the first cut of this parser: an omitted
+     * {@code --below} left {@code belowLevel} {@code null} all the way to
+     * {@code CompiledMatchers.levelAtMost}, silently dropping the
+     * spec-mandated ERROR keep-floor default entirely (doc/specs/
+     * drop-rule.md "Safety set") instead of sparing ERROR and above.
+     */
+    @Test
+    void addRuleDropOmittedBelow_defaultsToTheErrorKeepFloor_notUnbounded() {
+        var mbean = new FakeLevelControlMXBean();
+        mbean.addRuleDropResult = new org.logaperture.control.jmx.RuleData(
+                "r1", "com.acme.Worker", "drop", "WARN", "noisy", false, null, null, false, null, "FOR", null, null,
+                null, 0L);
+
+        Invocation invocation = Parser.parse(
+                new String[] {"add", "rule", "drop", "com.acme.Worker", "--message-contains", "noisy"});
+        invocation.command().run(mbean, new java.io.PrintStream(java.io.OutputStream.nullOutputStream()),
+                java.io.InputStream.nullInputStream(), false);
+
+        // Index 6 is belowLevel in Commands.addRuleDrop's argument order.
+        assertEquals("WARN", mbean.addRuleDropCalls.get(0)[6],
+                "omitted --below must resolve to WARN (the level just more verbose than ERROR), "
+                        + "not stay null/unbounded");
+    }
+
+    @Test
+    void addRuleDropBelowFatal_resolvesToError() {
+        var mbean = new FakeLevelControlMXBean();
+        mbean.addRuleDropResult = new org.logaperture.control.jmx.RuleData(
+                "r1", "com.acme.Worker", "drop", "ERROR", "noisy", false, null, null, false, null, "FOR", null, null,
+                null, 0L);
+
+        Invocation invocation = Parser.parse(new String[] {"add", "rule", "drop", "com.acme.Worker",
+                "--message-contains", "noisy", "--below", "FATAL"});
+        invocation.command().run(mbean, new java.io.PrintStream(java.io.OutputStream.nullOutputStream()),
+                java.io.InputStream.nullInputStream(), false);
+
+        assertEquals("ERROR", mbean.addRuleDropCalls.get(0)[6]);
+    }
+
     private static void assertUsage(Executable call) {
         CliError error = assertThrows(CliError.class, call);
         assertSame(CliError.class, error.getClass());
