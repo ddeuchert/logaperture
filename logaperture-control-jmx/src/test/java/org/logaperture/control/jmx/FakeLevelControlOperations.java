@@ -27,6 +27,7 @@ import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.ResetOutcome;
+import org.logaperture.api.RuleResetOutcome;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
@@ -36,6 +37,8 @@ import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.EnvironmentReportOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
+import org.logaperture.core.RuleOperations;
+import org.logaperture.core.RuleView;
 import org.logaperture.core.StormOperations;
 import org.logaperture.core.TopOperations;
 import org.logaperture.core.TopReport;
@@ -52,7 +55,7 @@ import java.util.Optional;
  * AggregateLevelControl} does in production.
  */
 final class FakeLevelControlOperations implements LevelControlOperations, HandlerLevelControlOperations,
-        DoctorOperations, TopOperations, StormOperations, EnvironmentReportOperations {
+        DoctorOperations, TopOperations, StormOperations, RuleOperations, EnvironmentReportOperations {
 
     final List<String> listLoggersCalls = new ArrayList<>();
     final List<Object[]> setLevelCalls = new ArrayList<>();
@@ -205,5 +208,30 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     public StormReport activeStorms(int limit) {
         activeStormsLimitRequested = limit;
         return stormReportToReturn;
+    }
+
+    List<RuleView> rulesToReturn = List.of();
+    Optional<RuleView> resetRuleToReturn = Optional.empty();
+    RuleResetOutcome resetAllRulesToReturn = RuleResetOutcome.nothingReset();
+    RuleResetOutcome resetRulesForLoggerToReturn = RuleResetOutcome.nothingReset();
+
+    @Override
+    public List<RuleView> listRules() {
+        return rulesToReturn;
+    }
+
+    @Override
+    public Optional<RuleView> resetRule(String id, boolean includeSticky) {
+        return resetRuleToReturn;
+    }
+
+    @Override
+    public RuleResetOutcome resetAllRules(boolean includeSticky) {
+        return resetAllRulesToReturn;
+    }
+
+    @Override
+    public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky) {
+        return resetRulesForLoggerToReturn;
     }
 }

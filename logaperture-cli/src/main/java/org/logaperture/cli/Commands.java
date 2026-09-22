@@ -483,8 +483,15 @@ final class Commands {
             boolean wasOverridden = before != null && before.isOverrideActive();
             mbean.resetLogger(target, includeSticky);
             LoggerInfoData after = findLogger(mbean.listLoggers(target), target);
+            // doc/specs/rule-pipeline-foundation.md "Command surface": resetting a
+            // logger also removes every rule attached directly to it, reusing this
+            // command's own --include-sticky. Text output only -- see that
+            // section's note on scoping this to the exact-name path for now.
+            org.logaperture.control.jmx.RuleResetOutcomeData rulesOutcome =
+                    mbean.resetRulesForLogger(target, includeSticky);
             if (json) {
-                out.println(after != null ? Json.logger(after) : Json.reset(target, wasOverridden));
+                out.println(Json.resetLoggerWithRules(after, target, wasOverridden, rulesOutcome.getRemovedIds(),
+                        rulesOutcome.getSkippedStickyIds()));
                 return CliError.OK;
             }
             if (after != null) {
@@ -494,6 +501,10 @@ final class Commands {
             } else {
                 out.println(target + " — nothing was overridden.");
             }
+            if (!rulesOutcome.getRemovedIds().isEmpty()) {
+                out.println("Removed " + rulesOutcome.getRemovedIds().size() + " rule(s) attached to " + target + ".");
+            }
+            printSkippedSticky(out, "sticky rule(s)", rulesOutcome.getSkippedStickyIds());
             return CliError.OK;
         };
     }
@@ -765,6 +776,88 @@ final class Commands {
             }
             headers.addAll(List.of("HANDLER", "LEVEL", "PERSISTS", "TARGET", "OVERRIDE"));
             out.println(Format.table(headers, table));
+            return CliError.OK;
+        };
+    }
+
+    /**
+     * {@code logctl list rules} — every attached content-based rule, across
+     * every registered context (doc/specs/rule-pipeline-foundation.md
+     * "Command surface"). No concrete rule type ships in this slice, so this
+     * is always empty until #72/#34 add one — exercised here against a
+     * stubbed report in tests.
+     */
+    static Command listRules(boolean json) {
+        return (mbean, out, in, interactive) -> {
+            List<org.logaperture.control.jmx.RuleData> rows = mbean.listRules();
+            if (json) {
+                out.println(Json.rules(rows));
+                return CliError.OK;
+            }
+            if (rows.isEmpty()) {
+                out.println("No rules attached.");
+                return CliError.OK;
+            }
+            boolean showContext = spansMultipleContexts(rows, org.logaperture.control.jmx.RuleData::getContext);
+            List<List<String>> table = new ArrayList<>();
+            for (org.logaperture.control.jmx.RuleData row : rows) {
+                List<String> cells = new ArrayList<>();
+                if (showContext) {
+                    cells.add(orDash(row.getContext()));
+                }
+                cells.add(row.getId());
+                cells.add(row.getLoggerName());
+                cells.add(row.getAction());
+                cells.add(row.getTier());
+                cells.add(orDash(row.getExpiresAt()));
+                table.add(cells);
+            }
+            List<String> headers = new ArrayList<>();
+            if (showContext) {
+                headers.add("CONTEXT");
+            }
+            headers.addAll(List.of("ID", "LOGGER", "ACTION", "TIER", "EXPIRES"));
+            out.println(Format.table(headers, table));
+            return CliError.OK;
+        };
+    }
+
+    /**
+     * {@code logctl reset rule <id>} — refuses on a {@code STICKY} rule
+     * without {@code --include-sticky}, same single-named-target shape
+     * {@code reset logger <exact-name>} already uses (doc/specs/
+     * rule-pipeline-foundation.md "Command surface").
+     */
+    static Command resetRule(String id, boolean includeSticky, boolean json) {
+        return (mbean, out, in, interactive) -> {
+            org.logaperture.control.jmx.RuleData removed = mbean.resetRule(id, includeSticky);
+            if (json) {
+                out.println(Json.resetRule(id, removed != null));
+                return CliError.OK;
+            }
+            out.println(removed != null
+                    ? "rule " + id + " → reset."
+                    : "rule " + id + " — no such rule.");
+            return CliError.OK;
+        };
+    }
+
+    /** {@code logctl reset rules} — removes every attached rule, across every registered context. */
+    static Command resetAllRules(boolean includeSticky, boolean json) {
+        return (mbean, out, in, interactive) -> {
+            org.logaperture.control.jmx.RuleResetOutcomeData outcome = mbean.resetAllRules(includeSticky);
+            List<String> removed = outcome.getRemovedIds();
+            List<String> skippedSticky = outcome.getSkippedStickyIds();
+            if (json) {
+                out.println(Json.resetAllRules(removed, skippedSticky));
+                return CliError.OK;
+            }
+            if (removed.isEmpty() && skippedSticky.isEmpty()) {
+                out.println("No rules to reset.");
+                return CliError.OK;
+            }
+            out.println("Removed " + removed.size() + " rule(s).");
+            printSkippedSticky(out, "sticky rule(s)", skippedSticky);
             return CliError.OK;
         };
     }

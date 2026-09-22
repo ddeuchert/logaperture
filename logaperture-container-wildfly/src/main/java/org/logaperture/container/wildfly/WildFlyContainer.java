@@ -32,6 +32,7 @@ import org.logaperture.core.HandlerOverrideRegistry;
 import org.logaperture.core.LevelControlService;
 import org.logaperture.core.LoggerOverrideChangeListener;
 import org.logaperture.core.OverrideRegistry;
+import org.logaperture.core.RuleService;
 import org.logaperture.core.StormService;
 import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.TopService;
@@ -162,10 +163,16 @@ public final class WildFlyContainer implements AutoCloseable {
         LevelControlService service = new LevelControlService(
                 adapter, baselines, overrides, policy, auditLog, stateStore, principal(), "jmx",
                 autoRecomputeListener);
+        RuleService ruleService = new RuleService(adapter, policy, auditLog, stateStore, handle.stableKey(),
+                principal(), "jmx");
 
         try {
             service.resumeFromStateStore(Instant.now());
             handlerService.resumeFromStateStore(Instant.now());
+            // doc/specs/rule-pipeline-foundation.md "Persistence" -- see
+            // NoneContainer's identical call for why every row is currently
+            // reported "not resumed" (no action factory registered yet).
+            ruleService.resumeFromStateStore(Instant.now());
             // doc/specs/handler-floor-control.md "AUTO handler level", AUTO-5.
             handlerService.recomputeAuto();
         } catch (RuntimeException e) {
@@ -195,8 +202,16 @@ public final class WildFlyContainer implements AutoCloseable {
             Diagnostics.warn("LogAperture: failed to arm storm detection for this context, continuing without it", e);
         }
 
+        // doc/specs/rule-pipeline-foundation.md: same always-on discipline and same guard as storm
+        // detection above.
+        try {
+            ruleService.installPipeline();
+        } catch (RuntimeException e) {
+            Diagnostics.warn("LogAperture: failed to install the rule pipeline for this context, continuing without it", e);
+        }
+
         aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService,
-                stormService, environmentReportService));
+                stormService, ruleService, environmentReportService));
     }
 
     /**

@@ -29,6 +29,7 @@ import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.ResetOutcome;
+import org.logaperture.api.RuleResetOutcome;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
@@ -72,18 +73,18 @@ import java.util.function.Supplier;
  * call. The multi-context paths are exercised by tests with fake contexts.
  */
 public final class AggregateLevelControl implements LevelControlOperations, HandlerLevelControlOperations,
-        DoctorOperations, TopOperations, StormOperations, EnvironmentReportOperations {
+        DoctorOperations, TopOperations, StormOperations, EnvironmentReportOperations, RuleOperations {
 
     /**
      * One context: its {@link ContextHandle}, the single-context logger
      * service, the single-context handler service, the single-context
      * doctor service, the single-context top service, the single-context
-     * storm service, and the single-context environment-report service that
-     * drive it.
+     * storm service, the single-context rule service, and the single-context
+     * environment-report service that drive it.
      */
     public record ContextControl(ContextHandle handle, LevelControlService service,
             HandlerLevelControlService handlerService, DoctorService doctorService, TopService topService,
-            StormService stormService, EnvironmentReportService environmentReportService) {
+            StormService stormService, RuleService ruleService, EnvironmentReportService environmentReportService) {
         public ContextControl {
             Objects.requireNonNull(handle, "handle");
             Objects.requireNonNull(service, "service");
@@ -91,6 +92,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             Objects.requireNonNull(doctorService, "doctorService");
             Objects.requireNonNull(topService, "topService");
             Objects.requireNonNull(stormService, "stormService");
+            Objects.requireNonNull(ruleService, "ruleService");
             Objects.requireNonNull(environmentReportService, "environmentReportService");
         }
 
@@ -347,6 +349,86 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         merged.sort(StormDetector.worstFirst());
         List<Storm> limited = limit > 0 && merged.size() > limit ? merged.subList(0, limit) : merged;
         return new StormReport(List.copyOf(limited), trackedCount, ongoingCount, earliest, notRetainedCount);
+    }
+
+    /**
+     * {@code logctl list rules} across every registered context — the
+     * {@link #activeStorms} counterpart for the rule pipeline (doc/specs/
+     * rule-pipeline-foundation.md "Command surface"). Every context's rules
+     * are tagged with its {@code stableKey} via {@link RuleView} (not
+     * {@code LogRule::withContext} — see that type's class doc). No
+     * re-sorting/truncation the way {@code topLoggers}/{@code activeStorms}
+     * do: there is no "worst first" ordering for rules in this slice.
+     */
+    @Override
+    public List<RuleView> listRules() {
+        List<RuleView> result = new ArrayList<>();
+        for (ContextControl context : sortedByKey()) {
+            String key = context.stableKey();
+            for (RuleView view : context.ruleService().listRules()) {
+                result.add(new RuleView(view.rule(), key));
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    /**
+     * Broadcasts {@code reset rule <id>} across every registered context. A
+     * rule lives in exactly one context's registry, so only one context's
+     * call actually finds and removes it; the others are no-ops.
+     *
+     * <p>Rule ids are scoped per context and can collide across contexts
+     * (doc/specs/rule-pipeline-foundation.md "Rule identity": each {@code
+     * RuleService} mints its own sequence independently, disambiguated on
+     * read by {@code context}, same as a {@code HandlerRef}). So a {@code
+     * STICKY} refusal from the <em>first</em> context whose id happens to
+     * match must not stop a later context's own, unrelated match under the
+     * same bare id from being tried — that refusal is remembered and
+     * surfaced only if no other context yields a real match (a code-review
+     * finding against an earlier version of this method, which let the
+     * first refusal abort the whole call).
+     */
+    @Override
+    public Optional<RuleView> resetRule(String id, boolean includeSticky) {
+        IllegalArgumentException stickyRefusal = null;
+        for (ContextControl context : sortedByKey()) {
+            try {
+                Optional<RuleView> removed = context.ruleService().resetRule(id, includeSticky);
+                if (removed.isPresent()) {
+                    return removed;
+                }
+            } catch (IllegalArgumentException e) {
+                stickyRefusal = e;
+            }
+        }
+        if (stickyRefusal != null) {
+            throw stickyRefusal;
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public RuleResetOutcome resetAllRules(boolean includeSticky) {
+        List<String> removed = new ArrayList<>();
+        List<String> skippedSticky = new ArrayList<>();
+        for (ContextControl context : sortedByKey()) {
+            RuleResetOutcome outcome = context.ruleService().resetAllRules(includeSticky);
+            removed.addAll(outcome.removedIds());
+            skippedSticky.addAll(outcome.skippedStickyIds());
+        }
+        return new RuleResetOutcome(removed, skippedSticky);
+    }
+
+    @Override
+    public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky) {
+        List<String> removed = new ArrayList<>();
+        List<String> skippedSticky = new ArrayList<>();
+        for (ContextControl context : sortedByKey()) {
+            RuleResetOutcome outcome = context.ruleService().resetRulesForLogger(loggerName, includeSticky);
+            removed.addAll(outcome.removedIds());
+            skippedSticky.addAll(outcome.skippedStickyIds());
+        }
+        return new RuleResetOutcome(removed, skippedSticky);
     }
 
     /**
@@ -807,6 +889,16 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 context.stormService().startDetection();
             } catch (RuntimeException e) {
                 System.err.println("[logaperture-core] failed to (re-)arm storm detection for context '"
+                        + context.stableKey() + "', that context is unchanged: " + e);
+            }
+            try {
+                // Same guard as storm detection above and for the same reason
+                // (doc/specs/rule-pipeline-foundation.md "Relationship to the
+                // storm-detection filter"): this runs from a scheduled tick
+                // with nothing above it to catch a throw.
+                context.ruleService().installPipeline();
+            } catch (RuntimeException e) {
+                System.err.println("[logaperture-core] failed to (re-)arm the rule pipeline for context '"
                         + context.stableKey() + "', that context is unchanged: " + e);
             }
         }

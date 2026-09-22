@@ -23,6 +23,7 @@ import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
+import org.logaperture.control.jmx.RuleData;
 import org.logaperture.control.jmx.SetLevelResultData;
 import org.logaperture.control.jmx.SquelchedLoggerData;
 import org.logaperture.control.jmx.StormData;
@@ -56,6 +57,10 @@ final class Json {
     }
 
     static String logger(LoggerInfoData row) {
+        return loggerObj(row).toString();
+    }
+
+    private static Obj loggerObj(LoggerInfoData row) {
         return new Obj()
                 .str("name", row.getName())
                 .str("configuredLevel", row.getConfiguredLevel())
@@ -64,8 +69,7 @@ final class Json {
                 .str("overrideSource", row.getOverrideSource())
                 .str("overrideReason", row.getOverrideReason())
                 .str("tier", row.getTier())
-                .str("expiresAt", row.getExpiresAt())
-                .toString();
+                .str("expiresAt", row.getExpiresAt());
     }
 
     static String override(LevelOverrideData data) {
@@ -300,10 +304,30 @@ final class Json {
      * this call cleared one.
      */
     static String reset(String loggerName, boolean wasOverridden) {
+        return resetObj(loggerName, wasOverridden).toString();
+    }
+
+    private static Obj resetObj(String loggerName, boolean wasOverridden) {
         return new Obj()
                 .str("name", loggerName)
                 .bool("overrideActive", false)
-                .bool("wasOverridden", wasOverridden)
+                .bool("wasOverridden", wasOverridden);
+    }
+
+    /**
+     * {@code reset logger <exact-name> --json}, doc/specs/
+     * rule-pipeline-foundation.md "Command surface": the same base shape
+     * {@link #logger}/{@link #reset} already emit, with the rule-removal
+     * side effect folded in rather than silently dropped (a code-review
+     * finding against an earlier version of this call site, which computed
+     * the outcome and then never wrote it to the JSON response).
+     */
+    static String resetLoggerWithRules(LoggerInfoData after, String target, boolean wasOverridden,
+            List<String> removedRuleIds, List<String> skippedStickyRuleIds) {
+        Obj obj = after != null ? loggerObj(after) : resetObj(target, wasOverridden);
+        return obj
+                .raw("removedRuleIds", stringArray(removedRuleIds))
+                .raw("skippedStickyRuleIds", stringArray(skippedStickyRuleIds))
                 .toString();
     }
 
@@ -350,6 +374,50 @@ final class Json {
     static String defaultHandlerMembers(List<String> members) {
         return new Obj()
                 .raw("defaultHandlerMembers", stringArray(members))
+                .toString();
+    }
+
+    /** {@code logctl list rules --json} (doc/specs/rule-pipeline-foundation.md "Command surface"). */
+    static String rules(List<RuleData> rows) {
+        StringJoiner array = new StringJoiner(",", "[", "]");
+        for (RuleData row : rows) {
+            array.add(rule(row));
+        }
+        return new Obj().raw("rules", array.toString()).toString();
+    }
+
+    static String rule(RuleData row) {
+        return new Obj()
+                .str("id", row.getId())
+                .str("loggerName", row.getLoggerName())
+                .str("action", row.getAction())
+                .str("levelAtMost", row.getLevelAtMost())
+                .str("messageContains", row.getMessageContains())
+                .bool("messageIgnoreCase", row.isMessageIgnoreCase())
+                .str("throwableType", row.getThrowableType())
+                .str("throwableMessageContains", row.getThrowableMessageContains())
+                .bool("anyCause", row.isAnyCause())
+                .str("reason", row.getReason())
+                .str("tier", row.getTier())
+                .str("expiresAt", row.getExpiresAt())
+                .str("createdAt", row.getCreatedAt())
+                .str("context", row.getContext())
+                .toString();
+    }
+
+    /** {@code reset rule <id> --json} (doc/specs/rule-pipeline-foundation.md). */
+    static String resetRule(String id, boolean removed) {
+        return new Obj()
+                .str("id", id)
+                .bool("removed", removed)
+                .toString();
+    }
+
+    /** {@code reset rules --json} / {@code reset logger <target> --json}'s rule side effect. */
+    static String resetAllRules(List<String> removed, List<String> skippedSticky) {
+        return new Obj()
+                .raw("removedIds", stringArray(removed))
+                .raw("skippedStickyIds", stringArray(skippedSticky))
                 .toString();
     }
 

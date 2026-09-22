@@ -24,6 +24,8 @@ import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.EnvironmentReportOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
+import org.logaperture.core.RuleOperations;
+import org.logaperture.core.RuleView;
 import org.logaperture.core.StormOperations;
 import org.logaperture.core.TopOperations;
 
@@ -31,6 +33,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Wraps a {@link LevelControlOperations} and a {@link
@@ -52,16 +55,18 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     private final DoctorOperations doctorOperations;
     private final TopOperations topOperations;
     private final StormOperations stormOperations;
+    private final RuleOperations ruleOperations;
     private final EnvironmentReportOperations environmentReportOperations;
 
     public LevelControlMXBeanImpl(LevelControlOperations operations, HandlerLevelControlOperations handlerOperations,
             DoctorOperations doctorOperations, TopOperations topOperations, StormOperations stormOperations,
-            EnvironmentReportOperations environmentReportOperations) {
+            RuleOperations ruleOperations, EnvironmentReportOperations environmentReportOperations) {
         this.operations = Objects.requireNonNull(operations, "operations");
         this.handlerOperations = Objects.requireNonNull(handlerOperations, "handlerOperations");
         this.doctorOperations = Objects.requireNonNull(doctorOperations, "doctorOperations");
         this.topOperations = Objects.requireNonNull(topOperations, "topOperations");
         this.stormOperations = Objects.requireNonNull(stormOperations, "stormOperations");
+        this.ruleOperations = Objects.requireNonNull(ruleOperations, "ruleOperations");
         this.environmentReportOperations = Objects.requireNonNull(environmentReportOperations, "environmentReportOperations");
     }
 
@@ -155,6 +160,27 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     @Override
     public EnvironmentReportData environmentReport() {
         return EnvironmentReportData.from(environmentReportOperations.environmentReport());
+    }
+
+    @Override
+    public List<RuleData> listRules() {
+        return ruleOperations.listRules().stream().map(RuleData::from).toList();
+    }
+
+    @Override
+    public RuleData resetRule(String id, boolean includeSticky) {
+        Optional<RuleView> removed = ruleOperations.resetRule(id, includeSticky);
+        return removed.map(RuleData::from).orElse(null);
+    }
+
+    @Override
+    public RuleResetOutcomeData resetAllRules(boolean includeSticky) {
+        return RuleResetOutcomeData.from(ruleOperations.resetAllRules(includeSticky));
+    }
+
+    @Override
+    public RuleResetOutcomeData resetRulesForLogger(String loggerName, boolean includeSticky) {
+        return RuleResetOutcomeData.from(ruleOperations.resetRulesForLogger(loggerName, includeSticky));
     }
 
     private static SetLevelOptions toOptions(String reason, String tier, long forSeconds, boolean confirmed) {

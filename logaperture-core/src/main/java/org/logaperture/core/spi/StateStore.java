@@ -18,6 +18,7 @@ package org.logaperture.core.spi;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.LevelOverride;
+import org.logaperture.api.PersistedRule;
 
 import java.nio.file.Path;
 import java.util.Collection;
@@ -94,7 +95,27 @@ public interface StateStore {
     /** No-op if nothing was persisted. */
     void removeDefaultHandlerMembers();
 
-    /** Removes every persisted entry — logger overrides, handler overrides, and {@code DEFAULT_HANDLERS} membership alike. */
+    /**
+     * Every persisted rule, in no particular order — doc/specs/
+     * rule-pipeline-foundation.md "Persistence". Empty for this slice in
+     * practice (there is no {@code add rule} command yet to create one).
+     */
+    List<PersistedRule> loadAllRules();
+
+    /** Upserts by {@code rule.id()} — one entry per rule, since (unlike a level override) more than one can share a logger. */
+    void saveRule(PersistedRule rule);
+
+    /** No-op if {@code id} was never persisted. */
+    void removeRule(String id);
+
+    /** {@link #removeAll}'s rule counterpart (issue #17's batch-removal precedent). */
+    default void removeAllRules(Collection<String> ids) {
+        for (String id : ids) {
+            removeRule(id);
+        }
+    }
+
+    /** Removes every persisted entry — logger overrides, handler overrides, rules, and {@code DEFAULT_HANDLERS} membership alike. */
     void clear();
 
     /**
@@ -159,6 +180,21 @@ public interface StateStore {
 
             @Override
             public void removeDefaultHandlerMembers() {
+                // nothing to remove
+            }
+
+            @Override
+            public List<PersistedRule> loadAllRules() {
+                return List.of();
+            }
+
+            @Override
+            public void saveRule(PersistedRule rule) {
+                // discarded, deliberately
+            }
+
+            @Override
+            public void removeRule(String id) {
                 // nothing to remove
             }
 

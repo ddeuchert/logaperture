@@ -18,13 +18,17 @@ package org.logaperture.core;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.logaperture.api.BackendInfo;
+import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.EnvironmentReport;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
+import org.logaperture.api.LogRule;
 import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.LoggerInfo;
+import org.logaperture.api.RuleAttachOptions;
+import org.logaperture.api.RuleResetOutcome;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.core.AggregateLevelControl.ContextControl;
@@ -70,6 +74,7 @@ class AggregateLevelControlTest {
         final StormDetector stormDetector = new StormDetector(3, Duration.ofSeconds(10), Duration.ofSeconds(60),
                 4_000, 100, 8 * 1024);
         final StormService stormService;
+        final RuleService ruleService;
         final EnvironmentReportService environmentReportService;
         final ContextControl control;
 
@@ -92,9 +97,10 @@ class AggregateLevelControlTest {
             doctorService = new DoctorService(adapter, policy);
             topService = new TopService(adapter, policy);
             stormService = new StormService(adapter, policy, stormDetector);
+            ruleService = new RuleService(adapter, policy, auditLog, sharedStore, key, "alice", "jmx");
             environmentReportService = new EnvironmentReportService(adapter, policy);
             control = new ContextControl(ContextHandle.of(key, key, adapter), service, handlerService,
-                    doctorService, topService, stormService, environmentReportService);
+                    doctorService, topService, stormService, ruleService, environmentReportService);
         }
 
         void stormBurst(String loggerName, int times) {
@@ -435,6 +441,88 @@ class AggregateLevelControlTest {
         assertEquals(1, report.storms().size());
         assertEquals(2, report.trackedCount());
         assertEquals(2, report.ongoingCount());
+    }
+
+    // --- listRules/resetRule (doc/specs/rule-pipeline-foundation.md) -----------------------------
+
+    @Test
+    void listRules_mergesEveryContext_eachTaggedWithItsContext() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        LogRule systemRule = system.ruleService.attach("com.acme.Worker", CompiledMatchers.matchAll(),
+                RuleAttachOptions.defaults(), TestRule.FACTORY);
+        LogRule appRule = app.ruleService.attach("com.acme.Other", CompiledMatchers.matchAll(),
+                RuleAttachOptions.defaults(), TestRule.FACTORY);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        List<RuleView> views = aggregate.listRules();
+        assertEquals(2, views.size());
+        assertTrue(views.stream().anyMatch(v -> v.rule().id().equals(systemRule.id()) && "system".equals(v.context())));
+        assertTrue(views.stream().anyMatch(v -> v.rule().id().equals(appRule.id()) && "myapp.war".equals(v.context())));
+    }
+
+    @Test
+    void resetRule_findsAndRemovesFromWhicheverContextActuallyHoldsIt() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        LogRule appRule = app.ruleService.attach("com.acme.Other", CompiledMatchers.matchAll(),
+                RuleAttachOptions.defaults(), TestRule.FACTORY);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        Optional<RuleView> removed = aggregate.resetRule(appRule.id(), false);
+        assertTrue(removed.isPresent());
+        assertEquals("myapp.war", removed.get().context());
+        assertTrue(aggregate.listRules().isEmpty());
+    }
+
+    @Test
+    void resetRule_aStickyRefusalInOneContextDoesNotBlockAMatchInAnother() {
+        // A code-review finding: rule ids are only unique per context (each
+        // RuleService mints its own sequence independently), so the first
+        // context's own id "r1" can collide with a different, removable
+        // rule "r1" that happens to live in a second context.
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        system.ruleService.attach("com.acme.Sticky", CompiledMatchers.matchAll(), RuleAttachOptions.sticky(),
+                TestRule.FACTORY); // becomes "r1" in system's own sequence
+        LogRule collidingId = app.ruleService.attach("com.acme.Other", CompiledMatchers.matchAll(),
+                RuleAttachOptions.defaults(), TestRule.FACTORY); // also "r1", in app's own sequence
+        assertEquals("r1", collidingId.id());
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        Optional<RuleView> removed = aggregate.resetRule("r1", false);
+
+        assertTrue(removed.isPresent(), "system's sticky refusal on the same bare id must not block app's own match");
+        assertEquals("myapp.war", removed.get().context());
+    }
+
+    @Test
+    void resetRule_refusesWhenTheOnlyMatchAnywhereIsSticky() {
+        Ctx system = new Ctx("system");
+        LogRule sticky = system.ruleService.attach("com.acme.Sticky", CompiledMatchers.matchAll(),
+                RuleAttachOptions.sticky(), TestRule.FACTORY);
+        aggregate.register(system.control);
+
+        assertThrows(IllegalArgumentException.class, () -> aggregate.resetRule(sticky.id(), false));
+    }
+
+    @Test
+    void resetAllRules_mergesRemovedAndSkippedStickyAcrossContexts() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        LogRule sessionRule = system.ruleService.attach("com.acme.a", CompiledMatchers.matchAll(),
+                RuleAttachOptions.defaults(), TestRule.FACTORY);
+        LogRule stickyRule = app.ruleService.attach("com.acme.b", CompiledMatchers.matchAll(),
+                RuleAttachOptions.sticky(), TestRule.FACTORY);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        RuleResetOutcome outcome = aggregate.resetAllRules(false);
+        assertEquals(List.of(sessionRule.id()), outcome.removedIds());
+        assertEquals(List.of(stickyRule.id()), outcome.skippedStickyIds());
     }
 
     @Test

@@ -38,6 +38,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -1063,7 +1064,8 @@ class CommandsTest {
 
         assertEquals(CliError.OK, run(Commands.resetLogger("com.acme.Known", false, true)));
         assertEquals(
-                "{\"name\":\"com.acme.Known\",\"overrideActive\":false,\"wasOverridden\":true}",
+                "{\"name\":\"com.acme.Known\",\"overrideActive\":false,\"wasOverridden\":true,"
+                        + "\"removedRuleIds\":[],\"skippedStickyRuleIds\":[]}",
                 output().strip());
     }
 
@@ -1231,5 +1233,114 @@ class CommandsTest {
         run(Commands.setDefaultHandlerMembers(List.of("CONSOLE"), true));
 
         assertEquals("{\"defaultHandlerMembers\":[\"CONSOLE\"]}", output().strip());
+    }
+
+    // --- list rules / reset rule / reset rules (doc/specs/rule-pipeline-foundation.md) ------------
+
+    @Test
+    void listRules_rendersATableWithIdLoggerActionTierExpiry() {
+        mbean.rules = List.of(new org.logaperture.control.jmx.RuleData(
+                "r1", "com.acme.Worker", "TestRule", "ERROR", "This happens a lot", false, null, null, false,
+                "INC-123", "STICKY", null, Instant.now().toString(), null));
+
+        assertEquals(CliError.OK, run(Commands.listRules(false)));
+
+        String text = output();
+        assertTrue(text.contains("ID") && text.contains("LOGGER") && text.contains("ACTION"), text);
+        assertTrue(text.contains("r1") && text.contains("com.acme.Worker") && text.contains("STICKY"), text);
+    }
+
+    @Test
+    void listRules_empty_printsANote() {
+        assertEquals(CliError.OK, run(Commands.listRules(false)));
+        assertEquals("No rules attached.", output().strip());
+    }
+
+    @Test
+    void listRules_json_wrapsTheRows() {
+        mbean.rules = List.of(new org.logaperture.control.jmx.RuleData(
+                "r1", "com.acme.Worker", "TestRule", null, null, false, null, null, false, null, "SESSION", null,
+                Instant.now().toString(), null));
+
+        run(Commands.listRules(true));
+
+        String text = output().strip();
+        assertTrue(text.startsWith("{\"rules\":[{"), text);
+        assertTrue(text.contains("\"id\":\"r1\""), text);
+    }
+
+    @Test
+    void resetRule_removed_reportsIt() {
+        mbean.resetRuleResult = new org.logaperture.control.jmx.RuleData(
+                "r1", "com.acme.Worker", "TestRule", null, null, false, null, null, false, null, "SESSION", null,
+                Instant.now().toString(), null);
+
+        assertEquals(CliError.OK, run(Commands.resetRule("r1", false, false)));
+
+        assertArrayEquals(new Object[] {"r1", false}, mbean.resetRuleCalls.get(0));
+        assertEquals("rule r1 → reset.", output().strip());
+    }
+
+    @Test
+    void resetRule_unknownId_saysNoSuchRule() {
+        assertEquals(CliError.OK, run(Commands.resetRule("no-such-id", false, false)));
+        assertEquals("rule no-such-id — no such rule.", output().strip());
+    }
+
+    @Test
+    void resetAllRules_revertsAndReportsSkippedSticky() {
+        mbean.resetAllRulesResult = new org.logaperture.control.jmx.RuleResetOutcomeData(
+                List.of("r1"), List.of("r2"));
+
+        assertEquals(CliError.OK, run(Commands.resetAllRules(false, false)));
+
+        String text = output();
+        assertTrue(text.contains("Removed 1 rule(s)."), text);
+        assertTrue(text.contains("r2"), text);
+    }
+
+    @Test
+    void resetAllRules_nothingToReset_printsANote() {
+        assertEquals(CliError.OK, run(Commands.resetAllRules(false, false)));
+        assertEquals("No rules to reset.", output().strip());
+    }
+
+    @Test
+    void resetLogger_alsoRemovesRulesAttachedDirectlyToIt_andReportsBoth() {
+        mbean.loggers = List.of(new LoggerInfoData("com.acme", "INFO", "INFO", false, null, null, null, null));
+        mbean.resetRulesForLoggerResult = new org.logaperture.control.jmx.RuleResetOutcomeData(
+                List.of("r1"), List.of());
+
+        assertEquals(CliError.OK, run(Commands.resetLogger("com.acme", false, false)));
+
+        assertArrayEquals(new Object[] {"com.acme", false}, mbean.resetRulesForLoggerCalls.get(0));
+        String text = output();
+        assertTrue(text.contains("com.acme → INFO (baseline)"), text);
+        assertTrue(text.contains("Removed 1 rule(s) attached to com.acme."), text);
+    }
+
+    @Test
+    void resetLogger_noRulesAttached_printsNoExtraLine() {
+        mbean.loggers = List.of(new LoggerInfoData("com.acme", "INFO", "INFO", false, null, null, null, null));
+
+        assertEquals(CliError.OK, run(Commands.resetLogger("com.acme", false, false)));
+
+        assertEquals("com.acme → INFO (baseline)", output().strip());
+    }
+
+    @Test
+    void resetLogger_json_includesTheRuleRemovalOutcome() {
+        // A code-review finding: the JSON branch used to compute rulesOutcome
+        // and then never write it, making a real server-side removal
+        // invisible to any script consuming --json output.
+        mbean.loggers = List.of(new LoggerInfoData("com.acme", "INFO", "INFO", false, null, null, null, null));
+        mbean.resetRulesForLoggerResult = new org.logaperture.control.jmx.RuleResetOutcomeData(
+                List.of("r1"), List.of("r2"));
+
+        run(Commands.resetLogger("com.acme", false, true));
+
+        String text = output().strip();
+        assertTrue(text.contains("\"removedRuleIds\":[\"r1\"]"), text);
+        assertTrue(text.contains("\"skippedStickyRuleIds\":[\"r2\"]"), text);
     }
 }

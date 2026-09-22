@@ -19,10 +19,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
+import org.logaperture.api.PersistedRule;
 import org.logaperture.api.PersistenceTier;
 
 import java.io.IOException;
@@ -217,6 +219,37 @@ class FileStateStoreTest {
 
         try (FileStateStore second = FileStateStore.open()) { // must not throw
             assertTrue(second.loadAll().isEmpty());
+        }
+    }
+
+    @Test
+    void rules_roundTripThroughARealReopenedFile() throws IOException {
+        PersistedRule rule = new PersistedRule("r1", "com.acme.Worker", "Drop",
+                new CompiledMatchers(Level.ERROR, "This happens a lot", false, null, null, false),
+                "INC-123", PersistenceTier.STICKY, null, Instant.parse("2026-09-22T03:14:02Z"), "system");
+
+        try (FileStateStore store = FileStateStore.open()) {
+            store.saveRule(rule);
+        }
+
+        try (FileStateStore reopened = FileStateStore.open()) {
+            assertEquals(List.of(rule), reopened.loadAllRules());
+        }
+    }
+
+    @Test
+    void removeRule_dropsItAndSurvivesReopen() throws IOException {
+        PersistedRule rule = new PersistedRule("r1", "com.acme.Worker", "Drop", CompiledMatchers.matchAll(), null,
+                PersistenceTier.STICKY, null, Instant.now(), "system");
+
+        try (FileStateStore store = FileStateStore.open()) {
+            store.saveRule(rule);
+            store.removeRule("r1");
+            assertTrue(store.loadAllRules().isEmpty());
+        }
+
+        try (FileStateStore reopened = FileStateStore.open()) {
+            assertTrue(reopened.loadAllRules().isEmpty());
         }
     }
 

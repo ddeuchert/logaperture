@@ -113,6 +113,20 @@ class ParserTest {
     }
 
     @Test
+    void listRulesTakesNoArguments() {
+        Parser.parse(new String[] {"list", "rules"});           // OK
+        Parser.parse(new String[] {"list", "rules", "--json"}); // OK
+        assertUsage(() -> Parser.parse(new String[] {"list", "rules", "com.acme"}));
+    }
+
+    @Test
+    void listRulesRejectsShowAll() {
+        // doc/specs/rule-pipeline-foundation.md Decision #4 -- no distinct
+        // meaning yet for --show-all on this noun.
+        assertUsage(() -> Parser.parse(new String[] {"list", "rules", "--show-all"}));
+    }
+
+    @Test
     void levelNamedVerbsNoLongerExist() {
         // doc/specs/set-command-surface.md Decision #3 -- debug/trace/info/warn/error
         // are retired entirely, no alias kept; each names 'set logger' as the fix.
@@ -217,6 +231,21 @@ class ParserTest {
         assertUsage(() -> Parser.parse(new String[] {"reset", "handler", "CONSOLE", "FILE"}));
         Parser.parse(new String[] {"reset", "handler", "CONSOLE"}); // fine
         Parser.parse(new String[] {"reset", "handler", "CONSOLE", "--include-sticky"}); // fine
+    }
+
+    @Test
+    void resetRuleNeedsExactlyOneId() {
+        assertUsage(() -> Parser.parse(new String[] {"reset", "rule"}));
+        assertUsage(() -> Parser.parse(new String[] {"reset", "rule", "r1", "r2"}));
+        Parser.parse(new String[] {"reset", "rule", "r1"}); // fine
+        Parser.parse(new String[] {"reset", "rule", "r1", "--include-sticky"}); // fine
+    }
+
+    @Test
+    void resetRulesTakesNoArguments() {
+        Parser.parse(new String[] {"reset", "rules"}); // fine
+        Parser.parse(new String[] {"reset", "rules", "--include-sticky"}); // fine
+        assertUsage(() -> Parser.parse(new String[] {"reset", "rules", "r1"}));
     }
 
     @Test

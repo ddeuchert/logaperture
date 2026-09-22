@@ -18,6 +18,7 @@ package org.logaperture.core;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.LevelOverride;
+import org.logaperture.api.PersistedRule;
 import org.logaperture.core.spi.StateStore;
 
 import java.util.Collection;
@@ -35,9 +36,11 @@ final class InMemoryStateStore implements StateStore {
     private final Map<String, LevelOverride> saved = new LinkedHashMap<>();
     private final Map<HandlerRef, HandlerLevelOverride> savedHandlers = new LinkedHashMap<>();
     private List<String> savedDefaultHandlerMembers = List.of();
+    private final Map<String, PersistedRule> savedRules = new LinkedHashMap<>();
     private RuntimeException throwOnSave;
     private int removeAllCalls;
     private int removeAllHandlersCalls;
+    private int removeAllRulesCalls;
 
     /** Makes every subsequent {@link #save} call throw, to exercise chaos-case behavior. */
     void throwOnSave(RuntimeException exception) {
@@ -52,6 +55,11 @@ final class InMemoryStateStore implements StateStore {
     /** {@link #removeAllCalls()}'s handler-override counterpart. */
     int removeAllHandlersCalls() {
         return removeAllHandlersCalls;
+    }
+
+    /** {@link #removeAllCalls()}'s rule counterpart. */
+    int removeAllRulesCalls() {
+        return removeAllRulesCalls;
     }
 
     @Override
@@ -118,9 +126,34 @@ final class InMemoryStateStore implements StateStore {
     }
 
     @Override
+    public List<PersistedRule> loadAllRules() {
+        return List.copyOf(savedRules.values());
+    }
+
+    @Override
+    public void saveRule(PersistedRule rule) {
+        if (throwOnSave != null) {
+            throw throwOnSave;
+        }
+        savedRules.put(rule.id(), rule);
+    }
+
+    @Override
+    public void removeRule(String id) {
+        savedRules.remove(id);
+    }
+
+    @Override
+    public void removeAllRules(Collection<String> ids) {
+        removeAllRulesCalls++;
+        ids.forEach(savedRules::remove);
+    }
+
+    @Override
     public void clear() {
         saved.clear();
         savedHandlers.clear();
         savedDefaultHandlerMembers = List.of();
+        savedRules.clear();
     }
 }

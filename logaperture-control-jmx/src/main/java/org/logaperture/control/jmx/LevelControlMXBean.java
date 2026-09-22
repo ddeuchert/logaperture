@@ -212,4 +212,40 @@ public interface LevelControlMXBean {
      * {@code null}, never a failure.
      */
     EnvironmentReportData environmentReport();
+
+    /**
+     * {@code logctl list rules} — every attached content-based rule, across
+     * every registered context (doc/specs/rule-pipeline-foundation.md
+     * "Command surface"). No concrete rule type ships in this slice, so this
+     * is always empty until #72/#34 add one. Requires only {@code VIEW}.
+     */
+    List<RuleData> listRules();
+
+    /**
+     * {@code logctl reset rule <id>} — a single named id refuses if it's
+     * {@code STICKY} and {@code includeSticky} wasn't passed.
+     *
+     * @return the removed rule, or {@code null} if no rule with this id
+     *         exists (a no-op, not an error)
+     * @throws IllegalArgumentException if the rule is {@code STICKY} and
+     *                                   {@code includeSticky} is {@code false}
+     */
+    RuleData resetRule(String id, boolean includeSticky);
+
+    /**
+     * {@code logctl reset rules} — removes every attached rule, across
+     * every registered context.
+     *
+     * @param includeSticky whether a {@code STICKY}-tier rule is removed
+     *                      too, instead of left in place
+     */
+    RuleResetOutcomeData resetAllRules(boolean includeSticky);
+
+    /**
+     * {@code logctl reset logger X}'s rule-removal side effect (doc/specs/
+     * rule-pipeline-foundation.md "Command surface") — removes every rule
+     * attached <em>directly</em> to {@code loggerName}, not its descendants'
+     * own separately-attached rules.
+     */
+    RuleResetOutcomeData resetRulesForLogger(String loggerName, boolean includeSticky);
 }

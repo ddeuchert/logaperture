@@ -22,6 +22,7 @@ import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.Storm;
+import org.logaperture.core.RulePlanSource;
 import org.logaperture.core.StormObserver;
 
 import java.util.List;
@@ -289,5 +290,24 @@ public interface LoggingAdapter {
      */
     default List<Storm> storms() {
         return List.of();
+    }
+
+    /**
+     * Installs the gate-stage rule filter on every handler this adapter can
+     * act on right now, evaluating each candidate event against {@code
+     * plan}'s current {@code RulePlan} — doc/specs/
+     * rule-pipeline-foundation.md "Relationship to the storm-detection
+     * filter". This slice's own plan is always empty of any denying action
+     * (no concrete rule type exists yet), so this filter denies nothing
+     * today; the seam exists so #72's {@code drop} adds only a verdict, not
+     * an install/chain/re-arm path of its own. A deliberately <b>separate</b>
+     * filter from {@link #installStormDetection}'s — chains any filter
+     * already installed (including the other one, in whichever order both
+     * were installed), never replaces it. Idempotent, re-armed the same way
+     * {@link #installStormDetection} is. Default no-op, for a framework this
+     * slice doesn't instrument (Logback, {@code none}).
+     */
+    default void installRulePipeline(RulePlanSource plan) {
+        // no-op by default
     }
 }

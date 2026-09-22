@@ -22,6 +22,8 @@ import org.logaperture.control.jmx.HandlerResetOutcomeData;
 import org.logaperture.control.jmx.LevelControlMXBean;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.ResetOutcomeData;
+import org.logaperture.control.jmx.RuleData;
+import org.logaperture.control.jmx.RuleResetOutcomeData;
 import org.logaperture.control.jmx.SetLevelResultData;
 import org.logaperture.control.jmx.StormReportData;
 import org.logaperture.control.jmx.TopReportData;
@@ -296,6 +298,42 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         activeStormsLimits.add(limit);
         maybeThrow();
         return stormReport;
+    }
+
+    List<RuleData> rules = new ArrayList<>();
+    final List<Object[]> resetRuleCalls = new ArrayList<>();
+    RuleData resetRuleResult;
+    int resetAllRulesCalls;
+    RuleResetOutcomeData resetAllRulesResult = new RuleResetOutcomeData(List.of(), List.of());
+    final List<Object[]> resetRulesForLoggerCalls = new ArrayList<>();
+    RuleResetOutcomeData resetRulesForLoggerResult = new RuleResetOutcomeData(List.of(), List.of());
+
+    @Override
+    public List<RuleData> listRules() {
+        maybeThrow();
+        return rules;
+    }
+
+    @Override
+    public RuleData resetRule(String id, boolean includeSticky) {
+        resetRuleCalls.add(new Object[] {id, includeSticky});
+        maybeThrow();
+        return resetRuleResult;
+    }
+
+    @Override
+    public RuleResetOutcomeData resetAllRules(boolean includeSticky) {
+        resetAllRulesCalls++;
+        lastIncludeSticky = includeSticky;
+        maybeThrow();
+        return resetAllRulesResult;
+    }
+
+    @Override
+    public RuleResetOutcomeData resetRulesForLogger(String loggerName, boolean includeSticky) {
+        resetRulesForLoggerCalls.add(new Object[] {loggerName, includeSticky});
+        maybeThrow();
+        return resetRulesForLoggerResult;
     }
 
     private void maybeThrow() {
