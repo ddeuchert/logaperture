@@ -1386,6 +1386,68 @@ look like.
   underlying mechanism, with vendor-config just one caller of it.
 - Interaction with the suppression floor (§9.5) for protected categories.
 
+### 18.14 Filtering events logged before the container's logging is ready
+
+**Motivation.** A sticky `drop`/`trim` rule takes effect only once LogAperture
+has installed, and on WildFly install is deliberately deferred until JBoss
+LogManager has loaded (`WildFlyLogManagerReadiness`; §15.6, "the premain gotcha")
+— touching JUL earlier would install the JDK default manager and break
+WildFly's logging bootstrap. Anything logged before that point is untouched by
+rules. Real case: a WildFly launch with
+`-javaagent:` order `perfmon4j`, `fss-security-agent`, `destiny-agent`,
+`logaperture-agent`; `DestinyAgent.premain` logs an `ERROR` (a
+`ConnectException` plus stack trace from its auto-update helper) at startup, and
+a sticky `trim` rule for it only starts working later in the log. Reordering the
+agents does not fix this: every other agent's `premain` completes before the
+container's logging exists, and our own install waits for it regardless of
+position. Since those events likely go through an early, non-JBoss path (the
+agent's own formatter, console, or a buffer — the sample line's format is not
+WildFly's), they may never reach a JUL handler we could filter at all.
+
+**What the user would do.** Ideally nothing new: a rule added the usual way,
+e.g. `logctl add rule trim com.acme.AutoUpdateHelper --message-contains "Failed to connect" sticky`,
+also covers the boot window on the next start. Realistically, some mix of:
+
+- documenting the boundary (`-javaagent` order helps only marginally; pre-container
+  output is out of reach) in `logctl doctor` / the README;
+- arming persisted sticky rules the instant the LogManager is ready (narrows the
+  window, doesn't close it);
+- via the vendor config file (§18.10 / #60), arming rules from a file before
+  install completes;
+- some form of early capture/filter that doesn't touch JUL — only if the events
+  are found to reach JUL at all.
+
+**Cost / dependencies.** The documentation and "arm at readiness" parts are small
+and mostly clarify an existing contract (Layer 1, `wildfly-support.md`). Anything
+that intercepts output before the container is ready is new surface with real
+risk — it collides with the premain constraint above — and depends on the
+findings below. Overlaps §18.10 / #60, which should own the "rules from a file
+at startup" part rather than this item duplicating it.
+
+**Direction (agreed, pending David's own research).** Be as proactive as
+possible: arm rules at the earliest point that is safe, and design the vendor
+config file (§18.10 / #60) with that in mind — a rule set that can be armed at
+install time, not only after a `logctl` round trip or a persisted-state resume.
+Separately, **document the `-javaagent` ordering constraints**: agents listed
+before LogAperture run their `premain` first and are out of reach; LogAperture
+should go first to shrink the window, but on WildFly the deferral to
+LogManager readiness bounds how early anything can be armed regardless of
+position. The doc home is `USER_GUIDE_NOTES.md` for now (moving into the user
+guide once one exists) and `logctl doctor` output, which could flag agents
+listed ahead of ours ([#85](https://github.com/ddeuchert/logaperture/issues/85)) —
+not this section.
+
+**Open questions, deferred until this is specced:**
+
+- Do premain-time events from other agents reach JUL/JBoss LogManager at all,
+  or do they go straight to the console/a private logger? (A small spike with
+  the real Destiny agent answers this and decides whether the rest is worth doing.)
+- How could early events be filtered without touching JUL before the container
+  is ready — a pre-install buffering handler, or nothing at all?
+- Whether replaying/suppressing already-emitted early events is in scope, or only
+  events emitted after the rules are armed.
+- Whether the honest answer is "document the limit; fix it in the emitting agent."
+
 ---
 
 ## 19. First deliverables
