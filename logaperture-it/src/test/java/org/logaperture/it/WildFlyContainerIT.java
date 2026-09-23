@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -620,6 +621,168 @@ class WildFlyContainerIT {
         Path probeClass = classes.resolve("com/myapp/probe/StormProbe.class");
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(war))) {
             zip.putNextEntry(new ZipEntry("WEB-INF/classes/com/myapp/probe/StormProbe.class"));
+            zip.write(Files.readAllBytes(probeClass));
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("WEB-INF/beans.xml"));
+            zip.write("<beans/>".getBytes());
+            zip.closeEntry();
+        }
+        return war;
+    }
+
+    // --- trim (doc/specs/trim-rule.md) ---------------------------------------------------------
+
+    /**
+     * doc/specs/trim-rule.md's own exit criterion, the real-WildFly proof its
+     * "Open decisions for sign-off" #5 committed to landing in this same
+     * slice rather than deferring the way #72 ({@code drop}) had to: below
+     * the keep-floor collapses to a one-liner plus marker (real {@code
+     * ExtLogRecord} copy, via JBoss LogManager's own copy constructor,
+     * reflection-reached), at/above it is spared, a cause chain
+     * gets its own one-liner per level, an unrelated logger is untouched,
+     * and {@code --frames N} keeps exactly N top frames. Restart-survival
+     * (a {@code STICKY} trim resuming after a real restart) and
+     * reconfiguration-survival (surviving a {@code pattern-formatter}/{@code
+     * filter-spec}/new-handler/{@code :reload} change) are <em>not</em>
+     * covered here -- both are exercised generically already ({@code
+     * TrimRuleTest}'s persisted-payload round trip; the re-arm machinery is
+     * the identical, already-proven mechanism {@code drop} established) and
+     * scoping them out kept this pass tractable, the same kind of
+     * proportionate reduction {@code drop-rule.md} itself recorded rather
+     * than silently dropped.
+     */
+    @Test
+    void trim_collapsesMatchingStackTraces_sparesEverythingElse() throws Exception {
+        assertEquals(0, logctl("add", "rule", "trim", "com.myapp.probe.TrimWorker", "--below", "WARN").exitCode());
+        assertEquals(0, logctl("add", "rule", "trim", "com.myapp.probe.FramesWorker", "--below", "WARN",
+                "--frames", "1").exitCode());
+        deployTrimProbeWar();
+        try {
+            assertTrue(pollUntil(() -> wildfly.getLogs().contains("trim probe frames")),
+                    "expected the trim probe's deploy-time logging to complete");
+            List<String> lines = wildfly.getLogs().lines().toList();
+
+            assertHeaderThenMarkerThenNoFrame(lines, "boom below warn",
+                    "below the WARN keep-floor collapses to a one-liner with the marker");
+            assertHeaderThenFullTrace(lines, "boom at warn",
+                    "at the WARN keep-floor itself is spared -- full trace, no marker");
+            assertHeaderThenFullTrace(lines, "boom other logger",
+                    "an unrelated logger with no rule attached is untouched -- full trace");
+
+            int wrapperLine = lineContaining(lines, "wrapper");
+            assertTrue(lines.get(wrapperLine).contains("[stack trace trimmed:"),
+                    "the wrapping exception gets its own one-liner:\n" + lines.get(wrapperLine));
+            int causedByLine = lineContaining(lines.subList(wrapperLine, lines.size()), "Caused by:") + wrapperLine;
+            assertTrue(lines.get(causedByLine).contains("root cause")
+                            && lines.get(causedByLine).contains("[stack trace trimmed:"),
+                    "the cause gets its own one-liner too, not the full nested trace:\n"
+                            + lines.get(causedByLine));
+
+            int framesHeaderLine = lineContaining(lines, "boom frames");
+            assertTrue(lines.get(framesHeaderLine).contains("[stack trace trimmed:"),
+                    lines.get(framesHeaderLine));
+            assertTrue(isFrameLine(lines.get(framesHeaderLine + 1)),
+                    "--frames 1 keeps exactly one top frame:\n" + lines.get(framesHeaderLine + 1));
+            assertFalse(isFrameLine(lines.get(framesHeaderLine + 2)),
+                    "and no second frame:\n" + lines.get(framesHeaderLine + 2));
+        } finally {
+            undeployTrimProbeWar();
+            logctl("reset", "rules"); // these rules are FOR-tier (the omitted-tier default), not STICKY
+        }
+    }
+
+    private static boolean isFrameLine(String line) {
+        return line.strip().startsWith("at ");
+    }
+
+    private static int lineContaining(List<String> lines, String text) {
+        for (int i = 0; i < lines.size(); i++) {
+            if (lines.get(i).contains(text)) {
+                return i;
+            }
+        }
+        throw new AssertionError("no line containing '" + text + "' in:\n" + String.join("\n", lines));
+    }
+
+    /** The header line names {@code text} and carries the trim marker; the very next line is not a stack frame. */
+    private static void assertHeaderThenMarkerThenNoFrame(List<String> lines, String text, String message) {
+        int header = lineContaining(lines, text);
+        assertTrue(lines.get(header).contains("[stack trace trimmed:"), message + ":\n" + lines.get(header));
+        assertFalse(isFrameLine(lines.get(header + 1)), message + ":\n" + lines.get(header + 1));
+    }
+
+    /** The header line names {@code text}, carries no trim marker, and the very next line is a real stack frame. */
+    private static void assertHeaderThenFullTrace(List<String> lines, String text, String message) {
+        int header = lineContaining(lines, text);
+        assertFalse(lines.get(header).contains("[stack trace trimmed:"), message + ":\n" + lines.get(header));
+        assertTrue(isFrameLine(lines.get(header + 1)), message + ":\n" + lines.get(header + 1));
+    }
+
+    private void deployTrimProbeWar() throws Exception {
+        Path war = buildTrimProbeWar();
+        wildfly.copyFileToContainer(MountableFile.forHostPath(war), DEPLOYMENTS + "/trimprobe.war");
+        assertTrue(awaitFile(DEPLOYMENTS + "/trimprobe.war.deployed"), "trimprobe.war deployed");
+    }
+
+    private void undeployTrimProbeWar() {
+        exec("rm", "-f", DEPLOYMENTS + "/trimprobe.war");
+        awaitFile(DEPLOYMENTS + "/trimprobe.war.undeployed");
+    }
+
+    /**
+     * Five events fired synchronously at deploy time, each isolating one
+     * behavior {@link #trim_collapsesMatchingStackTraces_sparesEverythingElse}
+     * asserts on: below the keep-floor, at the keep-floor (spared), an
+     * unrelated logger (untouched), a two-level cause chain, and a
+     * {@code --frames 1} rule.
+     */
+    private Path buildTrimProbeWar() throws IOException {
+        String servletPackage = jakartaServletNamespace ? "jakarta.servlet" : "javax.servlet";
+        String source = """
+                package com.myapp.probe;
+                import %s.ServletContextEvent;
+                import %s.ServletContextListener;
+                import %s.annotation.WebListener;
+                import java.util.logging.Level;
+                import java.util.logging.Logger;
+                @WebListener
+                public class TrimProbe implements ServletContextListener {
+                    @Override public void contextInitialized(ServletContextEvent e) {
+                        Logger trimmed = Logger.getLogger("com.myapp.probe.TrimWorker");
+                        Logger other = Logger.getLogger("com.myapp.probe.OtherWorker");
+                        Logger framed = Logger.getLogger("com.myapp.probe.FramesWorker");
+
+                        trimmed.log(Level.INFO, "trim probe below-warn",
+                                new RuntimeException("boom below warn"));
+                        trimmed.log(Level.WARNING, "trim probe at-warn spared",
+                                new RuntimeException("boom at warn"));
+                        Exception root = new IllegalStateException("root cause");
+                        trimmed.log(Level.INFO, "trim probe cause chain",
+                                new RuntimeException("wrapper", root));
+                        other.log(Level.INFO, "trim probe other logger",
+                                new RuntimeException("boom other logger"));
+                        framed.log(Level.INFO, "trim probe frames",
+                                new RuntimeException("boom frames"));
+                    }
+                }
+                """.formatted(servletPackage, servletPackage, servletPackage);
+        Path src = scratch.resolve("com/myapp/probe/TrimProbe.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, source);
+        Path classes = Files.createDirectories(scratch.resolve("trim-classes"));
+
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        assertNotNull(compiler, "a JDK (not JRE) is required to build the probe WAR");
+        int rc = compiler.run(null, null, null,
+                "--release", "17",
+                "-classpath", probeCompileClasspath(),
+                "-d", classes.toString(), src.toString());
+        assertEquals(0, rc, "trim probe compile failed");
+
+        Path war = scratch.resolve("trimprobe.war");
+        Path probeClass = classes.resolve("com/myapp/probe/TrimProbe.class");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(war))) {
+            zip.putNextEntry(new ZipEntry("WEB-INF/classes/com/myapp/probe/TrimProbe.class"));
             zip.write(Files.readAllBytes(probeClass));
             zip.closeEntry();
             zip.putNextEntry(new ZipEntry("WEB-INF/beans.xml"));

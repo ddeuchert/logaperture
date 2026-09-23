@@ -268,4 +268,20 @@ public interface LevelControlMXBean {
     RuleData addRuleDrop(String target, String messageContains, boolean messageIgnoreCase, String throwableType,
             String throwableMessageContains, boolean anyCause, String belowLevel, boolean sampleFullEnabled,
             long sampleFullEveryMillis, String reason, String tier, long forSeconds);
+
+    /**
+     * {@code logctl add rule trim} — doc/specs/trim-rule.md "Command
+     * surface". {@code target} is an exact logger name (leading-star
+     * pattern-target expansion deferred, same as {@link #addRuleDrop}).
+     * Unlike {@code addRuleDrop}, no content matcher is required — a bare
+     * level-bounded trim is a first-class case (doc/specs/trim-rule.md
+     * "Matchers in use").
+     *
+     * @throws IllegalArgumentException if {@code target} is a protected
+     *                                   category, or {@code frames} is
+     *                                   negative
+     */
+    RuleData addRuleTrim(String target, String messageContains, boolean messageIgnoreCase, String throwableType,
+            String throwableMessageContains, boolean anyCause, String belowLevel, int frames,
+            boolean collapseCauses, String reason, String tier, long forSeconds);
 }

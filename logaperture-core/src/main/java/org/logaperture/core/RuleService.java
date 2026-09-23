@@ -23,6 +23,7 @@ import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.RuleAttachOptions;
 import org.logaperture.api.RuleResetOutcome;
 import org.logaperture.api.SampleFullPolicy;
+import org.logaperture.api.Trim;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
 
@@ -145,6 +146,15 @@ public final class RuleService implements RuleOperations {
     }
 
     /**
+     * Registers {@link Trim}'s own resume factory under its {@code
+     * actionName()} ({@code "trim"}) — doc/specs/trim-rule.md, mirroring
+     * {@link #registerDropSupport} exactly.
+     */
+    public void registerTrimSupport() {
+        registerActionFactory("trim", TrimFactories.resume()); // matches Trim#actionName()'s literal
+    }
+
+    /**
      * Installs (or re-confirms) the gate-stage rule filter. Called once at
      * context-install time, and again on every reconfiguration re-arm — safe
      * either way, since {@link LoggingAdapter#installRulePipeline} is itself
@@ -152,6 +162,19 @@ public final class RuleService implements RuleOperations {
      */
     public void installPipeline() {
         adapter.installRulePipeline(gate());
+    }
+
+    /**
+     * Installs (or re-confirms) the render-stage trim seam — doc/specs/
+     * trim-rule.md "Evaluation". Called once at context-install time, and
+     * again on every reconfiguration re-arm, same idempotency contract as
+     * {@link #installPipeline}. Must run <em>before</em> {@link
+     * TopService#startMeasuring} on every call site (doc/specs/trim-rule.md
+     * "Interaction with top": trim's formatter wrap installs inside {@code
+     * top}'s, so {@code top} measures the bytes actually written).
+     */
+    public void installTrimRendering() {
+        adapter.installTrimRendering(gate());
     }
 
     /**
@@ -226,6 +249,20 @@ public final class RuleService implements RuleOperations {
     public RuleView addRuleDrop(String loggerName, CompiledMatchers matchers, RuleAttachOptions options,
             SampleFullPolicy sampleFull) {
         LogRule rule = attach(loggerName, matchers, options, DropFactories.attach(sampleFull), Capability.SUPPRESS);
+        return new RuleView(rule, context, hitCount(rule.id()));
+    }
+
+    /**
+     * {@code logctl add rule trim} -- doc/specs/trim-rule.md "Command
+     * surface". Requires {@link Capability#SUPPRESS} in addition to {@link
+     * Capability#RULES_AUTHOR}, same capability shape as {@link
+     * #addRuleDrop}.
+     */
+    @Override
+    public RuleView addRuleTrim(String loggerName, CompiledMatchers matchers, RuleAttachOptions options, int frames,
+            boolean collapseCauses) {
+        LogRule rule = attach(loggerName, matchers, options, TrimFactories.attach(frames, collapseCauses),
+                Capability.SUPPRESS);
         return new RuleView(rule, context, hitCount(rule.id()));
     }
 
@@ -499,13 +536,18 @@ public final class RuleService implements RuleOperations {
     }
 
     /**
-     * First-match-terminal among the event's effective rules (doc/specs/
-     * filtering-epic.md "Evaluation") -- only {@link Drop} denies in this
-     * slice; any other {@link LogRule} type reaching this loop (none exist
-     * yet) is simply not a candidate for a gate-stage verdict.
+     * First-match-terminal {@link Drop} among the event's effective rules
+     * (doc/specs/filtering-epic.md "Evaluation"); if none denies, the
+     * <em>most restrictive</em> matching {@link Trim} (fewest {@code
+     * frames}) is computed and carried on the verdict for the render stage
+     * -- doc/specs/trim-rule.md "Evaluation": "drop first and terminal ...
+     * trim runs on survivors, most restrictive trim wins". Any other {@link
+     * LogRule} type reaching this loop is simply not a candidate for a
+     * gate-stage verdict.
      */
     private GateVerdict computeVerdict(RuleCandidateEvent event) {
-        for (LogRule rule : effectiveRules(event.loggerName())) {
+        List<LogRule> effective = effectiveRules(event.loggerName());
+        for (LogRule rule : effective) {
             if (!(rule instanceof Drop drop)) {
                 continue;
             }
@@ -515,12 +557,39 @@ public final class RuleService implements RuleOperations {
             hitCounters.computeIfAbsent(drop.id(), id -> new LongAdder()).increment();
             if (shouldSampleFull(drop)) {
                 pendingSampledCounters.computeIfAbsent(drop.id(), id -> new LongAdder()).increment();
-                return GateVerdict.allow();
+                break; // sampled through -- fall through to the trim pass below, same as any other survivor
             }
             pendingSummaryCounters.computeIfAbsent(drop.id(), id -> new LongAdder()).increment();
             return GateVerdict.deny(drop.id());
         }
-        return GateVerdict.allow();
+        return GateVerdict.allowWithTrim(mostRestrictiveTrim(effective, event));
+    }
+
+    /**
+     * The matching {@link Trim} with the fewest {@code frames} among {@code
+     * effective} -- doc/specs/filtering-epic.md "Evaluation": "among several
+     * trims, the most restrictive wins (fewest frames)". {@code null} if
+     * none matches, so {@link GateVerdict#allowWithTrim} carries a {@code
+     * null} trim exactly like {@link GateVerdict#allow()} would.
+     */
+    private TrimDecision mostRestrictiveTrim(List<LogRule> effective, RuleCandidateEvent event) {
+        Trim winner = null;
+        for (LogRule rule : effective) {
+            if (!(rule instanceof Trim trim)) {
+                continue;
+            }
+            if (!RuleMatching.matches(trim.matchers(), event)) {
+                continue;
+            }
+            if (winner == null || trim.frames() < winner.frames()) {
+                winner = trim;
+            }
+        }
+        if (winner == null) {
+            return null;
+        }
+        hitCounters.computeIfAbsent(winner.id(), id -> new LongAdder()).increment();
+        return new TrimDecision(winner.id(), winner.frames(), winner.collapseCauses());
     }
 
     /**

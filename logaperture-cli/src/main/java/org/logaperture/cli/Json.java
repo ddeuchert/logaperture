@@ -403,6 +403,8 @@ final class Json {
                 .str("createdAt", row.getCreatedAt())
                 .str("context", row.getContext())
                 .raw("hitCount", String.valueOf(row.getHitCount()))
+                .raw("frames", row.getFrames() == null ? "null" : String.valueOf(row.getFrames()))
+                .raw("collapseCauses", row.getCollapseCauses() == null ? "null" : String.valueOf(row.getCollapseCauses()))
                 .toString();
     }
 

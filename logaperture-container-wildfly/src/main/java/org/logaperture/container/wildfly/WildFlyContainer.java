@@ -167,12 +167,14 @@ public final class WildFlyContainer implements AutoCloseable {
                 principal(), "jmx");
         // doc/specs/drop-rule.md "Persistence" -- see NoneContainer's identical call.
         ruleService.registerDropSupport();
+        // doc/specs/trim-rule.md "Persistence" -- same primitive, for a persisted Trim.
+        ruleService.registerTrimSupport();
 
         try {
             service.resumeFromStateStore(Instant.now());
             handlerService.resumeFromStateStore(Instant.now());
-            // doc/specs/drop-rule.md "Persistence" -- a persisted STICKY/unexpired-FOR Drop now
-            // resumes as a live, denying rule (the "drop" factory was registered just above).
+            // doc/specs/drop-rule.md/trim-rule.md "Persistence" -- a persisted STICKY/unexpired-FOR
+            // Drop or Trim now resumes as a live rule (both factories were registered just above).
             ruleService.resumeFromStateStore(Instant.now());
             // doc/specs/handler-floor-control.md "AUTO handler level", AUTO-5.
             handlerService.recomputeAuto();
@@ -182,6 +184,17 @@ public final class WildFlyContainer implements AutoCloseable {
 
         DoctorService doctorService = new DoctorService(adapter, policy);
         EnvironmentReportService environmentReportService = new EnvironmentReportService(adapter, policy);
+
+        // doc/specs/trim-rule.md: same always-on discipline as top/storm/the rule pipeline below,
+        // and must run before topService.startMeasuring() -- doc/specs/trim-rule.md "Interaction
+        // with top": trim's formatter wrap installs inside top's, so top measures the bytes
+        // actually written post-trim. No adapter reset wiring here either -- the periodic
+        // verification sweep re-confirms this on every tick regardless.
+        try {
+            ruleService.installTrimRendering();
+        } catch (RuntimeException e) {
+            Diagnostics.warn("LogAperture: failed to install trim rendering for this context, continuing without it", e);
+        }
 
         TopService topService = new TopService(adapter, policy);
         // doc/specs/top.md: always-on from the moment this context comes up.

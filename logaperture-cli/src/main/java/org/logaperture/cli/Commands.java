@@ -873,6 +873,32 @@ final class Commands {
         };
     }
 
+    /**
+     * {@code logctl add rule trim} — doc/specs/trim-rule.md "Command
+     * surface". {@code target} is an exact logger name in this slice, same
+     * pattern-target restriction as {@link #addRuleDrop}.
+     */
+    static Command addRuleTrim(String target, String messageContains, boolean messageIgnoreCase,
+            String throwableType, String throwableMessageContains, boolean anyCause, String belowLevel, int frames,
+            boolean collapseCauses, String reason, String tierName, long forSeconds, boolean json) {
+        return (mbean, out, in, interactive) -> {
+            if (isPattern(target)) {
+                throw new CliError(CliError.USAGE, "'add rule trim' does not yet support a pattern target ('"
+                        + target + "') -- attach to each currently-known logger by its exact name instead.");
+            }
+            org.logaperture.control.jmx.RuleData created = mbean.addRuleTrim(target, messageContains,
+                    messageIgnoreCase, throwableType, throwableMessageContains, anyCause, belowLevel, frames,
+                    collapseCauses, reason, tierName, forSeconds);
+            if (json) {
+                out.println(Json.rule(created));
+                return CliError.OK;
+            }
+            out.println(created.getId() + "   " + created.getLoggerName() + " → trim   ("
+                    + tierDetail(created.getTier(), created.getExpiresAt()) + ")");
+            return CliError.OK;
+        };
+    }
+
     /** {@code logctl reset rules} — removes every attached rule, across every registered context. */
     static Command resetAllRules(boolean includeSticky, boolean json) {
         return (mbean, out, in, interactive) -> {
