@@ -57,6 +57,12 @@ final class JulTrimFormatter extends Formatter {
 
     @Override
     public String format(LogRecord record) {
+        if (StructuredFormatters.isStructured(delegate)) {
+            // doc/specs/trim-rule.md "Text formatters only" -- a Trim rule is a no-op on a
+            // structured-formatter handler in this slice (#83), not merely rendered wrong; never
+            // even evaluate the gate for this handler's own formatting pass.
+            return delegate.format(record);
+        }
         TrimDecision trim = record.getThrown() == null ? null : decisionFor(record);
         if (trim == null) {
             return delegate.format(record);

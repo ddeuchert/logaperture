@@ -137,6 +137,20 @@ class TrimRuleTest {
         assertEquals(2L, service.hitCount(trim.id()));
     }
 
+    @Test
+    void gate_matchingEventWithNoThrowable_neitherCarriesADecisionNorCountsAHit() {
+        // A code-review finding against the first cut: JulTrimFormatter only ever applies a
+        // TrimDecision when the record has a throwable (there's nothing to trim otherwise), so
+        // counting this as a "hit" inflated list rules' HITS with ordinary non-exception traffic.
+        Trim trim = attachTrim("com.acme.Worker", CompiledMatchers.matchAll(), 0, false);
+
+        GateVerdict verdict = service.gate().evaluate(new Object(),
+                event("com.acme.Worker", Level.INFO, "no throwable here", null));
+
+        assertNull(verdict.trim());
+        assertEquals(0L, service.hitCount(trim.id()));
+    }
+
     // --- Capability -----------------------------------------------------------------------------
 
     @Test

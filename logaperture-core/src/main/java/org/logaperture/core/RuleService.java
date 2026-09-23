@@ -571,8 +571,20 @@ public final class RuleService implements RuleOperations {
      * trims, the most restrictive wins (fewest frames)". {@code null} if
      * none matches, so {@link GateVerdict#allowWithTrim} carries a {@code
      * null} trim exactly like {@link GateVerdict#allow()} would.
+     *
+     * <p>An event with no throwable at all is never a candidate, regardless
+     * of matchers -- there is nothing for the render stage to trim (a bare
+     * level-bounded {@code Trim} matches every qualifying event on its
+     * logger, throwable or not), so this returns before touching a rule's
+     * hit counter: a code-review finding against the first cut of this
+     * method, which counted a "hit" for events {@code JulTrimFormatter}
+     * would never actually apply the decision to, inflating {@code list
+     * rules}' hit count with ordinary non-exception log traffic.
      */
     private TrimDecision mostRestrictiveTrim(List<LogRule> effective, RuleCandidateEvent event) {
+        if (event.thrown() == null) {
+            return null;
+        }
         Trim winner = null;
         for (LogRule rule : effective) {
             if (!(rule instanceof Trim trim)) {

@@ -58,7 +58,12 @@ final class TrimRendering {
         // Decision #1 (doc/specs/trim-rule.md "Open decisions for sign-off"): the marker always
         // prints, reading "0 frames omitted" when frames is at or above the trace's actual depth.
         String rendered = original + " [stack trace trimmed: " + omitted + " frames omitted]";
-        return new SyntheticThrowable(rendered, Arrays.copyOf(originalFrames, kept), cause);
+        // getStackTrace() already handed back a fresh defensive copy -- no need for a second one
+        // when every frame is kept (a code-review finding against the first cut, which copied
+        // unconditionally).
+        StackTraceElement[] keptFrames = kept == originalFrames.length ? originalFrames
+                : Arrays.copyOf(originalFrames, kept);
+        return new SyntheticThrowable(rendered, keptFrames, cause);
     }
 
     /**

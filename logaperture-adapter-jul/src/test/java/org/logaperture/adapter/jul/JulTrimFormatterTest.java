@@ -65,6 +65,28 @@ class JulTrimFormatterTest {
     }
 
     @Test
+    void format_structuredFormatterDelegate_neverTrims_neverEvaluatesTheGate() {
+        // doc/specs/trim-rule.md "Text formatters only" -- a Trim rule is a no-op on a
+        // structured-formatter handler; a code-review finding against the first cut, which
+        // applied the synthetic-throwable substitution unconditionally, reproducing the
+        // spike-observed JSON defect this slice is supposed to avoid.
+        RuleGate explodingIfCalled = (recordIdentity, event) -> {
+            throw new AssertionError("must never evaluate the gate for a structured-formatter handler");
+        };
+        class JsonFormatter extends SimpleFormatter {
+        }
+        JsonFormatter delegate = new JsonFormatter();
+        JulTrimFormatter formatter = new JulTrimFormatter(delegate, explodingIfCalled);
+        LogRecord record = new LogRecord(Level.SEVERE, "boom");
+        record.setLoggerName("com.acme.Worker");
+        record.setThrown(new RuntimeException("simulated failure"));
+
+        String formatted = formatter.format(record);
+
+        assertEquals(delegate.format(record), formatted);
+    }
+
+    @Test
     void format_trimDecisionButNotAnExtLogRecord_failsOpen_formatsUntouched() {
         RuleGate alwaysTrim = (recordIdentity, event) -> GateVerdict.allowWithTrim(new TrimDecision("r1", 0, false));
         JulTrimFormatter formatter = new JulTrimFormatter(new SimpleFormatter(), alwaysTrim);

@@ -323,10 +323,17 @@ Landed together (spec + code, same PR, per CLAUDE.md), unit-tested, full reactor
   `Throwable` chain — a frameless-or-top-N-frame synthetic `Throwable` per cause-chain level,
   each with its own overridden `toString()` carrying the marker); `ExtLogRecordCopier` (the
   reflective `ExtLogRecord` copy-constructor access the spike proved, `Optional`-returning, empty
-  on anything that isn't a real `ExtLogRecord`); `JulLoggingAdapter.installTrimRendering` (wraps
-  every real handler's current formatter, re-layering correctly under an already-installed
-  `ByteCountingFormatter` regardless of which order the two installs actually ran in on a given
-  tick).
+  on anything that isn't a real `ExtLogRecord`); `StructuredFormatters` (the by-simple-name
+  `JsonFormatter`/`XmlFormatter` detection "Text formatters only" needs — `JulTrimFormatter`
+  checks it first and never evaluates the gate at all for a structured-formatter handler);
+  `JulLoggingAdapter.installTrimRendering` (wraps every real handler's current formatter,
+  re-layering correctly under an already-installed `ByteCountingFormatter` regardless of which
+  order the two installs actually ran in on a given tick).
+- `RuleService.mostRestrictiveTrim` skips both winner-selection and hit-counting outright for an
+  event with no throwable at all — a bare level-bounded `Trim` matches every qualifying event on
+  its logger, but there is nothing to trim without a throwable, and counting it as a hit would
+  misrepresent `list rules`' HITS column as "matched" rather than "actually trimmed" (a
+  code-review finding against the first cut, caught before merge).
 - `logaperture-control-jmx`: `RuleData` gains nullable `frames`/`collapseCauses` (populated only
   for a `Trim` row); `LevelControlMXBean`/Impl gain `addRuleTrim`.
 - `logaperture-cli`: `logctl add rule trim <target> [matchers] [--below LEVEL] [--frames N]
