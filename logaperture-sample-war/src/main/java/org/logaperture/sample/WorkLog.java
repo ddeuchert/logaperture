@@ -118,6 +118,47 @@ final class WorkLog {
     }
 
     /**
+     * The two exception classes {@link #emit} can attach to the logged
+     * record, so a {@code logctl add rule trim --throwable ...} can be
+     * exercised against one type but not the other. There's no "none"
+     * member -- omitting the query parameter entirely is how a caller logs
+     * without a throwable.
+     */
+    enum ExceptionType {
+        CONNECT, ILLEGAL_STATE;
+
+        /**
+         * @throws IllegalArgumentException if {@code value} isn't one of
+         *                                   this enum's names, matched
+         *                                   case-insensitively
+         */
+        static ExceptionType parse(String value) {
+            try {
+                return valueOf(value.toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(
+                        "exception must be one of connect, illegal_state (got \"" + value + "\")");
+            }
+        }
+
+        /** A fresh instance of this type's exception class, carrying {@code message}. */
+        Throwable create(String message) {
+            return switch (this) {
+                case CONNECT -> new java.net.ConnectException(message);
+                case ILLEGAL_STATE -> new IllegalStateException(message);
+            };
+        }
+
+        /** This type's exception class, without constructing an instance. */
+        Class<? extends Throwable> exceptionClass() {
+            return switch (this) {
+                case CONNECT -> java.net.ConnectException.class;
+                case ILLEGAL_STATE -> IllegalStateException.class;
+            };
+        }
+    }
+
+    /**
      * Logs {@code message} once, at {@code level}, through {@code
      * implementation} -- once per dot-separated category of {@code
      * loggerName}, from the top-level segment down to {@code loggerName}
@@ -130,15 +171,22 @@ final class WorkLog {
      * <p>Unlike {@link #emitAllLevels}, logger name, level and framework are
      * all caller-chosen -- each framework caches its own {@code Logger}
      * instances by name, so this needs no cache of its own.
+     *
+     * <p>When {@code exceptionType} is non-null, every one of those records
+     * also carries a fresh instance of that type's exception, constructed
+     * with {@code message} -- letting a caller test a {@code logctl add rule
+     * trim --throwable ...} match against a real thrown type instead of just
+     * message content.
      */
-    static List<String> emit(String loggerName, String message, Level level, Implementation implementation) {
+    static List<String> emit(String loggerName, String message, Level level, Implementation implementation,
+            ExceptionType exceptionType) {
         List<String> categories = categories(loggerName);
+        Throwable thrown = exceptionType == null ? null : exceptionType.create(message);
         for (String category : categories) {
             switch (implementation) {
-                case JUL -> java.util.logging.Logger.getLogger(category).log(toJulLevel(level), message);
-                case SLF4J -> emitSlf4j(org.slf4j.LoggerFactory.getLogger(category), level, message);
-                case LOG4J -> org.apache.logging.log4j.LogManager.getLogger(category)
-                        .log(toLog4jLevel(level), message);
+                case JUL -> emitJul(category, level, message, thrown);
+                case SLF4J -> emitSlf4j(org.slf4j.LoggerFactory.getLogger(category), level, message, thrown);
+                case LOG4J -> emitLog4j(category, level, message, thrown);
             }
         }
         return categories;
@@ -164,13 +212,43 @@ final class WorkLog {
         }
     }
 
-    private static void emitSlf4j(org.slf4j.Logger logger, Level level, String message) {
-        switch (level) {
-            case TRACE -> logger.trace(message);
-            case DEBUG -> logger.debug(message);
-            case INFO -> logger.info(message);
-            case WARN -> logger.warn(message);
-            case ERROR -> logger.error(message);
+    private static void emitJul(String category, Level level, String message, Throwable thrown) {
+        java.util.logging.Logger logger = java.util.logging.Logger.getLogger(category);
+        java.util.logging.Level julLevel = toJulLevel(level);
+        if (thrown == null) {
+            logger.log(julLevel, message);
+        } else {
+            logger.log(julLevel, message, thrown);
+        }
+    }
+
+    private static void emitSlf4j(org.slf4j.Logger logger, Level level, String message, Throwable thrown) {
+        if (thrown == null) {
+            switch (level) {
+                case TRACE -> logger.trace(message);
+                case DEBUG -> logger.debug(message);
+                case INFO -> logger.info(message);
+                case WARN -> logger.warn(message);
+                case ERROR -> logger.error(message);
+            }
+        } else {
+            switch (level) {
+                case TRACE -> logger.trace(message, thrown);
+                case DEBUG -> logger.debug(message, thrown);
+                case INFO -> logger.info(message, thrown);
+                case WARN -> logger.warn(message, thrown);
+                case ERROR -> logger.error(message, thrown);
+            }
+        }
+    }
+
+    private static void emitLog4j(String category, Level level, String message, Throwable thrown) {
+        org.apache.logging.log4j.Logger logger = org.apache.logging.log4j.LogManager.getLogger(category);
+        org.apache.logging.log4j.Level log4jLevel = toLog4jLevel(level);
+        if (thrown == null) {
+            logger.log(log4jLevel, message);
+        } else {
+            logger.log(log4jLevel, message, thrown);
         }
     }
 

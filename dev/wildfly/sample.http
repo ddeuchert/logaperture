@@ -67,6 +67,16 @@ GET {{base}}/log?logger=org.logaperture.demo.Checkout&message=order+placed&imple
 ### Unrecognized level or implementation is a 400, not a silent fallback.
 GET {{base}}/log?level=verbose
 
+### With a thrown exception attached -- java.net.ConnectException here --
+### for testing 'logctl add rule trim --throwable java.net.ConnectException'.
+GET {{base}}/log?level=error&exception=connect
+
+### The other exception type, IllegalStateException.
+GET {{base}}/log?level=error&exception=illegal_state
+
+### Unrecognized exception type is also a 400.
+GET {{base}}/log?exception=timeout
+
 ### Start the background timer — a burst every 2s.
 POST {{base}}/timer/start?periodMs=2000
 
