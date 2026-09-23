@@ -41,7 +41,14 @@ final class HelpText {
             "logctl reset loggers [--include-sticky]",
             "logctl reset handler <name> [--include-sticky]",
             "logctl reset handlers [--include-sticky]",
-            "logctl reset default-handler");
+            "logctl reset default-handler",
+            "logctl add rule drop <target> [matchers] [--below level] [--sample-full duration | --no-sample-full] "
+                    + "[session | for <duration> | sticky]",
+            "logctl add rule trim <target> [matchers] [--below level] [--frames n] [--collapse-causes] "
+                    + "[session | for <duration> | sticky]",
+            "logctl list rules",
+            "logctl reset rule <id> [--include-sticky]",
+            "logctl reset rules [--include-sticky]");
 
     private HelpText() {
     }
@@ -60,6 +67,19 @@ final class HelpText {
         sb.append("  --include-sticky     for 'reset' -- also revert a sticky override, not just skip it\n");
         sb.append("  --show-all           for 'list' -- every known logger or handler, not just overridden ones\n");
         sb.append("  --limit <n>          for 'top' — worst N offenders, 0 for every one tracked\n");
+        sb.append("  --message-contains <text>\n");
+        sb.append("                       for 'add rule' -- match a log message substring\n");
+        sb.append("  --message-contains-ignore-case <text>\n");
+        sb.append("                       for 'add rule' -- same, case-insensitive\n");
+        sb.append("  --throwable <class>  for 'add rule' -- match a thrown exception's exact type\n");
+        sb.append("  --throwable-message-contains <text>\n");
+        sb.append("                       for 'add rule' -- match a substring of the thrown exception's message\n");
+        sb.append("  --any-cause          for 'add rule' -- widen a throwable match to any cause in the chain\n");
+        sb.append("  --below <level>       for 'add rule' -- only events strictly below this level, default ERROR\n");
+        sb.append("  --sample-full <duration>   for 'add rule drop' -- let one full event through periodically\n");
+        sb.append("  --no-sample-full      for 'add rule drop' -- never let a full event through\n");
+        sb.append("  --frames <n>          for 'add rule trim' -- stack frames to keep, default 0\n");
+        sb.append("  --collapse-causes     for 'add rule trim' -- fold the cause chain into one summary line\n");
         sb.append("  --json               machine-readable output\n");
         sb.append("  --version            print version and exit\n");
         sb.append("  -h, --help           this help\n");
@@ -113,6 +133,18 @@ final class HelpText {
         sb.append("exact name refuses outright rather than silently doing nothing; a\n");
         sb.append("pattern or a bulk reset instead leaves it in place and reports it.\n");
         sb.append("--include-sticky reverts it anyway.\n");
+        sb.append("\n");
+        sb.append("'add rule drop <target>' and 'add rule trim <target>' attach a rule that\n");
+        sb.append("acts on events from that logger before they're written, rather than\n");
+        sb.append("changing the logger's level -- drop discards a matching event outright;\n");
+        sb.append("trim keeps it but shortens its stack trace. Both take the same <target>\n");
+        sb.append("shape as 'set logger', plus a content matcher (--message-contains,\n");
+        sb.append("--throwable, etc.) and --below to bound which levels the rule applies to.\n");
+        sb.append("'add rule drop' needs at least one content matcher; 'add rule trim'\n");
+        sb.append("doesn't -- a bare level-bounded trim is a normal case. 'logctl list\n");
+        sb.append("rules' lists every attached rule and its id;\n");
+        sb.append("'reset rule <id>' removes one, 'reset rules' removes every currently\n");
+        sb.append("attached rule.\n");
         sb.append("\n");
         sb.append("'doctor' is read-only — it never changes anything. It flags common\n");
         sb.append("misconfigurations (unbounded file handlers, DEBUG/TRACE left on,\n");
