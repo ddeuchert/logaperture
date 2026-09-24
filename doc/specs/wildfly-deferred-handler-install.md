@@ -8,7 +8,8 @@ one-shot; unit-tested (`HandlerInstallPolicyTest`, `AggregateLevelControlTest`,
 exit criterion.
 **Revised 2026-09-24 (issue #87):** mechanism found — the handler-name resolver, not the
 handlers; fixed at the source, and the delay's default drops to `0` (D7, D8, "Revision:
-mechanism found" below). D7–D8 signed off 2026-09-24.
+mechanism found" below). D7–D8 signed off 2026-09-24. Verified on the reporting launch
+2026-09-24: LogAperture first, default delay `0`, five clean starts, sticky trim rule applied at boot.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §15.6 (WildFly, the premain
 gotcha), §15.5 (the re-application invariant), §18.14 (filtering events logged before the
 container's logging is ready).
