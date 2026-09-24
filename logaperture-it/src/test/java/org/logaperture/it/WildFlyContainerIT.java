@@ -177,6 +177,17 @@ class WildFlyContainerIT {
     }
 
     @Test
+    void handlerLevelInstall_isDeferredAtBootThenCompletes() {
+        // doc/specs/wildfly-deferred-handler-install.md D4: two INFO lines on the agent's own
+        // output. The floor is 3s here (see startWildFly), so by the time any test runs the
+        // second line is normally already out; polling covers a slow start.
+        assertTrue(pollUntil(() -> wildfly.getLogs().contains("handler-level install deferred for 3s")),
+                "the agent said it deferred the handler-level install");
+        assertTrue(pollUntil(() -> wildfly.getLogs().contains("handler-level install complete")),
+                "the agent said the deferred handler-level install completed");
+    }
+
+    @Test
     void handlerNameResolution_probesTheModelOnlyOnceLoggingSubsystemIsRegistered() throws Exception {
         // Issue #66: the resolver used to issue read-children-names under
         // /subsystem=logging on its first sweep, before that subsystem's
