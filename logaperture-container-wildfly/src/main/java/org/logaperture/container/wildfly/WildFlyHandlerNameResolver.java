@@ -25,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.logging.Handler;
 
 /**
@@ -62,10 +63,23 @@ import java.util.logging.Handler;
  * whatever subset resolved (possibly nothing). The adapter keeps every
  * unresolved handler on its {@code <class>@<idhash>} identity token, and
  * {@code ALL_HANDLERS} control is unaffected. This class never throws.
+ *
+ * <p><b>Never before {@code module.path} is set</b> (issue #87). JBoss
+ * Modules creates its boot module loader once, on first request, from the
+ * {@code module.path} system property — which {@code org.jboss.modules.Main}
+ * sets only when it parses {@code -mp}, and then reuses whatever loader
+ * already exists. On a launch where the readiness gate passes at {@code
+ * premain}, asking for that loader before {@code Main} has run fixes it with
+ * no module roots, and {@code Main} then fails with {@code
+ * ModuleNotFoundException: org.jboss.as.standalone} (doc/spikes/
+ * early-handler-install.md "Mechanism"). Until the property is set, {@link
+ * #resolve} returns nothing and touches no JBoss Modules class.
  */
 final class WildFlyHandlerNameResolver implements HandlerNameResolver {
 
     private static final String MODULES_CLASS = "org.jboss.modules.Module";
+    /** Read by JBoss Modules' boot module loader when it is first created; set by {@code Main} from {@code -mp}. */
+    static final String MODULE_PATH_PROPERTY = "module.path";
     /** Modules that transitively expose MSC + the AS controller + client API; broadest first. */
     private static final List<String> CANDIDATE_MODULES =
             List.of("org.jboss.as.server", "org.jboss.as.controller", "org.jboss.as.controller-client");
@@ -82,6 +96,18 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
 
     private static final boolean DEBUG = Boolean.getBoolean("logaperture.wildfly.handlerNames.debug");
 
+    /** {@code Module.getBootModuleLoader()}, or null off a JBoss Modules server. */
+    private final Supplier<Object> bootModuleLoader;
+
+    WildFlyHandlerNameResolver() {
+        this(WildFlyHandlerNameResolver::lookUpBootModuleLoader);
+    }
+
+    /** Test seam: {@code bootModuleLoader} stands in for the reflective {@code Module.getBootModuleLoader()}. */
+    WildFlyHandlerNameResolver(Supplier<Object> bootModuleLoader) {
+        this.bootModuleLoader = bootModuleLoader;
+    }
+
     @Override
     public Map<Handler, String> resolve(List<Handler> handlers) {
         try {
@@ -95,6 +121,10 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
 
     private Map<Handler, String> resolveInternal(List<Handler> handlers) throws Exception {
         if (handlers.isEmpty()) {
+            return Map.of();
+        }
+        if (System.getProperty(MODULE_PATH_PROPERTY) == null) {
+            dbg("module.path not set yet -- JBoss Modules has not started; not touching its boot loader");
             return Map.of();
         }
         ClassLoader loader = firstLoadableModuleLoader();
@@ -373,13 +403,19 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
         return null;
     }
 
-    private static ClassLoader firstLoadableModuleLoader() {
-        Object bootLoader;
+    private static Object lookUpBootModuleLoader() {
         try {
             Class<?> moduleClass = Class.forName(MODULES_CLASS, false, ClassLoader.getSystemClassLoader());
-            bootLoader = moduleClass.getMethod("getBootModuleLoader").invoke(null);
+            return moduleClass.getMethod("getBootModuleLoader").invoke(null);
         } catch (ReflectiveOperationException | RuntimeException noModules) {
             return null; // not a JBoss-Modules server after all
+        }
+    }
+
+    private ClassLoader firstLoadableModuleLoader() {
+        Object bootLoader = bootModuleLoader.get();
+        if (bootLoader == null) {
+            return null;
         }
         for (String moduleName : CANDIDATE_MODULES) {
             try {

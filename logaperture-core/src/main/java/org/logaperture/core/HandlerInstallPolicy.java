@@ -20,29 +20,31 @@ import java.time.Duration;
 /**
  * How long a container holds back its <em>handler-level</em> installs (trim
  * rendering, top's byte counting, storm detection, the rule pipeline) after
- * the readiness gate passes. Default 20 seconds;
+ * the readiness gate passes. Default 0 (no deferral);
  * {@code -Dlogaperture.handlerInstallDelaySeconds=<n>} overrides it
- * ({@code 0} = no deferral; above 600 is clamped to 600; a negative or non-numeric value falls back
- * to the default, with a message -- never silently to 0).
+ * (above 600 is clamped to 600; a negative or non-numeric value falls back
+ * to the default, with a message).
  *
  * <p>doc/specs/wildfly-deferred-handler-install.md "What triggers phase 2,
- * and the floor" (D2, D6): installing any of those on the JBoss LogManager's
- * boot handlers during {@code premain} aborted a real WildFly launch, and 20s
- * is the only delay observed to boot cleanly.
+ * and the floor" (D1, D6) and "Revision: mechanism found" (D8): the deferral
+ * was added because installing those at {@code premain} aborted a real WildFly
+ * launch. The cause turned out to be a boot-module-loader lookup in the handler
+ * name resolver, fixed there (issue #87), so the deferral is now off by default
+ * and kept as a safety valve.
  */
 public final class HandlerInstallPolicy {
 
     /** {@value}. */
     public static final String DELAY_PROPERTY = "logaperture.handlerInstallDelaySeconds";
 
-    private static final Duration DEFAULT_DELAY = Duration.ofSeconds(20);
+    private static final Duration DEFAULT_DELAY = Duration.ZERO;
     private static final long MIN_SECONDS = 0;
     private static final long MAX_SECONDS = 600;
 
     private HandlerInstallPolicy() {
     }
 
-    /** The configured delay — the {@code logaperture.handlerInstallDelaySeconds} property, or 20s. */
+    /** The configured delay — the {@code logaperture.handlerInstallDelaySeconds} property, or 0. */
     public static Duration delay() {
         String raw = System.getProperty(DELAY_PROPERTY);
         if (raw == null || raw.isBlank()) {
@@ -51,8 +53,6 @@ public final class HandlerInstallPolicy {
         try {
             long seconds = Long.parseLong(raw.trim());
             if (seconds < MIN_SECONDS) {
-                // Not clamped to 0: 0 switches the safety deferral off, which a mistyped negative
-                // must never do silently.
                 System.err.println("[logaperture] ignoring negative " + DELAY_PROPERTY + "='" + raw
                         + "', using " + DEFAULT_DELAY.toSeconds() + "s");
                 return DEFAULT_DELAY;

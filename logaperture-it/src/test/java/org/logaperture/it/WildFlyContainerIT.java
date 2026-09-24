@@ -126,9 +126,10 @@ class WildFlyContainerIT {
         // its --add-opens/--add-exports -- so append one line to standalone.conf.
         // -Dlogaperture.sweep.seconds=3 tightens the verification-sweep window
         // so the management-CLI-collision test does not wait 30s.
-        // -Dlogaperture.handlerInstallDelaySeconds=3 likewise shortens the 20s default
+        // -Dlogaperture.handlerInstallDelaySeconds=3 switches on the (default-off, issue #87)
         // hold-back on handler-level installs (doc/specs/wildfly-deferred-handler-install.md)
-        // so the drop/trim scenarios, which add rules right after boot, need not wait for it.
+        // so the deferral path stays exercised, kept short so the drop/trim scenarios, which
+        // add rules right after boot, need not wait long for it.
         // -Dlogaperture.home points the agent's state store at a runtime-writable
         // dir, same fix and same reason as dev/wildfly/docker-compose.yml: this
         // image's $HOME (/opt/jboss) is owned by root, not writable by the jboss

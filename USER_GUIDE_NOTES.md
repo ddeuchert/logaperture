@@ -10,19 +10,16 @@ are absorbed into the real guide.
 - Agents listed **before** `logaperture-agent.jar` run their `premain` first.
   Anything they log during startup is emitted before LogAperture can arm rules,
   so `drop`/`trim` rules (sticky or not) can't affect it.
-- Do **not** assume "LogAperture first" is better. It can shrink the window of unfiltered
-  early events, but on WildFly it also runs our install earlier; on one real launch
-  (Tanuki wrapper, several other agents, `jboss.modules.system.pkgs` naming
-  `org.jboss.logmanager`) that made a rare startup failure (`ModuleNotFoundException:
-  org.jboss.as.standalone`) happen every time. Cause: installing our filters/formatters on the
-  JBoss handlers at `premain` (see `doc/spikes/early-handler-install.md`, issue #86). If startup
-  fails with LogAperture first, try moving it later, or `-Dlogaperture.disabled=true` to confirm.
-- On WildFly, `drop`/`trim` rules (and `top`'s byte counts, storm detection) take effect
-  `-Dlogaperture.handlerInstallDelaySeconds` seconds (default 20) after the agent installs, not at
-  `premain`, so events logged in the first seconds of boot (including other agents' `premain`
-  logging) can't be trimmed or dropped. Levels apply immediately. Set it to `0` on a launch where
-  an early install is known to work and boot-time trimming matters; the server log says when the
-  deferred install completes.
+- Listing LogAperture first shrinks the window of unfiltered early events. Before issues
+  #86/#87 were fixed, it also made a startup abort (`ModuleNotFoundException:
+  org.jboss.as.standalone`) certain on launches with `jboss.modules.system.pkgs` naming
+  `org.jboss.logmanager`. That cause is fixed (see `doc/spikes/early-handler-install.md`
+  "Mechanism"). If startup still fails, `-Dlogaperture.disabled=true` confirms whether LogAperture
+  is involved.
+- On WildFly, `drop`/`trim` rules (and `top`'s byte counts, storm detection) take effect when the
+  agent installs. `-Dlogaperture.handlerInstallDelaySeconds=<n>` (default `0`) holds them back `n`
+  seconds if a launch needs that; the server log then says when the deferred install completes.
+  Levels always apply immediately.
 - Early events from other agents may not go through JUL/JBoss LogManager at all
   (own formatter, console, private buffer); if so they are out of reach. The fix
   then belongs in the emitting agent's configuration.

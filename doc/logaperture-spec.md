@@ -1430,20 +1430,20 @@ at startup" part rather than this item duplicating it.
 proactive as is *safe*: arm rules at the earliest point that does not break the
 host's own startup, and design the vendor config file (§18.10 / #60) with that in
 mind. The spike ([`doc/spikes/early-handler-install.md`](spikes/early-handler-install.md))
-found that on one real WildFly launch, installing our filters or formatters on the
-JBoss LogManager's handlers at `premain` aborts startup (`ModuleNotFoundException:
-org.jboss.as.standalone`), while logger-level work (baseline, resuming persisted
-rules and overrides, JMX registration) is safe that early. Handler mutation is
-therefore deferred until the server's logging is configured
-([#86](https://github.com/ddeuchert/logaperture/issues/86)), which means events
-logged in the first seconds of boot — including other agents' `premain`-time
-logging — are out of reach of `trim`/`drop` unless the mechanism is found and
-avoided ([#87](https://github.com/ddeuchert/logaperture/issues/87)).
+found that on one real WildFly launch the handler-level install at `premain` aborted
+startup (`ModuleNotFoundException: org.jboss.as.standalone`). The cause was later found
+([#87](https://github.com/ddeuchert/logaperture/issues/87)): resolving handler names asked
+JBoss Modules for its boot module loader before `org.jboss.modules.Main` had set
+`module.path`. With that fixed, the handler-level install runs at `premain` again, so
+`trim`/`drop` reach other agents' `premain`-time logging that goes through the JBoss
+LogManager's handlers. A delay property from the interim fix
+([#86](https://github.com/ddeuchert/logaperture/issues/86)) stays as an off-by-default
+safety valve.
 Separately, **document the `-javaagent` ordering constraints**: agents listed
 before LogAperture run their `premain` first and are out of reach, and ordering
-LogAperture first is *not* a safe general fix (on the spike's launch it turned a
-rare failure into a certain one; it did so through the early handler install, not
-the ordering itself). The doc home is `USER_GUIDE_NOTES.md` for now (moving into the
+LogAperture first helps (before #87's fix, it turned a rare startup failure into a
+certain one on the spike's launch, through the resolver's early lookup, not the
+ordering itself). The doc home is `USER_GUIDE_NOTES.md` for now (moving into the
 user guide once one exists) and `logctl doctor` output, which could flag agents
 listed ahead of ours ([#85](https://github.com/ddeuchert/logaperture/issues/85)) —
 not this section.

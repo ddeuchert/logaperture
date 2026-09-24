@@ -6,6 +6,9 @@ Status: **signed off 2026-09-23** — D1–D6 accepted as recommended ("Decision
 one-shot; unit-tested (`HandlerInstallPolicyTest`, `AggregateLevelControlTest`,
 `DeferredHandlerInstallTest`). The real-WildFly IT and the run on the reporting launch remain the
 exit criterion.
+**Revised 2026-09-24 (issue #87):** mechanism found — the handler-name resolver, not the
+handlers; fixed at the source, and the delay's default drops to `0` (D7, D8, "Revision:
+mechanism found" below). Revision pending sign-off.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §15.6 (WildFly, the premain
 gotcha), §15.5 (the re-application invariant), §18.14 (filtering events logged before the
 container's logging is ready).
@@ -26,11 +29,11 @@ After this feature, the user will be able to:
   without the server aborting at startup.
 - Restart a WildFly server and still have its `sticky` levels, handler levels and rules come
   back on their own, as before.
-- Have `drop` and `trim` rules start applying about 20 seconds after startup (a fixed,
-  documented delay), rather than to the very first seconds of boot. The server's own log
-  says when they took effect.
-- Change that delay with `-Dlogaperture.handlerInstallDelaySeconds=<n>`, or set it to `0` on a
-  launch where an early install is known to work and boot-time trimming matters.
+- Have `drop` and `trim` rules apply from the moment LogAperture installs during startup,
+  including to other agents' startup logging that reaches the server's log handlers
+  (issue #87 revision; before it, they started about 20 seconds in).
+- Hold those rules back with `-Dlogaperture.handlerInstallDelaySeconds=<n>` if a launch ever
+  needs it; the server's own log then says when they took effect.
 
 ## Problem
 
@@ -125,6 +128,42 @@ WildFly ([`level-control.md`](level-control.md) "Failure handling").
   `N`s") and one at activation ("handler-level install complete (`n` handlers)") (D4). With
   `handlerInstallDelaySeconds=0` neither line is written, since nothing was deferred.
 
+## Revision: mechanism found (issue #87)
+
+The spike's trigger ("installing a filter or formatter on a handler") was a common *prefix*, not
+the handler mutation. Each of the four phase-2 steps starts by listing the handlers
+(`JulLoggingAdapter.realHandlers()`), which resolves their WildFly names
+(`WildFlyHandlerNameResolver`), which asked JBoss Modules for its boot module loader. JBoss
+Modules creates that loader once, on first request, from the `module.path` system property, and
+`org.jboss.modules.Main` sets `module.path` only when it parses `-mp`, then reuses the loader. Asked
+for at `premain`, the loader is fixed with no module roots and `Main` fails to find
+`org.jboss.as.standalone`. Full evidence, including two reproductions:
+[`doc/spikes/early-handler-install.md`](../spikes/early-handler-install.md) "Mechanism".
+
+**Fix at the source (D7).** `WildFlyHandlerNameResolver` returns no names, and touches no JBoss
+Modules class, while `module.path` is unset. `Main` sets it before it creates the loader, so once
+it is set, creating the loader gives the same result `Main` would. Unresolved names are an
+existing, handled state: handlers keep their identity tokens and resolution is retried on every
+later call ("Lifecycle" in [`handler-floor-control.md`](handler-floor-control.md)).
+
+**The deferral stays, off by default (D8).** With the cause removed there is nothing left to wait
+for, so `logaperture.handlerInstallDelaySeconds` defaults to `0`: phase 2 runs inside the install
+again, and `drop`/`trim` reach boot-time events on handlers that exist then, which is what
+§18.14 wanted. The property, the floor, the one-shot and the two `INFO` lines stay as a safety
+valve for a launch that turns up a second, different cause; a negative or non-numeric value now
+falls back to `0` (the default) with the same stderr message.
+
+**Limits.**
+- A launch that gives JBoss Modules its path only through the `JAVA_MODULEPATH` environment
+  variable, never `-mp` or `-Dmodule.path`, never sets `module.path`, so handler names never
+  resolve there (identity tokens and `ALL_HANDLERS` still work). No such launch is known. WildFly's
+  scripts always pass `-mp`.
+- Another agent can still cause the same abort by asking for the boot module loader at
+  `premain` itself. So can initializing `org.jboss.modules.Module` early when
+  `-Djboss.protocol.handler.modules` is set, because its static initializer then asks for the
+  loader. Neither is ours to fix. The guard runs before we touch any JBoss Modules class, so we
+  no longer trigger either.
+
 ## Docs to update with the change
 
 - [`wildfly-support.md`](wildfly-support.md): the readiness discussion currently says the
@@ -146,6 +185,13 @@ WildFly ([`level-control.md`](level-control.md) "Failure handling").
   and last in the `-javaagent` list; a sticky `drop` rule persisted from a previous run
   resumes at startup and is effective (the dropped message absent, the hit count moving) within
   the floor plus a small margin.
+- **Revision (#87), unit:** `WildFlyHandlerNameResolverTest` — no boot-module-loader lookup
+  while `module.path` is unset; the lookup happens once it is set. `HandlerInstallPolicyTest` —
+  default `0`.
+- **Revision (#87), reproduction harness** (not committed; described in the spike doc): WildFly 33
+  launched through `org.jboss.modules.Main` on the class path with `org.jboss.logmanager` in
+  `jboss.modules.system.pkgs`, LogAperture first, a slow second agent, delay `0`. Before the fix
+  it aborts; after it, it boots.
 - **Manual, on the launch that reproduced the failure** (the only place it does): LogAperture
   first in the `-javaagent` list, five clean starts in a row; the trim rule applies after the
   delay; and, informationally, with `handlerInstallDelaySeconds=0` the failure returns (which
@@ -159,7 +205,8 @@ docs above are updated in the same change.
 
 ## Decisions agreed
 
-All six accepted as recommended, 2026-09-23.
+D1–D6 accepted as recommended, 2026-09-23. D7–D8 (#87 revision) proposed 2026-09-24,
+pending sign-off; D8 supersedes D2's default.
 
 | # | Decision | Agreed |
 |---|---|---|
@@ -169,3 +216,5 @@ All six accepted as recommended, 2026-09-23.
 | D4 | Observability | Two `INFO` lines (deferred / complete). No `logctl` surface in this change; a status line in `doctor` is #85. |
 | D5 | Readiness gate | Unchanged. The spike showed the steps it releases are safe early. A stricter "bootstrapped" signal is a separate change once #87 gives us something to key on. |
 | D6 | Property name and shape | `logaperture.handlerInstallDelaySeconds` (integer seconds, 0..600). Alternative: match `logaperture.sweep.seconds`'s naming. |
+| D7 | (#87 revision) Where to fix the abort | In the name resolver: no boot-module-loader lookup until `module.path` is set. Alternatives: skip name resolution until a later phase (moves the problem, and phase 2 still needs the handler list); wrap handlers without listing them via the adapter (a larger adapter change for the same effect). |
+| D8 | (#87 revision) The delay's default | `0`, property kept as a safety valve. Alternative: keep 20 s until the reporting launch confirms `0` (safer, but gives up boot-time filtering on every launch for a cause now fixed). |

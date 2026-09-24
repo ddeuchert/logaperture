@@ -10,13 +10,16 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 ### Fixed
 
 - **WildFly could abort at startup** (`ModuleNotFoundException: org.jboss.as.standalone`) on
-  launches where the agent installed its filters or formatters on the JBoss LogManager's handlers
-  during `premain`. Those handler-level installs (trim rendering, `top`'s byte counting, storm
-  detection, the rule pipeline) now wait `logaperture.handlerInstallDelaySeconds` (default 20;
-  `0` = no deferral) after the agent installs. Levels, handler levels and persisted rules still
-  resume immediately. **Behavior change:** `drop` and `trim` rules no longer apply to the first
-  seconds of boot. See `doc/spikes/early-handler-install.md` and
-  `doc/specs/wildfly-deferred-handler-install.md`.
+  launches where the JBoss LogManager is on the system class path
+  (`jboss.modules.system.pkgs` naming `org.jboss.logmanager`) and the agent installs during
+  `premain`. Cause: resolving WildFly's handler names asked JBoss Modules for its boot module
+  loader before `org.jboss.modules.Main` had set `module.path`, which fixed that loader with no
+  module roots. The resolver now waits for `module.path` (issues #86, #87). `drop`/`trim` rules
+  keep applying from the moment the agent installs, including to other agents' startup logging
+  that reaches the server's handlers. A new `-Dlogaperture.handlerInstallDelaySeconds=<n>`
+  (default `0`) can hold back the handler-level installs (trim rendering, `top`'s byte counting,
+  storm detection, the rule pipeline) if a launch ever needs it. See
+  `doc/spikes/early-handler-install.md` and `doc/specs/wildfly-deferred-handler-install.md`.
 
 ## [0.1.0-alpha.2] — 2026-09-20
 

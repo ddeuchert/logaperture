@@ -681,9 +681,10 @@ Therefore:
 
   **Exception, found later (issue #86):** with `-Djboss.modules.system.pkgs` naming
   `org.jboss.logmanager` the class *is* on the system classloader and loaded at `premain`, so
-  this gate is already true before jboss-modules has started. The steps it releases are safe that
-  early except the ones that put a filter or formatter on a handler, which are therefore held back
-  by a floor — see [`wildfly-deferred-handler-install.md`](wildfly-deferred-handler-install.md).
+  this gate is already true before jboss-modules has started. Everything it releases is safe that
+  early provided nothing asks JBoss Modules for its boot module loader before `module.path` is set
+  (issue #87; the handler-name resolver did) — see
+  [`wildfly-deferred-handler-install.md`](wildfly-deferred-handler-install.md).
 
   The system-classloader check is not a usable signal on WildFly, and the JDK's
   context-classloader fallback is invisible from our own thread's default context
