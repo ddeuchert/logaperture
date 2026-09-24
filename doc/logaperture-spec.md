@@ -249,7 +249,7 @@ Making `--for` the default is the important choice. It means the careless path �
 
 The other half of the WildFly problem is that `/subsystem=logging/logger=com.acme:add(level=DEBUG)` is close to impossible to dictate to a non-developer. Slashes, colons, parentheses, equals signs, and an ordering nobody can guess.
 
-Adopt a concrete design criterion: **can a support engineer read the command down a phone line to a customer without them mistyping it?** `logctl debug com.acme for 30m` passes. Anything with punctuation-heavy syntax does not. Apply the test to every command in the CLI, and prefer named profiles (§16.5) over logger names wherever the customer would otherwise be transcribing a package path.
+Adopt a concrete design criterion: **can a support engineer read the command down a phone line to a customer without them mistyping it?** `logctl debug com.acme for 30m` passes. Anything with punctuation-heavy syntax does not. Apply the test to every command in the CLI, and prefer named recipes (§16.5) over logger names wherever the customer would otherwise be transcribing a package path.
 
 ### 6.3 State store
 
@@ -284,7 +284,7 @@ Define and document, highest to lowest:
 
 1. Runtime mutations made via the control plane in the current session
 2. Persisted state from previous sessions (unless expired, or unless `logaperture.resume=false`)
-3. Static rules file supplied at agent start (`-javaagent:logaperture-agent.jar=config=/etc/logaperture.yaml`)
+3. The vendor defaults file supplied at agent start (`-javaagent:logaperture-agent.jar=--vendor-defaults=/etc/logaperture/vendor-defaults.yaml`) — the authority on the baseline for every setting it names, and what `reset` returns to. Spec: [`doc/specs/vendor-config-epic.md`](specs/vendor-config-epic.md) (issues #60/#61).
 4. The application's own logging configuration (the baseline)
 
 ---
@@ -555,7 +555,7 @@ Some settings must be fixed when the JVM starts and have **no runtime mutation p
 
 These come from agent arguments and a policy file whose path is given at agent start. The agent verifies at load that the policy file is not writable by the account the JVM runs as, and refuses to enable anything beyond `view` if it is. **On a locally hosted deployment the filesystem is the real trust boundary** — an attacker who can rewrite a root-owned policy file already owns the machine, and no amount of cryptography inside the JVM changes that.
 
-Signing matters for a different reason: rule packs and diagnostic profiles *travel*, emailed to a customer during a support call. Sign those, verify against a key pinned at agent start, and reject unsigned packs when policy requires it.
+Signing matters for a different reason: rule packs and recipes *travel*, emailed to a customer during a support call. Sign those, verify against a key pinned at agent start, and reject unsigned packs when policy requires it.
 
 ### 9.5 Two symmetric protected lists
 
@@ -1054,7 +1054,7 @@ logctl capture --profile datasource --for 10m --max-size 20M --out bundle.zip
 
 Four properties, all load-bearing:
 
-- **Vendor-supplied named profiles**, not raw logger names. A support engineer should not need to know that the relevant logger is `org.jboss.jca.core.connectionmanager`. Shipping a versioned set of diagnostic profiles turns tribal knowledge into a reviewable artifact — for a product support organisation this may be the highest-leverage feature in the project.
+- **Vendor-supplied named recipes**, not raw logger names. A support engineer should not need to know that the relevant logger is `org.jboss.jca.core.connectionmanager`. Shipping a versioned set of diagnostic recipes turns tribal knowledge into a reviewable artifact — for a product support organisation this may be the highest-leverage feature in the project. (Called *recipes*, not *profiles*, because WildFly already has logging profiles. The level-selection half — recipes a library or vendor ships, discovered and applied with `logctl apply recipe` — is pulled forward as [#92](https://github.com/ddeuchert/logaperture/issues/92), designed in [`doc/specs/vendor-config-epic.md`](specs/vendor-config-epic.md) decisions #14–#21; `capture --recipe` stays here in M3.)
 - **Hard-bounded** by time *and* bytes, stopping at whichever comes first. A capture must never itself become the disk-filling event.
 - **Self-reverting**, enforced by the agent, surviving the support engineer closing their laptop and the JVM restarting. This is the expiry machinery from §5 doing its real job. It converts "we asked the customer to turn on DEBUG and they left it on for six months" from a recurring incident into something that cannot happen.
 - **Redacted on the way out**, using the same `redact` rules, because the bundle leaves the customer's premises. Compressed and size-bounded so it can be emailed.
@@ -1111,7 +1111,7 @@ The important change from the previous draft: **M1 ships nothing that modifies b
 
 **Pulled forward: pattern-based level targeting (`logctl error <pattern>`).** `logctl levels` already lets a developer find a logger from the abbreviated category a log line actually printed (`*.infinispan`); this closes the loop by letting that same pattern *set* the level, as a standing rule that also catches loggers registered afterward, not just a one-shot over loggers live at call time — reusing the existing glob matcher, override/persistence tiers, and expiry-sweep thread rather than pulling the squelch engine (§7 / Feature 3) forward. Full write-up and open questions: §18.7; tracked as [#41](https://github.com/ddeuchert/logaperture/issues/41).
 
-**Vendor configuration file.** A vendor bundling LogAperture wants to ship default logging settings — level adjustments and keyword-based hiding — via a file referenced on the LogAperture command line, so a customer doesn't inherit noisy defaults or need `logctl` commands run after every install. Spans level-control and squelch/filter (§7 / Feature 3) territory; full write-up and open questions: §18.10; targeted for alpha-3; tracked as [#60](https://github.com/ddeuchert/logaperture/issues/60). Phase 2 — `logctl reset` falls back to the vendor default instead of clearing it, mirroring how reset falls back to native config today — is §18.11, tracked as [#61](https://github.com/ddeuchert/logaperture/issues/61), depending on #60. Phase 3 — a `logctl` command to export current sticky overrides as a vendor config file, so a vendor can tune live and capture the result rather than hand-authoring it — is §18.12, tracked as [#62](https://github.com/ddeuchert/logaperture/issues/62).
+**Vendor configuration file.** A vendor bundling LogAperture wants to ship default logging settings — level adjustments and keyword-based hiding — via a file referenced on the LogAperture command line, so a customer doesn't inherit noisy defaults or need `logctl` commands run after every install. Spans level-control and squelch/filter (§7 / Feature 3) territory; full write-up and open questions: §18.10; targeted for alpha-3; tracked as [#60](https://github.com/ddeuchert/logaperture/issues/60). Phase 2 — `logctl reset` falls back to the vendor default instead of clearing it, mirroring how reset falls back to native config today — is §18.11, tracked as [#61](https://github.com/ddeuchert/logaperture/issues/61), depending on #60. Phase 3 — a `logctl` command to export current sticky overrides as a vendor config file, so a vendor can tune live and capture the result rather than hand-authoring it — is §18.12, tracked as [#62](https://github.com/ddeuchert/logaperture/issues/62). **Specced 2026-09-24** as an epic: [`doc/specs/vendor-config-epic.md`](specs/vendor-config-epic.md) — #60 and #61 ship as one slice, #62 follows; library-bundled recipes ([#92](https://github.com/ddeuchert/logaperture/issues/92), beta-1) join as a third slice.
 
 **Content-based targeting: configure loggers by keyword match on message/exception/stack.** A standalone companion to the above: every targeting mechanism so far selects a logger by name (exact or glob, §18.7 / #41); this lets an operator instead target based on what a logger is actually emitting — a message keyword, an exception type, or a class appearing in a stack trace — reusing §7.2's squelch-engine matcher vocabulary to drive configuration rather than gate/render actions. Full write-up and open questions: §18.13; targeted for alpha-3; tracked as [#63](https://github.com/ddeuchert/logaperture/issues/63).
 
@@ -1173,7 +1173,7 @@ On ordering: **IntelliJ IDEA is missing from the original list and probably has 
 ### 18.6 Other candidates
 
 - **The `downgrade` action** deferred from §7.2 — event mutation rather than gate or render, and the hardest of the three stages.
-- **A community rule-pack registry.** Shared noise profiles for Hibernate, Apache HttpClient, WildFly boot, and so on. Contributing a rule pack is a far lower barrier than contributing code, and it is how a project like this acquires contributors.
+- **A community rule-pack registry.** Shared noise profiles for Hibernate, Apache HttpClient, WildFly boot, and so on. Contributing a rule pack is a far lower barrier than contributing code, and it is how a project like this acquires contributors. Library-bundled recipes ([#92](https://github.com/ddeuchert/logaperture/issues/92)) are a first step: the file format and a recipes directory, without the registry.
 - **Metrics export** — the per-rule and per-logger counters through Micrometer or OpenTelemetry, for deployments that do have a pipeline.
 - **A container and Kubernetes story.** Ephemeral filesystems break the §6.3 file-based state store, and logs go to stdout rather than to a disk that can fill — the volume concern survives but its symptom becomes cost rather than outage.
 - **Upstream contribution.** As noted in §3.2, if storm collapse belongs in Log4j 2 or Logback core, contributing it there reaches far more users than this project will.
@@ -1291,6 +1291,8 @@ override/persistence tiers (§6) so a user's own `logctl` commands still win.
 
 Targeted for **alpha-3**; tracked as [#60](https://github.com/ddeuchert/logaperture/issues/60). Phase 2 — reset falls back to the vendor default instead of clearing it — is a separate item: §18.11.
 
+**Status note.** Specced in [`doc/specs/vendor-config-epic.md`](specs/vendor-config-epic.md), signed off 2026-09-24; the open questions above are resolved there (decisions #2–#11: a baseline layer under persisted state, YAML, `--vendor-defaults=` agent argument, exact names only, all-or-nothing load). Kept here as the roadmap record.
+
 ### 18.11 Reset falls back to vendor-config baseline, not native config
 
 Phase 2 of §18.10 / #60, tracked as [#61](https://github.com/ddeuchert/logaperture/issues/61) and
@@ -1319,6 +1321,8 @@ discards on the way back to native config.
   §18.7's #41/#49) and how that composes with pattern-based user
   overrides.
 
+**Status note.** Specced in [`doc/specs/vendor-config-epic.md`](specs/vendor-config-epic.md), signed off 2026-09-24; the open questions above are resolved there (decisions #1, #2, #4, #10: ships in one slice with #60; vendor rules survive `reset` unless `--include-vendor-defaults`). Kept here as the roadmap record.
+
 ### 18.12 `logctl` command to export sticky overrides as a vendor config file
 
 Phase 3 of §18.10 / #60, tracked as [#62](https://github.com/ddeuchert/logaperture/issues/62).
@@ -1345,6 +1349,8 @@ rules #60 ends up specifying.
   session.
 - Round-tripping with §18.11 / #61: a target already at a vendor default
   that's re-stickied and exported should produce a sensible result.
+
+**Status note.** Specced in [`doc/specs/vendor-config-epic.md`](specs/vendor-config-epic.md), signed off 2026-09-24; the open questions above are resolved there (decision #12: `logctl export vendor-defaults`, loaded file plus sticky settings). Kept here as the roadmap record.
 
 ### 18.13 Content-based targeting: configure loggers by keyword match on message/exception/stack
 
