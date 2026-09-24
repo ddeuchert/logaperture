@@ -1424,16 +1424,25 @@ risk — it collides with the premain constraint above — and depends on the
 findings below. Overlaps §18.10 / #60, which should own the "rules from a file
 at startup" part rather than this item duplicating it.
 
-**Direction (agreed, pending David's own research).** Be as proactive as
-possible: arm rules at the earliest point that is safe, and design the vendor
-config file (§18.10 / #60) with that in mind — a rule set that can be armed at
-install time, not only after a `logctl` round trip or a persisted-state resume.
+**Direction (agreed; revised after the early-handler-install spike).** Be as
+proactive as is *safe*: arm rules at the earliest point that does not break the
+host's own startup, and design the vendor config file (§18.10 / #60) with that in
+mind. The spike ([`doc/spikes/early-handler-install.md`](spikes/early-handler-install.md))
+found that on one real WildFly launch, installing our filters or formatters on the
+JBoss LogManager's handlers at `premain` aborts startup (`ModuleNotFoundException:
+org.jboss.as.standalone`), while logger-level work (baseline, resuming persisted
+rules and overrides, JMX registration) is safe that early. Handler mutation is
+therefore deferred until the server's logging is configured
+([#86](https://github.com/ddeuchert/logaperture/issues/86)), which means events
+logged in the first seconds of boot — including other agents' `premain`-time
+logging — are out of reach of `trim`/`drop` unless the mechanism is found and
+avoided ([#87](https://github.com/ddeuchert/logaperture/issues/87)).
 Separately, **document the `-javaagent` ordering constraints**: agents listed
-before LogAperture run their `premain` first and are out of reach; LogAperture
-should go first to shrink the window, but on WildFly the deferral to
-LogManager readiness bounds how early anything can be armed regardless of
-position. The doc home is `USER_GUIDE_NOTES.md` for now (moving into the user
-guide once one exists) and `logctl doctor` output, which could flag agents
+before LogAperture run their `premain` first and are out of reach, and ordering
+LogAperture first is *not* a safe general fix (on the spike's launch it turned a
+rare failure into a certain one; it did so through the early handler install, not
+the ordering itself). The doc home is `USER_GUIDE_NOTES.md` for now (moving into the
+user guide once one exists) and `logctl doctor` output, which could flag agents
 listed ahead of ours ([#85](https://github.com/ddeuchert/logaperture/issues/85)) —
 not this section.
 
