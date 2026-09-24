@@ -21,6 +21,8 @@ import java.io.File;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Handler;
 import java.util.logging.LogRecord;
@@ -48,6 +50,25 @@ class WildFlyHandlerNameResolverTest {
         List<Handler> handlers = List.of(new ConsoleHandler(), new ConsoleHandler());
         Map<Handler, String> resolved = resolver.resolve(handlers);
         assertTrue(resolved.isEmpty(), "no WildFly here -> nothing resolves");
+    }
+
+    @Test
+    void beforeModulePathIsSet_neverAsksForTheBootModuleLoader() {
+        // Issue #87: asking JBoss Modules for its boot module loader before Main has set
+        // module.path (from -mp) creates it with no module roots, and Main then aborts with
+        // ModuleNotFoundException: org.jboss.as.standalone.
+        AtomicInteger lookups = new AtomicInteger();
+        Supplier<Object> countingLookup = () -> {
+            lookups.incrementAndGet();
+            return null;
+        };
+        WildFlyHandlerNameResolver guarded = new WildFlyHandlerNameResolver(countingLookup);
+
+        withModulePath(null, () -> assertEquals(Map.of(), guarded.resolve(List.of(new ConsoleHandler()))));
+        assertEquals(0, lookups.get(), "no boot module loader lookup while module.path is unset");
+
+        withModulePath("/opt/wildfly/modules", () -> guarded.resolve(List.of(new ConsoleHandler())));
+        assertEquals(1, lookups.get(), "once module.path is set, resolution proceeds to the lookup");
     }
 
     @Test
@@ -101,6 +122,24 @@ class WildFlyHandlerNameResolverTest {
 
         assertNull(bound.get(file), "no configured path -> keep the token, don't guess");
         assertTrue(bound.isEmpty());
+    }
+
+    private static void withModulePath(String value, Runnable body) {
+        String saved = System.getProperty(WildFlyHandlerNameResolver.MODULE_PATH_PROPERTY);
+        try {
+            if (value == null) {
+                System.clearProperty(WildFlyHandlerNameResolver.MODULE_PATH_PROPERTY);
+            } else {
+                System.setProperty(WildFlyHandlerNameResolver.MODULE_PATH_PROPERTY, value);
+            }
+            body.run();
+        } finally {
+            if (saved == null) {
+                System.clearProperty(WildFlyHandlerNameResolver.MODULE_PATH_PROPERTY);
+            } else {
+                System.setProperty(WildFlyHandlerNameResolver.MODULE_PATH_PROPERTY, saved);
+            }
+        }
     }
 
     private static final class FakeFileHandler extends Handler {

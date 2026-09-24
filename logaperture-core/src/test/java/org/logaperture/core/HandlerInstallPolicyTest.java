@@ -30,8 +30,10 @@ class HandlerInstallPolicyTest {
     }
 
     @Test
-    void delay_defaultsTo20SecondsWhenUnset() {
-        assertEquals(Duration.ofSeconds(20), HandlerInstallPolicy.delay());
+    void delay_defaultsToNoDeferralWhenUnset() {
+        // doc/specs/wildfly-deferred-handler-install.md D8 (issue #87): the abort's cause is fixed
+        // at the source, so the deferral is a safety valve, off unless asked for.
+        assertEquals(Duration.ZERO, HandlerInstallPolicy.delay());
     }
 
     @Test
@@ -53,14 +55,14 @@ class HandlerInstallPolicyTest {
     }
 
     @Test
-    void delay_aNegativeValueFallsBackToTheDefault_notToZeroWhichWouldDisableTheDeferral() {
+    void delay_aNegativeValueFallsBackToTheDefault() {
         System.setProperty(HandlerInstallPolicy.DELAY_PROPERTY, "-5");
-        assertEquals(Duration.ofSeconds(20), HandlerInstallPolicy.delay());
+        assertEquals(Duration.ZERO, HandlerInstallPolicy.delay());
     }
 
     @Test
     void delay_fallsBackToTheDefaultOnANonNumericValue() {
         System.setProperty(HandlerInstallPolicy.DELAY_PROPERTY, "soon");
-        assertEquals(Duration.ofSeconds(20), HandlerInstallPolicy.delay());
+        assertEquals(Duration.ZERO, HandlerInstallPolicy.delay());
     }
 }

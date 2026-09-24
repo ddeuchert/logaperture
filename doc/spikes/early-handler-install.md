@@ -1,6 +1,8 @@
 # Spike — early handler install aborts WildFly startup
 
-Status: **done.** Trigger isolated to a category of install step; mechanism not identified.
+Status: **done.** Trigger isolated to a category of install step. **Mechanism found later
+(issue #87)** — see "Mechanism" below; the "Not established" notes are kept as they were
+written.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §15.6 (the premain gotcha),
 §18.14 (filtering events logged before the container's logging is ready). Related:
@@ -115,6 +117,57 @@ on every handler; storm detection and the rule pipeline each **set a filter** on
 4. **Agent order changes the odds, not the cause.** Listing LogAperture first turned a rare failure
    into a certain one on this launch; earlier "put LogAperture first" advice is therefore wrong as
    a general rule for WildFly and is corrected in §18.14 and `USER_GUIDE_NOTES.md`.
+
+## Mechanism (found 2026-09-24, issue #87)
+
+The filters and formatters were never the cause. All four handler-mutating stages begin with the
+JUL adapter's `realHandlers()`, which calls `ensureNamesResolved()` and so
+`WildFlyHandlerNameResolver.resolve()`, which called
+`org.jboss.modules.Module.getBootModuleLoader()` reflectively. The stages that ran safely early
+never list handlers, so never reached it.
+
+In JBoss Modules 2.1.5, the boot module loader is created **once, on first request**
+(`DefaultBootModuleLoaderHolder`'s static initializer). The `LocalModuleLoader` it builds reads the
+`module.path` system property at that moment. `org.jboss.modules.Main` sets `module.path` only
+when it parses `-mp`, and later takes the loader from the same holder. So if anything asks for the
+boot module loader during `premain`, the loader is fixed with **no module roots**, `Main` reuses
+it, and `loadModule("org.jboss.as.standalone")` (`Main.java:355`) finds nothing:
+`ModuleNotFoundException` from `ModuleLoader.java:301`, with no cause. Those are the frames in the
+reported trace.
+
+This also explains the rest:
+
+- **Only on this launch.** The resolver only runs that early when the readiness gate is already
+  true at `premain`, which needs `jboss.modules.system.pkgs` naming `org.jboss.logmanager`
+  (finding 3).
+- **Always when first in the list, rarely when lower.** Our install runs on its own thread, racing
+  the remaining agents' `premain`s and `Main`'s argument parsing. Listed first, it has the most
+  time to ask for the loader before `-mp` is parsed.
+- **20 s worked.** By then `Main` had created the loader itself, with the right roots.
+
+**Reproduced twice.**
+
+1. Plain JBoss Modules 2.1.5, a one-module repository and a one-line agent whose `premain` calls
+   `Module.getBootModuleLoader()`: `ModuleNotFoundException` from `ModuleLoader.java:301` /
+   `Main.java:355`, and the loader prints `(roots: )`. The same agent skipping the call while
+   `module.path` is unset boots.
+2. WildFly 33.0.0.Final (`quay.io/wildfly/wildfly:33.0.0.Final-jdk21`) launched the way the
+   wrapper does: `java -cp jboss-modules.jar:jboss-logmanager.jar:wildfly-common.jar
+   org.jboss.modules.Main -mp modules org.jboss.as.standalone`, with
+   `-Djboss.modules.system.pkgs=org.jboss.byteman,org.jboss.logmanager`, LogAperture first, then
+   a second agent whose `premain` logs one JUL line and then takes 3 s (standing in for the
+   reporting launch's slower agents). With `handlerInstallDelaySeconds=0`, the develop build
+   aborted with `ModuleNotFoundException: org.jboss.as.standalone` 3 of 3 times, and its resolver
+   debug output showed `moduleLoader=null` (no candidate module found under empty roots). With the
+   default 20 s it booted 3 of 3. With the resolver guard below and delay `0`, it booted 5 of 5,
+   with the handler install running about 3 s before `Main`, and handler names still resolved once
+   the server was up. Without the second agent's 3 s, our install lost the race and the develop
+   build booted, which is why a stock launch never showed it.
+
+**Fix.** The resolver does not ask for the boot module loader until `module.path` is set
+(`Main` sets it before it creates the loader). Until then it resolves nothing, which it already
+handled as "not yet". See [`wildfly-deferred-handler-install.md`](../specs/wildfly-deferred-handler-install.md)
+"Revision: mechanism found (issue #87)".
 
 ## Not established
 
