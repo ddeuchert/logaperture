@@ -69,7 +69,7 @@ GET {{base}}/log?level=verbose
 
 ### With a thrown exception attached -- java.net.ConnectException here --
 ### for testing 'logctl add rule trim --throwable java.net.ConnectException'.
-GET {{base}}/log?level=error&exception=connect
+GET {{base}}/log?logger=org.demo&message=This has an exception&implementation=log4j&exception=connect
 
 ### The other exception type, IllegalStateException.
 GET {{base}}/log?level=error&exception=illegal_state
