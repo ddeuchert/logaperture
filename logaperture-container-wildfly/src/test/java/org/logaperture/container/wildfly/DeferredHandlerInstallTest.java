@@ -160,6 +160,25 @@ class DeferredHandlerInstallTest {
     }
 
     @Test
+    void handlerLevelInstall_aOneShotThatWakesBeforeTheWallClockFloorReschedulesInsteadOfGivingUp() throws Exception {
+        MutableClock clock = new MutableClock();
+        try (WildFlyContainer host = newHost(Duration.ofMillis(200), clock)) {
+            install(host);
+
+            Thread.sleep(700); // the one-shot has fired at least once, but the (frozen) clock is before the floor
+            assertSame(original, handler.getFormatter(), "still before the floor by the wall clock");
+
+            clock.advance(Duration.ofSeconds(1));
+            long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+            while (handler.getFormatter() == original && System.nanoTime() < deadline) {
+                Thread.sleep(50);
+            }
+
+            assertNotSame(original, handler.getFormatter(), "the rescheduled one-shot should have installed");
+        }
+    }
+
+    @Test
     void close_doesNotWaitOnAPendingOneShot() {
         WildFlyContainer host = newHost(Duration.ofMinutes(10), Clock.systemUTC());
         install(host);

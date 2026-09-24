@@ -152,8 +152,18 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     private final BooleanSupplier handlerInstallAllowed;
 
-    /** Set once {@link #installHandlerLevel()} has actually run against at least one context. */
+    /**
+     * Set once {@link #installHandlerLevel()} has succeeded -- every step, none swallowed -- for at
+     * least one context. A context whose steps threw is retried on a later sweep and does not count.
+     */
     private volatile boolean handlerLevelInstalled;
+
+    /**
+     * Serializes the handler-level installs: the container's installing thread, its one-shot, the
+     * sweep and the configuration listener can all reach {@link #installHandlerLevel(ContextControl)},
+     * and each step is check-then-wrap, which two concurrent callers could both pass.
+     */
+    private final Object handlerInstallLock = new Object();
 
     /** No container, no known state file — the minimal construction tests reach for; production always supplies both (even {@code none} passes its real {@code StateStore} location through the 3-arg constructor). */
     public AggregateLevelControl() {
@@ -965,8 +975,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         for (ContextControl context : sortedByKey()) {
             reapplied += context.service().verifyAndReapply(now);
             reapplied += context.handlerService().verifyAndReapply(now);
-            if (handlersOpen) {
-                installHandlerLevel(context);
+            if (handlersOpen && installHandlerLevelSerialized(context)) {
                 handlerLevelInstalled = true;
             }
         }
@@ -988,17 +997,15 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         if (!handlerInstallAllowed.getAsBoolean()) {
             return false;
         }
-        List<ContextControl> contexts = sortedByKey();
-        for (ContextControl context : contexts) {
-            installHandlerLevel(context);
-        }
-        if (!contexts.isEmpty()) {
-            handlerLevelInstalled = true;
+        for (ContextControl context : sortedByKey()) {
+            if (installHandlerLevelSerialized(context)) {
+                handlerLevelInstalled = true;
+            }
         }
         return true;
     }
 
-    /** {@code true} once {@link #installHandlerLevel()} has run against at least one context. */
+    /** {@code true} once {@link #installHandlerLevel()} has fully succeeded for at least one context. */
     public boolean isHandlerLevelInstalled() {
         return handlerLevelInstalled;
     }
@@ -1009,19 +1016,29 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * here must neither cancel future ticks nor reach the host server -- it is
      * simply retried on the next tick.
      */
-    private static void installHandlerLevel(ContextControl context) {
+    private boolean installHandlerLevelSerialized(ContextControl context) {
+        synchronized (handlerInstallLock) {
+            return installHandlerLevel(context);
+        }
+    }
+
+    /** @return {@code true} if every step completed without throwing */
+    private static boolean installHandlerLevel(ContextControl context) {
+        boolean allSucceeded = true;
         try {
             // Must run before topService.startMeasuring() below -- doc/specs/trim-rule.md
             // "Interaction with top": trim's formatter wrap installs inside top's, so top
             // measures the bytes actually written post-trim.
             context.ruleService().installTrimRendering();
         } catch (RuntimeException e) {
+            allSucceeded = false;
             System.err.println("[logaperture-core] failed to (re-)arm trim rendering for context '"
                     + context.stableKey() + "', that context is unchanged: " + e);
         }
         try {
             context.topService().startMeasuring();
         } catch (RuntimeException e) {
+            allSucceeded = false;
             System.err.println("[logaperture-core] failed to (re-)arm byte counting for context '"
                     + context.stableKey() + "', that context is unchanged: " + e);
         }
@@ -1030,6 +1047,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             // anything else.
             context.stormService().startDetection();
         } catch (RuntimeException e) {
+            allSucceeded = false;
             System.err.println("[logaperture-core] failed to (re-)arm storm detection for context '"
                     + context.stableKey() + "', that context is unchanged: " + e);
         }
@@ -1037,9 +1055,11 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             // doc/specs/rule-pipeline-foundation.md "Relationship to the storm-detection filter".
             context.ruleService().installPipeline();
         } catch (RuntimeException e) {
+            allSucceeded = false;
             System.err.println("[logaperture-core] failed to (re-)arm the rule pipeline for context '"
                     + context.stableKey() + "', that context is unchanged: " + e);
         }
+        return allSucceeded;
     }
 
     private List<ContextControl> sortedByKey() {

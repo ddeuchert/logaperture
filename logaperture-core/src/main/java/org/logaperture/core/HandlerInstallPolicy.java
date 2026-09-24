@@ -22,7 +22,8 @@ import java.time.Duration;
  * rendering, top's byte counting, storm detection, the rule pipeline) after
  * the readiness gate passes. Default 20 seconds;
  * {@code -Dlogaperture.handlerInstallDelaySeconds=<n>} overrides it
- * (clamped to 0..600; {@code 0} = no deferral).
+ * ({@code 0} = no deferral; above 600 is clamped to 600; a negative or non-numeric value falls back
+ * to the default, with a message -- never silently to 0).
  *
  * <p>doc/specs/wildfly-deferred-handler-install.md "What triggers phase 2,
  * and the floor" (D2, D6): installing any of those on the JBoss LogManager's
@@ -49,10 +50,22 @@ public final class HandlerInstallPolicy {
         }
         try {
             long seconds = Long.parseLong(raw.trim());
-            return Duration.ofSeconds(Math.max(MIN_SECONDS, Math.min(MAX_SECONDS, seconds)));
+            if (seconds < MIN_SECONDS) {
+                // Not clamped to 0: 0 switches the safety deferral off, which a mistyped negative
+                // must never do silently.
+                System.err.println("[logaperture] ignoring negative " + DELAY_PROPERTY + "='" + raw
+                        + "', using " + DEFAULT_DELAY.toSeconds() + "s");
+                return DEFAULT_DELAY;
+            }
+            if (seconds > MAX_SECONDS) {
+                System.err.println("[logaperture] " + DELAY_PROPERTY + "='" + raw + "' is above the maximum, using "
+                        + MAX_SECONDS + "s");
+                return Duration.ofSeconds(MAX_SECONDS);
+            }
+            return Duration.ofSeconds(seconds);
         } catch (NumberFormatException e) {
             System.err.println("[logaperture] ignoring non-numeric " + DELAY_PROPERTY + "='" + raw
-                    + "', using 20s");
+                    + "', using " + DEFAULT_DELAY.toSeconds() + "s");
             return DEFAULT_DELAY;
         }
     }

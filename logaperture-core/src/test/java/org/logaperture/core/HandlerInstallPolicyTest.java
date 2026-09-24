@@ -47,11 +47,15 @@ class HandlerInstallPolicyTest {
     }
 
     @Test
-    void delay_isClampedTo0Through600() {
+    void delay_aboveTheMaximumIsClampedTo600() {
         System.setProperty(HandlerInstallPolicy.DELAY_PROPERTY, "601");
         assertEquals(Duration.ofSeconds(600), HandlerInstallPolicy.delay());
+    }
+
+    @Test
+    void delay_aNegativeValueFallsBackToTheDefault_notToZeroWhichWouldDisableTheDeferral() {
         System.setProperty(HandlerInstallPolicy.DELAY_PROPERTY, "-5");
-        assertEquals(Duration.ZERO, HandlerInstallPolicy.delay());
+        assertEquals(Duration.ofSeconds(20), HandlerInstallPolicy.delay());
     }
 
     @Test

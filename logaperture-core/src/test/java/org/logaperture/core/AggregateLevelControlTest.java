@@ -696,6 +696,7 @@ class AggregateLevelControlTest {
         assertTrue(gated.installHandlerLevel(), "a failing step must not propagate");
 
         assertEquals(List.of("trim", "top", "storm", "pipeline"), ctx.adapter.handlerInstallOrder());
+        assertFalse(gated.isHandlerLevelInstalled(), "a swallowed failure must not count as installed");
     }
 
     @Test

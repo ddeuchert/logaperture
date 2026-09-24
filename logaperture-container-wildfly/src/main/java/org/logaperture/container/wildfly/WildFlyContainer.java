@@ -239,6 +239,26 @@ public final class WildFlyContainer implements AutoCloseable {
         announceHandlerLevelIfInstalled();
     }
 
+    /**
+     * The one-shot. It is timed on the monotonic clock while the floor is checked on the wall
+     * clock, so a wall-clock step or slew can wake it fractionally early; if the gate is still
+     * closed, try again for the time that is left instead of waiting for the next sweep tick.
+     */
+    private void runScheduledHandlerInstall() {
+        installHandlerLevelNow();
+        Instant notBefore = handlerInstallNotBefore;
+        if (notBefore == null || handlerInstallAllowed()) {
+            return;
+        }
+        long remainingMillis = Math.max(50, Duration.between(clock.instant(), notBefore).toMillis());
+        try {
+            handlerInstallTask = sweeper.schedule(
+                    this::runScheduledHandlerInstall, remainingMillis, TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.RejectedExecutionException alreadyShutDown) {
+            // close() won -- nothing to do
+        }
+    }
+
     /** The floor: no handler-level install before {@code handlerInstallNotBefore}. */
     private boolean handlerInstallAllowed() {
         Instant notBefore = handlerInstallNotBefore;
@@ -262,7 +282,7 @@ public final class WildFlyContainer implements AutoCloseable {
         Diagnostics.info("LogAperture: handler-level install deferred for " + handlerInstallDelay.toSeconds() + "s");
         try {
             handlerInstallTask = sweeper.schedule(
-                    this::installHandlerLevelNow, handlerInstallDelay.toMillis(), TimeUnit.MILLISECONDS);
+                    this::runScheduledHandlerInstall, handlerInstallDelay.toMillis(), TimeUnit.MILLISECONDS);
         } catch (java.util.concurrent.RejectedExecutionException alreadyShutDown) {
             // close() won -- nothing to do
         }
