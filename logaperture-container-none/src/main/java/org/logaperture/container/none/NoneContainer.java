@@ -36,6 +36,7 @@ import org.logaperture.core.RuleService;
 import org.logaperture.core.StormService;
 import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.TopService;
+import org.logaperture.core.VendorDefaults;
 import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
@@ -46,6 +47,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -75,6 +77,7 @@ public final class NoneContainer implements AutoCloseable {
     private final StateStore stateStore;
     private final AggregateLevelControl aggregate;
     private final ScheduledExecutorService sweeper;
+    private final VendorDefaults vendorDefaults;
 
     public NoneContainer(CapabilityPolicy policy, AuditLog auditLog) {
         this(policy, auditLog, SweepPolicy.interval());
@@ -82,13 +85,22 @@ public final class NoneContainer implements AutoCloseable {
 
     /** Package-visible so tests can use a short sweep interval instead of waiting on the real 30s one. */
     NoneContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval) {
+        this(policy, auditLog, sweepInterval, VendorDefaults.none());
+    }
+
+    /**
+     * @param vendorDefaults applied by every {@link #installContext} -- doc/specs/vendor-defaults.md
+     */
+    public NoneContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+            VendorDefaults vendorDefaults) {
         this.policy = policy;
         this.auditLog = auditLog;
+        this.vendorDefaults = Objects.requireNonNull(vendorDefaults, "vendorDefaults");
         this.stateStore = openStateStore();
         // No container to name -- the none baseline -- but the state file
         // fact is universal (doc/specs/environment-report.md "State file").
         this.aggregate = new AggregateLevelControl(null, Optional::empty,
-                stateStore.location().map(Path::toString).orElse(null));
+                stateStore.location().map(Path::toString).orElse(null), () -> true, vendorDefaults);
 
         this.sweeper = Executors.newSingleThreadScheduledExecutor(NoneContainer::newDaemonThread);
         long intervalMillis = sweepInterval.toMillis();

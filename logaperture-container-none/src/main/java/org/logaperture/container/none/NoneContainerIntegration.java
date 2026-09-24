@@ -21,6 +21,7 @@ import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.SweepPolicy;
+import org.logaperture.core.VendorDefaults;
 import org.logaperture.core.spi.ContainerIntegration;
 import org.logaperture.core.spi.ContextHandle;
 
@@ -62,9 +63,9 @@ public final class NoneContainerIntegration implements ContainerIntegration {
 
     @Override
     public AggregateLevelControl activate(
-            Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog,
+            Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog, VendorDefaults vendorDefaults,
             Consumer<AggregateLevelControl> onFirstContextReady) {
-        NoneContainer root = new NoneContainer(policy, auditLog, sweepInterval);
+        NoneContainer root = new NoneContainer(policy, auditLog, sweepInterval, vendorDefaults);
 
         // Runs later, on the detector thread. Guard it: install failure must
         // degrade to a Diagnostics line, never an uncaught exception on that

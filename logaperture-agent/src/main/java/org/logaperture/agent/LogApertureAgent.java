@@ -32,10 +32,10 @@ public final class LogApertureAgent {
     }
 
     public static void premain(String agentArgs, Instrumentation inst) {
-        AgentBootstrap.start(inst);
+        AgentBootstrap.start(inst, agentArgs);
     }
 
     public static void agentmain(String agentArgs, Instrumentation inst) {
-        AgentBootstrap.start(inst);
+        AgentBootstrap.start(inst, agentArgs);
     }
 }

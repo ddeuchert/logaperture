@@ -18,6 +18,7 @@ package org.logaperture.core.spi;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.CapabilityPolicy;
+import org.logaperture.core.VendorDefaults;
 
 import java.lang.instrument.Instrumentation;
 import java.util.Optional;
@@ -70,8 +71,20 @@ public interface ContainerIntegration {
      * @param auditLog            the sink every mutation and reversion is recorded to
      * @param onFirstContextReady handed the aggregate once the first context is installed
      */
-    AggregateLevelControl activate(
+    default AggregateLevelControl activate(
             Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog,
+            Consumer<AggregateLevelControl> onFirstContextReady) {
+        return activate(inst, policy, auditLog, VendorDefaults.none(), onFirstContextReady);
+    }
+
+    /**
+     * {@link #activate(Instrumentation, CapabilityPolicy, AuditLog, Consumer)}, plus the vendor
+     * defaults file the agent parsed at {@code premain} (doc/specs/vendor-defaults.md "The
+     * baseline layer") -- applied by every context this integration installs, and reported by
+     * {@code logctl status}/{@code env}/{@code doctor}.
+     */
+    AggregateLevelControl activate(
+            Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog, VendorDefaults vendorDefaults,
             Consumer<AggregateLevelControl> onFirstContextReady);
 
     /** Where the {@code -javaagent} flag goes, for diagnostics and help. Default {@link InstallGuidance#NONE}. */

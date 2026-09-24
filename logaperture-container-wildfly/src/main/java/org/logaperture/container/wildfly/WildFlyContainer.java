@@ -37,6 +37,7 @@ import org.logaperture.core.RuleService;
 import org.logaperture.core.StormService;
 import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.TopService;
+import org.logaperture.core.VendorDefaults;
 import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
@@ -48,6 +49,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -87,6 +89,7 @@ public final class WildFlyContainer implements AutoCloseable {
     private final ScheduledExecutorService sweeper;
     private final Duration handlerInstallDelay;
     private final Clock clock;
+    private final VendorDefaults vendorDefaults;
     /** Set once, on the first {@link #installContext}; {@code null} until then (nothing to install yet). */
     private volatile Instant handlerInstallNotBefore;
     private final AtomicBoolean handlerInstallAnnounced = new AtomicBoolean();
@@ -124,7 +127,16 @@ public final class WildFlyContainer implements AutoCloseable {
      */
     WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
             Supplier<Optional<String>> containerVersion) {
-        this(policy, auditLog, sweepInterval, containerVersion, HandlerInstallPolicy.delay(), Clock.systemUTC());
+        this(policy, auditLog, sweepInterval, containerVersion, VendorDefaults.none());
+    }
+
+    /**
+     * @param vendorDefaults applied by every {@link #installContext} -- doc/specs/vendor-defaults.md
+     */
+    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+            Supplier<Optional<String>> containerVersion, VendorDefaults vendorDefaults) {
+        this(policy, auditLog, sweepInterval, containerVersion, HandlerInstallPolicy.delay(), Clock.systemUTC(),
+                vendorDefaults);
     }
 
     /**
@@ -135,13 +147,20 @@ public final class WildFlyContainer implements AutoCloseable {
      */
     WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
             Supplier<Optional<String>> containerVersion, Duration handlerInstallDelay, Clock clock) {
+        this(policy, auditLog, sweepInterval, containerVersion, handlerInstallDelay, clock, VendorDefaults.none());
+    }
+
+    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+            Supplier<Optional<String>> containerVersion, Duration handlerInstallDelay, Clock clock,
+            VendorDefaults vendorDefaults) {
         this.policy = policy;
+        this.vendorDefaults = Objects.requireNonNull(vendorDefaults, "vendorDefaults");
         this.auditLog = auditLog;
         this.handlerInstallDelay = handlerInstallDelay;
         this.clock = clock;
         this.stateStore = openStateStore();
         this.aggregate = new AggregateLevelControl(CONTAINER_NAME, containerVersion,
-                stateStore.location().map(Path::toString).orElse(null), this::handlerInstallAllowed);
+                stateStore.location().map(Path::toString).orElse(null), this::handlerInstallAllowed, vendorDefaults);
 
         this.sweeper = Executors.newSingleThreadScheduledExecutor(WildFlyContainer::newDaemonThread);
         long intervalMillis = sweepInterval.toMillis();

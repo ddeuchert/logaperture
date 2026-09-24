@@ -153,6 +153,13 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     private final BooleanSupplier handlerInstallAllowed;
 
     /**
+     * The vendor defaults file this JVM was started with -- doc/specs/vendor-defaults.md. Each
+     * context applies it at install; this copy is what {@code status}/{@code env}/{@code doctor}
+     * report on. {@link VendorDefaults#none()} when no file was configured.
+     */
+    private final VendorDefaults vendorDefaults;
+
+    /**
      * Set once {@link #installHandlerLevel()} has succeeded -- every step, none swallowed -- for at
      * least one context. A context whose steps threw is retried on a later sweep and does not count.
      */
@@ -192,10 +199,24 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     public AggregateLevelControl(String containerName, Supplier<Optional<String>> containerVersion,
             String stateFilePath, BooleanSupplier handlerInstallAllowed) {
+        this(containerName, containerVersion, stateFilePath, handlerInstallAllowed, VendorDefaults.none());
+    }
+
+    /**
+     * @param vendorDefaults the vendor defaults file this JVM was started with; see the field doc
+     */
+    public AggregateLevelControl(String containerName, Supplier<Optional<String>> containerVersion,
+            String stateFilePath, BooleanSupplier handlerInstallAllowed, VendorDefaults vendorDefaults) {
+        this.vendorDefaults = Objects.requireNonNull(vendorDefaults, "vendorDefaults");
         this.containerName = containerName;
         this.containerVersion = Objects.requireNonNull(containerVersion, "containerVersion");
         this.stateFilePath = stateFilePath;
         this.handlerInstallAllowed = Objects.requireNonNull(handlerInstallAllowed, "handlerInstallAllowed");
+    }
+
+    /** The vendor defaults file this JVM was started with ({@link VendorDefaults#none()} if none). */
+    public VendorDefaults vendorDefaults() {
+        return vendorDefaults;
     }
 
     /**
