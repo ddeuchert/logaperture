@@ -63,6 +63,9 @@ import java.time.Instant;
  * @param context           the owning logging context's stable key, or
  *                          {@code null} on a single-context service's own
  *                          rows ({@code AggregateLevelControl} stamps it)
+ * @param vendorDefault     the vendor defaults file's setting for this handler -- a level
+ *                          name or {@code "AUTO"} -- or {@code null} if the file doesn't name
+ *                          it (doc/specs/vendor-defaults.md "Surfaces")
  */
 public record HandlerInfo(
         String ref,
@@ -76,7 +79,8 @@ public record HandlerInfo(
         PersistenceTier overrideTier,
         Instant overrideExpiresAt,
         String membersSummary,
-        String context) {
+        String context,
+        String vendorDefault) {
 
     public HandlerInfo {
         if (ref == null || ref.isEmpty()) {
@@ -90,12 +94,21 @@ public record HandlerInfo(
             boolean overrideActive, Level overrideLevel, HandlerLevelMode overrideMode, PersistenceTier overrideTier,
             Instant overrideExpiresAt, String membersSummary) {
         this(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel, overrideMode, overrideTier,
-                overrideExpiresAt, membersSummary, null);
+                overrideExpiresAt, membersSummary, null, null);
+    }
+
+    /** Every field but {@code vendorDefault} -- the shape before doc/specs/vendor-defaults.md. */
+    public HandlerInfo(
+            String ref, Level level, boolean persistent, String targetPath, Boolean autoFlush,
+            boolean overrideActive, Level overrideLevel, HandlerLevelMode overrideMode, PersistenceTier overrideTier,
+            Instant overrideExpiresAt, String membersSummary, String context) {
+        this(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel, overrideMode, overrideTier,
+                overrideExpiresAt, membersSummary, context, null);
     }
 
     /** This same row, tagged with its owning context's stable key. */
     public HandlerInfo withContext(String context) {
         return new HandlerInfo(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel,
-                overrideMode, overrideTier, overrideExpiresAt, membersSummary, context);
+                overrideMode, overrideTier, overrideExpiresAt, membersSummary, context, vendorDefault);
     }
 }

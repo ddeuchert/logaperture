@@ -195,7 +195,8 @@ public final class WildFlyContainer implements AutoCloseable {
         OverrideRegistry overrides = new OverrideRegistry();
         ActiveLoggerFloor activeLoggerFloor = () -> List.copyOf(overrides.all().values());
         HandlerLevelControlService handlerService = new HandlerLevelControlService(adapter,
-                new HandlerBaselineRegistry(), new HandlerOverrideRegistry(), new DefaultHandlerGroupRegistry(),
+                new HandlerBaselineRegistry(vendorDefaults.handlers()), new HandlerOverrideRegistry(),
+                new DefaultHandlerGroupRegistry(vendorDefaults.defaultHandlers().orElse(List.of())),
                 policy, auditLog, stateStore, principal(), "jmx", activeLoggerFloor);
         // doc/specs/handler-floor-control.md "Resume resilience and
         // baseline-key migration" (issue #29): keep the baseline/override
@@ -216,6 +217,7 @@ public final class WildFlyContainer implements AutoCloseable {
 
         // doc/specs/vendor-defaults.md "Install order" -- see NoneContainer's identical call.
         service.applyVendorDefaults(Instant.now());
+        handlerService.applyVendorDefaults(Instant.now());
 
         try {
             service.resumeFromStateStore(Instant.now());

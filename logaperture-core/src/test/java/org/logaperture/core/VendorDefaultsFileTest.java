@@ -304,6 +304,20 @@ class VendorDefaultsFileTest {
     }
 
     @Test
+    void groupNames_areRejectedAsHandlers() {
+        List<String> errors = VendorDefaultsFile.parse("""
+                schemaVersion: 1
+                handlers:
+                  - name: ALL_HANDLERS
+                    level: WARN
+                defaultHandlers: [CONSOLE, DEFAULT_HANDLERS]
+                """, PATH, false).errors();
+
+        assertContains(errors, "line 3: ALL_HANDLERS is a group, not a handler");
+        assertContains(errors, "line 5: DEFAULT_HANDLERS is a group, not a handler");
+    }
+
+    @Test
     void emptyDefaultHandlers_isRejected() {
         assertContains(VendorDefaultsFile.parse("schemaVersion: 1\ndefaultHandlers: []\n", PATH, false).errors(),
                 "line 2: 'defaultHandlers' must name at least one handler");

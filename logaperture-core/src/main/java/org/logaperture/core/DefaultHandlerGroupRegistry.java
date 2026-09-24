@@ -47,11 +47,60 @@ import java.util.concurrent.atomic.AtomicReference;
  * state-file record) and audit (recording an explicit change) are {@link
  * HandlerLevelControlService}'s job, same division of labour {@link
  * HandlerOverrideRegistry} already keeps with its owning service.
+ *
+ * <p>Between the explicit assignment and the deterministic rule sits the vendor defaults file's
+ * {@code defaultHandlers} list (doc/specs/vendor-defaults.md "Default handlers"): explicit
+ * &rarr; vendor &rarr; rule. The vendor list is fixed for the JVM's life and never pruned or
+ * persisted; its members that don't resolve right now are simply skipped, and if none resolve
+ * the rule decides.
  */
 public final class DefaultHandlerGroupRegistry {
 
     /** {@code null} = stateless/rule-driven; non-null = explicit, persisted. */
     private final AtomicReference<Set<HandlerRef>> explicit = new AtomicReference<>();
+
+    /** The vendor defaults file's list; empty when the file doesn't set one. */
+    private final List<HandlerRef> vendorMembers;
+
+    public DefaultHandlerGroupRegistry() {
+        this(List.of());
+    }
+
+    /**
+     * @param vendorMembers the vendor defaults file's {@code defaultHandlers}, or empty
+     */
+    public DefaultHandlerGroupRegistry(List<HandlerRef> vendorMembers) {
+        this.vendorMembers = List.copyOf(vendorMembers);
+    }
+
+    /** The vendor defaults file's list, before resolution; empty if the file doesn't set one. */
+    public List<HandlerRef> vendorMembers() {
+        return vendorMembers;
+    }
+
+    /**
+     * Whether, with no explicit assignment, {@link #members} currently comes from the vendor
+     * list -- i.e. at least one of its members resolves against {@code adapter}.
+     */
+    public boolean vendorMembersInEffect(LoggingAdapter adapter) {
+        return explicit.get() == null && !resolvedVendorMembers(adapter).isEmpty();
+    }
+
+    private List<HandlerRef> resolvedVendorMembers(LoggingAdapter adapter) {
+        if (vendorMembers.isEmpty()) {
+            return List.of();
+        }
+        Set<HandlerRef> reals = Set.copyOf(adapter.realHandlers());
+        return vendorMembers.stream().filter(reals::contains).toList();
+    }
+
+    private List<HandlerRef> baselineMembers(LoggingAdapter adapter) {
+        List<HandlerRef> vendor = resolvedVendorMembers(adapter);
+        if (!vendor.isEmpty()) {
+            return vendor;
+        }
+        return DefaultHandlerSelector.select(adapter).map(List::of).orElse(List.of());
+    }
 
     /** The current explicit assignment, if any -- before any staleness pruning. */
     public Optional<Set<HandlerRef>> explicit() {
@@ -106,7 +155,7 @@ public final class DefaultHandlerGroupRegistry {
         while (true) {
             Set<HandlerRef> current = explicit.get();
             if (current == null) {
-                return DefaultHandlerSelector.select(adapter).map(List::of).orElse(List.of());
+                return baselineMembers(adapter);
             }
             Set<HandlerRef> reals = Set.copyOf(adapter.realHandlers());
             Set<HandlerRef> survivors = new LinkedHashSet<>();
@@ -123,7 +172,7 @@ public final class DefaultHandlerGroupRegistry {
                 if (!explicit.compareAndSet(current, null)) {
                     continue; // lost the race to a concurrent assignment/migration -- reread and retry
                 }
-                return DefaultHandlerSelector.select(adapter).map(List::of).orElse(List.of());
+                return baselineMembers(adapter);
             }
             if (survivors.size() < current.size()) {
                 // Partial staleness -- prune and keep the rest as the explicit

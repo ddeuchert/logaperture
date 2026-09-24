@@ -150,9 +150,10 @@ public final class NoneContainer implements AutoCloseable {
         // wires the two services together; neither references the other's
         // type).
         OverrideRegistry overrides = new OverrideRegistry();
-        HandlerBaselineRegistry handlerBaselines = new HandlerBaselineRegistry();
+        HandlerBaselineRegistry handlerBaselines = new HandlerBaselineRegistry(vendorDefaults.handlers());
         HandlerOverrideRegistry handlerOverrides = new HandlerOverrideRegistry();
-        DefaultHandlerGroupRegistry defaultHandlerGroup = new DefaultHandlerGroupRegistry();
+        DefaultHandlerGroupRegistry defaultHandlerGroup =
+                new DefaultHandlerGroupRegistry(vendorDefaults.defaultHandlers().orElse(List.of()));
         ActiveLoggerFloor activeLoggerFloor = () -> List.copyOf(overrides.all().values());
         HandlerLevelControlService handlerService = new HandlerLevelControlService(
                 adapter, handlerBaselines, handlerOverrides, defaultHandlerGroup, policy, auditLog, stateStore,
@@ -174,6 +175,7 @@ public final class NoneContainer implements AutoCloseable {
         // doc/specs/vendor-defaults.md "Install order": the vendor layer goes on after native
         // baseline capture (above) and before persisted state resumes on top of it (below).
         service.applyVendorDefaults(Instant.now());
+        handlerService.applyVendorDefaults(Instant.now());
 
         try {
             // Per-entry failures are already isolated inside

@@ -231,7 +231,9 @@ public final class VendorDefaultsFile {
                 }
             }
             String reason = optionalText(entry, "reason");
-            if (name != null && !seenHandlerNames.add(name)) {
+            if (name != null && isGroupName(name)) {
+                error(line(entry, "name"), name + " is a group, not a handler -- name each handler instead");
+            } else if (name != null && !seenHandlerNames.add(name)) {
                 error(line(entry, "name"), "handler '" + name + "' is listed twice");
             }
             if (errors.size() == before) {
@@ -253,6 +255,9 @@ public final class VendorDefaultsFile {
             for (Node item : list.items()) {
                 if (!(item instanceof ScalarNode scalar) || scalar.value().isBlank()) {
                     error(item.line(), "each 'defaultHandlers' item must be a handler name");
+                    ok = false;
+                } else if (isGroupName(scalar.value())) {
+                    error(item.line(), scalar.value() + " is a group, not a handler -- name each handler instead");
                     ok = false;
                 } else if (!seen.add(scalar.value())) {
                     error(item.line(), "handler '" + scalar.value() + "' is listed twice in defaultHandlers");
@@ -496,6 +501,10 @@ public final class VendorDefaultsFile {
                 return null;
             }
             return scalar.value();
+        }
+
+        private static boolean isGroupName(String name) {
+            return name.equals(HandlerRef.ALL_HANDLERS.value()) || name.equals(HandlerRef.DEFAULT_HANDLERS.value());
         }
 
         private void unknownFields(MapNode entry, Set<String> allowed, String what) {
