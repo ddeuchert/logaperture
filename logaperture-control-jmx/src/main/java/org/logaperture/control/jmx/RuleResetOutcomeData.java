@@ -25,15 +25,28 @@ public final class RuleResetOutcomeData {
 
     private final List<String> removedIds;
     private final List<String> skippedStickyIds;
+    private final List<String> skippedVendorIds;
+
+    /** Every field, including {@code skippedVendorIds} (doc/specs/vendor-defaults.md "Rules"). */
+    @ConstructorProperties({"removedIds", "skippedStickyIds", "skippedVendorIds"})
+    public RuleResetOutcomeData(List<String> removedIds, List<String> skippedStickyIds, List<String> skippedVendorIds) {
+        this.removedIds = removedIds;
+        this.skippedStickyIds = skippedStickyIds;
+        this.skippedVendorIds = skippedVendorIds == null ? List.of() : skippedVendorIds;
+    }
 
     @ConstructorProperties({"removedIds", "skippedStickyIds"})
     public RuleResetOutcomeData(List<String> removedIds, List<String> skippedStickyIds) {
-        this.removedIds = removedIds;
-        this.skippedStickyIds = skippedStickyIds;
+        this(removedIds, skippedStickyIds, List.of());
     }
 
     public static RuleResetOutcomeData from(RuleResetOutcome outcome) {
-        return new RuleResetOutcomeData(outcome.removedIds(), outcome.skippedStickyIds());
+        return new RuleResetOutcomeData(outcome.removedIds(), outcome.skippedStickyIds(), outcome.skippedVendorIds());
+    }
+
+    /** Vendor defaults rule ids left in place because {@code --include-vendor-defaults} wasn't given. */
+    public List<String> getSkippedVendorIds() {
+        return skippedVendorIds;
     }
 
     public List<String> getRemovedIds() {

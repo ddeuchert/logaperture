@@ -52,14 +52,21 @@ public final class RuleData {
     private final long hitCount;
     private final Integer frames;
     private final Boolean collapseCauses;
+    private final String origin;
+    private final boolean suspended;
 
+    /**
+     * Every field, including {@code origin}/{@code suspended} (doc/specs/vendor-defaults.md
+     * "Rules"); the narrower constructor below stays annotated for older clients
+     * (logaperture-spec.md §11.1).
+     */
     @ConstructorProperties({"id", "loggerName", "action", "levelAtMost", "messageContains", "messageIgnoreCase",
             "throwableType", "throwableMessageContains", "anyCause", "reason", "tier", "expiresAt", "createdAt",
-            "context", "hitCount", "frames", "collapseCauses"})
+            "context", "hitCount", "frames", "collapseCauses", "origin", "suspended"})
     public RuleData(String id, String loggerName, String action, String levelAtMost, String messageContains,
             boolean messageIgnoreCase, String throwableType, String throwableMessageContains, boolean anyCause,
             String reason, String tier, String expiresAt, String createdAt, String context, long hitCount,
-            Integer frames, Boolean collapseCauses) {
+            Integer frames, Boolean collapseCauses, String origin, boolean suspended) {
         this.id = id;
         this.loggerName = loggerName;
         this.action = action;
@@ -77,6 +84,20 @@ public final class RuleData {
         this.hitCount = hitCount;
         this.frames = frames;
         this.collapseCauses = collapseCauses;
+        this.origin = origin;
+        this.suspended = suspended;
+    }
+
+    @ConstructorProperties({"id", "loggerName", "action", "levelAtMost", "messageContains", "messageIgnoreCase",
+            "throwableType", "throwableMessageContains", "anyCause", "reason", "tier", "expiresAt", "createdAt",
+            "context", "hitCount", "frames", "collapseCauses"})
+    public RuleData(String id, String loggerName, String action, String levelAtMost, String messageContains,
+            boolean messageIgnoreCase, String throwableType, String throwableMessageContains, boolean anyCause,
+            String reason, String tier, String expiresAt, String createdAt, String context, long hitCount,
+            Integer frames, Boolean collapseCauses) {
+        this(id, loggerName, action, levelAtMost, messageContains, messageIgnoreCase, throwableType,
+                throwableMessageContains, anyCause, reason, tier, expiresAt, createdAt, context, hitCount, frames,
+                collapseCauses, null, false);
     }
 
     public static RuleData from(RuleView view) {
@@ -99,7 +120,19 @@ public final class RuleData {
                 view.context(),
                 view.hitCount(),
                 rule instanceof Trim trim ? trim.frames() : null,
-                rule instanceof Trim trim ? trim.collapseCauses() : null);
+                rule instanceof Trim trim ? trim.collapseCauses() : null,
+                view.origin(),
+                view.suspended());
+    }
+
+    /** {@code "vendor-defaults"} for a rule from the vendor defaults file, else {@code null}. */
+    public String getOrigin() {
+        return origin;
+    }
+
+    /** A vendor rule switched off until restart. */
+    public boolean isSuspended() {
+        return suspended;
     }
 
     public String getId() {

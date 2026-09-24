@@ -36,6 +36,7 @@ import org.logaperture.api.SampleFullPolicy;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
+import org.logaperture.api.Severity;
 import org.logaperture.api.SquelchedLogger;
 import org.logaperture.api.Storm;
 import org.logaperture.api.StormReport;
@@ -325,14 +326,51 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     @Override
     public List<DoctorFinding> diagnose() {
-        List<DoctorFinding> result = new ArrayList<>();
+        List<DoctorFinding> result = new ArrayList<>(vendorDefaultsFindings());
         for (ContextControl context : sortedByKey()) {
             String key = context.stableKey();
             for (DoctorFinding finding : context.doctorService().diagnose()) {
                 result.add(finding.withContext(key));
             }
+            for (HandlerRef pending : context.handlerService().pendingVendorHandlers()) {
+                result.add(new DoctorFinding("vendor-defaults.unresolved-handler", Severity.INFO, pending.value(),
+                        "the vendor defaults file sets handler '" + pending.value() + "', but no such handler "
+                                + "exists in this context yet.",
+                        "it will be applied as soon as the handler appears; if it never does, check the name "
+                                + "against 'logctl list handlers --show-all'.",
+                        null).withContext(key));
+            }
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * doc/specs/vendor-defaults.md "Surfaces": the file is process-wide, so its findings carry no
+     * context. Nothing at all when no file was configured.
+     */
+    private List<DoctorFinding> vendorDefaultsFindings() {
+        String path = vendorDefaults.path().map(Object::toString).orElse(null);
+        return switch (vendorDefaults.status()) {
+            case NOT_CONFIGURED -> List.of();
+            case REJECTED -> List.of(new DoctorFinding("vendor-defaults.file", Severity.WARNING, path,
+                    "the vendor defaults file was rejected -- none of its settings apply.",
+                    String.join("\n", vendorDefaults.errors()),
+                    "correct the file and restart the application."));
+            case LOADED -> {
+                List<DoctorFinding> findings = new ArrayList<>();
+                findings.add(new DoctorFinding("vendor-defaults.file", Severity.OK, path,
+                        "vendor defaults loaded (" + vendorDefaults.summary() + ").", null, null));
+                if (vendorDefaults.writable()) {
+                    findings.add(new DoctorFinding("vendor-defaults.writable", Severity.WARNING, path,
+                            "the vendor defaults file, or its directory, is writable by the account this JVM runs "
+                                    + "as.",
+                            "anyone who can run code as that account can change the baseline logging "
+                                    + "configuration.",
+                            "make the file and its directory read-only for this account."));
+                }
+                yield List.copyOf(findings);
+            }
+        };
     }
 
     /**
@@ -596,7 +634,9 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 containerName,
                 resolveContainerVersion(),
                 System.getProperty(DIAGNOSTICS_LEVEL_PROPERTY),
-                stateFilePath);
+                stateFilePath,
+                vendorDefaults.path().map(Object::toString).orElse(null),
+                vendorDefaults.statusLine());
     }
 
     /** {@link #containerVersion}'s supplier is third-party code (a {@code ContainerIntegration}'s own); a throw there must degrade the same as a throwing adapter, never fail the whole report. */

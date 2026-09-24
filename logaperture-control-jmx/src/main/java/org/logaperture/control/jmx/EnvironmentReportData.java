@@ -40,13 +40,22 @@ public final class EnvironmentReportData {
     private final String containerVersion;
     private final String diagnosticsLevel;
     private final String stateFilePath;
+    private final String vendorDefaultsPath;
+    private final String vendorDefaultsStatus;
 
+    /**
+     * Every field, including the vendor defaults pair (doc/specs/vendor-defaults.md "Surfaces");
+     * the narrower constructor below stays annotated for older clients (logaperture-spec.md §11.1).
+     */
     @ConstructorProperties({"agentVersion", "javaVersion", "javaVendor", "osName", "osVersion", "osArch",
             "backendName", "backendVersion", "containerName", "containerVersion", "diagnosticsLevel",
-            "stateFilePath"})
+            "stateFilePath", "vendorDefaultsPath", "vendorDefaultsStatus"})
     public EnvironmentReportData(String agentVersion, String javaVersion, String javaVendor, String osName,
             String osVersion, String osArch, String backendName, String backendVersion, String containerName,
-            String containerVersion, String diagnosticsLevel, String stateFilePath) {
+            String containerVersion, String diagnosticsLevel, String stateFilePath, String vendorDefaultsPath,
+            String vendorDefaultsStatus) {
+        this.vendorDefaultsPath = vendorDefaultsPath;
+        this.vendorDefaultsStatus = vendorDefaultsStatus;
         this.agentVersion = agentVersion;
         this.javaVersion = javaVersion;
         this.javaVendor = javaVendor;
@@ -59,6 +68,26 @@ public final class EnvironmentReportData {
         this.containerVersion = containerVersion;
         this.diagnosticsLevel = diagnosticsLevel;
         this.stateFilePath = stateFilePath;
+    }
+
+    @ConstructorProperties({"agentVersion", "javaVersion", "javaVendor", "osName", "osVersion", "osArch",
+            "backendName", "backendVersion", "containerName", "containerVersion", "diagnosticsLevel",
+            "stateFilePath"})
+    public EnvironmentReportData(String agentVersion, String javaVersion, String javaVendor, String osName,
+            String osVersion, String osArch, String backendName, String backendVersion, String containerName,
+            String containerVersion, String diagnosticsLevel, String stateFilePath) {
+        this(agentVersion, javaVersion, javaVendor, osName, osVersion, osArch, backendName, backendVersion,
+                containerName, containerVersion, diagnosticsLevel, stateFilePath, null, null);
+    }
+
+    /** The vendor defaults file's absolute path, or {@code null} if none was configured. */
+    public String getVendorDefaultsPath() {
+        return vendorDefaultsPath;
+    }
+
+    /** {@code "not configured"}, {@code "loaded (...)"} or {@code "rejected (N errors)"}; {@code null} from an older agent. */
+    public String getVendorDefaultsStatus() {
+        return vendorDefaultsStatus;
     }
 
     public static EnvironmentReportData from(EnvironmentReport report) {
@@ -74,7 +103,9 @@ public final class EnvironmentReportData {
                 report.containerName(),
                 report.containerVersion(),
                 report.diagnosticsLevel(),
-                report.stateFilePath());
+                report.stateFilePath(),
+                report.vendorDefaultsPath(),
+                report.vendorDefaultsStatus());
     }
 
     public String getAgentVersion() {

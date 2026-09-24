@@ -38,7 +38,7 @@ class JsonTest {
         assertEquals(
                 "{\"name\":\"com.acme\",\"configuredLevel\":null,\"effectiveLevel\":\"INFO\","
                         + "\"overrideActive\":false,\"overrideSource\":null,\"overrideReason\":null,"
-                        + "\"tier\":null,\"expiresAt\":null}",
+                        + "\"tier\":null,\"expiresAt\":null,\"vendorDefaultLevel\":null}",
                 Json.logger(row));
     }
 
@@ -185,11 +185,11 @@ class JsonTest {
                 "{\"handlers\":[{\"ref\":\"ALL_HANDLERS\",\"level\":null,\"persistent\":false,\"targetPath\":null,"
                         + "\"autoFlush\":null,\"overrideActive\":false,\"overrideLevel\":null,\"overrideMode\":null,"
                         + "\"overrideTier\":null,"
-                        + "\"overrideExpiresAt\":null,\"membersSummary\":null,\"context\":\"system\"},"
+                        + "\"overrideExpiresAt\":null,\"membersSummary\":null,\"context\":\"system\",\"vendorDefault\":null},"
                         + "{\"ref\":\"FILE\",\"level\":\"INFO\",\"persistent\":true,\"targetPath\":\"/var/log/server.log\","
                         + "\"autoFlush\":true,\"overrideActive\":true,\"overrideLevel\":\"DEBUG\",\"overrideMode\":\"FIXED\","
                         + "\"overrideTier\":\"FOR\","
-                        + "\"overrideExpiresAt\":\"2026-09-07T14:32:00Z\",\"membersSummary\":null,\"context\":\"system\"}]}",
+                        + "\"overrideExpiresAt\":\"2026-09-07T14:32:00Z\",\"membersSummary\":null,\"context\":\"system\",\"vendorDefault\":null}]}",
                 Json.handlers(List.of(allHandlers, file)));
     }
 
@@ -213,7 +213,8 @@ class JsonTest {
                         + "\"osArch\":\"x86_64\",\"backendName\":\"JBoss LogManager\","
                         + "\"backendVersion\":\"3.1.1.Final\",\"containerName\":\"WildFly\","
                         + "\"containerVersion\":\"34.0.1.Final\",\"diagnosticsLevel\":\"INFO\","
-                        + "\"stateFilePath\":\"/home/alice/.logaperture/instances/abc123-app.state.yaml\"}",
+                        + "\"stateFilePath\":\"/home/alice/.logaperture/instances/abc123-app.state.yaml\","
+                        + "\"vendorDefaultsPath\":null,\"vendorDefaultsStatus\":null}",
                 Json.env(report, "0.1.0-alpha.2"));
     }
 

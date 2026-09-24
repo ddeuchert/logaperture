@@ -250,6 +250,20 @@ public interface LevelControlMXBean {
     RuleResetOutcomeData resetRulesForLogger(String loggerName, boolean includeSticky);
 
     /**
+     * {@link #resetRule(String, boolean)}, plus doc/specs/vendor-defaults.md "Rules": a vendor
+     * defaults rule ({@code vendor:<name>}) refuses unless {@code includeVendorDefaults}, and is
+     * then suspended until restart rather than removed. A new overload, not a changed signature
+     * (logaperture-spec.md §11.1).
+     */
+    RuleData resetRule(String id, boolean includeSticky, boolean includeVendorDefaults);
+
+    /** {@link #resetAllRules(boolean)}; vendor rules are skipped and reported unless {@code includeVendorDefaults}. */
+    RuleResetOutcomeData resetAllRules(boolean includeSticky, boolean includeVendorDefaults);
+
+    /** {@link #resetRulesForLogger(String, boolean)}; vendor rules as in {@link #resetAllRules(boolean, boolean)}. */
+    RuleResetOutcomeData resetRulesForLogger(String loggerName, boolean includeSticky, boolean includeVendorDefaults);
+
+    /**
      * {@code logctl add rule drop} — doc/specs/drop-rule.md "Command
      * surface". {@code target} is an exact logger name (leading-star
      * pattern-target expansion is deferred past this pass — see that

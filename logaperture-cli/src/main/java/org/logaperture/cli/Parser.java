@@ -56,6 +56,7 @@ final class Parser {
         boolean version = false;
         boolean debug = false;
         boolean includeSticky = false;
+        boolean includeVendorDefaults = false;
         boolean showAll = false;
         String reason = null;
         Integer limit = null;
@@ -79,6 +80,7 @@ final class Parser {
                 case "--debug" -> debug = true;
                 case "--yes" -> yes = true;
                 case "--include-sticky" -> includeSticky = true;
+                case "--include-vendor-defaults" -> includeVendorDefaults = true;
                 case "--show-all" -> showAll = true;
                 case "--any-cause" -> anyCause = true;
                 case "--no-sample-full" -> noSampleFull = true;
@@ -236,6 +238,13 @@ final class Parser {
         if (reason != null && !isSetLogger && !isSetHandler && !isAddRuleDrop && !isAddRuleTrim) {
             throw usage("--reason applies only to 'set logger', 'set handler', 'add rule drop', or 'add rule trim'.");
         }
+        if (includeVendorDefaults && !(command.equals("reset") && !rest.isEmpty()
+                && List.of("logger", "rule", "rules").contains(rest.get(0)))) {
+            // doc/specs/vendor-defaults.md "Rules": only rule resets reach vendor defaults rules --
+            // a vendor logger or handler level is simply the baseline a reset lands on.
+            throw usage("--include-vendor-defaults applies only to 'reset rule', 'reset rules' and "
+                    + "'reset logger'.");
+        }
         if (includeSticky && !command.equals("reset")) {
             throw usage("--include-sticky applies only to 'reset'.");
         }
@@ -339,7 +348,7 @@ final class Parser {
                         if (nounRest.size() != 1) {
                             throw usage("'reset logger' needs exactly one target.");
                         }
-                        yield Commands.resetLogger(nounRest.get(0), includeSticky, json);
+                        yield Commands.resetLogger(nounRest.get(0), includeSticky, includeVendorDefaults, json);
                     }
                     case "loggers" -> {
                         if (!nounRest.isEmpty()) {
@@ -363,13 +372,13 @@ final class Parser {
                         if (nounRest.size() != 1) {
                             throw usage("'reset rule' needs exactly one id.");
                         }
-                        yield Commands.resetRule(nounRest.get(0), includeSticky, json);
+                        yield Commands.resetRule(nounRest.get(0), includeSticky, includeVendorDefaults, json);
                     }
                     case "rules" -> {
                         if (!nounRest.isEmpty()) {
                             throw usage("'reset rules' takes no arguments.");
                         }
-                        yield Commands.resetAllRules(includeSticky, json);
+                        yield Commands.resetAllRules(includeSticky, includeVendorDefaults, json);
                     }
                     case "default-handler" -> {
                         if (!nounRest.isEmpty()) {

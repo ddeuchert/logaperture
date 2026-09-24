@@ -230,6 +230,15 @@ public final class VendorDefaults {
         };
     }
 
+    /** {@code logctl env}'s status line: {@code "not configured"}, {@code "loaded (<summary>)"} or {@code "rejected (N errors)"}. */
+    public String statusLine() {
+        return switch (status) {
+            case NOT_CONFIGURED -> "not configured";
+            case LOADED -> "loaded (" + summary() + ")";
+            case REJECTED -> "rejected (" + errors.size() + (errors.size() == 1 ? " error" : " errors") + ")";
+        };
+    }
+
     private static String count(int n, String noun) {
         return n + " " + noun + (n == 1 ? "" : "s");
     }

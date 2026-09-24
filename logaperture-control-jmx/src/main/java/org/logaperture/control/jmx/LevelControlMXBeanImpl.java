@@ -187,6 +187,24 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
+    public RuleData resetRule(String id, boolean includeSticky, boolean includeVendorDefaults) {
+        Optional<RuleView> removed = ruleOperations.resetRule(id, includeSticky, includeVendorDefaults);
+        return removed.map(RuleData::from).orElse(null);
+    }
+
+    @Override
+    public RuleResetOutcomeData resetAllRules(boolean includeSticky, boolean includeVendorDefaults) {
+        return RuleResetOutcomeData.from(ruleOperations.resetAllRules(includeSticky, includeVendorDefaults));
+    }
+
+    @Override
+    public RuleResetOutcomeData resetRulesForLogger(String loggerName, boolean includeSticky,
+            boolean includeVendorDefaults) {
+        return RuleResetOutcomeData.from(
+                ruleOperations.resetRulesForLogger(loggerName, includeSticky, includeVendorDefaults));
+    }
+
+    @Override
     public RuleData addRuleDrop(String target, String messageContains, boolean messageIgnoreCase,
             String throwableType, String throwableMessageContains, boolean anyCause, String belowLevel,
             boolean sampleFullEnabled, long sampleFullEveryMillis, String reason, String tier, long forSeconds) {

@@ -475,6 +475,12 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         recomputeVendorAuto(explicit);
     }
 
+    /** Vendor-defaulted handlers that haven't resolved since install -- {@code doctor}'s informational finding (Decision M7). */
+    public List<HandlerRef> pendingVendorHandlers() {
+        return baselines.vendorDefaults().stream().map(VendorDefaults.HandlerDefault::ref)
+                .filter(pendingVendor::contains).toList();
+    }
+
     private boolean hasVendorAuto() {
         return baselines.vendorDefaults().stream().anyMatch(d -> d.mode() == HandlerLevelMode.AUTO);
     }
