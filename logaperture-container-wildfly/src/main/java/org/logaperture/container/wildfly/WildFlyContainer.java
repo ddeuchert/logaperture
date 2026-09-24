@@ -218,6 +218,7 @@ public final class WildFlyContainer implements AutoCloseable {
         // doc/specs/vendor-defaults.md "Install order" -- see NoneContainer's identical call.
         service.applyVendorDefaults(Instant.now());
         handlerService.applyVendorDefaults(Instant.now());
+        ruleService.attachVendorRules(vendorDefaults.rules(), Instant.now());
 
         try {
             service.resumeFromStateStore(Instant.now());

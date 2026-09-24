@@ -239,17 +239,17 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     }
 
     @Override
-    public synchronized Optional<RuleView> resetRule(String id, boolean includeSticky) {
+    public synchronized Optional<RuleView> resetRule(String id, boolean includeSticky, boolean includeVendorDefaults) {
         return Optional.empty();
     }
 
     @Override
-    public synchronized RuleResetOutcome resetAllRules(boolean includeSticky) {
+    public synchronized RuleResetOutcome resetAllRules(boolean includeSticky, boolean includeVendorDefaults) {
         return RuleResetOutcome.nothingReset();
     }
 
     @Override
-    public synchronized RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky) {
+    public synchronized RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky, boolean includeVendorDefaults) {
         return RuleResetOutcome.nothingReset();
     }
 

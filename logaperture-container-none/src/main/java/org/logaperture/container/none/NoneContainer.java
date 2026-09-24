@@ -176,6 +176,7 @@ public final class NoneContainer implements AutoCloseable {
         // baseline capture (above) and before persisted state resumes on top of it (below).
         service.applyVendorDefaults(Instant.now());
         handlerService.applyVendorDefaults(Instant.now());
+        ruleService.attachVendorRules(vendorDefaults.rules(), Instant.now());
 
         try {
             // Per-entry failures are already isolated inside

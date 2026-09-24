@@ -426,7 +426,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 // defaulted hitCount back to 0, discarding what RuleService just computed (a
                 // code-review finding: every rule showed HITS=0 in production regardless of how
                 // many events it had actually matched).
-                result.add(new RuleView(view.rule(), key, view.hitCount()));
+                result.add(view.withContext(key));
             }
         }
         return List.copyOf(result);
@@ -449,11 +449,11 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * first refusal abort the whole call).
      */
     @Override
-    public Optional<RuleView> resetRule(String id, boolean includeSticky) {
+    public Optional<RuleView> resetRule(String id, boolean includeSticky, boolean includeVendorDefaults) {
         IllegalArgumentException stickyRefusal = null;
         for (ContextControl context : sortedByKey()) {
             try {
-                Optional<RuleView> removed = context.ruleService().resetRule(id, includeSticky);
+                Optional<RuleView> removed = context.ruleService().resetRule(id, includeSticky, includeVendorDefaults);
                 if (removed.isPresent()) {
                     return removed;
                 }
@@ -468,27 +468,33 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     }
 
     @Override
-    public RuleResetOutcome resetAllRules(boolean includeSticky) {
+    public RuleResetOutcome resetAllRules(boolean includeSticky, boolean includeVendorDefaults) {
         List<String> removed = new ArrayList<>();
         List<String> skippedSticky = new ArrayList<>();
+        List<String> skippedVendor = new ArrayList<>();
         for (ContextControl context : sortedByKey()) {
-            RuleResetOutcome outcome = context.ruleService().resetAllRules(includeSticky);
+            RuleResetOutcome outcome = context.ruleService().resetAllRules(includeSticky, includeVendorDefaults);
             removed.addAll(outcome.removedIds());
             skippedSticky.addAll(outcome.skippedStickyIds());
+            skippedVendor.addAll(outcome.skippedVendorIds());
         }
-        return new RuleResetOutcome(removed, skippedSticky);
+        return new RuleResetOutcome(removed, skippedSticky, skippedVendor);
     }
 
     @Override
-    public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky) {
+    public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky,
+            boolean includeVendorDefaults) {
         List<String> removed = new ArrayList<>();
         List<String> skippedSticky = new ArrayList<>();
+        List<String> skippedVendor = new ArrayList<>();
         for (ContextControl context : sortedByKey()) {
-            RuleResetOutcome outcome = context.ruleService().resetRulesForLogger(loggerName, includeSticky);
+            RuleResetOutcome outcome =
+                    context.ruleService().resetRulesForLogger(loggerName, includeSticky, includeVendorDefaults);
             removed.addAll(outcome.removedIds());
             skippedSticky.addAll(outcome.skippedStickyIds());
+            skippedVendor.addAll(outcome.skippedVendorIds());
         }
-        return new RuleResetOutcome(removed, skippedSticky);
+        return new RuleResetOutcome(removed, skippedSticky, skippedVendor);
     }
 
     /**

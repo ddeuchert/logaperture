@@ -29,17 +29,30 @@ import java.util.Objects;
  *                         always empty for a single-id {@code reset rule},
  *                         which refuses outright instead (mirrors {@link
  *                         ResetOutcome}'s Decision #1)
+ * @param skippedVendorIds vendor defaults rule ids left in place because
+ *                         {@code includeVendorDefaults} wasn't passed --
+ *                         doc/specs/vendor-defaults.md "Rules". With it,
+ *                         a vendor rule is suspended until restart and
+ *                         listed in {@code removedIds}.
  */
-public record RuleResetOutcome(List<String> removedIds, List<String> skippedStickyIds) {
+public record RuleResetOutcome(List<String> removedIds, List<String> skippedStickyIds,
+        List<String> skippedVendorIds) {
 
     public RuleResetOutcome {
         Objects.requireNonNull(removedIds, "removedIds");
         Objects.requireNonNull(skippedStickyIds, "skippedStickyIds");
+        Objects.requireNonNull(skippedVendorIds, "skippedVendorIds");
         removedIds = List.copyOf(removedIds);
         skippedStickyIds = List.copyOf(skippedStickyIds);
+        skippedVendorIds = List.copyOf(skippedVendorIds);
     }
 
-    private static final RuleResetOutcome NOTHING_RESET = new RuleResetOutcome(List.of(), List.of());
+    /** Every field but {@code skippedVendorIds} -- the shape before doc/specs/vendor-defaults.md. */
+    public RuleResetOutcome(List<String> removedIds, List<String> skippedStickyIds) {
+        this(removedIds, skippedStickyIds, List.of());
+    }
+
+    private static final RuleResetOutcome NOTHING_RESET = new RuleResetOutcome(List.of(), List.of(), List.of());
 
     public static RuleResetOutcome nothingReset() {
         return NOTHING_RESET;

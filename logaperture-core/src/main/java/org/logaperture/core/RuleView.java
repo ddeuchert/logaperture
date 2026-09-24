@@ -33,11 +33,27 @@ import org.logaperture.api.LogRule;
  *                 doc/specs/drop-rule.md "Safety set", filtering-epic.md
  *                 Decision #9 ("hit counts are per event"). {@code 0} for a
  *                 rule that has never matched.
+ * @param origin   {@code "vendor-defaults"} for a rule from the vendor defaults
+ *                 file, {@code null} for one an operator added --
+ *                 doc/specs/vendor-defaults.md "Rules"
+ * @param suspended a vendor rule switched off until restart with {@code
+ *                 --include-vendor-defaults} (Decision M4); always {@code
+ *                 false} for an operator rule
  */
-public record RuleView(LogRule rule, String context, long hitCount) {
+public record RuleView(LogRule rule, String context, long hitCount, String origin, boolean suspended) {
 
     /** {@code hitCount} defaults to {@code 0} -- most call sites outside {@link RuleService} itself just tag a context. */
     public RuleView(LogRule rule, String context) {
         this(rule, context, 0L);
+    }
+
+    /** An operator rule: no origin, never suspended. */
+    public RuleView(LogRule rule, String context, long hitCount) {
+        this(rule, context, hitCount, null, false);
+    }
+
+    /** This same row, stamped with its owning context's stable key. */
+    public RuleView withContext(String context) {
+        return new RuleView(rule, context, hitCount, origin, suspended);
     }
 }

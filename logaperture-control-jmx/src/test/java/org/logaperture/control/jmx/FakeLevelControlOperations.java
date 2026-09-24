@@ -224,17 +224,17 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     }
 
     @Override
-    public Optional<RuleView> resetRule(String id, boolean includeSticky) {
+    public Optional<RuleView> resetRule(String id, boolean includeSticky, boolean includeVendorDefaults) {
         return resetRuleToReturn;
     }
 
     @Override
-    public RuleResetOutcome resetAllRules(boolean includeSticky) {
+    public RuleResetOutcome resetAllRules(boolean includeSticky, boolean includeVendorDefaults) {
         return resetAllRulesToReturn;
     }
 
     @Override
-    public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky) {
+    public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky, boolean includeVendorDefaults) {
         return resetRulesForLoggerToReturn;
     }
 
