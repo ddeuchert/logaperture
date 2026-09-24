@@ -1,7 +1,11 @@
 # WildFly: defer handler installs until the server's logging is configured (issue #86)
 
 Status: **signed off 2026-09-23** — D1–D6 accepted as recommended ("Decisions agreed" below).
-Nothing is implemented yet.
+**Implemented** on `feature/86-defer-handler-install`: `HandlerInstallPolicy`,
+`AggregateLevelControl.installHandlerLevel()` and its gate, and `WildFlyContainer`'s floor and
+one-shot; unit-tested (`HandlerInstallPolicyTest`, `AggregateLevelControlTest`,
+`DeferredHandlerInstallTest`). The real-WildFly IT and the run on the reporting launch remain the
+exit criterion.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §15.6 (WildFly, the premain
 gotcha), §15.5 (the re-application invariant), §18.14 (filtering events logged before the
 container's logging is ready).
@@ -111,7 +115,8 @@ WildFly ([`level-control.md`](level-control.md) "Failure handling").
   reduction (`trim`), `top`'s byte counts and storm detection wait for phase 2. A rule's hit
   count stays 0 until then.
 - The server's log says so: an `INFO` line at install ("handler-level install deferred for
-  `N`s") and one at activation ("handler-level install complete: `n` handlers") (D4).
+  `N`s") and one at activation ("handler-level install complete (`n` handlers)") (D4). With
+  `handlerInstallDelaySeconds=0` neither line is written, since nothing was deferred.
 
 ## Docs to update with the change
 

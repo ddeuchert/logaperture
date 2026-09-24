@@ -126,6 +126,9 @@ class WildFlyContainerIT {
         // its --add-opens/--add-exports -- so append one line to standalone.conf.
         // -Dlogaperture.sweep.seconds=3 tightens the verification-sweep window
         // so the management-CLI-collision test does not wait 30s.
+        // -Dlogaperture.handlerInstallDelaySeconds=3 likewise shortens the 20s default
+        // hold-back on handler-level installs (doc/specs/wildfly-deferred-handler-install.md)
+        // so the drop/trim scenarios, which add rules right after boot, need not wait for it.
         // -Dlogaperture.home points the agent's state store at a runtime-writable
         // dir, same fix and same reason as dev/wildfly/docker-compose.yml: this
         // image's $HOME (/opt/jboss) is owned by root, not writable by the jboss
@@ -136,6 +139,7 @@ class WildFlyContainerIT {
         // concrete to assert against and this suite's own env test caught it.
         String bootScript = "echo 'JAVA_OPTS=\"$JAVA_OPTS -javaagent:/opt/logaperture-agent.jar"
                 + " -Dlogaperture.sweep.seconds=3"
+                + " -Dlogaperture.handlerInstallDelaySeconds=3"
                 + " -Dlogaperture.home=/opt/jboss/wildfly/standalone/tmp/logaperture\"'"
                 + " >> \"$JBOSS_HOME/bin/standalone.conf\" && exec \"$JBOSS_HOME/bin/standalone.sh\" -b 0.0.0.0";
 

@@ -314,7 +314,11 @@ final class FakeLoggingAdapter implements LoggingAdapter {
 
     @Override
     public void installByteCounting() {
+        handlerInstallOrder.add("top");
         installByteCountingCalls++;
+        if (throwOnInstallByteCounting) {
+            throw new RuntimeException("simulated adapter failure for installByteCounting()");
+        }
     }
 
     @Override
@@ -355,6 +359,32 @@ final class FakeLoggingAdapter implements LoggingAdapter {
 
     @Override
     public void installStormDetection(StormObserver detector) {
+        handlerInstallOrder.add("storm");
         installStormDetectionCalls++;
+    }
+
+    // --- handler-level install order (doc/specs/wildfly-deferred-handler-install.md) --------------
+
+    private final List<String> handlerInstallOrder = new ArrayList<>();
+    private boolean throwOnInstallByteCounting;
+
+    /** The handler-level installs this adapter has been asked for, in call order: trim, top, storm, pipeline. */
+    List<String> handlerInstallOrder() {
+        return List.copyOf(handlerInstallOrder);
+    }
+
+    /** Makes every subsequent {@link #installByteCounting()} call throw, to exercise chaos-case behavior. */
+    void throwOnInstallByteCounting() {
+        this.throwOnInstallByteCounting = true;
+    }
+
+    @Override
+    public void installTrimRendering(RuleGate gate) {
+        handlerInstallOrder.add("trim");
+    }
+
+    @Override
+    public void installRulePipeline(RuleGate gate) {
+        handlerInstallOrder.add("pipeline");
     }
 }

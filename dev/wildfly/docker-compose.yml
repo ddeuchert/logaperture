@@ -62,6 +62,7 @@ services:
         -agentlib:jdwp=transport=dt_socket,server=y,suspend=${DEBUG_SUSPEND:-n},address=*:8787
         -javaagent:/opt/logaperture-agent.jar
         -Dlogaperture.sweep.seconds=${LOGAPERTURE_SWEEP_SECONDS:-5}
+        -Dlogaperture.handlerInstallDelaySeconds=${LOGAPERTURE_HANDLER_DELAY_SECONDS:-3}
         -Dlogaperture.home=/opt/jboss/wildfly/standalone/tmp/logaperture"'
         >> "$$JBOSS_HOME/bin/standalone.conf"
         && exec "$$JBOSS_HOME/bin/standalone.sh" -b 0.0.0.0 -bmanagement 0.0.0.0

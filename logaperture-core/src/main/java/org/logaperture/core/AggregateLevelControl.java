@@ -53,6 +53,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 /**
@@ -144,6 +145,16 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     private final String stateFilePath;
 
+    /**
+     * Whether {@link #installHandlerLevel()} may run yet -- the container's
+     * floor (doc/specs/wildfly-deferred-handler-install.md). Always-true for
+     * a container with no reason to defer ({@code none}).
+     */
+    private final BooleanSupplier handlerInstallAllowed;
+
+    /** Set once {@link #installHandlerLevel()} has actually run against at least one context. */
+    private volatile boolean handlerLevelInstalled;
+
     /** No container, no known state file — the minimal construction tests reach for; production always supplies both (even {@code none} passes its real {@code StateStore} location through the 3-arg constructor). */
     public AggregateLevelControl() {
         this(null, Optional::empty, null);
@@ -161,9 +172,20 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     public AggregateLevelControl(String containerName, Supplier<Optional<String>> containerVersion,
             String stateFilePath) {
+        this(containerName, containerVersion, stateFilePath, () -> true);
+    }
+
+    /**
+     * @param handlerInstallAllowed gates {@link #installHandlerLevel()} and the
+     *                              handler-level half of {@link #verificationSweep};
+     *                              see the field doc
+     */
+    public AggregateLevelControl(String containerName, Supplier<Optional<String>> containerVersion,
+            String stateFilePath, BooleanSupplier handlerInstallAllowed) {
         this.containerName = containerName;
         this.containerVersion = Objects.requireNonNull(containerVersion, "containerVersion");
         this.stateFilePath = stateFilePath;
+        this.handlerInstallAllowed = Objects.requireNonNull(handlerInstallAllowed, "handlerInstallAllowed");
     }
 
     /**
@@ -939,44 +961,85 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     public int verificationSweep(Instant now) {
         int reapplied = 0;
+        boolean handlersOpen = handlerInstallAllowed.getAsBoolean();
         for (ContextControl context : sortedByKey()) {
             reapplied += context.service().verifyAndReapply(now);
             reapplied += context.handlerService().verifyAndReapply(now);
-            try {
-                // Must run before topService.startMeasuring() below -- doc/specs/trim-rule.md
-                // "Interaction with top": trim's formatter wrap installs inside top's, so top
-                // measures the bytes actually written post-trim. Same guard as storm
-                // detection/rule pipeline below: this runs from a scheduled tick with nothing
-                // above it to catch a throw.
-                context.ruleService().installTrimRendering();
-            } catch (RuntimeException e) {
-                System.err.println("[logaperture-core] failed to (re-)arm trim rendering for context '"
-                        + context.stableKey() + "', that context is unchanged: " + e);
-            }
-            context.topService().startMeasuring();
-            try {
-                // Newer, less battle-tested than startMeasuring() above, and this runs from a
-                // ScheduledExecutorService.scheduleAtFixedRate task with nothing above it to catch a
-                // throw -- an uncaught exception here would silently cancel every future sweep tick
-                // for every context, not just storm tracking (doc/specs/storm-detection.md "Failure
-                // handling": a detector bug must never break anything else).
-                context.stormService().startDetection();
-            } catch (RuntimeException e) {
-                System.err.println("[logaperture-core] failed to (re-)arm storm detection for context '"
-                        + context.stableKey() + "', that context is unchanged: " + e);
-            }
-            try {
-                // Same guard as storm detection above and for the same reason
-                // (doc/specs/rule-pipeline-foundation.md "Relationship to the
-                // storm-detection filter"): this runs from a scheduled tick
-                // with nothing above it to catch a throw.
-                context.ruleService().installPipeline();
-            } catch (RuntimeException e) {
-                System.err.println("[logaperture-core] failed to (re-)arm the rule pipeline for context '"
-                        + context.stableKey() + "', that context is unchanged: " + e);
+            if (handlersOpen) {
+                installHandlerLevel(context);
+                handlerLevelInstalled = true;
             }
         }
         return reapplied;
+    }
+
+    /**
+     * Phase 2 of a container's install -- the steps that put a filter or
+     * formatter on a handler: trim rendering, top's byte counting, storm
+     * detection, the rule pipeline, in that order for every registered
+     * context (doc/specs/wildfly-deferred-handler-install.md "Two phases").
+     * Held back until the container's {@code handlerInstallAllowed} gate opens;
+     * every step is idempotent, so this is safe to call from the container, the
+     * sweep and the configuration listener alike.
+     *
+     * @return {@code true} if the gate was open and phase 2 ran; {@code false} if it was held back
+     */
+    public boolean installHandlerLevel() {
+        if (!handlerInstallAllowed.getAsBoolean()) {
+            return false;
+        }
+        List<ContextControl> contexts = sortedByKey();
+        for (ContextControl context : contexts) {
+            installHandlerLevel(context);
+        }
+        if (!contexts.isEmpty()) {
+            handlerLevelInstalled = true;
+        }
+        return true;
+    }
+
+    /** {@code true} once {@link #installHandlerLevel()} has run against at least one context. */
+    public boolean isHandlerLevelInstalled() {
+        return handlerLevelInstalled;
+    }
+
+    /**
+     * Every step is guarded on its own: this runs from a scheduled tick (and the
+     * container's one-shot) with nothing above it to catch a throw, and a failure
+     * here must neither cancel future ticks nor reach the host server -- it is
+     * simply retried on the next tick.
+     */
+    private static void installHandlerLevel(ContextControl context) {
+        try {
+            // Must run before topService.startMeasuring() below -- doc/specs/trim-rule.md
+            // "Interaction with top": trim's formatter wrap installs inside top's, so top
+            // measures the bytes actually written post-trim.
+            context.ruleService().installTrimRendering();
+        } catch (RuntimeException e) {
+            System.err.println("[logaperture-core] failed to (re-)arm trim rendering for context '"
+                    + context.stableKey() + "', that context is unchanged: " + e);
+        }
+        try {
+            context.topService().startMeasuring();
+        } catch (RuntimeException e) {
+            System.err.println("[logaperture-core] failed to (re-)arm byte counting for context '"
+                    + context.stableKey() + "', that context is unchanged: " + e);
+        }
+        try {
+            // doc/specs/storm-detection.md "Failure handling": a detector bug must never break
+            // anything else.
+            context.stormService().startDetection();
+        } catch (RuntimeException e) {
+            System.err.println("[logaperture-core] failed to (re-)arm storm detection for context '"
+                    + context.stableKey() + "', that context is unchanged: " + e);
+        }
+        try {
+            // doc/specs/rule-pipeline-foundation.md "Relationship to the storm-detection filter".
+            context.ruleService().installPipeline();
+        } catch (RuntimeException e) {
+            System.err.println("[logaperture-core] failed to (re-)arm the rule pipeline for context '"
+                    + context.stableKey() + "', that context is unchanged: " + e);
+        }
     }
 
     private List<ContextControl> sortedByKey() {
