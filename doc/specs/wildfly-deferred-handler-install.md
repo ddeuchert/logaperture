@@ -1,7 +1,7 @@
 # WildFly: defer handler installs until the server's logging is configured (issue #86)
 
-Status: **DRAFT — not yet signed off.** Nothing is implemented. Six decisions are open (D1–D6,
-"Decisions to agree" below).
+Status: **signed off 2026-09-23** — D1–D6 accepted as recommended ("Decisions agreed" below).
+Nothing is implemented yet.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §15.6 (WildFly, the premain
 gotcha), §15.5 (the re-application invariant), §18.14 (filtering events logged before the
 container's logging is ready).
@@ -145,9 +145,11 @@ The reporting launch boots cleanly five times running with LogAperture first, st
 and `trim` rules apply after the delay, the unit tests and `WildFlyContainerIT` pass, and the
 docs above are updated in the same change.
 
-## Decisions to agree
+## Decisions agreed
 
-| # | Decision | Recommendation |
+All six accepted as recommended, 2026-09-23.
+
+| # | Decision | Agreed |
 |---|---|---|
 | D1 | What triggers phase 2 | One-shot at the floor, plus the existing sweep tick and config listener after the floor. Alternatives: the first sweep tick only (up to 30 s, no new timer); a positive "server has bootstrapped" signal (nothing observed to key on yet — see #87). |
 | D2 | The floor value | 20 s default (the only value observed safe), tunable, `0` disables the deferral. Alternative: a lower default — untested, could reintroduce the abort. |
