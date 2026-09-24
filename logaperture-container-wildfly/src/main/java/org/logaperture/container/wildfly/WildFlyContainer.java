@@ -27,6 +27,7 @@ import org.logaperture.core.DoctorService;
 import org.logaperture.core.EnvironmentReportService;
 import org.logaperture.core.FileStateStore;
 import org.logaperture.core.HandlerBaselineRegistry;
+import org.logaperture.core.HandlerInstallPolicy;
 import org.logaperture.core.HandlerLevelControlService;
 import org.logaperture.core.HandlerOverrideRegistry;
 import org.logaperture.core.LevelControlService;
@@ -43,13 +44,16 @@ import org.logaperture.core.spi.StateStore;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 /**
@@ -81,6 +85,13 @@ public final class WildFlyContainer implements AutoCloseable {
     private final StateStore stateStore;
     private final AggregateLevelControl aggregate;
     private final ScheduledExecutorService sweeper;
+    private final Duration handlerInstallDelay;
+    private final Clock clock;
+    /** Set once, on the first {@link #installContext}; {@code null} until then (nothing to install yet). */
+    private volatile Instant handlerInstallNotBefore;
+    private final AtomicBoolean handlerInstallAnnounced = new AtomicBoolean();
+    /** The one-shot that runs phase 2 at the floor; cancelled on close so a pending delay never holds shutdown up. */
+    private volatile ScheduledFuture<?> handlerInstallTask;
 
     /** This class only ever represents WildFly, so {@link AggregateLevelControl}'s container name is always {@code "WildFly"} -- never left null by a constructor that doesn't happen to know a version. */
     private static final String CONTAINER_NAME = "WildFly";
@@ -113,11 +124,24 @@ public final class WildFlyContainer implements AutoCloseable {
      */
     WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
             Supplier<Optional<String>> containerVersion) {
+        this(policy, auditLog, sweepInterval, containerVersion, HandlerInstallPolicy.delay(), Clock.systemUTC());
+    }
+
+    /**
+     * @param handlerInstallDelay how long after the first context installs to hold back the
+     *                            handler-level installs; see {@link HandlerInstallPolicy}
+     * @param clock               the floor's time source -- injectable so tests can move
+     *                            past it without waiting
+     */
+    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+            Supplier<Optional<String>> containerVersion, Duration handlerInstallDelay, Clock clock) {
         this.policy = policy;
         this.auditLog = auditLog;
+        this.handlerInstallDelay = handlerInstallDelay;
+        this.clock = clock;
         this.stateStore = openStateStore();
         this.aggregate = new AggregateLevelControl(CONTAINER_NAME, containerVersion,
-                stateStore.location().map(Path::toString).orElse(null));
+                stateStore.location().map(Path::toString).orElse(null), this::handlerInstallAllowed);
 
         this.sweeper = Executors.newSingleThreadScheduledExecutor(WildFlyContainer::newDaemonThread);
         long intervalMillis = sweepInterval.toMillis();
@@ -136,6 +160,7 @@ public final class WildFlyContainer implements AutoCloseable {
      * JBoss LogManager has no reset event; the verification sweep covers it.
      */
     public void installContext(ContextHandle handle) {
+        startHandlerInstallFloor();
         LoggingAdapter adapter = handle.adapter();
 
         BaselineRegistry baselines = new BaselineRegistry();
@@ -185,47 +210,98 @@ public final class WildFlyContainer implements AutoCloseable {
         DoctorService doctorService = new DoctorService(adapter, policy);
         EnvironmentReportService environmentReportService = new EnvironmentReportService(adapter, policy);
 
-        // doc/specs/trim-rule.md: same always-on discipline as top/storm/the rule pipeline below,
-        // and must run before topService.startMeasuring() -- doc/specs/trim-rule.md "Interaction
-        // with top": trim's formatter wrap installs inside top's, so top measures the bytes
-        // actually written post-trim. No adapter reset wiring here either -- the periodic
-        // verification sweep re-confirms this on every tick regardless.
-        try {
-            ruleService.installTrimRendering();
-        } catch (RuntimeException e) {
-            Diagnostics.warn("LogAperture: failed to install trim rendering for this context, continuing without it", e);
-        }
-
+        // Phase 1 ends here (doc/specs/wildfly-deferred-handler-install.md "Two phases"): the
+        // services below are constructed, not started. Trim rendering, top's byte counting, storm
+        // detection and the rule pipeline all put a filter or formatter on a handler, and doing
+        // that on the boot handlers before jboss-modules has started aborted a real launch -- so
+        // they run as phase 2 (AggregateLevelControl.installHandlerLevel), after the floor.
         TopService topService = new TopService(adapter, policy);
-        // doc/specs/top.md: always-on from the moment this context comes up.
-        // No adapter reset wiring here either -- same reasoning as above, the
-        // periodic verification sweep (AggregateLevelControl.verificationSweep)
-        // re-confirms the byte-counting wrap on every tick regardless.
-        topService.startMeasuring();
-
         StormService stormService = new StormService(adapter, policy);
-        // doc/specs/storm-detection.md: same always-on discipline as top; the
-        // periodic verification sweep re-confirms the gate-stage observer.
-        // Guarded, unlike topService.startMeasuring() above: this call sits before
-        // aggregate.register() below, so a throw here (unlike an adapter bug reached from the
-        // sweep, which only affects one tick) would otherwise drop this entire deployment's
-        // context -- levels, handlers, doctor and top included, not just storm tracking.
-        try {
-            stormService.startDetection();
-        } catch (RuntimeException e) {
-            Diagnostics.warn("LogAperture: failed to arm storm detection for this context, continuing without it", e);
-        }
-
-        // doc/specs/rule-pipeline-foundation.md: same always-on discipline and same guard as storm
-        // detection above.
-        try {
-            ruleService.installPipeline();
-        } catch (RuntimeException e) {
-            Diagnostics.warn("LogAperture: failed to install the rule pipeline for this context, continuing without it", e);
-        }
 
         aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService,
                 stormService, ruleService, environmentReportService));
+
+        // With no deferral configured (delay 0) this installs immediately, as before this change.
+        installHandlerLevelNow();
+    }
+
+    /**
+     * Phase 2: puts the handler-level installs in place if the floor has passed, otherwise does
+     * nothing (the one-shot task, a sweep tick or the configuration listener will get there).
+     * Never throws.
+     */
+    void installHandlerLevelNow() {
+        try {
+            aggregate.installHandlerLevel();
+        } catch (RuntimeException e) {
+            Diagnostics.warn("LogAperture: handler-level install failed, will retry on the next sweep", e);
+        }
+        announceHandlerLevelIfInstalled();
+    }
+
+    /**
+     * The one-shot. It is timed on the monotonic clock while the floor is checked on the wall
+     * clock, so a wall-clock step or slew can wake it fractionally early; if the gate is still
+     * closed, try again for the time that is left instead of waiting for the next sweep tick.
+     */
+    private void runScheduledHandlerInstall() {
+        installHandlerLevelNow();
+        Instant notBefore = handlerInstallNotBefore;
+        if (notBefore == null || handlerInstallAllowed()) {
+            return;
+        }
+        long remainingMillis = Math.max(50, Duration.between(clock.instant(), notBefore).toMillis());
+        try {
+            handlerInstallTask = sweeper.schedule(
+                    this::runScheduledHandlerInstall, remainingMillis, TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.RejectedExecutionException alreadyShutDown) {
+            // close() won -- nothing to do
+        }
+    }
+
+    /** The floor: no handler-level install before {@code handlerInstallNotBefore}. */
+    private boolean handlerInstallAllowed() {
+        Instant notBefore = handlerInstallNotBefore;
+        return notBefore != null && !clock.instant().isBefore(notBefore);
+    }
+
+    /**
+     * Starts the floor the first time a context is installed -- "after the readiness gate
+     * passes" (doc/specs/wildfly-deferred-handler-install.md D2): the gate is what invokes
+     * {@code installContext}. Also schedules the one-shot that makes time-to-effect
+     * deterministic (D1); the sweep tick and the configuration listener are backstops.
+     */
+    private synchronized void startHandlerInstallFloor() {
+        if (handlerInstallNotBefore != null) {
+            return;
+        }
+        handlerInstallNotBefore = clock.instant().plus(handlerInstallDelay);
+        if (handlerInstallDelay.isZero()) {
+            return;
+        }
+        Diagnostics.info("LogAperture: handler-level install deferred for " + handlerInstallDelay.toSeconds() + "s");
+        try {
+            handlerInstallTask = sweeper.schedule(
+                    this::runScheduledHandlerInstall, handlerInstallDelay.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.RejectedExecutionException alreadyShutDown) {
+            // close() won -- nothing to do
+        }
+    }
+
+    /** Logs, once, that phase 2 has run -- but only when it was actually deferred. */
+    private void announceHandlerLevelIfInstalled() {
+        if (handlerInstallDelay.isZero() || !aggregate.isHandlerLevelInstalled()
+                || !handlerInstallAnnounced.compareAndSet(false, true)) {
+            return;
+        }
+        int handlers;
+        try {
+            handlers = aggregate.listHandlers().size();
+        } catch (RuntimeException e) {
+            handlers = -1;
+        }
+        Diagnostics.info("LogAperture: handler-level install complete"
+                + (handlers >= 0 ? " (" + handlers + " handlers)" : ""));
     }
 
     /**
@@ -236,8 +312,12 @@ public final class WildFlyContainer implements AutoCloseable {
      * blocked on our work.
      */
     void runVerificationSweepNow() {
+        Runnable sweepNow = () -> {
+            aggregate.verificationSweep(Instant.now());
+            announceHandlerLevelIfInstalled();
+        };
         try {
-            sweeper.execute(() -> aggregate.verificationSweep(Instant.now()));
+            sweeper.execute(sweepNow);
         } catch (java.util.concurrent.RejectedExecutionException alreadyShutDown) {
             // close() won -- nothing to do
         }
@@ -247,6 +327,7 @@ public final class WildFlyContainer implements AutoCloseable {
         Instant now = Instant.now();
         aggregate.sweepExpiredOverrides(now);
         aggregate.verificationSweep(now);
+        announceHandlerLevelIfInstalled();
         // doc/specs/drop-rule.md "Periodic summary line".
         aggregate.reportDueDropSummaries(now);
     }
@@ -280,6 +361,10 @@ public final class WildFlyContainer implements AutoCloseable {
 
     @Override
     public void close() {
+        ScheduledFuture<?> pendingInstall = handlerInstallTask;
+        if (pendingInstall != null) {
+            pendingInstall.cancel(false);
+        }
         sweeper.shutdown();
         try {
             sweeper.awaitTermination(5, TimeUnit.SECONDS);

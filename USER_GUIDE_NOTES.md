@@ -17,9 +17,12 @@ are absorbed into the real guide.
   org.jboss.as.standalone`) happen every time. Cause: installing our filters/formatters on the
   JBoss handlers at `premain` (see `doc/spikes/early-handler-install.md`, issue #86). If startup
   fails with LogAperture first, try moving it later, or `-Dlogaperture.disabled=true` to confirm.
-- On WildFly, rules take effect once the server's logging is configured, not at `premain`, so
-  events logged in the first seconds of boot (including other agents' `premain` logging) can't be
-  trimmed or dropped.
+- On WildFly, `drop`/`trim` rules (and `top`'s byte counts, storm detection) take effect
+  `-Dlogaperture.handlerInstallDelaySeconds` seconds (default 20) after the agent installs, not at
+  `premain`, so events logged in the first seconds of boot (including other agents' `premain`
+  logging) can't be trimmed or dropped. Levels apply immediately. Set it to `0` on a launch where
+  an early install is known to work and boot-time trimming matters; the server log says when the
+  deferred install completes.
 - Early events from other agents may not go through JUL/JBoss LogManager at all
   (own formatter, console, private buffer); if so they are out of reach. The fix
   then belongs in the emitting agent's configuration.

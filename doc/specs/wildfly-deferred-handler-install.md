@@ -1,7 +1,11 @@
 # WildFly: defer handler installs until the server's logging is configured (issue #86)
 
 Status: **signed off 2026-09-23** — D1–D6 accepted as recommended ("Decisions agreed" below).
-Nothing is implemented yet.
+**Implemented** on `feature/86-defer-handler-install`: `HandlerInstallPolicy`,
+`AggregateLevelControl.installHandlerLevel()` and its gate, and `WildFlyContainer`'s floor and
+one-shot; unit-tested (`HandlerInstallPolicyTest`, `AggregateLevelControlTest`,
+`DeferredHandlerInstallTest`). The real-WildFly IT and the run on the reporting launch remain the
+exit criterion.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §15.6 (WildFly, the premain
 gotcha), §15.5 (the re-application invariant), §18.14 (filtering events logged before the
 container's logging is ready).
@@ -84,8 +88,9 @@ is safe by construction.
 ### What triggers phase 2, and the floor (D1, D2)
 
 Phase 2 must not run before a **floor**: `logaperture.handlerInstallDelaySeconds` after the
-readiness gate passes (default **20**; `0` = no deferral, i.e. today's behavior; clamped
-0..600). 20 s is the only delay the spike observed to boot cleanly (`defer-jul`, delaying
+readiness gate passes (default **20**; `0` = no deferral, i.e. today's behavior; above 600 is
+clamped to 600; a negative or non-numeric value falls back to 20 with a message on stderr — never
+silently to `0`, which would switch the protection off). 20 s is the only delay the spike observed to boot cleanly (`defer-jul`, delaying
 everything by 20 s); smaller values were not tested, so the default does not go below it.
 
 Once the floor has passed, phase 2 runs on the **first** of:
@@ -100,6 +105,12 @@ must not run phase 2 *before* the floor, and after it they are harmless repeats 
 floor is a property of the container, not the callers: a `phase2Allowed()` check (floor
 elapsed) guards the single phase-2 method for whichever caller reaches it.
 
+The one-shot is timed on the monotonic clock while the floor is checked on the wall clock; if it
+fires before the floor by the latter, it reschedules for the time left rather than waiting for a
+sweep. Phase 2 calls are serialized, since each step is check-then-wrap and the installing thread,
+the one-shot, the sweep and the listener can all reach it. A context counts as installed only when
+every step succeeded; the "complete" line is logged once, on the first success.
+
 If phase 2 throws, it logs and is retried on the next sweep tick; it never propagates into
 WildFly ([`level-control.md`](level-control.md) "Failure handling").
 
@@ -111,7 +122,8 @@ WildFly ([`level-control.md`](level-control.md) "Failure handling").
   reduction (`trim`), `top`'s byte counts and storm detection wait for phase 2. A rule's hit
   count stays 0 until then.
 - The server's log says so: an `INFO` line at install ("handler-level install deferred for
-  `N`s") and one at activation ("handler-level install complete: `n` handlers") (D4).
+  `N`s") and one at activation ("handler-level install complete (`n` handlers)") (D4). With
+  `handlerInstallDelaySeconds=0` neither line is written, since nothing was deferred.
 
 ## Docs to update with the change
 

@@ -39,6 +39,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -643,6 +644,69 @@ class AggregateLevelControlTest {
         assertEquals(1, aggregate.contextCount());
         assertFalse(aggregate.hasContext("myapp.war"));
         assertFalse(sharedStore.loadAll().isEmpty(), "an undeploy is not a reset");
+    }
+
+    // --- handler-level install gate (doc/specs/wildfly-deferred-handler-install.md) ----------------
+
+    @Test
+    void installHandlerLevel_isHeldBackUntilTheGateOpens_thenInstallsInTheFixedOrder() {
+        AtomicBoolean gate = new AtomicBoolean(false);
+        AggregateLevelControl gated = new AggregateLevelControl(null, Optional::empty, null, gate::get);
+        Ctx ctx = new Ctx("system");
+        gated.register(ctx.control);
+
+        assertFalse(gated.installHandlerLevel(), "held back while the gate is closed");
+        assertEquals(List.of(), ctx.adapter.handlerInstallOrder());
+        assertFalse(gated.isHandlerLevelInstalled());
+
+        gate.set(true);
+        assertTrue(gated.installHandlerLevel());
+
+        assertEquals(List.of("trim", "top", "storm", "pipeline"), ctx.adapter.handlerInstallOrder());
+        assertTrue(gated.isHandlerLevelInstalled());
+    }
+
+    @Test
+    void verificationSweep_doesNotInstallHandlerLevelWhileTheGateIsClosed_butStillReappliesLevels() {
+        AtomicBoolean gate = new AtomicBoolean(false);
+        AggregateLevelControl gated = new AggregateLevelControl(null, Optional::empty, null, gate::get);
+        Ctx ctx = new Ctx("system");
+        gated.register(ctx.control);
+        gated.setLogger("com.shared.Util", Level.DEBUG, SetLevelOptions.sticky());
+        ctx.adapter.applyLevel("com.shared.Util", Level.INFO); // drift
+
+        int reapplied = gated.verificationSweep(Instant.now());
+
+        assertEquals(1, reapplied, "level re-application is phase 1 and is never held back");
+        assertEquals(List.of(), ctx.adapter.handlerInstallOrder());
+
+        gate.set(true);
+        gated.verificationSweep(Instant.now());
+
+        assertEquals(List.of("trim", "top", "storm", "pipeline"), ctx.adapter.handlerInstallOrder());
+    }
+
+    @Test
+    void installHandlerLevel_aStepThatThrowsDoesNotStopTheRemainingSteps() {
+        AggregateLevelControl gated = new AggregateLevelControl(null, Optional::empty, null, () -> true);
+        Ctx ctx = new Ctx("system");
+        ctx.adapter.throwOnInstallByteCounting();
+        gated.register(ctx.control);
+
+        assertTrue(gated.installHandlerLevel(), "a failing step must not propagate");
+
+        assertEquals(List.of("trim", "top", "storm", "pipeline"), ctx.adapter.handlerInstallOrder());
+        assertFalse(gated.isHandlerLevelInstalled(), "a swallowed failure must not count as installed");
+    }
+
+    @Test
+    void anAggregateWithNoGate_installsHandlerLevelFromTheSweepAsBefore() {
+        Ctx ctx = new Ctx("system");
+        aggregate.register(ctx.control);
+
+        aggregate.verificationSweep(Instant.now());
+
+        assertEquals(List.of("trim", "top", "storm", "pipeline"), ctx.adapter.handlerInstallOrder());
     }
 
     // --- expiry sweep fan-out ---------------------------------------------------------------------
