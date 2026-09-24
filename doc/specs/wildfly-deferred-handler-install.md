@@ -8,7 +8,7 @@ one-shot; unit-tested (`HandlerInstallPolicyTest`, `AggregateLevelControlTest`,
 exit criterion.
 **Revised 2026-09-24 (issue #87):** mechanism found — the handler-name resolver, not the
 handlers; fixed at the source, and the delay's default drops to `0` (D7, D8, "Revision:
-mechanism found" below). Revision pending sign-off.
+mechanism found" below). D7–D8 signed off 2026-09-24.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §15.6 (WildFly, the premain
 gotcha), §15.5 (the re-application invariant), §18.14 (filtering events logged before the
 container's logging is ready).
@@ -205,8 +205,8 @@ docs above are updated in the same change.
 
 ## Decisions agreed
 
-D1–D6 accepted as recommended, 2026-09-23. D7–D8 (#87 revision) proposed 2026-09-24,
-pending sign-off; D8 supersedes D2's default.
+D1–D6 accepted as recommended, 2026-09-23. D7–D8 (#87 revision) accepted as
+recommended 2026-09-24; D8 supersedes D2's default.
 
 | # | Decision | Agreed |
 |---|---|---|
