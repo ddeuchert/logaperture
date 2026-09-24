@@ -103,6 +103,7 @@ public final class LevelControlService implements LevelControlOperations {
 
         TreeSet<String> names = new TreeSet<>(adapter.knownLoggerNames());
         names.addAll(overrides.all().keySet());
+        names.addAll(baselines.vendorLoggerNames());
 
         List<LoggerInfo> result = new ArrayList<>();
         for (String name : names) {
@@ -120,7 +121,9 @@ public final class LevelControlService implements LevelControlOperations {
                     override.map(LevelOverride::source).orElse(null),
                     override.map(LevelOverride::reason).orElse(null),
                     override.map(LevelOverride::tier).orElse(null),
-                    override.map(LevelOverride::expiresAt).orElse(null)));
+                    override.map(LevelOverride::expiresAt).orElse(null),
+                    null,
+                    baselines.vendorLevel(name).orElse(null)));
         }
         return List.copyOf(result);
     }
@@ -504,8 +507,40 @@ public final class LevelControlService implements LevelControlOperations {
      * tests, per doc/specs/level-control.md's re-appliability note.
      */
     public void reapplyActiveOverrides(LoggingAdapter targetAdapter) {
+        // The vendor layer first, for loggers no override covers -- doc/specs/vendor-defaults.md
+        // "Reconfiguration and the verification sweep": a framework reset erased it too.
+        for (String name : baselines.vendorLoggerNames()) {
+            if (overrides.get(name).isEmpty()) {
+                targetAdapter.applyLevel(name, baselines.vendorLevel(name).orElseThrow());
+            }
+        }
         for (LevelOverride override : overrides.all().values()) {
             OverrideApplier.apply(override, targetAdapter);
+        }
+    }
+
+    /**
+     * Applies the vendor defaults file's logger levels -- doc/specs/vendor-defaults.md "Loggers".
+     * Runs once, at composition-root install time, after native baseline capture and before
+     * {@link #resumeFromStateStore}, so persisted overrides land on top. Each logger's native
+     * baseline is captured first, so the application's own value is never read back as the
+     * vendor's. Eager (Decision M1): a logger that doesn't exist yet is configured now. No
+     * capability check (vendor-config-epic.md Decision #11); one {@code "vendor-defaults"} audit
+     * record per logger. A logger whose apply throws is skipped, the rest still apply.
+     */
+    public void applyVendorDefaults(Instant now) {
+        for (String name : baselines.vendorLoggerNames()) {
+            try {
+                baselines.captureIfAbsent(name, adapter);
+                Level vendorLevel = baselines.vendorLevel(name).orElseThrow();
+                String previousValue = adapter.effectiveLevel(name).toString();
+                adapter.applyLevel(name, vendorLevel);
+                auditLog.record(new AuditRecord(now, principal, VendorDefaults.AUDIT_SOURCE, name, previousValue,
+                        vendorLevel.toString(), null, AuditRecord.Action.MUTATION));
+            } catch (RuntimeException e) {
+                System.err.println("[logaperture] failed to apply the vendor default for logger '" + name
+                        + "', skipping it: " + e);
+            }
         }
     }
 
@@ -565,6 +600,37 @@ public final class LevelControlService implements LevelControlOperations {
             auditLog.record(new AuditRecord(
                     now, principal, "verification-sweep", loggerName, current.toString(),
                     override.level().toString(), override.reason(), AuditRecord.Action.MUTATION));
+            reapplied++;
+        }
+        return reapplied + verifyVendorLayer(now);
+    }
+
+    /**
+     * The verification sweep's vendor half -- doc/specs/vendor-defaults.md "Reconfiguration and
+     * the verification sweep": a vendor-defaulted logger with no override whose configured level
+     * no longer matches the vendor level is re-applied. Same re-check-after-apply discipline as
+     * the override half: if an override appeared meanwhile, it wins.
+     */
+    private int verifyVendorLayer(Instant now) {
+        int reapplied = 0;
+        for (String loggerName : baselines.vendorLoggerNames()) {
+            if (overrides.get(loggerName).isPresent()) {
+                continue;
+            }
+            Level vendorLevel = baselines.vendorLevel(loggerName).orElseThrow();
+            Optional<Level> current = adapter.configuredLevel(loggerName);
+            if (current.isPresent() && current.get() == vendorLevel) {
+                continue;
+            }
+            adapter.applyLevel(loggerName, vendorLevel);
+            Optional<LevelOverride> raced = overrides.get(loggerName);
+            if (raced.isPresent()) {
+                OverrideApplier.apply(raced.get(), adapter);
+                continue;
+            }
+            auditLog.record(new AuditRecord(now, principal, "verification-sweep", loggerName,
+                    current.map(Level::toString).orElse("<inherited>"), vendorLevel.toString(), null,
+                    AuditRecord.Action.MUTATION));
             reapplied++;
         }
         return reapplied;

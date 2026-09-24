@@ -52,6 +52,9 @@ import java.time.Instant;
  *                         stamps the real key ({@link #withContext}) on every
  *                         row it returns, so it is never {@code null} on the
  *                         control-plane path
+ * @param vendorDefaultLevel the vendor defaults file's level for this logger, or {@code
+ *                         null} if the file doesn't name it -- doc/specs/vendor-defaults.md
+ *                         "Surfaces"; {@code configuredLevel} stays the application's own
  */
 public record LoggerInfo(
         String name,
@@ -62,7 +65,8 @@ public record LoggerInfo(
         String overrideReason,
         PersistenceTier overrideTier,
         Instant overrideExpiresAt,
-        String context) {
+        String context,
+        Level vendorDefaultLevel) {
 
     public LoggerInfo {
         if (name == null || name.isEmpty()) {
@@ -88,12 +92,27 @@ public record LoggerInfo(
             PersistenceTier overrideTier,
             Instant overrideExpiresAt) {
         this(name, configuredLevel, effectiveLevel, overrideActive, overrideSource, overrideReason,
-                overrideTier, overrideExpiresAt, null);
+                overrideTier, overrideExpiresAt, null, null);
+    }
+
+    /** Every field but {@code vendorDefaultLevel} -- the shape before doc/specs/vendor-defaults.md. */
+    public LoggerInfo(
+            String name,
+            Level configuredLevel,
+            Level effectiveLevel,
+            boolean overrideActive,
+            String overrideSource,
+            String overrideReason,
+            PersistenceTier overrideTier,
+            Instant overrideExpiresAt,
+            String context) {
+        this(name, configuredLevel, effectiveLevel, overrideActive, overrideSource, overrideReason,
+                overrideTier, overrideExpiresAt, context, null);
     }
 
     /** This same row, tagged with its owning context's stable key. */
     public LoggerInfo withContext(String context) {
         return new LoggerInfo(name, configuredLevel, effectiveLevel, overrideActive, overrideSource,
-                overrideReason, overrideTier, overrideExpiresAt, context);
+                overrideReason, overrideTier, overrideExpiresAt, context, vendorDefaultLevel);
     }
 }

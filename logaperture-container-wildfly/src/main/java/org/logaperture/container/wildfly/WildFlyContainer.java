@@ -182,7 +182,7 @@ public final class WildFlyContainer implements AutoCloseable {
         startHandlerInstallFloor();
         LoggingAdapter adapter = handle.adapter();
 
-        BaselineRegistry baselines = new BaselineRegistry();
+        BaselineRegistry baselines = new BaselineRegistry(vendorDefaults.loggerLevels());
         for (String name : adapter.knownLoggerNames()) {
             baselines.captureIfAbsent(name, adapter);
         }
@@ -213,6 +213,9 @@ public final class WildFlyContainer implements AutoCloseable {
         ruleService.registerDropSupport();
         // doc/specs/trim-rule.md "Persistence" -- same primitive, for a persisted Trim.
         ruleService.registerTrimSupport();
+
+        // doc/specs/vendor-defaults.md "Install order" -- see NoneContainer's identical call.
+        service.applyVendorDefaults(Instant.now());
 
         try {
             service.resumeFromStateStore(Instant.now());

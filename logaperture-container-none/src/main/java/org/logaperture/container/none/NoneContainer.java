@@ -136,7 +136,7 @@ public final class NoneContainer implements AutoCloseable {
     public void installContext(ContextHandle handle) {
         LoggingAdapter adapter = handle.adapter();
 
-        BaselineRegistry baselines = new BaselineRegistry();
+        BaselineRegistry baselines = new BaselineRegistry(vendorDefaults.loggerLevels());
         for (String name : adapter.knownLoggerNames()) {
             baselines.captureIfAbsent(name, adapter);
         }
@@ -170,6 +170,10 @@ public final class NoneContainer implements AutoCloseable {
         ruleService.registerDropSupport();
         // doc/specs/trim-rule.md "Persistence" -- same primitive, for a persisted Trim.
         ruleService.registerTrimSupport();
+
+        // doc/specs/vendor-defaults.md "Install order": the vendor layer goes on after native
+        // baseline capture (above) and before persisted state resumes on top of it (below).
+        service.applyVendorDefaults(Instant.now());
 
         try {
             // Per-entry failures are already isolated inside

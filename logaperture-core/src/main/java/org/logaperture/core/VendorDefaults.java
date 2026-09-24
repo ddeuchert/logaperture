@@ -165,6 +165,15 @@ public final class VendorDefaults {
         return loggers;
     }
 
+    /** Just the levels of {@link #loggers()}, for {@link BaselineRegistry}. */
+    public Map<String, Level> loggerLevels() {
+        Map<String, Level> levels = new LinkedHashMap<>();
+        for (LoggerDefault logger : loggers.values()) {
+            levels.put(logger.name(), logger.level());
+        }
+        return levels;
+    }
+
     public Optional<Level> loggerLevel(String name) {
         LoggerDefault logger = loggers.get(name);
         return logger == null ? Optional.empty() : Optional.of(logger.level());
