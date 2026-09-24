@@ -10,13 +10,21 @@ are absorbed into the real guide.
 - Agents listed **before** `logaperture-agent.jar` run their `premain` first.
   Anything they log during startup is emitted before LogAperture can arm rules,
   so `drop`/`trim` rules (sticky or not) can't affect it.
-- Put LogAperture **first** to shrink the window. It can't close it: on WildFly,
-  install is deferred until JBoss LogManager has loaded, so rules are armed no
-  earlier than that regardless of position.
+- Do **not** assume "LogAperture first" is better. It can shrink the window of unfiltered
+  early events, but on WildFly it also runs our install earlier; on one real launch
+  (Tanuki wrapper, several other agents, `jboss.modules.system.pkgs` naming
+  `org.jboss.logmanager`) that made a rare startup failure (`ModuleNotFoundException:
+  org.jboss.as.standalone`) happen every time. Cause: installing our filters/formatters on the
+  JBoss handlers at `premain` (see `doc/spikes/early-handler-install.md`, issue #86). If startup
+  fails with LogAperture first, try moving it later, or `-Dlogaperture.disabled=true` to confirm.
+- On WildFly, rules take effect once the server's logging is configured, not at `premain`, so
+  events logged in the first seconds of boot (including other agents' `premain` logging) can't be
+  trimmed or dropped.
 - Early events from other agents may not go through JUL/JBoss LogManager at all
   (own formatter, console, private buffer); if so they are out of reach. The fix
   then belongs in the emitting agent's configuration.
 - Listing the same agent jar twice is harmless but pointless; remove one.
 - Example: a `destiny-agent` `premain` logging a `ConnectException` at boot while
   the sticky trim rule only works later in the log.
-- Roadmap: spec §18.14; doctor check tracked in the issue filed for it.
+- Roadmap: spec §18.14; doctor check tracked in #85; the startup-abort fix in #86; mechanism
+  follow-up in #87.
