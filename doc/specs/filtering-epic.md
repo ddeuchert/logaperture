@@ -65,7 +65,7 @@ the child specs fix; the behaviour is what this epic agrees.
 | 1 | Storm detection supplies the always-on gate observer this epic builds on | #26 (spec signed off) |
 | 2 | **Rule foundation:** matcher library, compiled rule plan, safety scaffolding, rule management | new |
 | 3 | **`drop`** | [#72](https://github.com/ddeuchert/logaperture/issues/72) — spec signed off: [`drop-rule.md`](drop-rule.md) |
-| 4 | **`trim`** — #34 reshaped: a rule with a "below LEVEL" bound, not a knob beside `level` | #34 |
+| 4 | **`trim`** — #34 reshaped: a rule with a "below LEVEL" bound, not a knob beside `level` | [#34](https://github.com/ddeuchert/logaperture/issues/34) — implemented: [`trim-rule.md`](trim-rule.md) |
 
 Each gets its own spec, branch and PR. The epic gets a tracking issue listing them. Automatic storm
 collapse (#27) comes afterwards and becomes another producer of drop rules.
@@ -237,7 +237,7 @@ Design consequences, all from [`doc/spikes/rule-pipeline.md`](../spikes/rule-pip
 | 7 | Evaluation: immutable plan, drop first and terminal, most-restrictive trim, cheapest-first, no priority syntax | **Agreed** |
 | 8 | Command spelling is noun-first: `add rule drop|trim`, `list rules`, `reset rule <id>` | **Agreed** |
 | 9 | FATAL is a hard limit; suppression floor applies; hit counts are per event; dry-run deferred | **Agreed** |
-| 10 | Structured formatters (JSON/XML): hybrid rendering — synthetic frameless throwable for text formatters (keeps the cause chain), message suffix with a per-cause summary for structured ones (avoids the wrong `exceptionType`) | **Agreed** |
+| 10 | Structured formatters (JSON/XML): hybrid rendering — synthetic frameless throwable for text formatters (keeps the cause chain), message suffix with a per-cause summary for structured ones (avoids the wrong `exceptionType`) | **Superseded for `trim`'s first slice** — [`trim-rule.md`](trim-rule.md) ships text formatters only; structured formatters are untrimmed, tracked as [#83](https://github.com/ddeuchert/logaperture/issues/83) |
 | 11 | #63 is labelled `obsolete`, not closed. Reconsider if drop/trim leave a gap (its one uncovered case: raising a level for whatever emits X) | **Agreed** |
 | 12 | Release: #26 + foundation + `drop` + `trim` in alpha-3; #27, #33 and the rest in beta-1. Revisit once the feature set is complete | **Provisional** |
 | 13 | Accept the fail-open re-arm gap (foundation point 2) | **Agreed** |

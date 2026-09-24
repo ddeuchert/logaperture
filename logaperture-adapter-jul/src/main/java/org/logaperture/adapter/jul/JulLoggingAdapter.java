@@ -371,6 +371,40 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     }
 
     /**
+     * doc/specs/trim-rule.md "Evaluation", "Interaction with top". Wraps
+     * every real handler's current {@link Formatter} in a {@link
+     * JulTrimFormatter} -- <em>underneath</em> a {@link ByteCountingFormatter}
+     * if one is already installed, so a handler wrapped in the order {@code
+     * installTrimRendering()} then {@link #installByteCounting()} (every
+     * container call site's fixed order) ends up layered trim-inside,
+     * byte-counting-outside regardless of which tick actually did the
+     * wrapping. Idempotent the same way {@link #installByteCounting} is: a
+     * handler already correctly layered is left alone.
+     */
+    @Override
+    public void installTrimRendering(RuleGate gate) {
+        for (HandlerRef ref : realHandlers()) {
+            Handler handler = handlersByRef.get(ref);
+            if (handler == null) {
+                continue; // no longer resolvable
+            }
+            Formatter current = handler.getFormatter();
+            if (current == null || current instanceof JulTrimFormatter) {
+                continue; // nothing to wrap around, or already innermost-wrapped
+            }
+            if (current instanceof ByteCountingFormatter counting) {
+                if (counting.delegate() instanceof JulTrimFormatter) {
+                    continue; // already correctly layered
+                }
+                handler.setFormatter(new ByteCountingFormatter(new JulTrimFormatter(counting.delegate(), gate),
+                        topCounters));
+                continue;
+            }
+            handler.setFormatter(new JulTrimFormatter(current, gate));
+        }
+    }
+
+    /**
      * doc/specs/environment-report.md "Adapter / container SPI". The name is
      * free either way ({@link #isJBossLogManager()} already distinguishes
      * them for other purposes); a version is only attempted for JBoss

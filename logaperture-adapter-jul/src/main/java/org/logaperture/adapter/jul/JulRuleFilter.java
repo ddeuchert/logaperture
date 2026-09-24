@@ -16,13 +16,10 @@
 package org.logaperture.adapter.jul;
 
 import org.logaperture.core.GateVerdict;
-import org.logaperture.core.RuleCandidateEvent;
 import org.logaperture.core.RuleGate;
 
 import java.util.logging.Filter;
-import java.util.logging.Formatter;
 import java.util.logging.LogRecord;
-import java.util.logging.SimpleFormatter;
 
 /**
  * The rule-pipeline's gate-stage seam wearing a {@link Filter}'s clothes —
@@ -34,20 +31,6 @@ import java.util.logging.SimpleFormatter;
  * contract stays literally true forever even now that this one does deny.
  */
 final class JulRuleFilter implements Filter {
-
-    /**
-     * A plain, stateless message-substitution helper — {@code
-     * formatMessage} does no framework-specific rendering (no date, no
-     * level, no layout), just {@code MessageFormat}/resource-bundle
-     * substitution, so one shared instance is safe to reuse across threads
-     * and handlers. This adapter has no compile-time JBoss LogManager
-     * dependency, so it can't reach {@code ExtLogRecord.getFormattedMessage()}'s
-     * own per-record cache the way the spike measured
-     * (doc/spikes/rule-pipeline.md finding 6/7) — this recomputes per
-     * candidate event instead of reusing a cache already on the record; see
-     * doc/specs/drop-rule.md "Divergence from prior specs".
-     */
-    private static final Formatter MESSAGE_FORMATTER = new SimpleFormatter();
 
     private final Filter delegate;
     private final RuleGate gate;
@@ -66,7 +49,7 @@ final class JulRuleFilter implements Filter {
     public boolean isLoggable(LogRecord record) {
         boolean allowed = true;
         try {
-            GateVerdict verdict = gate.evaluate(record, toEvent(record));
+            GateVerdict verdict = gate.evaluate(record, RuleCandidateEvents.of(record));
             allowed = !verdict.deny();
         } catch (RuntimeException e) {
             // Fail open -- doc/logaperture-spec.md §9's fail-open discipline: a gate-evaluation
@@ -86,13 +69,5 @@ final class JulRuleFilter implements Filter {
             return false;
         }
         return delegate == null || delegate.isLoggable(record);
-    }
-
-    private static RuleCandidateEvent toEvent(LogRecord record) {
-        String loggerName = record.getLoggerName() != null ? record.getLoggerName() : "";
-        org.logaperture.api.Level level = LevelMapper.toApi(record.getLevel());
-        Throwable thrown = record.getThrown();
-        return new RuleCandidateEvent(loggerName, level, thrown,
-                () -> MESSAGE_FORMATTER.formatMessage(record), record.getInstant());
     }
 }

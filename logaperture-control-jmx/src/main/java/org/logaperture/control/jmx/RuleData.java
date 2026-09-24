@@ -16,6 +16,7 @@
 package org.logaperture.control.jmx;
 
 import org.logaperture.api.LogRule;
+import org.logaperture.api.Trim;
 import org.logaperture.core.RuleView;
 
 import java.beans.ConstructorProperties;
@@ -26,9 +27,11 @@ import java.beans.ConstructorProperties;
  * ConstructorProperties} constructor and JavaBean getters, flattening
  * {@link org.logaperture.api.CompiledMatchers} onto this bean rather than
  * nesting a second MXBean-shaped type. {@code action} reflects {@link
- * LogRule#actionName()} — this slice's own {@code TestRule} double aside,
- * every field here is generic across whatever concrete action (#72's
- * {@code Drop}, #34's {@code Trim}) produced the rule.
+ * LogRule#actionName()}; every field through {@code hitCount} is generic
+ * across whatever concrete action ({@link org.logaperture.api.Drop}, {@link
+ * Trim}) produced the rule. {@code frames}/{@code collapseCauses} are
+ * {@link Trim}-specific — {@code null} for a {@code Drop} row or this
+ * slice's own {@code TestRule} double, doc/specs/trim-rule.md "Data model".
  */
 public final class RuleData {
 
@@ -47,13 +50,16 @@ public final class RuleData {
     private final String createdAt;
     private final String context;
     private final long hitCount;
+    private final Integer frames;
+    private final Boolean collapseCauses;
 
     @ConstructorProperties({"id", "loggerName", "action", "levelAtMost", "messageContains", "messageIgnoreCase",
             "throwableType", "throwableMessageContains", "anyCause", "reason", "tier", "expiresAt", "createdAt",
-            "context", "hitCount"})
+            "context", "hitCount", "frames", "collapseCauses"})
     public RuleData(String id, String loggerName, String action, String levelAtMost, String messageContains,
             boolean messageIgnoreCase, String throwableType, String throwableMessageContains, boolean anyCause,
-            String reason, String tier, String expiresAt, String createdAt, String context, long hitCount) {
+            String reason, String tier, String expiresAt, String createdAt, String context, long hitCount,
+            Integer frames, Boolean collapseCauses) {
         this.id = id;
         this.loggerName = loggerName;
         this.action = action;
@@ -69,6 +75,8 @@ public final class RuleData {
         this.createdAt = createdAt;
         this.context = context;
         this.hitCount = hitCount;
+        this.frames = frames;
+        this.collapseCauses = collapseCauses;
     }
 
     public static RuleData from(RuleView view) {
@@ -89,7 +97,9 @@ public final class RuleData {
                 rule.expiresAt() == null ? null : rule.expiresAt().toString(),
                 rule.createdAt().toString(),
                 view.context(),
-                view.hitCount());
+                view.hitCount(),
+                rule instanceof Trim trim ? trim.frames() : null,
+                rule instanceof Trim trim ? trim.collapseCauses() : null);
     }
 
     public String getId() {
@@ -150,5 +160,13 @@ public final class RuleData {
 
     public long getHitCount() {
         return hitCount;
+    }
+
+    public Integer getFrames() {
+        return frames;
+    }
+
+    public Boolean getCollapseCauses() {
+        return collapseCauses;
     }
 }

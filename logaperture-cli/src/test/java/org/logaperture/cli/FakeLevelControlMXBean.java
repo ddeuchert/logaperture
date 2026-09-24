@@ -350,6 +350,19 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         return addRuleDropResult;
     }
 
+    final List<Object[]> addRuleTrimCalls = new ArrayList<>();
+    RuleData addRuleTrimResult;
+
+    @Override
+    public RuleData addRuleTrim(String target, String messageContains, boolean messageIgnoreCase,
+            String throwableType, String throwableMessageContains, boolean anyCause, String belowLevel, int frames,
+            boolean collapseCauses, String reason, String tier, long forSeconds) {
+        addRuleTrimCalls.add(new Object[] {target, messageContains, messageIgnoreCase, throwableType,
+                throwableMessageContains, anyCause, belowLevel, frames, collapseCauses, reason, tier, forSeconds});
+        maybeThrow();
+        return addRuleTrimResult;
+    }
+
     private void maybeThrow() {
         if (throwOnNextCall != null) {
             RuntimeException toThrow = throwOnNextCall;

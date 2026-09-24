@@ -22,6 +22,7 @@ import org.logaperture.cli.Parser.TierChoice;
 import java.time.Duration;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -447,7 +448,7 @@ class ParserTest {
         var mbean = new FakeLevelControlMXBean();
         mbean.addRuleDropResult = new org.logaperture.control.jmx.RuleData(
                 "r1", "com.acme.Worker", "drop", "WARN", "noisy", false, null, null, false, null, "FOR", null, null,
-                null, 0L);
+                null, 0L, null, null);
 
         Invocation invocation = Parser.parse(
                 new String[] {"add", "rule", "drop", "com.acme.Worker", "--message-contains", "noisy"});
@@ -465,7 +466,7 @@ class ParserTest {
         var mbean = new FakeLevelControlMXBean();
         mbean.addRuleDropResult = new org.logaperture.control.jmx.RuleData(
                 "r1", "com.acme.Worker", "drop", "ERROR", "noisy", false, null, null, false, null, "FOR", null, null,
-                null, 0L);
+                null, 0L, null, null);
 
         Invocation invocation = Parser.parse(new String[] {"add", "rule", "drop", "com.acme.Worker",
                 "--message-contains", "noisy", "--below", "FATAL"});
@@ -473,6 +474,93 @@ class ParserTest {
                 java.io.InputStream.nullInputStream(), false);
 
         assertEquals("ERROR", mbean.addRuleDropCalls.get(0)[6]);
+    }
+
+    // --- add rule trim (doc/specs/trim-rule.md) -------------------------------
+
+    @Test
+    void addRuleTrimNeedsNoContentMatcher_unlikeDrop() {
+        // doc/specs/trim-rule.md "Matchers in use": a bare level-bounded trim is a first-class
+        // case, unlike 'add rule drop'.
+        var mbean = new FakeLevelControlMXBean();
+        mbean.addRuleTrimResult = new org.logaperture.control.jmx.RuleData(
+                "r1", "com.acme.Worker", "trim", "WARN", null, false, null, null, false, null, "FOR", null, null,
+                null, 0L, 0, false);
+
+        assertDoesNotThrow(() -> Parser.parse(new String[] {"add", "rule", "trim", "com.acme.Worker"}));
+    }
+
+    @Test
+    void addRuleTrimRejectsATrailingWildcard() {
+        assertUsage(() -> Parser.parse(new String[] {"add", "rule", "trim", "com.acme.*"}));
+    }
+
+    @Test
+    void addRuleTrimOmittedBelow_defaultsToTheErrorKeepFloor_notUnbounded() {
+        var mbean = new FakeLevelControlMXBean();
+        mbean.addRuleTrimResult = new org.logaperture.control.jmx.RuleData(
+                "r1", "com.acme.Worker", "trim", "WARN", null, false, null, null, false, null, "FOR", null, null,
+                null, 0L, 0, false);
+
+        Invocation invocation = Parser.parse(new String[] {"add", "rule", "trim", "com.acme.Worker"});
+        invocation.command().run(mbean, new java.io.PrintStream(java.io.OutputStream.nullOutputStream()),
+                java.io.InputStream.nullInputStream(), false);
+
+        // Index 6 is belowLevel in Commands.addRuleTrim's argument order.
+        assertEquals("WARN", mbean.addRuleTrimCalls.get(0)[6]);
+        // Index 7 is frames -- defaults to 0 (bare one-liner) when --frames is omitted.
+        assertEquals(0, mbean.addRuleTrimCalls.get(0)[7]);
+    }
+
+    @Test
+    void addRuleTrimOmittedFrames_defaultsToZero() {
+        var mbean = new FakeLevelControlMXBean();
+        mbean.addRuleTrimResult = new org.logaperture.control.jmx.RuleData(
+                "r1", "com.acme.Worker", "trim", "WARN", null, false, null, null, false, null, "FOR", null, null,
+                null, 0L, 3, false);
+
+        Invocation invocation = Parser.parse(
+                new String[] {"add", "rule", "trim", "com.acme.Worker", "--frames", "3"});
+        invocation.command().run(mbean, new java.io.PrintStream(java.io.OutputStream.nullOutputStream()),
+                java.io.InputStream.nullInputStream(), false);
+
+        assertEquals(3, mbean.addRuleTrimCalls.get(0)[7]);
+    }
+
+    @Test
+    void addRuleTrimRejectsNegativeFrames() {
+        assertUsage(() -> Parser.parse(
+                new String[] {"add", "rule", "trim", "com.acme.Worker", "--frames", "-1"}));
+    }
+
+    @Test
+    void addRuleTrimCollapseCauses_passedThrough() {
+        var mbean = new FakeLevelControlMXBean();
+        mbean.addRuleTrimResult = new org.logaperture.control.jmx.RuleData(
+                "r1", "com.acme.Worker", "trim", "WARN", null, false, null, null, false, null, "FOR", null, null,
+                null, 0L, 0, true);
+
+        Invocation invocation = Parser.parse(
+                new String[] {"add", "rule", "trim", "com.acme.Worker", "--collapse-causes"});
+        invocation.command().run(mbean, new java.io.PrintStream(java.io.OutputStream.nullOutputStream()),
+                java.io.InputStream.nullInputStream(), false);
+
+        // Index 8 is collapseCauses in Commands.addRuleTrim's argument order.
+        assertEquals(true, mbean.addRuleTrimCalls.get(0)[8]);
+    }
+
+    @Test
+    void frameOptions_applyOnlyToAddRuleTrim() {
+        assertUsage(() -> Parser.parse(new String[] {"list", "rules", "--frames", "3"}));
+        assertUsage(() -> Parser.parse(new String[] {"list", "rules", "--collapse-causes"}));
+    }
+
+    @Test
+    void sampleFullOptions_applyOnlyToAddRuleDrop_notTrim() {
+        assertUsage(() -> Parser.parse(
+                new String[] {"add", "rule", "trim", "com.acme.Worker", "--sample-full", "5m"}));
+        assertUsage(() -> Parser.parse(
+                new String[] {"add", "rule", "trim", "com.acme.Worker", "--no-sample-full"}));
     }
 
     private static void assertUsage(Executable call) {

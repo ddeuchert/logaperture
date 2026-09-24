@@ -1241,7 +1241,7 @@ class CommandsTest {
     void addRuleDrop_passesEveryArgumentThroughAndRendersTheCreatedRule() {
         mbean.addRuleDropResult = new org.logaperture.control.jmx.RuleData(
                 "r1", "com.acme.Worker", "drop", "WARN", "noisy", false, null, null, false, "INC-1", "FOR",
-                Instant.now().plusSeconds(3600).toString(), Instant.now().toString(), null, 0L);
+                Instant.now().plusSeconds(3600).toString(), Instant.now().toString(), null, 0L, null, null);
 
         int exit = run(Commands.addRuleDrop("com.acme.Worker", "noisy", false, null, null, false, "WARN", true,
                 300_000L, "INC-1", "FOR", 3600L, false));
@@ -1257,7 +1257,7 @@ class CommandsTest {
     void addRuleDrop_json() {
         mbean.addRuleDropResult = new org.logaperture.control.jmx.RuleData(
                 "r1", "com.acme.Worker", "drop", "WARN", "noisy", false, null, null, false, null, "SESSION", null,
-                Instant.now().toString(), null, 0L);
+                Instant.now().toString(), null, 0L, null, null);
 
         run(Commands.addRuleDrop("com.acme.Worker", "noisy", false, null, null, false, "WARN", true, 300_000L, null,
                 "SESSION", 0L, true));
@@ -1273,13 +1273,51 @@ class CommandsTest {
         assertTrue(mbean.addRuleDropCalls.isEmpty(), "never reaches the mbean for an unsupported pattern target");
     }
 
+    // --- add rule trim (doc/specs/trim-rule.md) -----------------------------------------------
+
+    @Test
+    void addRuleTrim_passesEveryArgumentThroughAndRendersTheCreatedRule() {
+        mbean.addRuleTrimResult = new org.logaperture.control.jmx.RuleData(
+                "r1", "com.acme.Worker", "trim", "WARN", null, false, null, null, false, "INC-1", "FOR",
+                Instant.now().plusSeconds(3600).toString(), Instant.now().toString(), null, 0L, 3, false);
+
+        int exit = run(Commands.addRuleTrim("com.acme.Worker", null, false, null, null, false, "WARN", 3, false,
+                "INC-1", "FOR", 3600L, false));
+
+        assertEquals(CliError.OK, exit);
+        assertArrayEquals(new Object[] {"com.acme.Worker", null, false, null, null, false, "WARN", 3, false,
+                "INC-1", "FOR", 3600L}, mbean.addRuleTrimCalls.get(0));
+        assertTrue(output().contains("r1") && output().contains("com.acme.Worker") && output().contains("trim"),
+                output());
+    }
+
+    @Test
+    void addRuleTrim_json() {
+        mbean.addRuleTrimResult = new org.logaperture.control.jmx.RuleData(
+                "r1", "com.acme.Worker", "trim", "WARN", null, false, null, null, false, null, "SESSION", null,
+                Instant.now().toString(), null, 0L, 0, false);
+
+        run(Commands.addRuleTrim("com.acme.Worker", null, false, null, null, false, "WARN", 0, false, null,
+                "SESSION", 0L, true));
+
+        assertTrue(output().strip().startsWith("{\"id\":\"r1\""), output());
+    }
+
+    @Test
+    void addRuleTrim_rejectsAPatternTargetClientSide() {
+        assertThrows(CliError.class,
+                () -> run(Commands.addRuleTrim("*.Worker", null, false, null, null, false, "WARN", 0, false, null,
+                        "SESSION", 0L, false)));
+        assertTrue(mbean.addRuleTrimCalls.isEmpty(), "never reaches the mbean for an unsupported pattern target");
+    }
+
     // --- list rules / reset rule / reset rules (doc/specs/rule-pipeline-foundation.md) ------------
 
     @Test
     void listRules_rendersATableWithIdLoggerActionTierExpiry() {
         mbean.rules = List.of(new org.logaperture.control.jmx.RuleData(
                 "r1", "com.acme.Worker", "TestRule", "ERROR", "This happens a lot", false, null, null, false,
-                "INC-123", "STICKY", null, Instant.now().toString(), null, 0L));
+                "INC-123", "STICKY", null, Instant.now().toString(), null, 0L, null, null));
 
         assertEquals(CliError.OK, run(Commands.listRules(false)));
 
@@ -1298,7 +1336,7 @@ class CommandsTest {
     void listRules_json_wrapsTheRows() {
         mbean.rules = List.of(new org.logaperture.control.jmx.RuleData(
                 "r1", "com.acme.Worker", "TestRule", null, null, false, null, null, false, null, "SESSION", null,
-                Instant.now().toString(), null, 0L));
+                Instant.now().toString(), null, 0L, null, null));
 
         run(Commands.listRules(true));
 
@@ -1311,7 +1349,7 @@ class CommandsTest {
     void resetRule_removed_reportsIt() {
         mbean.resetRuleResult = new org.logaperture.control.jmx.RuleData(
                 "r1", "com.acme.Worker", "TestRule", null, null, false, null, null, false, null, "SESSION", null,
-                Instant.now().toString(), null, 0L);
+                Instant.now().toString(), null, 0L, null, null);
 
         assertEquals(CliError.OK, run(Commands.resetRule("r1", false, false)));
 

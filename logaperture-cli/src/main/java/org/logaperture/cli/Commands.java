@@ -855,19 +855,48 @@ final class Commands {
             String throwableType, String throwableMessageContains, boolean anyCause, String belowLevel,
             boolean sampleFullEnabled, long sampleFullEveryMillis, String reason, String tierName, long forSeconds,
             boolean json) {
+        java.util.function.Function<org.logaperture.control.jmx.LevelControlMXBean, org.logaperture.control.jmx.RuleData>
+                attach = mbean -> mbean.addRuleDrop(target, messageContains, messageIgnoreCase, throwableType,
+                        throwableMessageContains, anyCause, belowLevel, sampleFullEnabled, sampleFullEveryMillis,
+                        reason, tierName, forSeconds);
+        return addRule("drop", target, attach, json);
+    }
+
+    /**
+     * {@code logctl add rule trim} — doc/specs/trim-rule.md "Command
+     * surface". {@code target} is an exact logger name in this slice, same
+     * pattern-target restriction as {@link #addRuleDrop}.
+     */
+    static Command addRuleTrim(String target, String messageContains, boolean messageIgnoreCase,
+            String throwableType, String throwableMessageContains, boolean anyCause, String belowLevel, int frames,
+            boolean collapseCauses, String reason, String tierName, long forSeconds, boolean json) {
+        java.util.function.Function<org.logaperture.control.jmx.LevelControlMXBean, org.logaperture.control.jmx.RuleData>
+                attach = mbean -> mbean.addRuleTrim(target, messageContains, messageIgnoreCase, throwableType,
+                        throwableMessageContains, anyCause, belowLevel, frames, collapseCauses, reason, tierName,
+                        forSeconds);
+        return addRule("trim", target, attach, json);
+    }
+
+    /**
+     * The shared shape {@link #addRuleDrop}/{@link #addRuleTrim} both follow — pattern-target
+     * rejection, then the actual JMX call, then the identical json/plain-text rendering — a
+     * code-review finding against the first cut of this pair, which duplicated all of it twice.
+     */
+    private static Command addRule(String actionLabel, String target,
+            java.util.function.Function<org.logaperture.control.jmx.LevelControlMXBean, org.logaperture.control.jmx.RuleData> attach,
+            boolean json) {
         return (mbean, out, in, interactive) -> {
             if (isPattern(target)) {
-                throw new CliError(CliError.USAGE, "'add rule drop' does not yet support a pattern target ('"
-                        + target + "') -- attach to each currently-known logger by its exact name instead.");
+                throw new CliError(CliError.USAGE, "'add rule " + actionLabel + "' does not yet support a pattern "
+                        + "target ('" + target + "') -- attach to each currently-known logger by its exact name "
+                        + "instead.");
             }
-            org.logaperture.control.jmx.RuleData created = mbean.addRuleDrop(target, messageContains,
-                    messageIgnoreCase, throwableType, throwableMessageContains, anyCause, belowLevel,
-                    sampleFullEnabled, sampleFullEveryMillis, reason, tierName, forSeconds);
+            org.logaperture.control.jmx.RuleData created = attach.apply(mbean);
             if (json) {
                 out.println(Json.rule(created));
                 return CliError.OK;
             }
-            out.println(created.getId() + "   " + created.getLoggerName() + " → drop   ("
+            out.println(created.getId() + "   " + created.getLoggerName() + " → " + actionLabel + "   ("
                     + tierDetail(created.getTier(), created.getExpiresAt()) + ")");
             return CliError.OK;
         };

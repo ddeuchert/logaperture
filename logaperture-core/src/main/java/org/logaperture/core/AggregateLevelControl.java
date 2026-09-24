@@ -459,6 +459,23 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     }
 
     /**
+     * {@code logctl add rule trim} — doc/specs/trim-rule.md "Command
+     * surface". Attaches to the first registered context only, same scope
+     * reduction as {@link #addRuleDrop}.
+     *
+     * @throws IllegalStateException if no context is registered
+     */
+    @Override
+    public RuleView addRuleTrim(String loggerName, CompiledMatchers matchers, RuleAttachOptions options, int frames,
+            boolean collapseCauses) {
+        List<ContextControl> contexts = sortedByKey();
+        if (contexts.isEmpty()) {
+            throw new IllegalStateException("no logging context registered -- nothing to attach a rule to");
+        }
+        return contexts.get(0).ruleService().addRuleTrim(loggerName, matchers, options, frames, collapseCauses);
+    }
+
+    /**
      * The periodic drop-summary line's scheduling entry point (doc/specs/
      * drop-rule.md "Periodic summary line") — fanned out to every
      * registered context's own {@link RuleService#reportDueDropSummaries},
@@ -925,6 +942,17 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         for (ContextControl context : sortedByKey()) {
             reapplied += context.service().verifyAndReapply(now);
             reapplied += context.handlerService().verifyAndReapply(now);
+            try {
+                // Must run before topService.startMeasuring() below -- doc/specs/trim-rule.md
+                // "Interaction with top": trim's formatter wrap installs inside top's, so top
+                // measures the bytes actually written post-trim. Same guard as storm
+                // detection/rule pipeline below: this runs from a scheduled tick with nothing
+                // above it to catch a throw.
+                context.ruleService().installTrimRendering();
+            } catch (RuntimeException e) {
+                System.err.println("[logaperture-core] failed to (re-)arm trim rendering for context '"
+                        + context.stableKey() + "', that context is unchanged: " + e);
+            }
             context.topService().startMeasuring();
             try {
                 // Newer, less battle-tested than startMeasuring() above, and this runs from a

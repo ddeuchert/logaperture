@@ -311,4 +311,26 @@ public interface LoggingAdapter {
     default void installRulePipeline(RuleGate gate) {
         // no-op by default
     }
+
+    /**
+     * Installs the render-stage trim seam on every persistent handler this
+     * adapter can act on right now, applying whatever {@link
+     * org.logaperture.core.TrimDecision} {@code gate}'s cached verdict
+     * carries for a given record — doc/specs/trim-rule.md "Evaluation".
+     * Text formatters only in this slice; a structured formatter is left
+     * untouched (doc/specs/trim-rule.md "Text formatters only",
+     * <a href="https://github.com/ddeuchert/logaperture/issues/83">#83</a>).
+     * Never mutates the shared framework record — a matching event is
+     * formatted from a private copy, or, if no safe copy can be made, this
+     * fails open and formats the record untouched (doc/spikes/
+     * rule-pipeline.md "Design consequences" #5). Must be installed
+     * <em>before</em> {@link #installByteCounting()} on every call site so
+     * {@code top} measures the bytes actually written post-trim (doc/specs/
+     * trim-rule.md "Interaction with top"); idempotent either way. Default
+     * no-op, for a framework this slice doesn't instrument (Logback, {@code
+     * none}).
+     */
+    default void installTrimRendering(RuleGate gate) {
+        // no-op by default
+    }
 }

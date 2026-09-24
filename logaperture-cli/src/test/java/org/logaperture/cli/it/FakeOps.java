@@ -258,4 +258,10 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
             RuleAttachOptions options, SampleFullPolicy sampleFull) {
         throw new UnsupportedOperationException("not exercised by CliEndToEndIT yet");
     }
+
+    @Override
+    public synchronized RuleView addRuleTrim(String loggerName, CompiledMatchers matchers,
+            RuleAttachOptions options, int frames, boolean collapseCauses) {
+        throw new UnsupportedOperationException("not exercised by CliEndToEndIT yet");
+    }
 }

@@ -27,7 +27,7 @@ import javax.servlet.http.HttpServletResponse;
  * {@code GET /logaperture-sample-war/log} — log one line through a
  * caller-chosen framework and level, through every ancestor category of a
  * caller-chosen logger name, and report what was logged plus the {@code
- * logctl} line that would raise it. All four query parameters are optional:
+ * logctl} line that would raise it. All five query parameters are optional:
  *
  * <ul>
  * <li>{@code logger} — the logger name to log through, and whose ancestor
@@ -39,11 +39,16 @@ import javax.servlet.http.HttpServletResponse;
  * warn} or {@code error}. Default {@code info}.
  * <li>{@code implementation} — {@code slf4j}, {@code jul} or {@code log4j}.
  * Default {@code slf4j}.
+ * <li>{@code exception} — {@code connect} or {@code illegal_state}. When
+ * present, every logged line also carries a fresh instance of that
+ * exception, constructed with {@code message} -- for exercising {@code
+ * logctl add rule trim --throwable ...} against a real thrown type. Absent
+ * by default, meaning no throwable at all.
  * </ul>
  *
- * An unrecognized {@code level} or {@code implementation} value is a 400,
- * not a silent fall back to the default -- the whole point of this endpoint
- * is showing exactly what got logged and how.
+ * An unrecognized {@code level}, {@code implementation} or {@code exception}
+ * value is a 400, not a silent fall back to the default -- the whole point
+ * of this endpoint is showing exactly what got logged and how.
  */
 @WebServlet("/log")
 public class LogServlet extends HttpServlet {
@@ -59,9 +64,13 @@ public class LogServlet extends HttpServlet {
         String message = param(req, "message", DEFAULT_MESSAGE);
         WorkLog.Level level;
         WorkLog.Implementation implementation;
+        WorkLog.ExceptionType exceptionType;
         try {
             level = WorkLog.Level.parse(param(req, "level", "info"));
             implementation = WorkLog.Implementation.parse(param(req, "implementation", "slf4j"));
+            String exceptionParam = req.getParameter("exception");
+            exceptionType = (exceptionParam == null || exceptionParam.isBlank()) ? null
+                    : WorkLog.ExceptionType.parse(exceptionParam);
         } catch (IllegalArgumentException e) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             resp.setContentType("text/plain; charset=UTF-8");
@@ -69,15 +78,17 @@ public class LogServlet extends HttpServlet {
             return;
         }
 
-        List<String> categories = WorkLog.emit(loggerName, message, level, implementation);
+        List<String> categories = WorkLog.emit(loggerName, message, level, implementation, exceptionType);
 
         resp.setContentType("text/plain; charset=UTF-8");
         resp.getWriter().printf(
-                "logged \"%s\" at %s via %s, once per category:%n"
+                "logged \"%s\" at %s via %s%s, once per category:%n"
                         + "  %s%n"
                         + "%n"
                         + "raise it with:  logctl set logger %s DEBUG for 5m%n",
-                message, level, implementation, String.join("\n  ", categories), loggerName);
+                message, level, implementation,
+                exceptionType == null ? "" : " with " + exceptionType.exceptionClass().getName(),
+                String.join("\n  ", categories), loggerName);
     }
 
     /** {@code req}'s {@code name} query parameter, or {@code fallback} if absent/blank. */

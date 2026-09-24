@@ -245,4 +245,12 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
             SampleFullPolicy sampleFull) {
         return addRuleDropToReturn;
     }
+
+    RuleView addRuleTrimToReturn;
+
+    @Override
+    public RuleView addRuleTrim(String loggerName, CompiledMatchers matchers, RuleAttachOptions options, int frames,
+            boolean collapseCauses) {
+        return addRuleTrimToReturn;
+    }
 }

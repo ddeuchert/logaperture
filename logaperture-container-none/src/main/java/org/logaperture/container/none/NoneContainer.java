@@ -156,6 +156,8 @@ public final class NoneContainer implements AutoCloseable {
         // persisted STICKY/unexpired-FOR Drop now actually resumes instead of being left "not
         // resumed" the way rule-pipeline-foundation.md's own slice always reported it.
         ruleService.registerDropSupport();
+        // doc/specs/trim-rule.md "Persistence" -- same primitive, for a persisted Trim.
+        ruleService.registerTrimSupport();
 
         try {
             // Per-entry failures are already isolated inside
@@ -164,8 +166,8 @@ public final class NoneContainer implements AutoCloseable {
             // (doc/logaperture-spec.md §9).
             service.resumeFromStateStore(Instant.now());
             handlerService.resumeFromStateStore(Instant.now());
-            // doc/specs/drop-rule.md "Persistence" -- a persisted STICKY/unexpired-FOR Drop now
-            // resumes as a live, denying rule (the "drop" factory was registered just above).
+            // doc/specs/drop-rule.md/trim-rule.md "Persistence" -- a persisted STICKY/unexpired-FOR
+            // Drop or Trim now resumes as a live rule (both factories were registered just above).
             ruleService.resumeFromStateStore(Instant.now());
             // One AUTO recompute pass now that both halves have resumed --
             // doc/specs/handler-floor-control.md "AUTO handler level",
@@ -195,12 +197,23 @@ public final class NoneContainer implements AutoCloseable {
             }
             service.reapplyActiveOverrides(adapter);
             handlerService.reapplyActiveOverrides(adapter);
+            // Must run before topService.startMeasuring() below -- doc/specs/trim-rule.md
+            // "Interaction with top": trim's formatter wrap installs inside top's, so top
+            // measures the bytes actually written post-trim.
+            ruleService.installTrimRendering();
             topService.startMeasuring();
             stormService.startDetection();
             ruleService.installPipeline();
         };
         adapter.onReset(reapplyOnReset);
 
+        // doc/specs/trim-rule.md: same always-on-from-install discipline as top/storm/the rule
+        // pipeline below, and must run first -- see the reapplyOnReset lambda's own comment.
+        try {
+            ruleService.installTrimRendering();
+        } catch (RuntimeException e) {
+            Diagnostics.warn("LogAperture: failed to install trim rendering for this context, continuing without it", e);
+        }
         // doc/specs/top.md: always-on from the moment this context comes up --
         // by the time an operator runs `logctl top`, the volume that mattered
         // already happened, so measurement can't start on demand.

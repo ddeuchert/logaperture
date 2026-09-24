@@ -203,6 +203,16 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
         return RuleData.from(ruleOperations.addRuleDrop(target, matchers, options, sampleFull));
     }
 
+    @Override
+    public RuleData addRuleTrim(String target, String messageContains, boolean messageIgnoreCase,
+            String throwableType, String throwableMessageContains, boolean anyCause, String belowLevel, int frames,
+            boolean collapseCauses, String reason, String tier, long forSeconds) {
+        CompiledMatchers matchers = new CompiledMatchers(belowLevel == null ? null : parseLevel(belowLevel),
+                messageContains, messageIgnoreCase, throwableType, throwableMessageContains, anyCause);
+        RuleAttachOptions options = toRuleAttachOptions(reason, tier, forSeconds);
+        return RuleData.from(ruleOperations.addRuleTrim(target, matchers, options, frames, collapseCauses));
+    }
+
     private static SetLevelOptions toOptions(String reason, String tier, long forSeconds, boolean confirmed) {
         PersistenceTier parsedTier = parseTier(tier);
         Duration expiresIn = parsedTier == PersistenceTier.FOR ? Duration.ofSeconds(forSeconds) : null;

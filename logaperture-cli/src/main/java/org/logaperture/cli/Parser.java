@@ -67,6 +67,8 @@ final class Parser {
         String belowLevel = null;
         Long sampleFullEveryMillis = null;
         boolean noSampleFull = false;
+        Integer frames = null;
+        boolean collapseCauses = false;
 
         for (int i = 0; i < argv.length; i++) {
             String arg = argv[i];
@@ -80,6 +82,21 @@ final class Parser {
                 case "--show-all" -> showAll = true;
                 case "--any-cause" -> anyCause = true;
                 case "--no-sample-full" -> noSampleFull = true;
+                case "--collapse-causes" -> collapseCauses = true;
+                case "--frames" -> {
+                    i++;
+                    if (i >= argv.length) {
+                        throw usage("--frames needs a value.");
+                    }
+                    try {
+                        frames = Integer.parseInt(argv[i]);
+                    } catch (NumberFormatException e) {
+                        throw usage("--frames value '" + argv[i] + "' is not a number.");
+                    }
+                    if (frames < 0) {
+                        throw usage("--frames must be >= 0.");
+                    }
+                }
                 case "--message-contains" -> {
                     i++;
                     if (i >= argv.length) {
@@ -210,12 +227,14 @@ final class Parser {
         boolean isSetHandler = command.equals("set") && !rest.isEmpty() && rest.get(0).equals("handler");
         boolean isAddRuleDrop = command.equals("add") && rest.size() >= 2 && rest.get(0).equals("rule")
                 && rest.get(1).equals("drop");
+        boolean isAddRuleTrim = command.equals("add") && rest.size() >= 2 && rest.get(0).equals("rule")
+                && rest.get(1).equals("trim");
 
         if (yes && !isSetLogger) {
             throw usage("--yes applies only to 'set logger'.");
         }
-        if (reason != null && !isSetLogger && !isSetHandler && !isAddRuleDrop) {
-            throw usage("--reason applies only to 'set logger', 'set handler', or 'add rule drop'.");
+        if (reason != null && !isSetLogger && !isSetHandler && !isAddRuleDrop && !isAddRuleTrim) {
+            throw usage("--reason applies only to 'set logger', 'set handler', 'add rule drop', or 'add rule trim'.");
         }
         if (includeSticky && !command.equals("reset")) {
             throw usage("--include-sticky applies only to 'reset'.");
@@ -226,11 +245,17 @@ final class Parser {
         if (showAll && !command.equals("list")) {
             throw usage("--show-all applies only to 'list loggers' or 'list handlers'.");
         }
-        if (!isAddRuleDrop) {
+        if (!isAddRuleDrop && !isAddRuleTrim) {
             if (messageContains != null || throwableType != null || throwableMessageContains != null || anyCause
-                    || belowLevel != null || sampleFullEveryMillis != null || noSampleFull) {
-                throw usage("the drop-matcher options apply only to 'add rule drop'.");
+                    || belowLevel != null) {
+                throw usage("the rule-matcher options apply only to 'add rule drop' or 'add rule trim'.");
             }
+        }
+        if (!isAddRuleDrop && (sampleFullEveryMillis != null || noSampleFull)) {
+            throw usage("--sample-full / --no-sample-full apply only to 'add rule drop'.");
+        }
+        if (!isAddRuleTrim && (frames != null || collapseCauses)) {
+            throw usage("--frames / --collapse-causes apply only to 'add rule trim'.");
         }
         if (sampleFullEveryMillis != null && noSampleFull) {
             throw usage("only one of --sample-full / --no-sample-full.");
@@ -402,7 +427,7 @@ final class Parser {
             }
             case "add" -> {
                 if (rest.size() < 2 || !rest.get(0).equals("rule")) {
-                    throw usage("'add' needs 'rule drop <target> ...'.");
+                    throw usage("'add' needs 'rule drop <target> ...' or 'rule trim <target> ...'.");
                 }
                 String action = rest.get(1);
                 List<String> actionRest = rest.subList(2, rest.size());
@@ -436,7 +461,29 @@ final class Parser {
                                 throwableMessageContains, anyCause, belowLevelOrDefault, sampleFullEnabled,
                                 everyMillis, reason, tier.tierName(), tier.forSeconds(), json);
                     }
-                    default -> throw usage("'add rule' needs 'drop', got '" + action + "'.");
+                    case "trim" -> {
+                        if (actionRest.isEmpty()) {
+                            throw usage(
+                                    "'add rule trim' needs <target>, e.g. 'add rule trim com.acme.Worker --below WARN'.");
+                        }
+                        // Unlike 'add rule drop', no content matcher is required here --
+                        // doc/specs/trim-rule.md "Matchers in use": a bare level-bounded trim is a
+                        // first-class case (the original #34 per-logger exceptionDetail threshold).
+                        String target = actionRest.get(0);
+                        if (target.endsWith(".*")) {
+                            throw usage("'add rule trim' rejects a trailing '.*' -- a bare name already reaches "
+                                    + "every descendant.");
+                        }
+                        TierChoice tier = resolveTier(actionRest.subList(1, actionRest.size()));
+                        // Same "resolve the default here, not leave it null" discipline as
+                        // 'add rule drop' -- doc/specs/trim-rule.md "Command surface".
+                        String belowLevelOrDefault = belowLevel != null ? belowLevel : parseBelowLevel("ERROR");
+                        int framesOrDefault = frames != null ? frames : 0;
+                        yield Commands.addRuleTrim(target, messageContains, messageIgnoreCase, throwableType,
+                                throwableMessageContains, anyCause, belowLevelOrDefault, framesOrDefault,
+                                collapseCauses, reason, tier.tierName(), tier.forSeconds(), json);
+                    }
+                    default -> throw usage("'add rule' needs 'drop' or 'trim', got '" + action + "'.");
                 };
             }
             default -> throw usage("Unknown command '" + command + "'.");
