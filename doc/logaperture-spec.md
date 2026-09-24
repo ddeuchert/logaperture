@@ -917,6 +917,8 @@ Idempotence is the hard half. Double-wrapping a formatter on every reload is an 
 
 > Implementation spec: [`doc/specs/wildfly-support.md`](specs/wildfly-support.md) — the JBoss LogManager adapter, the `ContainerIntegration` SPI, per-deployment contexts, and the redeploy loop, delivered in three slices.
 >
+> Handler-level install deferral (a real launch aborted when handler filters/formatters were installed at `premain`): [`doc/specs/wildfly-deferred-handler-install.md`](specs/wildfly-deferred-handler-install.md); findings in [`doc/spikes/early-handler-install.md`](spikes/early-handler-install.md).
+>
 > Dev environment: [`doc/specs/wildfly-dev-environment.md`](specs/wildfly-dev-environment.md) — a committed, VSCode-integrated Docker Compose environment for manual deploy/run/debug against a real WildFly (the interactive complement to `WildFlyContainerIT`).
 
 WildFly installs **JBoss LogManager** as the `java.util.logging.LogManager` and routes deployment logging — SLF4J, Log4j, commons-logging, JUL — into it through the logging subsystem. That is a significant simplification: **one backend adapter covers most of a WildFly estate**, rather than four. The exception is a deployment using `use-deployment-logging-config` with its own bundled configuration, which gets its own isolated setup.
