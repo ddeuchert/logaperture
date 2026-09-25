@@ -464,6 +464,21 @@ class AggregateLevelControlTest {
     }
 
     @Test
+    void sweepExpiredOverrides_alsoExpiresForRulesInEveryContext() { // issue #95
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        RuleAttachOptions shortFor = RuleAttachOptions.forDuration(java.time.Duration.ofMinutes(1));
+        system.ruleService.attach("com.acme.Worker", CompiledMatchers.matchAll(), shortFor, TestRule.FACTORY);
+        app.ruleService.attach("com.acme.Other", CompiledMatchers.matchAll(), shortFor, TestRule.FACTORY);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        aggregate.sweepExpiredOverrides(Instant.now().plus(java.time.Duration.ofMinutes(2)));
+
+        assertTrue(aggregate.listRules().isEmpty());
+    }
+
+    @Test
     void resetRule_findsAndRemovesFromWhicheverContextActuallyHoldsIt() {
         Ctx system = new Ctx("system");
         Ctx app = new Ctx("myapp.war");

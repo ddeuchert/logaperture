@@ -349,6 +349,83 @@ class RuleServiceTest {
         assertEquals(AuditRecord.Action.REVERSION, last.action());
     }
 
+    // --- runtime expiry (issue #95) -----------------------------------------------------------
+
+    @Test
+    void sweepExpiredRules_removesADueForRuleFromRegistryAndStoreWithAnExpirySweepAudit() {
+        LogRule rule = service.attach("com.acme.Worker", CompiledMatchers.matchAll(),
+                RuleAttachOptions.forDuration(Duration.ofMinutes(30)), TestRule.FACTORY);
+        assertEquals(1, stateStore.loadAllRules().size(), "a FOR rule is persisted");
+
+        service.sweepExpiredRules(rule.expiresAt().plusSeconds(1));
+
+        assertTrue(service.listRules().isEmpty());
+        assertTrue(service.effectiveRules("com.acme.Worker").isEmpty(), "no longer evaluated");
+        assertTrue(stateStore.loadAllRules().isEmpty());
+        AuditRecord last = auditLog.records().get(auditLog.records().size() - 1);
+        assertEquals(AuditRecord.Action.REVERSION, last.action());
+        assertEquals("expiry-sweep", last.source());
+        assertTrue(last.previousValue().contains(rule.id()));
+    }
+
+    @Test
+    void sweepExpiredRules_expiresExactlyAtTheDeadline() {
+        LogRule rule = service.attach("com.acme.Worker", CompiledMatchers.matchAll(),
+                RuleAttachOptions.forDuration(Duration.ofMinutes(30)), TestRule.FACTORY);
+
+        service.sweepExpiredRules(rule.expiresAt());
+
+        assertTrue(service.listRules().isEmpty(), "at-or-before, same as level overrides");
+    }
+
+    @Test
+    void sweepExpiredRules_notYetDueIsLeftUntouchedAndUnaudited() {
+        service.attach("com.acme.Worker", CompiledMatchers.matchAll(),
+                RuleAttachOptions.forDuration(Duration.ofMinutes(30)), TestRule.FACTORY);
+        int auditsBefore = auditLog.records().size();
+
+        service.sweepExpiredRules(Instant.now());
+
+        assertEquals(1, service.listRules().size());
+        assertEquals(1, stateStore.loadAllRules().size());
+        assertEquals(auditsBefore, auditLog.records().size());
+        assertEquals(0, stateStore.removeAllRulesCalls(), "a quiet tick doesn't rewrite the store");
+    }
+
+    @Test
+    void sweepExpiredRules_ignoresSessionAndStickyRules() {
+        attach("com.acme.Session");
+        service.attach("com.acme.Sticky", CompiledMatchers.matchAll(), RuleAttachOptions.sticky(), TestRule.FACTORY);
+
+        service.sweepExpiredRules(Instant.now().plus(Duration.ofDays(365)));
+
+        assertEquals(2, service.listRules().size());
+    }
+
+    @Test
+    void sweepExpiredRules_batchesTheStateStoreRewrite() {
+        RuleAttachOptions shortFor = RuleAttachOptions.forDuration(Duration.ofMinutes(1));
+        service.attach("com.acme.a", CompiledMatchers.matchAll(), shortFor, TestRule.FACTORY);
+        service.attach("com.acme.b", CompiledMatchers.matchAll(), shortFor, TestRule.FACTORY);
+
+        service.sweepExpiredRules(Instant.now().plus(Duration.ofMinutes(2)));
+
+        assertTrue(stateStore.loadAllRules().isEmpty());
+        assertEquals(1, stateStore.removeAllRulesCalls(), "one rewrite per sweep tick, not one per rule");
+    }
+
+    @Test
+    void sweepExpiredRules_afterAResetDoesNothingMore() {
+        LogRule rule = service.attach("com.acme.Worker", CompiledMatchers.matchAll(),
+                RuleAttachOptions.forDuration(Duration.ofMinutes(30)), TestRule.FACTORY);
+        service.resetRule(rule.id(), false);
+        int auditsBefore = auditLog.records().size();
+
+        service.sweepExpiredRules(rule.expiresAt().plusSeconds(1));
+
+        assertEquals(auditsBefore, auditLog.records().size(), "no second REVERSION for an already-removed rule");
+    }
+
     @Test
     void resumeFromStateStore_unregisteredActionIsSkippedButLeftInTheStore() {
         // No registerActionFactory call -- this slice ships no concrete

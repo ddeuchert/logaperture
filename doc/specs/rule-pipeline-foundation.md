@@ -488,6 +488,17 @@ never reapply and are recorded as a `REVERSION`. A rule's persisted id is reused
 resume (see "Rule identity") — a resumed `STICKY` rule is the *same* rule from the operator's
 point of view, not a new one that happens to look identical.
 
+**Expiry at runtime (issue #95).** A `FOR` rule is removed by the same sweep tick that expires
+level and handler overrides (`AggregateLevelControl.sweepExpiredOverrides`, default every 30 s,
+`logaperture.sweep.seconds`), via `RuleService.sweepExpiredRules`: every `FOR` rule whose
+`expiresAt` is at or before the tick is detached, its evaluation state (hit count, sampling,
+pending summary) forgotten, its state-file row removed (one rewrite per tick), and a `REVERSION`
+audited with source `expiry-sweep` and reason `expired`. Like a level override, a rule may act
+for up to one sweep interval past its deadline; the gate itself does not check `expiresAt`.
+Removal is compare-and-remove, so a tick working from a stale snapshot never removes a rule a
+concurrent reset already removed. Before #95 nothing removed a live `FOR` rule, so it kept acting
+until the next restart.
+
 ## Testing
 
 Per top-level §12's cheap-unit-tests-plus-one-shallow-integration-test split. This slice has no

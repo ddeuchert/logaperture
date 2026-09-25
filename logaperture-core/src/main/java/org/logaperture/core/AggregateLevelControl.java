@@ -1095,12 +1095,13 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * Runs the expiry sweep across every context — the composition root's
      * single scheduled task drives this instead of one-per-context (§15.5;
      * doc/specs/persistence.md's "the composition root owns <em>when</em>").
-     * Covers logger and handler overrides alike.
+     * Covers logger and handler overrides alike, and {@code for <duration>} rules (issue #95).
      */
     public void sweepExpiredOverrides(Instant now) {
         for (ContextControl context : sortedByKey()) {
             context.service().sweepExpiredOverrides(now);
             context.handlerService().sweepExpiredOverrides(now);
+            context.ruleService().sweepExpiredRules(now);
         }
     }
 

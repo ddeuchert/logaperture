@@ -140,6 +140,22 @@ class DropRuleTest {
     }
 
     @Test
+    void gate_aForDropStopsDenyingOnceTheExpirySweepPassesItsDeadline() { // issue #95
+        Drop drop = (Drop) service.attach("com.acme.Worker",
+                new CompiledMatchers(Level.WARN, "noisy", false, null, null, false),
+                RuleAttachOptions.forDuration(java.time.Duration.ofMinutes(30)),
+                DropFactories.attach(SampleFullPolicy.disabled()), Capability.SUPPRESS);
+        assertTrue(service.gate().evaluate(new Object(),
+                event("com.acme.Worker", Level.INFO, "noisy", null)).deny());
+
+        service.sweepExpiredRules(drop.expiresAt().plusSeconds(1));
+
+        assertFalse(service.gate().evaluate(new Object(),
+                event("com.acme.Worker", Level.INFO, "noisy", null)).deny());
+        assertEquals(0L, service.hitCount(drop.id()), "evaluation state is forgotten with the rule");
+    }
+
+    @Test
     void gate_reusesTheCachedVerdictForTheSameRecordIdentity_notRecomputed() {
         attachDrop("com.acme.Worker", new CompiledMatchers(Level.WARN, "noisy", false, null, null, false),
                 SampleFullPolicy.disabled());
