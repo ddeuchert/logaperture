@@ -434,6 +434,31 @@ public final class RuleService implements RuleOperations {
         return new RuleResetOutcome(removed, skippedSticky, skippedVendor);
     }
 
+    /**
+     * Removes every {@code FOR} rule whose {@code expiresAt} is at or before {@code now}, drops
+     * it from the state store, and audits a {@code REVERSION} with source {@code expiry-sweep}
+     * -- doc/specs/rule-pipeline-foundation.md "Persistence" (issue #95: until this existed, a
+     * {@code for <duration>} rule kept acting until the next restart). The rule counterpart of
+     * {@link LevelControlService#sweepExpiredOverrides}; scheduled by the composition root's
+     * sweep tick via {@link AggregateLevelControl#sweepExpiredOverrides}. Vendor rules are
+     * {@code SESSION} internally and never expire here.
+     */
+    public void sweepExpiredRules(Instant now) {
+        List<String> expired = new ArrayList<>();
+        for (LogRule rule : registry.all()) {
+            if (rule.tier() == PersistenceTier.FOR && rule.expiresAt() != null && !rule.expiresAt().isAfter(now)
+                    && registry.removeIfCurrent(rule)) {
+                forgetEvaluationState(rule.id());
+                expired.add(rule.id());
+                auditLog.record(new AuditRecord(now, principal, "expiry-sweep", rule.loggerName(), describe(rule),
+                        null, "expired", AuditRecord.Action.REVERSION));
+            }
+        }
+        if (!expired.isEmpty()) {
+            safePersist(() -> stateStore.removeAllRules(expired)); // one rewrite per tick (issue #17)
+        }
+    }
+
     private void auditRemoval(LogRule rule) {
         auditLog.record(new AuditRecord(Instant.now(), principal, source, rule.loggerName(), describe(rule), null,
                 rule.reason(), AuditRecord.Action.REVERSION));

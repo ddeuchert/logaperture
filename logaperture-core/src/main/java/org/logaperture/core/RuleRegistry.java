@@ -60,6 +60,19 @@ final class RuleRegistry {
         return Optional.of(rule);
     }
 
+    /**
+     * Removes {@code rule} only if it is still the rule registered under its id -- the expiry
+     * sweep's compare-and-remove, so a sweep working from a stale snapshot never removes a rule
+     * that a concurrent reset already removed or that has since been replaced under the same id.
+     */
+    synchronized boolean removeIfCurrent(LogRule rule) {
+        if (byId.get(rule.id()) != rule) {
+            return false;
+        }
+        removeById(rule.id());
+        return true;
+    }
+
     /** Every attached rule, across every logger, removed and returned. */
     synchronized List<LogRule> removeAll() {
         List<LogRule> all = List.copyOf(byId.values());
