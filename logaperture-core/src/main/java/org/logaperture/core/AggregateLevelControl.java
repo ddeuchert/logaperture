@@ -55,6 +55,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -260,6 +261,13 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         for (HandlerLevelOverride override : handlersToRebroadcast) {
             control.handlerService().adoptOverride(override);
         }
+        // A reset --to-native lasts until restart in every context (doc/specs/reset-to-native.md),
+        // including one that registers after it -- copied over like the overrides above.
+        existingAny.ifPresent(existing -> {
+            control.service().adoptResetToNative(existing.service().resetToNativeLoggerNames());
+            control.handlerService().adoptResetToNative(existing.handlerService().resetToNativeHandlerRefs(),
+                    existing.handlerService().defaultHandlersResetToNative());
+        });
         // One recompute pass now that both halves have been rebroadcast onto
         // the new context -- doc/specs/handler-floor-control.md "AUTO
         // handler level", AUTO-5: an AUTO override rebroadcast above carries
@@ -650,7 +658,23 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 System.getProperty(DIAGNOSTICS_LEVEL_PROPERTY),
                 stateFilePath,
                 vendorDefaults.path().map(Object::toString).orElse(null),
-                vendorDefaults.statusLine());
+                vendorDefaultsStatusLine());
+    }
+
+    /**
+     * {@link VendorDefaults#statusLine()}, plus how many of its entries are reset to native
+     * (doc/specs/reset-to-native.md "Surfaces") -- counted in the first context, since resets
+     * broadcast to every context.
+     */
+    private String vendorDefaultsStatusLine() {
+        String line = vendorDefaults.statusLine();
+        List<ContextControl> contexts = sortedByKey();
+        if (contexts.isEmpty()) {
+            return line;
+        }
+        ContextControl first = contexts.get(0);
+        int resetToNative = first.service().resetToNativeCount() + first.handlerService().resetToNativeCount();
+        return resetToNative == 0 ? line : line + ", " + resetToNative + " reset to native";
     }
 
     /** {@link #containerVersion}'s supplier is third-party code (a {@code ContainerIntegration}'s own); a throw there must degrade the same as a throwing adapter, never fail the whole report. */
@@ -767,6 +791,12 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
 
     @Override
     public ResetOutcome resetLogger(String target, boolean includeSticky) {
+        return resetLogger(target, includeSticky, false);
+    }
+
+    /** doc/specs/reset-to-native.md -- broadcast like every reset. */
+    @Override
+    public ResetOutcome resetLogger(String target, boolean includeSticky, boolean toNative) {
         // A dedup by name, not a concatenation: two contexts sharing a
         // logger (or matched by the same pattern) each report reverting it
         // independently, and the caller-facing list should name it once,
@@ -780,7 +810,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         Set<String> reverted = new LinkedHashSet<>();
         Set<String> skippedSticky = new LinkedHashSet<>();
         for (ContextControl context : sortedByKey()) {
-            ResetOutcome outcome = context.service().resetLogger(target, includeSticky);
+            ResetOutcome outcome = context.service().resetLogger(target, includeSticky, toNative);
             reverted.addAll(outcome.revertedLoggerNames());
             skippedSticky.addAll(outcome.skippedStickyLoggerNames());
         }
@@ -789,10 +819,15 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
 
     @Override
     public ResetOutcome resetAllLoggers(boolean includeSticky) {
+        return resetAllLoggers(includeSticky, false);
+    }
+
+    @Override
+    public ResetOutcome resetAllLoggers(boolean includeSticky, boolean toNative) {
         Set<String> reverted = new LinkedHashSet<>();
         Set<String> skippedSticky = new LinkedHashSet<>();
         for (ContextControl context : sortedByKey()) {
-            ResetOutcome outcome = context.service().resetAllLoggers(includeSticky);
+            ResetOutcome outcome = context.service().resetAllLoggers(includeSticky, toNative);
             reverted.addAll(outcome.revertedLoggerNames());
             skippedSticky.addAll(outcome.skippedStickyLoggerNames());
         }
@@ -913,12 +948,17 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
 
     @Override
     public HandlerResetOutcome resetHandler(HandlerRef ref, boolean includeSticky) {
+        return resetHandler(ref, includeSticky, false);
+    }
+
+    @Override
+    public HandlerResetOutcome resetHandler(HandlerRef ref, boolean includeSticky, boolean toNative) {
         // Same "no pre-flight for the sticky refusal" convention as
         // resetLogger above.
         Set<HandlerRef> reverted = new LinkedHashSet<>();
         Set<HandlerRef> skippedSticky = new LinkedHashSet<>();
         for (ContextControl context : sortedByKey()) {
-            HandlerResetOutcome outcome = context.handlerService().resetHandler(ref, includeSticky);
+            HandlerResetOutcome outcome = context.handlerService().resetHandler(ref, includeSticky, toNative);
             reverted.addAll(outcome.revertedHandlerRefs());
             skippedSticky.addAll(outcome.skippedStickyHandlerRefs());
         }
@@ -927,10 +967,15 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
 
     @Override
     public HandlerResetOutcome resetAllHandlers(boolean includeSticky) {
+        return resetAllHandlers(includeSticky, false);
+    }
+
+    @Override
+    public HandlerResetOutcome resetAllHandlers(boolean includeSticky, boolean toNative) {
         Set<HandlerRef> reverted = new LinkedHashSet<>();
         Set<HandlerRef> skippedSticky = new LinkedHashSet<>();
         for (ContextControl context : sortedByKey()) {
-            HandlerResetOutcome outcome = context.handlerService().resetAllHandlers(includeSticky);
+            HandlerResetOutcome outcome = context.handlerService().resetAllHandlers(includeSticky, toNative);
             reverted.addAll(outcome.revertedHandlerRefs());
             skippedSticky.addAll(outcome.skippedStickyHandlerRefs());
         }
@@ -992,6 +1037,32 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     @Override
     public List<HandlerRef> setDefaultHandlerMembers(List<HandlerRef> names) {
+        Function<HandlerLevelControlService, List<HandlerRef>> setMembers =
+                service -> service.setDefaultHandlerMembers(names);
+        return broadcastDefaultHandlers("setDefaultHandlerMembers", setMembers);
+    }
+
+    /**
+     * {@code logctl reset default-handler [--to-native]}'s broadcast (doc/specs/
+     * reset-to-native.md) -- the same per-context fault isolation and representative answer as
+     * {@link #setDefaultHandlerMembers}.
+     */
+    @Override
+    public List<HandlerRef> resetDefaultHandlerMembers(boolean toNative) {
+        Function<HandlerLevelControlService, List<HandlerRef>> resetMembers =
+                service -> service.resetDefaultHandlerMembers(toNative);
+        return broadcastDefaultHandlers("resetDefaultHandlerMembers", resetMembers);
+    }
+
+    /**
+     * Applies a {@code DEFAULT_HANDLERS} membership change to every context, tolerating one
+     * context's {@code UnknownHandlerException}/capability failure without aborting the rest
+     * (membership is per context: the same real-handler name can validate in one context and
+     * not another). Representative answer: the {@code system} context's result when it has one,
+     * else the first context's.
+     */
+    private List<HandlerRef> broadcastDefaultHandlers(String operation,
+            Function<HandlerLevelControlService, List<HandlerRef>> change) {
         List<ContextControl> contexts = sortedByKey();
         if (contexts.isEmpty()) {
             throw new IllegalStateException("no logging context is registered yet");
@@ -1001,7 +1072,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         int succeeded = 0;
         for (ContextControl context : contexts) {
             try {
-                List<HandlerRef> result = context.handlerService().setDefaultHandlerMembers(names);
+                List<HandlerRef> result = change.apply(context.handlerService());
                 succeeded++;
                 if (fromAny == null) {
                     fromAny = result;
@@ -1010,12 +1081,12 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                     fromSystem = result;
                 }
             } catch (RuntimeException e) {
-                System.err.println("[logaperture-core] setDefaultHandlerMembers failed in context '"
+                System.err.println("[logaperture-core] " + operation + " failed in context '"
                         + context.stableKey() + "', that context is unchanged: " + e);
             }
         }
         if (succeeded == 0) {
-            throw new IllegalStateException("setDefaultHandlerMembers failed in every context");
+            throw new IllegalStateException(operation + " failed in every context");
         }
         return fromSystem != null ? fromSystem : fromAny;
     }

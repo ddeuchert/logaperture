@@ -89,6 +89,19 @@ public interface HandlerLevelControlOperations {
     HandlerResetOutcome resetHandler(HandlerRef ref, boolean includeSticky);
 
     /**
+     * {@link #resetHandler(HandlerRef, boolean)}, optionally to the native default -- doc/specs/
+     * reset-to-native.md; on a group ref ({@code ALL_HANDLERS}, {@code DEFAULT_HANDLERS}) it
+     * applies to each member. Implementations without a vendor layer need only the two-argument
+     * form.
+     */
+    default HandlerResetOutcome resetHandler(HandlerRef ref, boolean includeSticky, boolean toNative) {
+        if (toNative) {
+            throw new UnsupportedOperationException("reset --to-native is not supported here");
+        }
+        return resetHandler(ref, includeSticky);
+    }
+
+    /**
      * Reverts every currently-overridden handler — the bulk counterpart to
      * {@link #resetHandler} (doc/specs/reset-command-surface.md).
      *
@@ -98,6 +111,29 @@ public interface HandlerLevelControlOperations {
      *         sticky
      */
     HandlerResetOutcome resetAllHandlers(boolean includeSticky);
+
+    /** {@link #resetAllHandlers(boolean)}, optionally to the native default -- as {@link #resetHandler(HandlerRef, boolean, boolean)}. */
+    default HandlerResetOutcome resetAllHandlers(boolean includeSticky, boolean toNative) {
+        if (toNative) {
+            throw new UnsupportedOperationException("reset --to-native is not supported here");
+        }
+        return resetAllHandlers(includeSticky);
+    }
+
+    /**
+     * {@code logctl reset default-handler [--to-native]} -- clears any explicit {@code
+     * DEFAULT_HANDLERS} membership, so the vendor defaults file's list (or the automatic pick)
+     * decides again; with {@code toNative}, the vendor list is also ignored until restart
+     * (doc/specs/reset-to-native.md).
+     *
+     * @return the members now in effect
+     */
+    default List<HandlerRef> resetDefaultHandlerMembers(boolean toNative) {
+        if (toNative) {
+            throw new UnsupportedOperationException("reset --to-native is not supported here");
+        }
+        return setDefaultHandlerMembers(List.of());
+    }
 
     /**
      * Every handler override currently active — the {@link

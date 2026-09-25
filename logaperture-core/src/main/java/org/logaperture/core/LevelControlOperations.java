@@ -62,6 +62,20 @@ public interface LevelControlOperations {
     ResetOutcome resetLogger(String target, boolean includeSticky);
 
     /**
+     * {@link #resetLogger(String, boolean)}, optionally to the native default -- doc/specs/
+     * reset-to-native.md. With {@code toNative}, every target the vendor defaults file names
+     * ignores its vendor level until restart and lands on its native value; a plain reset
+     * ({@code toNative == false}) also puts a target reset to native back on its vendor level.
+     * Implementations without a vendor layer need only the two-argument form.
+     */
+    default ResetOutcome resetLogger(String target, boolean includeSticky, boolean toNative) {
+        if (toNative) {
+            throw new UnsupportedOperationException("reset --to-native is not supported here");
+        }
+        return resetLogger(target, includeSticky);
+    }
+
+    /**
      * Reverts every currently-overridden logger — the bulk counterpart to
      * {@link #resetLogger}, replacing the removed {@code resetAll()}
      * (doc/specs/reset-command-surface.md).
@@ -72,4 +86,12 @@ public interface LevelControlOperations {
      *         sticky
      */
     ResetOutcome resetAllLoggers(boolean includeSticky);
+
+    /** {@link #resetAllLoggers(boolean)}, optionally to the native default -- as {@link #resetLogger(String, boolean, boolean)}. */
+    default ResetOutcome resetAllLoggers(boolean includeSticky, boolean toNative) {
+        if (toNative) {
+            throw new UnsupportedOperationException("reset --to-native is not supported here");
+        }
+        return resetAllLoggers(includeSticky);
+    }
 }

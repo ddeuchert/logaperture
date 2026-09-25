@@ -22,6 +22,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -52,7 +53,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@code defaultHandlers} list (doc/specs/vendor-defaults.md "Default handlers"): explicit
  * &rarr; vendor &rarr; rule. The vendor list is fixed for the JVM's life and never pruned or
  * persisted; its members that don't resolve right now are simply skipped, and if none resolve
- * the rule decides.
+ * the rule decides. {@code reset default-handler --to-native} ignores the vendor list until
+ * restart (doc/specs/reset-to-native.md), so the rule decides.
  */
 public final class DefaultHandlerGroupRegistry {
 
@@ -61,6 +63,9 @@ public final class DefaultHandlerGroupRegistry {
 
     /** The vendor defaults file's list; empty when the file doesn't set one. */
     private final List<HandlerRef> vendorMembers;
+
+    /** {@code true} while the vendor list is reset to native -- ignored until restart. */
+    private final AtomicBoolean vendorIgnored = new AtomicBoolean();
 
     public DefaultHandlerGroupRegistry() {
         this(List.of());
@@ -86,8 +91,32 @@ public final class DefaultHandlerGroupRegistry {
         return explicit.get() == null && !resolvedVendorMembers(adapter).isEmpty();
     }
 
+    /** Whether the vendor list is being ignored until restart. */
+    public boolean isResetToNative() {
+        return vendorIgnored.get();
+    }
+
+    /**
+     * Ignores the vendor list until restart.
+     *
+     * @return {@code true} if this changed anything -- {@code false} if the vendor defaults file
+     *         sets no list, or it was already ignored
+     */
+    public boolean markResetToNative() {
+        return !vendorMembers.isEmpty() && vendorIgnored.compareAndSet(false, true);
+    }
+
+    /**
+     * Puts the vendor list back in effect.
+     *
+     * @return {@code true} if it was being ignored
+     */
+    public boolean clearResetToNative() {
+        return vendorIgnored.compareAndSet(true, false);
+    }
+
     private List<HandlerRef> resolvedVendorMembers(LoggingAdapter adapter) {
-        if (vendorMembers.isEmpty()) {
+        if (vendorMembers.isEmpty() || vendorIgnored.get()) {
             return List.of();
         }
         Set<HandlerRef> reals = Set.copyOf(adapter.realHandlers());

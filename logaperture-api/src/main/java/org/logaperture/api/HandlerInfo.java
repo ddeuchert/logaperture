@@ -66,6 +66,8 @@ import java.time.Instant;
  * @param vendorDefault     the vendor defaults file's setting for this handler -- a level
  *                          name or {@code "AUTO"} -- or {@code null} if the file doesn't name
  *                          it (doc/specs/vendor-defaults.md "Surfaces")
+ * @param resetToNative     whether that vendor setting is being ignored until restart
+ *                          ({@code logctl reset handler --to-native}, doc/specs/reset-to-native.md)
  */
 public record HandlerInfo(
         String ref,
@@ -80,7 +82,8 @@ public record HandlerInfo(
         Instant overrideExpiresAt,
         String membersSummary,
         String context,
-        String vendorDefault) {
+        String vendorDefault,
+        boolean resetToNative) {
 
     public HandlerInfo {
         if (ref == null || ref.isEmpty()) {
@@ -94,7 +97,7 @@ public record HandlerInfo(
             boolean overrideActive, Level overrideLevel, HandlerLevelMode overrideMode, PersistenceTier overrideTier,
             Instant overrideExpiresAt, String membersSummary) {
         this(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel, overrideMode, overrideTier,
-                overrideExpiresAt, membersSummary, null, null);
+                overrideExpiresAt, membersSummary, null, null, false);
     }
 
     /** Every field but {@code vendorDefault} -- the shape before doc/specs/vendor-defaults.md. */
@@ -103,12 +106,21 @@ public record HandlerInfo(
             boolean overrideActive, Level overrideLevel, HandlerLevelMode overrideMode, PersistenceTier overrideTier,
             Instant overrideExpiresAt, String membersSummary, String context) {
         this(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel, overrideMode, overrideTier,
-                overrideExpiresAt, membersSummary, context, null);
+                overrideExpiresAt, membersSummary, context, null, false);
+    }
+
+    /** Every field but {@code resetToNative} -- the shape before doc/specs/reset-to-native.md. */
+    public HandlerInfo(
+            String ref, Level level, boolean persistent, String targetPath, Boolean autoFlush,
+            boolean overrideActive, Level overrideLevel, HandlerLevelMode overrideMode, PersistenceTier overrideTier,
+            Instant overrideExpiresAt, String membersSummary, String context, String vendorDefault) {
+        this(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel, overrideMode, overrideTier,
+                overrideExpiresAt, membersSummary, context, vendorDefault, false);
     }
 
     /** This same row, tagged with its owning context's stable key. */
     public HandlerInfo withContext(String context) {
         return new HandlerInfo(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel,
-                overrideMode, overrideTier, overrideExpiresAt, membersSummary, context, vendorDefault);
+                overrideMode, overrideTier, overrideExpiresAt, membersSummary, context, vendorDefault, resetToNative);
     }
 }

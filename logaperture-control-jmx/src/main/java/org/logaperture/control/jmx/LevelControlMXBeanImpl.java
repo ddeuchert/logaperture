@@ -98,6 +98,16 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
+    public ResetOutcomeData resetLogger(String target, boolean includeSticky, boolean toNative) {
+        return ResetOutcomeData.from(operations.resetLogger(target, includeSticky, toNative));
+    }
+
+    @Override
+    public ResetOutcomeData resetAllLoggers(boolean includeSticky, boolean toNative) {
+        return ResetOutcomeData.from(operations.resetAllLoggers(includeSticky, toNative));
+    }
+
+    @Override
     public HandlerLevelOverrideData setHandlerLevel(String handlerRef, String level, String reason, String tier,
             long forSeconds) {
         Level parsedLevel = parseLevel(level);
@@ -130,6 +140,17 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
+    public HandlerResetOutcomeData resetHandler(String handlerRef, boolean includeSticky, boolean toNative) {
+        return HandlerResetOutcomeData.from(
+                handlerOperations.resetHandler(new HandlerRef(handlerRef), includeSticky, toNative));
+    }
+
+    @Override
+    public HandlerResetOutcomeData resetAllHandlers(boolean includeSticky, boolean toNative) {
+        return HandlerResetOutcomeData.from(handlerOperations.resetAllHandlers(includeSticky, toNative));
+    }
+
+    @Override
     public List<HandlerLevelOverrideData> listHandlerOverrides() {
         return handlerOperations.listHandlerOverrides().stream().map(HandlerLevelOverrideData::from).toList();
     }
@@ -143,6 +164,11 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     public List<String> setDefaultHandlerMembers(List<String> names) {
         List<HandlerRef> refs = names.stream().map(HandlerRef::new).toList();
         return handlerOperations.setDefaultHandlerMembers(refs).stream().map(HandlerRef::value).toList();
+    }
+
+    @Override
+    public List<String> resetDefaultHandler(boolean toNative) {
+        return handlerOperations.resetDefaultHandlerMembers(toNative).stream().map(HandlerRef::value).toList();
     }
 
     @Override

@@ -188,7 +188,9 @@ integration, and applied by each context's `installContext`. On WildFly today th
   applies the vendor level, not the native one; the audit `newValue` shows it. A logger with a
   vendor default and no override has nothing to reset (unchanged behaviour for "no override").
 - An operator who wants the native level back uses `set logger X <level>`; there is no "reset
-  past the vendor layer" (epic #2: the file is the authority on the baseline).
+  past the vendor layer" (epic #2: the file is the authority on the baseline). **Superseded by
+  [`reset-to-native.md`](reset-to-native.md) (issue #94):** `reset … --to-native` lands on the
+  native level until restart, and a plain reset undoes it.
 
 ### Handlers
 

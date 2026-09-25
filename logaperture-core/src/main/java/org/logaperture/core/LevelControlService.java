@@ -29,11 +29,13 @@ import org.logaperture.core.spi.StateStore;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Predicate;
 
@@ -123,7 +125,8 @@ public final class LevelControlService implements LevelControlOperations {
                     override.map(LevelOverride::tier).orElse(null),
                     override.map(LevelOverride::expiresAt).orElse(null),
                     null,
-                    baselines.vendorLevel(name).orElse(null)));
+                    baselines.vendorLevel(name).orElse(null),
+                    baselines.isResetToNative(name)));
         }
         return List.copyOf(result);
     }
@@ -373,21 +376,33 @@ public final class LevelControlService implements LevelControlOperations {
 
     @Override
     public ResetOutcome resetLogger(String target, boolean includeSticky) {
+        return resetLogger(target, includeSticky, false);
+    }
+
+    /**
+     * doc/specs/reset-to-native.md: a plain reset lands on the baseline, clearing a reset to
+     * native along with any override; {@code toNative} lands a vendor-named logger on its native
+     * value instead, until restart. A target with neither an override nor a vendor-layer change
+     * to make is a no-op.
+     */
+    @Override
+    public ResetOutcome resetLogger(String target, boolean includeSticky, boolean toNative) {
         Objects.requireNonNull(target, "target");
         if (NameFilter.isPattern(target)) {
-            return resetPattern(target, includeSticky);
+            return resetPattern(target, includeSticky, toNative);
         }
         Optional<LevelOverride> existing = overrides.get(target);
-        if (existing.isEmpty()) {
+        if (existing.isEmpty() && !vendorLayerWouldChange(target, toNative)) {
             return ResetOutcome.nothingReset(); // no-op, not an error -- per spec
         }
-        if (existing.get().tier() == PersistenceTier.STICKY && !includeSticky) {
+        if (existing.isPresent() && existing.get().tier() == PersistenceTier.STICKY && !includeSticky) {
             // Decision #1 (doc/specs/reset-command-surface.md): a single
             // named target refuses outright rather than silently doing
             // nothing -- checked before the capability check below, same
             // "validate the target's shape/eligibility first" ordering
             // rejectIfTrailingWildcard already uses ahead of setLogger's own
-            // capability check.
+            // capability check. With --to-native too: the vendor layer is
+            // left alone when the reset is refused.
             throw rejectSticky(target);
         }
         // Simplification for this slice: every reset requires LEVEL_LOWER,
@@ -398,7 +413,8 @@ public final class LevelControlService implements LevelControlOperations {
         // (reverting a manual silence) is a known, documented gap -- not
         // resolved by the spec, not addressed here.
         requireCapability(Capability.LEVEL_LOWER);
-        if (applyReset(target, existing.get(), source, null)) {
+        ResetStep step = resetOne(target, existing.orElse(null), toNative, source);
+        if (step.overrideRemoved()) {
             safePersist(() -> stateStore.remove(target));
         }
         changeListener.onChange(); // this logger's override just went away -- an AUTO handler tracking it needs to know
@@ -408,80 +424,174 @@ public final class LevelControlService implements LevelControlOperations {
     /**
      * A pattern target's {@code resetLogger} (doc/specs/
      * pattern-selection-semantics.md "Operations") -- resolves {@code
-     * pattern}'s current match set (same matcher as always) and reverts
+     * pattern}'s current match set (same matcher as always) and resets
      * whichever of those loggers carry an active {@link LevelOverride},
-     * regardless of how that override came to exist. No rule identity to
-     * look up any more: this is exactly what {@code listLoggers}/{@code
-     * levels} already do, filtered down to "and has an override." A
-     * {@code STICKY} match is left alone and reported rather than refused
-     * (doc/specs/reset-command-surface.md, Decision #1 -- a pattern names a
-     * set, however large, not one specific thing).
+     * regardless of how that override came to exist, or have a vendor-layer
+     * change to make (doc/specs/reset-to-native.md). A {@code STICKY} match is
+     * left alone and reported rather than refused (doc/specs/
+     * reset-command-surface.md, Decision #1 -- a pattern names a set, however
+     * large, not one specific thing).
      */
-    private ResetOutcome resetPattern(String pattern, boolean includeSticky) {
+    private ResetOutcome resetPattern(String pattern, boolean includeSticky, boolean toNative) {
         // One read per candidate name, not two (a code-review finding
         // against an earlier version of this method, which read `overrides`
         // once to decide whether a name qualified, then again, separately,
         // right before reverting it): iterate matchesFor's plain name
         // snapshot -- same discipline sweepExpiredOverrides follows -- and
         // act on whatever a single fresh overrides.get(name) finds. The
-        // capability check is deferred to the first name actually reverted,
-        // so a match set with nothing to revert (nothing overridden, or
-        // every match sticky-skipped) still skips it entirely, same
-        // convention as an exact-name target.
-        List<String> matches = matchesFor(pattern);
-        List<String> reverted = new ArrayList<>();
-        List<String> skippedSticky = new ArrayList<>();
-        boolean capabilityChecked = false;
-        for (String name : matches) {
-            Optional<LevelOverride> current = overrides.get(name);
-            if (current.isEmpty()) {
-                continue;
-            }
-            if (current.get().tier() == PersistenceTier.STICKY && !includeSticky) {
-                skippedSticky.add(name);
-                continue;
-            }
-            if (!capabilityChecked) {
-                requireCapability(Capability.LEVEL_LOWER);
-                capabilityChecked = true;
-            }
-            if (applyReset(name, current.get(), source, null)) {
-                reverted.add(name);
+        // capability check is deferred to the first name actually reset, so
+        // a match set with nothing to reset (nothing overridden, or every
+        // match sticky-skipped) still skips it entirely, same convention as
+        // an exact-name target.
+        TreeSet<String> candidates = new TreeSet<>(matchesFor(pattern));
+        Predicate<String> matcher = NameFilter.compile(pattern);
+        for (String vendorName : baselines.vendorLoggerNames()) {
+            if (matcher.test(vendorName)) {
+                candidates.add(vendorName); // named by the vendor file but not instantiated yet
             }
         }
-        if (reverted.isEmpty() && skippedSticky.isEmpty()) {
-            return ResetOutcome.nothingReset();
-        }
-        if (!reverted.isEmpty()) {
-            safePersist(() -> stateStore.removeAll(reverted)); // one rewrite for the whole match set (issue #17)
-            changeListener.onChange();
-        }
-        return new ResetOutcome(reverted, skippedSticky);
+        return resetEach(candidates, includeSticky, toNative, false);
     }
 
     @Override
     public ResetOutcome resetAllLoggers(boolean includeSticky) {
+        return resetAllLoggers(includeSticky, false);
+    }
+
+    @Override
+    public ResetOutcome resetAllLoggers(boolean includeSticky, boolean toNative) {
         // Unconditional capability check up front, matching the removed
         // resetAll()'s own convention (unlike resetPattern's lazy check) --
         // "reset everything" asks for authorization to do that regardless of
         // what, if anything, currently qualifies.
         requireCapability(Capability.LEVEL_LOWER);
+        TreeSet<String> candidates = new TreeSet<>(overrides.all().keySet());
+        candidates.addAll(toNative ? baselines.activeVendorLoggerNames() : baselines.resetToNativeNames());
+        return resetEach(candidates, includeSticky, toNative, true);
+    }
+
+    /**
+     * The shared loop of {@link #resetPattern} and {@link #resetAllLoggers}: resets every
+     * candidate that has an override or a vendor-layer change to make, skipping and reporting a
+     * sticky override unless {@code includeSticky}. One state-file rewrite for the whole set
+     * (issue #17).
+     */
+    private ResetOutcome resetEach(Collection<String> candidates, boolean includeSticky, boolean toNative,
+            boolean capabilityChecked) {
         List<String> reverted = new ArrayList<>();
         List<String> skippedSticky = new ArrayList<>();
-        for (Map.Entry<String, LevelOverride> entry : overrides.all().entrySet()) {
-            if (entry.getValue().tier() == PersistenceTier.STICKY && !includeSticky) {
-                skippedSticky.add(entry.getKey());
+        List<String> removedOverrides = new ArrayList<>();
+        boolean checked = capabilityChecked;
+        for (String name : candidates) {
+            Optional<LevelOverride> current = overrides.get(name);
+            if (current.isEmpty() && !vendorLayerWouldChange(name, toNative)) {
                 continue;
             }
-            if (applyReset(entry.getKey(), entry.getValue(), source, null)) {
-                reverted.add(entry.getKey());
+            if (current.isPresent() && current.get().tier() == PersistenceTier.STICKY && !includeSticky) {
+                skippedSticky.add(name);
+                continue;
+            }
+            if (!checked) {
+                requireCapability(Capability.LEVEL_LOWER);
+                checked = true;
+            }
+            ResetStep step = resetOne(name, current.orElse(null), toNative, source);
+            if (step.changed()) {
+                reverted.add(name);
+            }
+            if (step.overrideRemoved()) {
+                removedOverrides.add(name);
             }
         }
+        if (reverted.isEmpty() && skippedSticky.isEmpty()) {
+            return ResetOutcome.nothingReset();
+        }
+        if (!removedOverrides.isEmpty()) {
+            safePersist(() -> stateStore.removeAll(removedOverrides)); // one rewrite, not one per logger (issue #17)
+        }
         if (!reverted.isEmpty()) {
-            safePersist(() -> stateStore.removeAll(reverted)); // one rewrite, not one per logger (issue #17)
             changeListener.onChange();
         }
         return new ResetOutcome(reverted, skippedSticky);
+    }
+
+    /** How many vendor-named loggers are reset to native -- the {@code status}/{@code env} count. */
+    public int resetToNativeCount() {
+        return baselines.resetToNativeNames().size();
+    }
+
+    /** The loggers reset to native in this context -- what {@link AggregateLevelControl#addContext} copies to a newcomer. */
+    public Set<String> resetToNativeLoggerNames() {
+        return baselines.resetToNativeNames();
+    }
+
+    /**
+     * Reset to native in this context what another context in the same aggregate already has --
+     * the {@link #adoptOverride} counterpart (doc/specs/reset-to-native.md "Multi-context"). No
+     * capability check: it reinstates what an already-authorized reset established. Audited with
+     * source {@code "resume"}, like an adopted override.
+     */
+    public void adoptResetToNative(Collection<String> loggerNames) {
+        for (String name : loggerNames) {
+            if (baselines.markResetToNative(name) && overrides.get(name).isEmpty()) {
+                applyBaseline(name, "resume", VendorDefaults.RESET_TO_NATIVE_REASON);
+            }
+        }
+    }
+
+    /** Puts a logger reset to native back on its native value, unaudited -- undoing a vendor re-apply that lost a race. */
+    private void restoreNativeSilently(String loggerName, LoggingAdapter targetAdapter) {
+        try {
+            targetAdapter.applyLevel(loggerName, baselines.get(loggerName).orElse(null));
+        } catch (IllegalStateException neverCaptured) {
+            // nothing to restore to
+        }
+    }
+
+    /** Whether a reset of {@code name} would change its vendor layer -- see {@link #resetOne}. */
+    private boolean vendorLayerWouldChange(String name, boolean toNative) {
+        return toNative
+                ? baselines.vendorLevel(name).isPresent() && !baselines.isResetToNative(name)
+                : baselines.isResetToNative(name);
+    }
+
+    /**
+     * Resets one logger: first its vendor layer (doc/specs/reset-to-native.md -- {@code toNative}
+     * ignores a vendor level until restart, a plain reset puts one back), then its override, if
+     * {@code current} is one, landing on the resulting baseline. With no override, a vendor-layer
+     * change is applied on its own. Capability and sticky checks are the caller's.
+     */
+    private ResetStep resetOne(String loggerName, LevelOverride current, boolean toNative, String auditSource) {
+        boolean layerChanged = toNative
+                ? baselines.markResetToNative(loggerName)
+                : baselines.clearResetToNative(loggerName);
+        String reason = ResetStep.reason(layerChanged, toNative);
+        if (current != null && applyReset(loggerName, current, auditSource, reason)) {
+            return new ResetStep(true, true);
+        }
+        if (layerChanged && overrides.get(loggerName).isEmpty()) {
+            applyBaseline(loggerName, auditSource, reason);
+        }
+        return new ResetStep(layerChanged, false);
+    }
+
+    /**
+     * Sets {@code loggerName} to its baseline with no override involved -- a vendor-layer change
+     * on its own. A logger whose native value was never captured (its vendor default failed to
+     * apply at install) is left alone: there is no native value to land on, and throwing here
+     * would abort a bulk reset part-way through.
+     */
+    private void applyBaseline(String loggerName, String auditSource, String reason) {
+        String previousValue = adapter.configuredLevel(loggerName).map(Level::toString).orElse("<inherited>");
+        Optional<Level> baseline;
+        try {
+            baseline = baselines.get(loggerName);
+        } catch (IllegalStateException neverCaptured) {
+            return;
+        }
+        adapter.applyLevel(loggerName, baseline.orElse(null));
+        auditLog.record(new AuditRecord(Instant.now(), principal, auditSource, loggerName, previousValue,
+                baseline.map(Level::toString).orElse("<inherited>"), reason, AuditRecord.Action.REVERSION));
     }
 
     /**
@@ -510,8 +620,11 @@ public final class LevelControlService implements LevelControlOperations {
         // The vendor layer first, for loggers no override covers -- doc/specs/vendor-defaults.md
         // "Reconfiguration and the verification sweep": a framework reset erased it too.
         for (String name : baselines.vendorLoggerNames()) {
-            if (overrides.get(name).isEmpty()) {
+            if (overrides.get(name).isEmpty() && !baselines.isResetToNative(name)) {
                 targetAdapter.applyLevel(name, baselines.vendorLevel(name).orElseThrow());
+                if (baselines.isResetToNative(name)) {
+                    restoreNativeSilently(name, targetAdapter); // a concurrent reset --to-native won
+                }
             }
         }
         for (LevelOverride override : overrides.all().values()) {
@@ -615,7 +728,7 @@ public final class LevelControlService implements LevelControlOperations {
     private int verifyVendorLayer(Instant now) {
         int reapplied = 0;
         for (String loggerName : baselines.vendorLoggerNames()) {
-            if (overrides.get(loggerName).isPresent()) {
+            if (overrides.get(loggerName).isPresent() || baselines.isResetToNative(loggerName)) {
                 continue;
             }
             Level vendorLevel = baselines.vendorLevel(loggerName).orElseThrow();
@@ -627,6 +740,12 @@ public final class LevelControlService implements LevelControlOperations {
             Optional<LevelOverride> raced = overrides.get(loggerName);
             if (raced.isPresent()) {
                 OverrideApplier.apply(raced.get(), adapter);
+                continue;
+            }
+            if (baselines.isResetToNative(loggerName)) {
+                // A concurrent reset --to-native won between our check and our apply -- undo,
+                // since nothing else re-asserts a logger reset to native.
+                restoreNativeSilently(loggerName, adapter);
                 continue;
             }
             auditLog.record(new AuditRecord(now, principal, "verification-sweep", loggerName,

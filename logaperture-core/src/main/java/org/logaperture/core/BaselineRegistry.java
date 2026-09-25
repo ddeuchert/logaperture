@@ -21,6 +21,7 @@ import org.logaperture.core.spi.LoggingAdapter;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -37,12 +38,17 @@ import java.util.concurrent.ConcurrentHashMap;
  * the vendor defaults file names has that level as its <em>effective</em> baseline, which is
  * what {@link #get} returns and so what every reset, expiry and undo path lands on. The captured
  * application value stays available as {@link #nativeLevel}.
+ *
+ * <p>A vendor-named logger can be <em>reset to native</em> (doc/specs/reset-to-native.md): until
+ * restart the vendor layer is ignored for it, so {@link #get} returns the native value and the
+ * vendor-layer passes leave it alone ({@link #isResetToNative}).
  */
 public final class BaselineRegistry {
 
     private final Map<String, Optional<Level>> captured = new ConcurrentHashMap<>();
     private final Map<String, Level> vendorLevels;
     private final Map<String, String> vendorReasons;
+    private final Set<String> resetToNative = ConcurrentHashMap.newKeySet();
 
     public BaselineRegistry() {
         this(Map.of());
@@ -80,15 +86,15 @@ public final class BaselineRegistry {
     }
 
     /**
-     * The effective baseline: the vendor level if the vendor defaults file names {@code name},
-     * else the captured native value.
+     * The effective baseline: the vendor level if the vendor defaults file names {@code name} and
+     * it isn't reset to native, else the captured native value.
      *
      * @throws IllegalStateException if {@code name} has no vendor level and its native baseline
      *                               was never captured
      */
     public Optional<Level> get(String name) {
         Level vendor = vendorLevels.get(name);
-        if (vendor != null) {
+        if (vendor != null && !resetToNative.contains(name)) {
             return Optional.of(vendor);
         }
         return nativeLevel(name);
@@ -120,5 +126,41 @@ public final class BaselineRegistry {
     /** Every logger the vendor defaults file names. */
     public Set<String> vendorLoggerNames() {
         return vendorLevels.keySet();
+    }
+
+    /** The vendor-named loggers whose vendor level is in effect -- every one not reset to native. */
+    public Set<String> activeVendorLoggerNames() {
+        Set<String> active = new TreeSet<>(vendorLevels.keySet());
+        active.removeAll(resetToNative);
+        return active;
+    }
+
+    /** The loggers currently reset to native, sorted. */
+    public Set<String> resetToNativeNames() {
+        return new TreeSet<>(resetToNative);
+    }
+
+    /** Whether {@code name}'s vendor level is being ignored until restart. */
+    public boolean isResetToNative(String name) {
+        return resetToNative.contains(name);
+    }
+
+    /**
+     * Ignores {@code name}'s vendor level until restart.
+     *
+     * @return {@code true} if this changed anything -- {@code false} if the vendor defaults file
+     *         doesn't name {@code name}, or it was already reset to native
+     */
+    public boolean markResetToNative(String name) {
+        return vendorLevels.containsKey(name) && resetToNative.add(name);
+    }
+
+    /**
+     * Puts {@code name}'s vendor level back in effect.
+     *
+     * @return {@code true} if {@code name} was reset to native
+     */
+    public boolean clearResetToNative(String name) {
+        return resetToNative.remove(name);
     }
 }

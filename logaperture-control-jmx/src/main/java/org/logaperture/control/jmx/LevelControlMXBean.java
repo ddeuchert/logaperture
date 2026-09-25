@@ -79,6 +79,14 @@ public interface LevelControlMXBean {
     ResetOutcomeData resetLogger(String target, boolean includeSticky);
 
     /**
+     * {@link #resetLogger(String, boolean)}; with {@code toNative}, a logger the vendor defaults
+     * file names lands on its native level until restart, and a plain reset ({@code false}) puts
+     * one reset to native back on its vendor level (doc/specs/reset-to-native.md). A new
+     * overload, not a changed signature (logaperture-spec.md §11.1).
+     */
+    ResetOutcomeData resetLogger(String target, boolean includeSticky, boolean toNative);
+
+    /**
      * {@code logctl reset loggers} — reverts every currently-overridden
      * logger (doc/specs/reset-command-surface.md), replacing the removed
      * {@code resetAll()}.
@@ -89,6 +97,9 @@ public interface LevelControlMXBean {
      *         sticky
      */
     ResetOutcomeData resetAllLoggers(boolean includeSticky);
+
+    /** {@link #resetAllLoggers(boolean)}, with {@code toNative} as in {@link #resetLogger(String, boolean, boolean)}. */
+    ResetOutcomeData resetAllLoggers(boolean includeSticky, boolean toNative);
 
     /**
      * {@code logctl set handler <name> <level>} — doc/specs/
@@ -138,6 +149,9 @@ public interface LevelControlMXBean {
      */
     HandlerResetOutcomeData resetHandler(String handlerRef, boolean includeSticky);
 
+    /** {@link #resetHandler(String, boolean)}, with {@code toNative} as in {@link #resetLogger(String, boolean, boolean)}. */
+    HandlerResetOutcomeData resetHandler(String handlerRef, boolean includeSticky, boolean toNative);
+
     /**
      * {@code logctl reset handlers} — reverts every currently-overridden
      * handler (doc/specs/reset-command-surface.md).
@@ -148,6 +162,9 @@ public interface LevelControlMXBean {
      *         sticky
      */
     HandlerResetOutcomeData resetAllHandlers(boolean includeSticky);
+
+    /** {@link #resetAllHandlers(boolean)}, with {@code toNative} as in {@link #resetLogger(String, boolean, boolean)}. */
+    HandlerResetOutcomeData resetAllHandlers(boolean includeSticky, boolean toNative);
 
     /**
      * Every handler override currently active, across every registered
@@ -177,6 +194,15 @@ public interface LevelControlMXBean {
      * @return the new explicit membership, empty when cleared
      */
     List<String> setDefaultHandlerMembers(List<String> names);
+
+    /**
+     * {@code logctl reset default-handler [--to-native]}: clears the explicit membership, so the
+     * vendor defaults file's list (or the automatic pick) decides again; with {@code toNative},
+     * the vendor list is also ignored until restart (doc/specs/reset-to-native.md).
+     *
+     * @return the members now in effect
+     */
+    List<String> resetDefaultHandler(boolean toNative);
 
     /**
      * {@code logctl doctor} — a read-only configuration diagnosis, across
