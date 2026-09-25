@@ -447,6 +447,11 @@ final class Json {
                 .raw("collapseCauses", row.getCollapseCauses() == null ? "null" : String.valueOf(row.getCollapseCauses()))
                 .str("origin", row.getOrigin())
                 .bool("suspended", row.isSuspended())
+                .raw("sampleFullEnabled", row.getSampleFullEnabled() == null ? "null"
+                        : String.valueOf(row.getSampleFullEnabled()))
+                .raw("sampleFullEveryMillis", row.getSampleFullEveryMillis() == null ? "null"
+                        : String.valueOf(row.getSampleFullEveryMillis()))
+                .str("expression", RuleExpression.of(row))
                 .toString();
     }
 

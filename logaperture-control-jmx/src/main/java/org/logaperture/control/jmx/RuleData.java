@@ -15,6 +15,7 @@
  */
 package org.logaperture.control.jmx;
 
+import org.logaperture.api.Drop;
 import org.logaperture.api.LogRule;
 import org.logaperture.api.Trim;
 import org.logaperture.core.RuleView;
@@ -54,19 +55,23 @@ public final class RuleData {
     private final Boolean collapseCauses;
     private final String origin;
     private final boolean suspended;
+    private final Boolean sampleFullEnabled;
+    private final Long sampleFullEveryMillis;
 
     /**
-     * Every field, including {@code origin}/{@code suspended} (doc/specs/vendor-defaults.md
-     * "Rules"); the narrower constructor below stays annotated for older clients
-     * (logaperture-spec.md §11.1).
+     * Every field, including a drop rule's {@code sampleFullEnabled}/{@code sampleFullEveryMillis}
+     * (doc/specs/list-rules-verbose.md; {@code null} for any other action); the narrower
+     * constructors below stay annotated for older clients (logaperture-spec.md §11.1).
      */
     @ConstructorProperties({"id", "loggerName", "action", "levelAtMost", "messageContains", "messageIgnoreCase",
             "throwableType", "throwableMessageContains", "anyCause", "reason", "tier", "expiresAt", "createdAt",
-            "context", "hitCount", "frames", "collapseCauses", "origin", "suspended"})
+            "context", "hitCount", "frames", "collapseCauses", "origin", "suspended", "sampleFullEnabled",
+            "sampleFullEveryMillis"})
     public RuleData(String id, String loggerName, String action, String levelAtMost, String messageContains,
             boolean messageIgnoreCase, String throwableType, String throwableMessageContains, boolean anyCause,
             String reason, String tier, String expiresAt, String createdAt, String context, long hitCount,
-            Integer frames, Boolean collapseCauses, String origin, boolean suspended) {
+            Integer frames, Boolean collapseCauses, String origin, boolean suspended, Boolean sampleFullEnabled,
+            Long sampleFullEveryMillis) {
         this.id = id;
         this.loggerName = loggerName;
         this.action = action;
@@ -86,6 +91,21 @@ public final class RuleData {
         this.collapseCauses = collapseCauses;
         this.origin = origin;
         this.suspended = suspended;
+        this.sampleFullEnabled = sampleFullEnabled;
+        this.sampleFullEveryMillis = sampleFullEveryMillis;
+    }
+
+    /** Every field but the sampling ones -- the shape of doc/specs/vendor-defaults.md "Rules". */
+    @ConstructorProperties({"id", "loggerName", "action", "levelAtMost", "messageContains", "messageIgnoreCase",
+            "throwableType", "throwableMessageContains", "anyCause", "reason", "tier", "expiresAt", "createdAt",
+            "context", "hitCount", "frames", "collapseCauses", "origin", "suspended"})
+    public RuleData(String id, String loggerName, String action, String levelAtMost, String messageContains,
+            boolean messageIgnoreCase, String throwableType, String throwableMessageContains, boolean anyCause,
+            String reason, String tier, String expiresAt, String createdAt, String context, long hitCount,
+            Integer frames, Boolean collapseCauses, String origin, boolean suspended) {
+        this(id, loggerName, action, levelAtMost, messageContains, messageIgnoreCase, throwableType,
+                throwableMessageContains, anyCause, reason, tier, expiresAt, createdAt, context, hitCount, frames,
+                collapseCauses, origin, suspended, null, null);
     }
 
     @ConstructorProperties({"id", "loggerName", "action", "levelAtMost", "messageContains", "messageIgnoreCase",
@@ -122,7 +142,9 @@ public final class RuleData {
                 rule instanceof Trim trim ? trim.frames() : null,
                 rule instanceof Trim trim ? trim.collapseCauses() : null,
                 view.origin(),
-                view.suspended());
+                view.suspended(),
+                rule instanceof Drop drop ? drop.sampleFull().enabled() : null,
+                rule instanceof Drop drop ? drop.sampleFull().every().toMillis() : null);
     }
 
     /** {@code "vendor-defaults"} for a rule from the vendor defaults file, else {@code null}. */
@@ -201,5 +223,15 @@ public final class RuleData {
 
     public Boolean getCollapseCauses() {
         return collapseCauses;
+    }
+
+    /** A drop rule's {@code --sample-full} switch; {@code null} for any other action. */
+    public Boolean getSampleFullEnabled() {
+        return sampleFullEnabled;
+    }
+
+    /** A drop rule's {@code --sample-full} interval in milliseconds; {@code null} for any other action. */
+    public Long getSampleFullEveryMillis() {
+        return sampleFullEveryMillis;
     }
 }

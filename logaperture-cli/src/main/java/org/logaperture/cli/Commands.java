@@ -957,6 +957,11 @@ final class Commands {
      * stubbed report in tests.
      */
     static Command listRules(boolean json) {
+        return listRules(false, json);
+    }
+
+    /** @param verbose doc/specs/list-rules-verbose.md: add the {@code EXPRESSION} column */
+    static Command listRules(boolean verbose, boolean json) {
         return (mbean, out, in, interactive) -> {
             List<org.logaperture.control.jmx.RuleData> rows = mbean.listRules();
             if (json) {
@@ -976,6 +981,9 @@ final class Commands {
                 }
                 cells.add(row.getId());
                 cells.add(row.getLoggerName());
+                if (verbose) {
+                    cells.add(RuleExpression.of(row));
+                }
                 cells.add(row.getAction());
                 cells.add(ruleTierCell(row));
                 cells.add(orDash(row.getExpiresAt()));
@@ -986,7 +994,11 @@ final class Commands {
             if (showContext) {
                 headers.add("CONTEXT");
             }
-            headers.addAll(List.of("ID", "LOGGER", "ACTION", "TIER", "EXPIRES", "HITS"));
+            headers.addAll(List.of("ID", "LOGGER"));
+            if (verbose) {
+                headers.add("EXPRESSION");
+            }
+            headers.addAll(List.of("ACTION", "TIER", "EXPIRES", "HITS"));
             out.println(Format.table(headers, table));
             return CliError.OK;
         };

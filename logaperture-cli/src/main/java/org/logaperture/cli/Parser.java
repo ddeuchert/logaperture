@@ -58,6 +58,7 @@ final class Parser {
         boolean includeSticky = false;
         boolean includeVendorDefaults = false;
         boolean toNative = false;
+        boolean verbose = false;
         boolean showAll = false;
         String reason = null;
         Integer limit = null;
@@ -83,6 +84,7 @@ final class Parser {
                 case "--include-sticky" -> includeSticky = true;
                 case "--include-vendor-defaults" -> includeVendorDefaults = true;
                 case "--to-native" -> toNative = true;
+                case "--verbose" -> verbose = true;
                 case "--show-all" -> showAll = true;
                 case "--any-cause" -> anyCause = true;
                 case "--no-sample-full" -> noSampleFull = true;
@@ -259,6 +261,9 @@ final class Parser {
         if (limit != null && !command.equals("top") && !command.equals("storms")) {
             throw usage("--limit applies only to 'top' or 'storms'.");
         }
+        if (verbose && !(command.equals("list") && !rest.isEmpty() && rest.get(0).equals("rules"))) {
+            throw usage("--verbose applies only to 'list rules'.");
+        }
         if (showAll && !command.equals("list")) {
             throw usage("--show-all applies only to 'list loggers' or 'list handlers'.");
         }
@@ -308,7 +313,7 @@ final class Parser {
                             // every attached rule already is the "overridden" state.
                             throw usage("--show-all does not apply to 'list rules'.");
                         }
-                        yield Commands.listRules(json);
+                        yield Commands.listRules(verbose, json);
                     }
                     default -> throw usage(
                             "'list' needs 'loggers [filter]', 'handlers', or 'rules', got '" + noun + "'.");
