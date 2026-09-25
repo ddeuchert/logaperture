@@ -649,7 +649,7 @@ final class Commands {
         };
     }
 
-    /** The "left N sticky override(s) in place" line every bulk/pattern reset form shares (doc/specs/reset-command-surface.md, Decision #1). */
+    /** The "left N vendor default rule(s) in place" line the rule-reset forms share (doc/specs/vendor-defaults.md "Rules"). */
     private static void printSkippedVendor(java.io.PrintStream out, List<String> skipped) {
         if (skipped.isEmpty()) {
             return;
@@ -658,6 +658,7 @@ final class Commands {
                 + "switch them off until restart): " + String.join(", ", skipped));
     }
 
+    /** The "left N sticky override(s) in place" line every bulk/pattern reset form shares (doc/specs/reset-command-surface.md, Decision #1). */
     private static void printSkippedSticky(java.io.PrintStream out, String noun, List<String> skipped) {
         if (skipped.isEmpty()) {
             return;

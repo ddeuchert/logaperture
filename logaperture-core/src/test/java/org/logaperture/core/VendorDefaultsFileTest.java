@@ -181,6 +181,29 @@ class VendorDefaultsFileTest {
     }
 
     @Test
+    void anApostropheInsideAPlainScalar_doesNotSwallowATrailingComment() {
+        VendorDefaults defaults = VendorDefaultsFile.parse("""
+                schemaVersion: 1
+                loggers:
+                  - name: com.acme
+                    level: INFO
+                    reason: vendor's choice  # see ticket 42
+                rules:
+                  - id: a
+                    action: drop
+                    logger: com.acme
+                    messageContains: can't connect  # the pool's retry noise
+                defaultHandlers: [CONSOLE, it's]
+                """, PATH, false);
+
+        assertEquals(VendorDefaults.Status.LOADED, defaults.status(), defaults.errors().toString());
+        assertEquals("vendor's choice", defaults.loggers().get("com.acme").reason());
+        assertEquals("can't connect", defaults.rules().get(0).matchers().messageContains());
+        assertEquals(Optional.of(List.of(new HandlerRef("CONSOLE"), new HandlerRef("it's"))),
+                defaults.defaultHandlers());
+    }
+
+    @Test
     void everyErrorIsReported_eachWithItsLine() {
         VendorDefaults defaults = VendorDefaultsFile.parse("""
                 schemaVersion: 1

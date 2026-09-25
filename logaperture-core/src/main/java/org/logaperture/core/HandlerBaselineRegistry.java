@@ -20,6 +20,8 @@ import org.logaperture.api.Level;
 import org.logaperture.core.spi.LoggingAdapter;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -66,7 +68,8 @@ public final class HandlerBaselineRegistry {
      * @param vendorDefaults the vendor defaults file's handler entries, by name
      */
     public HandlerBaselineRegistry(Map<HandlerRef, VendorDefaults.HandlerDefault> vendorDefaults) {
-        this.vendorDefaults = Map.copyOf(vendorDefaults);
+        // Insertion-ordered copy, not Map.copyOf: vendorDefaults() promises file order.
+        this.vendorDefaults = Collections.unmodifiableMap(new LinkedHashMap<>(vendorDefaults));
     }
 
     /**
@@ -120,15 +123,6 @@ public final class HandlerBaselineRegistry {
         return value;
     }
 
-    /**
-     * Moves {@code oldRef}'s captured baseline, if any, to {@code newRef} —
-     * for a handler renamed in place by the adapter (doc/specs/
-     * handler-floor-control.md "Resume resilience and baseline-key
-     * migration", issue #29). A no-op if {@code oldRef} was never captured.
-     * If {@code newRef} already has a captured baseline, that one wins and
-     * {@code oldRef}'s is simply dropped, same {@link KeyedRegistry#migrateKey}
-     * "current key wins" rule.
-     */
     /** The vendor defaults file's entry for {@code ref}, if it names one. */
     public Optional<VendorDefaults.HandlerDefault> vendorDefault(HandlerRef ref) {
         return Optional.ofNullable(vendorDefaults.get(ref));
@@ -139,6 +133,15 @@ public final class HandlerBaselineRegistry {
         return vendorDefaults.values();
     }
 
+    /**
+     * Moves {@code oldRef}'s captured baseline, if any, to {@code newRef} —
+     * for a handler renamed in place by the adapter (doc/specs/
+     * handler-floor-control.md "Resume resilience and baseline-key
+     * migration", issue #29). A no-op if {@code oldRef} was never captured.
+     * If {@code newRef} already has a captured baseline, that one wins and
+     * {@code oldRef}'s is simply dropped, same {@link KeyedRegistry#migrateKey}
+     * "current key wins" rule.
+     */
     public void migrateKey(HandlerRef oldRef, HandlerRef newRef) {
         Optional<Level> oldValue = captured.remove(oldRef);
         if (oldValue != null) {

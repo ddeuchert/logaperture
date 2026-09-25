@@ -536,7 +536,8 @@ public final class LevelControlService implements LevelControlOperations {
                 String previousValue = adapter.effectiveLevel(name).toString();
                 adapter.applyLevel(name, vendorLevel);
                 auditLog.record(new AuditRecord(now, principal, VendorDefaults.AUDIT_SOURCE, name, previousValue,
-                        vendorLevel.toString(), null, AuditRecord.Action.MUTATION));
+                        vendorLevel.toString(), baselines.vendorReason(name).orElse(null),
+                        AuditRecord.Action.MUTATION));
             } catch (RuntimeException e) {
                 System.err.println("[logaperture] failed to apply the vendor default for logger '" + name
                         + "', skipping it: " + e);

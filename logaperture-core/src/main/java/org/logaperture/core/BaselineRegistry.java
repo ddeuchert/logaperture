@@ -42,6 +42,7 @@ public final class BaselineRegistry {
 
     private final Map<String, Optional<Level>> captured = new ConcurrentHashMap<>();
     private final Map<String, Level> vendorLevels;
+    private final Map<String, String> vendorReasons;
 
     public BaselineRegistry() {
         this(Map.of());
@@ -51,7 +52,17 @@ public final class BaselineRegistry {
      * @param vendorLevels the vendor defaults file's logger levels, by exact name
      */
     public BaselineRegistry(Map<String, Level> vendorLevels) {
+        this(vendorLevels, Map.of());
+    }
+
+    /**
+     * @param vendorLevels  the vendor defaults file's logger levels, by exact name
+     * @param vendorReasons the vendor defaults file's logger {@code reason}s, by exact name
+     *                      (loggers without one are simply absent)
+     */
+    public BaselineRegistry(Map<String, Level> vendorLevels, Map<String, String> vendorReasons) {
         this.vendorLevels = Map.copyOf(vendorLevels);
+        this.vendorReasons = Map.copyOf(vendorReasons);
     }
 
     /**
@@ -99,6 +110,11 @@ public final class BaselineRegistry {
     /** The vendor defaults file's level for {@code name}, if it names one. */
     public Optional<Level> vendorLevel(String name) {
         return Optional.ofNullable(vendorLevels.get(name));
+    }
+
+    /** The vendor defaults file's {@code reason} for {@code name}, if it gives one. */
+    public Optional<String> vendorReason(String name) {
+        return Optional.ofNullable(vendorReasons.get(name));
     }
 
     /** Every logger the vendor defaults file names. */

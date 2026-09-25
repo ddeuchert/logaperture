@@ -137,13 +137,31 @@ final class VendorYaml {
                 } else if (c == quote) {
                     quote = 0;
                 }
-            } else if (c == '"' || c == '\'') {
+            } else if ((c == '"' || c == '\'') && startsScalar(line, i)) {
                 quote = c;
             } else if (c == '#' && (i == 0 || Character.isWhitespace(line.charAt(i - 1)))) {
                 return line.substring(0, i);
             }
         }
         return line;
+    }
+
+    /**
+     * Whether a quote at {@code i} opens a quoted scalar -- only at the start of a value (after
+     * {@code ": "}, {@code "- "}, {@code [} or {@code ,}, or at line start), as in YAML. A quote
+     * inside a plain scalar ({@code can't connect}) is just a character, so a trailing
+     * {@code # comment} after it is still stripped.
+     */
+    private static boolean startsScalar(String line, int i) {
+        int j = i - 1;
+        while (j >= 0 && Character.isWhitespace(line.charAt(j))) {
+            j--;
+        }
+        if (j < 0) {
+            return true;
+        }
+        char previous = line.charAt(j);
+        return previous == '[' || previous == ',' || ((previous == ':' || previous == '-') && j < i - 1);
     }
 
     private static boolean isListItem(String text) {
@@ -312,10 +330,10 @@ final class VendorYaml {
                 } else if (c == quote) {
                     quote = 0;
                 }
-            } else if (c == '"' || c == '\'') {
-                quote = c;
+            } else if ((c == '"' || c == '\'') && current.toString().isBlank()) {
+                quote = c; // only at an item's start -- same rule as startsScalar
                 current.append(c);
-            } else if (c == '[' || c == ']' || c == '{' || c == '}') {
+            } else if (c == '['|| c == ']' || c == '{' || c == '}') {
                 throw new SyntaxException(number, "nested lists and maps are not supported inside '[ ... ]'");
             } else if (c == ',') {
                 items.add(flowItem(current.toString(), number));

@@ -485,19 +485,33 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * surfaced only if no other context yields a real match (a code-review
      * finding against an earlier version of this method, which let the
      * first refusal abort the whole call).
+     *
+     * <p>A vendor defaults rule ({@code vendor:<name>}) is the exception: the file is applied
+     * to every context, so the same id genuinely lives in each one, and a suspension must reach
+     * all of them rather than stop at the first (doc/specs/vendor-defaults.md "Rules").
      */
     @Override
     public Optional<RuleView> resetRule(String id, boolean includeSticky, boolean includeVendorDefaults) {
+        boolean vendorId = id.startsWith(VendorDefaults.RULE_ID_PREFIX);
+        Optional<RuleView> firstRemoved = Optional.empty();
         IllegalArgumentException stickyRefusal = null;
         for (ContextControl context : sortedByKey()) {
             try {
                 Optional<RuleView> removed = context.ruleService().resetRule(id, includeSticky, includeVendorDefaults);
                 if (removed.isPresent()) {
-                    return removed;
+                    if (!vendorId) {
+                        return removed;
+                    }
+                    if (firstRemoved.isEmpty()) {
+                        firstRemoved = removed;
+                    }
                 }
             } catch (IllegalArgumentException e) {
                 stickyRefusal = e;
             }
+        }
+        if (firstRemoved.isPresent()) {
+            return firstRemoved;
         }
         if (stickyRefusal != null) {
             throw stickyRefusal;

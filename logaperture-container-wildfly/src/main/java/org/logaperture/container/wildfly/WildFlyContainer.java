@@ -182,7 +182,8 @@ public final class WildFlyContainer implements AutoCloseable {
         startHandlerInstallFloor();
         LoggingAdapter adapter = handle.adapter();
 
-        BaselineRegistry baselines = new BaselineRegistry(vendorDefaults.loggerLevels());
+        BaselineRegistry baselines =
+                new BaselineRegistry(vendorDefaults.loggerLevels(), vendorDefaults.loggerReasons());
         for (String name : adapter.knownLoggerNames()) {
             baselines.captureIfAbsent(name, adapter);
         }
