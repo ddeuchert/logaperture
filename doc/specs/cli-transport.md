@@ -328,6 +328,12 @@ only broad forms, and neither prompts for confirmation (same "someone typing thi
 to just work" reasoning the old `reset --all` had). Full command-by-command output shapes,
 exit codes, and design rationale: [`reset-command-surface.md`](reset-command-surface.md).
 
+### `logctl export vendor-defaults [--out <file>] [--force]`
+
+Prints the vendor defaults file this JVM started with, plus every `sticky` change made on top of
+it, as a new vendor defaults file; `--out` writes it to a file instead (refusing an existing one
+unless `--force`). Specified in [`vendor-defaults-export.md`](vendor-defaults-export.md) (issue #62).
+
 ### The phone test, enforced
 
 §6.2 sets a design criterion: a support engineer must be able to read any command down a

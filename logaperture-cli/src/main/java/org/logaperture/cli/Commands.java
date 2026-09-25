@@ -1193,6 +1193,98 @@ final class Commands {
     }
 
     /**
+     * {@code logctl export vendor-defaults [--out <file>] [--force]} -- doc/specs/vendor-defaults-export.md
+     * "Command". The agent builds and validates the file; this prints it, or writes it to {@code
+     * outPath} via a temporary file in the same directory and a rename, so a failed write never
+     * leaves a partial file. An existing {@code outPath} is refused unless {@code force}.
+     */
+    static Command exportVendorDefaults(String outPath, boolean force) {
+        return new Command() {
+            @Override
+            public int run(org.logaperture.control.jmx.LevelControlMXBean mbean, java.io.PrintStream out,
+                    java.io.InputStream in, boolean interactive) {
+                return run(mbean, out, new java.io.PrintStream(java.io.OutputStream.nullOutputStream()), in,
+                        interactive);
+            }
+
+            @Override
+            public int run(org.logaperture.control.jmx.LevelControlMXBean mbean, java.io.PrintStream out,
+                    java.io.PrintStream err, java.io.InputStream in, boolean interactive) {
+                java.nio.file.Path target = outPath == null ? null
+                        : java.nio.file.Path.of(outPath).toAbsolutePath().normalize();
+                if (target != null && java.nio.file.Files.exists(target) && !force) {
+                    throw new CliError(CliError.UNEXPECTED, target + " already exists -- pass --force to "
+                            + "overwrite it.");
+                }
+                String text = mbean.exportVendorDefaults();
+                String summary = exportSummary(text);
+                if (summary.isEmpty()) {
+                    err.println("Nothing to export: no vendor defaults file and no sticky settings.");
+                }
+                if (target == null) {
+                    out.print(text);
+                    return CliError.OK;
+                }
+                writeAtomically(target, text);
+                out.println("Wrote " + (summary.isEmpty() ? "no settings" : summary) + " to " + target + ".");
+                return CliError.OK;
+            }
+        };
+    }
+
+    /** E.g. {@code "3 loggers, 1 handler, default handlers, 2 rules"}, counted from the file's own sections; empty if none. */
+    static String exportSummary(String text) {
+        Map<String, Integer> counts = new java.util.LinkedHashMap<>();
+        String section = null;
+        for (String line : text.lines().toList()) {
+            if (!line.startsWith(" ") && !line.startsWith("#") && line.endsWith(":")) {
+                section = line.substring(0, line.length() - 1);
+                counts.put(section, 0);
+            } else if (section != null && line.startsWith("  - ")) {
+                counts.merge(section, 1, Integer::sum);
+            } else if (!line.startsWith(" ")) {
+                section = null;
+            }
+        }
+        List<String> parts = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+            int n = entry.getValue();
+            switch (entry.getKey()) {
+                case "loggers" -> parts.add(n + (n == 1 ? " logger" : " loggers"));
+                case "handlers" -> parts.add(n + (n == 1 ? " handler" : " handlers"));
+                case "defaultHandlers" -> parts.add("default handlers");
+                case "rules" -> parts.add(n + (n == 1 ? " rule" : " rules"));
+                default -> { }
+            }
+        }
+        return String.join(", ", parts);
+    }
+
+    private static void writeAtomically(java.nio.file.Path target, String text) {
+        java.nio.file.Path directory = target.getParent();
+        java.nio.file.Path temp = null;
+        try {
+            temp = java.nio.file.Files.createTempFile(directory, "." + target.getFileName(), ".tmp");
+            java.nio.file.Files.writeString(temp, text, java.nio.charset.StandardCharsets.UTF_8);
+            try {
+                java.nio.file.Files.move(temp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                java.nio.file.Files.move(temp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (java.io.IOException e) {
+            if (temp != null) {
+                try {
+                    java.nio.file.Files.deleteIfExists(temp);
+                } catch (java.io.IOException ignored) {
+                    // best effort -- the write already failed and is being reported
+                }
+            }
+            throw new CliError(CliError.UNEXPECTED, "Can't write " + target + ": " + e.getMessage());
+        }
+    }
+
+    /**
      * {@code logctl top} — doc/specs/top.md "The operation". Read-only, like
      * {@code doctor}; unlike it, rate and the stack-trace percentage are
      * computed here from the raw counts plus how long measurement has been

@@ -318,6 +318,66 @@ class LevelControlEndToEndIT {
         assertFalse(proxy.listLoggers(FIXTURE_LOGGER).get(0).isResetToNative());
     }
 
+    /**
+     * doc/specs/vendor-defaults-export.md "Testing" -- the {@code none} container round trip: start
+     * with a vendor file, add a sticky override and a sticky drop rule, export, then start a second
+     * JVM with the exported file and an empty state directory, and find the same levels and rules
+     * in effect -- now all from the file.
+     */
+    @Test
+    void exportedVendorDefaults_reproduceTheTunedStateInAFreshJvm(@TempDir Path secondHome) throws Exception {
+        String agentJarPath = System.getProperty("logaperture.agent.jar");
+        assertNotNull(agentJarPath, "system property logaperture.agent.jar must point at the shaded jar");
+        String otherLogger = "org.logaperture.agent.it.fixture.Other";
+        Path vendorFile = logapertureHome.resolve("vendor-defaults.yaml");
+        Files.writeString(vendorFile, """
+                schemaVersion: 1
+                loggers:
+                  - name: %s
+                    level: WARN
+                rules:
+                  - id: fixture-noise
+                    action: drop
+                    logger: %s
+                    messageContains: "tick"
+                """.formatted(FIXTURE_LOGGER, FIXTURE_LOGGER));
+
+        Process first = launchFixtureProcess(agentJarPath, "--vendor-defaults=" + vendorFile);
+        LevelControlMXBean firstProxy = pollForMxBeanProxy(attachAndConnect(first.pid()));
+        firstProxy.setLogger(otherLogger, "DEBUG", "keep this", "STICKY", 0, false);
+        firstProxy.setLogger(FIXTURE_LOGGER, "TRACE", null, "SESSION", 0, false); // X2: not exported
+        firstProxy.addRuleDrop(otherLogger, "heartbeat", false, null, null, false, "INFO", false, 300_000, null,
+                "STICKY", 0);
+        String exported = firstProxy.exportVendorDefaults();
+        stopFixtureProcess(first);
+
+        Path exportedFile = logapertureHome.resolve("exported.yaml");
+        Files.writeString(exportedFile, exported);
+        Process second = launchFixtureProcess(agentJarPath, "--vendor-defaults=" + exportedFile, secondHome);
+        LevelControlMXBean secondProxy = pollForMxBeanProxy(attachAndConnect(second.pid()));
+
+        assertTrue(secondProxy.environmentReport().getVendorDefaultsStatus().startsWith("loaded"),
+                secondProxy.environmentReport().getVendorDefaultsStatus() + "\n" + exported);
+        assertEquals("WARN", secondProxy.listLoggers(FIXTURE_LOGGER).get(0).getVendorDefaultLevel());
+        LoggerInfoData other = pollUntilKnown(secondProxy, otherLogger);
+        assertEquals("DEBUG", other.getVendorDefaultLevel(), exported);
+        assertFalse(other.isOverrideActive(), "it's the file's setting now, not an override");
+        java.util.Set<String> ruleIds = secondProxy.listRules().stream().map(rule -> rule.getId())
+                .collect(java.util.stream.Collectors.toSet());
+        assertEquals(java.util.Set.of("vendor:fixture-noise", "vendor:drop-other"), ruleIds, exported);
+    }
+
+    private static LoggerInfoData pollUntilKnown(LevelControlMXBean proxy, String loggerName) throws Exception {
+        for (int attempt = 0; attempt < 50; attempt++) {
+            List<LoggerInfoData> rows = proxy.listLoggers(loggerName);
+            if (!rows.isEmpty()) {
+                return rows.get(0);
+            }
+            Thread.sleep(100);
+        }
+        throw new AssertionError(loggerName + " never became known");
+    }
+
     /** A rejected file never stops the application: the JVM comes up, nothing from the file applies. */
     @Test
     void rejectedVendorDefaults_leaveTheJvmRunningWithNoVendorSettings() throws Exception {
@@ -343,13 +403,17 @@ class LevelControlEndToEndIT {
     }
 
     private Process launchFixtureProcess(String agentJarPath, String agentArgs) throws Exception {
+        return launchFixtureProcess(agentJarPath, agentArgs, logapertureHome);
+    }
+
+    private Process launchFixtureProcess(String agentJarPath, String agentArgs, Path home) throws Exception {
         String javaBin = System.getProperty("java.home") + "/bin/java";
         String classpath = System.getProperty("java.class.path");
 
         ProcessBuilder builder = new ProcessBuilder(
                 javaBin,
                 "-javaagent:" + agentJarPath + (agentArgs == null ? "" : "=" + agentArgs),
-                "-Dlogaperture.home=" + logapertureHome,
+                "-Dlogaperture.home=" + home,
                 "-Dlogaperture.sweep.seconds=1", // so a standing-rule-discovers-a-new-logger test doesn't wait 30s
                 "-cp", classpath,
                 "org.logaperture.agent.it.FixtureApp");

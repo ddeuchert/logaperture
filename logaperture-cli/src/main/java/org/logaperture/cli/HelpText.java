@@ -48,6 +48,7 @@ final class HelpText {
                     + "[session | for <duration> | sticky]",
             "logctl alter rule <id> [changes] [session | for <duration> | sticky]",
             "logctl list rules [--verbose]",
+            "logctl export vendor-defaults [--out <file>] [--force]",
             "logctl reset rule <id> [--include-sticky] [--to-native]",
             "logctl reset rules [--include-sticky] [--to-native]");
 
@@ -87,6 +88,8 @@ final class HelpText {
         sb.append("  --no-message-contains, --no-throwable, --no-throwable-message-contains,\n");
         sb.append("  --no-any-cause, --no-collapse-causes\n");
         sb.append("                       for 'alter rule' -- remove that part of the rule\n");
+        sb.append("  --out <file>         for 'export vendor-defaults' -- write the file there instead of stdout\n");
+        sb.append("  --force              with --out -- overwrite an existing file\n");
         sb.append("  --json               machine-readable output\n");
         sb.append("  --version            print version and exit\n");
         sb.append("  -h, --help           this help\n");
@@ -168,6 +171,11 @@ final class HelpText {
         sb.append("changes one ('for 4h' unless you give a tier), 'reset rule' puts the\n");
         sb.append("vendor's definition back, and 'reset rule ... --to-native' switches it off\n");
         sb.append("until the application restarts.\n");
+        sb.append("\n");
+        sb.append("'export vendor-defaults' writes the next vendor defaults file: the one this\n");
+        sb.append("JVM started with, plus every sticky change made on top of it (session and\n");
+        sb.append("'for' changes are left out, and so is anything reset --to-native). Tune in\n");
+        sb.append("a sandbox with 'sticky', then export.\n");
         sb.append("\n");
         sb.append("'doctor' is read-only — it never changes anything. It flags common\n");
         sb.append("misconfigurations (unbounded file handlers, DEBUG/TRACE left on,\n");

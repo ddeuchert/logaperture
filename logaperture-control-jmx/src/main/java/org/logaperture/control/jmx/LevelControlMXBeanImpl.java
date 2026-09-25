@@ -32,6 +32,7 @@ import org.logaperture.core.RuleOperations;
 import org.logaperture.core.RuleView;
 import org.logaperture.core.StormOperations;
 import org.logaperture.core.TopOperations;
+import org.logaperture.core.VendorDefaultsExportOperations;
 
 import java.time.Duration;
 import java.util.List;
@@ -61,10 +62,12 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     private final StormOperations stormOperations;
     private final RuleOperations ruleOperations;
     private final EnvironmentReportOperations environmentReportOperations;
+    private final VendorDefaultsExportOperations exportOperations;
 
     public LevelControlMXBeanImpl(LevelControlOperations operations, HandlerLevelControlOperations handlerOperations,
             DoctorOperations doctorOperations, TopOperations topOperations, StormOperations stormOperations,
-            RuleOperations ruleOperations, EnvironmentReportOperations environmentReportOperations) {
+            RuleOperations ruleOperations, EnvironmentReportOperations environmentReportOperations,
+            VendorDefaultsExportOperations exportOperations) {
         this.operations = Objects.requireNonNull(operations, "operations");
         this.handlerOperations = Objects.requireNonNull(handlerOperations, "handlerOperations");
         this.doctorOperations = Objects.requireNonNull(doctorOperations, "doctorOperations");
@@ -72,6 +75,7 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
         this.stormOperations = Objects.requireNonNull(stormOperations, "stormOperations");
         this.ruleOperations = Objects.requireNonNull(ruleOperations, "ruleOperations");
         this.environmentReportOperations = Objects.requireNonNull(environmentReportOperations, "environmentReportOperations");
+        this.exportOperations = Objects.requireNonNull(exportOperations, "exportOperations");
     }
 
     @Override
@@ -190,6 +194,11 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     @Override
     public EnvironmentReportData environmentReport() {
         return EnvironmentReportData.from(environmentReportOperations.environmentReport());
+    }
+
+    @Override
+    public String exportVendorDefaults() {
+        return exportOperations.exportVendorDefaults();
     }
 
     @Override

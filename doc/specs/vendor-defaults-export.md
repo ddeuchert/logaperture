@@ -1,6 +1,7 @@
 # Export live tuning as a vendor defaults file (slice 2: issue #62)
 
-Status: **signed off 2026-09-25** (X1–X9 agreed). X4 was revised after #94
+Status: **signed off 2026-09-25** (X1–X9 agreed); **implemented** (see "Settled during
+implementation"). X4 was revised after #94
 ([`reset-to-native.md`](reset-to-native.md)); its rule half follows the rules redesign,
 [`alter-rule.md`](alter-rule.md) A13 (#96, merged as PR #101).
 Parent spec: [`vendor-config-epic.md`](vendor-config-epic.md) (signed off 2026-09-24; decisions
@@ -150,6 +151,43 @@ the `system` context, so this changes nothing in practice.
   levels and rule are in effect.
 - WildFly: export from the existing `WildFlyVendorDefaultsIT` container after a sticky handler
   override, and check the result loads (parsed with the slice 1 validator).
+
+## Settled during implementation
+
+- **Operations surface.** The export is its own core interface, `VendorDefaultsExportOperations`,
+  implemented by `AggregateLevelControl`, and `LevelControlMXBeanImpl`/`JmxRegistrar` take it as
+  an eighth operations argument, rather than being folded into an unrelated interface.
+- **Each service exports its own section:** `LevelControlService.exportLoggers`,
+  `HandlerLevelControlService.exportHandlers`/`exportDefaultHandlers`, `RuleService.exportRules`
+  (they own the overrides, baselines and reset-to-native state involved). `VendorDefaultsExporter`
+  adds the header, renders with `VendorDefaultsFile.write`, and parses the result back.
+- **Two sticky group overrides:** `ALL_HANDLERS` is expanded first, then `DEFAULT_HANDLERS` (the
+  more specific group wins for a handler in both), then each handler's own sticky override.
+- **Explicit default handlers** are written sorted by name; the vendor file's list keeps its order.
+- **Derived rule names** are cut to the file's 40-character id limit before a `-2`/`-3` suffix; a
+  rule on the root logger (empty name) gets `<action>-root`.
+- **A rule with no level bound** (possible through JMX only, never `logctl`) is written without a
+  `below:` line, so it reloads with the ERROR keep-floor -- the narrower, safer reading.
+- **Header, rejected file:** a JVM whose vendor file was rejected at startup exports `# Started
+  from: <path> (rejected at startup, so none of it is included)`.
+- **CLI:** `--out` is checked for an existing file before the agent is asked for anything. The
+  "Nothing to export" note goes to stderr, so a `> file` redirect of stdout still gets just the
+  file; `Command` gained an overload carrying stderr for this. The `Wrote …` line counts each
+  section of the returned text, e.g. `Wrote 3 loggers, 1 handler, default handlers, 2 rules to …`.
+
+## Implementation status
+
+Landed together with this spec:
+
+- `logaperture-core`: `VendorDefaultsFile.write`, `VendorDefaultsExport`, `VendorDefaultsExporter`,
+  `VendorDefaultsExportOperations`; the per-service export methods above; `AggregateLevelControl
+  .exportVendorDefaults`.
+- `logaperture-control-jmx`: `LevelControlMXBean.exportVendorDefaults`.
+- `logaperture-cli`: `export vendor-defaults`, `--out`, `--force`, help.
+- Tests: `VendorDefaultsExportTest` (writer round trip including awkward text; every row of "What
+  goes into the export"; empty export; `VIEW`), `ExportCommandsTest`,
+  `LevelControlEndToEndIT.exportedVendorDefaults_reproduceTheTunedStateInAFreshJvm` (the `none`
+  container round trip), `WildFlyVendorDefaultsIT.export_afterAStickyHandlerOverride_carriesTheFileAndTheOverride`.
 
 ## Member decisions
 

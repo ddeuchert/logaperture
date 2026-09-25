@@ -46,6 +46,7 @@ import org.logaperture.core.RuleOperations;
 import org.logaperture.core.RuleView;
 import org.logaperture.core.StormOperations;
 import org.logaperture.core.TopOperations;
+import org.logaperture.core.VendorDefaultsExportOperations;
 import org.logaperture.core.TopReport;
 
 import java.time.Duration;
@@ -61,7 +62,7 @@ import java.util.Optional;
  * AggregateLevelControl} does in production.
  */
 final class FakeLevelControlOperations implements LevelControlOperations, HandlerLevelControlOperations,
-        DoctorOperations, TopOperations, StormOperations, RuleOperations, EnvironmentReportOperations {
+        DoctorOperations, TopOperations, StormOperations, RuleOperations, EnvironmentReportOperations, VendorDefaultsExportOperations {
 
     final List<String> listLoggersCalls = new ArrayList<>();
     final List<Object[]> setLevelCalls = new ArrayList<>();
@@ -270,5 +271,12 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
         lastAlterRuleTier = tier;
         lastAlterRuleExpiresIn = expiresIn;
         return alterRuleToReturn;
+    }
+
+    String exportVendorDefaultsToReturn = "schemaVersion: 1\n";
+
+    @Override
+    public String exportVendorDefaults() {
+        return exportVendorDefaultsToReturn;
     }
 }

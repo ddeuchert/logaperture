@@ -31,6 +31,12 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   changes. A vendor rule can be altered too: `reset rule vendor:<id>` puts the vendor's definition
   back, and `reset rule vendor:<id> --to-native` switches it off until restart (issue #96;
   `doc/specs/alter-rule.md`).
+- **`logctl export vendor-defaults [--out <file>] [--force]`** — write the next vendor defaults
+  file from a running application: the file it started with plus every `sticky` change made on top
+  of it (`set … sticky`, `alter rule … sticky`, `add rule … sticky`). Anything reset with
+  `--to-native` is left out, and `session`/`for` changes never reach the file. The agent checks the
+  file loads before handing it over; `--out` never overwrites an existing file without `--force`
+  (issue #62; `doc/specs/vendor-defaults-export.md`).
 - **`logctl list rules --verbose`** — adds an `EXPRESSION` column: each rule's defining options,
   written as `add rule drop|trim` takes them (e.g. `--message-contains "Can't connect"
   --throwable java.net.ConnectException --below WARN --sample-full 5m`), with every default spelled

@@ -229,6 +229,30 @@ class WildFlyVendorDefaultsIT {
         }
     }
 
+    /**
+     * doc/specs/vendor-defaults-export.md "Testing": export from a real WildFly after a sticky
+     * handler override. The agent validates the file before returning it; this checks what it
+     * carries and that {@code --out} writes it.
+     */
+    @Test
+    void export_afterAStickyHandlerOverride_carriesTheFileAndTheOverride() {
+        try {
+            assertEquals(0, logctl("set", "handler", "FILE", "ERROR", "sticky", "--reason", "quiet file").exitCode());
+            Logctl exported = logctl("export", "vendor-defaults", "--out", "/tmp/exported.yaml");
+            assertEquals(0, exported.exitCode(), exported.stderr());
+            assertTrue(exported.stdout().startsWith("Wrote 1 logger, 1 handler, 1 rule to /tmp/exported.yaml"),
+                    exported.stdout());
+
+            String text = exec("cat", "/tmp/exported.yaml").getStdout();
+            assertTrue(text.contains("# Started from: " + VENDOR_FILE), text);
+            assertTrue(text.contains("  - name: FILE\n    level: ERROR\n    reason: \"quiet file\"\n"), text);
+            assertTrue(text.contains("  - name: " + VENDOR_LOGGER + "\n    level: WARN\n"), text);
+            assertTrue(text.contains("  - id: probe-noise\n    action: drop\n"), text);
+        } finally {
+            logctl("reset", "handler", "FILE", "--include-sticky");
+        }
+    }
+
     private void assertAltered(String id) {
         String row = lineFor(logctl("list", "rules", "--verbose").stdout(), id);
         assertTrue(row.contains("--message-contains chatter") && row.contains("vendor-defaults, STICKY"), row);

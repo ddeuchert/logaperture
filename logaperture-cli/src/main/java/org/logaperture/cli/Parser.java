@@ -76,6 +76,8 @@ final class Parser {
         boolean noThrowableMessageContains = false;
         boolean noAnyCause = false;
         boolean noCollapseCauses = false;
+        String outPath = null;
+        boolean force = false;
 
         for (int i = 0; i < argv.length; i++) {
             String arg = argv[i];
@@ -98,6 +100,14 @@ final class Parser {
                 case "--no-throwable-message-contains" -> noThrowableMessageContains = true;
                 case "--no-any-cause" -> noAnyCause = true;
                 case "--no-collapse-causes" -> noCollapseCauses = true;
+                case "--force" -> force = true;
+                case "--out" -> {
+                    i++;
+                    if (i >= argv.length) {
+                        throw usage("--out needs a file path.");
+                    }
+                    outPath = argv[i];
+                }
                 case "--frames" -> {
                     i++;
                     if (i >= argv.length) {
@@ -257,6 +267,17 @@ final class Parser {
                 "handlers", "default-handler", "rule", "rules").contains(rest.get(0)))) {
             throw usage("--to-native applies only to 'reset logger', 'reset loggers', 'reset handler', "
                     + "'reset handlers', 'reset default-handler', 'reset rule' and 'reset rules'.");
+        }
+        boolean isExport = command.equals("export");
+        if ((outPath != null || force) && !isExport) {
+            throw usage("--out and --force apply only to 'export vendor-defaults'.");
+        }
+        if (force && outPath == null) {
+            throw usage("--force needs --out <file> -- it allows overwriting that file.");
+        }
+        if (json && isExport) {
+            // doc/specs/vendor-defaults-export.md X7: the output is already a structured document.
+            throw usage("--json does not apply to 'export vendor-defaults' -- its output is the file itself.");
         }
         if (includeSticky && !command.equals("reset")) {
             throw usage("--include-sticky applies only to 'reset'.");
@@ -521,6 +542,12 @@ final class Parser {
                     }
                     default -> throw usage("'add rule' needs 'drop' or 'trim', got '" + action + "'.");
                 };
+            }
+            case "export" -> {
+                if (rest.size() != 1 || !rest.get(0).equals("vendor-defaults")) {
+                    throw usage("'export' needs 'vendor-defaults [--out <file>] [--force]'.");
+                }
+                yield Commands.exportVendorDefaults(outPath, force);
             }
             case "alter" -> {
                 if (!isAlterRule) {
