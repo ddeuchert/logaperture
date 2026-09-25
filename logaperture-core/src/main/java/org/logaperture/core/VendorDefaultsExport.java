@@ -34,10 +34,12 @@ import java.util.Objects;
  * @param rules            vendor rules in file order, then operator rules in id order; each id
  *                         is the full {@code vendor:<name>}
  * @param ruleComments     per rule id, a comment written above its entry (e.g. {@code "was r7"})
+ * @param skippedComments  one comment line per setting left out because the file can't hold it
+ *                         (e.g. a rule on the root logger), written after the header
  */
 public record VendorDefaultsExport(List<String> headerComments, List<VendorDefaults.LoggerDefault> loggers,
         List<VendorDefaults.HandlerDefault> handlers, List<HandlerRef> defaultHandlers,
-        List<VendorDefaults.RuleDefault> rules, Map<String, String> ruleComments) {
+        List<VendorDefaults.RuleDefault> rules, Map<String, String> ruleComments, List<String> skippedComments) {
 
     public VendorDefaultsExport {
         headerComments = List.copyOf(headerComments);
@@ -46,6 +48,7 @@ public record VendorDefaultsExport(List<String> headerComments, List<VendorDefau
         defaultHandlers = defaultHandlers == null ? null : List.copyOf(defaultHandlers);
         rules = List.copyOf(rules);
         ruleComments = Map.copyOf(Objects.requireNonNull(ruleComments, "ruleComments"));
+        skippedComments = List.copyOf(skippedComments);
     }
 
     /** {@code true} if the file carries no settings at all (doc/specs/vendor-defaults-export.md X9). */

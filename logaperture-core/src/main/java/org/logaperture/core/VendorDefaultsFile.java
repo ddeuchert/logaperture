@@ -136,6 +136,9 @@ public final class VendorDefaultsFile {
         for (String comment : export.headerComments()) {
             out.append("# ").append(comment).append('\n');
         }
+        for (String comment : export.skippedComments()) {
+            out.append("# ").append(comment).append('\n');
+        }
         out.append("schemaVersion: ").append(SCHEMA_VERSION).append('\n');
         if (!export.loggers().isEmpty()) {
             out.append("loggers:\n");

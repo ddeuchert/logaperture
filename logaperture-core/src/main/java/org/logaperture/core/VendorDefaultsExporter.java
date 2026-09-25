@@ -18,6 +18,7 @@ package org.logaperture.core;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -39,10 +40,34 @@ final class VendorDefaultsExporter {
                         + ", agent " + agentVersion,
                 "Started from: " + startedFromText(startedFrom));
 
-        RuleService.RuleExport rules = context.ruleService().exportRules();
-        VendorDefaultsExport export = new VendorDefaultsExport(header, context.service().exportLoggers(),
-                context.handlerService().exportHandlers(), context.handlerService().exportDefaultHandlers(),
-                rules.rules(), rules.comments());
+        List<String> skipped = new ArrayList<>();
+        List<VendorDefaults.LoggerDefault> loggers = new ArrayList<>();
+        for (VendorDefaults.LoggerDefault logger : context.service().exportLoggers()) {
+            VendorDefaults.LoggerDefault tidy = new VendorDefaults.LoggerDefault(logger.name(), logger.level(),
+                    tidyReason(logger.reason()));
+            keepIfWritable(tidy, List.of(tidy), List.of(), List.of(), "logger '" + logger.name() + "'", loggers,
+                    skipped);
+        }
+        List<VendorDefaults.HandlerDefault> handlers = new ArrayList<>();
+        for (VendorDefaults.HandlerDefault handler : context.handlerService().exportHandlers()) {
+            VendorDefaults.HandlerDefault tidy = new VendorDefaults.HandlerDefault(handler.ref(), handler.level(),
+                    handler.mode(), tidyReason(handler.reason()));
+            keepIfWritable(tidy, List.of(), List.of(tidy), List.of(), "handler '" + handler.ref().value() + "'",
+                    handlers, skipped);
+        }
+        RuleService.RuleExport exportedRules = context.ruleService().exportRules();
+        List<VendorDefaults.RuleDefault> rules = new ArrayList<>();
+        for (VendorDefaults.RuleDefault rule : exportedRules.rules()) {
+            VendorDefaults.RuleDefault tidy = new VendorDefaults.RuleDefault(rule.id(), rule.action(),
+                    rule.loggerName(), rule.matchers(), tidyReason(rule.reason()), rule.sampleFull(), rule.frames(),
+                    rule.collapseCauses());
+            String was = exportedRules.comments().get(rule.id());
+            String what = rule.action() + " rule " + (was != null ? was.substring("was ".length())
+                    : rule.id()) + " on '" + rule.loggerName() + "'";
+            keepIfWritable(tidy, List.of(), List.of(), List.of(tidy), what, rules, skipped);
+        }
+        VendorDefaultsExport export = new VendorDefaultsExport(header, loggers, handlers,
+                context.handlerService().exportDefaultHandlers(), rules, exportedRules.comments(), skipped);
 
         String text = VendorDefaultsFile.write(export);
         VendorDefaults check = VendorDefaultsFile.parse(text, Path.of("exported vendor defaults"), false);
@@ -51,6 +76,34 @@ final class VendorDefaultsExporter {
                     + "LogAperture bug, please report it: " + String.join("; ", check.errors()));
         }
         return text;
+    }
+
+    /**
+     * Adds {@code entry} to {@code kept} if a file holding just it loads; otherwise records a
+     * "Not exported" comment naming it and why. Some live settings can't be written as a file
+     * entry -- a rule on the root logger (the file has no name for it), an empty matcher, a logger
+     * name with whitespace -- and one of them must not make the whole export fail.
+     */
+    private static <T> void keepIfWritable(T entry, List<VendorDefaults.LoggerDefault> asLoggers,
+            List<VendorDefaults.HandlerDefault> asHandlers, List<VendorDefaults.RuleDefault> asRules, String what,
+            List<T> kept, List<String> skipped) {
+        VendorDefaultsExport alone = new VendorDefaultsExport(List.of(), asLoggers, asHandlers, null, asRules,
+                java.util.Map.of(), List.of());
+        VendorDefaults check = VendorDefaultsFile.parse(VendorDefaultsFile.write(alone), Path.of("entry"), false);
+        if (check.status() == VendorDefaults.Status.LOADED) {
+            kept.add(entry);
+        } else {
+            String why = check.errors().get(0).replaceFirst("^line \\d+: ", "");
+            skipped.add("Not exported: " + what + " -- the file can't hold it (" + why.replace('\n', ' ') + ")");
+        }
+    }
+
+    /** A reason is free text: blank means none, and a carriage return (which the file can't hold) becomes a newline. */
+    private static String tidyReason(String reason) {
+        if (reason == null || reason.isBlank()) {
+            return null;
+        }
+        return reason.replace("\r\n", "\n").replace('\r', '\n');
     }
 
     private static String startedFromText(VendorDefaults file) {

@@ -97,7 +97,7 @@ class ExportCommandsTest {
 
         assertEquals(FILE, Files.readString(target));
         assertEquals("Wrote 2 loggers, 1 handler, default handlers, 1 rule to " + target + ".", out().strip());
-        try (var leftovers = Files.list(dir)) {
+        try (var leftovers = Files.list(dir)) { // no temporary file left behind
             assertEquals(1, leftovers.count(), "no temporary file left behind");
         }
     }
@@ -117,6 +117,24 @@ class ExportCommandsTest {
 
         assertEquals(CliError.OK, run("export", "vendor-defaults", "--out", target.toString(), "--force"));
         assertEquals(FILE, Files.readString(target));
+    }
+
+    @Test
+    void theWrittenFile_isNotOwnerOnly_andAnOverwrittenOneKeepsItsPermissions() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                dir.getFileSystem().supportedFileAttributeViews().contains("posix"));
+        Path fresh = dir.resolve("fresh.yaml");
+        run("export", "vendor-defaults", "--out", fresh.toString());
+        Path probe = Files.createFile(dir.resolve("umask-probe"));
+        assertEquals(Files.getPosixFilePermissions(probe), Files.getPosixFilePermissions(fresh),
+                "the umask applies, as for any file the user creates -- not createTempFile's 0600");
+
+        Path existing = dir.resolve("existing.yaml");
+        Files.writeString(existing, "old");
+        var shared = java.nio.file.attribute.PosixFilePermissions.fromString("rw-r--r--");
+        Files.setPosixFilePermissions(existing, shared);
+        run("export", "vendor-defaults", "--out", existing.toString(), "--force");
+        assertEquals(shared, Files.getPosixFilePermissions(existing));
     }
 
     @Test

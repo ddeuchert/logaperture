@@ -1260,11 +1260,28 @@ final class Commands {
         return String.join(", ", parts);
     }
 
+    /** POSIX permissions only; a no-op on a file system without them. */
+    private static void copyPermissions(java.nio.file.Path from, java.nio.file.Path to) throws java.io.IOException {
+        try {
+            java.nio.file.Files.setPosixFilePermissions(to, java.nio.file.Files.getPosixFilePermissions(from));
+        } catch (UnsupportedOperationException notPosix) {
+            // nothing to copy
+        }
+    }
+
     private static void writeAtomically(java.nio.file.Path target, String text) {
         java.nio.file.Path directory = target.getParent();
         java.nio.file.Path temp = null;
         try {
-            temp = java.nio.file.Files.createTempFile(directory, "." + target.getFileName(), ".tmp");
+            // Not Files.createTempFile: that is always owner-only (0600), and the rename would carry it
+            // onto the vendor file -- which the application's own account then can't read (a code-review
+            // finding). createFile applies the umask, like any file the user writes; an overwritten file
+            // keeps its own permissions.
+            temp = directory.resolve("." + target.getFileName() + "." + java.util.UUID.randomUUID() + ".tmp");
+            java.nio.file.Files.createFile(temp);
+            if (java.nio.file.Files.exists(target)) {
+                copyPermissions(target, temp);
+            }
             java.nio.file.Files.writeString(temp, text, java.nio.charset.StandardCharsets.UTF_8);
             try {
                 java.nio.file.Files.move(temp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING,

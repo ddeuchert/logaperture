@@ -169,7 +169,7 @@ class VendorDefaultsExportTest {
                     List.of(new VendorDefaults.RuleDefault("vendor:r", "drop", "com.acme.x",
                             new CompiledMatchers(Level.INFO, text, false, null, text, false), text,
                             SampleFullPolicy.every(Duration.ofSeconds(90)), 0, false)),
-                    Map.of());
+                    Map.of(), List.of());
             VendorDefaults parsed = VendorDefaultsFile.parse(VendorDefaultsFile.write(export), Path.of("/x"), false);
 
             assertEquals(VendorDefaults.Status.LOADED, parsed.status(), text + ": " + parsed.errors());
@@ -188,7 +188,8 @@ class VendorDefaultsExportTest {
                 new VendorDefaults.RuleDefault("vendor:b", "trim", "com.acme.b",
                         new CompiledMatchers(Level.DEBUG, null, false, null, null, false), null,
                         SampleFullPolicy.defaults(), 5, true));
-        VendorDefaultsExport export = new VendorDefaultsExport(List.of(), List.of(), List.of(), null, all, Map.of());
+        VendorDefaultsExport export = new VendorDefaultsExport(List.of(), List.of(), List.of(), null, all, Map.of(),
+                List.of());
 
         assertEquals(all, VendorDefaultsFile.parse(VendorDefaultsFile.write(export), Path.of("/x"), false).rules());
     }
@@ -314,6 +315,36 @@ class VendorDefaultsExportTest {
         assertEquals("trim-root", RuleService.derivedName(new org.logaperture.api.Trim("r2", "",
                 CompiledMatchers.matchAll(), null, PersistenceTier.STICKY, null, Instant.now(), 0, false),
                 java.util.Set.of()));
+    }
+
+    // --- settings the file can't hold (code review of PR #102) --------------------------------------
+
+    @Test
+    void anEmptyReason_isLeftOut_andACarriageReturnBecomesANewline() {
+        loggers.setLogger("com.acme.empty", Level.DEBUG, tier(PersistenceTier.STICKY, ""));
+        loggers.setLogger("com.acme.cr", Level.DEBUG, tier(PersistenceTier.STICKY, "line one\r\nline two\rthree"));
+
+        Map<String, VendorDefaults.LoggerDefault> exported = exported().loggers();
+
+        assertNull(exported.get("com.acme.empty").reason());
+        assertEquals("line one\nline two\nthree", exported.get("com.acme.cr").reason());
+    }
+
+    @Test
+    void aRuleOnTheRootLogger_isLeftOutWithAComment_andTheRestIsStillExported() {
+        rules.addRuleTrim("", CompiledMatchers.matchAll(), RuleAttachOptions.sticky(), 0, false);
+        rules.addRuleDrop("com.acme.Empty", new CompiledMatchers(Level.INFO, "", false, null, null, false),
+                RuleAttachOptions.sticky(), SampleFullPolicy.defaults());
+        loggers.setLogger("com.acme.kept", Level.DEBUG, tier(PersistenceTier.STICKY, null));
+
+        String text = exportText();
+        VendorDefaults exported = exported();
+
+        assertTrue(text.contains("# Not exported: trim rule r1 on '' -- the file can't hold it"), text);
+        assertTrue(text.contains("# Not exported: drop rule r2 on 'com.acme.Empty' -- the file can't hold it"), text);
+        assertEquals(List.of("vendor:health-noise", "vendor:retry-trace"), exported.rules().stream()
+                .map(VendorDefaults.RuleDefault::id).toList());
+        assertTrue(exported.loggers().containsKey("com.acme.kept"));
     }
 
     // --- nothing to export, capability -----------------------------------------------------------

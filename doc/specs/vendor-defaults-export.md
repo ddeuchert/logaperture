@@ -168,6 +168,15 @@ the `system` context, so this changes nothing in practice.
   rule on the root logger (empty name) gets `<action>-root`.
 - **A rule with no level bound** (possible through JMX only, never `logctl`) is written without a
   `below:` line, so it reloads with the ERROR keep-floor -- the narrower, safer reading.
+- **Settings the file can't hold are left out, not fatal** (code review of PR #102). Each entry is
+  checked on its own before the file is assembled; one that wouldn't load -- a rule on the root
+  logger (the file has no name for it), an empty matcher, a logger name with whitespace -- is left
+  out with a `# Not exported: <what> -- the file can't hold it (<why>)` line after the header, and
+  the rest is exported. Free-text reasons are tidied instead: a blank reason is left out, and a
+  carriage return becomes a newline.
+- **`--out` permissions:** the file is created with the user's umask, like any file they write (not
+  the owner-only mode of a temp file), and an overwritten file keeps its own permissions -- the
+  application's account must be able to read it.
 - **Header, rejected file:** a JVM whose vendor file was rejected at startup exports `# Started
   from: <path> (rejected at startup, so none of it is included)`.
 - **CLI:** `--out` is checked for an existing file before the agent is asked for anything. The
