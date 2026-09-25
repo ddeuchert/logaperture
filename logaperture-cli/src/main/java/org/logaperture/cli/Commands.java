@@ -97,7 +97,7 @@ final class Commands {
                 cells.add(orDash(row.getName()));
                 cells.add(orDash(row.getConfiguredLevel()));
                 if (showVendor) {
-                    cells.add(orDash(row.getVendorDefaultLevel()));
+                    cells.add(vendorCell(row.getVendorDefaultLevel(), row.isResetToNative()));
                 }
                 cells.add(orDash(row.getEffectiveLevel()));
                 cells.add(overrideCell(row));
@@ -185,6 +185,14 @@ final class Commands {
         };
     }
 
+    /** The {@code VENDOR} cell: the vendor setting, marked when it's reset to native (doc/specs/reset-to-native.md "Surfaces"). */
+    private static String vendorCell(String vendorSetting, boolean resetToNative) {
+        if (vendorSetting == null) {
+            return Format.NONE;
+        }
+        return resetToNative ? vendorSetting + " (reset to native)" : vendorSetting;
+    }
+
     /**
      * {@code status}'s vendor line: the summary without the {@code env}-style "loaded (...)"
      * wrapper, and a pointer to {@code doctor} when the file was rejected.
@@ -193,8 +201,10 @@ final class Commands {
         if (status == null) {
             return Format.NONE;
         }
-        if (status.startsWith("loaded (") && status.endsWith(")")) {
-            return status.substring("loaded (".length(), status.length() - 1);
+        int close = status.indexOf(')');
+        if (status.startsWith("loaded (") && close > 0) {
+            // "loaded (2 loggers), 1 reset to native" -> "2 loggers, 1 reset to native"
+            return status.substring("loaded (".length(), close) + status.substring(close + 1);
         }
         if (status.startsWith("rejected")) {
             return "REJECTED, see logctl doctor";
@@ -471,6 +481,36 @@ final class Commands {
     }
 
     /**
+     * {@code logctl reset default-handler [--to-native]} (doc/specs/reset-to-native.md): clears the
+     * explicit membership, so the vendor defaults' list -- or, with {@code toNative} or without a
+     * vendor list, the automatic pick -- decides again.
+     */
+    static Command resetDefaultHandler(boolean toNative, boolean json) {
+        return (mbean, out, in, interactive) -> {
+            List<String> inEffect = mbean.resetDefaultHandler(toNative);
+            if (json) {
+                out.println(Json.resetDefaultHandler(inEffect, toNative));
+                return CliError.OK;
+            }
+            String summary = mbean.listHandlers().stream()
+                    .filter(row -> "DEFAULT_HANDLERS".equals(row.getRef()))
+                    .map(HandlerInfoData::getMembersSummary)
+                    .findFirst().orElse(null);
+            if (summary != null && summary.startsWith("(vendor: ")) {
+                out.println("DEFAULT_HANDLERS cleared -- back to the vendor defaults' list: " + String.join(", ", inEffect)
+                        + ".");
+            } else if (toNative) {
+                out.println("DEFAULT_HANDLERS cleared -- back to the automatic pick, ignoring the vendor defaults' "
+                        + "list until restart (see 'logctl list handlers --show-all').");
+            } else {
+                out.println("DEFAULT_HANDLERS cleared -- back to the automatic pick "
+                        + "(see 'logctl list handlers --show-all').");
+            }
+            return CliError.OK;
+        };
+    }
+
+    /**
      * {@code logctl set handler <name> AUTO} — doc/specs/handler-floor-control.md
      * "AUTO handler level" (issue #20). Puts {@code handlerRef} into a
      * self-tracking mode instead of a fixed level.
@@ -518,13 +558,27 @@ final class Commands {
      *                              restart, vendor defaults rules attached directly to {@code target}
      */
     static Command resetLogger(String target, boolean includeSticky, boolean includeVendorDefaults, boolean json) {
+        return resetLogger(target, includeSticky, includeVendorDefaults, false, json);
+    }
+
+    /**
+     * @param toNative doc/specs/reset-to-native.md: land on the native level, ignoring the vendor
+     *                 defaults until restart; rules attached to {@code target} are reset exactly as
+     *                 without it
+     */
+    static Command resetLogger(String target, boolean includeSticky, boolean includeVendorDefaults, boolean toNative,
+            boolean json) {
         return (mbean, out, in, interactive) -> {
             if (isPattern(target)) {
-                return resetLoggerPattern(mbean, out, target, includeSticky, json);
+                return resetLoggerPattern(mbean, out, target, includeSticky, toNative, json);
             }
             LoggerInfoData before = findLogger(mbean.listLoggers(target), target);
             boolean wasOverridden = before != null && before.isOverrideActive();
-            mbean.resetLogger(target, includeSticky);
+            if (toNative) {
+                mbean.resetLogger(target, includeSticky, true);
+            } else {
+                mbean.resetLogger(target, includeSticky);
+            }
             LoggerInfoData after = findLogger(mbean.listLoggers(target), target);
             // doc/specs/rule-pipeline-foundation.md "Command surface": resetting a
             // logger also removes every rule attached directly to it, reusing this
@@ -538,8 +592,7 @@ final class Commands {
                 return CliError.OK;
             }
             if (after != null) {
-                out.println(target + " → " + after.getEffectiveLevel()
-                        + (after.getVendorDefaultLevel() != null ? " (vendor default)" : " (baseline)"));
+                out.println(target + " → " + after.getEffectiveLevel() + landedOn(after));
             } else if (wasOverridden) {
                 out.println(target + " → baseline (not yet instantiated, so no level to show)");
             } else {
@@ -563,8 +616,10 @@ final class Commands {
      * slice).
      */
     private static int resetLoggerPattern(org.logaperture.control.jmx.LevelControlMXBean mbean,
-            java.io.PrintStream out, String pattern, boolean includeSticky, boolean json) {
-        org.logaperture.control.jmx.ResetOutcomeData outcome = mbean.resetLogger(pattern, includeSticky);
+            java.io.PrintStream out, String pattern, boolean includeSticky, boolean toNative, boolean json) {
+        org.logaperture.control.jmx.ResetOutcomeData outcome = toNative
+                ? mbean.resetLogger(pattern, includeSticky, true)
+                : mbean.resetLogger(pattern, includeSticky);
         List<String> reverted = outcome.getRevertedLoggerNames();
         List<String> skippedSticky = outcome.getSkippedStickyLoggerNames();
 
@@ -582,16 +637,34 @@ final class Commands {
         }
         for (String name : reverted) {
             LoggerInfoData row = afterByName.get(name);
-            out.println(name + " → " + (row != null ? row.getEffectiveLevel() : "baseline") + " (baseline)");
+            out.println(name + " → " + (row != null ? row.getEffectiveLevel() + landedOn(row) : "baseline"));
         }
         printSkippedSticky(out, "sticky override(s)", skippedSticky);
         return CliError.OK;
     }
 
+    /**
+     * Where a reset left a logger (doc/specs/reset-to-native.md "Surfaces"): its native level
+     * until restart, its vendor default, or its baseline.
+     */
+    private static String landedOn(LoggerInfoData row) {
+        if (row.isResetToNative()) {
+            return " (native default, until restart)";
+        }
+        return row.getVendorDefaultLevel() != null ? " (vendor default)" : " (baseline)";
+    }
+
     /** {@code logctl reset loggers} — reverts every currently-overridden logger (doc/specs/reset-command-surface.md). */
     static Command resetAllLoggers(boolean includeSticky, boolean json) {
+        return resetAllLoggers(includeSticky, false, json);
+    }
+
+    /** {@code logctl reset loggers [--to-native]} (doc/specs/reset-to-native.md). */
+    static Command resetAllLoggers(boolean includeSticky, boolean toNative, boolean json) {
         return (mbean, out, in, interactive) -> {
-            org.logaperture.control.jmx.ResetOutcomeData outcome = mbean.resetAllLoggers(includeSticky);
+            org.logaperture.control.jmx.ResetOutcomeData outcome = toNative
+                    ? mbean.resetAllLoggers(includeSticky, true)
+                    : mbean.resetAllLoggers(includeSticky);
             List<String> reverted = outcome.getRevertedLoggerNames();
             List<String> skippedSticky = outcome.getSkippedStickyLoggerNames();
             if (json) {
@@ -602,7 +675,9 @@ final class Commands {
                 out.println("No overrides to reset.");
                 return CliError.OK;
             }
-            out.println("Reverted " + reverted.size() + " override(s).");
+            out.println(toNative
+                    ? "Reset " + reverted.size() + " logger(s) to their native default (until restart)."
+                    : "Reverted " + reverted.size() + " override(s).");
             printSkippedSticky(out, "sticky override(s)", skippedSticky);
             return CliError.OK;
         };
@@ -615,15 +690,23 @@ final class Commands {
      * Decision #1).
      */
     static Command resetHandler(String handlerRef, boolean includeSticky, boolean json) {
+        return resetHandler(handlerRef, includeSticky, false, json);
+    }
+
+    /** {@code logctl reset handler <name> [--to-native]} (doc/specs/reset-to-native.md). */
+    static Command resetHandler(String handlerRef, boolean includeSticky, boolean toNative, boolean json) {
         return (mbean, out, in, interactive) -> {
-            org.logaperture.control.jmx.HandlerResetOutcomeData outcome = mbean.resetHandler(handlerRef, includeSticky);
+            org.logaperture.control.jmx.HandlerResetOutcomeData outcome = toNative
+                    ? mbean.resetHandler(handlerRef, includeSticky, true)
+                    : mbean.resetHandler(handlerRef, includeSticky);
             boolean reverted = outcome.getRevertedHandlerRefs().contains(handlerRef);
             if (json) {
                 out.println(Json.handlerReset(handlerRef, reverted));
                 return CliError.OK;
             }
+            String landed = toNative ? "reset to its native level (until restart)." : "reset to its previous level.";
             out.println(reverted
-                    ? "handler " + handlerRef + " → reset to its previous level."
+                    ? "handler " + handlerRef + " → " + landed
                     : "handler " + handlerRef + " — nothing was overridden.");
             return CliError.OK;
         };
@@ -631,8 +714,15 @@ final class Commands {
 
     /** {@code logctl reset handlers} — reverts every currently-overridden handler (doc/specs/reset-command-surface.md). */
     static Command resetAllHandlers(boolean includeSticky, boolean json) {
+        return resetAllHandlers(includeSticky, false, json);
+    }
+
+    /** {@code logctl reset handlers [--to-native]} (doc/specs/reset-to-native.md). */
+    static Command resetAllHandlers(boolean includeSticky, boolean toNative, boolean json) {
         return (mbean, out, in, interactive) -> {
-            org.logaperture.control.jmx.HandlerResetOutcomeData outcome = mbean.resetAllHandlers(includeSticky);
+            org.logaperture.control.jmx.HandlerResetOutcomeData outcome = toNative
+                    ? mbean.resetAllHandlers(includeSticky, true)
+                    : mbean.resetAllHandlers(includeSticky);
             List<String> reverted = outcome.getRevertedHandlerRefs();
             List<String> skippedSticky = outcome.getSkippedStickyHandlerRefs();
             if (json) {
@@ -643,7 +733,9 @@ final class Commands {
                 out.println("No handler overrides to reset.");
                 return CliError.OK;
             }
-            out.println("Reverted " + reverted.size() + " handler override(s).");
+            out.println(toNative
+                    ? "Reset " + reverted.size() + " handler(s) to their native level (until restart)."
+                    : "Reverted " + reverted.size() + " handler override(s).");
             printSkippedSticky(out, "sticky handler override(s)", skippedSticky);
             return CliError.OK;
         };
@@ -823,7 +915,7 @@ final class Commands {
                 cells.add(orDash(row.getRef()));
                 cells.add(orDash(row.getLevel()));
                 if (showVendor) {
-                    cells.add(orDash(row.getVendorDefault()));
+                    cells.add(vendorCell(row.getVendorDefault(), row.isResetToNative()));
                 }
                 cells.add(notALiveHandler ? Format.NONE : (row.isPersistent() ? "file" : "no"));
                 // DEFAULT_HANDLERS (issue #28) has no target path of its own -- this

@@ -37,11 +37,11 @@ final class HelpText {
             "logctl set handler <name> <level> [session | for <duration> | sticky]",
             "logctl set handler <name> AUTO [session | for <duration> | sticky]",
             "logctl set default-handler <name> ...",
-            "logctl reset logger <target> [--include-sticky] [--include-vendor-defaults]",
-            "logctl reset loggers [--include-sticky]",
-            "logctl reset handler <name> [--include-sticky]",
-            "logctl reset handlers [--include-sticky]",
-            "logctl reset default-handler",
+            "logctl reset logger <target> [--include-sticky] [--to-native] [--include-vendor-defaults]",
+            "logctl reset loggers [--include-sticky] [--to-native]",
+            "logctl reset handler <name> [--include-sticky] [--to-native]",
+            "logctl reset handlers [--include-sticky] [--to-native]",
+            "logctl reset default-handler [--to-native]",
             "logctl add rule drop <target> [matchers] [--below level] [--sample-full duration | --no-sample-full] "
                     + "[session | for <duration> | sticky]",
             "logctl add rule trim <target> [matchers] [--below level] [--frames n] [--collapse-causes] "
@@ -65,6 +65,8 @@ final class HelpText {
         sb.append("  --reason <text>      why — shown in status, kept in the audit trail\n");
         sb.append("  --yes                skip the confirmation prompt when <target> is a pattern\n");
         sb.append("  --include-sticky     for 'reset' -- also revert a sticky override, not just skip it\n");
+        sb.append("  --to-native          for 'reset' of loggers/handlers/default-handler -- land on the\n");
+        sb.append("                       native configuration, ignoring the vendor defaults until restart\n");
         sb.append("  --include-vendor-defaults  for 'reset rule'/'reset rules'/'reset logger' -- also switch\n");
         sb.append("                       off vendor default rules, until the application restarts\n");
         sb.append("  --show-all           for 'list' -- every known logger or handler, not just overridden ones\n");
@@ -150,7 +152,9 @@ final class HelpText {
         sb.append("\n");
         sb.append("A vendor defaults file (-javaagent:logaperture-agent.jar=--vendor-defaults=<file>)\n");
         sb.append("sets the baseline: its logger and handler levels are what 'reset' returns\n");
-        sb.append("to, and 'list' shows them in a VENDOR column. Its rules have 'vendor:' ids;\n");
+        sb.append("to, and 'list' shows them in a VENDOR column. 'reset ... --to-native' goes\n");
+        sb.append("back to the application's own logging configuration instead, until restart;\n");
+        sb.append("a plain 'reset' undoes it. Its rules have 'vendor:' ids;\n");
         sb.append("reset leaves them in place unless --include-vendor-defaults is given, which\n");
         sb.append("switches them off until the application restarts.\n");
         sb.append("\n");

@@ -305,6 +305,17 @@ class LevelControlEndToEndIT {
         assertEquals("DEBUG", proxy.listLoggers(FIXTURE_LOGGER).get(0).getEffectiveLevel());
         proxy.resetLogger(FIXTURE_LOGGER, false);
         assertEquals("WARN", proxy.listLoggers(FIXTURE_LOGGER).get(0).getEffectiveLevel());
+
+        // doc/specs/reset-to-native.md "Testing": native -> vendor round trip over real JMX.
+        proxy.resetLogger(FIXTURE_LOGGER, false, true);
+        LoggerInfoData toNative = proxy.listLoggers(FIXTURE_LOGGER).get(0);
+        assertEquals("INFO", toNative.getEffectiveLevel(), "the framework's own level");
+        assertTrue(toNative.isResetToNative());
+        assertTrue(proxy.environmentReport().getVendorDefaultsStatus().endsWith(", 1 reset to native"),
+                proxy.environmentReport().getVendorDefaultsStatus());
+        proxy.resetLogger(FIXTURE_LOGGER, false);
+        assertEquals("WARN", proxy.listLoggers(FIXTURE_LOGGER).get(0).getEffectiveLevel());
+        assertFalse(proxy.listLoggers(FIXTURE_LOGGER).get(0).isResetToNative());
     }
 
     /** A rejected file never stops the application: the JVM comes up, nothing from the file applies. */

@@ -43,6 +43,12 @@ public final class VendorDefaults {
     /** Audit source for every entry this file applies (doc/specs/vendor-defaults.md "Audit"). */
     public static final String AUDIT_SOURCE = "vendor-defaults";
 
+    /** Audit reason of a reset that ignores a vendor default until restart -- doc/specs/reset-to-native.md. */
+    public static final String RESET_TO_NATIVE_REASON = "reset to native default until restart";
+
+    /** Audit reason of a plain reset that puts a vendor default back in effect -- doc/specs/reset-to-native.md. */
+    public static final String VENDOR_RESTORED_REASON = "vendor default restored";
+
     /** Prefix every vendor rule id carries, e.g. {@code vendor:healthcheck-noise}. */
     public static final String RULE_ID_PREFIX = "vendor:";
 

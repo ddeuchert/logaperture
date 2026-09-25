@@ -7,6 +7,24 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ## [Unreleased]
 
+### Added
+
+- **Vendor defaults file** — start the agent with
+  `-javaagent:logaperture-agent.jar=--vendor-defaults=/path/vendor-defaults.yaml` to ship baseline
+  logger levels, handler levels, a default-handler list and `drop`/`trim` rules with a product.
+  The file's settings apply from startup and become the baseline: `logctl reset` returns to them,
+  not to the application's own logging configuration. `logctl list` shows them in a `VENDOR`
+  column; `logctl status`, `env` and `doctor` report whether the file loaded. A file with errors
+  is rejected as a whole, with every problem listed, and never stops the application from
+  starting; `doctor` warns if the JVM's account can write the file. Vendor rules have `vendor:`
+  ids; `reset rule vendor:<id> --include-vendor-defaults` switches one off until restart (issues
+  #60, #61; `doc/specs/vendor-defaults.md`).
+- **`logctl reset … --to-native`** — on `reset logger`, `loggers`, `handler`, `handlers` and
+  `default-handler`: return to the application's own logging configuration, ignoring the vendor
+  defaults until restart; a plain `reset` puts the vendor default back (issue #94;
+  `doc/specs/reset-to-native.md`). The layers and terms (native configuration, vendor defaults,
+  baseline, override, effective level) are now defined in one place, spec §6.6.
+
 ### Fixed
 
 - **WildFly could abort at startup** (`ModuleNotFoundException: org.jboss.as.standalone`) on

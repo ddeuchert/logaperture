@@ -22,8 +22,10 @@ import org.logaperture.core.spi.LoggingAdapter;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -54,11 +56,16 @@ import java.util.concurrent.ConcurrentHashMap;
  * ({@link #get}); one it sets to {@code AUTO} keeps its native value here and is tracked by
  * {@link HandlerLevelControlService} instead (Decision M3). {@link #nativeLevel} is always the
  * handler's own captured value.
+ *
+ * <p>A vendor-named handler can be <em>reset to native</em> (doc/specs/reset-to-native.md): until
+ * restart its vendor entry is ignored, so {@link #get} returns the native value and the
+ * vendor-layer passes ({@link #activeVendorDefaults}) leave it alone.
  */
 public final class HandlerBaselineRegistry {
 
     private final Map<HandlerRef, Optional<Level>> captured = new ConcurrentHashMap<>();
     private final Map<HandlerRef, VendorDefaults.HandlerDefault> vendorDefaults;
+    private final Set<HandlerRef> resetToNative = ConcurrentHashMap.newKeySet();
 
     public HandlerBaselineRegistry() {
         this(Map.of());
@@ -96,7 +103,7 @@ public final class HandlerBaselineRegistry {
 
     /**
      * The effective baseline: the vendor defaults file's fixed level for {@code ref} if it has
-     * one, else the captured native value (also for a vendor {@code AUTO} handler, whose
+     * one and {@code ref} isn't reset to native, else the captured native value (also for a vendor {@code AUTO} handler, whose
      * tracking {@link HandlerLevelControlService} does on top of it).
      *
      * @throws IllegalStateException if {@code ref} has no fixed vendor level and its native
@@ -104,7 +111,7 @@ public final class HandlerBaselineRegistry {
      */
     public Optional<Level> get(HandlerRef ref) {
         VendorDefaults.HandlerDefault vendor = vendorDefaults.get(ref);
-        if (vendor != null && vendor.level() != null) {
+        if (vendor != null && vendor.level() != null && !resetToNative.contains(ref)) {
             return Optional.of(vendor.level());
         }
         return nativeLevel(ref);
@@ -131,6 +138,40 @@ public final class HandlerBaselineRegistry {
     /** Every handler the vendor defaults file names, in file order. */
     public Collection<VendorDefaults.HandlerDefault> vendorDefaults() {
         return vendorDefaults.values();
+    }
+
+    /** The vendor entries in effect -- every one whose handler isn't reset to native, in file order. */
+    public List<VendorDefaults.HandlerDefault> activeVendorDefaults() {
+        return vendorDefaults.values().stream().filter(d -> !resetToNative.contains(d.ref())).toList();
+    }
+
+    /** The vendor-named handlers currently reset to native, in file order. */
+    public List<HandlerRef> resetToNativeRefs() {
+        return vendorDefaults.keySet().stream().filter(resetToNative::contains).toList();
+    }
+
+    /** Whether {@code ref}'s vendor entry is being ignored until restart. */
+    public boolean isResetToNative(HandlerRef ref) {
+        return resetToNative.contains(ref);
+    }
+
+    /**
+     * Ignores {@code ref}'s vendor entry until restart.
+     *
+     * @return {@code true} if this changed anything -- {@code false} if the vendor defaults file
+     *         doesn't name {@code ref}, or it was already reset to native
+     */
+    public boolean markResetToNative(HandlerRef ref) {
+        return vendorDefaults.containsKey(ref) && resetToNative.add(ref);
+    }
+
+    /**
+     * Puts {@code ref}'s vendor entry back in effect.
+     *
+     * @return {@code true} if {@code ref} was reset to native
+     */
+    public boolean clearResetToNative(HandlerRef ref) {
+        return resetToNative.remove(ref);
     }
 
     /**

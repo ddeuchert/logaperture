@@ -57,6 +57,7 @@ final class Parser {
         boolean debug = false;
         boolean includeSticky = false;
         boolean includeVendorDefaults = false;
+        boolean toNative = false;
         boolean showAll = false;
         String reason = null;
         Integer limit = null;
@@ -81,6 +82,7 @@ final class Parser {
                 case "--yes" -> yes = true;
                 case "--include-sticky" -> includeSticky = true;
                 case "--include-vendor-defaults" -> includeVendorDefaults = true;
+                case "--to-native" -> toNative = true;
                 case "--show-all" -> showAll = true;
                 case "--any-cause" -> anyCause = true;
                 case "--no-sample-full" -> noSampleFull = true;
@@ -245,6 +247,12 @@ final class Parser {
             throw usage("--include-vendor-defaults applies only to 'reset rule', 'reset rules' and "
                     + "'reset logger'.");
         }
+        if (toNative && !(command.equals("reset") && !rest.isEmpty()
+                && List.of("logger", "loggers", "handler", "handlers", "default-handler").contains(rest.get(0)))) {
+            // doc/specs/reset-to-native.md: rules are out of scope (issue #96).
+            throw usage("--to-native applies only to 'reset logger', 'reset loggers', 'reset handler', "
+                    + "'reset handlers' and 'reset default-handler'.");
+        }
         if (includeSticky && !command.equals("reset")) {
             throw usage("--include-sticky applies only to 'reset'.");
         }
@@ -348,25 +356,26 @@ final class Parser {
                         if (nounRest.size() != 1) {
                             throw usage("'reset logger' needs exactly one target.");
                         }
-                        yield Commands.resetLogger(nounRest.get(0), includeSticky, includeVendorDefaults, json);
+                        yield Commands.resetLogger(nounRest.get(0), includeSticky, includeVendorDefaults, toNative,
+                                json);
                     }
                     case "loggers" -> {
                         if (!nounRest.isEmpty()) {
                             throw usage("'reset loggers' takes no arguments.");
                         }
-                        yield Commands.resetAllLoggers(includeSticky, json);
+                        yield Commands.resetAllLoggers(includeSticky, toNative, json);
                     }
                     case "handler" -> {
                         if (nounRest.size() != 1) {
                             throw usage("'reset handler' needs exactly one handler name.");
                         }
-                        yield Commands.resetHandler(nounRest.get(0), includeSticky, json);
+                        yield Commands.resetHandler(nounRest.get(0), includeSticky, toNative, json);
                     }
                     case "handlers" -> {
                         if (!nounRest.isEmpty()) {
                             throw usage("'reset handlers' takes no arguments.");
                         }
-                        yield Commands.resetAllHandlers(includeSticky, json);
+                        yield Commands.resetAllHandlers(includeSticky, toNative, json);
                     }
                     case "rule" -> {
                         if (nounRest.size() != 1) {
@@ -384,7 +393,7 @@ final class Parser {
                         if (!nounRest.isEmpty()) {
                             throw usage("'reset default-handler' takes no arguments.");
                         }
-                        yield Commands.setDefaultHandlerMembers(List.of(), json);
+                        yield Commands.resetDefaultHandler(toNative, json);
                     }
                     default -> throw usage("'reset' needs 'logger <target>', 'loggers', 'handler <name>', "
                             + "'handlers', 'rule <id>', 'rules', or 'default-handler', got '" + noun + "'.");

@@ -154,6 +154,44 @@ class WildFlyVendorDefaultsIT {
         }
     }
 
+    /**
+     * doc/specs/reset-to-native.md "Testing": {@code --to-native} lands on WildFly's own
+     * configuration, a management change then sticks (the sweep leaves it alone), and a plain
+     * reset returns to the vendor level. Restores the vendor level on the way out, since the
+     * container is shared with the other tests here.
+     */
+    @Test
+    void resetToNative_landsOnWildFlysOwnConfiguration_followsIt_andAPlainResetRestoresTheVendorLevel()
+            throws InterruptedException {
+        try {
+            Logctl toNative = logctl("reset", "logger", VENDOR_LOGGER, "--to-native");
+            assertEquals(0, toNative.exitCode(), toNative.stderr());
+            assertTrue(toNative.stdout().contains("INFO (native default, until restart)"), toNative.stdout());
+            assertTrue(lineFor(logctl("list", "loggers", VENDOR_LOGGER).stdout(), VENDOR_LOGGER)
+                    .contains("WARN (reset to native)"));
+            assertTrue(logctl("status").stdout().contains("1 reset to native"), logctl("status").stdout());
+
+            ExecResult added = exec(JBOSS_CLI, "--connect",
+                    "--command=/subsystem=logging/logger=" + VENDOR_LOGGER + ":add(level=DEBUG)");
+            assertEquals(0, added.getExitCode(), added.getStdout() + added.getStderr());
+            Thread.sleep(7_000); // two sweep ticks (logaperture.sweep.seconds=3)
+            String afterChange = lineFor(logctl("list", "loggers", VENDOR_LOGGER).stdout(), VENDOR_LOGGER);
+            assertTrue(afterChange.contains("DEBUG"), "the management change stuck (T3): " + afterChange);
+
+            assertTrue(pollLogctl(out -> lineFor(out, "FILE").contains("WARN"), "list", "handlers"));
+            assertEquals(0, logctl("reset", "handler", "FILE", "--to-native").exitCode());
+            String fileRow = lineFor(logctl("list", "handlers").stdout(), "FILE");
+            assertTrue(fileRow.contains("WARN (reset to native)") && !fileRow.matches("FILE\\s+WARN\\s+.*"), fileRow);
+        } finally {
+            exec(JBOSS_CLI, "--connect", "--command=/subsystem=logging/logger=" + VENDOR_LOGGER + ":remove");
+            Logctl plain = logctl("reset", "logger", VENDOR_LOGGER);
+            assertTrue(plain.stdout().contains("WARN (vendor default)"), plain.stdout());
+            assertEquals(0, logctl("reset", "handler", "FILE").exitCode());
+            assertTrue(lineFor(logctl("list", "handlers").stdout(), "FILE").matches("FILE\\s+WARN\\s+WARN.*"),
+                    logctl("list", "handlers").stdout());
+        }
+    }
+
     @Test
     void vendorRule_survivesResetRules_refusesSingleReset_andSuspendsWithTheFlag() {
         Logctl bulk = logctl("reset", "rules");

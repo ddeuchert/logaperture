@@ -41,17 +41,19 @@ public final class HandlerInfoData {
     private final String membersSummary;
     private final String context;
     private final String vendorDefault;
+    private final boolean resetToNative;
 
     /**
-     * Every field, including {@code vendorDefault} (doc/specs/vendor-defaults.md "Surfaces"); the
-     * narrower constructor below stays annotated for older clients (logaperture-spec.md §11.1).
+     * Every field, including {@code resetToNative} (doc/specs/reset-to-native.md "Surfaces"); the
+     * narrower constructors below stay annotated for older clients (logaperture-spec.md §11.1).
      */
     @ConstructorProperties({"ref", "level", "persistent", "targetPath", "autoFlush", "overrideActive",
             "overrideLevel", "overrideMode", "overrideTier", "overrideExpiresAt", "membersSummary", "context",
-            "vendorDefault"})
+            "vendorDefault", "resetToNative"})
     public HandlerInfoData(String ref, String level, boolean persistent, String targetPath, Boolean autoFlush,
             boolean overrideActive, String overrideLevel, String overrideMode, String overrideTier,
-            String overrideExpiresAt, String membersSummary, String context, String vendorDefault) {
+            String overrideExpiresAt, String membersSummary, String context, String vendorDefault,
+            boolean resetToNative) {
         this.ref = ref;
         this.level = level;
         this.persistent = persistent;
@@ -65,6 +67,18 @@ public final class HandlerInfoData {
         this.membersSummary = membersSummary;
         this.context = context;
         this.vendorDefault = vendorDefault;
+        this.resetToNative = resetToNative;
+    }
+
+    /** Every field but {@code resetToNative} (doc/specs/vendor-defaults.md "Surfaces"). */
+    @ConstructorProperties({"ref", "level", "persistent", "targetPath", "autoFlush", "overrideActive",
+            "overrideLevel", "overrideMode", "overrideTier", "overrideExpiresAt", "membersSummary", "context",
+            "vendorDefault"})
+    public HandlerInfoData(String ref, String level, boolean persistent, String targetPath, Boolean autoFlush,
+            boolean overrideActive, String overrideLevel, String overrideMode, String overrideTier,
+            String overrideExpiresAt, String membersSummary, String context, String vendorDefault) {
+        this(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel, overrideMode,
+                overrideTier, overrideExpiresAt, membersSummary, context, vendorDefault, false);
     }
 
     @ConstructorProperties({"ref", "level", "persistent", "targetPath", "autoFlush", "overrideActive",
@@ -100,7 +114,8 @@ public final class HandlerInfoData {
                 info.overrideExpiresAt() == null ? null : info.overrideExpiresAt().toString(),
                 info.membersSummary(),
                 info.context(),
-                info.vendorDefault());
+                info.vendorDefault(),
+                info.resetToNative());
     }
 
     public String getRef() {
@@ -161,5 +176,10 @@ public final class HandlerInfoData {
     /** The vendor defaults file's setting for this handler (a level name or {@code AUTO}), or {@code null}. */
     public String getVendorDefault() {
         return vendorDefault;
+    }
+
+    /** Whether that vendor setting is being ignored until restart ({@code reset handler --to-native}). */
+    public boolean isResetToNative() {
+        return resetToNative;
     }
 }

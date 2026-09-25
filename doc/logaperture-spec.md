@@ -278,14 +278,81 @@ Both Logback and Log4j2 will happily reload their config from disk and throw awa
 2. On reconfiguration: re-capture baseline, re-install filters and wrapped encoders, re-apply live overrides.
 3. Be idempotent — double-wrapping an encoder on every reload is a real and easy bug. Tag wrappers with a marker interface and check before wrapping.
 
-### 6.6 Precedence
+### 6.6 Precedence: configuration layers
 
-Define and document, highest to lowest:
+This section is the canonical definition of the layers and their names; other specs and the
+user guide use these terms and link here rather than restating them.
+
+Precedence, highest to lowest:
 
 1. Runtime mutations made via the control plane in the current session
 2. Persisted state from previous sessions (unless expired, or unless `logaperture.resume=false`)
 3. The vendor defaults file supplied at agent start (`-javaagent:logaperture-agent.jar=--vendor-defaults=/etc/logaperture/vendor-defaults.yaml`) — the authority on the baseline for every setting it names, and what `reset` returns to. Spec: [`doc/specs/vendor-config-epic.md`](specs/vendor-config-epic.md) (issues #60/#61).
-4. The application's own logging configuration (the baseline)
+4. The application's own logging configuration (native configuration)
+
+Items 1 and 2 are the same layer, the **override**: a logger or handler has at most one at a time,
+and its tier decides how long it lasts. At startup the only overrides are the sticky ones restored
+from the state file; while the application runs, any `set` replaces the target's override.
+
+```mermaid
+flowchart LR
+    N["Native configuration<br/>log4j2.xml, logging.properties,<br/>standalone.xml"]
+    V["Vendor defaults<br/>--vendor-defaults=file"]
+    B(["Baseline<br/>what reset returns to"])
+    O["Override<br/>session · for &lt;duration&gt; · sticky"]
+    E(["Effective level<br/>what the application runs at"])
+    S[("State file")]
+    N -- "altered by" --> V --> B
+    B -- "altered by" --> O --> E
+    S -. "sticky overrides restored at startup" .-> O
+```
+
+#### Terms
+
+| Term | Meaning |
+|---|---|
+| **Native configuration** | The application's own logging configuration: `log4j2.xml`, `logging.properties`, WildFly's `standalone.xml`. LogAperture reads it and never writes it. |
+| **Vendor defaults** | The file named by `--vendor-defaults=` at agent start. For every setting it names, it replaces the native value. |
+| **Baseline** | Native configuration altered by the vendor defaults. What `reset` returns a target to. |
+| **Override** | An operator's change to one logger or handler (`set`), with a tier: `session` (until restart), `for <duration>`, or `sticky` (saved in the state file and restored at startup). |
+| **State file** | Where sticky (and unexpired `for`) overrides are saved between restarts (§6.3). |
+| **Effective level** | The baseline altered by the override, if any: what the application actually runs at. The `EFFECTIVE` column of `logctl list loggers`. |
+| **Native default** | The native configuration's value alone, ignoring the vendor defaults. What `reset --to-native` lands on. |
+
+#### Personas
+
+- **Operator**: tunes a running system (production, test, a developer's machine). For them the
+  baseline is the reference point: they override what they need and `reset` puts it back.
+- **Vendor**: whoever ships the vendor defaults file with the product (the product team, an
+  integrator). They produce the next version of the file in a pre-production sandbox by tuning
+  live and running `logctl export vendor-defaults` (#62); they never edit the file by hand.
+
+#### Reset and `--to-native`
+
+- `logctl reset logger <target>` (and `handler`, `default-handler`, and their plural forms) removes
+  the override and returns the target to its **baseline**.
+- `logctl reset … --to-native` returns it to its **native default** instead, ignoring the vendor
+  defaults for that target until restart. It follows native configuration while it lasts: if
+  native configuration changes (a WildFly management change, a Logback reload), the target moves
+  with it. A later plain `reset` returns the target to its baseline. It removes a sticky override
+  only with `--include-sticky`, like any reset. On a target the vendor defaults don't name, it is
+  the same as a plain reset.
+- For the operator, `--to-native` enables nothing new: `set logger <target> <native level>
+  session` has the same effect, apart from following native changes.
+- For the vendor, it is how an entry is taken out of the next vendor defaults file. Taking a
+  logger the vendor defaults set to `DEBUG`, whose native configuration says `INFO`:
+
+  | Vendor runs, before exporting | Next vendor defaults file says |
+  |---|---|
+  | nothing | `DEBUG` (unchanged) |
+  | `set logger org.perfmon4j WARN sticky` | `WARN` |
+  | `set logger org.perfmon4j INFO sticky` | `INFO`, locked even if native configuration later changes |
+  | `reset logger org.perfmon4j --to-native` | no entry: native configuration decides from now on |
+
+  A `session` or `for` override never reaches the exported file.
+
+Spec: [`doc/specs/reset-to-native.md`](specs/reset-to-native.md) (issue #94). Rules (vendor
+`drop`/`trim` rules, changeable rules and `--to-native`) are being redesigned in issue #96.
 
 ---
 

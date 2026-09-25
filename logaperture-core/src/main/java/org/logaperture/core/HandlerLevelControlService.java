@@ -477,12 +477,12 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
 
     /** Vendor-defaulted handlers that haven't resolved since install -- {@code doctor}'s informational finding (Decision M7). */
     public List<HandlerRef> pendingVendorHandlers() {
-        return baselines.vendorDefaults().stream().map(VendorDefaults.HandlerDefault::ref)
+        return baselines.activeVendorDefaults().stream().map(VendorDefaults.HandlerDefault::ref)
                 .filter(pendingVendor::contains).toList();
     }
 
     private boolean hasVendorAuto() {
-        return baselines.vendorDefaults().stream().anyMatch(d -> d.mode() == HandlerLevelMode.AUTO);
+        return baselines.activeVendorDefaults().stream().anyMatch(d -> d.mode() == HandlerLevelMode.AUTO);
     }
 
     /**
@@ -491,7 +491,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      * explicit} exactly as an {@code AUTO} override would, falling back to its native level.
      */
     private void recomputeVendorAuto(Optional<Level> explicit) {
-        for (VendorDefaults.HandlerDefault vendor : baselines.vendorDefaults()) {
+        for (VendorDefaults.HandlerDefault vendor : baselines.activeVendorDefaults()) {
             if (vendor.mode() != HandlerLevelMode.AUTO || pendingVendor.contains(vendor.ref())
                     || coveredByOverride(vendor.ref())) {
                 continue;
@@ -589,7 +589,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return 0;
         }
         int reapplied = 0;
-        for (VendorDefaults.HandlerDefault vendor : baselines.vendorDefaults()) {
+        for (VendorDefaults.HandlerDefault vendor : baselines.activeVendorDefaults()) {
             HandlerRef ref = vendor.ref();
             if (pendingVendor.contains(ref)) {
                 if (tryApplyVendor(vendor, now)) {
@@ -615,8 +615,8 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             } catch (RuntimeException e) {
                 continue;
             }
-            if (coveredByOverride(ref)) {
-                continue; // an override arrived meanwhile -- the override half re-asserts it
+            if (coveredByOverride(ref) || baselines.isResetToNative(ref)) {
+                continue; // an override (or a reset to native) arrived meanwhile -- it decides the level now
             }
             auditLog.record(new AuditRecord(now, principal, "verification-sweep", ref.value(),
                     current.get().toString(), vendor.level().toString(), vendor.reason(),
@@ -757,12 +757,22 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
 
     @Override
     public HandlerResetOutcome resetHandler(HandlerRef ref, boolean includeSticky) {
+        return resetHandler(ref, includeSticky, false);
+    }
+
+    /**
+     * doc/specs/reset-to-native.md: a plain reset lands on the baseline, clearing a reset to
+     * native along with any override; {@code toNative} lands a vendor-named handler on its native
+     * level instead, until restart. On a group ref the vendor-layer change applies to each member.
+     */
+    @Override
+    public HandlerResetOutcome resetHandler(HandlerRef ref, boolean includeSticky, boolean toNative) {
         Objects.requireNonNull(ref, "ref");
         Optional<HandlerLevelOverride> existing = overrides.get(ref);
-        if (existing.isEmpty()) {
+        if (existing.isEmpty() && !vendorLayerWouldChange(ref, toNative)) {
             return HandlerResetOutcome.nothingReset(); // no-op, not an error -- matches resetLogger
         }
-        if (existing.get().tier() == PersistenceTier.STICKY && !includeSticky) {
+        if (existing.isPresent() && existing.get().tier() == PersistenceTier.STICKY && !includeSticky) {
             // Decision #1 (doc/specs/reset-command-surface.md): a single
             // named target refuses outright -- same reasoning and same
             // exception type as LevelControlService.resetLogger's exact-name
@@ -773,45 +783,169 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         // every reset requires HANDLER_LOWER, regardless of whether reverting
         // to baseline happens to raise or lower this particular handler.
         requireCapability(Capability.HANDLER_LOWER);
-        if (applyReset(ref, existing.get(), source)) {
+        ResetStep step = resetOne(ref, existing.orElse(null), toNative);
+        if (step.overrideRemoved()) {
             safePersist(() -> stateStore.removeHandler(ref));
         }
         recomputeVendorAutoNow(); // a vendor AUTO handler handed back to the vendor layer resumes tracking
         return new HandlerResetOutcome(List.of(ref), List.of());
     }
 
+    @Override
+    public HandlerResetOutcome resetAllHandlers(boolean includeSticky) {
+        return resetAllHandlers(includeSticky, false);
+    }
+
     /**
      * Reverts every active handler override — the {@link
      * LevelControlService#resetAllLoggers} counterpart for handlers, called
      * by {@link AggregateLevelControl#resetAllHandlers} for {@code logctl
-     * reset handlers} (doc/specs/reset-command-surface.md). A {@code
-     * STICKY} entry is left alone and reported rather than refused, same as
-     * {@link LevelControlService#resetAllLoggers}'s bulk-target reasoning
-     * (Decision #1 -- a bulk reset names a set, however large, not one
-     * specific thing).
+     * reset handlers} (doc/specs/reset-command-surface.md) -- and makes every
+     * vendor-layer change a reset would (doc/specs/reset-to-native.md). A
+     * {@code STICKY} entry is left alone and reported rather than refused,
+     * same as {@link LevelControlService#resetAllLoggers}'s bulk-target
+     * reasoning (Decision #1 -- a bulk reset names a set, however large, not
+     * one specific thing).
      */
     @Override
-    public HandlerResetOutcome resetAllHandlers(boolean includeSticky) {
+    public HandlerResetOutcome resetAllHandlers(boolean includeSticky, boolean toNative) {
         // Unconditional capability check up front, matching this method's
         // pre-existing convention (unlike LevelControlService.resetLogger's
         // pattern branch, which checks lazily).
         requireCapability(Capability.HANDLER_LOWER);
+        Set<HandlerRef> candidates = new LinkedHashSet<>(overrides.all().keySet());
+        if (toNative) {
+            baselines.activeVendorDefaults().forEach(vendor -> candidates.add(vendor.ref()));
+        } else {
+            candidates.addAll(baselines.resetToNativeRefs());
+        }
         List<HandlerRef> reverted = new ArrayList<>();
         List<HandlerRef> skippedSticky = new ArrayList<>();
-        for (Map.Entry<HandlerRef, HandlerLevelOverride> entry : overrides.all().entrySet()) {
-            if (entry.getValue().tier() == PersistenceTier.STICKY && !includeSticky) {
-                skippedSticky.add(entry.getKey());
+        List<HandlerRef> removedOverrides = new ArrayList<>();
+        for (HandlerRef ref : candidates) {
+            Optional<HandlerLevelOverride> current = overrides.get(ref);
+            if (current.isEmpty() && !vendorLayerWouldChange(ref, toNative)) {
+                continue; // nothing left to do -- e.g. a group reset above already covered it
+            }
+            if (current.isPresent() && current.get().tier() == PersistenceTier.STICKY && !includeSticky) {
+                skippedSticky.add(ref);
                 continue;
             }
-            if (applyReset(entry.getKey(), entry.getValue(), source)) {
-                reverted.add(entry.getKey());
+            ResetStep step = resetOne(ref, current.orElse(null), toNative);
+            if (step.changed()) {
+                reverted.add(ref);
+            }
+            if (step.overrideRemoved()) {
+                removedOverrides.add(ref);
             }
         }
+        if (!removedOverrides.isEmpty()) {
+            safePersist(() -> stateStore.removeAllHandlers(removedOverrides)); // one rewrite, not one per handler (issue #17)
+        }
         if (!reverted.isEmpty()) {
-            safePersist(() -> stateStore.removeAllHandlers(reverted)); // one rewrite, not one per handler (issue #17)
             recomputeVendorAutoNow();
         }
         return new HandlerResetOutcome(reverted, skippedSticky);
+    }
+
+    /**
+     * {@code logctl reset default-handler [--to-native]}: clears the explicit membership, as
+     * {@code setDefaultHandlerMembers(List.of())} always has, and with {@code toNative} ignores
+     * the vendor defaults file's list until restart; a plain reset puts that list back
+     * (doc/specs/reset-to-native.md).
+     */
+    @Override
+    public List<HandlerRef> resetDefaultHandlerMembers(boolean toNative) {
+        if (!adapter.hasHandlerLevels()) {
+            return List.of(); // doc/specs/handler-floor-control.md "Logback / none" -- same documented no-op
+        }
+        if (!policy.isGranted(Capability.PERSIST)) {
+            throw new CapabilityDeniedException(Capability.PERSIST);
+        }
+        String previousValue = describeMembers(defaultHandlerGroup.explicit());
+        boolean layerChanged = toNative
+                ? defaultHandlerGroup.markResetToNative()
+                : defaultHandlerGroup.clearResetToNative();
+        defaultHandlerGroup.clearExplicit();
+        safePersist(stateStore::removeDefaultHandlerMembers);
+        String reason = !layerChanged ? null
+                : toNative ? VendorDefaults.RESET_TO_NATIVE_REASON : VendorDefaults.VENDOR_RESTORED_REASON;
+        String newValue = defaultHandlerGroup.vendorMembersInEffect(adapter) ? "<vendor-defaults>" : "<rule-derived>";
+        auditLog.record(new AuditRecord(Instant.now(), principal, source, HandlerRef.DEFAULT_HANDLERS.value(),
+                previousValue, newValue, reason, AuditRecord.Action.MUTATION));
+        return membersOf(HandlerRef.DEFAULT_HANDLERS);
+    }
+
+    /** How many vendor-named handlers, plus the vendor default-handler list, are reset to native -- the {@code status}/{@code env} count. */
+    public int resetToNativeCount() {
+        return baselines.resetToNativeRefs().size() + (defaultHandlerGroup.isResetToNative() ? 1 : 0);
+    }
+
+    /**
+     * Whether a reset of {@code ref} would change the vendor layer of it -- or, for a group ref,
+     * of any member -- see {@link #resetOne}.
+     */
+    private boolean vendorLayerWouldChange(HandlerRef ref, boolean toNative) {
+        for (HandlerRef target : isGroupRef(ref) ? membersOf(ref) : List.of(ref)) {
+            boolean changes = toNative
+                    ? baselines.vendorDefault(target).isPresent() && !baselines.isResetToNative(target)
+                    : baselines.isResetToNative(target);
+            if (changes) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** What {@link #resetOne} did: whether anything changed, and whether an override was removed (the caller persists that). */
+    private record ResetStep(boolean changed, boolean overrideRemoved) {
+    }
+
+    /**
+     * Resets one handler ref: first the vendor layer of it (or of each member, for a group ref --
+     * doc/specs/reset-to-native.md), then its override, if {@code current} is one, landing on
+     * the resulting baseline. With no override, each vendor-layer change no other override covers
+     * is applied on its own. Capability and sticky checks are the caller's.
+     */
+    private ResetStep resetOne(HandlerRef ref, HandlerLevelOverride current, boolean toNative) {
+        List<HandlerRef> layerChanged = new ArrayList<>();
+        for (HandlerRef target : isGroupRef(ref) ? membersOf(ref) : List.of(ref)) {
+            boolean changed = toNative ? baselines.markResetToNative(target) : baselines.clearResetToNative(target);
+            if (changed) {
+                layerChanged.add(target);
+            }
+        }
+        String reason = layerChanged.isEmpty() ? null
+                : toNative ? VendorDefaults.RESET_TO_NATIVE_REASON : VendorDefaults.VENDOR_RESTORED_REASON;
+        if (current != null && applyReset(ref, current, source, reason)) {
+            return new ResetStep(true, true); // the reset landed every target on its (new) baseline
+        }
+        for (HandlerRef target : layerChanged) {
+            if (!coveredByOverride(target)) {
+                applyBaseline(target, reason);
+            }
+        }
+        return new ResetStep(!layerChanged.isEmpty(), false);
+    }
+
+    /**
+     * Sets {@code ref} to its baseline with no override involved -- a vendor-layer change on its
+     * own. A handler whose baseline was never captured (a vendor handler that hasn't resolved
+     * yet) is left alone: nothing was ever applied to it.
+     */
+    private void applyBaseline(HandlerRef ref, String reason) {
+        Level baseline;
+        try {
+            baseline = baselines.get(ref).orElse(null);
+        } catch (IllegalStateException neverCaptured) {
+            return;
+        }
+        String previousValue = adapter.handlerLevel(ref).map(Level::toString).orElse("<none>");
+        if (baseline == null || !trySetHandlerLevel(ref, baseline, "revert")) {
+            return;
+        }
+        auditLog.record(new AuditRecord(Instant.now(), principal, source, ref.value(), previousValue,
+                baseline.toString(), reason, AuditRecord.Action.REVERSION));
     }
 
     /** {@link LevelControlService}'s {@code rejectSticky}, mirrored for a {@link HandlerRef} target. */
@@ -831,7 +965,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     public void reapplyActiveOverrides(LoggingAdapter targetAdapter) {
         // The vendor layer first, where no override covers it -- doc/specs/vendor-defaults.md
         // "Reconfiguration and the verification sweep".
-        for (VendorDefaults.HandlerDefault vendor : baselines.vendorDefaults()) {
+        for (VendorDefaults.HandlerDefault vendor : baselines.activeVendorDefaults()) {
             if (vendor.mode() == HandlerLevelMode.FIXED && !pendingVendor.contains(vendor.ref())
                     && !coveredByOverride(vendor.ref())) {
                 try {
@@ -1080,7 +1214,8 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                     override == null ? null : override.expiresAt(),
                     null,
                     null,
-                    baselines.vendorDefault(ref).map(HandlerLevelControlService::describeVendor).orElse(null)));
+                    baselines.vendorDefault(ref).map(HandlerLevelControlService::describeVendor).orElse(null),
+                    baselines.isResetToNative(ref)));
         }
         HandlerLevelOverride defaultHandlersOverride = overrides.get(HandlerRef.DEFAULT_HANDLERS).orElse(null);
         rows.add(new HandlerInfo(
@@ -1414,13 +1549,18 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      *         (doc/specs/persistence.md "Batch removal", issue #17).
      */
     private boolean applyReset(HandlerRef ref, HandlerLevelOverride toRevert, String auditSource) {
+        return applyReset(ref, toRevert, auditSource, null);
+    }
+
+    /** {@link #applyReset(HandlerRef, HandlerLevelOverride, String)}, audited with {@code reason}. */
+    private boolean applyReset(HandlerRef ref, HandlerLevelOverride toRevert, String auditSource, String reason) {
         if (!overrides.removeIfCurrent(ref, toRevert)) {
             return false; // a concurrent setHandlerLevel already replaced it
         }
         pendingResume.remove(ref); // untracked either way -- pending status is moot now
 
         if (isGroupRef(ref)) {
-            applyGroupReset(ref, auditSource);
+            applyGroupReset(ref, auditSource, reason);
             return true;
         }
 
@@ -1445,7 +1585,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
 
         String newValue = baseline == null ? "<none>" : baseline.toString();
         auditLog.record(new AuditRecord(
-                Instant.now(), principal, auditSource, ref.value(), previousValue, newValue, null,
+                Instant.now(), principal, auditSource, ref.value(), previousValue, newValue, reason,
                 AuditRecord.Action.REVERSION));
         return true;
     }
@@ -1461,7 +1601,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      * failure, is logged and skipped rather than aborting the rest of the
      * group (doc/specs/handler-floor-control.md "Failure handling").
      */
-    private void applyGroupReset(HandlerRef groupRef, String auditSource) {
+    private void applyGroupReset(HandlerRef groupRef, String auditSource, String reason) {
         Instant now = Instant.now();
         for (HandlerRef real : membersOf(groupRef)) {
             if (!baselines.isCaptured(real)) {
@@ -1474,7 +1614,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             }
             String newValue = baseline == null ? "<none>" : baseline.toString();
             auditLog.record(new AuditRecord(
-                    now, principal, auditSource, real.value(), previousValue, newValue, null,
+                    now, principal, auditSource, real.value(), previousValue, newValue, reason,
                     AuditRecord.Action.REVERSION));
         }
     }

@@ -38,7 +38,7 @@ class JsonTest {
         assertEquals(
                 "{\"name\":\"com.acme\",\"configuredLevel\":null,\"effectiveLevel\":\"INFO\","
                         + "\"overrideActive\":false,\"overrideSource\":null,\"overrideReason\":null,"
-                        + "\"tier\":null,\"expiresAt\":null,\"vendorDefaultLevel\":null}",
+                        + "\"tier\":null,\"expiresAt\":null,\"vendorDefaultLevel\":null,\"resetToNative\":false}",
                 Json.logger(row));
     }
 
@@ -185,11 +185,11 @@ class JsonTest {
                 "{\"handlers\":[{\"ref\":\"ALL_HANDLERS\",\"level\":null,\"persistent\":false,\"targetPath\":null,"
                         + "\"autoFlush\":null,\"overrideActive\":false,\"overrideLevel\":null,\"overrideMode\":null,"
                         + "\"overrideTier\":null,"
-                        + "\"overrideExpiresAt\":null,\"membersSummary\":null,\"context\":\"system\",\"vendorDefault\":null},"
+                        + "\"overrideExpiresAt\":null,\"membersSummary\":null,\"context\":\"system\",\"vendorDefault\":null,\"resetToNative\":false},"
                         + "{\"ref\":\"FILE\",\"level\":\"INFO\",\"persistent\":true,\"targetPath\":\"/var/log/server.log\","
                         + "\"autoFlush\":true,\"overrideActive\":true,\"overrideLevel\":\"DEBUG\",\"overrideMode\":\"FIXED\","
                         + "\"overrideTier\":\"FOR\","
-                        + "\"overrideExpiresAt\":\"2026-09-07T14:32:00Z\",\"membersSummary\":null,\"context\":\"system\",\"vendorDefault\":null}]}",
+                        + "\"overrideExpiresAt\":\"2026-09-07T14:32:00Z\",\"membersSummary\":null,\"context\":\"system\",\"vendorDefault\":null,\"resetToNative\":false}]}",
                 Json.handlers(List.of(allHandlers, file)));
     }
 

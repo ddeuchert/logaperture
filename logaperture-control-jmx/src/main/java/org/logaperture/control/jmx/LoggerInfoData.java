@@ -50,13 +50,42 @@ public final class LoggerInfoData {
     private final String expiresAt;
     private final String context;
     private final String vendorDefaultLevel;
+    private final boolean resetToNative;
 
     /**
-     * Every field, including {@code vendorDefaultLevel} (doc/specs/vendor-defaults.md
-     * "Surfaces"). The narrower constructor below stays annotated too, so a client built before
-     * that field existed still reconstructs this type -- the MXBean additive-evolution pattern
+     * Every field, including {@code resetToNative} (doc/specs/reset-to-native.md "Surfaces"). The
+     * narrower constructors below stay annotated too, so a client built before those fields
+     * existed still reconstructs this type -- the MXBean additive-evolution pattern
      * (logaperture-spec.md §11.1).
      */
+    @ConstructorProperties({"name", "configuredLevel", "effectiveLevel", "overrideActive", "overrideSource",
+            "overrideReason", "tier", "expiresAt", "context", "vendorDefaultLevel", "resetToNative"})
+    public LoggerInfoData(
+            String name,
+            String configuredLevel,
+            String effectiveLevel,
+            boolean overrideActive,
+            String overrideSource,
+            String overrideReason,
+            String tier,
+            String expiresAt,
+            String context,
+            String vendorDefaultLevel,
+            boolean resetToNative) {
+        this.name = name;
+        this.configuredLevel = configuredLevel;
+        this.effectiveLevel = effectiveLevel;
+        this.overrideActive = overrideActive;
+        this.overrideSource = overrideSource;
+        this.overrideReason = overrideReason;
+        this.tier = tier;
+        this.expiresAt = expiresAt;
+        this.context = context;
+        this.vendorDefaultLevel = vendorDefaultLevel;
+        this.resetToNative = resetToNative;
+    }
+
+    /** Every field but {@code resetToNative} (doc/specs/vendor-defaults.md "Surfaces"). */
     @ConstructorProperties({"name", "configuredLevel", "effectiveLevel", "overrideActive", "overrideSource",
             "overrideReason", "tier", "expiresAt", "context", "vendorDefaultLevel"})
     public LoggerInfoData(
@@ -70,16 +99,8 @@ public final class LoggerInfoData {
             String expiresAt,
             String context,
             String vendorDefaultLevel) {
-        this.name = name;
-        this.configuredLevel = configuredLevel;
-        this.effectiveLevel = effectiveLevel;
-        this.overrideActive = overrideActive;
-        this.overrideSource = overrideSource;
-        this.overrideReason = overrideReason;
-        this.tier = tier;
-        this.expiresAt = expiresAt;
-        this.context = context;
-        this.vendorDefaultLevel = vendorDefaultLevel;
+        this(name, configuredLevel, effectiveLevel, overrideActive, overrideSource, overrideReason, tier, expiresAt,
+                context, vendorDefaultLevel, false);
     }
 
     @ConstructorProperties({"name", "configuredLevel", "effectiveLevel", "overrideActive", "overrideSource",
@@ -95,7 +116,7 @@ public final class LoggerInfoData {
             String expiresAt,
             String context) {
         this(name, configuredLevel, effectiveLevel, overrideActive, overrideSource, overrideReason, tier, expiresAt,
-                context, null);
+                context, null, false);
     }
 
     /** Back-compat constructor for callers (tests) that don't care about {@code context}. */
@@ -123,7 +144,8 @@ public final class LoggerInfoData {
                 info.overrideTier() == null ? null : info.overrideTier().name(),
                 info.overrideExpiresAt() == null ? null : info.overrideExpiresAt().toString(),
                 info.context(),
-                info.vendorDefaultLevel() == null ? null : info.vendorDefaultLevel().name());
+                info.vendorDefaultLevel() == null ? null : info.vendorDefaultLevel().name(),
+                info.resetToNative());
     }
 
     public String getName() {
@@ -165,5 +187,10 @@ public final class LoggerInfoData {
     /** The vendor defaults file's level for this logger, or {@code null}. */
     public String getVendorDefaultLevel() {
         return vendorDefaultLevel;
+    }
+
+    /** Whether that vendor level is being ignored until restart ({@code reset logger --to-native}). */
+    public boolean isResetToNative() {
+        return resetToNative;
     }
 }

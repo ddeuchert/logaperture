@@ -70,7 +70,8 @@ final class Json {
                 .str("overrideReason", row.getOverrideReason())
                 .str("tier", row.getTier())
                 .str("expiresAt", row.getExpiresAt())
-                .str("vendorDefaultLevel", row.getVendorDefaultLevel());
+                .str("vendorDefaultLevel", row.getVendorDefaultLevel())
+                .bool("resetToNative", row.isResetToNative());
     }
 
     static String override(LevelOverrideData data) {
@@ -305,6 +306,7 @@ final class Json {
                     .str("membersSummary", row.getMembersSummary())
                     .str("context", row.getContext())
                     .str("vendorDefault", row.getVendorDefault())
+                    .bool("resetToNative", row.isResetToNative())
                     .toString());
         }
         return new Obj().raw("handlers", array.toString()).toString();
@@ -398,6 +400,20 @@ final class Json {
     static String defaultHandlerMembers(List<String> members) {
         return new Obj()
                 .raw("defaultHandlerMembers", stringArray(members))
+                .toString();
+    }
+
+    /**
+     * {@code reset default-handler [--to-native] --json}: the same {@code defaultHandlerMembers}
+     * (the explicit membership -- always empty after a reset) as before doc/specs/
+     * reset-to-native.md, plus the members now in effect and whether the vendor defaults' list
+     * is being ignored until restart.
+     */
+    static String resetDefaultHandler(List<String> membersInEffect, boolean toNative) {
+        return new Obj()
+                .raw("defaultHandlerMembers", stringArray(List.of()))
+                .raw("membersInEffect", stringArray(membersInEffect))
+                .bool("toNative", toNative)
                 .toString();
     }
 

@@ -52,7 +52,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@code defaultHandlers} list (doc/specs/vendor-defaults.md "Default handlers"): explicit
  * &rarr; vendor &rarr; rule. The vendor list is fixed for the JVM's life and never pruned or
  * persisted; its members that don't resolve right now are simply skipped, and if none resolve
- * the rule decides.
+ * the rule decides. {@code reset default-handler --to-native} ignores the vendor list until
+ * restart (doc/specs/reset-to-native.md), so the rule decides.
  */
 public final class DefaultHandlerGroupRegistry {
 
@@ -61,6 +62,9 @@ public final class DefaultHandlerGroupRegistry {
 
     /** The vendor defaults file's list; empty when the file doesn't set one. */
     private final List<HandlerRef> vendorMembers;
+
+    /** {@code true} while the vendor list is reset to native -- ignored until restart. */
+    private volatile boolean vendorIgnored;
 
     public DefaultHandlerGroupRegistry() {
         this(List.of());
@@ -86,8 +90,40 @@ public final class DefaultHandlerGroupRegistry {
         return explicit.get() == null && !resolvedVendorMembers(adapter).isEmpty();
     }
 
+    /** Whether the vendor list is being ignored until restart. */
+    public boolean isResetToNative() {
+        return vendorIgnored;
+    }
+
+    /**
+     * Ignores the vendor list until restart.
+     *
+     * @return {@code true} if this changed anything -- {@code false} if the vendor defaults file
+     *         sets no list, or it was already ignored
+     */
+    public boolean markResetToNative() {
+        if (vendorMembers.isEmpty() || vendorIgnored) {
+            return false;
+        }
+        vendorIgnored = true;
+        return true;
+    }
+
+    /**
+     * Puts the vendor list back in effect.
+     *
+     * @return {@code true} if it was being ignored
+     */
+    public boolean clearResetToNative() {
+        if (!vendorIgnored) {
+            return false;
+        }
+        vendorIgnored = false;
+        return true;
+    }
+
     private List<HandlerRef> resolvedVendorMembers(LoggingAdapter adapter) {
-        if (vendorMembers.isEmpty()) {
+        if (vendorMembers.isEmpty() || vendorIgnored) {
             return List.of();
         }
         Set<HandlerRef> reals = Set.copyOf(adapter.realHandlers());

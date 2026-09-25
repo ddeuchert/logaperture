@@ -28,3 +28,24 @@ are absorbed into the real guide.
   the sticky trim rule only works later in the log.
 - Roadmap: spec §18.14; doctor check tracked in #85; the startup-abort fix in #86; mechanism
   follow-up in #87.
+
+## Configuration layers, reset and `--to-native`
+
+Canonical definition: spec §6.6 "Precedence: configuration layers". Lift the diagram and both
+tables into the guide more or less as they are.
+
+- The layers, bottom to top: **native configuration** (the app's own `log4j2.xml`,
+  `logging.properties`, `standalone.xml`) → **vendor defaults** (`--vendor-defaults=` file) =
+  **baseline** → **override** (`set`, tier `session` / `for <duration>` / `sticky`) =
+  **effective level** (the `EFFECTIVE` column). Sticky overrides live in the **state file** and
+  come back at startup.
+- `reset` always returns to the **baseline**, not to native configuration. Users coming from
+  "reset means back to my log4j2.xml" need telling this once, early.
+- `reset … --to-native` returns to the native configuration, ignoring the vendor defaults, until
+  restart, and follows native changes while it lasts. A plain `reset` undoes it.
+- Two personas to write for separately: the **operator** (tuning a running system) and the
+  **vendor** (building the next vendor defaults file in a sandbox, then `logctl export
+  vendor-defaults`). The vendor's four choices per entry (nothing / `set … sticky` new value /
+  `set … <native level> sticky` / `reset --to-native`) and what each puts in the exported file:
+  the table in §6.6.
+- Rules (vendor `drop`/`trim` rules) and `--to-native`: being redesigned in #96.

@@ -13,6 +13,8 @@ skips).
 Implementation spec for: [`doc/specs/cli-transport.md`](cli-transport.md)'s "Command surface" —
 this slice replaces that document's `reset` section on landing.
 Tracks: slice 1 of [issue #42](https://github.com/ddeuchert/logaperture/issues/42).
+Extended by: [`reset-to-native.md`](reset-to-native.md) (issue #94) — `--to-native` on every
+logger/handler/default-handler reset form, and a plain reset that also clears it.
 
 ## Functional summary
 
