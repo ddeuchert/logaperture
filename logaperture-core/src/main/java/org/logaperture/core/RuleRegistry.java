@@ -60,7 +60,6 @@ final class RuleRegistry {
         return Optional.of(rule);
     }
 
-    /** Every attached rule, across every logger, removed and returned. */
     /**
      * Removes {@code rule} only if it is still the rule registered under its id -- the expiry
      * sweep's compare-and-remove, so a sweep working from a stale snapshot never removes a rule
@@ -74,6 +73,7 @@ final class RuleRegistry {
         return true;
     }
 
+    /** Every attached rule, across every logger, removed and returned. */
     synchronized List<LogRule> removeAll() {
         List<LogRule> all = List.copyOf(byId.values());
         rulesByLogger.clear();

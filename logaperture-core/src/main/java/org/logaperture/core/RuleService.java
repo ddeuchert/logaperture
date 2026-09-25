@@ -446,7 +446,7 @@ public final class RuleService implements RuleOperations {
     public void sweepExpiredRules(Instant now) {
         List<String> expired = new ArrayList<>();
         for (LogRule rule : registry.all()) {
-            if (rule.tier() == PersistenceTier.FOR && !rule.expiresAt().isAfter(now)
+            if (rule.tier() == PersistenceTier.FOR && rule.expiresAt() != null && !rule.expiresAt().isAfter(now)
                     && registry.removeIfCurrent(rule)) {
                 forgetEvaluationState(rule.id());
                 expired.add(rule.id());
