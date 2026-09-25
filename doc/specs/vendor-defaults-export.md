@@ -1,7 +1,8 @@
 # Export live tuning as a vendor defaults file (slice 2: issue #62)
 
-Status: **draft, pre-sign-off.** Epic decisions are settled; member decisions X1–X9 below are
-proposals until agreed.
+Status: **in review.** X1–X3 and X5–X9 agreed 2026-09-25. X4 revised after #94
+([`reset-to-native.md`](reset-to-native.md)); its rule half waits on the rules redesign (#96),
+which should land before this slice is implemented.
 Parent spec: [`vendor-config-epic.md`](vendor-config-epic.md) (signed off 2026-09-24; decisions
 cited as "epic #N", chiefly epic #12), [`doc/logaperture-spec.md`](../logaperture-spec.md) §18.12.
 Builds on: [`vendor-defaults.md`](vendor-defaults.md) (slice 1, merged as PR #93 — the file
@@ -55,11 +56,11 @@ if it wasn't started with one):
 
 | Setting | Exported value |
 |---|---|
-| Logger | its `sticky` override if it has one; otherwise its level from the file, if the file names it. A `session`/`for` override is ignored — the file's value (if any) is exported instead. |
-| Handler | its `sticky` override if it has one (a level, or `AUTO` for a sticky `AUTO` override); otherwise the file's entry. |
+| Logger | its `sticky` override if it has one; otherwise its level from the file, if the file names it and it isn't reset to native (X4). A `session`/`for` override is ignored — the file's value (if any) is exported instead. |
+| Handler | its `sticky` override if it has one (a level, or `AUTO` for a sticky `AUTO` override); otherwise the file's entry, unless it's reset to native (X4). |
 | `ALL_HANDLERS` / `DEFAULT_HANDLERS` sticky override | expanded: one `handlers:` entry per member handler, at the group's level — the file format has no group entries (slice 1, "Settled during implementation"). A member's own sticky override wins over the group's. |
-| Default handlers | the membership set with `logctl set default-handler` if there is one (it is always persisted); otherwise the file's `defaultHandlers`; otherwise omitted. |
-| Rules | every rule from the file (suspended ones included — X4) and every `sticky` operator rule. `session`/`for` rules are left out. |
+| Default handlers | the membership set with `logctl set default-handler` if there is one (it is always persisted); otherwise the file's `defaultHandlers`, unless the list is reset to native (X4); otherwise omitted. |
+| Rules | every rule from the file and every `sticky` operator rule; `session`/`for` rules are left out. How a vendor rule is changed or removed before exporting is #96's to settle (X4). |
 
 - **Reasons** travel: a sticky override's or rule's `--reason`, or the file entry's `reason:`.
 - **Exact names only.** Sticky overrides are already per exact logger name (a pattern `set` expands
@@ -135,8 +136,8 @@ the `system` context, so this changes nothing in practice.
   newline in a reason) survive; output is byte-identical for equal input.
 - Exporter: each row of the "What goes into the export" table, including `session`/`for`
   ignored, sticky beats file, group overrides expanded with member overrides winning, AUTO,
-  default handlers from explicit vs file, suspended vendor rules kept, derived rule names and
-  collisions, nothing-to-export.
+  default handlers from explicit vs file, entries reset to native left out, derived rule names
+  and collisions, nothing-to-export.
 - CLI: stdout mode; `--out` new file; `--out` existing refused; `--force`; `--force` without
   `--out` and `--json` rejected; temp-file-then-rename on failure.
 
@@ -152,21 +153,28 @@ the `system` context, so this changes nothing in practice.
 
 - **X1 — Generate the file in the agent**, via a new read-only MXBean operation returning the text,
   not in `logctl` from existing reads. The JMX read surface lacks facts the file needs, and one
-  class should own the format both ways. **Proposed.**
+  class should own the format both ways. **Agreed.**
 - **X2 — A `session`/`for` override over a vendor value exports the vendor value**, not the
   override and not nothing — temporary tuning never leaks into the file, and the file's own
-  setting isn't lost because someone happened to be debugging. **Proposed.**
+  setting isn't lost because someone happened to be debugging. **Agreed.** One exception, by
+  design: a target reset with `--to-native` is left out (X4), though that reset lasts only until
+  restart.
 - **X3 — Operator rules get derived names** (`<action>-<logger's last segment>`, de-duplicated),
-  with a `# was r7` comment. Vendor rules keep theirs. **Proposed.**
-- **X4 — Suspended vendor rules are exported.** Suspension is "until restart", not a decision about
-  the file. **Proposed.**
-- **X5 — Capability `VIEW`.** Read-only in the JVM. **Proposed.**
+  with a `# was r7` comment. Vendor rules keep theirs. **Agreed.**
+- **X4 — An entry reset to native is left out of the export** (revised 2026-09-25, after #94).
+  `reset … --to-native` is how the vendor persona removes a logger, handler or default-handler
+  list from the next file (spec §6.6, "Reset and `--to-native`"), so the export must honour it; no
+  warning is given (the export is a sandbox task). For vendor rules the same idea applies once
+  #96 gives them a `--to-native` reset; until then slice 1's suspension is the only switch, and
+  this spec follows whatever #96 decides. **Agreed for loggers, handlers and default handlers;
+  rules pending #96.**
+- **X5 — Capability `VIEW`.** Read-only in the JVM. **Agreed.**
 - **X6 — No merge into an existing file on disk.** The export already starts from the file the JVM
   loaded; merging with some other file is out of scope. `--out` refuses an existing path unless
-  `--force`. **Proposed.**
+  `--force`. **Agreed.**
 - **X7 — No `--json`.** The output *is* a structured document; wrapping YAML in JSON helps no one.
-  **Proposed.**
+  **Agreed.**
 - **X8 — First context only**, matching `add rule`'s current scope; revisit with #79's multi-context
-  fan-out. **Proposed.**
+  fan-out. **Agreed.**
 - **X9 — An empty export is valid, exit 0**, with a stderr note, rather than an error — a script
-  exporting on a schedule shouldn't fail because nothing was tuned. **Proposed.**
+  exporting on a schedule shouldn't fail because nothing was tuned. **Agreed.**
