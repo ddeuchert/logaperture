@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Predicate;
 
@@ -519,15 +520,39 @@ public final class LevelControlService implements LevelControlOperations {
         return baselines.resetToNativeNames().size();
     }
 
+    /** The loggers reset to native in this context -- what {@link AggregateLevelControl#addContext} copies to a newcomer. */
+    public Set<String> resetToNativeLoggerNames() {
+        return baselines.resetToNativeNames();
+    }
+
+    /**
+     * Reset to native in this context what another context in the same aggregate already has --
+     * the {@link #adoptOverride} counterpart (doc/specs/reset-to-native.md "Multi-context"). No
+     * capability check: it reinstates what an already-authorized reset established. Audited with
+     * source {@code "resume"}, like an adopted override.
+     */
+    public void adoptResetToNative(Collection<String> loggerNames) {
+        for (String name : loggerNames) {
+            if (baselines.markResetToNative(name) && overrides.get(name).isEmpty()) {
+                applyBaseline(name, "resume", VendorDefaults.RESET_TO_NATIVE_REASON);
+            }
+        }
+    }
+
+    /** Puts a logger reset to native back on its native value, unaudited -- undoing a vendor re-apply that lost a race. */
+    private void restoreNativeSilently(String loggerName, LoggingAdapter targetAdapter) {
+        try {
+            targetAdapter.applyLevel(loggerName, baselines.get(loggerName).orElse(null));
+        } catch (IllegalStateException neverCaptured) {
+            // nothing to restore to
+        }
+    }
+
     /** Whether a reset of {@code name} would change its vendor layer -- see {@link #resetOne}. */
     private boolean vendorLayerWouldChange(String name, boolean toNative) {
         return toNative
                 ? baselines.vendorLevel(name).isPresent() && !baselines.isResetToNative(name)
                 : baselines.isResetToNative(name);
-    }
-
-    /** What {@link #resetOne} did: whether anything changed, and whether an override was removed (the caller persists that). */
-    private record ResetStep(boolean changed, boolean overrideRemoved) {
     }
 
     /**
@@ -540,7 +565,7 @@ public final class LevelControlService implements LevelControlOperations {
         boolean layerChanged = toNative
                 ? baselines.markResetToNative(loggerName)
                 : baselines.clearResetToNative(loggerName);
-        String reason = !layerChanged ? null : toNative ? VendorDefaults.RESET_TO_NATIVE_REASON : VendorDefaults.VENDOR_RESTORED_REASON;
+        String reason = ResetStep.reason(layerChanged, toNative);
         if (current != null && applyReset(loggerName, current, auditSource, reason)) {
             return new ResetStep(true, true);
         }
@@ -550,10 +575,20 @@ public final class LevelControlService implements LevelControlOperations {
         return new ResetStep(layerChanged, false);
     }
 
-    /** Sets {@code loggerName} to its baseline with no override involved -- a vendor-layer change on its own. */
+    /**
+     * Sets {@code loggerName} to its baseline with no override involved -- a vendor-layer change
+     * on its own. A logger whose native value was never captured (its vendor default failed to
+     * apply at install) is left alone: there is no native value to land on, and throwing here
+     * would abort a bulk reset part-way through.
+     */
     private void applyBaseline(String loggerName, String auditSource, String reason) {
         String previousValue = adapter.configuredLevel(loggerName).map(Level::toString).orElse("<inherited>");
-        Optional<Level> baseline = baselines.get(loggerName);
+        Optional<Level> baseline;
+        try {
+            baseline = baselines.get(loggerName);
+        } catch (IllegalStateException neverCaptured) {
+            return;
+        }
         adapter.applyLevel(loggerName, baseline.orElse(null));
         auditLog.record(new AuditRecord(Instant.now(), principal, auditSource, loggerName, previousValue,
                 baseline.map(Level::toString).orElse("<inherited>"), reason, AuditRecord.Action.REVERSION));
@@ -584,9 +619,12 @@ public final class LevelControlService implements LevelControlOperations {
     public void reapplyActiveOverrides(LoggingAdapter targetAdapter) {
         // The vendor layer first, for loggers no override covers -- doc/specs/vendor-defaults.md
         // "Reconfiguration and the verification sweep": a framework reset erased it too.
-        for (String name : baselines.activeVendorLoggerNames()) {
-            if (overrides.get(name).isEmpty()) {
+        for (String name : baselines.vendorLoggerNames()) {
+            if (overrides.get(name).isEmpty() && !baselines.isResetToNative(name)) {
                 targetAdapter.applyLevel(name, baselines.vendorLevel(name).orElseThrow());
+                if (baselines.isResetToNative(name)) {
+                    restoreNativeSilently(name, targetAdapter); // a concurrent reset --to-native won
+                }
             }
         }
         for (LevelOverride override : overrides.all().values()) {
@@ -689,7 +727,7 @@ public final class LevelControlService implements LevelControlOperations {
      */
     private int verifyVendorLayer(Instant now) {
         int reapplied = 0;
-        for (String loggerName : baselines.activeVendorLoggerNames()) {
+        for (String loggerName : baselines.vendorLoggerNames()) {
             if (overrides.get(loggerName).isPresent() || baselines.isResetToNative(loggerName)) {
                 continue;
             }
@@ -702,6 +740,12 @@ public final class LevelControlService implements LevelControlOperations {
             Optional<LevelOverride> raced = overrides.get(loggerName);
             if (raced.isPresent()) {
                 OverrideApplier.apply(raced.get(), adapter);
+                continue;
+            }
+            if (baselines.isResetToNative(loggerName)) {
+                // A concurrent reset --to-native won between our check and our apply -- undo,
+                // since nothing else re-asserts a logger reset to native.
+                restoreNativeSilently(loggerName, adapter);
                 continue;
             }
             auditLog.record(new AuditRecord(now, principal, "verification-sweep", loggerName,

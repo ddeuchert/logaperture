@@ -81,8 +81,9 @@ Rules: out of scope, see "Rules — out of scope".
 - Audit: a REVERSION with reason `reset to native default until restart`; a plain reset that
   clears it, reason `vendor default restored`.
 - Capabilities: the same as the reset it's on.
-- `reset default-handler --json` keeps `defaultHandlerMembers` (the explicit membership, always
-  `[]` after a reset) and adds `membersInEffect` and `toNative`.
+- `reset default-handler --to-native --json` returns `defaultHandlerMembers` (the explicit
+  membership, always `[]` after a reset) plus `membersInEffect` and `toNative`; a plain `reset
+  default-handler --json` is unchanged.
 
 ## Effect on the export (#62)
 
@@ -159,10 +160,23 @@ Details the text above left open, decided while building it; none changes an agr
 - **A vendor handler that hasn't resolved yet**, reset to native, is never applied when it does
   resolve, and `doctor` stops reporting it as pending.
 - **Pattern resets** also reach vendor-named loggers that aren't instantiated yet.
-- **`reset default-handler`** now always goes through one operation (MXBean
-  `resetDefaultHandler(boolean)`), which clears the explicit membership as before; its audit
-  record's new value is `<vendor-defaults>` when the vendor list is back in effect, else
-  `<rule-derived>`.
+- **`reset default-handler`**: `--to-native` uses the new MXBean `resetDefaultHandler(boolean)`;
+  a plain reset keeps using `setDefaultHandlerMembers([])`, which every agent has, so a new
+  `logctl` still works against an older agent. In the agent both are the same plain reset (the
+  empty-set spelling now also puts a reset-to-native vendor list back). Its audit record's new
+  value is `<vendor-defaults>` when the vendor list is back in effect, else `<rule-derived>`.
+- **A `DEFAULT_HANDLERS` override moves with the membership.** When a reset (or `set
+  default-handler`) changes which handlers are in the group, an active `DEFAULT_HANDLERS`
+  override is applied to the new members, each member that left goes back to its baseline, and
+  AUTO tracking is recomputed. Before this, `set default-handler` left the override on the old
+  members.
+- **Multi-context.** Reset-to-native state is copied to a context that registers later, the same
+  way active overrides are, so it holds in every context until restart.
+- **Concurrent sweep.** A verification sweep that re-applies a vendor level at the moment a reset
+  `--to-native` lands re-checks after writing and undoes its write, since nothing else would
+  re-assert a target reset to native.
+- **Audit on group resets.** The `reset to native default until restart` reason is recorded only
+  for members whose vendor entry was actually switched; other members' records carry none.
 - **`status` / `env`**: the vendor defaults status reads e.g. `loaded (2 loggers), 1 reset to
   native`, counted in the first context (resets broadcast to every context); `status` shows it as
   `2 loggers, 1 reset to native`.

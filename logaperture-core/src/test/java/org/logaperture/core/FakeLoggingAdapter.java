@@ -61,6 +61,8 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     private HandlerRef throwOnSetHandlerLevelFor;
     private boolean hasHandlerLevels = true; // this fake models a JUL-like framework by default
     private HandlerRef runOnHandlerLevelFor;
+    private String runOnConfiguredLevelFor;
+    private Runnable runOnConfiguredLevel;
     private Runnable runOnHandlerLevel;
 
     FakeLoggingAdapter(Level rootLevel) {
@@ -92,6 +94,12 @@ final class FakeLoggingAdapter implements LoggingAdapter {
         this.runOnEffectiveLevel = action;
     }
 
+    /** {@link #runOnEffectiveLevel}'s counterpart for {@link #configuredLevel}, which the vendor half of the sweep reads. */
+    void runOnConfiguredLevel(String loggerName, Runnable action) {
+        this.runOnConfiguredLevelFor = loggerName;
+        this.runOnConfiguredLevel = action;
+    }
+
     @Override
     public List<String> knownLoggerNames() {
         return List.copyOf(knownNames);
@@ -99,6 +107,12 @@ final class FakeLoggingAdapter implements LoggingAdapter {
 
     @Override
     public Optional<Level> configuredLevel(String loggerName) {
+        if (loggerName.equals(runOnConfiguredLevelFor)) {
+            Runnable action = runOnConfiguredLevel;
+            runOnConfiguredLevelFor = null; // one-shot
+            runOnConfiguredLevel = null;
+            action.run();
+        }
         knownNames.add(loggerName); // matches Logback's getLogger()-creates-as-side-effect behavior
         return Optional.ofNullable(explicitLevels.get(loggerName));
     }

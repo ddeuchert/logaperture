@@ -363,18 +363,148 @@ class ResetToNativeTest {
                     level: WARN
                 """, Path.of("/v.yaml"), false);
         AggregateLevelControl aggregate = new AggregateLevelControl(null, Optional::empty, null, () -> true, file);
-        aggregate.addContext(new AggregateLevelControl.ContextControl(ContextHandle.of("system", "system", adapter),
-                loggers, handlers, new DoctorService(adapter, CapabilityPolicy.allowAll()),
-                new TopService(adapter, CapabilityPolicy.allowAll()),
-                new StormService(adapter, CapabilityPolicy.allowAll(), new StormDetector(3, Duration.ofSeconds(10),
-                        Duration.ofSeconds(60), 4_000, 100, 8 * 1024)),
-                new RuleService(adapter, CapabilityPolicy.allowAll(), auditLog, stateStore, "system", "alice", "jmx"),
-                new EnvironmentReportService(adapter, CapabilityPolicy.allowAll())));
+        aggregate.addContext(context("system", adapter, loggers, handlers));
         assertEquals("loaded (1 logger)", aggregate.environmentReport().vendorDefaultsStatus());
 
         aggregate.resetLogger(PERFMON, false, true);
 
         assertEquals("loaded (1 logger), 1 reset to native", aggregate.environmentReport().vendorDefaultsStatus());
+    }
+
+    // --- review fixes (PR #97) ------------------------------------------------------------------------
+
+    @Test
+    void aResetToNativeLandingMidSweep_isNotOverwrittenByTheVendorLevel_logger() {
+        adapter.setConfiguredLevel(PERFMON, Level.ERROR); // drift, so the sweep will re-apply WARN
+        Runnable concurrentReset = () -> loggers.resetLogger(PERFMON, false, true);
+        adapter.runOnConfiguredLevel(PERFMON, concurrentReset);
+
+        loggers.verifyAndReapply(Instant.now());
+
+        assertTrue(baselines.isResetToNative(PERFMON));
+        assertEquals(Level.DEBUG, adapter.effectiveLevel(PERFMON), "the sweep undid its own write");
+    }
+
+    @Test
+    void aResetToNativeLandingMidSweep_isNotOverwrittenByTheVendorLevel_handler() {
+        adapter.setHandlerLevel(FILE, Level.ERROR); // drift
+        Runnable concurrentReset = () -> handlers.resetHandler(FILE, false, true);
+        adapter.runOnHandlerLevel(FILE, concurrentReset);
+
+        handlers.verifyAndReapply(Instant.now());
+
+        assertTrue(handlerBaselines.isResetToNative(FILE));
+        assertEquals(Optional.of(Level.ALL), adapter.handlerLevel(FILE));
+    }
+
+    @Test
+    void aDefaultHandlersOverride_movesWithTheMembership() {
+        handlers.setHandlerLevel(HandlerRef.DEFAULT_HANDLERS, Level.DEBUG, SetHandlerLevelOptions.defaults());
+        assertEquals(Optional.of(Level.DEBUG), adapter.handlerLevel(FILE), "vendor list [FILE]");
+
+        handlers.resetDefaultHandlerMembers(true); // members: the automatic pick, CONSOLE
+
+        assertEquals(Optional.of(Level.DEBUG), adapter.handlerLevel(CONSOLE), "the new member gets the override");
+        assertEquals(Optional.of(Level.WARN), adapter.handlerLevel(FILE), "the old member is back on its baseline");
+
+        handlers.setDefaultHandlerMembers(List.of(AUDIT));
+
+        assertEquals(Optional.of(Level.DEBUG), adapter.handlerLevel(AUDIT));
+        assertEquals(Optional.of(Level.INFO), adapter.handlerLevel(CONSOLE), "vendor AUTO tracking again");
+    }
+
+    @Test
+    void theOldEmptySetSpelling_isAPlainReset_thatRestoresTheVendorList() {
+        handlers.resetDefaultHandlerMembers(true);
+
+        assertEquals(List.of(), handlers.setDefaultHandlerMembers(List.of()));
+
+        assertFalse(defaultHandlerGroup.isResetToNative());
+        assertEquals("(vendor: FILE)", handlerRow("DEFAULT_HANDLERS").membersSummary());
+    }
+
+    @Test
+    void aVendorLoggerWhoseNativeValueWasNeverCaptured_doesNotAbortABulkReset() {
+        String ghost = "com.acme.ghost";
+        BaselineRegistry uncaptured = new BaselineRegistry(Map.of(ghost, Level.WARN));
+        LevelControlService service = new LevelControlService(adapter, uncaptured, new OverrideRegistry(),
+                CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx");
+        service.setLogger(PLAIN, Level.TRACE, SetLevelOptions.sticky());
+
+        service.resetAllLoggers(true, true);
+
+        assertTrue(stateStore.loadAll().isEmpty(), "the removed sticky override is persisted as removed");
+        assertEquals(Level.INFO, adapter.effectiveLevel(PLAIN));
+    }
+
+    @Test
+    void aGroupResetToNative_auditsTheReasonOnlyForMembersTheVendorFileNames() {
+        handlers.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.DEBUG, SetHandlerLevelOptions.defaults());
+
+        handlers.resetHandler(HandlerRef.ALL_HANDLERS, false, true);
+
+        assertEquals(VendorDefaults.RESET_TO_NATIVE_REASON, lastRevertFor("FILE").reason());
+        assertEquals(null, lastRevertFor("AUDIT").reason(), "AUDIT has no vendor entry");
+    }
+
+    @Test
+    void theDefaultHandlerListFlag_changesOnlyOnce() {
+        assertTrue(defaultHandlerGroup.markResetToNative());
+        assertFalse(defaultHandlerGroup.markResetToNative());
+        assertTrue(defaultHandlerGroup.clearResetToNative());
+        assertFalse(defaultHandlerGroup.clearResetToNative());
+    }
+
+    @Test
+    void aContextRegisteredLater_inheritsWhatIsResetToNative() {
+        VendorDefaults file = VendorDefaultsFile.parse("schemaVersion: 1\n", Path.of("/v.yaml"), false);
+        AggregateLevelControl aggregate = new AggregateLevelControl(null, Optional::empty, null, () -> true, file);
+        aggregate.addContext(context("system", adapter, loggers, handlers));
+        aggregate.resetLogger(PERFMON, false, true);
+        aggregate.resetHandler(FILE, false, true);
+        aggregate.resetDefaultHandlerMembers(true);
+
+        FakeLoggingAdapter lateAdapter = new FakeLoggingAdapter(Level.INFO);
+        lateAdapter.setConfiguredLevel(PERFMON, Level.DEBUG);
+        lateAdapter.addHandler(FILE, Level.ALL);
+        lateAdapter.addHandler(CONSOLE, Level.INFO);
+        lateAdapter.attachToRoot(CONSOLE);
+        lateAdapter.attachToRoot(FILE);
+        BaselineRegistry lateBaselines = new BaselineRegistry(Map.of(PERFMON, Level.WARN));
+        LevelControlService lateLoggers = new LevelControlService(lateAdapter, lateBaselines, new OverrideRegistry(),
+                CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "jmx");
+        HandlerBaselineRegistry lateHandlerBaselines = new HandlerBaselineRegistry(Map.of(
+                FILE, new VendorDefaults.HandlerDefault(FILE, Level.WARN, HandlerLevelMode.FIXED, null)));
+        DefaultHandlerGroupRegistry lateGroup = new DefaultHandlerGroupRegistry(List.of(FILE));
+        HandlerLevelControlService lateHandlers = new HandlerLevelControlService(lateAdapter, lateHandlerBaselines,
+                new HandlerOverrideRegistry(), lateGroup, CapabilityPolicy.allowAll(), auditLog, stateStore, "alice",
+                "jmx", List::of);
+        lateLoggers.applyVendorDefaults(Instant.now());
+        lateHandlers.applyVendorDefaults(Instant.now());
+
+        aggregate.addContext(context("app.war", lateAdapter, lateLoggers, lateHandlers));
+
+        assertEquals(Level.DEBUG, lateAdapter.effectiveLevel(PERFMON));
+        assertTrue(lateBaselines.isResetToNative(PERFMON));
+        assertEquals(Optional.of(Level.ALL), lateAdapter.handlerLevel(FILE));
+        assertTrue(lateGroup.isResetToNative());
+    }
+
+    private AggregateLevelControl.ContextControl context(String key, FakeLoggingAdapter contextAdapter,
+            LevelControlService contextLoggers, HandlerLevelControlService contextHandlers) {
+        CapabilityPolicy all = CapabilityPolicy.allowAll();
+        return new AggregateLevelControl.ContextControl(ContextHandle.of(key, key, contextAdapter), contextLoggers,
+                contextHandlers, new DoctorService(contextAdapter, all), new TopService(contextAdapter, all),
+                new StormService(contextAdapter, all, new StormDetector(3, Duration.ofSeconds(10),
+                        Duration.ofSeconds(60), 4_000, 100, 8 * 1024)),
+                new RuleService(contextAdapter, all, auditLog, stateStore, key, "alice", "jmx"),
+                new EnvironmentReportService(contextAdapter, all));
+    }
+
+    private AuditRecord lastRevertFor(String name) {
+        List<AuditRecord> matching = auditLog.records().stream()
+                .filter(r -> r.loggerName().equals(name) && r.action() == AuditRecord.Action.REVERSION).toList();
+        return matching.get(matching.size() - 1);
     }
 
     private LoggerInfo row(String name) {

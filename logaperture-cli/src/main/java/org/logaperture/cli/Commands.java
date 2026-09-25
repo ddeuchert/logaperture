@@ -487,18 +487,29 @@ final class Commands {
      */
     static Command resetDefaultHandler(boolean toNative, boolean json) {
         return (mbean, out, in, interactive) -> {
-            List<String> inEffect = mbean.resetDefaultHandler(toNative);
-            if (json) {
-                out.println(Json.resetDefaultHandler(inEffect, toNative));
-                return CliError.OK;
+            if (!toNative) {
+                // The operation every agent has -- a plain reset needs nothing newer, so this
+                // keeps working against an agent that predates doc/specs/reset-to-native.md.
+                List<String> explicit = mbean.setDefaultHandlerMembers(List.of());
+                if (json) {
+                    out.println(Json.defaultHandlerMembers(explicit));
+                    return CliError.OK;
+                }
+            } else {
+                List<String> inEffect = mbean.resetDefaultHandler(true);
+                if (json) {
+                    out.println(Json.resetDefaultHandler(inEffect, true));
+                    return CliError.OK;
+                }
             }
             String summary = mbean.listHandlers().stream()
                     .filter(row -> "DEFAULT_HANDLERS".equals(row.getRef()))
                     .map(HandlerInfoData::getMembersSummary)
                     .findFirst().orElse(null);
-            if (summary != null && summary.startsWith("(vendor: ")) {
-                out.println("DEFAULT_HANDLERS cleared -- back to the vendor defaults' list: " + String.join(", ", inEffect)
-                        + ".");
+            String vendorPrefix = "(vendor: ";
+            if (summary != null && summary.startsWith(vendorPrefix) && summary.endsWith(")")) {
+                out.println("DEFAULT_HANDLERS cleared -- back to the vendor defaults' list: "
+                        + summary.substring(vendorPrefix.length(), summary.length() - 1) + ".");
             } else if (toNative) {
                 out.println("DEFAULT_HANDLERS cleared -- back to the automatic pick, ignoring the vendor defaults' "
                         + "list until restart (see 'logctl list handlers --show-all').");

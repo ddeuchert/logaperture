@@ -22,6 +22,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -64,7 +65,7 @@ public final class DefaultHandlerGroupRegistry {
     private final List<HandlerRef> vendorMembers;
 
     /** {@code true} while the vendor list is reset to native -- ignored until restart. */
-    private volatile boolean vendorIgnored;
+    private final AtomicBoolean vendorIgnored = new AtomicBoolean();
 
     public DefaultHandlerGroupRegistry() {
         this(List.of());
@@ -92,7 +93,7 @@ public final class DefaultHandlerGroupRegistry {
 
     /** Whether the vendor list is being ignored until restart. */
     public boolean isResetToNative() {
-        return vendorIgnored;
+        return vendorIgnored.get();
     }
 
     /**
@@ -102,11 +103,7 @@ public final class DefaultHandlerGroupRegistry {
      *         sets no list, or it was already ignored
      */
     public boolean markResetToNative() {
-        if (vendorMembers.isEmpty() || vendorIgnored) {
-            return false;
-        }
-        vendorIgnored = true;
-        return true;
+        return !vendorMembers.isEmpty() && vendorIgnored.compareAndSet(false, true);
     }
 
     /**
@@ -115,15 +112,11 @@ public final class DefaultHandlerGroupRegistry {
      * @return {@code true} if it was being ignored
      */
     public boolean clearResetToNative() {
-        if (!vendorIgnored) {
-            return false;
-        }
-        vendorIgnored = false;
-        return true;
+        return vendorIgnored.compareAndSet(true, false);
     }
 
     private List<HandlerRef> resolvedVendorMembers(LoggingAdapter adapter) {
-        if (vendorMembers.isEmpty() || vendorIgnored) {
+        if (vendorMembers.isEmpty() || vendorIgnored.get()) {
             return List.of();
         }
         Set<HandlerRef> reals = Set.copyOf(adapter.realHandlers());

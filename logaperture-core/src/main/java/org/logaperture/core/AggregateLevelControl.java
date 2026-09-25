@@ -55,6 +55,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -260,6 +261,13 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         for (HandlerLevelOverride override : handlersToRebroadcast) {
             control.handlerService().adoptOverride(override);
         }
+        // A reset --to-native lasts until restart in every context (doc/specs/reset-to-native.md),
+        // including one that registers after it -- copied over like the overrides above.
+        existingAny.ifPresent(existing -> {
+            control.service().adoptResetToNative(existing.service().resetToNativeLoggerNames());
+            control.handlerService().adoptResetToNative(existing.handlerService().resetToNativeHandlerRefs(),
+                    existing.handlerService().defaultHandlersResetToNative());
+        });
         // One recompute pass now that both halves have been rebroadcast onto
         // the new context -- doc/specs/handler-floor-control.md "AUTO
         // handler level", AUTO-5: an AUTO override rebroadcast above carries
@@ -1029,32 +1037,9 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     @Override
     public List<HandlerRef> setDefaultHandlerMembers(List<HandlerRef> names) {
-        List<ContextControl> contexts = sortedByKey();
-        if (contexts.isEmpty()) {
-            throw new IllegalStateException("no logging context is registered yet");
-        }
-        List<HandlerRef> fromSystem = null;
-        List<HandlerRef> fromAny = null;
-        int succeeded = 0;
-        for (ContextControl context : contexts) {
-            try {
-                List<HandlerRef> result = context.handlerService().setDefaultHandlerMembers(names);
-                succeeded++;
-                if (fromAny == null) {
-                    fromAny = result;
-                }
-                if (ContextHandle.SYSTEM.equals(context.stableKey())) {
-                    fromSystem = result;
-                }
-            } catch (RuntimeException e) {
-                System.err.println("[logaperture-core] setDefaultHandlerMembers failed in context '"
-                        + context.stableKey() + "', that context is unchanged: " + e);
-            }
-        }
-        if (succeeded == 0) {
-            throw new IllegalStateException("setDefaultHandlerMembers failed in every context");
-        }
-        return fromSystem != null ? fromSystem : fromAny;
+        Function<HandlerLevelControlService, List<HandlerRef>> setMembers =
+                service -> service.setDefaultHandlerMembers(names);
+        return broadcastDefaultHandlers("setDefaultHandlerMembers", setMembers);
     }
 
     /**
@@ -1064,6 +1049,20 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     @Override
     public List<HandlerRef> resetDefaultHandlerMembers(boolean toNative) {
+        Function<HandlerLevelControlService, List<HandlerRef>> resetMembers =
+                service -> service.resetDefaultHandlerMembers(toNative);
+        return broadcastDefaultHandlers("resetDefaultHandlerMembers", resetMembers);
+    }
+
+    /**
+     * Applies a {@code DEFAULT_HANDLERS} membership change to every context, tolerating one
+     * context's {@code UnknownHandlerException}/capability failure without aborting the rest
+     * (membership is per context: the same real-handler name can validate in one context and
+     * not another). Representative answer: the {@code system} context's result when it has one,
+     * else the first context's.
+     */
+    private List<HandlerRef> broadcastDefaultHandlers(String operation,
+            Function<HandlerLevelControlService, List<HandlerRef>> change) {
         List<ContextControl> contexts = sortedByKey();
         if (contexts.isEmpty()) {
             throw new IllegalStateException("no logging context is registered yet");
@@ -1073,7 +1072,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         int succeeded = 0;
         for (ContextControl context : contexts) {
             try {
-                List<HandlerRef> result = context.handlerService().resetDefaultHandlerMembers(toNative);
+                List<HandlerRef> result = change.apply(context.handlerService());
                 succeeded++;
                 if (fromAny == null) {
                     fromAny = result;
@@ -1081,15 +1080,13 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 if (ContextHandle.SYSTEM.equals(context.stableKey())) {
                     fromSystem = result;
                 }
-            } catch (CapabilityDeniedException e) {
-                throw e; // the same answer in every context -- report it rather than "failed everywhere"
             } catch (RuntimeException e) {
-                System.err.println("[logaperture-core] resetDefaultHandlerMembers failed in context '"
+                System.err.println("[logaperture-core] " + operation + " failed in context '"
                         + context.stableKey() + "', that context is unchanged: " + e);
             }
         }
         if (succeeded == 0) {
-            throw new IllegalStateException("resetDefaultHandlerMembers failed in every context");
+            throw new IllegalStateException(operation + " failed in every context");
         }
         return fromSystem != null ? fromSystem : fromAny;
     }

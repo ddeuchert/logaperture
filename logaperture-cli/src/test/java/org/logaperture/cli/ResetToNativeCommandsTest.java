@@ -121,7 +121,8 @@ class ResetToNativeCommandsTest {
 
         run("reset", "default-handler");
 
-        assertEquals(List.of(true, false), mbean.resetDefaultHandlerCalls);
+        assertEquals(List.of(true), mbean.resetDefaultHandlerCalls, "a plain reset uses the operation every agent has");
+        assertEquals(List.of(List.of()), mbean.setDefaultHandlerMembersCalls);
         assertTrue(output().contains("DEFAULT_HANDLERS cleared -- back to the vendor defaults' list: FILE."),
                 output());
     }

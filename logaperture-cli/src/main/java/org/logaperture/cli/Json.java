@@ -404,10 +404,10 @@ final class Json {
     }
 
     /**
-     * {@code reset default-handler [--to-native] --json}: the same {@code defaultHandlerMembers}
-     * (the explicit membership -- always empty after a reset) as before doc/specs/
-     * reset-to-native.md, plus the members now in effect and whether the vendor defaults' list
-     * is being ignored until restart.
+     * {@code reset default-handler --to-native --json}: the same {@code defaultHandlerMembers}
+     * (the explicit membership -- always empty after a reset) as a plain reset, plus the members
+     * now in effect and whether the vendor defaults' list is being ignored until restart
+     * (doc/specs/reset-to-native.md).
      */
     static String resetDefaultHandler(List<String> membersInEffect, boolean toNative) {
         return new Obj()

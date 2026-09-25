@@ -41,7 +41,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>A vendor-named logger can be <em>reset to native</em> (doc/specs/reset-to-native.md): until
  * restart the vendor layer is ignored for it, so {@link #get} returns the native value and the
- * vendor-layer passes ({@link #activeVendorLoggerNames}) leave it alone.
+ * vendor-layer passes leave it alone ({@link #isResetToNative}).
  */
 public final class BaselineRegistry {
 
