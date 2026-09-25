@@ -1,6 +1,7 @@
 # Changeable rules: `logctl alter rule` and the vendor rule model (issue #96)
 
-Status: **signed off 2026-09-25** (A1–A13 agreed).
+Status: **signed off 2026-09-25** (A1–A13 agreed); **implemented** (see "Settled during
+implementation").
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §6.6 "Precedence: configuration
 layers" — the canonical terms (native configuration, vendor defaults, baseline, override, native
 default) and personas (operator, vendor) used here.
@@ -268,6 +269,56 @@ flag for the wrong action; bare `alter rule`; tier and `--reason` parsing; outpu
 
 **Integration (WildFly container):** alter a live drop's `--message-contains` and see the old
 message come back and the new one suppressed; alter a vendor rule sticky, restart, still altered.
+
+## Settled during implementation
+
+Details the decisions left open, decided while building it:
+
+- **Altering a vendor rule that is switched off** (`--to-native`) is refused, naming `reset rule
+  <id>` to switch it back on first. The rule isn't in force, so there is nothing to override.
+- **Restart, A9 refined:** a saved vendor-rule alteration is dropped only when the vendor defaults
+  file *loaded* and no longer has a rule with that id, action and logger. When the file didn't
+  load (not configured, or rejected), the alteration stays in the state file untouched, so a broken
+  file on one start doesn't destroy it. A saved alteration's row uses the vendor rule's own id
+  (`vendor:<id>`); the state-file format is otherwise unchanged (no schema bump).
+- **Several contexts:** a vendor rule lives in every context, so its alteration is applied in each.
+  An operator id found in more than one context is refused as ambiguous rather than altered in a
+  guessed one (ids are only unique per context; see `rule-pipeline-foundation.md` "Rule
+  identity").
+- **A no-change alter** on an unaltered vendor rule with no tier is a no-op even though a first
+  alteration would otherwise default to `for 4h`. With an explicit tier it creates the override,
+  as `set logger <vendor level> sticky` does for a logger.
+- **`--no-sample-full`** keeps the rule's sampling interval, so a later `--sample-full` without a
+  new one restores it (`SampleFullPolicy` already round-trips a disabled interval).
+- **Reset results:** the bulk reset outcome's `skippedVendorIds` is replaced by `vendorResetIds`:
+  vendor rules put back to their definition, switched back on, or switched off. An unaltered vendor
+  rule isn't listed, since there was nothing to reset. `reset rule <id> --json` reports `removed`
+  (operator rule), `vendorReset`, and `toNative`. Text output: `rule r3 → removed.`, `rule
+  vendor:x → back to the vendor definition.`, `rule vendor:x → switched off until the application
+  restarts.`, or `rule <id> — nothing to reset.`
+- **`reset logger X`** now also puts `X`'s altered vendor rules back (a plain reset), where it used
+  to skip and report them.
+
+## Implementation status
+
+Landed together with this spec:
+
+- `logaperture-api`: `RuleChange` (each part unchanged / set / cleared) and `RuleExpression` (the
+  renderer, moved from `logaperture-cli`, which now delegates to it); `RuleResetOutcome`
+  `vendorResetIds`.
+- `logaperture-core`: `RuleService.alterRule`, vendor baselines and alterations, the reset paths
+  taking `toNative`, `sweepExpiredRules` returning an expired vendor alteration to its baseline,
+  `resumeVendorAlteration`; `RuleRegistry.replaceIfCurrent` (the atomic swap); `RuleAlteration`;
+  `RuleView` `toNative`/`altered`; `AggregateLevelControl.alterRule`. Composition roots pass
+  whether the vendor defaults file loaded.
+- `logaperture-control-jmx`: `alterRule`, `RuleAlterationData`; `RuleData` `toNative`/`altered`;
+  the reset operations' third flag is now `toNative`.
+- `logaperture-cli`: `alter rule`, the `--no-…` options, `--to-native` on `reset rule`/`reset
+  rules`, `--include-vendor-defaults` removed, `TIER` cells, JSON, help.
+- Tests: `AlterRuleTest` (core), `VendorRuleDefaultsTest` rewritten, `LevelControlMXBeanImplTest`,
+  `AlterRuleCommandsTest`, `VendorDefaultsCommandsTest`; `WildFlyContainerIT
+  .alterRule_changesALiveDropsMatcher_inPlace` and `WildFlyVendorDefaultsIT
+  .vendorRule_alteredSticky_survivesARestart_andResetsTheWayALoggerDoes` against a real WildFly.
 
 ## Decisions (sign-off)
 

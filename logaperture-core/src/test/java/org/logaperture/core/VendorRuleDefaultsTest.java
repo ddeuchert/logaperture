@@ -30,7 +30,6 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** doc/specs/vendor-defaults.md "The baseline layer" -- "Rules". */
@@ -76,7 +75,7 @@ class VendorRuleDefaultsTest {
         List<RuleView> rows = service.listRules();
         assertEquals(List.of("vendor:healthcheck-noise", "vendor:autoupdate-trace"),
                 rows.stream().map(row -> row.rule().id()).toList());
-        assertTrue(rows.stream().allMatch(row -> "vendor-defaults".equals(row.origin()) && !row.suspended()));
+        assertTrue(rows.stream().allMatch(row -> "vendor-defaults".equals(row.origin()) && !row.toNative() && !row.altered()));
         assertTrue(stateStore.loadAllRules().isEmpty(), "the vendor file is their persistence");
         assertEquals(2, auditLog.records().stream().filter(r -> r.source().equals("vendor-defaults")).count());
     }
@@ -101,7 +100,7 @@ class VendorRuleDefaultsTest {
     }
 
     @Test
-    void resetRules_skipsAndReportsVendorRules() {
+    void resetRules_leavesUnalteredVendorRulesInPlace_andDoesNotReportThem() {
         service.attachVendorRules(vendorRules, Instant.now());
         service.addRuleDrop(HEALTH, new CompiledMatchers(Level.WARN, "x", false, null, null, false),
                 RuleAttachOptions.defaults(), SampleFullPolicy.defaults());
@@ -109,53 +108,82 @@ class VendorRuleDefaultsTest {
         RuleResetOutcome outcome = service.resetAllRules(false, false);
 
         assertEquals(List.of("r1"), outcome.removedIds());
-        assertEquals(List.of("vendor:healthcheck-noise", "vendor:autoupdate-trace"), outcome.skippedVendorIds());
+        assertEquals(List.of(), outcome.vendorResetIds(), "already at their baseline -- nothing to reset");
         assertEquals(2, service.listRules().size());
-
-        RuleResetOutcome forLogger = service.resetRulesForLogger(HEALTH, true, false);
-        assertEquals(List.of("vendor:healthcheck-noise"), forLogger.skippedVendorIds(),
-                "--include-sticky alone doesn't reach vendor rules");
+        assertEquals(RuleResetOutcome.nothingReset(), service.resetRulesForLogger(HEALTH, true, false));
     }
 
     @Test
-    void resetRule_onAVendorRule_refusesWithoutTheFlag() {
+    void resetRule_onAnUnalteredVendorRule_isANoOp() { // doc/specs/alter-rule.md A8: no longer a refusal
         service.attachVendorRules(vendorRules, Instant.now());
 
-        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
-                () -> service.resetRule("vendor:healthcheck-noise", true, false));
-        assertTrue(refused.getMessage().contains("--include-vendor-defaults"), refused.getMessage());
+        assertEquals(Optional.empty(), service.resetRule("vendor:healthcheck-noise", false, false));
         assertTrue(service.gate().evaluate(new Object(), event(HEALTH, "ping ok")).deny(), "still in force");
     }
 
     @Test
-    void resetRule_withTheFlag_suspendsUntilRestart_andStaysListed() {
+    void resetRule_toNative_switchesOffUntilRestart_andStaysListed() {
         service.attachVendorRules(vendorRules, Instant.now());
-        service.gate().evaluate(new Object(), event(HEALTH, "ping ok")); // one hit before suspending
+        service.gate().evaluate(new Object(), event(HEALTH, "ping ok")); // one hit before switching off
 
-        Optional<RuleView> suspended = service.resetRule("vendor:healthcheck-noise", false, true);
+        Optional<RuleView> off = service.resetRule("vendor:healthcheck-noise", false, true);
 
-        assertTrue(suspended.isPresent());
+        assertTrue(off.isPresent());
+        assertTrue(off.get().toNative());
         assertFalse(service.gate().evaluate(new Object(), event(HEALTH, "ping ok")).deny(), "no longer drops");
-        RuleView row = service.listRules().stream()
-                .filter(r -> r.rule().id().equals("vendor:healthcheck-noise")).findFirst().orElseThrow();
-        assertTrue(row.suspended());
-        assertEquals(1, row.hitCount(), "hits before suspension are still shown");
+        RuleView row = row("vendor:healthcheck-noise");
+        assertTrue(row.toNative());
+        assertEquals(1, row.hitCount(), "hits before switching off are still shown");
         assertEquals(Optional.empty(), service.resetRule("vendor:healthcheck-noise", false, true),
-                "already suspended -- nothing left to do");
+                "already off -- nothing left to do");
         AuditRecord last = auditLog.records().get(auditLog.records().size() - 1);
         assertEquals(AuditRecord.Action.REVERSION, last.action());
-        assertEquals("vendor default suspended until restart", last.reason());
+        assertEquals("vendor default switched off until restart", last.reason());
     }
 
     @Test
-    void resetRules_withTheFlag_suspendsVendorRulesToo() {
+    void aPlainReset_afterToNative_switchesTheVendorRuleBackOn() {
+        service.attachVendorRules(vendorRules, Instant.now());
+        service.resetRule("vendor:healthcheck-noise", false, true);
+
+        Optional<RuleView> on = service.resetRule("vendor:healthcheck-noise", false, false);
+
+        assertTrue(on.isPresent());
+        assertFalse(on.get().toNative());
+        assertTrue(service.gate().evaluate(new Object(), event(HEALTH, "ping ok")).deny(), "drops again");
+        assertEquals(AuditRecord.Action.MUTATION, auditLog.records().get(auditLog.records().size() - 1).action());
+    }
+
+    @Test
+    void resetRules_toNative_switchesVendorRulesOff_andAPlainResetRulesSwitchesThemBackOn() {
         service.attachVendorRules(vendorRules, Instant.now());
 
-        RuleResetOutcome outcome = service.resetAllRules(false, true);
+        RuleResetOutcome off = service.resetAllRules(false, true);
 
-        assertEquals(List.of("vendor:healthcheck-noise", "vendor:autoupdate-trace"), outcome.removedIds());
-        assertTrue(service.listRules().stream().allMatch(RuleView::suspended));
+        assertEquals(List.of("vendor:healthcheck-noise", "vendor:autoupdate-trace"), off.vendorResetIds());
+        assertEquals(List.of(), off.removedIds());
+        assertTrue(service.listRules().stream().allMatch(RuleView::toNative));
         assertTrue(stateStore.loadAllRules().isEmpty());
+
+        RuleResetOutcome on = service.resetAllRules(false, false);
+
+        assertEquals(2, on.vendorResetIds().size());
+        assertTrue(service.listRules().stream().noneMatch(RuleView::toNative));
+    }
+
+    @Test
+    void resetRulesForLogger_passesToNativeThroughToItsVendorRules() {
+        service.attachVendorRules(vendorRules, Instant.now());
+
+        RuleResetOutcome outcome = service.resetRulesForLogger(HEALTH, false, true);
+
+        assertEquals(List.of("vendor:healthcheck-noise"), outcome.vendorResetIds());
+        assertTrue(row("vendor:healthcheck-noise").toNative());
+        assertFalse(row("vendor:autoupdate-trace").toNative(), "another logger's rule is untouched");
+    }
+
+    private RuleView row(String id) {
+        return service.listRules().stream().filter(r -> r.rule().id().equals(id)).findFirst().orElseThrow();
     }
 
     private static RuleCandidateEvent event(String loggerName, String message) {

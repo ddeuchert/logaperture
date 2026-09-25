@@ -105,6 +105,10 @@ them in place and report them, the same way sticky rules are reported. Naming on
 until the JVM restarts (audited), and the file is untouched. Vendor rule ids come from the file
 (`vendor:<name>`), so support documentation can cite them and they're stable across restarts.
 
+*Revised by [`alter-rule.md`](alter-rule.md) (issue #96):* vendor rules now reset like loggers. `alter rule` overrides one, a
+plain `reset rule` returns to the file's definition, and `reset … --to-native` switches one off
+until restart, replacing `--include-vendor-defaults`.
+
 ### #5 — File format — **Agreed**
 
 Options: (a) YAML, hand-parsed, same approach as the state file (no new dependency);

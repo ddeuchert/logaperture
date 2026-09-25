@@ -67,9 +67,15 @@ class VendorDefaultsCommandsTest {
                 null, null, null, null, null, null, path, status);
     }
 
-    private static RuleData rule(String id, String origin, boolean suspended) {
+    private static RuleData rule(String id, String origin, boolean toNative) {
+        return rule(id, origin, toNative, false, "SESSION", null);
+    }
+
+    private static RuleData rule(String id, String origin, boolean toNative, boolean altered, String tier,
+            String expiresAt) {
         return new RuleData(id, "com.acme.health", "drop", "INFO", "ping ok", false, null, null, false, null,
-                "SESSION", null, "2026-09-24T12:00:00Z", "system", 3, null, null, origin, suspended);
+                tier, expiresAt, "2026-09-24T12:00:00Z", "system", 3, null, null, origin, toNative, true, 300_000L,
+                altered);
     }
 
     @Test
@@ -113,17 +119,19 @@ class VendorDefaultsCommandsTest {
     }
 
     @Test
-    void listRules_showsVendorOriginInsteadOfATier() {
+    void listRules_showsVendorOrigin_plusAnAlterationsTier_orOff() { // doc/specs/alter-rule.md A10
         mbean.rules = new ArrayList<>(List.of(
                 rule("vendor:healthcheck-noise", "vendor-defaults", false),
-                rule("vendor:autoupdate-trace", "vendor-defaults", true)));
+                rule("vendor:autoupdate-trace", "vendor-defaults", true),
+                rule("vendor:poller", "vendor-defaults", false, true, "STICKY", null)));
 
         run("list", "rules");
 
         String text = output();
-        assertTrue(text.contains("vendor-defaults (suspended)"), text);
+        assertTrue(text.contains("vendor-defaults (off)"), text);
+        assertTrue(text.contains("vendor-defaults, STICKY"), text);
         assertTrue(text.lines().anyMatch(line -> line.contains("vendor:healthcheck-noise")
-                && line.contains("vendor-defaults") && !line.contains("suspended")), text);
+                && line.contains("vendor-defaults") && !line.contains("(off)") && !line.contains(",")), text);
     }
 
     @Test
@@ -164,36 +172,83 @@ class VendorDefaultsCommandsTest {
     }
 
     @Test
-    void resetRule_passesTheFlag_andReportsSuspension() {
+    void resetRule_toNative_passesTheFlag_andReportsSwitchedOff() {
         mbean.resetRuleResult = rule("vendor:healthcheck-noise", "vendor-defaults", true);
 
-        assertEquals(CliError.OK, run("reset", "rule", "vendor:healthcheck-noise", "--include-vendor-defaults"));
+        assertEquals(CliError.OK, run("reset", "rule", "vendor:healthcheck-noise", "--to-native"));
 
-        assertTrue(mbean.lastIncludeVendorDefaults);
-        assertTrue(output().contains("suspended until the application restarts"), output());
+        assertTrue(mbean.lastToNative);
+        assertTrue(output().contains("switched off until the application restarts"), output());
     }
 
     @Test
-    void resetRules_reportsSkippedVendorRules() {
+    void resetRule_plain_onAVendorRule_reportsBackToTheVendorDefinition() {
+        mbean.resetRuleResult = rule("vendor:healthcheck-noise", "vendor-defaults", false);
+
+        run("reset", "rule", "vendor:healthcheck-noise");
+
+        assertFalse(mbean.lastToNative);
+        assertTrue(output().contains("back to the vendor definition"), output());
+    }
+
+    @Test
+    void resetRule_json_saysWhatHappened() {
+        mbean.resetRuleResult = rule("vendor:healthcheck-noise", "vendor-defaults", true);
+
+        run("reset", "rule", "vendor:healthcheck-noise", "--to-native", "--json");
+
+        assertEquals("{\"id\":\"vendor:healthcheck-noise\",\"removed\":false,\"vendorReset\":true,"
+                + "\"toNative\":true}", output().strip());
+    }
+
+    @Test
+    void resetRules_reportsVendorRulesPutBack() {
         mbean.resetAllRulesResult = new RuleResetOutcomeData(List.of("r1"), List.of(),
                 List.of("vendor:healthcheck-noise"));
 
         run("reset", "rules");
 
-        assertFalse(mbean.lastIncludeVendorDefaults);
-        assertTrue(output().contains("Left 1 vendor default rule(s) in place (pass --include-vendor-defaults"),
-                output());
+        assertFalse(mbean.lastToNative);
+        String text = output();
+        assertTrue(text.contains("Removed 1 rule(s)."), text);
+        assertTrue(text.contains("Put 1 vendor rule(s) back to the vendor definition: vendor:healthcheck-noise"),
+                text);
     }
 
     @Test
-    void theFlag_isAUsageErrorOutsideRuleAndLoggerResets() {
+    void resetRules_toNative_reportsVendorRulesSwitchedOff() {
+        mbean.resetAllRulesResult = new RuleResetOutcomeData(List.of(), List.of(),
+                List.of("vendor:healthcheck-noise"));
+
+        run("reset", "rules", "--to-native");
+
+        assertTrue(mbean.lastToNative);
+        assertTrue(output().contains("Switched off 1 vendor rule(s) until the application restarts"), output());
+    }
+
+    @Test
+    void resetLogger_toNative_reachesItsRulesToo() {
+        run("reset", "logger", "com.acme.health", "--to-native");
+
+        assertTrue(mbean.lastToNative);
+        assertEquals(1, mbean.resetRulesForLoggerCalls.size());
+    }
+
+    @Test
+    void includeVendorDefaults_isGone() { // replaced by --to-native (doc/specs/alter-rule.md A8)
         for (String[] argv : List.of(
-                new String[] {"reset", "handlers", "--include-vendor-defaults"},
-                new String[] {"reset", "loggers", "--include-vendor-defaults"},
-                new String[] {"list", "rules", "--include-vendor-defaults"})) {
+                new String[] {"reset", "rule", "vendor:x", "--include-vendor-defaults"},
+                new String[] {"reset", "rules", "--include-vendor-defaults"},
+                new String[] {"reset", "logger", "com.acme", "--include-vendor-defaults"})) {
             CliError error = assertThrows(CliError.class, () -> Parser.parse(argv));
-            assertSame(CliError.class, error.getClass());
             assertEquals(CliError.USAGE, error.exitCode());
         }
+    }
+
+    @Test
+    void toNative_isAUsageErrorOutsideReset() {
+        CliError error = assertThrows(CliError.class, () -> Parser.parse(new String[] {"list", "rules", "--to-native"}));
+        assertSame(CliError.class, error.getClass());
+        assertEquals(CliError.USAGE, error.exitCode());
     }
 }

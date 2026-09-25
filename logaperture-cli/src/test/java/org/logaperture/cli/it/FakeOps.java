@@ -27,6 +27,7 @@ import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.RuleAttachOptions;
+import org.logaperture.api.RuleChange;
 import org.logaperture.api.SampleFullPolicy;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
@@ -40,12 +41,14 @@ import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.EnvironmentReportOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
+import org.logaperture.core.RuleAlteration;
 import org.logaperture.core.RuleOperations;
 import org.logaperture.core.RuleView;
 import org.logaperture.core.StormOperations;
 import org.logaperture.core.TopOperations;
 import org.logaperture.core.TopReport;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -239,18 +242,24 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     }
 
     @Override
-    public synchronized Optional<RuleView> resetRule(String id, boolean includeSticky, boolean includeVendorDefaults) {
+    public synchronized Optional<RuleView> resetRule(String id, boolean includeSticky, boolean toNative) {
         return Optional.empty();
     }
 
     @Override
-    public synchronized RuleResetOutcome resetAllRules(boolean includeSticky, boolean includeVendorDefaults) {
+    public synchronized RuleResetOutcome resetAllRules(boolean includeSticky, boolean toNative) {
         return RuleResetOutcome.nothingReset();
     }
 
     @Override
-    public synchronized RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky, boolean includeVendorDefaults) {
+    public synchronized RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky, boolean toNative) {
         return RuleResetOutcome.nothingReset();
+    }
+
+    @Override
+    public synchronized Optional<RuleAlteration> alterRule(String id, RuleChange change, PersistenceTier tier,
+            Duration expiresIn) {
+        return Optional.empty();
     }
 
     @Override

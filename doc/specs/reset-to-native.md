@@ -1,6 +1,7 @@
 # Reset to the native default: `--to-native` (issue #94)
 
-Status: **signed off 2026-09-25** (T1–T7). Rules are out of scope: parked to issue #96.
+Status: **signed off 2026-09-25** (T1–T7). Rules are out of scope here; `--to-native` on
+`reset rule`/`reset rules` is specified in [`alter-rule.md`](alter-rule.md) (issue #96).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §6.6 "Precedence: configuration
 layers" — the canonical terms (native configuration, vendor defaults, baseline, override,
 effective level, native default) and personas (operator, vendor) used here.
@@ -93,12 +94,10 @@ the file"). #62's spec is updated to say so.
 
 ## Rules — out of scope (issue #96)
 
-Rules are parked to #96, a broader redesign: rules become changeable (`set rule`), and a vendor
-rule gets the same reset / `--to-native` shape as a logger. Until then, slice 1's rule behaviour is
-unchanged: `reset rule vendor:<id> --include-vendor-defaults` switches a vendor rule off until
-restart, and `--to-native` is not accepted on `reset rule` / `reset rules`. `reset logger X
---to-native` resets the logger's level only; the rules attached to `X` are reset exactly as a
-plain `reset logger X` does today.
+Specified in [`alter-rule.md`](alter-rule.md) (issue #96): a vendor rule gets the same reset shape as a logger. `reset rule
+vendor:<id> --to-native` switches it off until restart (replacing slice 1's
+`--include-vendor-defaults`), a plain reset puts the vendor's definition back, and `reset logger X
+--to-native` also switches off the vendor rules attached directly to `X`.
 
 ## Module scope (loggers, handlers, default handlers)
 

@@ -192,20 +192,61 @@ class WildFlyVendorDefaultsIT {
         }
     }
 
+    /**
+     * doc/specs/alter-rule.md "Testing": a vendor rule is altered sticky, survives a server
+     * restart still altered, then is put back by a plain reset (after {@code --include-sticky}),
+     * switched off with {@code --to-native}, and back on with a plain reset. Restores the vendor
+     * definition on the way out, since the container is shared with the other tests here.
+     */
     @Test
-    void vendorRule_survivesResetRules_refusesSingleReset_andSuspendsWithTheFlag() {
-        Logctl bulk = logctl("reset", "rules");
-        assertTrue(bulk.stdout().contains("Left 1 vendor default rule(s) in place"), bulk.stdout());
+    void vendorRule_alteredSticky_survivesARestart_andResetsTheWayALoggerDoes() throws InterruptedException {
+        String id = "vendor:probe-noise";
+        try {
+            assertFalse(logctl("reset", "rules").stdout().contains(id), "an unaltered vendor rule is left alone");
+            assertTrue(logctl("reset", "rule", id).stdout().contains("nothing to reset"));
 
-        Logctl refused = logctl("reset", "rule", "vendor:probe-noise");
-        assertNotEquals(0, refused.exitCode());
-        assertTrue(refused.stderr().contains("--include-vendor-defaults"), refused.stderr());
+            Logctl altered = logctl("alter", "rule", id, "--message-contains", "chatter", "sticky");
+            assertEquals(0, altered.exitCode(), altered.stderr());
+            assertTrue(altered.stdout().contains("tier: was vendor-defaults, now STICKY"), altered.stdout());
+            assertAltered(id);
 
-        Logctl suspended = logctl("reset", "rule", "vendor:probe-noise", "--include-vendor-defaults");
-        assertEquals(0, suspended.exitCode(), suspended.stderr());
-        assertTrue(lineFor(logctl("list", "rules").stdout(), "vendor:probe-noise").contains("suspended"));
-        assertFalse(logctl("reset", "rule", "vendor:probe-noise", "--include-vendor-defaults").stdout()
-                .contains("→ suspended"), "already suspended: nothing left to do");
+            restartServer();
+            assertAltered(id);
+
+            Logctl refused = logctl("reset", "rule", id);
+            assertNotEquals(0, refused.exitCode());
+            assertTrue(refused.stderr().contains("--include-sticky"), refused.stderr());
+            assertTrue(logctl("reset", "rule", id, "--include-sticky").stdout().contains("back to the vendor definition"));
+            String row = lineFor(logctl("list", "rules", "--verbose").stdout(), id);
+            assertTrue(row.contains("--message-contains noise") && !row.contains("STICKY"), row);
+
+            assertTrue(logctl("reset", "rule", id, "--to-native").stdout().contains("switched off"));
+            assertTrue(lineFor(logctl("list", "rules").stdout(), id).contains("vendor-defaults (off)"));
+            assertTrue(logctl("reset", "rule", id).stdout().contains("back to the vendor definition"));
+            assertFalse(lineFor(logctl("list", "rules").stdout(), id).contains("(off)"));
+        } finally {
+            logctl("reset", "rule", id, "--include-sticky");
+        }
+    }
+
+    private void assertAltered(String id) {
+        String row = lineFor(logctl("list", "rules", "--verbose").stdout(), id);
+        assertTrue(row.contains("--message-contains chatter") && row.contains("vendor-defaults, STICKY"), row);
+    }
+
+    /** {@code :shutdown(restart=true)}: standalone.sh starts a fresh JVM, agent and vendor file included. */
+    private void restartServer() throws InterruptedException {
+        long bootsBefore = wildfly.getLogs().lines().filter(line -> line.contains("WFLYSRV0025")).count();
+        exec(JBOSS_CLI, "--connect", "--command=:shutdown(restart=true)");
+        for (int attempt = 0; attempt < 120; attempt++) {
+            long boots = wildfly.getLogs().lines().filter(line -> line.contains("WFLYSRV0025")).count();
+            if (boots > bootsBefore) {
+                awaitControlPlane();
+                return;
+            }
+            Thread.sleep(1000);
+        }
+        fail("WildFly did not come back after :shutdown(restart=true)");
     }
 
     // --- helpers (same shape as WildFlyContainerIT's) ---------------------------------------------

@@ -17,20 +17,30 @@ package org.logaperture.control.jmx;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.logaperture.api.CompiledMatchers;
+import org.logaperture.api.Drop;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
+import org.logaperture.api.RuleChange;
+import org.logaperture.api.SampleFullPolicy;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
+
+import org.logaperture.core.RuleAlteration;
+import org.logaperture.core.RuleView;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -315,5 +325,66 @@ class LevelControlMXBeanImplTest {
         assertEquals(1, result.size());
         assertEquals("CONSOLE", result.get(0).getHandlerRef());
         assertEquals("TRACE", result.get(0).getLevel());
+    }
+
+    // --- alterRule (doc/specs/alter-rule.md) ------------------------------------------------------
+
+    @Test
+    void alterRule_mapsSetClearAndUnchangedParts_andAnOmittedTier() {
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+
+        RuleAlterationData result = bean(fake).alterRule("r3", "green", true, false, null, true, null, false, null,
+                "INFO", null, null, null, null, null, null, 0);
+
+        assertNull(result, "no such rule");
+        RuleChange change = fake.lastAlterRuleChange;
+        assertEquals(RuleChange.Field.set("green"), change.message());
+        assertTrue(change.messageIgnoreCase());
+        assertEquals(RuleChange.Field.cleared(), change.throwableType());
+        assertEquals(RuleChange.Field.unchanged(), change.throwableMessageContains());
+        assertEquals(Level.INFO, change.levelAtMost());
+        assertNull(change.anyCause());
+        assertNull(fake.lastAlterRuleTier, "an omitted tier keeps the rule's lifetime");
+        assertNull(fake.lastAlterRuleExpiresIn);
+    }
+
+    @Test
+    void alterRule_forTier_carriesItsDuration_andNoSampleFullMapsToDisabled() {
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+
+        bean(fake).alterRule("r3", null, false, false, null, false, null, false, null, null, false, null, null,
+                null, null, "for", 1800);
+
+        assertEquals(PersistenceTier.FOR, fake.lastAlterRuleTier);
+        assertEquals(Duration.ofMinutes(30), fake.lastAlterRuleExpiresIn);
+        assertFalse(fake.lastAlterRuleChange.sampleFull().enabled());
+    }
+
+    @Test
+    void alterRule_setAndClearTheSamePart_isRefused() {
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+
+        assertThrows(IllegalArgumentException.class, () -> bean(fake).alterRule("r3", "x", false, true, null, false,
+                null, false, null, null, null, null, null, null, null, null, 0));
+    }
+
+    @Test
+    void alterRule_returnsTheRuleNowPlusWhatItWas() {
+        FakeLevelControlOperations fake = new FakeLevelControlOperations();
+        Instant now = Instant.now();
+        Drop before = new Drop("r3", "com.acme.Worker", new CompiledMatchers(Level.DEBUG, "blue", false, null, null,
+                false), null, PersistenceTier.SESSION, null, now, SampleFullPolicy.disabled());
+        Drop after = new Drop("r3", "com.acme.Worker", new CompiledMatchers(Level.DEBUG, "green", false, null, null,
+                false), null, PersistenceTier.SESSION, null, now, SampleFullPolicy.disabled());
+        fake.alterRuleToReturn = Optional.of(new RuleAlteration(new RuleView(before, "system"),
+                new RuleView(after, "system"), true));
+
+        RuleAlterationData result = bean(fake).alterRule("r3", "green", false, false, null, false, null, false, null,
+                null, null, null, null, null, null, null, 0);
+
+        assertTrue(result.isChanged());
+        assertEquals("green", result.getRule().getMessageContains());
+        assertEquals("--message-contains blue --below INFO --no-sample-full", result.getPreviousExpression());
+        assertEquals("SESSION", result.getPreviousTier());
     }
 }

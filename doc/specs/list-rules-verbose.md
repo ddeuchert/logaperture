@@ -53,7 +53,8 @@ Vendor rules get the same expression, from the definition in the vendor defaults
 ## Where it is built (V4)
 
 In `logctl`, from `list rules`' existing JMX rows: the expression is `logctl`'s command syntax, so
-`logctl` owns rendering it. The rows already carry every matcher and the trim options; they lack a
+`logctl` owns rendering it. (Since [`alter-rule.md`](alter-rule.md) (issue #96) the renderer itself lives in `logaperture-api`,
+shared with the agent's `alter rule` audit records; `logctl` still renders from the JMX rows.) The rows already carry every matcher and the trim options; they lack a
 drop rule's sampling setting, so `RuleData` gains `sampleFullEnabled` and `sampleFullEveryMillis`
 (additive fields, logaperture-spec.md §11.1). The same fields close the gap noted in
 `vendor-defaults-export.md` X1.

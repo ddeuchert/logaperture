@@ -16,10 +16,13 @@
 package org.logaperture.core;
 
 import org.logaperture.api.CompiledMatchers;
+import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.RuleAttachOptions;
+import org.logaperture.api.RuleChange;
 import org.logaperture.api.RuleResetOutcome;
 import org.logaperture.api.SampleFullPolicy;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -43,9 +46,9 @@ public interface RuleOperations {
     /**
      * {@code reset rule <id>} — a single named id is "one specific thing":
      * refuses if it's {@code STICKY} and {@code includeSticky} wasn't
-     * passed. Empty if no rule with this id exists (a no-op, not an error).
-     * Returns the removed rule tagged with the context it was actually
-     * removed from, since ids are only unique per context (doc/specs/
+     * passed. Empty if there was nothing to reset (a no-op, not an error).
+     * Returns the rule tagged with the context it was actually reset in,
+     * since ids are only unique per context (doc/specs/
      * rule-pipeline-foundation.md "Rule identity").
      */
     default Optional<RuleView> resetRule(String id, boolean includeSticky) {
@@ -53,19 +56,20 @@ public interface RuleOperations {
     }
 
     /**
-     * {@link #resetRule(String, boolean)}, plus doc/specs/vendor-defaults.md "Rules": a vendor
-     * defaults rule refuses unless {@code includeVendorDefaults}, in which case it is suspended
-     * until restart rather than removed.
+     * {@link #resetRule(String, boolean)}, plus doc/specs/alter-rule.md "Reset" (A8): a vendor
+     * defaults rule is reset to the vendor's definition (and switched back on), or with {@code
+     * toNative} switched off until restart; it is never removed. On an operator rule {@code
+     * toNative} changes nothing.
      */
-    Optional<RuleView> resetRule(String id, boolean includeSticky, boolean includeVendorDefaults);
+    Optional<RuleView> resetRule(String id, boolean includeSticky, boolean toNative);
 
     /** {@code reset rules} — bulk, skip-and-report shape. */
     default RuleResetOutcome resetAllRules(boolean includeSticky) {
         return resetAllRules(includeSticky, false);
     }
 
-    /** {@link #resetAllRules(boolean)}; vendor rules are skipped and reported unless {@code includeVendorDefaults}. */
-    RuleResetOutcome resetAllRules(boolean includeSticky, boolean includeVendorDefaults);
+    /** {@link #resetAllRules(boolean)}; vendor rules as in {@link #resetRule(String, boolean, boolean)}. */
+    RuleResetOutcome resetAllRules(boolean includeSticky, boolean toNative);
 
     /**
      * The rules attached directly to {@code loggerName} — {@code reset
@@ -76,8 +80,19 @@ public interface RuleOperations {
         return resetRulesForLogger(loggerName, includeSticky, false);
     }
 
-    /** {@link #resetRulesForLogger(String, boolean)}; vendor rules as in {@link #resetAllRules(boolean, boolean)}. */
-    RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky, boolean includeVendorDefaults);
+    /** {@link #resetRulesForLogger(String, boolean)}; vendor rules as in {@link #resetRule(String, boolean, boolean)}. */
+    RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky, boolean toNative);
+
+    /**
+     * {@code logctl alter rule <id>} — doc/specs/alter-rule.md. Requires {@link
+     * Capability#RULES_AUTHOR} and {@link Capability#SUPPRESS} (and {@link Capability#PERSIST} if
+     * the resulting tier isn't {@code SESSION}).
+     *
+     * @param tier      the new lifetime, or {@code null} to keep it (A6/A7)
+     * @param expiresIn required iff {@code tier} is {@code FOR}
+     * @return empty if no rule has this id
+     */
+    Optional<RuleAlteration> alterRule(String id, RuleChange change, PersistenceTier tier, Duration expiresIn);
 
     /**
      * {@code logctl add rule drop} — doc/specs/drop-rule.md "Command

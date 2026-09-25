@@ -36,24 +36,27 @@ import org.logaperture.api.LogRule;
  * @param origin   {@code "vendor-defaults"} for a rule from the vendor defaults
  *                 file, {@code null} for one an operator added --
  *                 doc/specs/vendor-defaults.md "Rules"
- * @param suspended a vendor rule switched off until restart with {@code
- *                 --include-vendor-defaults} (Decision M4); always {@code
- *                 false} for an operator rule
+ * @param toNative a vendor rule switched off until restart with {@code reset rule … --to-native}
+ *                 (doc/specs/alter-rule.md "Reset", A8); always {@code false} for an operator rule
+ * @param altered  a vendor rule with an {@code alter rule} override on top of the vendor's
+ *                 definition (doc/specs/alter-rule.md "Vendor rules", A7); always {@code false}
+ *                 for an operator rule, whose alterations change it in place
  */
-public record RuleView(LogRule rule, String context, long hitCount, String origin, boolean suspended) {
+public record RuleView(LogRule rule, String context, long hitCount, String origin, boolean toNative,
+        boolean altered) {
 
     /** {@code hitCount} defaults to {@code 0} -- most call sites outside {@link RuleService} itself just tag a context. */
     public RuleView(LogRule rule, String context) {
         this(rule, context, 0L);
     }
 
-    /** An operator rule: no origin, never suspended. */
+    /** An operator rule: no origin, never switched off or altered-over-a-baseline. */
     public RuleView(LogRule rule, String context, long hitCount) {
-        this(rule, context, hitCount, null, false);
+        this(rule, context, hitCount, null, false, false);
     }
 
     /** This same row, stamped with its owning context's stable key. */
     public RuleView withContext(String context) {
-        return new RuleView(rule, context, hitCount, origin, suspended);
+        return new RuleView(rule, context, hitCount, origin, toNative, altered);
     }
 }

@@ -161,11 +161,10 @@ class ResetToNativeCommandsTest {
     }
 
     @Test
-    void theFlag_isAUsageErrorOutsideLoggerHandlerAndDefaultHandlerResets() {
+    void theFlag_isAUsageErrorOutsideReset() { // rule resets take it too since #96 (doc/specs/alter-rule.md A8)
         for (String[] argv : List.of(
-                new String[] {"reset", "rule", "r1", "--to-native"},
-                new String[] {"reset", "rules", "--to-native"},
                 new String[] {"set", "logger", PERFMON, "INFO", "--to-native"},
+                new String[] {"alter", "rule", "r1", "--below", "WARN", "--to-native"},
                 new String[] {"list", "loggers", "--to-native"})) {
             CliError error = assertThrows(CliError.class, () -> Parser.parse(argv));
             assertEquals(CliError.USAGE, error.exitCode(), String.join(" ", argv));

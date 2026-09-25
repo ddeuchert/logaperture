@@ -303,7 +303,7 @@ separate, pasteable bug-report block — see [`environment-report.md`](environme
 four namespace-scoped forms:
 
 ```
-logctl reset logger <target> [--include-sticky] [--to-native] [--include-vendor-defaults]
+logctl reset logger <target> [--include-sticky] [--to-native]
 logctl reset loggers [--include-sticky] [--to-native]
 logctl reset handler <name> [--include-sticky] [--to-native]
 logctl reset handlers [--include-sticky] [--to-native]
@@ -314,8 +314,8 @@ With a vendor defaults file ([`vendor-defaults.md`](vendor-defaults.md)), every 
 the file's level rather than the application's own. `--to-native` lands on the application's own
 (native) configuration instead, until restart, and a plain reset undoes it
 ([`reset-to-native.md`](reset-to-native.md), issue #94); it is a usage error on any other command.
-`--include-vendor-defaults` (also on `reset rule`/`reset rules`) switches off vendor rules until
-restart; it is a usage error anywhere else.
+On `reset rule`/`reset rules` (and `reset logger`'s rule side effect), `--to-native` switches
+vendor rules off until restart ([`alter-rule.md`](alter-rule.md) (issue #96); it replaced `--include-vendor-defaults`).
 
 `reset logger <target>` accepts an exact name or a pattern, exactly as `set` does. A
 `STICKY`-tier override is skipped by default on every form — `--include-sticky` opts back

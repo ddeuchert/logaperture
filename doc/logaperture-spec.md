@@ -351,8 +351,10 @@ flowchart LR
 
   A `session` or `for` override never reaches the exported file.
 
-Spec: [`doc/specs/reset-to-native.md`](specs/reset-to-native.md) (issue #94). Rules (vendor
-`drop`/`trim` rules, changeable rules and `--to-native`) are being redesigned in issue #96.
+Spec: [`doc/specs/reset-to-native.md`](specs/reset-to-native.md) (issue #94). Rules follow the
+same shape ([`doc/specs/alter-rule.md`](specs/alter-rule.md), issue #96): `logctl alter rule`
+changes a rule in place; for a vendor rule it is an override, `reset rule` returns to the vendor's
+definition, and `reset rule … --to-native` switches the rule off until restart.
 
 ---
 

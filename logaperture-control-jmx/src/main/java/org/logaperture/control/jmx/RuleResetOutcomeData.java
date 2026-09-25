@@ -25,14 +25,14 @@ public final class RuleResetOutcomeData {
 
     private final List<String> removedIds;
     private final List<String> skippedStickyIds;
-    private final List<String> skippedVendorIds;
+    private final List<String> vendorResetIds;
 
-    /** Every field, including {@code skippedVendorIds} (doc/specs/vendor-defaults.md "Rules"). */
-    @ConstructorProperties({"removedIds", "skippedStickyIds", "skippedVendorIds"})
-    public RuleResetOutcomeData(List<String> removedIds, List<String> skippedStickyIds, List<String> skippedVendorIds) {
+    /** Every field, including {@code vendorResetIds} (doc/specs/alter-rule.md "Reset"). */
+    @ConstructorProperties({"removedIds", "skippedStickyIds", "vendorResetIds"})
+    public RuleResetOutcomeData(List<String> removedIds, List<String> skippedStickyIds, List<String> vendorResetIds) {
         this.removedIds = removedIds;
         this.skippedStickyIds = skippedStickyIds;
-        this.skippedVendorIds = skippedVendorIds == null ? List.of() : skippedVendorIds;
+        this.vendorResetIds = vendorResetIds == null ? List.of() : vendorResetIds;
     }
 
     @ConstructorProperties({"removedIds", "skippedStickyIds"})
@@ -41,12 +41,15 @@ public final class RuleResetOutcomeData {
     }
 
     public static RuleResetOutcomeData from(RuleResetOutcome outcome) {
-        return new RuleResetOutcomeData(outcome.removedIds(), outcome.skippedStickyIds(), outcome.skippedVendorIds());
+        return new RuleResetOutcomeData(outcome.removedIds(), outcome.skippedStickyIds(), outcome.vendorResetIds());
     }
 
-    /** Vendor defaults rule ids left in place because {@code --include-vendor-defaults} wasn't given. */
-    public List<String> getSkippedVendorIds() {
-        return skippedVendorIds;
+    /**
+     * Vendor defaults rule ids reset rather than removed: put back to the vendor's definition,
+     * switched back on, or (with {@code toNative}) switched off until restart.
+     */
+    public List<String> getVendorResetIds() {
+        return vendorResetIds;
     }
 
     public List<String> getRemovedIds() {

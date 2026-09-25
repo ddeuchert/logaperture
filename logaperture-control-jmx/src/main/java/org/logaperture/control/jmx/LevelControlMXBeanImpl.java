@@ -20,6 +20,7 @@ import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.RuleAttachOptions;
+import org.logaperture.api.RuleChange;
 import org.logaperture.api.SampleFullPolicy;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
@@ -213,21 +214,58 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
-    public RuleData resetRule(String id, boolean includeSticky, boolean includeVendorDefaults) {
-        Optional<RuleView> removed = ruleOperations.resetRule(id, includeSticky, includeVendorDefaults);
+    public RuleData resetRule(String id, boolean includeSticky, boolean toNative) {
+        Optional<RuleView> removed = ruleOperations.resetRule(id, includeSticky, toNative);
         return removed.map(RuleData::from).orElse(null);
     }
 
     @Override
-    public RuleResetOutcomeData resetAllRules(boolean includeSticky, boolean includeVendorDefaults) {
-        return RuleResetOutcomeData.from(ruleOperations.resetAllRules(includeSticky, includeVendorDefaults));
+    public RuleResetOutcomeData resetAllRules(boolean includeSticky, boolean toNative) {
+        return RuleResetOutcomeData.from(ruleOperations.resetAllRules(includeSticky, toNative));
     }
 
     @Override
-    public RuleResetOutcomeData resetRulesForLogger(String loggerName, boolean includeSticky,
-            boolean includeVendorDefaults) {
-        return RuleResetOutcomeData.from(
-                ruleOperations.resetRulesForLogger(loggerName, includeSticky, includeVendorDefaults));
+    public RuleResetOutcomeData resetRulesForLogger(String loggerName, boolean includeSticky, boolean toNative) {
+        return RuleResetOutcomeData.from(ruleOperations.resetRulesForLogger(loggerName, includeSticky, toNative));
+    }
+
+    @Override
+    public RuleAlterationData alterRule(String id, String messageContains, boolean messageIgnoreCase,
+            boolean clearMessage, String throwableType, boolean clearThrowable, String throwableMessageContains,
+            boolean clearThrowableMessage, Boolean anyCause, String belowLevel, Boolean sampleFullEnabled,
+            Long sampleFullEveryMillis, Integer frames, Boolean collapseCauses, String reason, String tier,
+            long forSeconds) {
+        SampleFullPolicy sampleFull = null;
+        if (Boolean.FALSE.equals(sampleFullEnabled)) {
+            sampleFull = SampleFullPolicy.disabled(); // the rule's own interval is kept (RuleService)
+        } else if (Boolean.TRUE.equals(sampleFullEnabled)) {
+            sampleFull = sampleFullEveryMillis == null ? SampleFullPolicy.defaults()
+                    : SampleFullPolicy.every(Duration.ofMillis(sampleFullEveryMillis));
+        }
+        RuleChange change = new RuleChange(
+                field(messageContains, clearMessage, "message"),
+                messageIgnoreCase,
+                field(throwableType, clearThrowable, "throwable"),
+                field(throwableMessageContains, clearThrowableMessage, "throwable-message-contains"),
+                anyCause,
+                belowLevel == null ? null : parseLevel(belowLevel),
+                sampleFull,
+                frames,
+                collapseCauses,
+                reason);
+        PersistenceTier parsedTier = tier == null ? null : parseTier(tier);
+        Duration expiresIn = parsedTier == PersistenceTier.FOR ? Duration.ofSeconds(forSeconds) : null;
+        return ruleOperations.alterRule(id, change, parsedTier, expiresIn).map(RuleAlterationData::from).orElse(null);
+    }
+
+    private static <T> RuleChange.Field<T> field(T value, boolean clear, String name) {
+        if (value != null && clear) {
+            throw new IllegalArgumentException("can't both set and clear " + name);
+        }
+        if (clear) {
+            return RuleChange.Field.cleared();
+        }
+        return value == null ? RuleChange.Field.unchanged() : RuleChange.Field.set(value);
     }
 
     @Override
