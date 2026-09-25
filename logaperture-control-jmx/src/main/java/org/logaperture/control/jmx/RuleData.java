@@ -54,24 +54,26 @@ public final class RuleData {
     private final Integer frames;
     private final Boolean collapseCauses;
     private final String origin;
-    private final boolean suspended;
+    private final boolean toNative;
+    private final boolean altered;
     private final Boolean sampleFullEnabled;
     private final Long sampleFullEveryMillis;
 
     /**
      * Every field, including a drop rule's {@code sampleFullEnabled}/{@code sampleFullEveryMillis}
-     * (doc/specs/list-rules-verbose.md; {@code null} for any other action); the narrower
-     * constructors below stay annotated for older clients (logaperture-spec.md §11.1).
+     * (doc/specs/list-rules-verbose.md; {@code null} for any other action) and a vendor rule's
+     * {@code toNative}/{@code altered} (doc/specs/alter-rule.md); the narrower constructors below
+     * stay annotated for older clients (logaperture-spec.md §11.1).
      */
     @ConstructorProperties({"id", "loggerName", "action", "levelAtMost", "messageContains", "messageIgnoreCase",
             "throwableType", "throwableMessageContains", "anyCause", "reason", "tier", "expiresAt", "createdAt",
-            "context", "hitCount", "frames", "collapseCauses", "origin", "suspended", "sampleFullEnabled",
-            "sampleFullEveryMillis"})
+            "context", "hitCount", "frames", "collapseCauses", "origin", "toNative", "sampleFullEnabled",
+            "sampleFullEveryMillis", "altered"})
     public RuleData(String id, String loggerName, String action, String levelAtMost, String messageContains,
             boolean messageIgnoreCase, String throwableType, String throwableMessageContains, boolean anyCause,
             String reason, String tier, String expiresAt, String createdAt, String context, long hitCount,
-            Integer frames, Boolean collapseCauses, String origin, boolean suspended, Boolean sampleFullEnabled,
-            Long sampleFullEveryMillis) {
+            Integer frames, Boolean collapseCauses, String origin, boolean toNative, Boolean sampleFullEnabled,
+            Long sampleFullEveryMillis, boolean altered) {
         this.id = id;
         this.loggerName = loggerName;
         this.action = action;
@@ -90,22 +92,23 @@ public final class RuleData {
         this.frames = frames;
         this.collapseCauses = collapseCauses;
         this.origin = origin;
-        this.suspended = suspended;
+        this.toNative = toNative;
+        this.altered = altered;
         this.sampleFullEnabled = sampleFullEnabled;
         this.sampleFullEveryMillis = sampleFullEveryMillis;
     }
 
-    /** Every field but the sampling ones -- the shape of doc/specs/vendor-defaults.md "Rules". */
+    /** Every field but the sampling ones and {@code altered}. */
     @ConstructorProperties({"id", "loggerName", "action", "levelAtMost", "messageContains", "messageIgnoreCase",
             "throwableType", "throwableMessageContains", "anyCause", "reason", "tier", "expiresAt", "createdAt",
-            "context", "hitCount", "frames", "collapseCauses", "origin", "suspended"})
+            "context", "hitCount", "frames", "collapseCauses", "origin", "toNative"})
     public RuleData(String id, String loggerName, String action, String levelAtMost, String messageContains,
             boolean messageIgnoreCase, String throwableType, String throwableMessageContains, boolean anyCause,
             String reason, String tier, String expiresAt, String createdAt, String context, long hitCount,
-            Integer frames, Boolean collapseCauses, String origin, boolean suspended) {
+            Integer frames, Boolean collapseCauses, String origin, boolean toNative) {
         this(id, loggerName, action, levelAtMost, messageContains, messageIgnoreCase, throwableType,
                 throwableMessageContains, anyCause, reason, tier, expiresAt, createdAt, context, hitCount, frames,
-                collapseCauses, origin, suspended, null, null);
+                collapseCauses, origin, toNative, null, null, false);
     }
 
     @ConstructorProperties({"id", "loggerName", "action", "levelAtMost", "messageContains", "messageIgnoreCase",
@@ -142,9 +145,10 @@ public final class RuleData {
                 rule instanceof Trim trim ? trim.frames() : null,
                 rule instanceof Trim trim ? trim.collapseCauses() : null,
                 view.origin(),
-                view.suspended(),
+                view.toNative(),
                 rule instanceof Drop drop ? drop.sampleFull().enabled() : null,
-                rule instanceof Drop drop ? drop.sampleFull().every().toMillis() : null);
+                rule instanceof Drop drop ? drop.sampleFull().every().toMillis() : null,
+                view.altered());
     }
 
     /** {@code "vendor-defaults"} for a rule from the vendor defaults file, else {@code null}. */
@@ -152,9 +156,14 @@ public final class RuleData {
         return origin;
     }
 
-    /** A vendor rule switched off until restart. */
-    public boolean isSuspended() {
-        return suspended;
+    /** A vendor rule switched off until restart with {@code reset … --to-native} (doc/specs/alter-rule.md A8). */
+    public boolean isToNative() {
+        return toNative;
+    }
+
+    /** A vendor rule carrying an {@code alter rule} override of the vendor's definition (A7). */
+    public boolean isAltered() {
+        return altered;
     }
 
     public String getId() {

@@ -23,8 +23,9 @@ After this feature, the user will be able to:
   value with `logctl reset`.
 - See which loggers, handlers and rules have vendor defaults in `logctl list`, and whether the
   file loaded in `logctl env`, `logctl status` and `logctl doctor`.
-- Temporarily switch off a vendor rule with `logctl reset rule vendor:<name>
-  --include-vendor-defaults`; it comes back on the next restart.
+- Temporarily switch off a vendor rule with `logctl reset rule vendor:<name> --to-native`; it
+  comes back with a plain `logctl reset rule vendor:<name>` or on the next restart. (Originally
+  `--include-vendor-defaults`; replaced by [`alter-rule.md`](alter-rule.md) (issue #96).)
 - Rely on a broken file never stopping the application from starting: it is rejected as a whole,
   with every problem listed.
 
@@ -213,6 +214,11 @@ default-handler` clears the explicit membership and so lands on the file's list.
 
 ### Rules
 
+**Superseded in part by [`alter-rule.md`](alter-rule.md) (issue #96).** A vendor rule's baseline is its definition in the file;
+`alter rule` puts an override on top, a plain `reset rule` returns to the file's definition (no
+longer a refusal), and `reset … --to-native` replaces `--include-vendor-defaults` and suspension
+(M4) as the way to switch one off until restart. The bullets below describe this slice as shipped.
+
 - Each vendor rule is attached at install through `RuleService`, via the same factories as a live
   rule, with id `vendor:<id>`. It is never written to the state file: the file itself is its
   persistence. The state file's `r<N>` id sequence is unaffected (resume only advances past `r`
@@ -348,7 +354,8 @@ Epic decisions are settled; these are the details the epic left to this spec.
 - **M3 — Vendor `AUTO` is baseline AUTO tracking**, not a pre-applied AUTO override; `reset
   handler` returns to tracking. **Agreed.**
 - **M4 — A suspended vendor rule stays listed, marked `suspended`**, until restart; no
-  unsuspend command in this slice. **Agreed.**
+  unsuspend command in this slice. **Agreed.** (Superseded by [`alter-rule.md`](alter-rule.md) (issue #96): `--to-native`,
+  listed as `vendor-defaults (off)`, and a plain reset switches it back on.)
 - **M5 — `status` gets one vendor-defaults summary line.** Epic #10 covered `list` only; `status`
   is where an operator looks first. **Agreed.**
 - **M6 — Report every validation error, not only the first.** A vendor fixing a file shouldn't

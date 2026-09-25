@@ -1065,7 +1065,7 @@ class CommandsTest {
         assertEquals(CliError.OK, run(Commands.resetLogger("com.acme.Known", false, true)));
         assertEquals(
                 "{\"name\":\"com.acme.Known\",\"overrideActive\":false,\"wasOverridden\":true,"
-                        + "\"removedRuleIds\":[],\"skippedStickyRuleIds\":[],\"skippedVendorRuleIds\":[]}",
+                        + "\"removedRuleIds\":[],\"skippedStickyRuleIds\":[],\"vendorResetRuleIds\":[]}",
                 output().strip());
     }
 
@@ -1354,13 +1354,13 @@ class CommandsTest {
         assertEquals(CliError.OK, run(Commands.resetRule("r1", false, false)));
 
         assertArrayEquals(new Object[] {"r1", false}, mbean.resetRuleCalls.get(0));
-        assertEquals("rule r1 → reset.", output().strip());
+        assertEquals("rule r1 → removed.", output().strip());
     }
 
     @Test
     void resetRule_unknownId_saysNoSuchRule() {
         assertEquals(CliError.OK, run(Commands.resetRule("no-such-id", false, false)));
-        assertEquals("rule no-such-id — no such rule (or already suspended).", output().strip());
+        assertEquals("rule no-such-id — nothing to reset.", output().strip());
     }
 
     @Test

@@ -73,6 +73,29 @@ final class RuleRegistry {
         return true;
     }
 
+    /**
+     * Swaps {@code current} for {@code replacement} under the same id in one step, if {@code
+     * current} is still the rule registered there -- doc/specs/alter-rule.md "The swap is atomic":
+     * the per-logger list is copy-on-write, so an evaluator sees either the old rule or the new
+     * one, never neither or both.
+     */
+    synchronized boolean replaceIfCurrent(LogRule current, LogRule replacement) {
+        if (!current.id().equals(replacement.id()) || !current.loggerName().equals(replacement.loggerName())) {
+            throw new IllegalArgumentException("a replacement keeps the rule's id and logger");
+        }
+        if (byId.get(current.id()) != current) {
+            return false;
+        }
+        List<LogRule> rules = rulesByLogger.get(current.loggerName());
+        int index = rules == null ? -1 : rules.indexOf(current);
+        if (index < 0) {
+            return false;
+        }
+        rules.set(index, replacement);
+        byId.put(replacement.id(), replacement);
+        return true;
+    }
+
     /** Every attached rule, across every logger, removed and returned. */
     synchronized List<LogRule> removeAll() {
         List<LogRule> all = List.copyOf(byId.values());

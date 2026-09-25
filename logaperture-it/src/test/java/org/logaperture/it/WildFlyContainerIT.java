@@ -808,6 +808,100 @@ class WildFlyContainerIT {
         return war;
     }
 
+    // --- alter rule (doc/specs/alter-rule.md) ----------------------------------------------------
+
+    /**
+     * doc/specs/alter-rule.md "Testing": alter a live drop's {@code --message-contains} and see the
+     * old message come back and the new one suppressed. The probe logs one "blue" and one "green"
+     * line per deploy, so counting lines across two deploys shows which one each rule dropped.
+     */
+    @Test
+    void alterRule_changesALiveDropsMatcher_inPlace() throws Exception {
+        Logctl added = logctl("add", "rule", "drop", "com.myapp.probe.AlterWorker", "--message-contains", "blue",
+                "--no-sample-full", "session");
+        assertEquals(0, added.exitCode(), added.stderr());
+        String id = added.stdout().strip().split("\\s+")[0];
+        try {
+            deployAlterProbeWar();
+            assertTrue(pollUntil(() -> countLines("alter probe green") == 1), "first deploy logged");
+            assertEquals(0, countLines("alter probe blue"), "blue is dropped");
+            undeployAlterProbeWar();
+
+            Logctl altered = logctl("alter", "rule", id, "--message-contains", "green");
+            assertEquals(0, altered.exitCode(), altered.stderr());
+            assertTrue(altered.stdout().contains("was: --message-contains blue"), altered.stdout());
+            assertTrue(altered.stdout().contains("now: --message-contains green"), altered.stdout());
+            assertTrue(logctl("list", "rules").stdout().lines().anyMatch(line -> line.strip().startsWith(id + " ")
+                    && line.contains("SESSION")), "same id, same lifetime");
+
+            deployAlterProbeWar();
+            assertTrue(pollUntil(() -> countLines("alter probe blue") == 1), "blue comes back after the alter");
+            assertEquals(1, countLines("alter probe green"), "green is now dropped: still only the first deploy's");
+        } finally {
+            undeployAlterProbeWar();
+            logctl("reset", "rule", id);
+        }
+    }
+
+    private long countLines(String text) {
+        return wildfly.getLogs().lines().filter(line -> line.contains(text)).count();
+    }
+
+    private void deployAlterProbeWar() throws Exception {
+        Path war = buildAlterProbeWar();
+        exec("rm", "-f", DEPLOYMENTS + "/alterprobe.war.undeployed");
+        wildfly.copyFileToContainer(MountableFile.forHostPath(war), DEPLOYMENTS + "/alterprobe.war");
+        assertTrue(awaitFile(DEPLOYMENTS + "/alterprobe.war.deployed"), "alterprobe.war deployed");
+    }
+
+    private void undeployAlterProbeWar() {
+        exec("rm", "-f", DEPLOYMENTS + "/alterprobe.war");
+        awaitFile(DEPLOYMENTS + "/alterprobe.war.undeployed");
+    }
+
+    private Path buildAlterProbeWar() throws IOException {
+        String servletPackage = jakartaServletNamespace ? "jakarta.servlet" : "javax.servlet";
+        String source = """
+                package com.myapp.probe;
+                import %s.ServletContextEvent;
+                import %s.ServletContextListener;
+                import %s.annotation.WebListener;
+                import java.util.logging.Logger;
+                @WebListener
+                public class AlterProbe implements ServletContextListener {
+                    @Override public void contextInitialized(ServletContextEvent e) {
+                        Logger worker = Logger.getLogger("com.myapp.probe.AlterWorker");
+                        worker.info("alter probe blue");
+                        worker.info("alter probe green");
+                    }
+                }
+                """.formatted(servletPackage, servletPackage, servletPackage);
+        Path src = scratch.resolve("com/myapp/probe/AlterProbe.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, source);
+        Path classes = Files.createDirectories(scratch.resolve("alter-classes"));
+
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        assertNotNull(compiler, "a JDK (not JRE) is required to build the probe WAR");
+        int rc = compiler.run(null, null, null,
+                "--release", "17",
+                "-classpath", probeCompileClasspath(),
+                "-d", classes.toString(), src.toString());
+        assertEquals(0, rc, "alter probe compile failed");
+
+        Path war = scratch.resolve("alterprobe.war");
+        Path probeClass = classes.resolve("com/myapp/probe/AlterProbe.class");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(war))) {
+            zip.putNextEntry(new ZipEntry("WEB-INF/classes/com/myapp/probe/AlterProbe.class"));
+            zip.write(Files.readAllBytes(probeClass));
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("WEB-INF/beans.xml"));
+            zip.write("<beans/>".getBytes());
+            zip.closeEntry();
+        }
+        return war;
+    }
+
     // --- env (doc/specs/environment-report.md) -----------------------------------------------
 
     @Test

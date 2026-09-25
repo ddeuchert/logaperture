@@ -29,25 +29,27 @@ import java.util.Objects;
  *                         always empty for a single-id {@code reset rule},
  *                         which refuses outright instead (mirrors {@link
  *                         ResetOutcome}'s Decision #1)
- * @param skippedVendorIds vendor defaults rule ids left in place because
- *                         {@code includeVendorDefaults} wasn't passed --
- *                         doc/specs/vendor-defaults.md "Rules". With it,
- *                         a vendor rule is suspended until restart and
- *                         listed in {@code removedIds}.
+ *                         (for a vendor rule: a {@code STICKY} alteration)
+ * @param vendorResetIds   vendor defaults rule ids reset rather than removed --
+ *                         doc/specs/alter-rule.md "Reset" (A8): put back to the
+ *                         vendor's definition, switched back on, or (with
+ *                         {@code toNative}) switched off until restart. A
+ *                         vendor rule already at its vendor definition is
+ *                         not listed: there was nothing to reset.
  */
 public record RuleResetOutcome(List<String> removedIds, List<String> skippedStickyIds,
-        List<String> skippedVendorIds) {
+        List<String> vendorResetIds) {
 
     public RuleResetOutcome {
         Objects.requireNonNull(removedIds, "removedIds");
         Objects.requireNonNull(skippedStickyIds, "skippedStickyIds");
-        Objects.requireNonNull(skippedVendorIds, "skippedVendorIds");
+        Objects.requireNonNull(vendorResetIds, "vendorResetIds");
         removedIds = List.copyOf(removedIds);
         skippedStickyIds = List.copyOf(skippedStickyIds);
-        skippedVendorIds = List.copyOf(skippedVendorIds);
+        vendorResetIds = List.copyOf(vendorResetIds);
     }
 
-    /** Every field but {@code skippedVendorIds} -- the shape before doc/specs/vendor-defaults.md. */
+    /** No vendor rules involved. */
     public RuleResetOutcome(List<String> removedIds, List<String> skippedStickyIds) {
         this(removedIds, skippedStickyIds, List.of());
     }

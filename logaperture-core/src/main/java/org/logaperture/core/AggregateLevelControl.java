@@ -32,6 +32,7 @@ import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.RuleAttachOptions;
 import org.logaperture.api.RuleResetOutcome;
+import org.logaperture.api.RuleChange;
 import org.logaperture.api.SampleFullPolicy;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
@@ -42,6 +43,7 @@ import org.logaperture.api.Storm;
 import org.logaperture.api.StormReport;
 import org.logaperture.core.spi.ContextHandle;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -495,17 +497,17 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * first refusal abort the whole call).
      *
      * <p>A vendor defaults rule ({@code vendor:<name>}) is the exception: the file is applied
-     * to every context, so the same id genuinely lives in each one, and a suspension must reach
+     * to every context, so the same id genuinely lives in each one, and a reset must reach
      * all of them rather than stop at the first (doc/specs/vendor-defaults.md "Rules").
      */
     @Override
-    public Optional<RuleView> resetRule(String id, boolean includeSticky, boolean includeVendorDefaults) {
+    public Optional<RuleView> resetRule(String id, boolean includeSticky, boolean toNative) {
         boolean vendorId = id.startsWith(VendorDefaults.RULE_ID_PREFIX);
         Optional<RuleView> firstRemoved = Optional.empty();
         IllegalArgumentException stickyRefusal = null;
         for (ContextControl context : sortedByKey()) {
             try {
-                Optional<RuleView> removed = context.ruleService().resetRule(id, includeSticky, includeVendorDefaults);
+                Optional<RuleView> removed = context.ruleService().resetRule(id, includeSticky, toNative);
                 if (removed.isPresent()) {
                     if (!vendorId) {
                         return removed;
@@ -528,33 +530,64 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     }
 
     @Override
-    public RuleResetOutcome resetAllRules(boolean includeSticky, boolean includeVendorDefaults) {
+    public RuleResetOutcome resetAllRules(boolean includeSticky, boolean toNative) {
         List<String> removed = new ArrayList<>();
         List<String> skippedSticky = new ArrayList<>();
-        List<String> skippedVendor = new ArrayList<>();
+        List<String> vendorReset = new ArrayList<>();
         for (ContextControl context : sortedByKey()) {
-            RuleResetOutcome outcome = context.ruleService().resetAllRules(includeSticky, includeVendorDefaults);
+            RuleResetOutcome outcome = context.ruleService().resetAllRules(includeSticky, toNative);
             removed.addAll(outcome.removedIds());
             skippedSticky.addAll(outcome.skippedStickyIds());
-            skippedVendor.addAll(outcome.skippedVendorIds());
+            vendorReset.addAll(outcome.vendorResetIds());
         }
-        return new RuleResetOutcome(removed, skippedSticky, skippedVendor);
+        return new RuleResetOutcome(removed, skippedSticky, vendorReset);
     }
 
     @Override
-    public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky,
-            boolean includeVendorDefaults) {
+    public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky, boolean toNative) {
         List<String> removed = new ArrayList<>();
         List<String> skippedSticky = new ArrayList<>();
-        List<String> skippedVendor = new ArrayList<>();
+        List<String> vendorReset = new ArrayList<>();
         for (ContextControl context : sortedByKey()) {
             RuleResetOutcome outcome =
-                    context.ruleService().resetRulesForLogger(loggerName, includeSticky, includeVendorDefaults);
+                    context.ruleService().resetRulesForLogger(loggerName, includeSticky, toNative);
             removed.addAll(outcome.removedIds());
             skippedSticky.addAll(outcome.skippedStickyIds());
-            skippedVendor.addAll(outcome.skippedVendorIds());
+            vendorReset.addAll(outcome.vendorResetIds());
         }
-        return new RuleResetOutcome(removed, skippedSticky, skippedVendor);
+        return new RuleResetOutcome(removed, skippedSticky, vendorReset);
+    }
+
+    /**
+     * {@code logctl alter rule <id>} across the registered contexts -- doc/specs/alter-rule.md. A
+     * vendor rule lives in every context (the vendor defaults file is applied to each), so its
+     * alteration is applied in each one and the first context's result returned; a validation
+     * error from the first stops the call before any context changes. An operator id lives in
+     * one context; ids are only unique per context, so an id found in more than one is refused as
+     * ambiguous rather than altered in a guessed one.
+     */
+    @Override
+    public Optional<RuleAlteration> alterRule(String id, RuleChange change, PersistenceTier tier,
+            Duration expiresIn) {
+        List<ContextControl> holders = sortedByKey().stream()
+                .filter(context -> context.ruleService().holds(id))
+                .toList();
+        if (holders.isEmpty()) {
+            return Optional.empty();
+        }
+        if (!id.startsWith(VendorDefaults.RULE_ID_PREFIX) && holders.size() > 1) {
+            throw new IllegalArgumentException("rule id " + id + " exists in more than one context ("
+                    + holders.stream().map(ContextControl::stableKey).toList() + ") -- can't tell which to alter.");
+        }
+        Optional<RuleAlteration> first = Optional.empty();
+        for (ContextControl context : holders) {
+            Optional<RuleAlteration> result = context.ruleService().alterRule(id, change, tier, expiresIn)
+                    .map(alteration -> alteration.withContext(context.stableKey()));
+            if (first.isEmpty()) {
+                first = result;
+            }
+        }
+        return first;
     }
 
     /**

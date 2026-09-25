@@ -29,6 +29,7 @@ import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.RuleAttachOptions;
+import org.logaperture.api.RuleChange;
 import org.logaperture.api.RuleResetOutcome;
 import org.logaperture.api.SampleFullPolicy;
 import org.logaperture.api.SetHandlerLevelOptions;
@@ -40,12 +41,14 @@ import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.EnvironmentReportOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
+import org.logaperture.core.RuleAlteration;
 import org.logaperture.core.RuleOperations;
 import org.logaperture.core.RuleView;
 import org.logaperture.core.StormOperations;
 import org.logaperture.core.TopOperations;
 import org.logaperture.core.TopReport;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -224,17 +227,17 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     }
 
     @Override
-    public Optional<RuleView> resetRule(String id, boolean includeSticky, boolean includeVendorDefaults) {
+    public Optional<RuleView> resetRule(String id, boolean includeSticky, boolean toNative) {
         return resetRuleToReturn;
     }
 
     @Override
-    public RuleResetOutcome resetAllRules(boolean includeSticky, boolean includeVendorDefaults) {
+    public RuleResetOutcome resetAllRules(boolean includeSticky, boolean toNative) {
         return resetAllRulesToReturn;
     }
 
     @Override
-    public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky, boolean includeVendorDefaults) {
+    public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky, boolean toNative) {
         return resetRulesForLoggerToReturn;
     }
 
@@ -252,5 +255,20 @@ final class FakeLevelControlOperations implements LevelControlOperations, Handle
     public RuleView addRuleTrim(String loggerName, CompiledMatchers matchers, RuleAttachOptions options, int frames,
             boolean collapseCauses) {
         return addRuleTrimToReturn;
+    }
+
+    Optional<RuleAlteration> alterRuleToReturn = Optional.empty();
+    String lastAlterRuleId;
+    RuleChange lastAlterRuleChange;
+    PersistenceTier lastAlterRuleTier;
+    Duration lastAlterRuleExpiresIn;
+
+    @Override
+    public Optional<RuleAlteration> alterRule(String id, RuleChange change, PersistenceTier tier, Duration expiresIn) {
+        lastAlterRuleId = id;
+        lastAlterRuleChange = change;
+        lastAlterRuleTier = tier;
+        lastAlterRuleExpiresIn = expiresIn;
+        return alterRuleToReturn;
     }
 }

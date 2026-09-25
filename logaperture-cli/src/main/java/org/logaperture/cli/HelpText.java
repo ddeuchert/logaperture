@@ -37,7 +37,7 @@ final class HelpText {
             "logctl set handler <name> <level> [session | for <duration> | sticky]",
             "logctl set handler <name> AUTO [session | for <duration> | sticky]",
             "logctl set default-handler <name> ...",
-            "logctl reset logger <target> [--include-sticky] [--to-native] [--include-vendor-defaults]",
+            "logctl reset logger <target> [--include-sticky] [--to-native]",
             "logctl reset loggers [--include-sticky] [--to-native]",
             "logctl reset handler <name> [--include-sticky] [--to-native]",
             "logctl reset handlers [--include-sticky] [--to-native]",
@@ -46,9 +46,10 @@ final class HelpText {
                     + "[session | for <duration> | sticky]",
             "logctl add rule trim <target> [matchers] [--below level] [--frames n] [--collapse-causes] "
                     + "[session | for <duration> | sticky]",
+            "logctl alter rule <id> [changes] [session | for <duration> | sticky]",
             "logctl list rules [--verbose]",
-            "logctl reset rule <id> [--include-sticky] [--include-vendor-defaults]",
-            "logctl reset rules [--include-sticky] [--include-vendor-defaults]");
+            "logctl reset rule <id> [--include-sticky] [--to-native]",
+            "logctl reset rules [--include-sticky] [--to-native]");
 
     private HelpText() {
     }
@@ -65,26 +66,27 @@ final class HelpText {
         sb.append("  --reason <text>      why — shown in status, kept in the audit trail\n");
         sb.append("  --yes                skip the confirmation prompt when <target> is a pattern\n");
         sb.append("  --include-sticky     for 'reset' -- also revert a sticky override, not just skip it\n");
-        sb.append("  --to-native          for 'reset' of loggers/handlers/default-handler -- land on the\n");
-        sb.append("                       native configuration, ignoring the vendor defaults until restart\n");
-        sb.append("  --include-vendor-defaults  for 'reset rule'/'reset rules'/'reset logger' -- also switch\n");
-        sb.append("                       off vendor default rules, until the application restarts\n");
+        sb.append("  --to-native          for 'reset' -- land on the native configuration, ignoring the\n");
+        sb.append("                       vendor defaults until restart (vendor rules: switched off)\n");
         sb.append("  --show-all           for 'list' -- every known logger or handler, not just overridden ones\n");
         sb.append("  --verbose            for 'list rules' -- add each rule's defining options (EXPRESSION)\n");
         sb.append("  --limit <n>          for 'top' — worst N offenders, 0 for every one tracked\n");
         sb.append("  --message-contains <text>\n");
-        sb.append("                       for 'add rule' -- match a log message substring\n");
+        sb.append("                       for 'add rule'/'alter rule' -- match a log message substring\n");
         sb.append("  --message-contains-ignore-case <text>\n");
-        sb.append("                       for 'add rule' -- same, case-insensitive\n");
-        sb.append("  --throwable <class>  for 'add rule' -- match a thrown exception's exact type\n");
+        sb.append("                       for 'add rule'/'alter rule' -- same, case-insensitive\n");
+        sb.append("  --throwable <class>  for 'add rule'/'alter rule' -- match a thrown exception's exact type\n");
         sb.append("  --throwable-message-contains <text>\n");
-        sb.append("                       for 'add rule' -- match a substring of the thrown exception's message\n");
-        sb.append("  --any-cause          for 'add rule' -- widen a throwable match to any cause in the chain\n");
-        sb.append("  --below <level>       for 'add rule' -- only events strictly below this level, default ERROR\n");
-        sb.append("  --sample-full <duration>   for 'add rule drop' -- let one full event through periodically\n");
-        sb.append("  --no-sample-full      for 'add rule drop' -- never let a full event through\n");
-        sb.append("  --frames <n>          for 'add rule trim' -- stack frames to keep, default 0\n");
-        sb.append("  --collapse-causes     for 'add rule trim' -- fold the cause chain into one summary line\n");
+        sb.append("                       for 'add rule'/'alter rule' -- match a substring of the thrown exception's message\n");
+        sb.append("  --any-cause          for 'add rule'/'alter rule' -- widen a throwable match to any cause in the chain\n");
+        sb.append("  --below <level>       for 'add rule'/'alter rule' -- only events strictly below this level, default ERROR\n");
+        sb.append("  --sample-full <duration>   for 'add rule drop'/'alter rule' -- let one full event through periodically\n");
+        sb.append("  --no-sample-full      for 'add rule drop'/'alter rule' -- never let a full event through\n");
+        sb.append("  --frames <n>          for 'add rule trim'/'alter rule' -- stack frames to keep, default 0\n");
+        sb.append("  --collapse-causes     for 'add rule trim'/'alter rule' -- fold the cause chain into one summary line\n");
+        sb.append("  --no-message-contains, --no-throwable, --no-throwable-message-contains,\n");
+        sb.append("  --no-any-cause, --no-collapse-causes\n");
+        sb.append("                       for 'alter rule' -- remove that part of the rule\n");
         sb.append("  --json               machine-readable output\n");
         sb.append("  --version            print version and exit\n");
         sb.append("  -h, --help           this help\n");
@@ -151,13 +153,21 @@ final class HelpText {
         sb.append("'reset rule <id>' removes one, 'reset rules' removes every currently\n");
         sb.append("attached rule.\n");
         sb.append("\n");
+        sb.append("'alter rule <id>' changes a rule in place, keeping its id: give only what\n");
+        sb.append("changes, e.g. 'alter rule r3 --below WARN' or 'alter rule r3\n");
+        sb.append("--message-contains green'. The --no- options remove an optional part.\n");
+        sb.append("The rule keeps its lifetime unless you give a tier ('alter rule r3\n");
+        sb.append("sticky'). The action and the logger can't change. 'list rules --verbose'\n");
+        sb.append("shows each rule's current options.\n");
+        sb.append("\n");
         sb.append("A vendor defaults file (-javaagent:logaperture-agent.jar=--vendor-defaults=<file>)\n");
         sb.append("sets the baseline: its logger and handler levels are what 'reset' returns\n");
         sb.append("to, and 'list' shows them in a VENDOR column. 'reset ... --to-native' goes\n");
         sb.append("back to the application's own logging configuration instead, until restart;\n");
-        sb.append("a plain 'reset' undoes it. Its rules have 'vendor:' ids;\n");
-        sb.append("reset leaves them in place unless --include-vendor-defaults is given, which\n");
-        sb.append("switches them off until the application restarts.\n");
+        sb.append("a plain 'reset' undoes it. Its rules have 'vendor:' ids: 'alter rule'\n");
+        sb.append("changes one ('for 4h' unless you give a tier), 'reset rule' puts the\n");
+        sb.append("vendor's definition back, and 'reset rule ... --to-native' switches it off\n");
+        sb.append("until the application restarts.\n");
         sb.append("\n");
         sb.append("'doctor' is read-only — it never changes anything. It flags common\n");
         sb.append("misconfigurations (unbounded file handlers, DEBUG/TRACE left on,\n");

@@ -21,12 +21,15 @@ import org.logaperture.api.LogRule;
 import org.logaperture.api.PersistedRule;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.RuleAttachOptions;
+import org.logaperture.api.RuleChange;
+import org.logaperture.api.RuleExpression;
 import org.logaperture.api.RuleResetOutcome;
 import org.logaperture.api.SampleFullPolicy;
 import org.logaperture.api.Trim;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -34,7 +37,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -82,13 +84,21 @@ public final class RuleService implements RuleOperations {
     private final Map<String, RuleFactory> actionFactories = new ConcurrentHashMap<>();
 
     /**
-     * Ids of the rules attached from the vendor defaults file (doc/specs/vendor-defaults.md
-     * "Rules") -- every one prefixed {@code vendor:}, so never colliding with an {@code r<N>} id.
+     * The vendor defaults file's rules as the file defines them, by id -- each rule's baseline
+     * (doc/specs/alter-rule.md "Vendor rules"). Every id is prefixed {@code vendor:}, so never
+     * colliding with an {@code r<N>} id. The registry holds either this exact object (unaltered)
+     * or an alteration under the same id.
      */
-    private final Set<String> vendorRuleIds = ConcurrentHashMap.newKeySet();
+    private final Map<String, LogRule> vendorBaselines = new ConcurrentHashMap<>();
 
-    /** Vendor rules switched off until restart with {@code --include-vendor-defaults} (Decision M4) -- detached, still listed. */
-    private final Map<String, LogRule> suspendedVendorRules = new ConcurrentHashMap<>();
+    /** Vendor rules switched off until restart with {@code reset … --to-native} (A8) -- detached, still listed. */
+    private final Map<String, LogRule> toNativeVendorRules = new ConcurrentHashMap<>();
+
+    /** Set by {@link #attachVendorRules}; see its {@code vendorDefaultsLoaded} parameter. */
+    private volatile boolean vendorDefaultsLoaded;
+
+    /** doc/specs/alter-rule.md A7: a vendor rule's first alteration with no tier -- {@code set logger}'s default. */
+    static final Duration VENDOR_ALTERATION_DEFAULT_FOR = Duration.ofHours(4);
 
     // --- Evaluation-time state (doc/specs/drop-rule.md "Evaluation") -- keyed by rule id;
     // cleaned up in forgetEvaluationState whenever a rule is removed, so a long-running process
@@ -283,8 +293,21 @@ public final class RuleService implements RuleOperations {
      * written to the state file (the vendor file is their persistence), so their tier is {@code
      * SESSION} internally and they report as vendor rules instead. No capability check
      * (vendor-config-epic.md Decision #11); one {@code "vendor-defaults"} audit record per rule.
+     * Each rule as attached here is its <em>baseline</em>: what {@code reset rule} returns it to
+     * (doc/specs/alter-rule.md "Vendor rules").
      */
     public void attachVendorRules(List<VendorDefaults.RuleDefault> rules, Instant now) {
+        attachVendorRules(rules, true, now);
+    }
+
+    /**
+     * @param vendorDefaultsLoaded whether the vendor defaults file loaded. When it didn't (not
+     *                             configured, or rejected), {@link #resumeFromStateStore} leaves a
+     *                             saved vendor-rule alteration in the state file untouched instead
+     *                             of dropping it as orphaned (doc/specs/alter-rule.md "Restart", A9)
+     */
+    public void attachVendorRules(List<VendorDefaults.RuleDefault> rules, boolean vendorDefaultsLoaded, Instant now) {
+        this.vendorDefaultsLoaded = vendorDefaultsLoaded;
         for (VendorDefaults.RuleDefault vendor : rules) {
             try {
                 RuleFactory factory = switch (vendor.action()) {
@@ -297,7 +320,7 @@ public final class RuleService implements RuleOperations {
                 }
                 LogRule rule = factory.create(vendor.id(), vendor.loggerName(), vendor.matchers(), vendor.reason(),
                         PersistenceTier.SESSION, null, now, Map.of());
-                vendorRuleIds.add(rule.id());
+                vendorBaselines.put(rule.id(), rule);
                 registry.attach(rule);
                 auditLog.record(new AuditRecord(now, principal, VendorDefaults.AUDIT_SOURCE, rule.loggerName(), null,
                         describe(rule), rule.reason(), AuditRecord.Action.MUTATION));
@@ -309,53 +332,191 @@ public final class RuleService implements RuleOperations {
     }
 
     private boolean isVendorRule(String id) {
-        return vendorRuleIds.contains(id);
+        return vendorBaselines.containsKey(id);
+    }
+
+    /** A vendor rule currently carrying an {@code alter rule} override rather than its baseline. */
+    private boolean isAlteredVendorRule(LogRule rule) {
+        LogRule baseline = vendorBaselines.get(rule.id());
+        return baseline != null && baseline != rule;
     }
 
     private RuleView view(LogRule rule) {
         boolean vendor = isVendorRule(rule.id());
         return new RuleView(rule, context, hitCount(rule.id()), vendor ? VendorDefaults.AUDIT_SOURCE : null,
-                vendor && suspendedVendorRules.containsKey(rule.id()));
+                vendor && toNativeVendorRules.containsKey(rule.id()), isAlteredVendorRule(rule));
+    }
+
+    /** Whether this service holds {@code id} at all -- attached, or a vendor rule switched off until restart. */
+    public boolean holds(String id) {
+        return registry.findById(id).isPresent() || toNativeVendorRules.containsKey(id);
     }
 
     /**
-     * Detaches a vendor rule until restart -- doc/specs/vendor-defaults.md "Rules". Kept in
-     * {@link #suspendedVendorRules} so it stays listed; the file itself is untouched.
+     * {@code logctl alter rule <id>} -- doc/specs/alter-rule.md. Changes only the parts {@code
+     * change} names (A3); the resulting rule must pass {@code add rule}'s checks (A4). An operator
+     * rule is changed in place (A6); a vendor rule gets an override on top of its baseline (A7).
+     * The swap is atomic, the id is kept, and the hit count starts over only if the definition
+     * changed (A5).
+     *
+     * @param tier      the new lifetime, or {@code null} to keep the current one -- except for an
+     *                  unaltered vendor rule, whose first alteration defaults to {@code for 4h}
+     * @param expiresIn required iff {@code tier} is {@code FOR}
+     * @return empty if no rule with this id exists here
+     * @throws IllegalArgumentException if the change is empty, doesn't fit the rule's action, would
+     *                                  leave a drop with no content matcher, or targets a vendor
+     *                                  rule switched off until restart
      */
-    private void suspendVendorRule(LogRule rule) {
-        registry.removeById(rule.id());
-        suspendedVendorRules.put(rule.id(), rule);
-        // Evaluation state is left alone: the vendor set is small and fixed, and keeping the hit
-        // counter lets `list rules` show what the rule had matched before it was suspended.
-        auditLog.record(new AuditRecord(Instant.now(), principal, source, rule.loggerName(), describe(rule), null,
-                "vendor default suspended until restart", AuditRecord.Action.REVERSION));
+    @Override
+    public Optional<RuleAlteration> alterRule(String id, RuleChange change, PersistenceTier tier, Duration expiresIn) {
+        Objects.requireNonNull(id, "id");
+        Objects.requireNonNull(change, "change");
+        if (change.isEmpty() && tier == null) {
+            throw new IllegalArgumentException("nothing to alter -- name at least one part of the rule, a tier, "
+                    + "or --reason.");
+        }
+        if (tier == PersistenceTier.FOR) {
+            if (expiresIn == null || expiresIn.isZero() || expiresIn.isNegative()) {
+                throw new IllegalArgumentException("tier FOR requires a positive duration");
+            }
+        } else if (expiresIn != null) {
+            throw new IllegalArgumentException("a duration applies only to tier FOR");
+        }
+        requireCapability(Capability.RULES_AUTHOR);
+        requireCapability(Capability.SUPPRESS);
+        if (toNativeVendorRules.containsKey(id)) {
+            throw new IllegalArgumentException(id + " is switched off until restart -- 'reset rule " + id
+                    + "' switches it back on first.");
+        }
+        Optional<LogRule> found = registry.findById(id);
+        if (found.isEmpty()) {
+            return Optional.empty();
+        }
+        LogRule current = found.get();
+        boolean firstVendorAlteration = isVendorRule(id) && !isAlteredVendorRule(current);
+
+        Instant now = Instant.now();
+        PersistenceTier newTier;
+        Instant newExpiresAt;
+        if (tier != null) {
+            newTier = tier;
+            newExpiresAt = tier == PersistenceTier.FOR ? now.plus(expiresIn) : null;
+        } else if (firstVendorAlteration) {
+            newTier = PersistenceTier.FOR;
+            newExpiresAt = now.plus(VENDOR_ALTERATION_DEFAULT_FOR);
+        } else {
+            newTier = current.tier();
+            newExpiresAt = current.expiresAt();
+        }
+        String newReason = change.reason() != null ? change.reason() : current.reason();
+        Instant createdAt = firstVendorAlteration ? now : current.createdAt();
+        LogRule candidate = rebuild(current, change, newReason, newTier, newExpiresAt, createdAt);
+
+        boolean definitionChanged = !sameDefinition(current, candidate);
+        boolean reasonChanged = !Objects.equals(current.reason(), candidate.reason());
+        boolean lifetimeChanged = tier != null
+                && (tier == PersistenceTier.FOR || tier != current.tier() || firstVendorAlteration);
+        RuleView before = view(current);
+        if (!definitionChanged && !reasonChanged && !lifetimeChanged) {
+            return Optional.of(new RuleAlteration(before, before, false));
+        }
+        if (candidate.tier() != PersistenceTier.SESSION && !policy.isGranted(Capability.PERSIST)) {
+            throw new CapabilityDeniedException(Capability.PERSIST);
+        }
+
+        String previousValue = describeFull(current, true);
+        if (!registry.replaceIfCurrent(current, candidate)) {
+            throw new IllegalStateException("rule " + id + " changed while it was being altered -- try again.");
+        }
+        if (definitionChanged) {
+            forgetEvaluationState(id);
+        }
+        if (candidate.tier() != PersistenceTier.SESSION) {
+            safePersist(() -> stateStore.saveRule(toPersisted(candidate)));
+        } else if (current.tier() != PersistenceTier.SESSION) {
+            safePersist(() -> stateStore.removeRule(id));
+        }
+        auditLog.record(new AuditRecord(now, principal, source, current.loggerName(), previousValue,
+                describeFull(candidate, false), newReason, AuditRecord.Action.MUTATION));
+        return Optional.of(new RuleAlteration(before, view(candidate), true));
+    }
+
+    /** {@code current} with {@code change} applied -- same id, logger and action (A2). */
+    private static LogRule rebuild(LogRule current, RuleChange change, String reason, PersistenceTier tier,
+            Instant expiresAt, Instant createdAt) {
+        CompiledMatchers matchers = change.applyTo(current.matchers());
+        if (current instanceof Drop drop) {
+            if (change.touchesTrimOnly()) {
+                throw new IllegalArgumentException("--frames / --collapse-causes apply only to a trim rule; "
+                        + current.id() + " is a drop.");
+            }
+            if (matchers.messageContains() == null && matchers.throwableType() == null
+                    && matchers.throwableMessageContains() == null) {
+                throw new IllegalArgumentException(current.id() + " would be left with no content matcher, and a "
+                        + "drop needs one -- 'reset rule " + current.id() + "' removes the rule, 'set logger' "
+                        + "changes the logger's level.");
+            }
+            SampleFullPolicy sampleFull = drop.sampleFull();
+            if (change.sampleFull() != null) {
+                // --no-sample-full keeps the interval, so a later --sample-full without one... has one.
+                sampleFull = change.sampleFull().enabled() ? change.sampleFull()
+                        : new SampleFullPolicy(false, drop.sampleFull().every());
+            }
+            return new Drop(current.id(), current.loggerName(), matchers, reason, tier, expiresAt, createdAt,
+                    sampleFull);
+        }
+        if (current instanceof Trim trim) {
+            if (change.touchesDropOnly()) {
+                throw new IllegalArgumentException("--sample-full / --no-sample-full apply only to a drop rule; "
+                        + current.id() + " is a trim.");
+            }
+            int frames = change.frames() != null ? change.frames() : trim.frames();
+            boolean collapseCauses = change.collapseCauses() != null ? change.collapseCauses() : trim.collapseCauses();
+            return new Trim(current.id(), current.loggerName(), matchers, reason, tier, expiresAt, createdAt, frames,
+                    collapseCauses);
+        }
+        throw new IllegalArgumentException("rule " + current.id() + " (" + current.actionName()
+                + ") can't be altered.");
+    }
+
+    /** Same action, matchers and action options -- what the hit count and sampling state describe (A5). */
+    private static boolean sameDefinition(LogRule a, LogRule b) {
+        if (a.getClass() != b.getClass() || !a.matchers().equals(b.matchers())) {
+            return false;
+        }
+        if (a instanceof Drop da && b instanceof Drop db) {
+            return da.sampleFull().equals(db.sampleFull());
+        }
+        if (a instanceof Trim ta && b instanceof Trim tb) {
+            return ta.frames() == tb.frames() && ta.collapseCauses() == tb.collapseCauses();
+        }
+        return true;
     }
 
     /**
      * {@code reset rule <id>} — a single named id is "one specific thing":
      * refuses outright if it's {@code STICKY} and {@code includeSticky}
      * wasn't passed, mirroring {@code reset-command-surface.md}'s Decision
-     * #1 exactly. Empty if no rule with this id exists (a no-op, not an
+     * #1 exactly. Empty if there was nothing to reset (a no-op, not an
      * error, same "unknown target" discipline every other reset already
      * follows).
+     *
+     * <p>A vendor rule is reset, never removed (doc/specs/alter-rule.md "Reset", A8): back to the
+     * vendor's definition (and back on, if it was switched off), or with {@code toNative} switched
+     * off until restart. On an operator rule {@code toNative} is the same as a plain reset.
      */
     @Override
-    public Optional<RuleView> resetRule(String id, boolean includeSticky, boolean includeVendorDefaults) {
+    public Optional<RuleView> resetRule(String id, boolean includeSticky, boolean toNative) {
         Objects.requireNonNull(id, "id");
         requireCapability(Capability.RULES_AUTHOR);
+        if (isVendorRule(id)) {
+            return resetVendorRule(id, includeSticky, toNative);
+        }
         Optional<LogRule> existing = registry.findById(id);
         if (existing.isEmpty()) {
-            return Optional.empty(); // unknown -- or a vendor rule already suspended: nothing left to do
+            return Optional.empty(); // unknown
         }
         LogRule rule = existing.get();
-        if (isVendorRule(id)) {
-            if (!includeVendorDefaults) {
-                throw new IllegalArgumentException(id + " is a vendor default -- reset refused without "
-                        + "--include-vendor-defaults (which switches it off until the next restart).");
-            }
-            suspendVendorRule(rule);
-            return Optional.of(view(rule));
-        }
         if (rule.tier() == PersistenceTier.STICKY && !includeSticky) {
             throw new IllegalArgumentException(id + " is STICKY -- reset refused without --include-sticky.");
         }
@@ -367,11 +528,81 @@ public final class RuleService implements RuleOperations {
         return Optional.of(new RuleView(rule, context, finalHitCount));
     }
 
+    private Optional<RuleView> resetVendorRule(String id, boolean includeSticky, boolean toNative) {
+        LogRule baseline = vendorBaselines.get(id);
+        if (toNativeVendorRules.containsKey(id)) {
+            if (toNative) {
+                return Optional.empty(); // already off
+            }
+            switchVendorRuleBackOn(baseline);
+            return Optional.of(view(baseline));
+        }
+        Optional<LogRule> existing = registry.findById(id);
+        if (existing.isEmpty()) {
+            return Optional.empty();
+        }
+        LogRule current = existing.get();
+        boolean altered = current != baseline;
+        if (altered && current.tier() == PersistenceTier.STICKY && !includeSticky) {
+            throw new IllegalArgumentException(id + " has a STICKY alteration -- reset refused without "
+                    + "--include-sticky.");
+        }
+        if (toNative) {
+            switchVendorRuleOff(current, baseline);
+        } else if (altered) {
+            restoreVendorDefinition(current, baseline, source, null);
+        } else {
+            return Optional.empty(); // already at its baseline
+        }
+        if (current.tier() != PersistenceTier.SESSION) {
+            safePersist(() -> stateStore.removeRule(id));
+        }
+        return Optional.of(view(baseline));
+    }
+
+    /** {@code reset … --to-native} on a vendor rule: detached until restart, still listed. The caller removes a persisted alteration's row. */
+    private void switchVendorRuleOff(LogRule current, LogRule baseline) {
+        if (!registry.removeIfCurrent(current)) {
+            throw new IllegalStateException("rule " + current.id() + " changed while it was being reset -- try again.");
+        }
+        toNativeVendorRules.put(baseline.id(), baseline);
+        if (!sameDefinition(current, baseline)) {
+            forgetEvaluationState(current.id());
+        }
+        // Otherwise evaluation state is left alone: the vendor set is small and fixed, and keeping the hit
+        // counter lets `list rules` show what the rule had matched before it was switched off.
+        auditLog.record(new AuditRecord(Instant.now(), principal, source, current.loggerName(),
+                describeFull(current, true), null, "vendor default switched off until restart",
+                AuditRecord.Action.REVERSION));
+    }
+
+    /** A plain reset of a vendor rule switched off with {@code --to-native}: back on, with the vendor's definition. */
+    private void switchVendorRuleBackOn(LogRule baseline) {
+        if (toNativeVendorRules.remove(baseline.id(), baseline)) {
+            registry.attach(baseline);
+            auditLog.record(new AuditRecord(Instant.now(), principal, source, baseline.loggerName(), null,
+                    describeFull(baseline, false), "vendor default switched back on", AuditRecord.Action.MUTATION));
+        }
+    }
+
+    /** Replaces an alteration with the vendor's definition. The caller removes a persisted alteration's row. */
+    private void restoreVendorDefinition(LogRule current, LogRule baseline, String auditSource, String auditReason) {
+        if (!registry.replaceIfCurrent(current, baseline)) {
+            throw new IllegalStateException("rule " + current.id() + " changed while it was being reset -- try again.");
+        }
+        if (!sameDefinition(current, baseline)) {
+            forgetEvaluationState(current.id());
+        }
+        auditLog.record(new AuditRecord(Instant.now(), principal, auditSource, current.loggerName(),
+                describeFull(current, true), describeFull(baseline, false), auditReason,
+                AuditRecord.Action.REVERSION));
+    }
+
     /** {@code reset rules} — bulk, skip-and-report shape (mirrors {@code reset loggers}). */
     @Override
-    public RuleResetOutcome resetAllRules(boolean includeSticky, boolean includeVendorDefaults) {
+    public RuleResetOutcome resetAllRules(boolean includeSticky, boolean toNative) {
         requireCapability(Capability.RULES_AUTHOR);
-        return removeMatching(registry.all(), includeSticky, includeVendorDefaults);
+        return resetMatching(registry.all(), List.copyOf(toNativeVendorRules.values()), includeSticky, toNative);
     }
 
     /**
@@ -384,54 +615,79 @@ public final class RuleService implements RuleOperations {
      * for that (via {@code LEVEL_LOWER}) must not be newly blocked by a
      * capability {@code reset logger} never used to need, just because rule
      * cleanup exists now. So the {@link Capability#RULES_AUTHOR} check runs
-     * only when there is actually something to remove; a target with no
+     * only when there is actually something to reset; a target with no
      * attached rules costs nothing to authorize (a code-review finding).
      */
     @Override
-    public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky,
-            boolean includeVendorDefaults) {
+    public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky, boolean toNative) {
         Objects.requireNonNull(loggerName, "loggerName");
         List<LogRule> candidates = registry.directRulesFor(loggerName);
-        if (candidates.isEmpty()) {
+        List<LogRule> switchedOff = toNativeVendorRules.values().stream()
+                .filter(rule -> rule.loggerName().equals(loggerName))
+                .toList();
+        boolean anythingToReset = candidates.stream().anyMatch(rule -> !isVendorRule(rule.id())
+                || isAlteredVendorRule(rule) || toNative) || (!switchedOff.isEmpty() && !toNative);
+        if (!anythingToReset) {
             return RuleResetOutcome.nothingReset();
         }
         requireCapability(Capability.RULES_AUTHOR);
-        return removeMatching(candidates, includeSticky, includeVendorDefaults);
+        return resetMatching(candidates, switchedOff, includeSticky, toNative);
     }
 
-    private RuleResetOutcome removeMatching(List<LogRule> candidates, boolean includeSticky,
-            boolean includeVendorDefaults) {
+    /**
+     * @param switchedOff vendor rules in scope that are switched off until restart -- a plain reset
+     *                    switches them back on (A8)
+     */
+    private RuleResetOutcome resetMatching(List<LogRule> candidates, List<LogRule> switchedOff,
+            boolean includeSticky, boolean toNative) {
         List<String> removed = new ArrayList<>();
         List<String> skippedSticky = new ArrayList<>();
-        List<String> skippedVendor = new ArrayList<>();
+        List<String> vendorReset = new ArrayList<>();
+        List<String> persistedRemovals = new ArrayList<>();
         for (LogRule rule : candidates) {
-            if (isVendorRule(rule.id())) {
-                if (includeVendorDefaults) {
-                    suspendVendorRule(rule);
-                    removed.add(rule.id());
-                } else {
-                    skippedVendor.add(rule.id());
-                }
-                continue;
-            }
             if (rule.tier() == PersistenceTier.STICKY && !includeSticky) {
-                skippedSticky.add(rule.id());
+                skippedSticky.add(rule.id()); // an operator rule, or a vendor rule's sticky alteration
                 continue;
             }
-            registry.removeById(rule.id());
-            forgetEvaluationState(rule.id());
-            removed.add(rule.id());
-            auditRemoval(rule);
+            if (isVendorRule(rule.id())) {
+                LogRule baseline = vendorBaselines.get(rule.id());
+                try {
+                    if (toNative) {
+                        switchVendorRuleOff(rule, baseline);
+                    } else if (rule != baseline) {
+                        restoreVendorDefinition(rule, baseline, source, null);
+                    } else {
+                        continue; // already at its baseline
+                    }
+                } catch (IllegalStateException concurrentlyChanged) {
+                    // Swept, altered or reset since the snapshot -- whoever changed it owns its state.
+                    // Skip it rather than abort the batch, which would leave the operator rules already
+                    // removed above still in the state file (they'd come back on restart).
+                    continue;
+                }
+                vendorReset.add(rule.id());
+            } else {
+                registry.removeById(rule.id());
+                forgetEvaluationState(rule.id());
+                removed.add(rule.id());
+                auditRemoval(rule);
+            }
+            if (rule.tier() != PersistenceTier.SESSION) {
+                persistedRemovals.add(rule.id());
+            }
         }
-        if (!removed.isEmpty()) {
+        if (!toNative) {
+            for (LogRule baseline : switchedOff) {
+                switchVendorRuleBackOn(baseline);
+                vendorReset.add(baseline.id());
+            }
+        }
+        if (!persistedRemovals.isEmpty()) {
             // One rewrite for the whole batch, not one per rule -- doc/specs/
             // persistence.md "Batch removal" (issue #17)'s precedent.
-            List<String> persistedRemovals = removed.stream().filter(id -> !isVendorRule(id)).toList();
-            if (!persistedRemovals.isEmpty()) {
-                safePersist(() -> stateStore.removeAllRules(persistedRemovals));
-            }
+            safePersist(() -> stateStore.removeAllRules(persistedRemovals));
         }
-        return new RuleResetOutcome(removed, skippedSticky, skippedVendor);
+        return new RuleResetOutcome(removed, skippedSticky, vendorReset);
     }
 
     /**
@@ -446,8 +702,19 @@ public final class RuleService implements RuleOperations {
     public void sweepExpiredRules(Instant now) {
         List<String> expired = new ArrayList<>();
         for (LogRule rule : registry.all()) {
-            if (rule.tier() == PersistenceTier.FOR && rule.expiresAt() != null && !rule.expiresAt().isAfter(now)
-                    && registry.removeIfCurrent(rule)) {
+            if (rule.tier() != PersistenceTier.FOR || rule.expiresAt() == null || rule.expiresAt().isAfter(now)) {
+                continue;
+            }
+            if (isVendorRule(rule.id())) {
+                // doc/specs/alter-rule.md A7: an expired vendor-rule alteration returns the rule to the vendor's
+                // definition rather than removing it.
+                try {
+                    restoreVendorDefinition(rule, vendorBaselines.get(rule.id()), "expiry-sweep", "expired");
+                } catch (IllegalStateException concurrentlyChanged) {
+                    continue; // reset or altered again since the snapshot -- nothing expired
+                }
+                expired.add(rule.id());
+            } else if (registry.removeIfCurrent(rule)) {
                 forgetEvaluationState(rule.id());
                 expired.add(rule.id());
                 auditLog.record(new AuditRecord(now, principal, "expiry-sweep", rule.loggerName(), describe(rule),
@@ -466,6 +733,18 @@ public final class RuleService implements RuleOperations {
 
     private static String describe(LogRule rule) {
         return rule.id() + " (" + rule.actionName() + ")";
+    }
+
+    /**
+     * An audit value naming the whole definition -- doc/specs/alter-rule.md "Audit": id, action,
+     * the {@code list rules --verbose} expression and the lifetime, plus the hit count so far when
+     * {@code withHits} (the count an alteration is about to start over).
+     */
+    private String describeFull(LogRule rule, boolean withHits) {
+        String lifetime = vendorBaselines.get(rule.id()) == rule ? VendorDefaults.AUDIT_SOURCE
+                : rule.tier().name() + (rule.expiresAt() == null ? "" : " until " + rule.expiresAt());
+        return describe(rule) + " " + RuleExpression.of(rule) + " [" + lifetime
+                + (withHits ? ", " + hitCount(rule.id()) + " hits" : "") + "]";
     }
 
     /**
@@ -516,6 +795,11 @@ public final class RuleService implements RuleOperations {
             return;
         }
 
+        if (persisted.id().startsWith(VendorDefaults.RULE_ID_PREFIX)) {
+            resumeVendorAlteration(persisted, now);
+            return;
+        }
+
         RuleFactory factory = actionFactories.get(persisted.action());
         if (factory == null) {
             // No rule type registered for this action (this slice ships none)
@@ -532,6 +816,47 @@ public final class RuleService implements RuleOperations {
         registry.attach(rule);
         auditLog.record(new AuditRecord(now, principal, "resume", persisted.loggerName(), null, describe(rule),
                 persisted.reason(), AuditRecord.Action.MUTATION));
+    }
+
+    /**
+     * A saved {@code alter rule} override of a vendor rule -- doc/specs/alter-rule.md "Restart"
+     * (A9). Applied over the vendor rule {@link #attachVendorRules} just attached. Dropped (row
+     * removed, audited, warned) when the vendor defaults file loaded but no longer has a rule with
+     * this id, action and logger; left untouched in the store when the file didn't load at all, so
+     * a broken or missing file on one start doesn't destroy the alterations.
+     */
+    private void resumeVendorAlteration(PersistedRule persisted, Instant now) {
+        if (!vendorDefaultsLoaded) {
+            System.err.println("[logaperture-state] alteration of vendor rule '" + persisted.id()
+                    + "' not applied: the vendor defaults file isn't loaded; kept in the state file");
+            return;
+        }
+        LogRule baseline = vendorBaselines.get(persisted.id());
+        if (baseline == null || !baseline.actionName().equals(persisted.action())
+                || !baseline.loggerName().equals(persisted.loggerName())) {
+            System.err.println("[logaperture-state] WARN dropping the saved alteration of vendor rule '"
+                    + persisted.id() + "': the vendor defaults file no longer has that " + persisted.action()
+                    + " rule on " + persisted.loggerName());
+            safePersist(() -> stateStore.removeRule(persisted.id()));
+            auditLog.record(new AuditRecord(now, principal, "resume", persisted.loggerName(),
+                    persisted.id() + " (" + persisted.action() + ")", null,
+                    "vendor rule no longer in the vendor defaults file", AuditRecord.Action.REVERSION));
+            return;
+        }
+        RuleFactory factory = actionFactories.get(persisted.action());
+        if (factory == null) {
+            System.err.println("[logaperture-state] alteration of vendor rule '" + persisted.id() + "' ("
+                    + persisted.action() + ") not applied: no rule type registered for that action");
+            return;
+        }
+        LogRule alteration = factory.create(persisted.id(), persisted.loggerName(), persisted.matchers(),
+                persisted.reason(), persisted.tier(), persisted.expiresAt(), persisted.createdAt(),
+                persisted.payload());
+        if (registry.replaceIfCurrent(baseline, alteration)) {
+            auditLog.record(new AuditRecord(now, principal, "resume", persisted.loggerName(),
+                    describeFull(baseline, false), describeFull(alteration, false), persisted.reason(),
+                    AuditRecord.Action.MUTATION));
+        }
     }
 
     /** So a fresh {@link #attach} after resume never mints an id that collides with a just-resumed one. */
@@ -574,8 +899,8 @@ public final class RuleService implements RuleOperations {
         for (LogRule rule : registry.all()) {
             views.add(view(rule));
         }
-        for (LogRule suspended : suspendedVendorRules.values()) {
-            views.add(view(suspended));
+        for (LogRule switchedOff : toNativeVendorRules.values()) {
+            views.add(view(switchedOff));
         }
         return List.copyOf(views);
     }

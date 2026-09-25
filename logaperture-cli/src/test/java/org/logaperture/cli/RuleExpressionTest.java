@@ -38,13 +38,13 @@ class RuleExpressionTest {
             boolean anyCause, String levelAtMost, Boolean sampleFull, Long everyMillis) {
         return new RuleData("r1", "org.myorg.MyClass", "drop", levelAtMost, messageContains, ignoreCase, throwable,
                 throwableMessage, anyCause, "why", "STICKY", null, "2026-09-25T12:00:00Z", "system", 0, null, null,
-                null, false, sampleFull, everyMillis);
+                null, false, sampleFull, everyMillis, false);
     }
 
     private static RuleData trim(String levelAtMost, int frames, boolean collapseCauses) {
         return new RuleData("r2", "com.destiny.AutoUpdateHelper", "trim", levelAtMost, null, false,
                 "java.net.ConnectException", null, false, null, "SESSION", null, "2026-09-25T12:00:00Z", "system", 0,
-                frames, collapseCauses, "vendor-defaults", false, null, null);
+                frames, collapseCauses, "vendor-defaults", false, null, null, false);
     }
 
     @Test

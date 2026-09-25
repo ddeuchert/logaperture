@@ -17,13 +17,20 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   column; `logctl status`, `env` and `doctor` report whether the file loaded. A file with errors
   is rejected as a whole, with every problem listed, and never stops the application from
   starting; `doctor` warns if the JVM's account can write the file. Vendor rules have `vendor:`
-  ids; `reset rule vendor:<id> --include-vendor-defaults` switches one off until restart (issues
-  #60, #61; `doc/specs/vendor-defaults.md`).
-- **`logctl reset … --to-native`** — on `reset logger`, `loggers`, `handler`, `handlers` and
-  `default-handler`: return to the application's own logging configuration, ignoring the vendor
+  ids and reset the way loggers do (see `logctl alter rule` below) (issues #60, #61;
+  `doc/specs/vendor-defaults.md`).
+- **`logctl reset … --to-native`** — on `reset logger`, `loggers`, `handler`, `handlers`,
+  `default-handler`, `rule` and `rules`: return to the application's own logging configuration, ignoring the vendor
   defaults until restart; a plain `reset` puts the vendor default back (issue #94;
   `doc/specs/reset-to-native.md`). The layers and terms (native configuration, vendor defaults,
   baseline, override, effective level) are now defined in one place, spec §6.6.
+- **`logctl alter rule <id>`** — change a rule in place, giving only what changes: `alter rule r3
+  --below WARN`, `alter rule r3 --message-contains green`. It keeps its id; the `--no-` options
+  (`--no-throwable`, `--no-message-contains`, …) remove an optional part, and a tier (`alter rule
+  r3 sticky`) changes how long it lasts. The hit count starts over when what the rule matches
+  changes. A vendor rule can be altered too: `reset rule vendor:<id>` puts the vendor's definition
+  back, and `reset rule vendor:<id> --to-native` switches it off until restart (issue #96;
+  `doc/specs/alter-rule.md`).
 - **`logctl list rules --verbose`** — adds an `EXPRESSION` column: each rule's defining options,
   written as `add rule drop|trim` takes them (e.g. `--message-contains "Can't connect"
   --throwable java.net.ConnectException --below WARN --sample-full 5m`), with every default spelled

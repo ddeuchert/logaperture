@@ -23,6 +23,7 @@ import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
+import org.logaperture.control.jmx.RuleAlterationData;
 import org.logaperture.control.jmx.RuleData;
 import org.logaperture.control.jmx.SetLevelResultData;
 import org.logaperture.control.jmx.SquelchedLoggerData;
@@ -339,21 +340,12 @@ final class Json {
      * the outcome and then never wrote it to the JSON response).
      */
     static String resetLoggerWithRules(LoggerInfoData after, String target, boolean wasOverridden,
-            List<String> removedRuleIds, List<String> skippedStickyRuleIds) {
+            List<String> removedRuleIds, List<String> skippedStickyRuleIds, List<String> vendorResetRuleIds) {
         Obj obj = after != null ? loggerObj(after) : resetObj(target, wasOverridden);
         return obj
                 .raw("removedRuleIds", stringArray(removedRuleIds))
                 .raw("skippedStickyRuleIds", stringArray(skippedStickyRuleIds))
-                .toString();
-    }
-
-    static String resetLoggerWithRules(LoggerInfoData after, String target, boolean wasOverridden,
-            List<String> removedRuleIds, List<String> skippedStickyRuleIds, List<String> skippedVendorRuleIds) {
-        Obj obj = after != null ? loggerObj(after) : resetObj(target, wasOverridden);
-        return obj
-                .raw("removedRuleIds", stringArray(removedRuleIds))
-                .raw("skippedStickyRuleIds", stringArray(skippedStickyRuleIds))
-                .raw("skippedVendorRuleIds", stringArray(skippedVendorRuleIds))
+                .raw("vendorResetRuleIds", stringArray(vendorResetRuleIds))
                 .toString();
     }
 
@@ -427,6 +419,10 @@ final class Json {
     }
 
     static String rule(RuleData row) {
+        return ruleObj(row).toString();
+    }
+
+    private static Obj ruleObj(RuleData row) {
         return new Obj()
                 .str("id", row.getId())
                 .str("loggerName", row.getLoggerName())
@@ -446,39 +442,49 @@ final class Json {
                 .raw("frames", row.getFrames() == null ? "null" : String.valueOf(row.getFrames()))
                 .raw("collapseCauses", row.getCollapseCauses() == null ? "null" : String.valueOf(row.getCollapseCauses()))
                 .str("origin", row.getOrigin())
-                .bool("suspended", row.isSuspended())
+                .bool("toNative", row.isToNative())
+                .bool("altered", row.isAltered())
                 .raw("sampleFullEnabled", row.getSampleFullEnabled() == null ? "null"
                         : String.valueOf(row.getSampleFullEnabled()))
                 .raw("sampleFullEveryMillis", row.getSampleFullEveryMillis() == null ? "null"
                         : String.valueOf(row.getSampleFullEveryMillis()))
-                .str("expression", RuleExpression.of(row))
+                .str("expression", RuleExpression.of(row));
+    }
+
+    /**
+     * {@code alter rule <id> --json} (doc/specs/alter-rule.md "Command surface"): the rule as
+     * {@code list rules --json} shows it, plus what it was.
+     */
+    static String alterRule(RuleAlterationData result) {
+        return ruleObj(result.getRule())
+                .str("previousExpression", result.getPreviousExpression())
+                .str("previousTier", result.getPreviousTier())
+                .str("previousExpiresAt", result.getPreviousExpiresAt())
+                .bool("changed", result.isChanged())
                 .toString();
     }
 
-    /** {@code reset rule <id> --json} (doc/specs/rule-pipeline-foundation.md). */
-    static String resetRule(String id, boolean removed) {
-        return resetRule(id, removed, false);
-    }
-
-    /** {@code suspended}: a vendor defaults rule switched off until restart rather than removed. */
-    static String resetRule(String id, boolean removed, boolean suspended) {
+    /**
+     * {@code reset rule <id> --json} with a vendor rule's outcome (doc/specs/alter-rule.md "Reset"):
+     * {@code removed} for an operator rule; {@code vendorReset} for a vendor rule put back to its
+     * definition or switched on or off, with {@code toNative} saying which.
+     */
+    static String resetRule(String id, RuleData result) {
+        boolean vendor = result != null && result.getOrigin() != null;
         return new Obj()
                 .str("id", id)
-                .bool("removed", removed)
-                .bool("suspended", suspended)
+                .bool("removed", result != null && !vendor)
+                .bool("vendorReset", vendor)
+                .bool("toNative", vendor && result.isToNative())
                 .toString();
     }
 
     /** {@code reset rules --json} / {@code reset logger <target> --json}'s rule side effect. */
-    static String resetAllRules(List<String> removed, List<String> skippedSticky) {
-        return resetAllRules(removed, skippedSticky, List.of());
-    }
-
-    static String resetAllRules(List<String> removed, List<String> skippedSticky, List<String> skippedVendor) {
+    static String resetAllRules(List<String> removed, List<String> skippedSticky, List<String> vendorReset) {
         return new Obj()
                 .raw("removedIds", stringArray(removed))
                 .raw("skippedStickyIds", stringArray(skippedSticky))
-                .raw("skippedVendorIds", stringArray(skippedVendor))
+                .raw("vendorResetIds", stringArray(vendorReset))
                 .toString();
     }
 

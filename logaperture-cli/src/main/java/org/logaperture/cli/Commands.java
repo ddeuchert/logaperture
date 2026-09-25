@@ -565,20 +565,11 @@ final class Commands {
     }
 
     /**
-     * @param includeVendorDefaults doc/specs/vendor-defaults.md "Rules": also switch off, until
-     *                              restart, vendor defaults rules attached directly to {@code target}
-     */
-    static Command resetLogger(String target, boolean includeSticky, boolean includeVendorDefaults, boolean json) {
-        return resetLogger(target, includeSticky, includeVendorDefaults, false, json);
-    }
-
-    /**
      * @param toNative doc/specs/reset-to-native.md: land on the native level, ignoring the vendor
-     *                 defaults until restart; rules attached to {@code target} are reset exactly as
-     *                 without it
+     *                 defaults until restart; vendor rules attached to {@code target} are switched
+     *                 off until restart too (doc/specs/alter-rule.md "Reset", A8)
      */
-    static Command resetLogger(String target, boolean includeSticky, boolean includeVendorDefaults, boolean toNative,
-            boolean json) {
+    static Command resetLogger(String target, boolean includeSticky, boolean toNative, boolean json) {
         return (mbean, out, in, interactive) -> {
             if (isPattern(target)) {
                 return resetLoggerPattern(mbean, out, target, includeSticky, toNative, json);
@@ -596,10 +587,10 @@ final class Commands {
             // command's own --include-sticky. Text output only -- see that
             // section's note on scoping this to the exact-name path for now.
             org.logaperture.control.jmx.RuleResetOutcomeData rulesOutcome =
-                    mbean.resetRulesForLogger(target, includeSticky, includeVendorDefaults);
+                    mbean.resetRulesForLogger(target, includeSticky, toNative);
             if (json) {
                 out.println(Json.resetLoggerWithRules(after, target, wasOverridden, rulesOutcome.getRemovedIds(),
-                        rulesOutcome.getSkippedStickyIds(), rulesOutcome.getSkippedVendorIds()));
+                        rulesOutcome.getSkippedStickyIds(), rulesOutcome.getVendorResetIds()));
                 return CliError.OK;
             }
             if (after != null) {
@@ -613,7 +604,7 @@ final class Commands {
                 out.println("Removed " + rulesOutcome.getRemovedIds().size() + " rule(s) attached to " + target + ".");
             }
             printSkippedSticky(out, "sticky rule(s)", rulesOutcome.getSkippedStickyIds());
-            printSkippedVendor(out, rulesOutcome.getSkippedVendorIds());
+            printVendorReset(out, rulesOutcome.getVendorResetIds(), toNative);
             return CliError.OK;
         };
     }
@@ -752,13 +743,15 @@ final class Commands {
         };
     }
 
-    /** The "left N vendor default rule(s) in place" line the rule-reset forms share (doc/specs/vendor-defaults.md "Rules"). */
-    private static void printSkippedVendor(java.io.PrintStream out, List<String> skipped) {
-        if (skipped.isEmpty()) {
+    /** The vendor-rule line the rule-reset forms share (doc/specs/alter-rule.md "Reset", A8). */
+    private static void printVendorReset(java.io.PrintStream out, List<String> vendorReset, boolean toNative) {
+        if (vendorReset.isEmpty()) {
             return;
         }
-        out.println("Left " + skipped.size() + " vendor default rule(s) in place (pass --include-vendor-defaults to "
-                + "switch them off until restart): " + String.join(", ", skipped));
+        out.println((toNative
+                ? "Switched off " + vendorReset.size() + " vendor rule(s) until the application restarts: "
+                : "Put " + vendorReset.size() + " vendor rule(s) back to the vendor definition: ")
+                + String.join(", ", vendorReset));
     }
 
     /** The "left N sticky override(s) in place" line every bulk/pattern reset form shares (doc/specs/reset-command-surface.md, Decision #1). */
@@ -1004,12 +997,18 @@ final class Commands {
         };
     }
 
-    /** doc/specs/vendor-defaults.md "Surfaces": a vendor rule shows its origin instead of a tier. */
+    /**
+     * doc/specs/alter-rule.md A10: a vendor rule shows its origin instead of a tier -- plus the
+     * alteration's tier when altered, or {@code (off)} when switched off until restart.
+     */
     private static String ruleTierCell(org.logaperture.control.jmx.RuleData row) {
         if (row.getOrigin() == null) {
             return row.getTier();
         }
-        return row.isSuspended() ? row.getOrigin() + " (suspended)" : row.getOrigin();
+        if (row.isToNative()) {
+            return row.getOrigin() + " (off)";
+        }
+        return row.isAltered() ? row.getOrigin() + ", " + row.getTier() : row.getOrigin();
     }
 
     /**
@@ -1023,26 +1022,86 @@ final class Commands {
     }
 
     /**
-     * @param includeVendorDefaults doc/specs/vendor-defaults.md "Rules": a {@code vendor:} rule is
-     *                              refused without it, and suspended until restart with it
+     * @param toNative doc/specs/alter-rule.md "Reset" (A8): a {@code vendor:} rule is switched off
+     *                 until restart instead of put back to the vendor's definition; an operator
+     *                 rule is removed either way
      */
-    static Command resetRule(String id, boolean includeSticky, boolean includeVendorDefaults, boolean json) {
+    static Command resetRule(String id, boolean includeSticky, boolean toNative, boolean json) {
         return (mbean, out, in, interactive) -> {
-            org.logaperture.control.jmx.RuleData removed = mbean.resetRule(id, includeSticky, includeVendorDefaults);
-            boolean suspended = removed != null && removed.isSuspended();
+            org.logaperture.control.jmx.RuleData result = mbean.resetRule(id, includeSticky, toNative);
             if (json) {
-                out.println(Json.resetRule(id, removed != null, suspended));
+                out.println(Json.resetRule(id, result));
                 return CliError.OK;
             }
-            if (removed == null) {
-                out.println("rule " + id + " — no such rule (or already suspended).");
-            } else if (suspended) {
-                out.println("rule " + id + " → suspended until the application restarts.");
+            if (result == null) {
+                out.println("rule " + id + " — nothing to reset.");
+            } else if (result.getOrigin() == null) {
+                out.println("rule " + id + " → removed.");
+            } else if (result.isToNative()) {
+                out.println("rule " + id + " → switched off until the application restarts.");
             } else {
-                out.println("rule " + id + " → reset.");
+                out.println("rule " + id + " → back to the vendor definition.");
             }
             return CliError.OK;
         };
+    }
+
+    /**
+     * {@code logctl alter rule <id>} — doc/specs/alter-rule.md "Command surface". Changes only the
+     * parts given; prints the definition before and after in {@code list rules --verbose} form.
+     * An unknown id is an error (A4): there is nothing to alter.
+     */
+    static Command alterRule(String id, RuleAlteration alteration, boolean json) {
+        return (mbean, out, in, interactive) -> {
+            org.logaperture.control.jmx.RuleAlterationData result = mbean.alterRule(id,
+                    alteration.messageContains(), alteration.messageIgnoreCase(), alteration.clearMessage(),
+                    alteration.throwableType(), alteration.clearThrowable(), alteration.throwableMessageContains(),
+                    alteration.clearThrowableMessage(), alteration.anyCause(), alteration.belowLevel(),
+                    alteration.sampleFullEnabled(), alteration.sampleFullEveryMillis(), alteration.frames(),
+                    alteration.collapseCauses(), alteration.reason(), alteration.tierName(),
+                    alteration.forSeconds());
+            if (result == null) {
+                throw new CliError(CliError.USAGE, "No rule with id '" + id + "' -- see 'logctl list rules'.");
+            }
+            if (json) {
+                out.println(Json.alterRule(result));
+                return CliError.OK;
+            }
+            org.logaperture.control.jmx.RuleData rule = result.getRule();
+            if (!result.isChanged()) {
+                out.println("rule " + id + " — no change.");
+                return CliError.OK;
+            }
+            out.println("rule " + id + " (" + rule.getAction() + ", " + rule.getLoggerName() + ") altered");
+            out.println("  was: " + result.getPreviousExpression());
+            out.println("  now: " + RuleExpression.of(rule));
+            String previousLifetime = alterationLifetime(result.getPreviousTier(), result.getPreviousExpiresAt());
+            String lifetime = rule.getOrigin() != null && !rule.isAltered() ? rule.getOrigin()
+                    : alterationLifetime(rule.getTier(), rule.getExpiresAt());
+            out.println("  tier: " + (lifetime.equals(previousLifetime) ? lifetime + ", unchanged"
+                    : "was " + previousLifetime + ", now " + lifetime));
+            return CliError.OK;
+        };
+    }
+
+    private static String alterationLifetime(String tier, String expiresAt) {
+        if (org.logaperture.control.jmx.RuleAlterationData.VENDOR_BASELINE_TIER.equals(tier)) {
+            return tier;
+        }
+        return tierDetail(tier, expiresAt);
+    }
+
+    /**
+     * {@code logctl alter rule}'s parsed parts -- each {@code null} (or {@code clear…} {@code
+     * false}) is kept as the rule has it (doc/specs/alter-rule.md "Patch semantics").
+     *
+     * @param tierName {@code null} to keep the rule's lifetime
+     */
+    record RuleAlteration(String messageContains, boolean messageIgnoreCase, boolean clearMessage,
+            String throwableType, boolean clearThrowable, String throwableMessageContains,
+            boolean clearThrowableMessage, Boolean anyCause, String belowLevel, Boolean sampleFullEnabled,
+            Long sampleFullEveryMillis, Integer frames, Boolean collapseCauses, String reason, String tierName,
+            long forSeconds) {
     }
 
     /**
@@ -1104,29 +1163,31 @@ final class Commands {
         };
     }
 
-    /** {@code logctl reset rules} — removes every attached rule, across every registered context. */
+    /** {@code logctl reset rules} — removes every operator rule and resets every vendor rule, across every registered context. */
     static Command resetAllRules(boolean includeSticky, boolean json) {
         return resetAllRules(includeSticky, false, json);
     }
 
-    static Command resetAllRules(boolean includeSticky, boolean includeVendorDefaults, boolean json) {
+    /** @param toNative switch vendor rules off until restart (doc/specs/alter-rule.md "Reset", A8) */
+    static Command resetAllRules(boolean includeSticky, boolean toNative, boolean json) {
         return (mbean, out, in, interactive) -> {
-            org.logaperture.control.jmx.RuleResetOutcomeData outcome =
-                    mbean.resetAllRules(includeSticky, includeVendorDefaults);
+            org.logaperture.control.jmx.RuleResetOutcomeData outcome = mbean.resetAllRules(includeSticky, toNative);
             List<String> removed = outcome.getRemovedIds();
             List<String> skippedSticky = outcome.getSkippedStickyIds();
-            List<String> skippedVendor = outcome.getSkippedVendorIds();
+            List<String> vendorReset = outcome.getVendorResetIds();
             if (json) {
-                out.println(Json.resetAllRules(removed, skippedSticky, skippedVendor));
+                out.println(Json.resetAllRules(removed, skippedSticky, vendorReset));
                 return CliError.OK;
             }
-            if (removed.isEmpty() && skippedSticky.isEmpty() && skippedVendor.isEmpty()) {
+            if (removed.isEmpty() && skippedSticky.isEmpty() && vendorReset.isEmpty()) {
                 out.println("No rules to reset.");
                 return CliError.OK;
             }
-            out.println("Removed " + removed.size() + " rule(s).");
+            if (!removed.isEmpty()) {
+                out.println("Removed " + removed.size() + " rule(s).");
+            }
+            printVendorReset(out, vendorReset, toNative);
             printSkippedSticky(out, "sticky rule(s)", skippedSticky);
-            printSkippedVendor(out, skippedVendor);
             return CliError.OK;
         };
     }

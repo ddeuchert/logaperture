@@ -56,7 +56,6 @@ final class Parser {
         boolean version = false;
         boolean debug = false;
         boolean includeSticky = false;
-        boolean includeVendorDefaults = false;
         boolean toNative = false;
         boolean verbose = false;
         boolean showAll = false;
@@ -72,6 +71,11 @@ final class Parser {
         boolean noSampleFull = false;
         Integer frames = null;
         boolean collapseCauses = false;
+        boolean noMessageContains = false;
+        boolean noThrowable = false;
+        boolean noThrowableMessageContains = false;
+        boolean noAnyCause = false;
+        boolean noCollapseCauses = false;
 
         for (int i = 0; i < argv.length; i++) {
             String arg = argv[i];
@@ -82,13 +86,18 @@ final class Parser {
                 case "--debug" -> debug = true;
                 case "--yes" -> yes = true;
                 case "--include-sticky" -> includeSticky = true;
-                case "--include-vendor-defaults" -> includeVendorDefaults = true;
                 case "--to-native" -> toNative = true;
                 case "--verbose" -> verbose = true;
                 case "--show-all" -> showAll = true;
                 case "--any-cause" -> anyCause = true;
                 case "--no-sample-full" -> noSampleFull = true;
                 case "--collapse-causes" -> collapseCauses = true;
+                // doc/specs/alter-rule.md "Patch semantics" (A3): clear an optional part of a rule.
+                case "--no-message-contains" -> noMessageContains = true;
+                case "--no-throwable" -> noThrowable = true;
+                case "--no-throwable-message-contains" -> noThrowableMessageContains = true;
+                case "--no-any-cause" -> noAnyCause = true;
+                case "--no-collapse-causes" -> noCollapseCauses = true;
                 case "--frames" -> {
                     i++;
                     if (i >= argv.length) {
@@ -235,25 +244,19 @@ final class Parser {
                 && rest.get(1).equals("drop");
         boolean isAddRuleTrim = command.equals("add") && rest.size() >= 2 && rest.get(0).equals("rule")
                 && rest.get(1).equals("trim");
+        boolean isAlterRule = command.equals("alter") && !rest.isEmpty() && rest.get(0).equals("rule");
 
         if (yes && !isSetLogger) {
             throw usage("--yes applies only to 'set logger'.");
         }
-        if (reason != null && !isSetLogger && !isSetHandler && !isAddRuleDrop && !isAddRuleTrim) {
-            throw usage("--reason applies only to 'set logger', 'set handler', 'add rule drop', or 'add rule trim'.");
+        if (reason != null && !isSetLogger && !isSetHandler && !isAddRuleDrop && !isAddRuleTrim && !isAlterRule) {
+            throw usage("--reason applies only to 'set logger', 'set handler', 'add rule drop', 'add rule trim', "
+                    + "or 'alter rule'.");
         }
-        if (includeVendorDefaults && !(command.equals("reset") && !rest.isEmpty()
-                && List.of("logger", "rule", "rules").contains(rest.get(0)))) {
-            // doc/specs/vendor-defaults.md "Rules": only rule resets reach vendor defaults rules --
-            // a vendor logger or handler level is simply the baseline a reset lands on.
-            throw usage("--include-vendor-defaults applies only to 'reset rule', 'reset rules' and "
-                    + "'reset logger'.");
-        }
-        if (toNative && !(command.equals("reset") && !rest.isEmpty()
-                && List.of("logger", "loggers", "handler", "handlers", "default-handler").contains(rest.get(0)))) {
-            // doc/specs/reset-to-native.md: rules are out of scope (issue #96).
+        if (toNative && !(command.equals("reset") && !rest.isEmpty() && List.of("logger", "loggers", "handler",
+                "handlers", "default-handler", "rule", "rules").contains(rest.get(0)))) {
             throw usage("--to-native applies only to 'reset logger', 'reset loggers', 'reset handler', "
-                    + "'reset handlers' and 'reset default-handler'.");
+                    + "'reset handlers', 'reset default-handler', 'reset rule' and 'reset rules'.");
         }
         if (includeSticky && !command.equals("reset")) {
             throw usage("--include-sticky applies only to 'reset'.");
@@ -267,17 +270,28 @@ final class Parser {
         if (showAll && !command.equals("list")) {
             throw usage("--show-all applies only to 'list loggers' or 'list handlers'.");
         }
-        if (!isAddRuleDrop && !isAddRuleTrim) {
+        if (!isAddRuleDrop && !isAddRuleTrim && !isAlterRule) {
             if (messageContains != null || throwableType != null || throwableMessageContains != null || anyCause
                     || belowLevel != null) {
-                throw usage("the rule-matcher options apply only to 'add rule drop' or 'add rule trim'.");
+                throw usage("the rule-matcher options apply only to 'add rule drop', 'add rule trim' or "
+                        + "'alter rule'.");
             }
         }
-        if (!isAddRuleDrop && (sampleFullEveryMillis != null || noSampleFull)) {
-            throw usage("--sample-full / --no-sample-full apply only to 'add rule drop'.");
+        if (!isAlterRule && (noMessageContains || noThrowable || noThrowableMessageContains || noAnyCause
+                || noCollapseCauses)) {
+            throw usage("--no-message-contains, --no-throwable, --no-throwable-message-contains, --no-any-cause "
+                    + "and --no-collapse-causes apply only to 'alter rule'.");
         }
-        if (!isAddRuleTrim && (frames != null || collapseCauses)) {
-            throw usage("--frames / --collapse-causes apply only to 'add rule trim'.");
+        if (!isAddRuleDrop && !isAlterRule && (sampleFullEveryMillis != null || noSampleFull)) {
+            throw usage("--sample-full / --no-sample-full apply only to 'add rule drop' or 'alter rule'.");
+        }
+        if (!isAddRuleTrim && !isAlterRule && (frames != null || collapseCauses)) {
+            throw usage("--frames / --collapse-causes apply only to 'add rule trim' or 'alter rule'.");
+        }
+        if ((messageContains != null && noMessageContains) || (throwableType != null && noThrowable)
+                || (throwableMessageContains != null && noThrowableMessageContains) || (anyCause && noAnyCause)
+                || (collapseCauses && noCollapseCauses)) {
+            throw usage("an option and its --no- form can't both be given.");
         }
         if (sampleFullEveryMillis != null && noSampleFull) {
             throw usage("only one of --sample-full / --no-sample-full.");
@@ -361,8 +375,7 @@ final class Parser {
                         if (nounRest.size() != 1) {
                             throw usage("'reset logger' needs exactly one target.");
                         }
-                        yield Commands.resetLogger(nounRest.get(0), includeSticky, includeVendorDefaults, toNative,
-                                json);
+                        yield Commands.resetLogger(nounRest.get(0), includeSticky, toNative, json);
                     }
                     case "loggers" -> {
                         if (!nounRest.isEmpty()) {
@@ -386,13 +399,13 @@ final class Parser {
                         if (nounRest.size() != 1) {
                             throw usage("'reset rule' needs exactly one id.");
                         }
-                        yield Commands.resetRule(nounRest.get(0), includeSticky, includeVendorDefaults, json);
+                        yield Commands.resetRule(nounRest.get(0), includeSticky, toNative, json);
                     }
                     case "rules" -> {
                         if (!nounRest.isEmpty()) {
                             throw usage("'reset rules' takes no arguments.");
                         }
-                        yield Commands.resetAllRules(includeSticky, includeVendorDefaults, json);
+                        yield Commands.resetAllRules(includeSticky, toNative, json);
                     }
                     case "default-handler" -> {
                         if (!nounRest.isEmpty()) {
@@ -509,6 +522,33 @@ final class Parser {
                     default -> throw usage("'add rule' needs 'drop' or 'trim', got '" + action + "'.");
                 };
             }
+            case "alter" -> {
+                if (!isAlterRule) {
+                    throw usage("'alter' needs 'rule <id> [changes] [session | for <duration> | sticky]'.");
+                }
+                List<String> ruleRest = rest.subList(1, rest.size());
+                if (ruleRest.isEmpty()) {
+                    throw usage("'alter rule' needs the id of the rule to change -- see 'logctl list rules'.");
+                }
+                TierChoice tier = resolveAlterTier(ruleRest.subList(1, ruleRest.size()));
+                boolean anyPart = messageContains != null || noMessageContains || throwableType != null || noThrowable
+                        || throwableMessageContains != null || noThrowableMessageContains || anyCause || noAnyCause
+                        || belowLevel != null || sampleFullEveryMillis != null || noSampleFull || frames != null
+                        || collapseCauses || noCollapseCauses || reason != null;
+                if (!anyPart && tier == null) {
+                    throw usage("'alter rule' needs something to change: a matcher option, --below, an action "
+                            + "option, a tier, or --reason.");
+                }
+                Boolean sampleFullEnabled = noSampleFull ? Boolean.FALSE : sampleFullEveryMillis != null ? Boolean.TRUE
+                        : null;
+                Commands.RuleAlteration alteration = new Commands.RuleAlteration(messageContains, messageIgnoreCase,
+                        noMessageContains, throwableType, noThrowable, throwableMessageContains,
+                        noThrowableMessageContains, anyCause ? Boolean.TRUE : noAnyCause ? Boolean.FALSE : null,
+                        belowLevel, sampleFullEnabled, sampleFullEveryMillis, frames,
+                        collapseCauses ? Boolean.TRUE : noCollapseCauses ? Boolean.FALSE : null, reason,
+                        tier == null ? null : tier.tierName(), tier == null ? 0L : tier.forSeconds());
+                yield Commands.alterRule(ruleRest.get(0), alteration, json);
+            }
             default -> throw usage("Unknown command '" + command + "'.");
         };
 
@@ -532,6 +572,14 @@ final class Parser {
             return new TierChoice("FOR", Durations.parse(tokens.get(1)).toSeconds());
         }
         throw usage("Too many arguments after the level — expected 'session', 'sticky' or 'for <duration>'.");
+    }
+
+    /**
+     * {@code alter rule}'s trailing tier token(s): unlike {@link #resolveTier}, none given means
+     * "keep the rule's lifetime" ({@code null}), not {@code for 4h} (doc/specs/alter-rule.md A6/A7).
+     */
+    static TierChoice resolveAlterTier(List<String> tokens) {
+        return tokens.isEmpty() ? null : resolveTier(tokens);
     }
 
     private static String parseLevel(String token) {

@@ -439,11 +439,18 @@ double supplies a placeholder action name for test purposes only), matchers, tie
 count, and, if a rule is attached above a point where `useParentRules=false` cuts inheritance
 off between it and the row being shown, a note saying so (epic "Rules as managed objects").
 
-### `logctl reset rule <id> [--include-sticky]`
+### `logctl reset rule <id> [--include-sticky] [--to-native]`
 
 Removes one rule by id, refusing on `STICKY` without `--include-sticky` exactly the way `reset
 logger <exact-name>` refuses on a sticky level override (`reset-command-surface.md` Decision
-#1) — a single named id is "one specific thing," not a set.
+#1) — a single named id is "one specific thing," not a set. A vendor rule is reset rather than
+removed, and `--to-native` switches it off until restart
+([`alter-rule.md`](alter-rule.md) "Reset", issue #96).
+
+### `logctl alter rule <id> [changes] [session | for <duration> | sticky]`
+
+Changes a rule in place, keeping its id: only the parts given change. Specified in
+[`alter-rule.md`](alter-rule.md) (issue #96).
 
 ### `logctl reset rules [--include-sticky]`
 

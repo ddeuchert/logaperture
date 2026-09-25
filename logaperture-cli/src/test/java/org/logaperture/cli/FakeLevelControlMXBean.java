@@ -22,6 +22,7 @@ import org.logaperture.control.jmx.HandlerResetOutcomeData;
 import org.logaperture.control.jmx.LevelControlMXBean;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.ResetOutcomeData;
+import org.logaperture.control.jmx.RuleAlterationData;
 import org.logaperture.control.jmx.RuleData;
 import org.logaperture.control.jmx.RuleResetOutcomeData;
 import org.logaperture.control.jmx.SetLevelResultData;
@@ -379,25 +380,39 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         return resetRulesForLoggerResult;
     }
 
-    boolean lastIncludeVendorDefaults;
-
     @Override
-    public RuleData resetRule(String id, boolean includeSticky, boolean includeVendorDefaults) {
-        lastIncludeVendorDefaults = includeVendorDefaults;
+    public RuleData resetRule(String id, boolean includeSticky, boolean toNative) {
+        lastToNative = toNative;
         return resetRule(id, includeSticky);
     }
 
     @Override
-    public RuleResetOutcomeData resetAllRules(boolean includeSticky, boolean includeVendorDefaults) {
-        lastIncludeVendorDefaults = includeVendorDefaults;
+    public RuleResetOutcomeData resetAllRules(boolean includeSticky, boolean toNative) {
+        lastToNative = toNative;
         return resetAllRules(includeSticky);
     }
 
     @Override
-    public RuleResetOutcomeData resetRulesForLogger(String loggerName, boolean includeSticky,
-            boolean includeVendorDefaults) {
-        lastIncludeVendorDefaults = includeVendorDefaults;
+    public RuleResetOutcomeData resetRulesForLogger(String loggerName, boolean includeSticky, boolean toNative) {
+        lastToNative = toNative;
         return resetRulesForLogger(loggerName, includeSticky);
+    }
+
+    /** Each {@link #alterRule} call's arguments, in parameter order. */
+    final List<Object[]> alterRuleCalls = new ArrayList<>();
+    RuleAlterationData alterRuleResult;
+
+    @Override
+    public RuleAlterationData alterRule(String id, String messageContains, boolean messageIgnoreCase,
+            boolean clearMessage, String throwableType, boolean clearThrowable, String throwableMessageContains,
+            boolean clearThrowableMessage, Boolean anyCause, String belowLevel, Boolean sampleFullEnabled,
+            Long sampleFullEveryMillis, Integer frames, Boolean collapseCauses, String reason, String tier,
+            long forSeconds) {
+        alterRuleCalls.add(new Object[] {id, messageContains, messageIgnoreCase, clearMessage, throwableType,
+                clearThrowable, throwableMessageContains, clearThrowableMessage, anyCause, belowLevel,
+                sampleFullEnabled, sampleFullEveryMillis, frames, collapseCauses, reason, tier, forSeconds});
+        maybeThrow();
+        return alterRuleResult;
     }
 
     final List<Object[]> addRuleDropCalls = new ArrayList<>();

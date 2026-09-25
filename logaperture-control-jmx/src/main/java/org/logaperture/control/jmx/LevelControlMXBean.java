@@ -276,18 +276,43 @@ public interface LevelControlMXBean {
     RuleResetOutcomeData resetRulesForLogger(String loggerName, boolean includeSticky);
 
     /**
-     * {@link #resetRule(String, boolean)}, plus doc/specs/vendor-defaults.md "Rules": a vendor
-     * defaults rule ({@code vendor:<name>}) refuses unless {@code includeVendorDefaults}, and is
-     * then suspended until restart rather than removed. A new overload, not a changed signature
+     * {@link #resetRule(String, boolean)}, plus doc/specs/alter-rule.md "Reset" (A8): a vendor
+     * defaults rule ({@code vendor:<name>}) is reset to the vendor's definition (and switched back
+     * on), or with {@code toNative} switched off until restart; never removed. On an operator rule
+     * {@code toNative} changes nothing. A new overload, not a changed signature
      * (logaperture-spec.md §11.1).
+     *
+     * @return the rule as reset, or {@code null} if there was nothing to reset
      */
-    RuleData resetRule(String id, boolean includeSticky, boolean includeVendorDefaults);
+    RuleData resetRule(String id, boolean includeSticky, boolean toNative);
 
-    /** {@link #resetAllRules(boolean)}; vendor rules are skipped and reported unless {@code includeVendorDefaults}. */
-    RuleResetOutcomeData resetAllRules(boolean includeSticky, boolean includeVendorDefaults);
+    /** {@link #resetAllRules(boolean)}; vendor rules as in {@link #resetRule(String, boolean, boolean)}. */
+    RuleResetOutcomeData resetAllRules(boolean includeSticky, boolean toNative);
 
-    /** {@link #resetRulesForLogger(String, boolean)}; vendor rules as in {@link #resetAllRules(boolean, boolean)}. */
-    RuleResetOutcomeData resetRulesForLogger(String loggerName, boolean includeSticky, boolean includeVendorDefaults);
+    /** {@link #resetRulesForLogger(String, boolean)}; vendor rules as in {@link #resetRule(String, boolean, boolean)}. */
+    RuleResetOutcomeData resetRulesForLogger(String loggerName, boolean includeSticky, boolean toNative);
+
+    /**
+     * {@code logctl alter rule <id>} -- doc/specs/alter-rule.md. Every part left {@code null} (and
+     * every {@code clear…} flag left {@code false}) is kept as the rule has it. {@code belowLevel}
+     * is the compiled "at most" bound, as for {@link #addRuleDrop}. {@code sampleFullEnabled} and
+     * {@code sampleFullEveryMillis} are drop only; {@code frames} and {@code collapseCauses} trim
+     * only.
+     *
+     * @param messageIgnoreCase which message form {@code messageContains} sets
+     * @param tier              {@code "SESSION"}/{@code "FOR"}/{@code "STICKY"}, or {@code null}
+     *                          to keep the rule's lifetime (A6/A7)
+     * @param forSeconds        the {@code FOR} duration; ignored for any other tier
+     * @return {@code null} if no rule has this id
+     * @throws IllegalArgumentException if the alteration is empty, doesn't fit the rule's action,
+     *                                  would leave a drop with no content matcher, or targets a
+     *                                  vendor rule switched off until restart
+     */
+    RuleAlterationData alterRule(String id, String messageContains, boolean messageIgnoreCase,
+            boolean clearMessage, String throwableType, boolean clearThrowable, String throwableMessageContains,
+            boolean clearThrowableMessage, Boolean anyCause, String belowLevel, Boolean sampleFullEnabled,
+            Long sampleFullEveryMillis, Integer frames, Boolean collapseCauses, String reason, String tier,
+            long forSeconds);
 
     /**
      * {@code logctl add rule drop} — doc/specs/drop-rule.md "Command
