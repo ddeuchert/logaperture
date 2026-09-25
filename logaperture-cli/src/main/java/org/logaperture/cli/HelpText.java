@@ -46,7 +46,7 @@ final class HelpText {
                     + "[session | for <duration> | sticky]",
             "logctl add rule trim <target> [matchers] [--below level] [--frames n] [--collapse-causes] "
                     + "[session | for <duration> | sticky]",
-            "logctl list rules",
+            "logctl list rules [--verbose]",
             "logctl reset rule <id> [--include-sticky] [--include-vendor-defaults]",
             "logctl reset rules [--include-sticky] [--include-vendor-defaults]");
 
@@ -70,6 +70,7 @@ final class HelpText {
         sb.append("  --include-vendor-defaults  for 'reset rule'/'reset rules'/'reset logger' -- also switch\n");
         sb.append("                       off vendor default rules, until the application restarts\n");
         sb.append("  --show-all           for 'list' -- every known logger or handler, not just overridden ones\n");
+        sb.append("  --verbose            for 'list rules' -- add each rule's defining options (EXPRESSION)\n");
         sb.append("  --limit <n>          for 'top' — worst N offenders, 0 for every one tracked\n");
         sb.append("  --message-contains <text>\n");
         sb.append("                       for 'add rule' -- match a log message substring\n");

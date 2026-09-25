@@ -24,6 +24,11 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   defaults until restart; a plain `reset` puts the vendor default back (issue #94;
   `doc/specs/reset-to-native.md`). The layers and terms (native configuration, vendor defaults,
   baseline, override, effective level) are now defined in one place, spec §6.6.
+- **`logctl list rules --verbose`** — adds an `EXPRESSION` column: each rule's defining options,
+  written as `add rule drop|trim` takes them (e.g. `--message-contains "Can't connect"
+  --throwable java.net.ConnectException --below WARN --sample-full 5m`), with every default spelled
+  out and shell-safe quoting. `list rules --json` always includes it as `expression` (issue #98;
+  `doc/specs/list-rules-verbose.md`).
 
 ### Fixed
 

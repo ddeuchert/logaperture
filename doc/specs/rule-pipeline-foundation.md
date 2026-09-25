@@ -427,6 +427,9 @@ No `add rule` in this slice — see "Explicitly out of scope". What lands:
 
 ### `logctl list rules [--show-all]`
 
+`--verbose` (issue #98, [`list-rules-verbose.md`](list-rules-verbose.md)) adds an `EXPRESSION`
+column: each rule's defining options, as `add rule` would take them.
+
 Follows `list-command-surface.md`'s established shape: without `--show-all`, every currently
 attached rule (there is no "not currently active" state for a rule the way a logger can run at
 its configured level with no override — every attached rule *is* an override in this sense, so
