@@ -33,6 +33,7 @@ import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -265,13 +266,78 @@ class LevelControlEndToEndIT {
         assertEquals("STICKY", resumed.get(0).getTier());
     }
 
+    /**
+     * doc/specs/vendor-defaults.md "Testing" -- the {@code none} container end to end: a JVM
+     * started with {@code --vendor-defaults=} has the file's level and rule in effect from startup,
+     * and {@code set} + {@code reset} over real JMX lands back on the vendor level, not the
+     * framework's own INFO.
+     */
+    @Test
+    void vendorDefaults_applyAtStartup_andResetLandsOnThem() throws Exception {
+        String agentJarPath = System.getProperty("logaperture.agent.jar");
+        assertNotNull(agentJarPath, "system property logaperture.agent.jar must point at the shaded jar");
+        Path vendorFile = logapertureHome.resolve("vendor-defaults.yaml");
+        Files.writeString(vendorFile, """
+                schemaVersion: 1
+                loggers:
+                  - name: %s
+                    level: WARN
+                rules:
+                  - id: fixture-noise
+                    action: drop
+                    logger: %s
+                    messageContains: "tick"
+                """.formatted(FIXTURE_LOGGER, FIXTURE_LOGGER));
+
+        Process fixtureProcess = launchFixtureProcess(agentJarPath, "--vendor-defaults=" + vendorFile);
+        LevelControlMXBean proxy = pollForMxBeanProxy(attachAndConnect(fixtureProcess.pid()));
+
+        LoggerInfoData atStart = proxy.listLoggers(FIXTURE_LOGGER).get(0);
+        assertEquals("WARN", atStart.getEffectiveLevel());
+        assertEquals("WARN", atStart.getVendorDefaultLevel());
+        assertFalse(atStart.isOverrideActive());
+        assertTrue(proxy.listRules().stream().anyMatch(rule -> rule.getId().equals("vendor:fixture-noise")
+                && "vendor-defaults".equals(rule.getOrigin())));
+        assertTrue(proxy.environmentReport().getVendorDefaultsStatus().startsWith("loaded"),
+                proxy.environmentReport().getVendorDefaultsStatus());
+
+        proxy.setLogger(FIXTURE_LOGGER, "DEBUG", "e2e-vendor", "SESSION", 0, false);
+        assertEquals("DEBUG", proxy.listLoggers(FIXTURE_LOGGER).get(0).getEffectiveLevel());
+        proxy.resetLogger(FIXTURE_LOGGER, false);
+        assertEquals("WARN", proxy.listLoggers(FIXTURE_LOGGER).get(0).getEffectiveLevel());
+    }
+
+    /** A rejected file never stops the application: the JVM comes up, nothing from the file applies. */
+    @Test
+    void rejectedVendorDefaults_leaveTheJvmRunningWithNoVendorSettings() throws Exception {
+        String agentJarPath = System.getProperty("logaperture.agent.jar");
+        assertNotNull(agentJarPath, "system property logaperture.agent.jar must point at the shaded jar");
+        Path vendorFile = logapertureHome.resolve("broken.yaml");
+        Files.writeString(vendorFile, "schemaVersion: 1\nloggers:\n  - name: " + FIXTURE_LOGGER
+                + "\n    level: LOUD\n");
+
+        Process fixtureProcess = launchFixtureProcess(agentJarPath, "--vendor-defaults=" + vendorFile);
+        LevelControlMXBean proxy = pollForMxBeanProxy(attachAndConnect(fixtureProcess.pid()));
+
+        LoggerInfoData row = proxy.listLoggers(FIXTURE_LOGGER).get(0);
+        assertEquals("INFO", row.getEffectiveLevel());
+        assertEquals(null, row.getVendorDefaultLevel());
+        assertEquals("rejected (1 error)", proxy.environmentReport().getVendorDefaultsStatus());
+        assertTrue(proxy.diagnose().stream().anyMatch(f -> f.getCheck().equals("vendor-defaults.file")
+                && f.getSeverity().equals("WARNING")));
+    }
+
     private Process launchFixtureProcess(String agentJarPath) throws Exception {
+        return launchFixtureProcess(agentJarPath, null);
+    }
+
+    private Process launchFixtureProcess(String agentJarPath, String agentArgs) throws Exception {
         String javaBin = System.getProperty("java.home") + "/bin/java";
         String classpath = System.getProperty("java.class.path");
 
         ProcessBuilder builder = new ProcessBuilder(
                 javaBin,
-                "-javaagent:" + agentJarPath,
+                "-javaagent:" + agentJarPath + (agentArgs == null ? "" : "=" + agentArgs),
                 "-Dlogaperture.home=" + logapertureHome,
                 "-Dlogaperture.sweep.seconds=1", // so a standing-rule-discovers-a-new-logger test doesn't wait 30s
                 "-cp", classpath,

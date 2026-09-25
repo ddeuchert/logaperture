@@ -37,7 +37,7 @@ final class HelpText {
             "logctl set handler <name> <level> [session | for <duration> | sticky]",
             "logctl set handler <name> AUTO [session | for <duration> | sticky]",
             "logctl set default-handler <name> ...",
-            "logctl reset logger <target> [--include-sticky]",
+            "logctl reset logger <target> [--include-sticky] [--include-vendor-defaults]",
             "logctl reset loggers [--include-sticky]",
             "logctl reset handler <name> [--include-sticky]",
             "logctl reset handlers [--include-sticky]",
@@ -47,8 +47,8 @@ final class HelpText {
             "logctl add rule trim <target> [matchers] [--below level] [--frames n] [--collapse-causes] "
                     + "[session | for <duration> | sticky]",
             "logctl list rules",
-            "logctl reset rule <id> [--include-sticky]",
-            "logctl reset rules [--include-sticky]");
+            "logctl reset rule <id> [--include-sticky] [--include-vendor-defaults]",
+            "logctl reset rules [--include-sticky] [--include-vendor-defaults]");
 
     private HelpText() {
     }
@@ -65,6 +65,8 @@ final class HelpText {
         sb.append("  --reason <text>      why — shown in status, kept in the audit trail\n");
         sb.append("  --yes                skip the confirmation prompt when <target> is a pattern\n");
         sb.append("  --include-sticky     for 'reset' -- also revert a sticky override, not just skip it\n");
+        sb.append("  --include-vendor-defaults  for 'reset rule'/'reset rules'/'reset logger' -- also switch\n");
+        sb.append("                       off vendor default rules, until the application restarts\n");
         sb.append("  --show-all           for 'list' -- every known logger or handler, not just overridden ones\n");
         sb.append("  --limit <n>          for 'top' — worst N offenders, 0 for every one tracked\n");
         sb.append("  --message-contains <text>\n");
@@ -146,6 +148,12 @@ final class HelpText {
         sb.append("'reset rule <id>' removes one, 'reset rules' removes every currently\n");
         sb.append("attached rule.\n");
         sb.append("\n");
+        sb.append("A vendor defaults file (-javaagent:logaperture-agent.jar=--vendor-defaults=<file>)\n");
+        sb.append("sets the baseline: its logger and handler levels are what 'reset' returns\n");
+        sb.append("to, and 'list' shows them in a VENDOR column. Its rules have 'vendor:' ids;\n");
+        sb.append("reset leaves them in place unless --include-vendor-defaults is given, which\n");
+        sb.append("switches them off until the application restarts.\n");
+        sb.append("\n");
         sb.append("'doctor' is read-only — it never changes anything. It flags common\n");
         sb.append("misconfigurations (unbounded file handlers, DEBUG/TRACE left on,\n");
         sb.append("duplicate output, autoflush, low disk headroom) with a severity and,\n");
@@ -155,7 +163,8 @@ final class HelpText {
         sb.append("bytes since the agent started, worst first, with a rate, a projected\n");
         sb.append("daily total, and what share of that volume is stack traces.\n");
         sb.append("\n");
-        sb.append("'status' shows only active overrides; 'env' is the separate, pasteable\n");
+        sb.append("'status' shows active overrides, plus a line naming the vendor defaults\n");
+        sb.append("file when there is one; 'env' is the separate, pasteable\n");
         sb.append("block for a bug report — see below.\n");
         sb.append("\n");
         sb.append("'env' is also read-only. It prints one pasteable block of facts for a\n");

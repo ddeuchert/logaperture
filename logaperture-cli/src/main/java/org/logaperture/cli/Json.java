@@ -69,7 +69,8 @@ final class Json {
                 .str("overrideSource", row.getOverrideSource())
                 .str("overrideReason", row.getOverrideReason())
                 .str("tier", row.getTier())
-                .str("expiresAt", row.getExpiresAt());
+                .str("expiresAt", row.getExpiresAt())
+                .str("vendorDefaultLevel", row.getVendorDefaultLevel());
     }
 
     static String override(LevelOverrideData data) {
@@ -150,10 +151,22 @@ final class Json {
      * overrides too" calls for.
      */
     static String status(List<LoggerInfoData> loggerOverrides, List<HandlerLevelOverrideData> handlerOverrides) {
+        return statusObj(loggerOverrides, handlerOverrides).toString();
+    }
+
+    /** {@code status --json} plus doc/specs/vendor-defaults.md's {@code vendorDefaults} object ({@code null} when none configured). */
+    static String status(List<LoggerInfoData> loggerOverrides, List<HandlerLevelOverrideData> handlerOverrides,
+            EnvironmentReportData report) {
+        String vendorDefaults = report.getVendorDefaultsPath() == null ? "null"
+                : new Obj().str("path", report.getVendorDefaultsPath())
+                        .str("status", report.getVendorDefaultsStatus()).toString();
+        return statusObj(loggerOverrides, handlerOverrides).raw("vendorDefaults", vendorDefaults).toString();
+    }
+
+    private static Obj statusObj(List<LoggerInfoData> loggerOverrides, List<HandlerLevelOverrideData> handlerOverrides) {
         return new Obj()
                 .raw("loggers", loggers(loggerOverrides))
-                .raw("handlerOverrides", handlerOverrides(handlerOverrides))
-                .toString();
+                .raw("handlerOverrides", handlerOverrides(handlerOverrides));
     }
 
     /** {@code logctl handler} against a framework whose handlers have no level of their own (Logback, {@code none}). */
@@ -291,6 +304,7 @@ final class Json {
                     .str("overrideExpiresAt", row.getOverrideExpiresAt())
                     .str("membersSummary", row.getMembersSummary())
                     .str("context", row.getContext())
+                    .str("vendorDefault", row.getVendorDefault())
                     .toString());
         }
         return new Obj().raw("handlers", array.toString()).toString();
@@ -328,6 +342,16 @@ final class Json {
         return obj
                 .raw("removedRuleIds", stringArray(removedRuleIds))
                 .raw("skippedStickyRuleIds", stringArray(skippedStickyRuleIds))
+                .toString();
+    }
+
+    static String resetLoggerWithRules(LoggerInfoData after, String target, boolean wasOverridden,
+            List<String> removedRuleIds, List<String> skippedStickyRuleIds, List<String> skippedVendorRuleIds) {
+        Obj obj = after != null ? loggerObj(after) : resetObj(target, wasOverridden);
+        return obj
+                .raw("removedRuleIds", stringArray(removedRuleIds))
+                .raw("skippedStickyRuleIds", stringArray(skippedStickyRuleIds))
+                .raw("skippedVendorRuleIds", stringArray(skippedVendorRuleIds))
                 .toString();
     }
 
@@ -405,22 +429,35 @@ final class Json {
                 .raw("hitCount", String.valueOf(row.getHitCount()))
                 .raw("frames", row.getFrames() == null ? "null" : String.valueOf(row.getFrames()))
                 .raw("collapseCauses", row.getCollapseCauses() == null ? "null" : String.valueOf(row.getCollapseCauses()))
+                .str("origin", row.getOrigin())
+                .bool("suspended", row.isSuspended())
                 .toString();
     }
 
     /** {@code reset rule <id> --json} (doc/specs/rule-pipeline-foundation.md). */
     static String resetRule(String id, boolean removed) {
+        return resetRule(id, removed, false);
+    }
+
+    /** {@code suspended}: a vendor defaults rule switched off until restart rather than removed. */
+    static String resetRule(String id, boolean removed, boolean suspended) {
         return new Obj()
                 .str("id", id)
                 .bool("removed", removed)
+                .bool("suspended", suspended)
                 .toString();
     }
 
     /** {@code reset rules --json} / {@code reset logger <target> --json}'s rule side effect. */
     static String resetAllRules(List<String> removed, List<String> skippedSticky) {
+        return resetAllRules(removed, skippedSticky, List.of());
+    }
+
+    static String resetAllRules(List<String> removed, List<String> skippedSticky, List<String> skippedVendor) {
         return new Obj()
                 .raw("removedIds", stringArray(removed))
                 .raw("skippedStickyIds", stringArray(skippedSticky))
+                .raw("skippedVendorIds", stringArray(skippedVendor))
                 .toString();
     }
 
@@ -455,6 +492,8 @@ final class Json {
                 .str("containerVersion", report.getContainerVersion())
                 .str("diagnosticsLevel", report.getDiagnosticsLevel())
                 .str("stateFilePath", report.getStateFilePath())
+                .str("vendorDefaultsPath", report.getVendorDefaultsPath())
+                .str("vendorDefaultsStatus", report.getVendorDefaultsStatus())
                 .toString();
     }
 

@@ -53,6 +53,12 @@ package org.logaperture.api;
  *                          persistence.md "The same-working-directory
  *                          collision") or this store has no single
  *                          filesystem location to name
+ * @param vendorDefaultsPath   the vendor defaults file's absolute path, or
+ *                          {@code null} if none was configured --
+ *                          doc/specs/vendor-defaults.md "Surfaces"
+ * @param vendorDefaultsStatus {@code "not configured"}, {@code "loaded (...)"}
+ *                          with a one-line summary, or {@code "rejected
+ *                          (N errors)"}
  */
 public record EnvironmentReport(
         String agentVersion,
@@ -66,7 +72,17 @@ public record EnvironmentReport(
         String containerName,
         String containerVersion,
         String diagnosticsLevel,
-        String stateFilePath) {
+        String stateFilePath,
+        String vendorDefaultsPath,
+        String vendorDefaultsStatus) {
+
+    /** Every field but the vendor defaults pair -- the shape before doc/specs/vendor-defaults.md. */
+    public EnvironmentReport(String agentVersion, String javaVersion, String javaVendor, String osName,
+            String osVersion, String osArch, String backendName, String backendVersion, String containerName,
+            String containerVersion, String diagnosticsLevel, String stateFilePath) {
+        this(agentVersion, javaVersion, javaVendor, osName, osVersion, osArch, backendName, backendVersion,
+                containerName, containerVersion, diagnosticsLevel, stateFilePath, null, "not configured");
+    }
 
     public EnvironmentReport {
         if (agentVersion == null || agentVersion.isEmpty()) {

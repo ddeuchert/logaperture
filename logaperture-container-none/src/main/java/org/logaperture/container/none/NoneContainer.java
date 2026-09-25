@@ -36,6 +36,7 @@ import org.logaperture.core.RuleService;
 import org.logaperture.core.StormService;
 import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.TopService;
+import org.logaperture.core.VendorDefaults;
 import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
@@ -46,6 +47,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -75,6 +77,7 @@ public final class NoneContainer implements AutoCloseable {
     private final StateStore stateStore;
     private final AggregateLevelControl aggregate;
     private final ScheduledExecutorService sweeper;
+    private final VendorDefaults vendorDefaults;
 
     public NoneContainer(CapabilityPolicy policy, AuditLog auditLog) {
         this(policy, auditLog, SweepPolicy.interval());
@@ -82,13 +85,22 @@ public final class NoneContainer implements AutoCloseable {
 
     /** Package-visible so tests can use a short sweep interval instead of waiting on the real 30s one. */
     NoneContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval) {
+        this(policy, auditLog, sweepInterval, VendorDefaults.none());
+    }
+
+    /**
+     * @param vendorDefaults applied by every {@link #installContext} -- doc/specs/vendor-defaults.md
+     */
+    public NoneContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+            VendorDefaults vendorDefaults) {
         this.policy = policy;
         this.auditLog = auditLog;
+        this.vendorDefaults = Objects.requireNonNull(vendorDefaults, "vendorDefaults");
         this.stateStore = openStateStore();
         // No container to name -- the none baseline -- but the state file
         // fact is universal (doc/specs/environment-report.md "State file").
         this.aggregate = new AggregateLevelControl(null, Optional::empty,
-                stateStore.location().map(Path::toString).orElse(null));
+                stateStore.location().map(Path::toString).orElse(null), () -> true, vendorDefaults);
 
         this.sweeper = Executors.newSingleThreadScheduledExecutor(NoneContainer::newDaemonThread);
         long intervalMillis = sweepInterval.toMillis();
@@ -124,7 +136,8 @@ public final class NoneContainer implements AutoCloseable {
     public void installContext(ContextHandle handle) {
         LoggingAdapter adapter = handle.adapter();
 
-        BaselineRegistry baselines = new BaselineRegistry();
+        BaselineRegistry baselines =
+                new BaselineRegistry(vendorDefaults.loggerLevels(), vendorDefaults.loggerReasons());
         for (String name : adapter.knownLoggerNames()) {
             baselines.captureIfAbsent(name, adapter);
         }
@@ -138,9 +151,10 @@ public final class NoneContainer implements AutoCloseable {
         // wires the two services together; neither references the other's
         // type).
         OverrideRegistry overrides = new OverrideRegistry();
-        HandlerBaselineRegistry handlerBaselines = new HandlerBaselineRegistry();
+        HandlerBaselineRegistry handlerBaselines = new HandlerBaselineRegistry(vendorDefaults.handlers());
         HandlerOverrideRegistry handlerOverrides = new HandlerOverrideRegistry();
-        DefaultHandlerGroupRegistry defaultHandlerGroup = new DefaultHandlerGroupRegistry();
+        DefaultHandlerGroupRegistry defaultHandlerGroup =
+                new DefaultHandlerGroupRegistry(vendorDefaults.defaultHandlers().orElse(List.of()));
         ActiveLoggerFloor activeLoggerFloor = () -> List.copyOf(overrides.all().values());
         HandlerLevelControlService handlerService = new HandlerLevelControlService(
                 adapter, handlerBaselines, handlerOverrides, defaultHandlerGroup, policy, auditLog, stateStore,
@@ -158,6 +172,12 @@ public final class NoneContainer implements AutoCloseable {
         ruleService.registerDropSupport();
         // doc/specs/trim-rule.md "Persistence" -- same primitive, for a persisted Trim.
         ruleService.registerTrimSupport();
+
+        // doc/specs/vendor-defaults.md "Install order": the vendor layer goes on after native
+        // baseline capture (above) and before persisted state resumes on top of it (below).
+        service.applyVendorDefaults(Instant.now());
+        handlerService.applyVendorDefaults(Instant.now());
+        ruleService.attachVendorRules(vendorDefaults.rules(), Instant.now());
 
         try {
             // Per-entry failures are already isolated inside

@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -79,6 +80,15 @@ public final class RuleService implements RuleOperations {
     private final ProtectedCategories protectedCategories;
     private final AtomicLong idSequence = new AtomicLong(1);
     private final Map<String, RuleFactory> actionFactories = new ConcurrentHashMap<>();
+
+    /**
+     * Ids of the rules attached from the vendor defaults file (doc/specs/vendor-defaults.md
+     * "Rules") -- every one prefixed {@code vendor:}, so never colliding with an {@code r<N>} id.
+     */
+    private final Set<String> vendorRuleIds = ConcurrentHashMap.newKeySet();
+
+    /** Vendor rules switched off until restart with {@code --include-vendor-defaults} (Decision M4) -- detached, still listed. */
+    private final Map<String, LogRule> suspendedVendorRules = new ConcurrentHashMap<>();
 
     // --- Evaluation-time state (doc/specs/drop-rule.md "Evaluation") -- keyed by rule id;
     // cleaned up in forgetEvaluationState whenever a rule is removed, so a long-running process
@@ -267,6 +277,61 @@ public final class RuleService implements RuleOperations {
     }
 
     /**
+     * Attaches the vendor defaults file's rules -- doc/specs/vendor-defaults.md "Rules". Runs
+     * once, at composition-root install time, before {@link #resumeFromStateStore}. Built through
+     * the same {@link DropFactories}/{@link TrimFactories} a live {@code add rule} uses; never
+     * written to the state file (the vendor file is their persistence), so their tier is {@code
+     * SESSION} internally and they report as vendor rules instead. No capability check
+     * (vendor-config-epic.md Decision #11); one {@code "vendor-defaults"} audit record per rule.
+     */
+    public void attachVendorRules(List<VendorDefaults.RuleDefault> rules, Instant now) {
+        for (VendorDefaults.RuleDefault vendor : rules) {
+            try {
+                RuleFactory factory = switch (vendor.action()) {
+                    case "drop" -> DropFactories.attach(vendor.sampleFull());
+                    case "trim" -> TrimFactories.attach(vendor.frames(), vendor.collapseCauses());
+                    default -> throw new IllegalArgumentException("unknown action '" + vendor.action() + "'");
+                };
+                if (protectedCategories.isProtected(vendor.loggerName())) {
+                    throw new IllegalArgumentException("'" + vendor.loggerName() + "' is a protected category");
+                }
+                LogRule rule = factory.create(vendor.id(), vendor.loggerName(), vendor.matchers(), vendor.reason(),
+                        PersistenceTier.SESSION, null, now, Map.of());
+                vendorRuleIds.add(rule.id());
+                registry.attach(rule);
+                auditLog.record(new AuditRecord(now, principal, VendorDefaults.AUDIT_SOURCE, rule.loggerName(), null,
+                        describe(rule), rule.reason(), AuditRecord.Action.MUTATION));
+            } catch (RuntimeException e) {
+                System.err.println("[logaperture] failed to attach vendor rule '" + vendor.id() + "', skipping it: "
+                        + e);
+            }
+        }
+    }
+
+    private boolean isVendorRule(String id) {
+        return vendorRuleIds.contains(id);
+    }
+
+    private RuleView view(LogRule rule) {
+        boolean vendor = isVendorRule(rule.id());
+        return new RuleView(rule, context, hitCount(rule.id()), vendor ? VendorDefaults.AUDIT_SOURCE : null,
+                vendor && suspendedVendorRules.containsKey(rule.id()));
+    }
+
+    /**
+     * Detaches a vendor rule until restart -- doc/specs/vendor-defaults.md "Rules". Kept in
+     * {@link #suspendedVendorRules} so it stays listed; the file itself is untouched.
+     */
+    private void suspendVendorRule(LogRule rule) {
+        registry.removeById(rule.id());
+        suspendedVendorRules.put(rule.id(), rule);
+        // Evaluation state is left alone: the vendor set is small and fixed, and keeping the hit
+        // counter lets `list rules` show what the rule had matched before it was suspended.
+        auditLog.record(new AuditRecord(Instant.now(), principal, source, rule.loggerName(), describe(rule), null,
+                "vendor default suspended until restart", AuditRecord.Action.REVERSION));
+    }
+
+    /**
      * {@code reset rule <id>} — a single named id is "one specific thing":
      * refuses outright if it's {@code STICKY} and {@code includeSticky}
      * wasn't passed, mirroring {@code reset-command-surface.md}'s Decision
@@ -275,14 +340,22 @@ public final class RuleService implements RuleOperations {
      * follows).
      */
     @Override
-    public Optional<RuleView> resetRule(String id, boolean includeSticky) {
+    public Optional<RuleView> resetRule(String id, boolean includeSticky, boolean includeVendorDefaults) {
         Objects.requireNonNull(id, "id");
         requireCapability(Capability.RULES_AUTHOR);
         Optional<LogRule> existing = registry.findById(id);
         if (existing.isEmpty()) {
-            return Optional.empty();
+            return Optional.empty(); // unknown -- or a vendor rule already suspended: nothing left to do
         }
         LogRule rule = existing.get();
+        if (isVendorRule(id)) {
+            if (!includeVendorDefaults) {
+                throw new IllegalArgumentException(id + " is a vendor default -- reset refused without "
+                        + "--include-vendor-defaults (which switches it off until the next restart).");
+            }
+            suspendVendorRule(rule);
+            return Optional.of(view(rule));
+        }
         if (rule.tier() == PersistenceTier.STICKY && !includeSticky) {
             throw new IllegalArgumentException(id + " is STICKY -- reset refused without --include-sticky.");
         }
@@ -296,9 +369,9 @@ public final class RuleService implements RuleOperations {
 
     /** {@code reset rules} — bulk, skip-and-report shape (mirrors {@code reset loggers}). */
     @Override
-    public RuleResetOutcome resetAllRules(boolean includeSticky) {
+    public RuleResetOutcome resetAllRules(boolean includeSticky, boolean includeVendorDefaults) {
         requireCapability(Capability.RULES_AUTHOR);
-        return removeMatching(registry.all(), includeSticky);
+        return removeMatching(registry.all(), includeSticky, includeVendorDefaults);
     }
 
     /**
@@ -315,20 +388,32 @@ public final class RuleService implements RuleOperations {
      * attached rules costs nothing to authorize (a code-review finding).
      */
     @Override
-    public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky) {
+    public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky,
+            boolean includeVendorDefaults) {
         Objects.requireNonNull(loggerName, "loggerName");
         List<LogRule> candidates = registry.directRulesFor(loggerName);
         if (candidates.isEmpty()) {
             return RuleResetOutcome.nothingReset();
         }
         requireCapability(Capability.RULES_AUTHOR);
-        return removeMatching(candidates, includeSticky);
+        return removeMatching(candidates, includeSticky, includeVendorDefaults);
     }
 
-    private RuleResetOutcome removeMatching(List<LogRule> candidates, boolean includeSticky) {
+    private RuleResetOutcome removeMatching(List<LogRule> candidates, boolean includeSticky,
+            boolean includeVendorDefaults) {
         List<String> removed = new ArrayList<>();
         List<String> skippedSticky = new ArrayList<>();
+        List<String> skippedVendor = new ArrayList<>();
         for (LogRule rule : candidates) {
+            if (isVendorRule(rule.id())) {
+                if (includeVendorDefaults) {
+                    suspendVendorRule(rule);
+                    removed.add(rule.id());
+                } else {
+                    skippedVendor.add(rule.id());
+                }
+                continue;
+            }
             if (rule.tier() == PersistenceTier.STICKY && !includeSticky) {
                 skippedSticky.add(rule.id());
                 continue;
@@ -341,9 +426,12 @@ public final class RuleService implements RuleOperations {
         if (!removed.isEmpty()) {
             // One rewrite for the whole batch, not one per rule -- doc/specs/
             // persistence.md "Batch removal" (issue #17)'s precedent.
-            safePersist(() -> stateStore.removeAllRules(removed));
+            List<String> persistedRemovals = removed.stream().filter(id -> !isVendorRule(id)).toList();
+            if (!persistedRemovals.isEmpty()) {
+                safePersist(() -> stateStore.removeAllRules(persistedRemovals));
+            }
         }
-        return new RuleResetOutcome(removed, skippedSticky);
+        return new RuleResetOutcome(removed, skippedSticky, skippedVendor);
     }
 
     private void auditRemoval(LogRule rule) {
@@ -457,7 +545,14 @@ public final class RuleService implements RuleOperations {
     @Override
     public List<RuleView> listRules() {
         requireCapability(Capability.VIEW);
-        return registry.all().stream().map(rule -> new RuleView(rule, context, hitCount(rule.id()))).toList();
+        List<RuleView> views = new ArrayList<>();
+        for (LogRule rule : registry.all()) {
+            views.add(view(rule));
+        }
+        for (LogRule suspended : suspendedVendorRules.values()) {
+            views.add(view(suspended));
+        }
+        return List.copyOf(views);
     }
 
     /** How many candidate events {@code ruleId} has matched so far -- {@code 0} for a rule that's never matched. */

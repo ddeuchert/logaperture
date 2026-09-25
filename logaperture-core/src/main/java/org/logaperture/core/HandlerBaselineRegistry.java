@@ -19,6 +19,9 @@ import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.core.spi.LoggingAdapter;
 
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -45,10 +48,29 @@ import java.util.concurrent.ConcurrentHashMap;
  * of ({@code Handler#setLevel} throws on {@code null}). So only a genuinely
  * resolved level is ever cached; an empty result is returned but not
  * remembered, and the next call tries again.
+ *
+ * <p>Also holds the vendor defaults layer (doc/specs/vendor-defaults.md "Handlers"): a handler
+ * the vendor defaults file gives a fixed level has that level as its <em>effective</em> baseline
+ * ({@link #get}); one it sets to {@code AUTO} keeps its native value here and is tracked by
+ * {@link HandlerLevelControlService} instead (Decision M3). {@link #nativeLevel} is always the
+ * handler's own captured value.
  */
 public final class HandlerBaselineRegistry {
 
     private final Map<HandlerRef, Optional<Level>> captured = new ConcurrentHashMap<>();
+    private final Map<HandlerRef, VendorDefaults.HandlerDefault> vendorDefaults;
+
+    public HandlerBaselineRegistry() {
+        this(Map.of());
+    }
+
+    /**
+     * @param vendorDefaults the vendor defaults file's handler entries, by name
+     */
+    public HandlerBaselineRegistry(Map<HandlerRef, VendorDefaults.HandlerDefault> vendorDefaults) {
+        // Insertion-ordered copy, not Map.copyOf: vendorDefaults() promises file order.
+        this.vendorDefaults = Collections.unmodifiableMap(new LinkedHashMap<>(vendorDefaults));
+    }
 
     /**
      * Captures {@code ref}'s baseline from {@code adapter} the first time it
@@ -73,14 +95,42 @@ public final class HandlerBaselineRegistry {
     }
 
     /**
-     * @throws IllegalStateException if {@code ref}'s baseline was never captured
+     * The effective baseline: the vendor defaults file's fixed level for {@code ref} if it has
+     * one, else the captured native value (also for a vendor {@code AUTO} handler, whose
+     * tracking {@link HandlerLevelControlService} does on top of it).
+     *
+     * @throws IllegalStateException if {@code ref} has no fixed vendor level and its native
+     *                               baseline was never captured
      */
     public Optional<Level> get(HandlerRef ref) {
+        VendorDefaults.HandlerDefault vendor = vendorDefaults.get(ref);
+        if (vendor != null && vendor.level() != null) {
+            return Optional.of(vendor.level());
+        }
+        return nativeLevel(ref);
+    }
+
+    /**
+     * The handler's own captured value, ignoring the vendor layer.
+     *
+     * @throws IllegalStateException if {@code ref}'s baseline was never captured
+     */
+    public Optional<Level> nativeLevel(HandlerRef ref) {
         Optional<Level> value = captured.get(ref);
         if (value == null) {
             throw new IllegalStateException("baseline not captured for " + ref);
         }
         return value;
+    }
+
+    /** The vendor defaults file's entry for {@code ref}, if it names one. */
+    public Optional<VendorDefaults.HandlerDefault> vendorDefault(HandlerRef ref) {
+        return Optional.ofNullable(vendorDefaults.get(ref));
+    }
+
+    /** Every handler the vendor defaults file names, in file order. */
+    public Collection<VendorDefaults.HandlerDefault> vendorDefaults() {
+        return vendorDefaults.values();
     }
 
     /**

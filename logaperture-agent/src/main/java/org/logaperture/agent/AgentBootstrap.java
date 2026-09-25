@@ -23,9 +23,12 @@ import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.StderrAuditLog;
+import org.logaperture.core.VendorDefaults;
+import org.logaperture.core.VendorDefaultsFile;
 import org.logaperture.core.spi.ContainerIntegration;
 
 import java.lang.instrument.Instrumentation;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -63,12 +66,21 @@ final class AgentBootstrap {
     }
 
     static void start(Instrumentation inst) {
+        start(inst, null);
+    }
+
+    /**
+     * @param agentArgs the {@code -javaagent:...=<args>} string, or {@code null} -- doc/specs/
+     *                  vendor-defaults.md "Agent arguments"
+     */
+    static void start(Instrumentation inst, String agentArgs) {
         if (Boolean.getBoolean(DISABLED_PROPERTY)) {
             return; // global kill switch, honoured without needing the control plane reachable
         }
         try {
             CapabilityPolicy policy = CapabilityPolicy.allowAll();
             AuditLog auditLog = new StderrAuditLog();
+            VendorDefaults vendorDefaults = loadVendorDefaults(agentArgs);
 
             ContainerIntegration container = integrations().stream()
                     .filter(ContainerIntegration::detect)
@@ -84,9 +96,48 @@ final class AgentBootstrap {
             // race against the async install.
             Consumer<AggregateLevelControl> onFirstContextReady =
                     operations -> publishControlSurface(container, operations);
-            container.activate(inst, policy, auditLog, onFirstContextReady);
+            container.activate(inst, policy, auditLog, vendorDefaults, onFirstContextReady);
         } catch (Throwable t) {
             Diagnostics.error("LogAperture agent bootstrap failed to start", t);
+        }
+    }
+
+    /**
+     * Parses the agent arguments and, if {@code --vendor-defaults=} names a file, reads and
+     * validates it -- on the {@code premain} thread, so neither step may touch {@code
+     * java.util.logging} (logaperture-spec.md §15.6). Never throws: a bad argument or a rejected
+     * file is reported and the agent carries on without vendor defaults.
+     */
+    static VendorDefaults loadVendorDefaults(String agentArgs) {
+        try {
+            AgentArguments arguments = AgentArguments.parse(agentArgs, Path.of(System.getProperty("user.dir", ".")));
+            for (String warning : arguments.warnings()) {
+                Diagnostics.warn("LogAperture: " + warning);
+            }
+            if (arguments.vendorDefaults().isEmpty()) {
+                return VendorDefaults.none();
+            }
+            VendorDefaults vendorDefaults = VendorDefaultsFile.load(arguments.vendorDefaults().get());
+            reportVendorDefaults(vendorDefaults);
+            return vendorDefaults;
+        } catch (RuntimeException e) {
+            Diagnostics.warn("LogAperture: failed to read the agent arguments, continuing without vendor defaults", e);
+            return VendorDefaults.none();
+        }
+    }
+
+    private static void reportVendorDefaults(VendorDefaults vendorDefaults) {
+        String path = vendorDefaults.path().map(Path::toString).orElse("?");
+        if (vendorDefaults.status() == VendorDefaults.Status.REJECTED) {
+            Diagnostics.warn("LogAperture: vendor defaults file " + path + " was rejected -- none of its settings "
+                    + "apply:\n  " + String.join("\n  ", vendorDefaults.errors()));
+            return;
+        }
+        Diagnostics.info("LogAperture: vendor defaults loaded from " + path + " (" + vendorDefaults.summary() + ")");
+        if (vendorDefaults.writable()) {
+            Diagnostics.warn("LogAperture: vendor defaults file " + path + " (or its directory) is writable by the "
+                    + "account this JVM runs as -- anyone who can run code as that account can change the "
+                    + "baseline logging configuration");
         }
     }
 

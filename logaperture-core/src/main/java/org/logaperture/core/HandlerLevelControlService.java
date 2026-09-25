@@ -84,6 +84,13 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      */
     private final Set<HandlerRef> pendingResume = ConcurrentHashMap.newKeySet();
 
+    /**
+     * Vendor-defaulted handlers not yet applied because they don't resolve yet -- doc/specs/
+     * vendor-defaults.md "Handlers": retried on every verification-sweep tick until they do.
+     * Never given up on: the vendor layer is permanent for the JVM's life.
+     */
+    private final Set<HandlerRef> pendingVendor = ConcurrentHashMap.newKeySet();
+
     /** Convenience overload for every context that doesn't need {@code AUTO} (doc/specs/handler-floor-control.md "AUTO handler level"). */
     public HandlerLevelControlService(
             LoggingAdapter adapter,
@@ -455,7 +462,8 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         // setLogger/resetLevel/resetAll/sweep-with-reverts calls this
         // unconditionally whether or not AUTO is even in use.
         Map<HandlerRef, HandlerLevelOverride> tracked = overrides.all();
-        if (tracked.values().stream().noneMatch(o -> o.mode() == HandlerLevelMode.AUTO)) {
+        boolean anyOperatorAuto = tracked.values().stream().anyMatch(o -> o.mode() == HandlerLevelMode.AUTO);
+        if (!anyOperatorAuto && !hasVendorAuto()) {
             return;
         }
         Optional<Level> explicit = activeLoggerFloor.lowestActive();
@@ -464,6 +472,161 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                 recomputeOne(entry.getKey(), entry.getValue(), explicit);
             }
         }
+        recomputeVendorAuto(explicit);
+    }
+
+    /** Vendor-defaulted handlers that haven't resolved since install -- {@code doctor}'s informational finding (Decision M7). */
+    public List<HandlerRef> pendingVendorHandlers() {
+        return baselines.vendorDefaults().stream().map(VendorDefaults.HandlerDefault::ref)
+                .filter(pendingVendor::contains).toList();
+    }
+
+    private boolean hasVendorAuto() {
+        return baselines.vendorDefaults().stream().anyMatch(d -> d.mode() == HandlerLevelMode.AUTO);
+    }
+
+    /**
+     * A vendor {@code AUTO} handler's baseline is AUTO tracking (doc/specs/vendor-defaults.md
+     * "Handlers", Decision M3): wherever no operator override covers it, it tracks {@code
+     * explicit} exactly as an {@code AUTO} override would, falling back to its native level.
+     */
+    private void recomputeVendorAuto(Optional<Level> explicit) {
+        for (VendorDefaults.HandlerDefault vendor : baselines.vendorDefaults()) {
+            if (vendor.mode() != HandlerLevelMode.AUTO || pendingVendor.contains(vendor.ref())
+                    || coveredByOverride(vendor.ref())) {
+                continue;
+            }
+            applyAutoTarget(vendor.ref(), explicit, "auto-recompute", vendor.reason());
+        }
+    }
+
+    /** {@link #recomputeVendorAuto} against the current floor -- after a reset hands a handler back to the vendor layer. */
+    private void recomputeVendorAutoNow() {
+        if (adapter.hasHandlerLevels() && hasVendorAuto()) {
+            recomputeVendorAuto(activeLoggerFloor.lowestActive());
+        }
+    }
+
+    /**
+     * Whether an operator override currently decides {@code ref}'s level -- its own, or a group
+     * override ({@code ALL_HANDLERS}, {@code DEFAULT_HANDLERS}) it is a member of. The vendor
+     * layer only acts where this is {@code false}.
+     */
+    private boolean coveredByOverride(HandlerRef ref) {
+        if (overrides.get(ref).isPresent()) {
+            return true;
+        }
+        for (HandlerRef group : List.of(HandlerRef.ALL_HANDLERS, HandlerRef.DEFAULT_HANDLERS)) {
+            if (overrides.get(group).isPresent() && membersOf(group).contains(ref)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Applies the vendor defaults file's handler levels -- doc/specs/vendor-defaults.md
+     * "Handlers". Runs once, at composition-root install time, before {@link
+     * #resumeFromStateStore}. A handler that doesn't resolve yet is remembered and retried by
+     * every {@link #verifyAndReapply} tick until it does. No capability check
+     * (vendor-config-epic.md Decision #11).
+     */
+    public void applyVendorDefaults(Instant now) {
+        if (!adapter.hasHandlerLevels()) {
+            return; // doc/specs/handler-floor-control.md "Logback / none" -- nothing to set
+        }
+        for (VendorDefaults.HandlerDefault vendor : baselines.vendorDefaults()) {
+            if (!tryApplyVendor(vendor, now)) {
+                pendingVendor.add(vendor.ref());
+            }
+        }
+    }
+
+    /**
+     * @return {@code true} if {@code vendor}'s handler resolved and its default is now in effect
+     *         (or an override already covers it); {@code false} if it doesn't resolve yet
+     */
+    private boolean tryApplyVendor(VendorDefaults.HandlerDefault vendor, Instant now) {
+        HandlerRef ref = vendor.ref();
+        if (coveredByOverride(ref)) {
+            return true;
+        }
+        try {
+            // Native first, so the handler's own level is never read back as the vendor's.
+            Optional<Level> nativeLevel = baselines.captureIfAbsent(ref, adapter);
+            if (nativeLevel.isEmpty()) {
+                return false;
+            }
+            if (vendor.mode() == HandlerLevelMode.AUTO) {
+                applyAutoTarget(ref, activeLoggerFloor.lowestActive(), VendorDefaults.AUDIT_SOURCE, vendor.reason());
+                return true;
+            }
+            Optional<Level> current = adapter.handlerLevel(ref);
+            if (current.isPresent() && current.get() == vendor.level()) {
+                return true;
+            }
+            adapter.setHandlerLevel(ref, vendor.level());
+            auditLog.record(new AuditRecord(now, principal, VendorDefaults.AUDIT_SOURCE, ref.value(),
+                    current.map(Level::toString).orElse("<none>"), vendor.level().toString(), vendor.reason(),
+                    AuditRecord.Action.MUTATION));
+            return true;
+        } catch (UnknownHandlerException e) {
+            return false;
+        } catch (RuntimeException e) {
+            System.err.println("[logaperture-core] failed to apply the vendor default for handler '" + ref
+                    + "', will retry: " + e);
+            return false;
+        }
+    }
+
+    /**
+     * The verification sweep's vendor half: applies any pending vendor handler that resolves now,
+     * and re-applies a fixed vendor level that drifted on a handler no override covers. {@code
+     * AUTO} vendor handlers are re-asserted by {@link #recomputeVendorAuto}.
+     */
+    private int verifyVendorLayer(Instant now) {
+        if (!adapter.hasHandlerLevels()) {
+            return 0;
+        }
+        int reapplied = 0;
+        for (VendorDefaults.HandlerDefault vendor : baselines.vendorDefaults()) {
+            HandlerRef ref = vendor.ref();
+            if (pendingVendor.contains(ref)) {
+                if (tryApplyVendor(vendor, now)) {
+                    pendingVendor.remove(ref);
+                    reapplied++;
+                }
+                continue;
+            }
+            if (vendor.mode() == HandlerLevelMode.AUTO || coveredByOverride(ref)) {
+                continue;
+            }
+            Optional<Level> current;
+            try {
+                current = adapter.handlerLevel(ref);
+            } catch (RuntimeException e) {
+                continue; // gone for now -- try again next tick
+            }
+            if (current.isEmpty() || current.get() == vendor.level()) {
+                continue;
+            }
+            try {
+                adapter.setHandlerLevel(ref, vendor.level());
+            } catch (RuntimeException e) {
+                continue;
+            }
+            if (coveredByOverride(ref)) {
+                continue; // an override arrived meanwhile -- the override half re-asserts it
+            }
+            auditLog.record(new AuditRecord(now, principal, "verification-sweep", ref.value(),
+                    current.get().toString(), vendor.level().toString(), vendor.reason(),
+                    AuditRecord.Action.MUTATION));
+            reapplied++;
+        }
+        if (hasVendorAuto()) {
+            recomputeVendorAuto(activeLoggerFloor.lowestActive());
+        }
+        return reapplied;
     }
 
     /**
@@ -613,6 +776,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (applyReset(ref, existing.get(), source)) {
             safePersist(() -> stateStore.removeHandler(ref));
         }
+        recomputeVendorAutoNow(); // a vendor AUTO handler handed back to the vendor layer resumes tracking
         return new HandlerResetOutcome(List.of(ref), List.of());
     }
 
@@ -645,6 +809,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         }
         if (!reverted.isEmpty()) {
             safePersist(() -> stateStore.removeAllHandlers(reverted)); // one rewrite, not one per handler (issue #17)
+            recomputeVendorAutoNow();
         }
         return new HandlerResetOutcome(reverted, skippedSticky);
     }
@@ -664,9 +829,23 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      * adapter itself, since the live handler instance may be new).
      */
     public void reapplyActiveOverrides(LoggingAdapter targetAdapter) {
+        // The vendor layer first, where no override covers it -- doc/specs/vendor-defaults.md
+        // "Reconfiguration and the verification sweep".
+        for (VendorDefaults.HandlerDefault vendor : baselines.vendorDefaults()) {
+            if (vendor.mode() == HandlerLevelMode.FIXED && !pendingVendor.contains(vendor.ref())
+                    && !coveredByOverride(vendor.ref())) {
+                try {
+                    targetAdapter.setHandlerLevel(vendor.ref(), vendor.level());
+                } catch (RuntimeException e) {
+                    System.err.println("[logaperture-core] failed to re-apply the vendor default for handler '"
+                            + vendor.ref() + "', leaving it for the verification sweep: " + e);
+                }
+            }
+        }
         for (HandlerLevelOverride override : overrides.all().values()) {
             HandlerOverrideApplier.apply(override, targetAdapter, this::membersOf);
         }
+        recomputeVendorAutoNow();
     }
 
     /**
@@ -829,7 +1008,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             }
             reapplied++;
         }
-        return reapplied;
+        return reapplied + verifyVendorLayer(now);
     }
 
     /** One iteration's read of "what does the adapter say right now, and does it disagree with the tracked override". */
@@ -899,7 +1078,9 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                     override == null ? null : override.mode(),
                     override == null ? null : override.tier(),
                     override == null ? null : override.expiresAt(),
-                    null));
+                    null,
+                    null,
+                    baselines.vendorDefault(ref).map(HandlerLevelControlService::describeVendor).orElse(null)));
         }
         HandlerLevelOverride defaultHandlersOverride = overrides.get(HandlerRef.DEFAULT_HANDLERS).orElse(null);
         rows.add(new HandlerInfo(
@@ -915,6 +1096,11 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                 defaultHandlersOverride == null ? null : defaultHandlersOverride.expiresAt(),
                 defaultHandlersMembersSummary()));
         return List.copyOf(rows);
+    }
+
+    /** The {@code VENDOR} column: the fixed level's name, or {@code AUTO}. */
+    private static String describeVendor(VendorDefaults.HandlerDefault vendor) {
+        return vendor.mode() == HandlerLevelMode.AUTO ? "AUTO" : vendor.level().name();
     }
 
     /**
@@ -936,7 +1122,10 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return explicit ? "(none)" : "(auto -- no handlers yet)";
         }
         String names = members.stream().map(HandlerRef::value).collect(Collectors.joining(", "));
-        return explicit ? names : "(auto: " + names + ")";
+        if (explicit) {
+            return names;
+        }
+        return defaultHandlerGroup.vendorMembersInEffect(adapter) ? "(vendor: " + names + ")" : "(auto: " + names + ")";
     }
 
     /**
@@ -1083,6 +1272,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         }
         if (!reverted.isEmpty()) {
             safePersist(() -> stateStore.removeAllHandlers(reverted)); // one rewrite per sweep tick (issue #17)
+            recomputeVendorAutoNow();
         }
     }
 

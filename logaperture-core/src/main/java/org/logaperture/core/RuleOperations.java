@@ -48,17 +48,36 @@ public interface RuleOperations {
      * removed from, since ids are only unique per context (doc/specs/
      * rule-pipeline-foundation.md "Rule identity").
      */
-    Optional<RuleView> resetRule(String id, boolean includeSticky);
+    default Optional<RuleView> resetRule(String id, boolean includeSticky) {
+        return resetRule(id, includeSticky, false);
+    }
+
+    /**
+     * {@link #resetRule(String, boolean)}, plus doc/specs/vendor-defaults.md "Rules": a vendor
+     * defaults rule refuses unless {@code includeVendorDefaults}, in which case it is suspended
+     * until restart rather than removed.
+     */
+    Optional<RuleView> resetRule(String id, boolean includeSticky, boolean includeVendorDefaults);
 
     /** {@code reset rules} — bulk, skip-and-report shape. */
-    RuleResetOutcome resetAllRules(boolean includeSticky);
+    default RuleResetOutcome resetAllRules(boolean includeSticky) {
+        return resetAllRules(includeSticky, false);
+    }
+
+    /** {@link #resetAllRules(boolean)}; vendor rules are skipped and reported unless {@code includeVendorDefaults}. */
+    RuleResetOutcome resetAllRules(boolean includeSticky, boolean includeVendorDefaults);
 
     /**
      * The rules attached directly to {@code loggerName} — {@code reset
      * logger X}'s side effect (doc/specs/rule-pipeline-foundation.md
      * "Command surface").
      */
-    RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky);
+    default RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky) {
+        return resetRulesForLogger(loggerName, includeSticky, false);
+    }
+
+    /** {@link #resetRulesForLogger(String, boolean)}; vendor rules as in {@link #resetAllRules(boolean, boolean)}. */
+    RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky, boolean includeVendorDefaults);
 
     /**
      * {@code logctl add rule drop} — doc/specs/drop-rule.md "Command

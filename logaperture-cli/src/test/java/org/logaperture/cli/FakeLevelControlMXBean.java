@@ -336,6 +336,27 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         return resetRulesForLoggerResult;
     }
 
+    boolean lastIncludeVendorDefaults;
+
+    @Override
+    public RuleData resetRule(String id, boolean includeSticky, boolean includeVendorDefaults) {
+        lastIncludeVendorDefaults = includeVendorDefaults;
+        return resetRule(id, includeSticky);
+    }
+
+    @Override
+    public RuleResetOutcomeData resetAllRules(boolean includeSticky, boolean includeVendorDefaults) {
+        lastIncludeVendorDefaults = includeVendorDefaults;
+        return resetAllRules(includeSticky);
+    }
+
+    @Override
+    public RuleResetOutcomeData resetRulesForLogger(String loggerName, boolean includeSticky,
+            boolean includeVendorDefaults) {
+        lastIncludeVendorDefaults = includeVendorDefaults;
+        return resetRulesForLogger(loggerName, includeSticky);
+    }
+
     final List<Object[]> addRuleDropCalls = new ArrayList<>();
     RuleData addRuleDropResult;
 

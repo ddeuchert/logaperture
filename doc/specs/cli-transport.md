@@ -303,11 +303,15 @@ separate, pasteable bug-report block — see [`environment-report.md`](environme
 four namespace-scoped forms:
 
 ```
-logctl reset logger <target> [--include-sticky]
+logctl reset logger <target> [--include-sticky] [--include-vendor-defaults]
 logctl reset loggers [--include-sticky]
 logctl reset handler <name> [--include-sticky]
 logctl reset handlers [--include-sticky]
 ```
+
+With a vendor defaults file ([`vendor-defaults.md`](vendor-defaults.md)), every form lands on
+the file's level rather than the application's own. `--include-vendor-defaults` (also on `reset
+rule`/`reset rules`) switches off vendor rules until restart; it is a usage error anywhere else.
 
 `reset logger <target>` accepts an exact name or a pattern, exactly as `set` does. A
 `STICKY`-tier override is skipped by default on every form — `--include-sticky` opts back

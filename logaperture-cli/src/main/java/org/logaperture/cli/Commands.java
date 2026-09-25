@@ -66,9 +66,12 @@ final class Commands {
     static Command listLoggers(String filter, boolean showAll, boolean json) {
         return (mbean, out, in, interactive) -> {
             List<LoggerInfoData> matched = mbean.listLoggers(filter);
+            // doc/specs/vendor-defaults.md "Surfaces": the default view also shows loggers the
+            // vendor defaults file sets -- settings the operator didn't make, and should see.
             List<LoggerInfoData> rows = showAll
                     ? matched
-                    : matched.stream().filter(LoggerInfoData::isOverrideActive).toList();
+                    : matched.stream().filter(row -> row.isOverrideActive() || row.getVendorDefaultLevel() != null)
+                            .toList();
             if (json) {
                 out.println(Json.loggers(rows));
                 return CliError.OK;
@@ -77,13 +80,14 @@ final class Commands {
                 if (matched.isEmpty()) {
                     out.println(filter != null ? "No loggers match '" + filter + "'." : "No loggers known yet.");
                 } else if (filter != null) {
-                    out.println("No loggers matching '" + filter + "' have an active override.");
+                    out.println("No loggers matching '" + filter + "' have an active override or vendor default.");
                 } else {
-                    out.println("No loggers have an active override.");
+                    out.println("No loggers have an active override or vendor default.");
                 }
                 return CliError.OK;
             }
             boolean showContext = spansMultipleContexts(rows, LoggerInfoData::getContext);
+            boolean showVendor = rows.stream().anyMatch(row -> row.getVendorDefaultLevel() != null);
             List<List<String>> table = new ArrayList<>();
             for (LoggerInfoData row : rows) {
                 List<String> cells = new ArrayList<>();
@@ -92,6 +96,9 @@ final class Commands {
                 }
                 cells.add(orDash(row.getName()));
                 cells.add(orDash(row.getConfiguredLevel()));
+                if (showVendor) {
+                    cells.add(orDash(row.getVendorDefaultLevel()));
+                }
                 cells.add(orDash(row.getEffectiveLevel()));
                 cells.add(overrideCell(row));
                 table.add(cells);
@@ -100,7 +107,11 @@ final class Commands {
             if (showContext) {
                 headers.add("CONTEXT");
             }
-            headers.addAll(List.of("LOGGER", "CONFIGURED", "EFFECTIVE", "OVERRIDE"));
+            headers.addAll(List.of("LOGGER", "CONFIGURED"));
+            if (showVendor) {
+                headers.add("VENDOR");
+            }
+            headers.addAll(List.of("EFFECTIVE", "OVERRIDE"));
             out.println(Format.table(headers, table));
             return CliError.OK;
         };
@@ -117,9 +128,16 @@ final class Commands {
             }
             active.sort(Comparator.comparing(Commands::revertSortKey).thenComparing(LoggerInfoData::getName));
             List<HandlerLevelOverrideData> handlerOverrides = mbean.listHandlerOverrides();
+            EnvironmentReportData report = mbean.environmentReport();
             if (json) {
-                out.println(Json.status(active, handlerOverrides));
+                out.println(Json.status(active, handlerOverrides, report));
                 return CliError.OK;
+            }
+            // doc/specs/vendor-defaults.md "Surfaces" (Decision M5): one line, only when a file was configured.
+            if (report.getVendorDefaultsPath() != null) {
+                out.println("Vendor defaults: " + report.getVendorDefaultsPath() + " — "
+                        + vendorDefaultsStatusForStatus(report.getVendorDefaultsStatus()));
+                out.println();
             }
             if (active.isEmpty() && handlerOverrides.isEmpty()) {
                 out.println("No active overrides.");
@@ -165,6 +183,23 @@ final class Commands {
             }
             return CliError.OK;
         };
+    }
+
+    /**
+     * {@code status}'s vendor line: the summary without the {@code env}-style "loaded (...)"
+     * wrapper, and a pointer to {@code doctor} when the file was rejected.
+     */
+    private static String vendorDefaultsStatusForStatus(String status) {
+        if (status == null) {
+            return Format.NONE;
+        }
+        if (status.startsWith("loaded (") && status.endsWith(")")) {
+            return status.substring("loaded (".length(), status.length() - 1);
+        }
+        if (status.startsWith("rejected")) {
+            return "REJECTED, see logctl doctor";
+        }
+        return status;
     }
 
     /**
@@ -475,6 +510,14 @@ final class Commands {
      * opposite risk shape from applying a batch mutation).
      */
     static Command resetLogger(String target, boolean includeSticky, boolean json) {
+        return resetLogger(target, includeSticky, false, json);
+    }
+
+    /**
+     * @param includeVendorDefaults doc/specs/vendor-defaults.md "Rules": also switch off, until
+     *                              restart, vendor defaults rules attached directly to {@code target}
+     */
+    static Command resetLogger(String target, boolean includeSticky, boolean includeVendorDefaults, boolean json) {
         return (mbean, out, in, interactive) -> {
             if (isPattern(target)) {
                 return resetLoggerPattern(mbean, out, target, includeSticky, json);
@@ -488,14 +531,15 @@ final class Commands {
             // command's own --include-sticky. Text output only -- see that
             // section's note on scoping this to the exact-name path for now.
             org.logaperture.control.jmx.RuleResetOutcomeData rulesOutcome =
-                    mbean.resetRulesForLogger(target, includeSticky);
+                    mbean.resetRulesForLogger(target, includeSticky, includeVendorDefaults);
             if (json) {
                 out.println(Json.resetLoggerWithRules(after, target, wasOverridden, rulesOutcome.getRemovedIds(),
-                        rulesOutcome.getSkippedStickyIds()));
+                        rulesOutcome.getSkippedStickyIds(), rulesOutcome.getSkippedVendorIds()));
                 return CliError.OK;
             }
             if (after != null) {
-                out.println(target + " → " + after.getEffectiveLevel() + " (baseline)");
+                out.println(target + " → " + after.getEffectiveLevel()
+                        + (after.getVendorDefaultLevel() != null ? " (vendor default)" : " (baseline)"));
             } else if (wasOverridden) {
                 out.println(target + " → baseline (not yet instantiated, so no level to show)");
             } else {
@@ -505,6 +549,7 @@ final class Commands {
                 out.println("Removed " + rulesOutcome.getRemovedIds().size() + " rule(s) attached to " + target + ".");
             }
             printSkippedSticky(out, "sticky rule(s)", rulesOutcome.getSkippedStickyIds());
+            printSkippedVendor(out, rulesOutcome.getSkippedVendorIds());
             return CliError.OK;
         };
     }
@@ -602,6 +647,15 @@ final class Commands {
             printSkippedSticky(out, "sticky handler override(s)", skippedSticky);
             return CliError.OK;
         };
+    }
+
+    /** The "left N vendor default rule(s) in place" line the rule-reset forms share (doc/specs/vendor-defaults.md "Rules"). */
+    private static void printSkippedVendor(java.io.PrintStream out, List<String> skipped) {
+        if (skipped.isEmpty()) {
+            return;
+        }
+        out.println("Left " + skipped.size() + " vendor default rule(s) in place (pass --include-vendor-defaults to "
+                + "switch them off until restart): " + String.join(", ", skipped));
     }
 
     /** The "left N sticky override(s) in place" line every bulk/pattern reset form shares (doc/specs/reset-command-surface.md, Decision #1). */
@@ -721,6 +775,10 @@ final class Commands {
             // not a fact to quietly drop the line for.
             rows.add(List.of("State file",
                     report.getStateFilePath() != null ? report.getStateFilePath() : Format.NONE));
+            // doc/specs/vendor-defaults.md "Surfaces": shown either way, like the state file.
+            rows.add(List.of("Vendor defaults", report.getVendorDefaultsPath() != null
+                    ? report.getVendorDefaultsPath() + "  " + report.getVendorDefaultsStatus()
+                    : orDash(report.getVendorDefaultsStatus())));
             out.println(Format.table(rows));
             return CliError.OK;
         };
@@ -741,7 +799,7 @@ final class Commands {
             List<HandlerInfoData> catalog = mbean.listHandlers();
             List<HandlerInfoData> rows = showAll
                     ? catalog
-                    : catalog.stream().filter(HandlerInfoData::isOverrideActive).toList();
+                    : catalog.stream().filter(row -> row.isOverrideActive() || row.getVendorDefault() != null).toList();
             if (json) {
                 out.println(Json.handlers(rows));
                 return CliError.OK;
@@ -749,10 +807,11 @@ final class Commands {
             if (rows.isEmpty()) {
                 out.println(catalog.isEmpty()
                         ? "This framework's handlers have no level of their own — nothing to list."
-                        : "No handlers have an active override.");
+                        : "No handlers have an active override or vendor default.");
                 return CliError.OK;
             }
             boolean showContext = spansMultipleContexts(rows, HandlerInfoData::getContext);
+            boolean showVendor = rows.stream().anyMatch(row -> row.getVendorDefault() != null);
             List<List<String>> table = new ArrayList<>();
             for (HandlerInfoData row : rows) {
                 boolean notALiveHandler = row.getLevel() == null && !row.isPersistent()
@@ -763,6 +822,9 @@ final class Commands {
                 }
                 cells.add(orDash(row.getRef()));
                 cells.add(orDash(row.getLevel()));
+                if (showVendor) {
+                    cells.add(orDash(row.getVendorDefault()));
+                }
                 cells.add(notALiveHandler ? Format.NONE : (row.isPersistent() ? "file" : "no"));
                 // DEFAULT_HANDLERS (issue #28) has no target path of its own -- this
                 // otherwise-unused cell shows its current members instead.
@@ -774,7 +836,11 @@ final class Commands {
             if (showContext) {
                 headers.add("CONTEXT");
             }
-            headers.addAll(List.of("HANDLER", "LEVEL", "PERSISTS", "TARGET", "OVERRIDE"));
+            headers.addAll(List.of("HANDLER", "LEVEL"));
+            if (showVendor) {
+                headers.add("VENDOR");
+            }
+            headers.addAll(List.of("PERSISTS", "TARGET", "OVERRIDE"));
             out.println(Format.table(headers, table));
             return CliError.OK;
         };
@@ -808,7 +874,7 @@ final class Commands {
                 cells.add(row.getId());
                 cells.add(row.getLoggerName());
                 cells.add(row.getAction());
-                cells.add(row.getTier());
+                cells.add(ruleTierCell(row));
                 cells.add(orDash(row.getExpiresAt()));
                 cells.add(String.valueOf(row.getHitCount()));
                 table.add(cells);
@@ -823,6 +889,14 @@ final class Commands {
         };
     }
 
+    /** doc/specs/vendor-defaults.md "Surfaces": a vendor rule shows its origin instead of a tier. */
+    private static String ruleTierCell(org.logaperture.control.jmx.RuleData row) {
+        if (row.getOrigin() == null) {
+            return row.getTier();
+        }
+        return row.isSuspended() ? row.getOrigin() + " (suspended)" : row.getOrigin();
+    }
+
     /**
      * {@code logctl reset rule <id>} — refuses on a {@code STICKY} rule
      * without {@code --include-sticky}, same single-named-target shape
@@ -830,15 +904,28 @@ final class Commands {
      * rule-pipeline-foundation.md "Command surface").
      */
     static Command resetRule(String id, boolean includeSticky, boolean json) {
+        return resetRule(id, includeSticky, false, json);
+    }
+
+    /**
+     * @param includeVendorDefaults doc/specs/vendor-defaults.md "Rules": a {@code vendor:} rule is
+     *                              refused without it, and suspended until restart with it
+     */
+    static Command resetRule(String id, boolean includeSticky, boolean includeVendorDefaults, boolean json) {
         return (mbean, out, in, interactive) -> {
-            org.logaperture.control.jmx.RuleData removed = mbean.resetRule(id, includeSticky);
+            org.logaperture.control.jmx.RuleData removed = mbean.resetRule(id, includeSticky, includeVendorDefaults);
+            boolean suspended = removed != null && removed.isSuspended();
             if (json) {
-                out.println(Json.resetRule(id, removed != null));
+                out.println(Json.resetRule(id, removed != null, suspended));
                 return CliError.OK;
             }
-            out.println(removed != null
-                    ? "rule " + id + " → reset."
-                    : "rule " + id + " — no such rule.");
+            if (removed == null) {
+                out.println("rule " + id + " — no such rule (or already suspended).");
+            } else if (suspended) {
+                out.println("rule " + id + " → suspended until the application restarts.");
+            } else {
+                out.println("rule " + id + " → reset.");
+            }
             return CliError.OK;
         };
     }
@@ -904,20 +991,27 @@ final class Commands {
 
     /** {@code logctl reset rules} — removes every attached rule, across every registered context. */
     static Command resetAllRules(boolean includeSticky, boolean json) {
+        return resetAllRules(includeSticky, false, json);
+    }
+
+    static Command resetAllRules(boolean includeSticky, boolean includeVendorDefaults, boolean json) {
         return (mbean, out, in, interactive) -> {
-            org.logaperture.control.jmx.RuleResetOutcomeData outcome = mbean.resetAllRules(includeSticky);
+            org.logaperture.control.jmx.RuleResetOutcomeData outcome =
+                    mbean.resetAllRules(includeSticky, includeVendorDefaults);
             List<String> removed = outcome.getRemovedIds();
             List<String> skippedSticky = outcome.getSkippedStickyIds();
+            List<String> skippedVendor = outcome.getSkippedVendorIds();
             if (json) {
-                out.println(Json.resetAllRules(removed, skippedSticky));
+                out.println(Json.resetAllRules(removed, skippedSticky, skippedVendor));
                 return CliError.OK;
             }
-            if (removed.isEmpty() && skippedSticky.isEmpty()) {
+            if (removed.isEmpty() && skippedSticky.isEmpty() && skippedVendor.isEmpty()) {
                 out.println("No rules to reset.");
                 return CliError.OK;
             }
             out.println("Removed " + removed.size() + " rule(s).");
             printSkippedSticky(out, "sticky rule(s)", skippedSticky);
+            printSkippedVendor(out, skippedVendor);
             return CliError.OK;
         };
     }

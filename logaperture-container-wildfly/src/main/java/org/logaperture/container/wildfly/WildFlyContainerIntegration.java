@@ -22,6 +22,7 @@ import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.SweepPolicy;
+import org.logaperture.core.VendorDefaults;
 import org.logaperture.core.spi.ContainerIntegration;
 import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.InstallGuidance;
@@ -99,7 +100,7 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
 
     @Override
     public AggregateLevelControl activate(
-            Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog,
+            Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog, VendorDefaults vendorDefaults,
             Consumer<AggregateLevelControl> onFirstContextReady) {
         // this::version, not version().orElse(null) -- see version()'s javadoc.
         // jboss.home.dir is not yet visible to System.getProperty at this
@@ -107,7 +108,7 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
         // here bakes in "no version" permanently. Deferred, it is re-resolved
         // fresh whenever logctl env actually runs, long after WildFly's own
         // bootstrap has set it.
-        WildFlyContainer host = new WildFlyContainer(policy, auditLog, sweepInterval, this::version);
+        WildFlyContainer host = new WildFlyContainer(policy, auditLog, sweepInterval, this::version, vendorDefaults);
 
         Runnable install = () -> {
             try {

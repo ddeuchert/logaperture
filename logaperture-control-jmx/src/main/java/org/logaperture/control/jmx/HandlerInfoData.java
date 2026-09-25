@@ -40,6 +40,32 @@ public final class HandlerInfoData {
     private final String overrideExpiresAt;
     private final String membersSummary;
     private final String context;
+    private final String vendorDefault;
+
+    /**
+     * Every field, including {@code vendorDefault} (doc/specs/vendor-defaults.md "Surfaces"); the
+     * narrower constructor below stays annotated for older clients (logaperture-spec.md §11.1).
+     */
+    @ConstructorProperties({"ref", "level", "persistent", "targetPath", "autoFlush", "overrideActive",
+            "overrideLevel", "overrideMode", "overrideTier", "overrideExpiresAt", "membersSummary", "context",
+            "vendorDefault"})
+    public HandlerInfoData(String ref, String level, boolean persistent, String targetPath, Boolean autoFlush,
+            boolean overrideActive, String overrideLevel, String overrideMode, String overrideTier,
+            String overrideExpiresAt, String membersSummary, String context, String vendorDefault) {
+        this.ref = ref;
+        this.level = level;
+        this.persistent = persistent;
+        this.targetPath = targetPath;
+        this.autoFlush = autoFlush;
+        this.overrideActive = overrideActive;
+        this.overrideLevel = overrideLevel;
+        this.overrideMode = overrideMode;
+        this.overrideTier = overrideTier;
+        this.overrideExpiresAt = overrideExpiresAt;
+        this.membersSummary = membersSummary;
+        this.context = context;
+        this.vendorDefault = vendorDefault;
+    }
 
     @ConstructorProperties({"ref", "level", "persistent", "targetPath", "autoFlush", "overrideActive",
             "overrideLevel", "overrideMode", "overrideTier", "overrideExpiresAt", "membersSummary", "context"})
@@ -56,18 +82,8 @@ public final class HandlerInfoData {
             String overrideExpiresAt,
             String membersSummary,
             String context) {
-        this.ref = ref;
-        this.level = level;
-        this.persistent = persistent;
-        this.targetPath = targetPath;
-        this.autoFlush = autoFlush;
-        this.overrideActive = overrideActive;
-        this.overrideLevel = overrideLevel;
-        this.overrideMode = overrideMode;
-        this.overrideTier = overrideTier;
-        this.overrideExpiresAt = overrideExpiresAt;
-        this.membersSummary = membersSummary;
-        this.context = context;
+        this(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel, overrideMode,
+                overrideTier, overrideExpiresAt, membersSummary, context, null);
     }
 
     public static HandlerInfoData from(HandlerInfo info) {
@@ -83,7 +99,8 @@ public final class HandlerInfoData {
                 info.overrideTier() == null ? null : info.overrideTier().name(),
                 info.overrideExpiresAt() == null ? null : info.overrideExpiresAt().toString(),
                 info.membersSummary(),
-                info.context());
+                info.context(),
+                info.vendorDefault());
     }
 
     public String getRef() {
@@ -139,5 +156,10 @@ public final class HandlerInfoData {
 
     public String getContext() {
         return context;
+    }
+
+    /** The vendor defaults file's setting for this handler (a level name or {@code AUTO}), or {@code null}. */
+    public String getVendorDefault() {
+        return vendorDefault;
     }
 }

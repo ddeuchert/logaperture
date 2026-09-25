@@ -52,7 +52,7 @@ Proposed stack after this epic, highest first (Decision #2):
 ## Members and build order
 
 1. **#60 + #61 together** (Decision #1): read the file at startup, apply it as a layer under
-   persisted state, and make `reset` land on it.
+   persisted state, and make `reset` land on it. Member spec: [`vendor-defaults.md`](vendor-defaults.md).
 2. **#62**: `logctl export vendor-defaults`.
 3. **Library-bundled recipes** ([#92](https://github.com/ddeuchert/logaperture/issues/92)): a metadata convention for jar/war/ear files,
    plus `logctl list/show/apply/reset recipe`. Decisions #14–#21.

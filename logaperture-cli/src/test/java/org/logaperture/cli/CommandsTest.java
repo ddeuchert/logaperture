@@ -150,7 +150,7 @@ class CommandsTest {
         mbean.loggers = List.of(new LoggerInfoData("com.acme.Quiet", "INFO", "INFO", false, null, null, null, null));
 
         assertEquals(CliError.OK, run(Commands.listLoggers(null, false, false)));
-        assertTrue(output().contains("No loggers have an active override."));
+        assertTrue(output().contains("No loggers have an active override or vendor default."));
 
         captured.reset();
         mbean.loggers = List.of();
@@ -170,7 +170,7 @@ class CommandsTest {
 
         String text = output();
         assertFalse(text.contains("No loggers match 'com.acme'."), text);
-        assertTrue(text.contains("No loggers matching 'com.acme' have an active override."), text);
+        assertTrue(text.contains("No loggers matching 'com.acme' have an active override or vendor default."), text);
     }
 
     @Test
@@ -436,7 +436,7 @@ class CommandsTest {
                 "CONSOLE", "INFO", false, null, Boolean.TRUE, false, null, null, null, null, null, null));
 
         assertEquals(CliError.OK, run(Commands.listHandlers(false, false)));
-        assertTrue(output().contains("No handlers have an active override."));
+        assertTrue(output().contains("No handlers have an active override or vendor default."));
 
         captured.reset();
         mbean.handlerCatalog = List.of();
@@ -455,7 +455,7 @@ class CommandsTest {
         assertEquals(CliError.OK, run(Commands.listHandlers(false, false)));
 
         assertTrue(output().contains("no level of their own"), output());
-        assertFalse(output().contains("No handlers have an active override."), output());
+        assertFalse(output().contains("No handlers have an active override or vendor default."), output());
     }
 
     @Test
@@ -1065,7 +1065,7 @@ class CommandsTest {
         assertEquals(CliError.OK, run(Commands.resetLogger("com.acme.Known", false, true)));
         assertEquals(
                 "{\"name\":\"com.acme.Known\",\"overrideActive\":false,\"wasOverridden\":true,"
-                        + "\"removedRuleIds\":[],\"skippedStickyRuleIds\":[]}",
+                        + "\"removedRuleIds\":[],\"skippedStickyRuleIds\":[],\"skippedVendorRuleIds\":[]}",
                 output().strip());
     }
 
@@ -1360,7 +1360,7 @@ class CommandsTest {
     @Test
     void resetRule_unknownId_saysNoSuchRule() {
         assertEquals(CliError.OK, run(Commands.resetRule("no-such-id", false, false)));
-        assertEquals("rule no-such-id — no such rule.", output().strip());
+        assertEquals("rule no-such-id — no such rule (or already suspended).", output().strip());
     }
 
     @Test

@@ -36,6 +36,7 @@ import org.logaperture.api.SampleFullPolicy;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
+import org.logaperture.api.Severity;
 import org.logaperture.api.SquelchedLogger;
 import org.logaperture.api.Storm;
 import org.logaperture.api.StormReport;
@@ -153,6 +154,13 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     private final BooleanSupplier handlerInstallAllowed;
 
     /**
+     * The vendor defaults file this JVM was started with -- doc/specs/vendor-defaults.md. Each
+     * context applies it at install; this copy is what {@code status}/{@code env}/{@code doctor}
+     * report on. {@link VendorDefaults#none()} when no file was configured.
+     */
+    private final VendorDefaults vendorDefaults;
+
+    /**
      * Set once {@link #installHandlerLevel()} has succeeded -- every step, none swallowed -- for at
      * least one context. A context whose steps threw is retried on a later sweep and does not count.
      */
@@ -192,10 +200,24 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     public AggregateLevelControl(String containerName, Supplier<Optional<String>> containerVersion,
             String stateFilePath, BooleanSupplier handlerInstallAllowed) {
+        this(containerName, containerVersion, stateFilePath, handlerInstallAllowed, VendorDefaults.none());
+    }
+
+    /**
+     * @param vendorDefaults the vendor defaults file this JVM was started with; see the field doc
+     */
+    public AggregateLevelControl(String containerName, Supplier<Optional<String>> containerVersion,
+            String stateFilePath, BooleanSupplier handlerInstallAllowed, VendorDefaults vendorDefaults) {
+        this.vendorDefaults = Objects.requireNonNull(vendorDefaults, "vendorDefaults");
         this.containerName = containerName;
         this.containerVersion = Objects.requireNonNull(containerVersion, "containerVersion");
         this.stateFilePath = stateFilePath;
         this.handlerInstallAllowed = Objects.requireNonNull(handlerInstallAllowed, "handlerInstallAllowed");
+    }
+
+    /** The vendor defaults file this JVM was started with ({@link VendorDefaults#none()} if none). */
+    public VendorDefaults vendorDefaults() {
+        return vendorDefaults;
     }
 
     /**
@@ -304,14 +326,51 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     @Override
     public List<DoctorFinding> diagnose() {
-        List<DoctorFinding> result = new ArrayList<>();
+        List<DoctorFinding> result = new ArrayList<>(vendorDefaultsFindings());
         for (ContextControl context : sortedByKey()) {
             String key = context.stableKey();
             for (DoctorFinding finding : context.doctorService().diagnose()) {
                 result.add(finding.withContext(key));
             }
+            for (HandlerRef pending : context.handlerService().pendingVendorHandlers()) {
+                result.add(new DoctorFinding("vendor-defaults.unresolved-handler", Severity.INFO, pending.value(),
+                        "the vendor defaults file sets handler '" + pending.value() + "', but no such handler "
+                                + "exists in this context yet.",
+                        "it will be applied as soon as the handler appears; if it never does, check the name "
+                                + "against 'logctl list handlers --show-all'.",
+                        null).withContext(key));
+            }
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * doc/specs/vendor-defaults.md "Surfaces": the file is process-wide, so its findings carry no
+     * context. Nothing at all when no file was configured.
+     */
+    private List<DoctorFinding> vendorDefaultsFindings() {
+        String path = vendorDefaults.path().map(Object::toString).orElse(null);
+        return switch (vendorDefaults.status()) {
+            case NOT_CONFIGURED -> List.of();
+            case REJECTED -> List.of(new DoctorFinding("vendor-defaults.file", Severity.WARNING, path,
+                    "the vendor defaults file was rejected -- none of its settings apply.",
+                    String.join("\n", vendorDefaults.errors()),
+                    "correct the file and restart the application."));
+            case LOADED -> {
+                List<DoctorFinding> findings = new ArrayList<>();
+                findings.add(new DoctorFinding("vendor-defaults.file", Severity.OK, path,
+                        "vendor defaults loaded (" + vendorDefaults.summary() + ").", null, null));
+                if (vendorDefaults.writable()) {
+                    findings.add(new DoctorFinding("vendor-defaults.writable", Severity.WARNING, path,
+                            "the vendor defaults file, or its directory, is writable by the account this JVM runs "
+                                    + "as.",
+                            "anyone who can run code as that account can change the baseline logging "
+                                    + "configuration.",
+                            "make the file and its directory read-only for this account."));
+                }
+                yield List.copyOf(findings);
+            }
+        };
     }
 
     /**
@@ -405,7 +464,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 // defaulted hitCount back to 0, discarding what RuleService just computed (a
                 // code-review finding: every rule showed HITS=0 in production regardless of how
                 // many events it had actually matched).
-                result.add(new RuleView(view.rule(), key, view.hitCount()));
+                result.add(view.withContext(key));
             }
         }
         return List.copyOf(result);
@@ -426,19 +485,33 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * surfaced only if no other context yields a real match (a code-review
      * finding against an earlier version of this method, which let the
      * first refusal abort the whole call).
+     *
+     * <p>A vendor defaults rule ({@code vendor:<name>}) is the exception: the file is applied
+     * to every context, so the same id genuinely lives in each one, and a suspension must reach
+     * all of them rather than stop at the first (doc/specs/vendor-defaults.md "Rules").
      */
     @Override
-    public Optional<RuleView> resetRule(String id, boolean includeSticky) {
+    public Optional<RuleView> resetRule(String id, boolean includeSticky, boolean includeVendorDefaults) {
+        boolean vendorId = id.startsWith(VendorDefaults.RULE_ID_PREFIX);
+        Optional<RuleView> firstRemoved = Optional.empty();
         IllegalArgumentException stickyRefusal = null;
         for (ContextControl context : sortedByKey()) {
             try {
-                Optional<RuleView> removed = context.ruleService().resetRule(id, includeSticky);
+                Optional<RuleView> removed = context.ruleService().resetRule(id, includeSticky, includeVendorDefaults);
                 if (removed.isPresent()) {
-                    return removed;
+                    if (!vendorId) {
+                        return removed;
+                    }
+                    if (firstRemoved.isEmpty()) {
+                        firstRemoved = removed;
+                    }
                 }
             } catch (IllegalArgumentException e) {
                 stickyRefusal = e;
             }
+        }
+        if (firstRemoved.isPresent()) {
+            return firstRemoved;
         }
         if (stickyRefusal != null) {
             throw stickyRefusal;
@@ -447,27 +520,33 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     }
 
     @Override
-    public RuleResetOutcome resetAllRules(boolean includeSticky) {
+    public RuleResetOutcome resetAllRules(boolean includeSticky, boolean includeVendorDefaults) {
         List<String> removed = new ArrayList<>();
         List<String> skippedSticky = new ArrayList<>();
+        List<String> skippedVendor = new ArrayList<>();
         for (ContextControl context : sortedByKey()) {
-            RuleResetOutcome outcome = context.ruleService().resetAllRules(includeSticky);
+            RuleResetOutcome outcome = context.ruleService().resetAllRules(includeSticky, includeVendorDefaults);
             removed.addAll(outcome.removedIds());
             skippedSticky.addAll(outcome.skippedStickyIds());
+            skippedVendor.addAll(outcome.skippedVendorIds());
         }
-        return new RuleResetOutcome(removed, skippedSticky);
+        return new RuleResetOutcome(removed, skippedSticky, skippedVendor);
     }
 
     @Override
-    public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky) {
+    public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky,
+            boolean includeVendorDefaults) {
         List<String> removed = new ArrayList<>();
         List<String> skippedSticky = new ArrayList<>();
+        List<String> skippedVendor = new ArrayList<>();
         for (ContextControl context : sortedByKey()) {
-            RuleResetOutcome outcome = context.ruleService().resetRulesForLogger(loggerName, includeSticky);
+            RuleResetOutcome outcome =
+                    context.ruleService().resetRulesForLogger(loggerName, includeSticky, includeVendorDefaults);
             removed.addAll(outcome.removedIds());
             skippedSticky.addAll(outcome.skippedStickyIds());
+            skippedVendor.addAll(outcome.skippedVendorIds());
         }
-        return new RuleResetOutcome(removed, skippedSticky);
+        return new RuleResetOutcome(removed, skippedSticky, skippedVendor);
     }
 
     /**
@@ -569,7 +648,9 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 containerName,
                 resolveContainerVersion(),
                 System.getProperty(DIAGNOSTICS_LEVEL_PROPERTY),
-                stateFilePath);
+                stateFilePath,
+                vendorDefaults.path().map(Object::toString).orElse(null),
+                vendorDefaults.statusLine());
     }
 
     /** {@link #containerVersion}'s supplier is third-party code (a {@code ContainerIntegration}'s own); a throw there must degrade the same as a throwing adapter, never fail the whole report. */
