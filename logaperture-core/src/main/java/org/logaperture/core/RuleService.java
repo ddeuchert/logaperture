@@ -651,12 +651,19 @@ public final class RuleService implements RuleOperations {
             }
             if (isVendorRule(rule.id())) {
                 LogRule baseline = vendorBaselines.get(rule.id());
-                if (toNative) {
-                    switchVendorRuleOff(rule, baseline);
-                } else if (rule != baseline) {
-                    restoreVendorDefinition(rule, baseline, source, null);
-                } else {
-                    continue; // already at its baseline
+                try {
+                    if (toNative) {
+                        switchVendorRuleOff(rule, baseline);
+                    } else if (rule != baseline) {
+                        restoreVendorDefinition(rule, baseline, source, null);
+                    } else {
+                        continue; // already at its baseline
+                    }
+                } catch (IllegalStateException concurrentlyChanged) {
+                    // Swept, altered or reset since the snapshot -- whoever changed it owns its state.
+                    // Skip it rather than abort the batch, which would leave the operator rules already
+                    // removed above still in the state file (they'd come back on restart).
+                    continue;
                 }
                 vendorReset.add(rule.id());
             } else {
