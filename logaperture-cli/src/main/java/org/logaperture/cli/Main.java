@@ -86,7 +86,7 @@ public final class Main {
         }
 
         try (ControlPlane controlPlane = connector.connect(invocation.pid())) {
-            return invocation.command().run(controlPlane.mbean(), out, in, interactive);
+            return invocation.command().run(controlPlane.mbean(), out, err, in, interactive);
         } catch (CliError e) {
             err.println(e.getMessage());
             return e.exitCode();

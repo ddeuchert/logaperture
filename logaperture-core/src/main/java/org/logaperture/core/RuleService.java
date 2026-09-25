@@ -34,9 +34,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -90,6 +92,9 @@ public final class RuleService implements RuleOperations {
      * or an alteration under the same id.
      */
     private final Map<String, LogRule> vendorBaselines = new ConcurrentHashMap<>();
+
+    /** {@link #vendorBaselines}' ids in vendor defaults file order -- the export writes them in that order. */
+    private final List<String> vendorRuleOrder = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     /** Vendor rules switched off until restart with {@code reset … --to-native} (A8) -- detached, still listed. */
     private final Map<String, LogRule> toNativeVendorRules = new ConcurrentHashMap<>();
@@ -321,6 +326,7 @@ public final class RuleService implements RuleOperations {
                 LogRule rule = factory.create(vendor.id(), vendor.loggerName(), vendor.matchers(), vendor.reason(),
                         PersistenceTier.SESSION, null, now, Map.of());
                 vendorBaselines.put(rule.id(), rule);
+                vendorRuleOrder.add(rule.id());
                 registry.attach(rule);
                 auditLog.record(new AuditRecord(now, principal, VendorDefaults.AUDIT_SOURCE, rule.loggerName(), null,
                         describe(rule), rule.reason(), AuditRecord.Action.MUTATION));
@@ -491,6 +497,81 @@ public final class RuleService implements RuleOperations {
             return ta.frames() == tb.frames() && ta.collapseCauses() == tb.collapseCauses();
         }
         return true;
+    }
+
+    /**
+     * The rules {@code logctl export vendor-defaults} writes -- doc/specs/vendor-defaults-export.md
+     * "What goes into the export": each vendor rule in file order, as its {@code sticky}
+     * alteration if it has one, otherwise as the file defines it, left out if switched off with
+     * {@code --to-native} (X4); then each {@code sticky} operator rule in id order, under a
+     * derived name (X3) with a {@code "was r<N>"} comment. {@code session}/{@code for} rules and
+     * alterations are left out (X2).
+     */
+    public RuleExport exportRules() {
+        requireCapability(Capability.VIEW);
+        List<VendorDefaults.RuleDefault> rules = new ArrayList<>();
+        Map<String, String> comments = new java.util.HashMap<>();
+        Set<String> usedNames = new java.util.HashSet<>();
+        for (String id : vendorRuleOrder) {
+            usedNames.add(id);
+            if (toNativeVendorRules.containsKey(id)) {
+                continue;
+            }
+            LogRule baseline = vendorBaselines.get(id);
+            LogRule current = registry.findById(id).orElse(baseline);
+            rules.add(toRuleDefault(id, current.tier() == PersistenceTier.STICKY ? current : baseline));
+        }
+        List<LogRule> operatorRules = registry.all().stream()
+                .filter(rule -> !isVendorRule(rule.id()) && rule.tier() == PersistenceTier.STICKY)
+                .sorted(java.util.Comparator.comparingLong(RuleService::idNumber).thenComparing(LogRule::id))
+                .toList();
+        for (LogRule rule : operatorRules) {
+            String id = VendorDefaults.RULE_ID_PREFIX + derivedName(rule, usedNames);
+            usedNames.add(id);
+            rules.add(toRuleDefault(id, rule));
+            comments.put(id, "was " + rule.id());
+        }
+        return new RuleExport(rules, comments);
+    }
+
+    /** {@link #exportRules()}' result: the entries, and a comment per entry id. */
+    public record RuleExport(List<VendorDefaults.RuleDefault> rules, Map<String, String> comments) {
+    }
+
+    private static VendorDefaults.RuleDefault toRuleDefault(String id, LogRule rule) {
+        SampleFullPolicy sampleFull = rule instanceof Drop drop ? drop.sampleFull() : SampleFullPolicy.defaults();
+        int frames = rule instanceof Trim trim ? trim.frames() : 0;
+        boolean collapseCauses = rule instanceof Trim trim && trim.collapseCauses();
+        return new VendorDefaults.RuleDefault(id, rule.actionName(), rule.loggerName(), rule.matchers(),
+                rule.reason(), sampleFull, frames, collapseCauses);
+    }
+
+    /**
+     * X3: {@code <action>-<last segment of the logger, lowercased, non-[a-z0-9] → ->}, with
+     * {@code -2}, {@code -3}… on a collision, kept within the file's 40-character id limit.
+     */
+    static String derivedName(LogRule rule, Set<String> usedIds) {
+        String logger = rule.loggerName();
+        String segment = logger.substring(logger.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-").replaceAll("^-+|-+$", "");
+        String base = rule.actionName() + "-" + (segment.isEmpty() ? "root" : segment);
+        for (int n = 1; ; n++) {
+            String suffix = n == 1 ? "" : "-" + n;
+            String candidate = base.substring(0, Math.min(base.length(), 40 - suffix.length()))
+                    .replaceAll("-+$", "") + suffix;
+            if (!usedIds.contains(VendorDefaults.RULE_ID_PREFIX + candidate)) {
+                return candidate;
+            }
+        }
+    }
+
+    /** {@code r12} → 12, for id order; anything else sorts first. */
+    private static long idNumber(LogRule rule) {
+        try {
+            return Long.parseLong(rule.id().substring(1));
+        } catch (RuntimeException notRN) {
+            return -1;
+        }
     }
 
     /**

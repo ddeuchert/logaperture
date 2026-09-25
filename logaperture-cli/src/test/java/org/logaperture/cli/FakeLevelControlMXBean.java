@@ -449,4 +449,14 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
             throw toThrow;
         }
     }
+
+    String exportVendorDefaultsResult = "schemaVersion: 1\n";
+    int exportVendorDefaultsCalls;
+
+    @Override
+    public String exportVendorDefaults() {
+        exportVendorDefaultsCalls++;
+        maybeThrow();
+        return exportVendorDefaultsResult;
+    }
 }

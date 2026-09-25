@@ -349,4 +349,12 @@ public interface LevelControlMXBean {
     RuleData addRuleTrim(String target, String messageContains, boolean messageIgnoreCase, String throwableType,
             String throwableMessageContains, boolean anyCause, String belowLevel, int frames,
             boolean collapseCauses, String reason, String tier, long forSeconds);
+
+    /**
+     * {@code logctl export vendor-defaults} -- doc/specs/vendor-defaults-export.md. The vendor
+     * defaults file this JVM was started with, with every {@code sticky} change folded in, as the
+     * file's text; already checked to load. Read-only (capability {@code VIEW}). A new operation,
+     * nothing else changes (logaperture-spec.md §11.1).
+     */
+    String exportVendorDefaults();
 }

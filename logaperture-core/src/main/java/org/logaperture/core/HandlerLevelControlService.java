@@ -1748,6 +1748,61 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                 "expired while stopped", AuditRecord.Action.REVERSION));
     }
 
+    /**
+     * The handlers {@code logctl export vendor-defaults} writes -- doc/specs/vendor-defaults-export.md
+     * "What goes into the export": the vendor file's entries (unless reset to native, X4), then
+     * each {@code sticky} group override expanded to its members ({@code ALL_HANDLERS} before the
+     * more specific {@code DEFAULT_HANDLERS}), then each handler's own {@code sticky} override,
+     * which wins over a group's. A sticky {@code AUTO} override exports as {@code AUTO}. Sorted by
+     * name.
+     */
+    public List<VendorDefaults.HandlerDefault> exportHandlers() {
+        requireCapability(Capability.VIEW);
+        Map<String, VendorDefaults.HandlerDefault> exported = new java.util.TreeMap<>();
+        for (VendorDefaults.HandlerDefault vendor : baselines.vendorDefaults()) {
+            if (!baselines.isResetToNative(vendor.ref())) {
+                exported.put(vendor.ref().value(), vendor);
+            }
+        }
+        for (HandlerRef group : List.of(HandlerRef.ALL_HANDLERS, HandlerRef.DEFAULT_HANDLERS)) {
+            Optional<HandlerLevelOverride> override = overrides.get(group);
+            if (override.isPresent() && override.get().tier() == PersistenceTier.STICKY) {
+                for (HandlerRef member : membersOf(group)) {
+                    exported.put(member.value(), exportEntry(member, override.get()));
+                }
+            }
+        }
+        for (HandlerLevelOverride override : overrides.all().values()) {
+            if (!isGroupRef(override.handlerRef()) && override.tier() == PersistenceTier.STICKY) {
+                exported.put(override.handlerRef().value(), exportEntry(override.handlerRef(), override));
+            }
+        }
+        return List.copyOf(exported.values());
+    }
+
+    private static VendorDefaults.HandlerDefault exportEntry(HandlerRef ref, HandlerLevelOverride override) {
+        return override.mode() == HandlerLevelMode.AUTO
+                ? new VendorDefaults.HandlerDefault(ref, null, HandlerLevelMode.AUTO, override.reason())
+                : new VendorDefaults.HandlerDefault(ref, override.level(), HandlerLevelMode.FIXED, override.reason());
+    }
+
+    /**
+     * The {@code defaultHandlers} list the export writes: the membership set with {@code logctl set
+     * default-handler} (always persisted), sorted by name; otherwise the vendor file's list unless
+     * it is reset to native (X4); otherwise {@code null}, leaving it out.
+     */
+    public List<HandlerRef> exportDefaultHandlers() {
+        requireCapability(Capability.VIEW);
+        Optional<Set<HandlerRef>> explicit = defaultHandlerGroup.explicit();
+        if (explicit.isPresent()) {
+            return explicit.get().stream().sorted(java.util.Comparator.comparing(HandlerRef::value)).toList();
+        }
+        if (!defaultHandlerGroup.vendorMembers().isEmpty() && !defaultHandlerGroup.isResetToNative()) {
+            return defaultHandlerGroup.vendorMembers();
+        }
+        return null;
+    }
+
     private void requireCapability(Capability capability) {
         if (!policy.isGranted(capability)) {
             throw new CapabilityDeniedException(capability);

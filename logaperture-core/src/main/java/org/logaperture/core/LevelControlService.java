@@ -979,6 +979,30 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     /**
+     * The loggers {@code logctl export vendor-defaults} writes -- doc/specs/vendor-defaults-export.md
+     * "What goes into the export": each logger's {@code sticky} override if it has one, otherwise
+     * its vendor level unless it is reset to native (X4). A {@code session}/{@code for} override
+     * is ignored, so the vendor level (if any) is exported instead (X2). Sorted by name.
+     */
+    public List<VendorDefaults.LoggerDefault> exportLoggers() {
+        requireCapability(Capability.VIEW);
+        Map<String, VendorDefaults.LoggerDefault> exported = new java.util.TreeMap<>();
+        for (String name : baselines.vendorLoggerNames()) {
+            if (!baselines.isResetToNative(name)) {
+                exported.put(name, new VendorDefaults.LoggerDefault(name, baselines.vendorLevel(name).orElseThrow(),
+                        baselines.vendorReason(name).orElse(null)));
+            }
+        }
+        for (LevelOverride override : overrides.all().values()) {
+            if (override.tier() == PersistenceTier.STICKY) {
+                exported.put(override.loggerName(), new VendorDefaults.LoggerDefault(override.loggerName(),
+                        override.level(), override.reason()));
+            }
+        }
+        return List.copyOf(exported.values());
+    }
+
+    /**
      * The stricter (higher-ordinal, less verbose) of two {@link HandlerFloor}
      * readings for what turned out to be the same {@link HandlerRef} --
      * used to merge two targets' blocking-handler results without losing

@@ -81,7 +81,8 @@ import java.util.function.Supplier;
  * call. The multi-context paths are exercised by tests with fake contexts.
  */
 public final class AggregateLevelControl implements LevelControlOperations, HandlerLevelControlOperations,
-        DoctorOperations, TopOperations, StormOperations, EnvironmentReportOperations, RuleOperations {
+        DoctorOperations, TopOperations, StormOperations, EnvironmentReportOperations, RuleOperations,
+        VendorDefaultsExportOperations {
 
     /**
      * One context: its {@link ContextHandle}, the single-context logger
@@ -718,6 +719,20 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             System.err.println("[logaperture-core] the container version supplier failed, treating it as unresolved: " + e);
             return null;
         }
+    }
+
+    /**
+     * {@code logctl export vendor-defaults} -- doc/specs/vendor-defaults-export.md. Reads the
+     * first context in stable-key order (X8), the same scope {@code add rule} uses; logger and
+     * handler overrides are broadcast, so every context holds the same ones anyway.
+     */
+    @Override
+    public String exportVendorDefaults() {
+        List<ContextControl> contexts = sortedByKey();
+        if (contexts.isEmpty()) {
+            throw new IllegalStateException("no logging context is registered yet");
+        }
+        return VendorDefaultsExporter.export(contexts.get(0), vendorDefaults, agentVersion(), Instant.now());
     }
 
     /**

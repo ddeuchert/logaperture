@@ -43,4 +43,13 @@ interface Command {
      *     failure is raised as a {@link CliError} instead)
      */
     int run(LevelControlMXBean mbean, PrintStream out, InputStream in, boolean interactive);
+
+    /**
+     * The same, with {@code err} for a note that must not mix into {@code out} -- e.g. {@code
+     * export vendor-defaults}, whose stdout is the file itself. Every other command writes only to
+     * {@code out} and ignores {@code err}; {@link Main} always calls this form.
+     */
+    default int run(LevelControlMXBean mbean, PrintStream out, PrintStream err, InputStream in, boolean interactive) {
+        return run(mbean, out, in, interactive);
+    }
 }

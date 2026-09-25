@@ -46,6 +46,7 @@ import org.logaperture.core.RuleOperations;
 import org.logaperture.core.RuleView;
 import org.logaperture.core.StormOperations;
 import org.logaperture.core.TopOperations;
+import org.logaperture.core.VendorDefaultsExportOperations;
 import org.logaperture.core.TopReport;
 
 import java.time.Duration;
@@ -66,7 +67,7 @@ import java.util.Optional;
  * test, not the engine.
  */
 final class FakeOps implements LevelControlOperations, HandlerLevelControlOperations, DoctorOperations,
-        TopOperations, EnvironmentReportOperations, StormOperations, RuleOperations {
+        TopOperations, EnvironmentReportOperations, StormOperations, RuleOperations, VendorDefaultsExportOperations {
 
     private static final Level BASELINE = Level.INFO;
 
@@ -272,5 +273,12 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     public synchronized RuleView addRuleTrim(String loggerName, CompiledMatchers matchers,
             RuleAttachOptions options, int frames, boolean collapseCauses) {
         throw new UnsupportedOperationException("not exercised by CliEndToEndIT yet");
+    }
+
+    String exportVendorDefaultsToReturn = "schemaVersion: 1\n";
+
+    @Override
+    public String exportVendorDefaults() {
+        return exportVendorDefaultsToReturn;
     }
 }

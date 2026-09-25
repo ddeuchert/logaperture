@@ -19,6 +19,7 @@ import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.HandlerLevelMode;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
+import org.logaperture.api.RuleExpression;
 import org.logaperture.api.SampleFullPolicy;
 import org.logaperture.core.VendorYaml.ListNode;
 import org.logaperture.core.VendorYaml.MapNode;
@@ -118,6 +119,119 @@ public final class VendorDefaultsFile {
             return VendorDefaults.rejected(path, v.errors);
         }
         return VendorDefaults.loaded(path, writable, v.loggers, v.handlers, v.defaultHandlers, v.rules);
+    }
+
+    /** Values made only of these characters are written unquoted; everything else is double-quoted. */
+    private static final Pattern PLAIN = Pattern.compile("[A-Za-z0-9._$/@%+-]+");
+
+    /**
+     * Renders {@code export} in this class's format -- doc/specs/vendor-defaults-export.md, the
+     * inverse of {@link #parse}. Output is deterministic (fixed field order, entries in the order
+     * given), so equal input gives byte-identical text. Sections with nothing in them are left
+     * out; defaults ({@code anyCause: false}, {@code collapseCauses: false}) are not written, but
+     * every rule's {@code below} is, since it is the rule's safety bound.
+     */
+    public static String write(VendorDefaultsExport export) {
+        StringBuilder out = new StringBuilder();
+        for (String comment : export.headerComments()) {
+            out.append("# ").append(comment).append('\n');
+        }
+        for (String comment : export.skippedComments()) {
+            out.append("# ").append(comment).append('\n');
+        }
+        out.append("schemaVersion: ").append(SCHEMA_VERSION).append('\n');
+        if (!export.loggers().isEmpty()) {
+            out.append("loggers:\n");
+            for (VendorDefaults.LoggerDefault logger : export.loggers()) {
+                out.append("  - name: ").append(value(logger.name())).append('\n');
+                out.append("    level: ").append(logger.level().name()).append('\n');
+                field(out, "reason", logger.reason());
+            }
+        }
+        if (!export.handlers().isEmpty()) {
+            out.append("handlers:\n");
+            for (VendorDefaults.HandlerDefault handler : export.handlers()) {
+                out.append("  - name: ").append(value(handler.ref().value())).append('\n');
+                out.append("    level: ")
+                        .append(handler.mode() == HandlerLevelMode.AUTO ? "AUTO" : handler.level().name())
+                        .append('\n');
+                field(out, "reason", handler.reason());
+            }
+        }
+        if (export.defaultHandlers() != null) {
+            out.append("defaultHandlers:\n");
+            for (HandlerRef ref : export.defaultHandlers()) {
+                out.append("  - ").append(value(ref.value())).append('\n');
+            }
+        }
+        if (!export.rules().isEmpty()) {
+            out.append("rules:\n");
+            for (VendorDefaults.RuleDefault rule : export.rules()) {
+                String comment = export.ruleComments().get(rule.id());
+                if (comment != null) {
+                    out.append("  # ").append(comment).append('\n');
+                }
+                writeRule(out, rule);
+            }
+        }
+        return out.toString();
+    }
+
+    private static void writeRule(StringBuilder out, VendorDefaults.RuleDefault rule) {
+        CompiledMatchers m = rule.matchers();
+        out.append("  - id: ").append(rule.id().substring(VendorDefaults.RULE_ID_PREFIX.length())).append('\n');
+        out.append("    action: ").append(rule.action()).append('\n');
+        out.append("    logger: ").append(value(rule.loggerName())).append('\n');
+        field(out, m.messageIgnoreCase() ? "messageContainsIgnoreCase" : "messageContains", m.messageContains());
+        field(out, "throwable", m.throwableType());
+        field(out, "throwableMessageContains", m.throwableMessageContains());
+        if (m.anyCause()) {
+            out.append("    anyCause: true\n");
+        }
+        if (m.levelAtMost() != null) {
+            // No 'below' line for an unbounded rule (possible only through JMX, never logctl): the
+            // file can't say "no bound", and reloads it with the ERROR keep-floor -- the safer side.
+            out.append("    below: ").append(RuleExpression.belowFor(m.levelAtMost())).append('\n');
+        }
+        if ("drop".equals(rule.action())) {
+            out.append("    sampleFull: ").append(rule.sampleFull().enabled()
+                    ? RuleExpression.duration(rule.sampleFull().every().toMillis()) : "false").append('\n');
+        } else if ("trim".equals(rule.action())) {
+            out.append("    frames: ").append(rule.frames()).append('\n');
+            if (rule.collapseCauses()) {
+                out.append("    collapseCauses: true\n");
+            }
+        }
+        field(out, "reason", rule.reason());
+    }
+
+    private static void field(StringBuilder out, String key, String value) {
+        if (value != null) {
+            out.append("    ").append(key).append(": ").append(value(value)).append('\n');
+        }
+    }
+
+    /**
+     * A text value as {@link VendorYaml} reads it back: plain when it is made only of safe
+     * characters (and isn't {@code true}/{@code false}, which the parser reads as booleans),
+     * otherwise double-quoted with the escapes that parser supports.
+     */
+    static String value(String text) {
+        if (PLAIN.matcher(text).matches() && !text.equals("true") && !text.equals("false")
+                && !text.startsWith("-")) {
+            return text;
+        }
+        StringBuilder quoted = new StringBuilder("\"");
+        for (char c : text.toCharArray()) {
+            switch (c) {
+                case '"' -> quoted.append("\\\"");
+                case '\\' -> quoted.append("\\\\");
+                case '\n' -> quoted.append("\\n");
+                case '\t' -> quoted.append("\\t");
+                default -> quoted.append(c);
+            }
+        }
+        return quoted.append('"').toString();
     }
 
     /**
