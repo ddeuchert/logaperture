@@ -49,7 +49,7 @@ This epic adds two behaviour-changing actions from M2's squelch engine — `drop
 Worked example that shaped the design (a real trace from a deployed product):
 
 ```
-logctl add rule trim --logger '*.AutoUpdateHelper' \
+logctl add rule trim '*.AutoUpdateHelper' \
     --throwable java.net.ConnectException \
     --message-contains "Failed to connect to URL" --below FATAL sticky
 ```
@@ -161,7 +161,7 @@ moment the command runs, into one concrete attachment per currently-known matchi
 not evaluated per event, and it does not cover a logger created afterward with a matching name — only
 the tree-inheritance mechanism above does that, and only from the loggers it was actually attached to.
 
-- `add rule trim --logger '*.AutoUpdateHelper' ...` against a JVM with `dave.AutoUpdateHelper` and
+- `add rule trim '*.AutoUpdateHelper' ...` against a JVM with `dave.AutoUpdateHelper` and
   `bill.AutoUpdateHelper` currently known produces **two independent attachments, two ids** — one on
   each logger — not one rule spanning both. A `carl.AutoUpdateHelper` created later gets nothing from
   this command; it would need its own `attach`, or to be a descendant of an already-attached logger.

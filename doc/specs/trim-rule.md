@@ -41,7 +41,7 @@ evaluator plugs into the gate→render ordering `drop` already established).
 After this feature, the user will be able to:
 
 - Stop paying disk for a known-noisy exception's stack trace without stopping the exception
-  from being logged, and without touching its logger's level: `logctl add rule trim --logger
+  from being logged, and without touching its logger's level: `logctl add rule trim
   '*.AutoUpdateHelper' --throwable java.net.ConnectException --message-contains "Failed to
   connect to URL" --below FATAL sticky` turns a 29-frame trace into one line plus a marker,
   for every event at or below the bound; the same event above the bound (or a `--below FATAL`
