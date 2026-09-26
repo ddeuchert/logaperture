@@ -122,7 +122,8 @@ one rule that is easy to predict. When the state entry and the file entry differ
 report says so and names the value that was dropped. The audit record keeps it, so it is never
 lost.
 
-A group override is taken over when the file carries its id on any entry. Default-handler
+A group override is taken over when the file carries its id on any entry, or in its
+`handlerGroupStateIds` list (see "Settled during implementation"). Default-handler
 membership is taken over when the file carries its id on `defaultHandlers` (written as a
 `defaultHandlersStateId:` key beside the list, since a flow list has no room for a field).
 
@@ -283,6 +284,21 @@ Details the text above left open, decided while building it; none changes an agr
   default-handler member set (order ignored), and a rule's action, logger and definition as
   `list rules --verbose` renders it. A different reason alone doesn't count.
 - **A group override differs** when any member entry carrying its id has a different level.
+- **`handlerGroupStateIds`** (code review of PR #111). A member's more specific sticky setting
+  replaces a group's id on that member's entry. When that happens on every member, the group's id
+  never reached the file, and the group override stayed in the state file and won over the file
+  after the restart: for example sticky `ALL_HANDLERS WARN` under a sticky `DEFAULT_HANDLERS DEBUG`
+  that covers every handler came back at `WARN`. A group has no entry of its own, so the export
+  also writes the id of each sticky group override it expanded (to at least one member) in a
+  top-level list, and the takeover matches it there:
+
+  ```yaml
+  handlerGroupStateIds:
+    - 5c1e8f02-6a4d-4b19-8e3a-2f7d90c4b1a6
+  ```
+
+  Optional, each item a UUID like any `stateId`. It is a separate list rather than a
+  per-entry field because there is no group entry to hang it on.
 - **Log prefix** is `[logaperture-state]`, the prefix every other state-file message already uses.
 - **`defaultHandlersStateId` without a `defaultHandlers` list** is a validation error, like any
   other (all or nothing).

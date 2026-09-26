@@ -39,13 +39,15 @@ import java.util.Objects;
  */
 public record VendorDefaultsExport(List<String> headerComments, List<VendorDefaults.LoggerDefault> loggers,
         List<VendorDefaults.HandlerDefault> handlers, List<HandlerRef> defaultHandlers, String defaultHandlersStateId,
-        List<VendorDefaults.RuleDefault> rules, Map<String, String> ruleComments, List<String> skippedComments) {
+        List<String> handlerGroupStateIds, List<VendorDefaults.RuleDefault> rules, Map<String, String> ruleComments,
+        List<String> skippedComments) {
 
     /** An export without state ids, e.g. one written by hand in a test. */
     public VendorDefaultsExport(List<String> headerComments, List<VendorDefaults.LoggerDefault> loggers,
             List<VendorDefaults.HandlerDefault> handlers, List<HandlerRef> defaultHandlers,
             List<VendorDefaults.RuleDefault> rules, Map<String, String> ruleComments, List<String> skippedComments) {
-        this(headerComments, loggers, handlers, defaultHandlers, null, rules, ruleComments, skippedComments);
+        this(headerComments, loggers, handlers, defaultHandlers, null, List.of(), rules, ruleComments,
+                skippedComments);
     }
 
     public VendorDefaultsExport {
@@ -54,6 +56,7 @@ public record VendorDefaultsExport(List<String> headerComments, List<VendorDefau
         handlers = List.copyOf(handlers);
         defaultHandlers = defaultHandlers == null ? null : List.copyOf(defaultHandlers);
         defaultHandlersStateId = defaultHandlers == null ? null : defaultHandlersStateId;
+        handlerGroupStateIds = List.copyOf(handlerGroupStateIds);
         rules = List.copyOf(rules);
         ruleComments = Map.copyOf(Objects.requireNonNull(ruleComments, "ruleComments"));
         skippedComments = List.copyOf(skippedComments);

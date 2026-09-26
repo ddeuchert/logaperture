@@ -113,6 +113,7 @@ rules:
 | `loggers` | list, optional | `name` (exact logger name), `level` (a `Level`), `reason` (optional text) |
 | `handlers` | list, optional | `name` (handler name as `logctl` shows it), `level` (a `Level` or `AUTO`), `reason` |
 | `defaultHandlers` | flow or block list of handler names, optional | baseline `DEFAULT_HANDLERS` membership |
+| `handlerGroupStateIds` | list of UUIDs, optional | written by the export for sticky group overrides ([`export-round-trip.md`](export-round-trip.md)) |
 | `defaultHandlersStateId` | UUID, optional | only beside `defaultHandlers`; written by the export ([`export-round-trip.md`](export-round-trip.md)) |
 | `rules` | list, optional | see below |
 

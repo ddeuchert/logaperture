@@ -57,7 +57,8 @@ public final class VendorDefaultsFile {
     static final int SCHEMA_VERSION = 1;
 
     private static final Set<String> TOP_LEVEL_KEYS =
-            Set.of("schemaVersion", "loggers", "handlers", "defaultHandlers", "defaultHandlersStateId", "rules");
+            Set.of("schemaVersion", "loggers", "handlers", "handlerGroupStateIds", "defaultHandlers",
+                    "defaultHandlersStateId", "rules");
     private static final Set<String> LOGGER_FIELDS = Set.of("name", "level", "reason", "stateId");
     private static final Set<String> HANDLER_FIELDS = Set.of("name", "level", "reason", "stateId");
     private static final Set<String> COMMON_RULE_FIELDS = Set.of("id", "action", "logger", "below",
@@ -122,7 +123,7 @@ public final class VendorDefaultsFile {
             return VendorDefaults.rejected(path, v.errors);
         }
         return VendorDefaults.loaded(path, writable, v.loggers, v.handlers, v.defaultHandlers,
-                v.defaultHandlersStateId, v.rules);
+                v.defaultHandlersStateId, v.handlerGroupStateIds, v.rules);
     }
 
     /** Values made only of these characters are written unquoted; everything else is double-quoted. */
@@ -162,6 +163,12 @@ public final class VendorDefaultsFile {
                         .append('\n');
                 field(out, "reason", handler.reason());
                 field(out, "stateId", handler.stateId());
+            }
+        }
+        if (!export.handlerGroupStateIds().isEmpty()) {
+            out.append("handlerGroupStateIds:\n");
+            for (String stateId : export.handlerGroupStateIds()) {
+                out.append("  - ").append(value(stateId)).append('\n');
             }
         }
         if (export.defaultHandlers() != null) {
@@ -264,6 +271,7 @@ public final class VendorDefaultsFile {
         final List<VendorDefaults.HandlerDefault> handlers = new ArrayList<>();
         List<HandlerRef> defaultHandlers;
         String defaultHandlersStateId;
+        final List<String> handlerGroupStateIds = new ArrayList<>();
         final List<VendorDefaults.RuleDefault> rules = new ArrayList<>();
         private final Set<String> seenLoggerNames = new HashSet<>();
         private final Set<String> seenHandlerNames = new HashSet<>();
@@ -281,7 +289,8 @@ public final class VendorDefaultsFile {
                             + "(issue #92) will add it");
                 } else if (!TOP_LEVEL_KEYS.contains(key)) {
                     error(root.keyLines().get(key), "unknown key '" + key + "' (expected one of "
-                            + "schemaVersion, loggers, handlers, defaultHandlers, defaultHandlersStateId, rules)");
+                            + "schemaVersion, loggers, handlers, handlerGroupStateIds, defaultHandlers, "
+                            + "defaultHandlersStateId, rules)");
                 }
             }
             Node version = root.entries().get("schemaVersion");
@@ -302,7 +311,25 @@ public final class VendorDefaultsFile {
                 }
                 defaultHandlersStateId = stateId(membersStateId);
             }
+            handlerGroupStateIds(root.entries().get("handlerGroupStateIds"));
             forEachEntry(root, "rules", this::rule);
+        }
+
+        private void handlerGroupStateIds(Node node) {
+            if (node == null) {
+                return;
+            }
+            if (!(node instanceof ListNode list)) {
+                error(node.line(), "'handlerGroupStateIds' must be a list of ids written by logctl export "
+                        + "vendor-defaults");
+                return;
+            }
+            for (Node item : list.items()) {
+                String stateId = stateId(item);
+                if (stateId != null) {
+                    handlerGroupStateIds.add(stateId);
+                }
+            }
         }
 
         /** An optional {@code stateId} (doc/specs/export-round-trip.md S7): a UUID, or an error. */

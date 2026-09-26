@@ -125,8 +125,15 @@ public final class VendorStateTakeover {
             for (HandlerLevelOverride persisted : store.loadAllHandlers()) {
                 List<VendorDefaults.HandlerDefault> entries = persisted.stateId() == null ? null
                         : byStateId.get(persisted.stateId());
-                if (entries == null) {
+                boolean exportedGroup = isGroup(persisted.handlerRef()) && persisted.stateId() != null
+                        && file.handlerGroupStateIds().contains(persisted.stateId());
+                if (entries == null && !exportedGroup) {
                     continue;
+                }
+                if (entries == null) {
+                    // Every member of the group was exported with a more specific setting's id: the
+                    // group was folded into the file all the same (see VendorDefaults#handlerGroupStateIds).
+                    entries = List.of();
                 }
                 removed.add(persisted.handlerRef());
                 String was = persisted.mode() == HandlerLevelMode.AUTO ? "AUTO" : persisted.level().name();
@@ -138,6 +145,9 @@ public final class VendorStateTakeover {
                 }
                 String fileLevel = entries.size() == 1 ? level(entries.get(0))
                         : "(" + entries.size() + " handler entries)";
+                if (entries.isEmpty()) {
+                    fileLevel = "(each member's own entry)";
+                }
                 takenOver("handler " + persisted.handlerRef().value(), persisted.handlerRef().value(), was, fileLevel,
                         differs, was);
             }

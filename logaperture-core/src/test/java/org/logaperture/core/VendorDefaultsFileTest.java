@@ -449,12 +449,30 @@ class VendorDefaultsFileTest {
     }
 
     @Test
+    void handlerGroupStateIds_areRead_andEachMustBeAUuid() {
+        VendorDefaults defaults = VendorDefaultsFile.parse("""
+                schemaVersion: 1
+                handlerGroupStateIds:
+                  - %s
+                """.formatted(ID_1), PATH, false);
+        assertEquals(VendorDefaults.Status.LOADED, defaults.status(), defaults.errors().toString());
+        assertEquals(List.of(ID_1), defaults.handlerGroupStateIds());
+
+        VendorDefaults bad = VendorDefaultsFile.parse("""
+                schemaVersion: 1
+                handlerGroupStateIds: [ALL_HANDLERS]
+                """, PATH, false);
+        assertEquals(VendorDefaults.Status.REJECTED, bad.status());
+        assertContains(bad.errors(), "line 2: stateId 'ALL_HANDLERS' is not an id");
+    }
+
+    @Test
     void stateIds_roundTripThroughTheWriter() {
         VendorDefaultsExport export = new VendorDefaultsExport(List.of(),
                 List.of(new VendorDefaults.LoggerDefault("com.acme.a", Level.WARN, null, ID_1)),
                 List.of(new VendorDefaults.HandlerDefault(new HandlerRef("FILE"), Level.ERROR, HandlerLevelMode.FIXED,
                         null, ID_2)),
-                List.of(new HandlerRef("FILE")), ID_1, List.of(), java.util.Map.of(), List.of());
+                List.of(new HandlerRef("FILE")), ID_1, List.of(ID_2), List.of(), java.util.Map.of(), List.of());
 
         VendorDefaults reparsed = VendorDefaultsFile.parse(VendorDefaultsFile.write(export), PATH, false);
 
@@ -462,6 +480,7 @@ class VendorDefaultsFileTest {
         assertEquals(ID_1, reparsed.loggers().get("com.acme.a").stateId());
         assertEquals(ID_2, reparsed.handlers().get(new HandlerRef("FILE")).stateId());
         assertEquals(Optional.of(ID_1), reparsed.defaultHandlersStateId());
+        assertEquals(List.of(ID_2), reparsed.handlerGroupStateIds());
     }
 
     private static void assertContains(List<String> errors, String expectedPrefix) {

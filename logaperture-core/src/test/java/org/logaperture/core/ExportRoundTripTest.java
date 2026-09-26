@@ -182,6 +182,38 @@ class ExportRoundTripTest {
         assertTrue(!groupId.equals(exported.handlers().get(AUDIT).stateId()));
     }
 
+    @Test
+    void aGroupOverrideWhoseIdIsReplacedOnEveryMember_isStillTakenOver() {
+        // Code review of PR #111: each member's own sticky override replaces ALL_HANDLERS' id on
+        // its entry, so the group's id reaches the file only through handlerGroupStateIds.
+        jvm.handlers.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.WARN, SetHandlerLevelOptions.sticky());
+        for (HandlerRef handler : List.of(FILE, CONSOLE, AUDIT)) {
+            jvm.handlers.setHandlerLevel(handler, Level.DEBUG, SetHandlerLevelOptions.sticky());
+        }
+        String exported = jvm.export();
+
+        Jvm restarted = new Jvm(parse(exported));
+
+        assertTrue(restarted.takeover.takenOver().contains("handler ALL_HANDLERS"),
+                restarted.takeover.takenOver() + "\n" + exported);
+        assertEquals(List.of(), stateStore.loadAllHandlers());
+        assertEquals(List.of(), restarted.handlers.listHandlerOverrides(), "nothing left to override the file");
+    }
+
+    @Test
+    void allHandlersUnderADefaultHandlersOverrideCoveringEveryHandler_isStillTakenOver() {
+        jvm.handlers.setDefaultHandlerMembers(List.of(FILE, CONSOLE, AUDIT));
+        jvm.handlers.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.WARN, SetHandlerLevelOptions.sticky());
+        jvm.handlers.setHandlerLevel(HandlerRef.DEFAULT_HANDLERS, Level.DEBUG, SetHandlerLevelOptions.sticky());
+        String exported = jvm.export();
+
+        Jvm restarted = new Jvm(parse(exported));
+
+        assertEquals(List.of(), stateStore.loadAllHandlers(), exported);
+        assertEquals(List.of(), restarted.handlers.listHandlerOverrides());
+        assertEquals(List.of(), restarted.takeover.differed());
+    }
+
     // --- the restart -----------------------------------------------------------------------------
 
     @Test

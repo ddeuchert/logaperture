@@ -1815,6 +1815,26 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     }
 
     /**
+     * The state ids of the sticky {@code ALL_HANDLERS}/{@code DEFAULT_HANDLERS} overrides {@link
+     * #exportHandlers()} expanded to at least one member -- written as the file's {@code
+     * handlerGroupStateIds}, since a member's own setting can replace the group's id on every
+     * entry it expanded to (doc/specs/export-round-trip.md "Settled during implementation").
+     */
+    public List<String> exportHandlerGroupStateIds() {
+        requireCapability(Capability.VIEW);
+        List<String> stateIds = new ArrayList<>();
+        for (HandlerLevelOverride persisted : stateStore.loadAllHandlers()) {
+            HandlerRef group = persisted.handlerRef();
+            Optional<HandlerLevelOverride> live = overrides.get(group);
+            if (isGroupRef(group) && persisted.stateId() != null && live.isPresent()
+                    && live.get().tier() == PersistenceTier.STICKY && !membersOf(group).isEmpty()) {
+                stateIds.add(persisted.stateId());
+            }
+        }
+        return stateIds;
+    }
+
+    /**
      * The state id written beside {@link #exportDefaultHandlers()}' list: the persisted explicit
      * membership's, when that is what the export writes; otherwise {@code null} (doc/specs/
      * export-round-trip.md).

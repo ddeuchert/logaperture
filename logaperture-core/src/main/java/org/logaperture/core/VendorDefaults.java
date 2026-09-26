@@ -119,7 +119,7 @@ public final class VendorDefaults {
 
     private static final VendorDefaults NONE =
             new VendorDefaults(Status.NOT_CONFIGURED, null, List.of(), false, List.of(), List.of(), null, null,
-                    List.of());
+                    List.of(), List.of());
 
     private final Status status;
     private final Path path;
@@ -129,11 +129,12 @@ public final class VendorDefaults {
     private final Map<HandlerRef, HandlerDefault> handlers;
     private final List<HandlerRef> defaultHandlers;
     private final String defaultHandlersStateId;
+    private final List<String> handlerGroupStateIds;
     private final List<RuleDefault> rules;
 
     private VendorDefaults(Status status, Path path, List<String> errors, boolean writable,
             List<LoggerDefault> loggers, List<HandlerDefault> handlers, List<HandlerRef> defaultHandlers,
-            String defaultHandlersStateId, List<RuleDefault> rules) {
+            String defaultHandlersStateId, List<String> handlerGroupStateIds, List<RuleDefault> rules) {
         this.status = status;
         this.path = path;
         this.errors = List.copyOf(errors);
@@ -150,6 +151,7 @@ public final class VendorDefaults {
         this.handlers = Collections.unmodifiableMap(handlerMap);
         this.defaultHandlers = defaultHandlers == null ? null : List.copyOf(defaultHandlers);
         this.defaultHandlersStateId = defaultHandlers == null ? null : defaultHandlersStateId;
+        this.handlerGroupStateIds = List.copyOf(handlerGroupStateIds);
         this.rules = List.copyOf(rules);
     }
 
@@ -164,20 +166,20 @@ public final class VendorDefaults {
             throw new IllegalArgumentException("a rejected file needs at least one error");
         }
         return new VendorDefaults(Status.REJECTED, path, errors, false, List.of(), List.of(), null, null,
-                List.of());
+                List.of(), List.of());
     }
 
     static VendorDefaults loaded(Path path, boolean writable, List<LoggerDefault> loggers,
             List<HandlerDefault> handlers, List<HandlerRef> defaultHandlers, List<RuleDefault> rules) {
-        return loaded(path, writable, loggers, handlers, defaultHandlers, null, rules);
+        return loaded(path, writable, loggers, handlers, defaultHandlers, null, List.of(), rules);
     }
 
     static VendorDefaults loaded(Path path, boolean writable, List<LoggerDefault> loggers,
             List<HandlerDefault> handlers, List<HandlerRef> defaultHandlers, String defaultHandlersStateId,
-            List<RuleDefault> rules) {
+            List<String> handlerGroupStateIds, List<RuleDefault> rules) {
         Objects.requireNonNull(path, "path");
         return new VendorDefaults(Status.LOADED, path, List.of(), writable, loggers, handlers, defaultHandlers,
-                defaultHandlersStateId, rules);
+                defaultHandlersStateId, handlerGroupStateIds, rules);
     }
 
     public Status status() {
@@ -246,6 +248,17 @@ public final class VendorDefaults {
     /** The {@code defaultHandlersStateId} beside the file's {@code defaultHandlers} list, if any. */
     public Optional<String> defaultHandlersStateId() {
         return Optional.ofNullable(defaultHandlersStateId);
+    }
+
+    /**
+     * The file's {@code handlerGroupStateIds}: the state ids of the sticky {@code ALL_HANDLERS}/
+     * {@code DEFAULT_HANDLERS} overrides the export expanded into {@code handlers:} entries. A
+     * group has no entry of its own, and a member's more specific setting replaces the group's
+     * id on that member's entry, so the group's id is recorded here as well (doc/specs/
+     * export-round-trip.md "Settled during implementation").
+     */
+    public List<String> handlerGroupStateIds() {
+        return handlerGroupStateIds;
     }
 
     /** {@code true} if this file contributes nothing at all -- not configured, rejected, or an empty file. */
