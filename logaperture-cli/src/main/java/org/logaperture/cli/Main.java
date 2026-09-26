@@ -48,7 +48,30 @@ public final class Main {
     }
 
     static int run(String[] args, PrintStream out, PrintStream err, Connector connector) {
-        return run(args, out, err, connector, System.in, System.console() != null);
+        return run(args, out, err, connector, System.in, isTerminal(System.console()));
+    }
+
+    /**
+     * Whether a real terminal is attached (doc/specs/pick-jvm.md J8). Before JDK 22 {@code
+     * System.console()} is {@code null} unless stdin and stdout are both a terminal; JDK 22 to 24
+     * return a console even when either is redirected, and JDK 22 added {@code
+     * Console.isTerminal()} to tell the two apart. The build targets release 17, so that method is
+     * looked up reflectively; where it doesn't exist, a non-null console is a terminal, as before.
+     */
+    static boolean isTerminal(Object console) {
+        if (console == null) {
+            return false;
+        }
+        try {
+            // Looked up on java.io.Console itself: JDK 22's console is a non-public subclass, and a
+            // Method taken from that class can't be invoked from here.
+            Class<?> type = console instanceof java.io.Console ? java.io.Console.class : console.getClass();
+            return (Boolean) type.getMethod("isTerminal").invoke(console);
+        } catch (NoSuchMethodException beforeJdk22) {
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException cannotTell) {
+            return false;
+        }
     }
 
     /**
@@ -85,7 +108,9 @@ public final class Main {
             return CliError.OK;
         }
 
-        try (ControlPlane controlPlane = connector.connect(invocation.pid())) {
+        // pick-jvm.md J1: discovery may ask which JVM only on a terminal, and never with --json or --yes.
+        Prompter jvmQuestion = interactive && !invocation.neverAsk() ? new Prompter(in, err) : null;
+        try (ControlPlane controlPlane = connector.connect(invocation.pid(), jvmQuestion)) {
             return invocation.command().run(controlPlane.mbean(), out, err, in, interactive);
         } catch (CliError e) {
             err.println(e.getMessage());

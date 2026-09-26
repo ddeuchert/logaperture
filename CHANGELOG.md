@@ -76,11 +76,22 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   the way a log line prints it. Before applying, it prints the equivalent one-line command to copy
   into a script. Complete commands, scripts without a terminal, and `--yes` never prompt (issue
   #104; `doc/specs/guided-add-rule.md`).
+- **Pick the JVM from a list** — with several LogAperture JVMs running, any `logctl` command on a
+  terminal lists them numbered and asks which one, then prints the `--pid` to skip the question
+  next time. The list, and the "several candidates" table scripts still get (exit 4, unchanged),
+  now show when each JVM started and its working directory, so two WildFly servers can be told
+  apart (issue #106; `doc/specs/pick-jvm.md`).
 - **Pattern targets for `add rule drop|trim`** — `add rule trim '*.Deployer' …` picks from the
   matching loggers on a terminal, or adds one rule to each with `--yes`; `--json` then prints an
   array (issue #104).
 
 ### Fixed
+
+- **Piped or scripted `logctl` could be treated as interactive on JDK 22–24**, whose
+  `System.console()` returns a console even when input is redirected: `set logger`'s pattern
+  confirmation could read its answer from the pipe, and an incomplete `add rule` asked questions
+  instead of failing. `logctl` now also checks `Console.isTerminal()` where the JDK has it
+  (issue #106).
 
 - **WildFly could abort at startup** (`ModuleNotFoundException: org.jboss.as.standalone`) on
   launches where the JBoss LogManager is on the system class path

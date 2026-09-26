@@ -24,11 +24,30 @@ package org.logaperture.cli;
 interface Connector {
 
     /** The production path: {@link Discovery} then {@link AgentConnection#open}. */
-    Connector REAL = explicitPid -> AgentConnection.open(Discovery.resolveTargetPid(explicitPid));
+    Connector REAL = new Connector() {
+        @Override
+        public ControlPlane connect(Long explicitPid) {
+            return connect(explicitPid, null);
+        }
+
+        @Override
+        public ControlPlane connect(Long explicitPid, Prompter jvmQuestion) {
+            return AgentConnection.open(Discovery.resolveTargetPid(explicitPid, jvmQuestion));
+        }
+    };
 
     /**
      * @param explicitPid a {@code --pid} value, or {@code null} to discover one
      * @throws CliError with the matching exit code when no single target can be reached
      */
     ControlPlane connect(Long explicitPid);
+
+    /**
+     * As {@link #connect(Long)}, but with several candidate JVMs discovery may ask which one
+     * (doc/specs/pick-jvm.md) -- through {@code jvmQuestion}, or never when it is {@code null}. A
+     * connector that doesn't discover (a test's fake) ignores it.
+     */
+    default ControlPlane connect(Long explicitPid, Prompter jvmQuestion) {
+        return connect(explicitPid);
+    }
 }

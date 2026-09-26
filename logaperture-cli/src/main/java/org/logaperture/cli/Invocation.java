@@ -22,14 +22,16 @@ package org.logaperture.cli;
  *
  * @param pid an explicit {@code --pid} target, or {@code null} to discover one
  * @param debug the hidden {@code --debug} flag — print stack traces for the CLI's own development
+ * @param neverAsk {@code --json} or {@code --yes} was given: nothing may be asked, not even which
+ *                 JVM (doc/specs/pick-jvm.md J1)
  */
-record Invocation(boolean help, boolean version, boolean debug, Long pid, Command command) {
+record Invocation(boolean help, boolean version, boolean debug, Long pid, boolean neverAsk, Command command) {
 
     static Invocation forHelp() {
-        return new Invocation(true, false, false, null, null);
+        return new Invocation(true, false, false, null, true, null);
     }
 
     static Invocation forVersion() {
-        return new Invocation(false, true, false, null, null);
+        return new Invocation(false, true, false, null, true, null);
     }
 }

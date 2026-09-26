@@ -163,8 +163,10 @@ Per §14.5, "No PID argument when exactly one candidate JVM is running. Discover
      if one of them is the target — so a transiently un-attachable real target reads as
      "couldn't look" rather than "nothing there." The `--pid` path is unaffected: an
      explicit PID never runs discovery.
-   - **more than one** &rarr; exit 4, print a table (pid, main class, the marker's
-     version) and "Several candidates — pass `--pid <n>`."
+   - **more than one** &rarr; exit 4, print a table (pid, the marker's version, start time,
+     working directory, main class) and "Several candidates — pass `--pid <n>`." On a
+     terminal, without `--json` or `--yes`, the same table is numbered and the operator picks
+     one instead ([`pick-jvm.md`](pick-jvm.md), #106).
 4. `--pid <n>` skips discovery entirely and targets that PID; if it has no marker
    property, the command still proceeds to step 5 of the connection model and fails there
    with the "up but no agent" message — an explicit PID is taken as "I know what I'm
@@ -367,7 +369,7 @@ semantics"). `--json` output is unchanged.
 | 1 | Unexpected failure — connection dropped mid-call, marshalling error, an exception from the operation itself other than a bad-argument rejection. |
 | 2 | Usage error — unknown command/flag, wrong arity, unparseable level or duration, or an invalid filter pattern (§18.7's segment-anchored grammar) rejected server-side and carried back as an `IllegalArgumentException`. |
 | 3 | No LogAperture-enabled JVM found. |
-| 4 | Ambiguous — several candidates; `--pid` required. |
+| 4 | Ambiguous — several candidates; `--pid` required (or, on a terminal, none was picked: [`pick-jvm.md`](pick-jvm.md)). |
 | 5 | Attach denied — wrong OS user. |
 | 6 | Operation refused by policy — a capability the operation needs is not granted. |
 | 7 | Operation or option not supported by the connected agent's version — see §11.1. |
