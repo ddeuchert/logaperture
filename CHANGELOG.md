@@ -9,6 +9,33 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Added
 
+- **`logctl storms`** — lists the log storms the agent has detected: a burst of near-identical
+  events from one logger (1,000 within 10 s by default, `-Dlogaperture.storm.*` to tune). For each:
+  the logger, exception type and normalized message, when it started, how many events, the current
+  rate, and whether it is still going. The first occurrence is kept in full, stack trace included.
+  `--limit N` shows the worst N; `--json` for scripts. Report-only: nothing is suppressed or
+  delayed. `logctl doctor` adds a one-line pointer while a storm is ongoing (issue #26;
+  `doc/specs/storm-detection.md`).
+- **`logctl add rule drop <logger> …`** — stop a known-noisy message from being logged without
+  touching its logger's level, e.g. `add rule drop com.acme.batch.Worker --message-contains "This
+  happens a lot"`. Match on the log message (`--message-contains`, `--message-contains-ignore-case`),
+  the exception (`--throwable`, `--throwable-message-contains`, `--any-cause`), or both; at least one
+  is required. Only events below `--below` (default `ERROR`) are dropped, and FATAL never is. One
+  full event is let through every 5 minutes (`--sample-full <duration>`, or `--no-sample-full`),
+  and a periodic summary line on the JVM's stderr counts what was dropped (issue #72;
+  `doc/specs/drop-rule.md`).
+- **`logctl add rule trim <logger> …`** — keep logging a noisy exception but shorten its stack
+  trace: a matching event below `--below` is written with a one-line trace and a marker, or the top
+  `--frames N` frames; `--collapse-causes` also folds the `Caused by:` chain. Same matchers as
+  `drop`, none required. Text formatters only; JSON/XML handlers are left untouched (issue #34;
+  `doc/specs/trim-rule.md`).
+- **Rules are managed like overrides** — each gets a short id (`r1`, `r2`, …) and the same
+  `session` / `for <duration>` / `sticky` tiers as `set logger` (default `for 4h`). A rule reaches
+  the logger's descendants, including ones created later. `logctl list rules` shows each rule with
+  its tier, expiry and hit count; `logctl reset rule <id>` and `logctl reset rules` remove them, and
+  `logctl reset logger X` also removes the rules attached directly to `X`. Rules and storm
+  detection need the JUL / JBoss LogManager adapter (WildFly); Logback is not yet supported (issue
+  #71; `doc/specs/rule-pipeline-foundation.md`).
 - **Vendor defaults file** — start the agent with
   `-javaagent:logaperture-agent.jar=--vendor-defaults=/path/vendor-defaults.yaml` to ship baseline
   logger levels, handler levels, a default-handler list and `drop`/`trim` rules with a product.
@@ -56,6 +83,16 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   (default `0`) can hold back the handler-level installs (trim rendering, `top`'s byte counting,
   storm detection, the rule pipeline) if a launch ever needs it. See
   `doc/spikes/early-handler-install.md` and `doc/specs/wildfly-deferred-handler-install.md`.
+
+### Known limitations
+
+- `add rule drop|trim` takes an exact logger name only, and attaches in the first logging context;
+  pattern targets and multi-context fan-out are
+  [#79](https://github.com/ddeuchert/logaperture/issues/79).
+- `trim` doesn't apply to structured (JSON/XML) formatters
+  ([#83](https://github.com/ddeuchert/logaperture/issues/83)).
+- Storm detection can merge two concurrent throw sites that share a fingerprint
+  ([#77](https://github.com/ddeuchert/logaperture/issues/77)).
 
 ## [0.1.0-alpha.2] — 2026-09-20
 
