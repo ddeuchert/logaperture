@@ -1182,6 +1182,8 @@ The important change from the previous draft: **M1 ships nothing that modifies b
 
 **Vendor configuration file.** A vendor bundling LogAperture wants to ship default logging settings — level adjustments and keyword-based hiding — via a file referenced on the LogAperture command line, so a customer doesn't inherit noisy defaults or need `logctl` commands run after every install. Spans level-control and squelch/filter (§7 / Feature 3) territory; full write-up and open questions: §18.10; targeted for alpha-3; tracked as [#60](https://github.com/ddeuchert/logaperture/issues/60). Phase 2 — `logctl reset` falls back to the vendor default instead of clearing it, mirroring how reset falls back to native config today — is §18.11, tracked as [#61](https://github.com/ddeuchert/logaperture/issues/61), depending on #60. Phase 3 — a `logctl` command to export current sticky overrides as a vendor config file, so a vendor can tune live and capture the result rather than hand-authoring it — is §18.12, tracked as [#62](https://github.com/ddeuchert/logaperture/issues/62). **Specced 2026-09-24** as an epic: [`doc/specs/vendor-config-epic.md`](specs/vendor-config-epic.md) — #60 and #61 ship as one slice, #62 follows; library-bundled recipes ([#92](https://github.com/ddeuchert/logaperture/issues/92), beta-1) join as a third slice.
 
+**Follow-up to #62: the export round trip leaves the exported settings active twice.** Restarting with a just-exported vendor defaults file still resumes the sticky settings it was exported from: an operator rule runs twice (once as `r<N>` from the state file, once as `vendor:<derived-name>` from the file), and a leftover sticky logger/handler override hides later edits to the file. Proposed fix: a unique id minted when each setting is created and carried into the export, so a vendor file load replaces the matching state entry. Full write-up and alternatives: §18.16; alpha-3; tracked as [#107](https://github.com/ddeuchert/logaperture/issues/107).
+
 **Content-based targeting: configure loggers by keyword match on message/exception/stack.** A standalone companion to the above: every targeting mechanism so far selects a logger by name (exact or glob, §18.7 / #41); this lets an operator instead target based on what a logger is actually emitting — a message keyword, an exception type, or a class appearing in a stack trace — reusing §7.2's squelch-engine matcher vocabulary to drive configuration rather than gate/render actions. Full write-up and open questions: §18.13; targeted for alpha-3; tracked as [#63](https://github.com/ddeuchert/logaperture/issues/63).
 
 **Filtering epic: `drop` and `trimStackTrace` rules.** Two behaviour-changing actions from M2 are pulled forward as a deliberately small rule model: `drop` (gate stage) and `trim` (render stage, the per-category exception-detail threshold of §18.8 / #34 reshaped as a rule), sharing one matcher vocabulary (§7.2 subset), with the safety set §9 requires — protected categories and FATAL untouchable, every suppression counted and visible, rules expiring by default. A rule attaches to a specific logger and reaches its descendants by tree inheritance (a `useParentRules` flag modelled on JBoss LogManager's own `use-parent-handlers`), independent of level — not a per-event pattern test. Built on storm detection's gate observer (#26) and `top`'s formatter wrap; validated by [`doc/spikes/rule-pipeline.md`](spikes/rule-pipeline.md). Content-based targeting (§18.13 / #63) is superseded and labelled `obsolete`. Draft, mid sign-off: [`doc/specs/filtering-epic.md`](specs/filtering-epic.md).
@@ -1590,6 +1592,34 @@ It drives `logctl --json`, whose shapes are already a compatibility contract (§
   - whether formatter-pattern knowledge from the agent should help parse a pasted line.
 
 **Status note.** Specced in [`doc/specs/guided-add-rule.md`](specs/guided-add-rule.md), signed off 2026-09-26 (G1–G12). The first three open questions above are resolved there: no JLine (G12), `add rule` only (G11), and the rule type may be left out (G3). The AI-phase questions remain open. Kept here as the roadmap record.
+
+### 18.16 Restarting with a just-exported vendor file duplicates its sticky sources
+
+Tracked as [#107](https://github.com/ddeuchert/logaperture/issues/107); a follow-up to §18.12 / #62.
+
+**Motivation.** The vendor authoring loop §18.12 was built for is a round trip: start the app, tune it with `sticky` logger, handler and rule settings, run `logctl export vendor-defaults --out vendor-defaults.yaml`, then restart with `--vendor-defaults=vendor-defaults.yaml`. After the restart, the exported settings are active twice, because the state file still resumes the sticky settings the file was made from:
+
+- **Rules are duplicated.** An operator rule `r7` is exported under a derived name (`drop-healthcheck`, [`vendor-defaults-export.md`](specs/vendor-defaults-export.md) X3) and loads as `vendor:drop-healthcheck`, while the state file still resumes `r7` as sticky. Two identical rules run, both show in `list rules`, and both have to be reset.
+- **Logger and handler overrides are left behind.** These are keyed by exact name, so nothing is duplicated, but the leftover sticky override equals the file's value and wins over it. The next edit the vendor makes to that entry in the file silently has no effect. The vendor-config epic's "a customer's sticky override beats vendor v2" rule is right for a customer, but here it works against the vendor, whose sticky setting has already been folded into the file.
+
+**What the user would do.** Nothing new. Restarting with the file they just exported gives exactly the tuned state: each setting is active once, it comes from the vendor file, and the next edit to the file takes effect.
+
+**Proposal: an id minted at creation.** Every logger override, handler override and rule gets a unique id (a UUID) when it is created. The id is stored in the state file and written into the exported vendor file. When a vendor file loads, a state entry whose id matches a file entry is silently removed and replaced by the file's entry. The operator never types or sees the id; the existing `r<N>` rule ids and `vendor:<name>` ids stay as they are.
+
+**Alternatives, to weigh when this is specced:**
+
+- **Canonical signature.** At load, a state entry equivalent to a file entry (same target and settings, compared in a canonical form) is dropped. The file format doesn't change, and it also catches a rule written into the file by hand. It depends on the comparison keeping up with every rule option.
+- **Clean up at export time.** `export vendor-defaults --out` demotes the sticky settings it exported to `session`. The running JVM behaves the same, the state file stops carrying them, and restarting with the new file reproduces the state. No identity scheme is needed, but the export is no longer read-only (today it needs only `VIEW`, X5).
+
+**Cost / dependencies.** A change to the vendor-file load and the state-file resume ([`persistence.md`](specs/persistence.md), [`vendor-defaults.md`](specs/vendor-defaults.md)), and to the export, depending on the approach. Nothing new for the user to type. Layer 0 persistence correctness, found in the alpha-3 vendor workflow.
+
+**Open questions, deferred until this is specced:**
+
+- Which approach, or a combination (for example, an id for rules and name matching for loggers and handlers, which already have a natural key).
+- A state entry with a matching id that was changed after the export (`alter rule r7 …`, then a restart with the older file): does the file silently win, does the state entry win, or is it reported?
+- Whether the replacement is reported in resume output or the audit trail (§9.7), or is truly silent.
+- File format: a new optional field under `schemaVersion: 1`, or a version bump; whether a hand-authored file ever carries ids.
+- Whether this should only apply to the file a JVM exported from, or to any vendor file that carries a matching id (a customer's state never shares ids with a vendor's file, so this may not matter).
 
 ---
 

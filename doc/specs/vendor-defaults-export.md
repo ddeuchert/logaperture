@@ -120,6 +120,16 @@ the `system` context, so this changes nothing in practice.
   and the header — and a stderr note `Nothing to export: no vendor defaults file and no sticky
   settings.` Exit 0 (X9).
 
+## Known limitation: restarting with the exported file
+
+The export leaves the sticky settings it read in the state file. Restarting with
+`--vendor-defaults=<the exported file>` therefore resumes them too: an operator rule `r7` runs
+alongside its exported copy `vendor:<derived-name>` (X3), and a sticky logger/handler override
+keeps winning over the identical file entry, hiding later edits to the file. Until this is fixed,
+reset the exported sticky settings (`--include-sticky`) before restarting. Deferred to
+[#107](https://github.com/ddeuchert/logaperture/issues/107); roadmap write-up and candidate fixes
+in logaperture-spec.md §18.16.
+
 ## Module scope
 
 - `logaperture-core`: `VendorDefaultsFile.write(...)` (the YAML writer, quoting as the parser
