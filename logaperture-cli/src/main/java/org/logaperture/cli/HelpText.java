@@ -64,6 +64,7 @@ final class HelpText {
         }
         sb.append("\nOptions:\n");
         sb.append("  --pid <n>            target this JVM instead of discovering one\n");
+        sb.append("                       (without it, several JVMs are listed to pick from on a terminal)\n");
         sb.append("  --reason <text>      why — shown in status, kept in the audit trail\n");
         sb.append("  --yes                skip the confirmation prompt when <target> is a pattern\n");
         sb.append("                       (for 'add rule': add the rule to every logger it matches)\n");

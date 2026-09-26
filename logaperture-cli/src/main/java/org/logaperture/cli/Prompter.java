@@ -15,19 +15,20 @@
  */
 package org.logaperture.cli;
 
-import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
 /**
- * One question at a time on the terminal, for guided {@code add rule} (doc/specs/guided-add-rule.md).
- * A single reader serves every question -- a fresh {@link BufferedReader} per question would swallow
- * input it had buffered for the next one. End of input at any question raises {@link Cancelled}.
+ * One question at a time on the terminal -- guided {@code add rule} (doc/specs/guided-add-rule.md)
+ * and picking the JVM (doc/specs/pick-jvm.md). Each answer is read straight from the input stream,
+ * one byte at a time up to the newline, with no read-ahead buffer: discovery's question and the
+ * command's own then each have their own {@code Prompter} over the same stdin without one swallowing
+ * the other's input (pick-jvm.md J9). End of input at any question raises {@link Cancelled}.
  */
 final class Prompter {
 
@@ -38,11 +39,12 @@ final class Prompter {
         }
     }
 
-    private final BufferedReader reader;
+    private final InputStream in;
     private final PrintStream out;
 
+    /** @param out where the questions are written: stdout for a command's own, stderr for discovery's */
     Prompter(InputStream in, PrintStream out) {
-        this.reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+        this.in = in;
         this.out = out;
     }
 
@@ -55,17 +57,30 @@ final class Prompter {
         out.println(indent + question);
         out.print(indent + "> ");
         out.flush();
-        String line;
-        try {
-            line = reader.readLine();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+        String line = readLine();
         if (line == null) {
             out.println();
             throw new Cancelled();
         }
         return line.trim();
+    }
+
+    /** One line without its terminator, or {@code null} at end of input before any byte of it. */
+    private String readLine() {
+        ByteArrayOutputStream line = new ByteArrayOutputStream();
+        try {
+            int b;
+            while ((b = in.read()) != -1 && b != '\n') {
+                line.write(b);
+            }
+            if (b == -1 && line.size() == 0) {
+                return null;
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        String text = line.toString(StandardCharsets.UTF_8);
+        return text.endsWith("\r") ? text.substring(0, text.length() - 1) : text;
     }
 
     /** A {@code [y/N]} or {@code [Y/n]} question; Enter takes {@code defaultYes}, anything else is asked again. */

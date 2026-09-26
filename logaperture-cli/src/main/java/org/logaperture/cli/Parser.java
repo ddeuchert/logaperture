@@ -562,7 +562,7 @@ final class Parser {
             default -> throw usage("Unknown command '" + command + "'.");
         };
 
-        return new Invocation(false, false, debug, pid, resolved);
+        return new Invocation(false, false, debug, pid, json || yes, resolved);
     }
 
     static final String PROMPT_HINT = "Run this in a terminal to be prompted for the missing parts.";

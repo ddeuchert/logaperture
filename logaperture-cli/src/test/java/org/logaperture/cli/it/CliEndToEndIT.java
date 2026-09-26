@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -161,6 +162,9 @@ class CliEndToEndIT {
         assertEquals(4, ambiguous.exitCode, ambiguous.out + ambiguous.err);
         assertTrue(ambiguous.err.contains(Long.toString(first.pid())), ambiguous.err);
         assertTrue(ambiguous.err.contains(Long.toString(second.pid())), ambiguous.err);
+        // doc/specs/pick-jvm.md J3: the table tells similar JVMs apart; with no terminal, nothing is asked.
+        assertTrue(ambiguous.err.contains("STARTED") && ambiguous.err.contains("DIRECTORY"), ambiguous.err);
+        assertFalse(ambiguous.err.contains("Which?"), ambiguous.err);
 
         Result targeted = run("--pid", Long.toString(first.pid()), "list", "loggers", "com.acme", "--show-all");
         assertEquals(0, targeted.exitCode, targeted.err);
