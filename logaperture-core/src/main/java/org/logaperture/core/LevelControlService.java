@@ -982,10 +982,17 @@ public final class LevelControlService implements LevelControlOperations {
      * The loggers {@code logctl export vendor-defaults} writes -- doc/specs/vendor-defaults-export.md
      * "What goes into the export": each logger's {@code sticky} override if it has one, otherwise
      * its vendor level unless it is reset to native (X4). A {@code session}/{@code for} override
-     * is ignored, so the vendor level (if any) is exported instead (X2). Sorted by name.
+     * is ignored, so the vendor level (if any) is exported instead (X2). Sorted by name. A sticky
+     * override's entry carries its state id (doc/specs/export-round-trip.md).
      */
     public List<VendorDefaults.LoggerDefault> exportLoggers() {
         requireCapability(Capability.VIEW);
+        Map<String, String> stateIds = new java.util.HashMap<>();
+        for (LevelOverride persisted : stateStore.loadAll()) {
+            if (persisted.stateId() != null) {
+                stateIds.put(persisted.loggerName(), persisted.stateId());
+            }
+        }
         Map<String, VendorDefaults.LoggerDefault> exported = new java.util.TreeMap<>();
         for (String name : baselines.vendorLoggerNames()) {
             if (!baselines.isResetToNative(name)) {
@@ -996,7 +1003,7 @@ public final class LevelControlService implements LevelControlOperations {
         for (LevelOverride override : overrides.all().values()) {
             if (override.tier() == PersistenceTier.STICKY) {
                 exported.put(override.loggerName(), new VendorDefaults.LoggerDefault(override.loggerName(),
-                        override.level(), override.reason()));
+                        override.level(), override.reason(), stateIds.get(override.loggerName())));
             }
         }
         return List.copyOf(exported.values());

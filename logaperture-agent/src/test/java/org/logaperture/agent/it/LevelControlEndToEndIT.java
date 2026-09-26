@@ -367,6 +367,51 @@ class LevelControlEndToEndIT {
         assertEquals(java.util.Set.of("vendor:fixture-noise", "vendor:drop-other"), ruleIds, exported);
     }
 
+    /**
+     * doc/specs/export-round-trip.md "Testing" (issue #107) -- the real round trip: restart the
+     * <em>same</em> instance (same state file) with the exported file. Each setting is active
+     * once, from the file; the state file no longer holds them; and a later edit to the file
+     * takes effect on the next restart.
+     */
+    @Test
+    void restartingTheSameInstanceWithTheExportedFile_takesOverTheStickySettings() throws Exception {
+        String agentJarPath = System.getProperty("logaperture.agent.jar");
+        assertNotNull(agentJarPath, "system property logaperture.agent.jar must point at the shaded jar");
+        String otherLogger = "org.logaperture.agent.it.fixture.Other";
+
+        Process first = launchFixtureProcess(agentJarPath);
+        LevelControlMXBean firstProxy = pollForMxBeanProxy(attachAndConnect(first.pid()));
+        firstProxy.setLogger(otherLogger, "DEBUG", null, "STICKY", 0, false);
+        firstProxy.addRuleDrop(otherLogger, "heartbeat", false, null, null, false, "INFO", false, 300_000, null,
+                "STICKY", 0);
+        String exported = firstProxy.exportVendorDefaults();
+        stopFixtureProcess(first);
+        assertTrue(exported.contains("stateId: "), exported);
+
+        Path exportedFile = logapertureHome.resolve("exported.yaml");
+        Files.writeString(exportedFile, exported);
+        Process second = launchFixtureProcess(agentJarPath, "--vendor-defaults=" + exportedFile);
+        LevelControlMXBean secondProxy = pollForMxBeanProxy(attachAndConnect(second.pid()));
+
+        java.util.Set<String> ruleIds = secondProxy.listRules().stream().map(rule -> rule.getId())
+                .collect(java.util.stream.Collectors.toSet());
+        assertEquals(java.util.Set.of("vendor:drop-other"), ruleIds, "the rule runs once, from the file");
+        LoggerInfoData other = pollUntilKnown(secondProxy, otherLogger);
+        assertEquals("DEBUG", other.getVendorDefaultLevel(), exported);
+        assertFalse(other.isOverrideActive(), "taken over by the file, not resumed from the state file");
+        String stateFile = Files.readString(Path.of(secondProxy.environmentReport().getStateFilePath()));
+        assertFalse(stateFile.contains(otherLogger), stateFile);
+        stopFixtureProcess(second);
+
+        Files.writeString(exportedFile, exported.replace("level: DEBUG", "level: TRACE"));
+        Process third = launchFixtureProcess(agentJarPath, "--vendor-defaults=" + exportedFile);
+        LevelControlMXBean thirdProxy = pollForMxBeanProxy(attachAndConnect(third.pid()));
+
+        LoggerInfoData edited = pollUntilKnown(thirdProxy, otherLogger);
+        assertEquals("TRACE", edited.getVendorDefaultLevel());
+        assertEquals("TRACE", edited.getEffectiveLevel(), "the edit to the file takes effect");
+    }
+
     private static LoggerInfoData pollUntilKnown(LevelControlMXBean proxy, String loggerName) throws Exception {
         for (int attempt = 0; attempt < 50; attempt++) {
             List<LoggerInfoData> rows = proxy.listLoggers(loggerName);

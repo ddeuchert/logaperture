@@ -1754,36 +1754,47 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      * each {@code sticky} group override expanded to its members ({@code ALL_HANDLERS} before the
      * more specific {@code DEFAULT_HANDLERS}), then each handler's own {@code sticky} override,
      * which wins over a group's. A sticky {@code AUTO} override exports as {@code AUTO}. Sorted by
-     * name.
+     * name. An entry from a sticky override carries that override's state id -- a group's on each
+     * member it expands to -- and an entry from the vendor file carries none (doc/specs/
+     * export-round-trip.md "The export writes the id into the file").
      */
     public List<VendorDefaults.HandlerDefault> exportHandlers() {
         requireCapability(Capability.VIEW);
+        Map<HandlerRef, String> stateIds = new java.util.HashMap<>();
+        for (HandlerLevelOverride persisted : stateStore.loadAllHandlers()) {
+            if (persisted.stateId() != null) {
+                stateIds.put(persisted.handlerRef(), persisted.stateId());
+            }
+        }
         Map<String, VendorDefaults.HandlerDefault> exported = new java.util.TreeMap<>();
         for (VendorDefaults.HandlerDefault vendor : baselines.vendorDefaults()) {
             if (!baselines.isResetToNative(vendor.ref())) {
-                exported.put(vendor.ref().value(), vendor);
+                exported.put(vendor.ref().value(), vendor.withStateId(null));
             }
         }
         for (HandlerRef group : List.of(HandlerRef.ALL_HANDLERS, HandlerRef.DEFAULT_HANDLERS)) {
             Optional<HandlerLevelOverride> override = overrides.get(group);
             if (override.isPresent() && override.get().tier() == PersistenceTier.STICKY) {
                 for (HandlerRef member : membersOf(group)) {
-                    exported.put(member.value(), exportEntry(member, override.get()));
+                    exported.put(member.value(), exportEntry(member, override.get(), stateIds.get(group)));
                 }
             }
         }
         for (HandlerLevelOverride override : overrides.all().values()) {
             if (!isGroupRef(override.handlerRef()) && override.tier() == PersistenceTier.STICKY) {
-                exported.put(override.handlerRef().value(), exportEntry(override.handlerRef(), override));
+                exported.put(override.handlerRef().value(),
+                        exportEntry(override.handlerRef(), override, stateIds.get(override.handlerRef())));
             }
         }
         return List.copyOf(exported.values());
     }
 
-    private static VendorDefaults.HandlerDefault exportEntry(HandlerRef ref, HandlerLevelOverride override) {
+    private static VendorDefaults.HandlerDefault exportEntry(HandlerRef ref, HandlerLevelOverride override,
+            String stateId) {
         return override.mode() == HandlerLevelMode.AUTO
-                ? new VendorDefaults.HandlerDefault(ref, null, HandlerLevelMode.AUTO, override.reason())
-                : new VendorDefaults.HandlerDefault(ref, override.level(), HandlerLevelMode.FIXED, override.reason());
+                ? new VendorDefaults.HandlerDefault(ref, null, HandlerLevelMode.AUTO, override.reason(), stateId)
+                : new VendorDefaults.HandlerDefault(ref, override.level(), HandlerLevelMode.FIXED, override.reason(),
+                        stateId);
     }
 
     /**
@@ -1801,6 +1812,19 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return defaultHandlerGroup.vendorMembers();
         }
         return null;
+    }
+
+    /**
+     * The state id written beside {@link #exportDefaultHandlers()}' list: the persisted explicit
+     * membership's, when that is what the export writes; otherwise {@code null} (doc/specs/
+     * export-round-trip.md).
+     */
+    public String exportDefaultHandlersStateId() {
+        requireCapability(Capability.VIEW);
+        if (defaultHandlerGroup.explicit().isEmpty()) {
+            return null;
+        }
+        return stateStore.defaultHandlerMembersStateId().orElse(null);
     }
 
     private void requireCapability(Capability capability) {

@@ -38,14 +38,22 @@ import java.util.Objects;
  *                         (e.g. a rule on the root logger), written after the header
  */
 public record VendorDefaultsExport(List<String> headerComments, List<VendorDefaults.LoggerDefault> loggers,
-        List<VendorDefaults.HandlerDefault> handlers, List<HandlerRef> defaultHandlers,
+        List<VendorDefaults.HandlerDefault> handlers, List<HandlerRef> defaultHandlers, String defaultHandlersStateId,
         List<VendorDefaults.RuleDefault> rules, Map<String, String> ruleComments, List<String> skippedComments) {
+
+    /** An export without state ids, e.g. one written by hand in a test. */
+    public VendorDefaultsExport(List<String> headerComments, List<VendorDefaults.LoggerDefault> loggers,
+            List<VendorDefaults.HandlerDefault> handlers, List<HandlerRef> defaultHandlers,
+            List<VendorDefaults.RuleDefault> rules, Map<String, String> ruleComments, List<String> skippedComments) {
+        this(headerComments, loggers, handlers, defaultHandlers, null, rules, ruleComments, skippedComments);
+    }
 
     public VendorDefaultsExport {
         headerComments = List.copyOf(headerComments);
         loggers = List.copyOf(loggers);
         handlers = List.copyOf(handlers);
         defaultHandlers = defaultHandlers == null ? null : List.copyOf(defaultHandlers);
+        defaultHandlersStateId = defaultHandlers == null ? null : defaultHandlersStateId;
         rules = List.copyOf(rules);
         ruleComments = Map.copyOf(Objects.requireNonNull(ruleComments, "ruleComments"));
         skippedComments = List.copyOf(skippedComments);

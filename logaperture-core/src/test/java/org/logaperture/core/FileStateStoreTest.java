@@ -37,6 +37,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -84,7 +86,8 @@ class FileStateStoreTest {
         }
 
         try (FileStateStore reopened = FileStateStore.open()) {
-            List<LevelOverride> loaded = reopened.loadAll();
+            // Every field but the state id, which the store assigns (covered by the stateId tests below).
+            List<LevelOverride> loaded = reopened.loadAll().stream().map(o -> o.withStateId(null)).toList();
             assertEquals(2, loaded.size());
             assertTrue(loaded.contains(sticky));
             assertTrue(loaded.contains(timed));
@@ -234,7 +237,109 @@ class FileStateStoreTest {
         }
 
         try (FileStateStore reopened = FileStateStore.open()) {
-            assertEquals(List.of(rule), reopened.loadAllRules());
+            assertEquals(List.of(rule), reopened.loadAllRules().stream().map(r -> r.withStateId(null)).toList());
+        }
+    }
+
+    // doc/specs/export-round-trip.md "An id for every persisted setting" (S3) and "State file" (S9).
+
+    @Test
+    void save_assignsAStateId_andAReopenedFileKeepsIt() throws IOException {
+        LevelOverride sticky = new LevelOverride("com.acme.Foo", Level.WARN, null,
+                Instant.parse("2026-09-26T10:00:00Z"), "jmx", PersistenceTier.STICKY, null);
+        String stateId;
+        try (FileStateStore store = FileStateStore.open()) {
+            store.save(sticky);
+            stateId = store.loadAll().get(0).stateId();
+            assertNotNull(stateId);
+        }
+        try (FileStateStore reopened = FileStateStore.open()) {
+            assertEquals(stateId, reopened.loadAll().get(0).stateId());
+        }
+    }
+
+    @Test
+    void saveOverAnExistingEntry_keepsItsStateId_butRemoveThenSaveGetsANewOne() throws IOException {
+        LevelOverride warn = new LevelOverride("com.acme.Foo", Level.WARN, null,
+                Instant.parse("2026-09-26T10:00:00Z"), "jmx", PersistenceTier.STICKY, null);
+        LevelOverride error = new LevelOverride("com.acme.Foo", Level.ERROR, null,
+                Instant.parse("2026-09-26T10:05:00Z"), "jmx", PersistenceTier.STICKY, null);
+        try (FileStateStore store = FileStateStore.open()) {
+            store.save(warn);
+            String first = store.loadAll().get(0).stateId();
+            store.save(error);
+            assertEquals(first, store.loadAll().get(0).stateId());
+            assertEquals(Level.ERROR, store.loadAll().get(0).level());
+
+            store.remove("com.acme.Foo");
+            store.save(warn);
+            assertNotEquals(first, store.loadAll().get(0).stateId());
+        }
+    }
+
+    @Test
+    void handlerRuleAndDefaultMembers_eachGetAStateIdKeptAcrossSaves() throws IOException {
+        HandlerLevelOverride handler = HandlerLevelOverride.fixed(new HandlerRef("FILE"), Level.INFO, null,
+                Instant.parse("2026-09-26T10:00:00Z"), "jmx", PersistenceTier.STICKY, null);
+        PersistedRule rule = new PersistedRule("r1", "com.acme.Worker", "drop",
+                new CompiledMatchers(Level.ERROR, "noise", false, null, null, false),
+                null, PersistenceTier.STICKY, null, Instant.parse("2026-09-26T10:00:00Z"), "system", Map.of());
+        try (FileStateStore store = FileStateStore.open()) {
+            store.saveHandler(handler);
+            store.saveRule(rule);
+            store.saveDefaultHandlerMembers(List.of("CONSOLE"));
+            String handlerId = store.loadAllHandlers().get(0).stateId();
+            String ruleId = store.loadAllRules().get(0).stateId();
+            String membersId = store.defaultHandlerMembersStateId().orElseThrow();
+
+            store.saveHandler(handler);
+            store.saveRule(rule);
+            store.saveDefaultHandlerMembers(List.of("CONSOLE", "FILE"));
+            assertEquals(handlerId, store.loadAllHandlers().get(0).stateId());
+            assertEquals(ruleId, store.loadAllRules().get(0).stateId());
+            assertEquals(membersId, store.defaultHandlerMembersStateId().orElseThrow());
+
+            store.removeDefaultHandlerMembers();
+            assertTrue(store.defaultHandlerMembersStateId().isEmpty());
+        }
+    }
+
+    @Test
+    void anEntryWrittenBeforeStateIds_getsOneWhenTheFileOpens_andItIsWrittenBack() throws IOException {
+        String version8 = """
+                schemaVersion: 8
+                overrides:
+                  - loggerName: "com.acme.Foo"
+                    level: WARN
+                    reason: null
+                    appliedAt: 2026-09-01T10:00:00Z
+                    source: "jmx"
+                    tier: STICKY
+                    expiresAt: null
+                handlerOverrides: []
+                defaultHandlerMembers:
+                  - "CONSOLE"
+                rules: []
+                """;
+        Path stateFile;
+        try (FileStateStore store = FileStateStore.open()) {
+            stateFile = store.location().orElseThrow();
+        }
+        Files.writeString(stateFile, version8);
+
+        String stateId;
+        String membersId;
+        try (FileStateStore store = FileStateStore.open()) {
+            stateId = store.loadAll().get(0).stateId();
+            membersId = store.defaultHandlerMembersStateId().orElseThrow();
+            assertNotNull(stateId);
+        }
+        String rewritten = Files.readString(stateFile);
+        assertTrue(rewritten.contains("schemaVersion: 9"), rewritten);
+        assertTrue(rewritten.contains(stateId), rewritten);
+        try (FileStateStore reopened = FileStateStore.open()) {
+            assertEquals(stateId, reopened.loadAll().get(0).stateId());
+            assertEquals(membersId, reopened.defaultHandlerMembersStateId().orElseThrow());
         }
     }
 

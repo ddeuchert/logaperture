@@ -113,7 +113,13 @@ rules:
 | `loggers` | list, optional | `name` (exact logger name), `level` (a `Level`), `reason` (optional text) |
 | `handlers` | list, optional | `name` (handler name as `logctl` shows it), `level` (a `Level` or `AUTO`), `reason` |
 | `defaultHandlers` | flow or block list of handler names, optional | baseline `DEFAULT_HANDLERS` membership |
+| `defaultHandlersStateId` | UUID, optional | only beside `defaultHandlers`; written by the export ([`export-round-trip.md`](export-round-trip.md)) |
 | `rules` | list, optional | see below |
+
+Every `loggers`, `handlers` and `rules` entry may also carry a `stateId` (a UUID). The export
+writes it on entries that came from a sticky setting, so a restart with the file takes that
+setting over; a hand-written file never needs it ([`export-round-trip.md`](export-round-trip.md),
+issue #107).
 
 Rule entry fields, named after the `logctl add rule` options (`--message-contains` →
 `messageContains`):

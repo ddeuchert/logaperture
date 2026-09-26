@@ -22,9 +22,11 @@ import org.junit.jupiter.api.TestInstance;
 import org.testcontainers.containers.Container.ExecResult;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.MountableFile;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -250,6 +252,38 @@ class WildFlyVendorDefaultsIT {
             assertTrue(text.contains("  - id: probe-noise\n    action: drop\n"), text);
         } finally {
             logctl("reset", "handler", "FILE", "--include-sticky");
+        }
+    }
+
+    /**
+     * doc/specs/export-round-trip.md "Testing" (issue #107): restart the server with the file just
+     * exported after a sticky handler override. The override is taken over by the file -- the
+     * handler's level now comes from the file, with no override left -- and the agent says so at
+     * startup. The original vendor file is put back (and the server restarted) on the way out,
+     * since the container is shared with the other tests here.
+     */
+    @Test
+    void restartingWithTheExportedFile_takesOverTheStickyHandlerOverride() throws Exception {
+        String original = exec("cat", VENDOR_FILE).getStdout();
+        try {
+            assertTrue(pollLogctl(out -> lineFor(out, "FILE").contains("WARN"), "list", "handlers"));
+            assertEquals(0, logctl("set", "handler", "FILE", "ERROR", "sticky").exitCode());
+            Logctl exported = logctl("export", "vendor-defaults");
+            assertEquals(0, exported.exitCode(), exported.stderr());
+            assertTrue(exported.stdout().contains("  - name: FILE\n    level: ERROR\n    stateId: "), exported.stdout());
+
+            wildfly.copyFileToContainer(Transferable.of(exported.stdout().getBytes(StandardCharsets.UTF_8), 0444),
+                    VENDOR_FILE);
+            restartServer();
+
+            assertTrue(pollLogctl(out -> lineFor(out, "FILE").matches("FILE\\s+ERROR\\s+ERROR.*"), "list", "handlers"),
+                    logctl("list", "handlers").stdout());
+            assertTrue(wildfly.getLogs().contains("1 sticky setting is now in the vendor defaults file and was "
+                    + "removed from the state file: handler FILE"), "reported at startup");
+        } finally {
+            logctl("reset", "handler", "FILE", "--include-sticky");
+            wildfly.copyFileToContainer(Transferable.of(original.getBytes(StandardCharsets.UTF_8), 0444), VENDOR_FILE);
+            restartServer();
         }
     }
 

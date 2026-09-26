@@ -36,11 +36,32 @@ final class InMemoryStateStore implements StateStore {
     private final Map<String, LevelOverride> saved = new LinkedHashMap<>();
     private final Map<HandlerRef, HandlerLevelOverride> savedHandlers = new LinkedHashMap<>();
     private List<String> savedDefaultHandlerMembers = List.of();
+    private String savedDefaultHandlerMembersStateId;
+    private boolean assignStateIds;
     private final Map<String, PersistedRule> savedRules = new LinkedHashMap<>();
     private RuntimeException throwOnSave;
     private int removeAllCalls;
     private int removeAllHandlersCalls;
     private int removeAllRulesCalls;
+
+    /**
+     * Assigns and keeps state ids the way {@link FileStateStore} does (doc/specs/export-round-trip.md
+     * S3). Off by default, so tests comparing saved records by equality aren't affected.
+     */
+    InMemoryStateStore assigningStateIds() {
+        this.assignStateIds = true;
+        return this;
+    }
+
+    private String keptOrNew(String existing, String incoming) {
+        if (!assignStateIds) {
+            return incoming;
+        }
+        if (existing != null) {
+            return existing;
+        }
+        return incoming != null ? incoming : java.util.UUID.randomUUID().toString();
+    }
 
     /** Makes every subsequent {@link #save} call throw, to exercise chaos-case behavior. */
     void throwOnSave(RuntimeException exception) {
@@ -72,7 +93,9 @@ final class InMemoryStateStore implements StateStore {
         if (throwOnSave != null) {
             throw throwOnSave;
         }
-        saved.put(override.loggerName(), override);
+        LevelOverride existing = saved.get(override.loggerName());
+        saved.put(override.loggerName(),
+                override.withStateId(keptOrNew(existing == null ? null : existing.stateId(), override.stateId())));
     }
 
     @Override
@@ -96,7 +119,9 @@ final class InMemoryStateStore implements StateStore {
         if (throwOnSave != null) {
             throw throwOnSave;
         }
-        savedHandlers.put(override.handlerRef(), override);
+        HandlerLevelOverride existing = savedHandlers.get(override.handlerRef());
+        savedHandlers.put(override.handlerRef(),
+                override.withStateId(keptOrNew(existing == null ? null : existing.stateId(), override.stateId())));
     }
 
     @Override
@@ -118,11 +143,19 @@ final class InMemoryStateStore implements StateStore {
     @Override
     public void saveDefaultHandlerMembers(Collection<String> memberNames) {
         savedDefaultHandlerMembers = List.copyOf(memberNames);
+        savedDefaultHandlerMembersStateId = memberNames.isEmpty() ? null
+                : keptOrNew(savedDefaultHandlerMembersStateId, null);
+    }
+
+    @Override
+    public java.util.Optional<String> defaultHandlerMembersStateId() {
+        return java.util.Optional.ofNullable(savedDefaultHandlerMembersStateId);
     }
 
     @Override
     public void removeDefaultHandlerMembers() {
         savedDefaultHandlerMembers = List.of();
+        savedDefaultHandlerMembersStateId = null;
     }
 
     @Override
@@ -135,7 +168,9 @@ final class InMemoryStateStore implements StateStore {
         if (throwOnSave != null) {
             throw throwOnSave;
         }
-        savedRules.put(rule.id(), rule);
+        PersistedRule existing = savedRules.get(rule.id());
+        savedRules.put(rule.id(),
+                rule.withStateId(keptOrNew(existing == null ? null : existing.stateId(), rule.stateId())));
     }
 
     @Override
@@ -154,6 +189,7 @@ final class InMemoryStateStore implements StateStore {
         saved.clear();
         savedHandlers.clear();
         savedDefaultHandlerMembers = List.of();
+        savedDefaultHandlerMembersStateId = null;
         savedRules.clear();
     }
 }

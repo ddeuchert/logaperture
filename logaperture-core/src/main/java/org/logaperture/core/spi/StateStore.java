@@ -32,6 +32,13 @@ import java.util.Optional;
  * containerized or clustered deployments is a later implementation of this
  * same interface, per doc/logaperture-spec.md §18.6.
  *
+ * <p>State ids (doc/specs/export-round-trip.md "Design"): an implementation that
+ * persists assigns each saved entry a {@code stateId} the first time it is saved,
+ * and keeps it across later saves of the same key (logger name, handler ref, rule id,
+ * the default-handler membership) until the entry is removed. The {@code stateId}
+ * of an entry handed to a {@code save} method is used only when the store has none
+ * for that key yet -- callers pass {@code null} and let the store assign one.
+ *
  * <p>Handler-level overrides (doc/specs/handler-floor-control.md) are
  * persisted through the same store, in their own namespace — one file per
  * instance stays the unit of "everything this JVM has active", per
@@ -91,6 +98,14 @@ public interface StateStore {
 
     /** Replaces the whole persisted set in one write -- membership is a single config value, not N independent records. */
     void saveDefaultHandlerMembers(Collection<String> memberNames);
+
+    /**
+     * The state id of the persisted {@code DEFAULT_HANDLERS} membership -- doc/specs/
+     * export-round-trip.md. Empty when nothing is persisted, or for a store that assigns no ids.
+     */
+    default Optional<String> defaultHandlerMembersStateId() {
+        return Optional.empty();
+    }
 
     /** No-op if nothing was persisted. */
     void removeDefaultHandlerMembers();

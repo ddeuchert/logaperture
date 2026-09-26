@@ -101,10 +101,18 @@ import java.util.Map;
  * every rule type in existence before this field did had no action-specific
  * state to carry anyway (there was no concrete rule type at all until
  * {@code Drop}).
+ *
+ * <p>Schema version 9 (doc/specs/export-round-trip.md "State file", issue
+ * #107) adds a {@code stateId:} field to every {@code overrides:}, {@code
+ * handlerOverrides:} and {@code rules:} record, and a top-level {@code
+ * defaultHandlerMembersStateId:} line for the membership -- the id an
+ * exported vendor defaults file carries so a restart with it can take the
+ * entry over. A version-≤8 record has no {@code stateId:} line and reads as
+ * {@code null}; {@link FileStateStore} assigns one when it opens the file.
  */
 final class StateFileFormat {
 
-    private static final int SCHEMA_VERSION = 8;
+    private static final int SCHEMA_VERSION = 9;
     private static final char PAYLOAD_ENTRY_SEPARATOR = '\u0001';
     private static final char PAYLOAD_KV_SEPARATOR = '\u0002';
     private static final int MIN_SUPPORTED_SCHEMA_VERSION = 1;
@@ -114,6 +122,11 @@ final class StateFileFormat {
 
     static String write(List<LevelOverride> overrides, List<HandlerLevelOverride> handlerOverrides,
             List<String> defaultHandlerMembers, List<PersistedRule> rules) {
+        return write(overrides, handlerOverrides, defaultHandlerMembers, null, rules);
+    }
+
+    static String write(List<LevelOverride> overrides, List<HandlerLevelOverride> handlerOverrides,
+            List<String> defaultHandlerMembers, String defaultHandlerMembersStateId, List<PersistedRule> rules) {
         StringBuilder out = new StringBuilder();
         out.append("schemaVersion: ").append(SCHEMA_VERSION).append('\n');
 
@@ -129,6 +142,7 @@ final class StateFileFormat {
                 out.append("    source: ").append(quote(override.source())).append('\n');
                 out.append("    tier: ").append(override.tier().name()).append('\n');
                 out.append("    expiresAt: ").append(override.expiresAt() == null ? "null" : override.expiresAt()).append('\n');
+                appendStateId(out, override.stateId());
             }
         }
 
@@ -145,9 +159,13 @@ final class StateFileFormat {
                 out.append("    source: ").append(quote(override.source())).append('\n');
                 out.append("    tier: ").append(override.tier().name()).append('\n');
                 out.append("    expiresAt: ").append(override.expiresAt() == null ? "null" : override.expiresAt()).append('\n');
+                appendStateId(out, override.stateId());
             }
         }
 
+        if (defaultHandlerMembersStateId != null && !defaultHandlerMembers.isEmpty()) {
+            out.append("defaultHandlerMembersStateId: ").append(quote(defaultHandlerMembersStateId)).append('\n');
+        }
         if (defaultHandlerMembers.isEmpty()) {
             out.append("defaultHandlerMembers: []\n");
         } else {
@@ -181,14 +199,26 @@ final class StateFileFormat {
                 out.append("    payload: ")
                         .append(rule.payload().isEmpty() ? "null" : quote(encodePayload(rule.payload())))
                         .append('\n');
+                appendStateId(out, rule.stateId());
             }
         }
         return out.toString();
     }
 
+    private static void appendStateId(StringBuilder out, String stateId) {
+        if (stateId != null) {
+            out.append("    stateId: ").append(quote(stateId)).append('\n');
+        }
+    }
+
     /** Everything {@link #parse} recovered from one file. */
     record Parsed(List<LevelOverride> overrides, List<HandlerLevelOverride> handlerOverrides,
-            List<String> defaultHandlerMembers, List<PersistedRule> rules) {
+            List<String> defaultHandlerMembers, String defaultHandlerMembersStateId, List<PersistedRule> rules) {
+
+        Parsed(List<LevelOverride> overrides, List<HandlerLevelOverride> handlerOverrides,
+                List<String> defaultHandlerMembers, List<PersistedRule> rules) {
+            this(overrides, handlerOverrides, defaultHandlerMembers, null, rules);
+        }
     }
 
     /**
@@ -215,6 +245,7 @@ final class StateFileFormat {
         List<HandlerLevelOverride> handlerOverrides = new ArrayList<>();
         List<String> defaultHandlerMembers = new ArrayList<>();
         List<PersistedRule> rules = new ArrayList<>();
+        String defaultHandlerMembersStateId = null;
         Map<String, String> current = null;
         Section section = Section.OVERRIDES;
 
@@ -233,6 +264,12 @@ final class StateFileFormat {
                 flush(current, section, overrides, handlerOverrides, rules);
                 current = null;
                 section = Section.HANDLER_OVERRIDES;
+                continue;
+            }
+            if (line.startsWith("defaultHandlerMembersStateId:")) {
+                flush(current, section, overrides, handlerOverrides, rules);
+                current = null;
+                defaultHandlerMembersStateId = nullable(unquote(line.substring(line.indexOf(':') + 1).trim()));
                 continue;
             }
             if (line.startsWith("defaultHandlerMembers:")) {
@@ -280,7 +317,8 @@ final class StateFileFormat {
             current.put(line.substring(0, colon).trim(), line.substring(colon + 1).trim());
         }
         flush(current, section, overrides, handlerOverrides, rules);
-        return new Parsed(overrides, handlerOverrides, defaultHandlerMembers, rules);
+        return new Parsed(overrides, handlerOverrides, defaultHandlerMembers,
+                defaultHandlerMembers.isEmpty() ? null : defaultHandlerMembersStateId, rules);
     }
 
     private enum Section {
@@ -333,7 +371,13 @@ final class StateFileFormat {
                 Instant.parse(fields.get("appliedAt")),
                 unquote(fields.get("source")),
                 PersistenceTier.valueOf(fields.get("tier")),
-                nullable(fields.get("expiresAt")) == null ? null : Instant.parse(fields.get("expiresAt")));
+                nullable(fields.get("expiresAt")) == null ? null : Instant.parse(fields.get("expiresAt")),
+                stateId(fields));
+    }
+
+    /** A version-≤8 record has no {@code stateId:} line -- {@code null}, assigned later by {@link FileStateStore}. */
+    private static String stateId(Map<String, String> fields) {
+        return nullable(fields.get("stateId")) == null ? null : unquote(fields.get("stateId"));
     }
 
     private static HandlerLevelOverride toHandlerOverride(Map<String, String> fields) {
@@ -348,7 +392,8 @@ final class StateFileFormat {
                 Instant.parse(fields.get("appliedAt")),
                 unquote(fields.get("source")),
                 PersistenceTier.valueOf(fields.get("tier")),
-                nullable(fields.get("expiresAt")) == null ? null : Instant.parse(fields.get("expiresAt")));
+                nullable(fields.get("expiresAt")) == null ? null : Instant.parse(fields.get("expiresAt")),
+                stateId(fields));
     }
 
     private static PersistedRule toRule(Map<String, String> fields) {
@@ -376,7 +421,8 @@ final class StateFileFormat {
                 nullable(fields.get("context")) == null ? null : unquote(fields.get("context")),
                 // A version-<=7 file has no "payload:" line at all -- reads as empty, per this
                 // schema bump's own javadoc paragraph above.
-                nullable(fields.get("payload")) == null ? Map.of() : decodePayload(unquote(fields.get("payload"))));
+                nullable(fields.get("payload")) == null ? Map.of() : decodePayload(unquote(fields.get("payload"))),
+                stateId(fields));
     }
 
     /**
