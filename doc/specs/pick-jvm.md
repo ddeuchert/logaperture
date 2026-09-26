@@ -71,9 +71,14 @@ No active overrides.
   what discovery already reads (the process handle and the system properties it attaches to
   check the marker), so nothing extra is asked of the JVM. COMMAND is truncated with `…` to
   fit an 120-column line; the full command is still in the non-interactive table.
+- **Stderr redirected on a terminal** (`logctl status 2>/dev/null`): the terminal check looks
+  only at stdin and stdout, so the question is still asked — but the list and question are
+  hidden, and `logctl` waits for an answer with nothing on screen. Accepted and documented
+  rather than detected: it's rare, Enter still cancels with exit 4, and Java has no portable
+  way to ask whether stderr is a terminal. Pass `--pid` when redirecting stderr.
 - Rows are in PID order, as today.
 - The answer is a list number or one of the listed PIDs. Anything else is explained and asked
-  again: `3 isn't in the list -- answer 1 to 2, or one of the PIDs shown.`
+  again: `'3' isn't in the list -- answer 1 to 2, or one of the PIDs shown.`
 
 ### After the answer (J5, J6)
 
