@@ -36,6 +36,8 @@ import java.util.List;
 final class FakeLevelControlMXBean implements LevelControlMXBean {
 
     final List<String> listLoggersFilters = new ArrayList<>();
+    /** Filters {@link #listLoggers} rejects, as {@code NameFilter} rejects an invalid pattern. */
+    final List<String> invalidFilters = new ArrayList<>();
     final List<Object[]> setLevelCalls = new ArrayList<>();
     final List<String> resetLevelCalls = new ArrayList<>();
     final List<Object[]> setHandlerLevelCalls = new ArrayList<>();
@@ -65,6 +67,10 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     public List<LoggerInfoData> listLoggers(String filter) {
         listLoggersFilters.add(filter);
         maybeThrow();
+        if (invalidFilters.contains(filter)) {
+            // NameFilter's own rejection, as the real server raises it.
+            throw new IllegalArgumentException("invalid filter '" + filter + "'");
+        }
         if (filter == null) {
             return loggers;
         }

@@ -135,6 +135,9 @@ final class AddRuleCommand implements Command {
     private static List<String> pickLoggers(LevelControlMXBean mbean, Prompter prompter, String target) {
         PrintStream out = prompter.out();
         String current = target;
+        // Whether current was typed at the prompt: an invalid one is explained and asked again, while
+        // an invalid command-line target stays the usage error it is today.
+        boolean typed = false;
         while (true) {
             if (current == null) {
                 String answer = prompter.ask("", "Which logger? A name or pattern, e.g. Deployer or "
@@ -143,21 +146,34 @@ final class AddRuleCommand implements Command {
                     return null;
                 }
                 current = answer.indexOf('*') < 0 && answer.indexOf('.') < 0 ? "*." + answer : answer;
+                typed = true;
             }
             if (current.endsWith(".*")) {
                 out.println("A trailing '.*' isn't needed -- a bare name already reaches every descendant.");
                 current = null;
                 continue;
             }
+            boolean exists;
+            List<String> matches;
+            try {
+                exists = !Commands.isPattern(current) && loggerExists(mbean, current);
+                matches = Commands.isPattern(current) ? matchingNames(mbean, current) : List.of();
+            } catch (IllegalArgumentException invalid) {
+                if (!typed) {
+                    throw invalid;
+                }
+                out.println(Main.failureOf(invalid).message());
+                current = null;
+                continue;
+            }
             if (!Commands.isPattern(current)) {
-                if (loggerExists(mbean, current) || prompter.askYesNo("", "No logger named " + current
+                if (exists || prompter.askYesNo("", "No logger named " + current
                         + " exists yet; attach anyway?", false)) {
                     return List.of(current);
                 }
                 current = null;
                 continue;
             }
-            List<String> matches = matchingNames(mbean, current);
             if (matches.isEmpty()) {
                 out.println("No logger matches '" + current + "'.");
                 current = null;

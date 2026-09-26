@@ -264,6 +264,24 @@ class GuidedAddRuleTest {
         assertEquals("com.acme.Worker", mbean.addRuleTrimCalls.get(0)[0]);
     }
 
+    /** Code-review finding: a pattern the agent rejects, typed at the prompt, is asked again rather than fatal. */
+    @Test
+    void anInvalidPatternTypedAtThePrompt_isExplainedAndAskedAgain() {
+        mbean.invalidFilters.add("*");
+        int exit = guided(lines("*", "Worker", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule");
+
+        assertEquals(CliError.OK, exit, err());
+        assertTrue(out().contains("logctl: invalid filter '*'"), out());
+        assertEquals("com.acme.Worker", mbean.addRuleTrimCalls.get(0)[0]);
+    }
+
+    @Test
+    void anInvalidPatternOnTheCommandLine_isStillAUsageError() {
+        mbean.invalidFilters.add("*.Deploy?");
+        assertEquals(CliError.USAGE, guided("", "add", "rule", "*.Deploy?"));
+        assertTrue(err().contains("invalid filter"), err());
+    }
+
     @Test
     void moreThanThirtyMatches_areNotListed() {
         for (int i = 0; i < AddRuleCommand.MAX_LISTED + 1; i++) {
