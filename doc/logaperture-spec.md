@@ -1188,6 +1188,8 @@ The important change from the previous draft: **M1 ships nothing that modifies b
 
 **Pulled forward: reset command surface split + `--include-sticky`.** `logctl reset` and `logctl handler <name> reset` grew independently and now can't scope a reset to just loggers or just handlers, and can't protect a deliberately-set `--sticky` override from a broad reset. Restructures reset into `reset logger <pattern>` / `reset loggers` / `reset handler <name>` / `reset handlers`, all taking `--include-sticky` (new default: sticky is skipped unless asked for) — a breaking rename of the already-shipped `handler <name> reset`, accepted pre-1.0. Reuses #41/#49's glob matcher for the logger form rather than duplicating it. Now slice 1 of a broader `set`/`reset`/`list` command-surface refactor. Full write-up: §18.9, [`reset-command-surface.md`](specs/reset-command-surface.md); tracked as [#42](https://github.com/ddeuchert/logaperture/issues/42).
 
+**Pulled toward the alpha line: guided `logctl add rule`.** Manual testing of the filtering epic found that applying a rule was the most laborious step: a log line prints only the last segment of the logger name, so the first step is `logctl list logger '*.Deployer'`, and a conditional `drop`/`trim` is a long command in exact syntax that an operator writes too rarely to memorize. On a terminal, `logctl add rule '*.deployer'` would list the matching loggers to pick from, prompt for the rest, and print the equivalent one-line command before applying it. Depends on [#79](https://github.com/ddeuchert/logaperture/issues/79)'s pattern expansion. An AI skill that authors rules from a pasted log line is a named later phase. Full write-up and open questions: §18.15; tracked as [#104](https://github.com/ddeuchert/logaperture/issues/104), beta-1.
+
 ---
 
 ## 18. Future enhancements
@@ -1533,6 +1535,59 @@ not this section.
 - Whether replaying/suppressing already-emitted early events is in scope, or only
   events emitted after the rules are armed.
 - Whether the honest answer is "document the limit; fix it in the emitting agent."
+
+
+### 18.15 Guided `logctl add rule`
+
+Tracked as [#104](https://github.com/ddeuchert/logaperture/issues/104).
+
+**Motivation.** Manual testing of `drop`/`trim` ([`filtering-epic.md`](specs/filtering-epic.md)) showed that applying a rule costs more than it should, for two reasons:
+
+- A log line usually prints only the last segment of its logger category, so the operator first has to run `logctl list logger '*.Deployer'` to find the full name.
+- A conditional rule then has to be typed as one long command in exact syntax. An operator writes one of these a few times a year, usually under pressure while looking at the offending line, and won't have that syntax memorized.
+
+**What the user would do.**
+
+```
+logctl add rule '*.deployer'
+```
+
+On a terminal, an `add rule` command that leaves out a required part prompts for it instead of failing with a usage error:
+
+- The loggers matching the target are shown as a numbered list to pick from (`1,3-5`, `all`, or Enter to cancel). `logctl add rule` with no target asks for a pattern first.
+- Then it asks, in order, for:
+  - the rule type (`drop` or `trim`), if not given;
+  - matchers (`--message-contains`, `--throwable`, …), each optional;
+  - `--below`;
+  - the type-specific options (sampling for `drop`; `--frames` and `--collapse-causes` for `trim`);
+  - the lifetime (session, `for <duration>`, or `sticky`);
+  - a reason.
+  Each prompt shows its default, and Enter accepts it.
+- Before applying, it prints the **equivalent one-line command** and asks for confirmation. The result can be pasted into a script or runbook, and the operator learns the syntax along the way.
+
+A complete command, a stdin that isn't a terminal, or `--yes` behaves exactly as today and never prompts, so scripts are unaffected.
+
+**Cost / dependencies.** This is CLI-only and adds nothing to the agent or its MXBean contract (§8.1). It depends on [#79](https://github.com/ddeuchert/logaperture/issues/79), which adds leading-star pattern expansion to `add rule`. Guided mode reuses that matching and preview flow and adds choosing a subset of the matches, so #79 lands first or together with this. It is Layer 3 CLI polish (§17), aimed at the operator rather than the developer. The CLI has no terminal library today: prompts go through `System.console`. A numbered list with typed answers needs none.
+
+**Later phase: AI-assisted rule authoring.** Guided mode cannot turn a log line into a good matcher; an AI can. The later phase is a skill shipped in the distribution: the operator pastes the offending line and says what they want (for example, "drop these unless WARN or above"). The agent then:
+
+1. resolves the logger (`logctl list logger --json`);
+2. proposes the exact `logctl` command and explains it;
+3. applies it on approval;
+4. checks the result with `list rules --verbose` and `top`.
+
+It drives `logctl --json`, whose shapes are already a compatibility contract (§8.1), so it adds no new surface. An MCP server exposing the rule operations as typed tools could follow if clients without a shell need it. That would be a new component with its own transport and release story, like the ride-along integrations in §18.1.
+
+**Open questions, deferred until this is specced:**
+
+- Whether to add JLine for arrow-key/checkbox selection, or keep numbered lists and no new dependency.
+- Whether prompting extends to `set logger` / `alter rule` / `reset`, or stays limited to `add rule`.
+- Whether the rule type stays a required word (`add rule drop '*.deployer'`) with only the other parts prompted, or can also be left out (`add rule '*.deployer'`). Leaving it out is a small change to how the command is parsed.
+- For the AI phase:
+  - whether AI-applied rules are marked in the audit trail (a new audit source, §9);
+  - whether they default to `for <duration>` rather than session;
+  - where the agent must stop for approval;
+  - whether formatter-pattern knowledge from the agent should help parse a pasted line.
 
 ---
 

@@ -39,7 +39,7 @@ Tracks: [issue #72](https://github.com/ddeuchert/logaperture/issues/72). Depends
 After this feature, the user will be able to:
 
 - Stop a known-noisy, repeating message from being logged at all, without touching its
-  logger's level: `logctl add rule drop --logger com.acme.batch.Worker --message-contains
+  logger's level: `logctl add rule drop com.acme.batch.Worker --message-contains
   "This happens a lot" --below ERROR`. Everything else that logger emits, and that same
   message at ERROR or above, keeps logging exactly as before.
 - Narrow a drop to a specific exception type or exception message instead of (or as well as)
