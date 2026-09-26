@@ -1188,7 +1188,7 @@ The important change from the previous draft: **M1 ships nothing that modifies b
 
 **Pulled forward: reset command surface split + `--include-sticky`.** `logctl reset` and `logctl handler <name> reset` grew independently and now can't scope a reset to just loggers or just handlers, and can't protect a deliberately-set `--sticky` override from a broad reset. Restructures reset into `reset logger <pattern>` / `reset loggers` / `reset handler <name>` / `reset handlers`, all taking `--include-sticky` (new default: sticky is skipped unless asked for) — a breaking rename of the already-shipped `handler <name> reset`, accepted pre-1.0. Reuses #41/#49's glob matcher for the logger form rather than duplicating it. Now slice 1 of a broader `set`/`reset`/`list` command-surface refactor. Full write-up: §18.9, [`reset-command-surface.md`](specs/reset-command-surface.md); tracked as [#42](https://github.com/ddeuchert/logaperture/issues/42).
 
-**Pulled toward the alpha line: guided `logctl add rule`.** Manual testing of the filtering epic found that applying a rule was the most laborious step: a log line prints only the last segment of the logger name, so the first step is `logctl list logger '*.Deployer'`, and a conditional `drop`/`trim` is a long command in exact syntax that an operator writes too rarely to memorize. On a terminal, `logctl add rule '*.deployer'` would list the matching loggers to pick from, prompt for the rest, and print the equivalent one-line command before applying it. Depends on [#79](https://github.com/ddeuchert/logaperture/issues/79)'s pattern expansion. An AI skill that authors rules from a pasted log line is a named later phase. Full write-up and open questions: §18.15; tracked as [#104](https://github.com/ddeuchert/logaperture/issues/104), beta-1.
+**Pulled toward the alpha line: guided `logctl add rule`.** Manual testing of the filtering epic found that applying a rule was the most laborious step: a log line prints only the last segment of the logger name, so the first step is `logctl list logger '*.Deployer'`, and a conditional `drop`/`trim` is a long command in exact syntax that an operator writes too rarely to memorize. On a terminal, `logctl add rule '*.deployer'` would list the matching loggers to pick from, prompt for the rest, and print the equivalent one-line command before applying it. The pattern expansion it needs is part of the same spec. An AI skill that authors rules from a pasted log line is a named later phase. Roadmap write-up: §18.15; tracked as [#104](https://github.com/ddeuchert/logaperture/issues/104), alpha-3. Spec: [`doc/specs/guided-add-rule.md`](specs/guided-add-rule.md), signed off 2026-09-26; it also takes over #79's pattern-target half.
 
 ---
 
@@ -1588,6 +1588,8 @@ It drives `logctl --json`, whose shapes are already a compatibility contract (§
   - whether they default to `for <duration>` rather than session;
   - where the agent must stop for approval;
   - whether formatter-pattern knowledge from the agent should help parse a pasted line.
+
+**Status note.** Specced in [`doc/specs/guided-add-rule.md`](specs/guided-add-rule.md), signed off 2026-09-26 (G1–G12). The first three open questions above are resolved there: no JLine (G12), `add rule` only (G11), and the rule type may be left out (G3). The AI-phase questions remain open. Kept here as the roadmap record.
 
 ---
 

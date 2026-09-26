@@ -109,6 +109,22 @@ class CliEndToEndIT {
         assertTrue(resetAll.out.contains("No overrides to reset."), resetAll.out);
     }
 
+    /** doc/specs/guided-add-rule.md G2: a pattern target with --yes attaches one rule per current match. */
+    @Test
+    void aPatternTargetWithYesAddsOneRulePerMatch() throws Exception {
+        Process fixture = launchFixture();
+        awaitReady(fixture);
+
+        Result added = run("add", "rule", "trim", "*.Worker", "--below", "WARN", "--yes");
+        assertEquals(0, added.exitCode, added.err);
+        assertTrue(added.out.contains("com.acme.batch.Worker → trim"), added.out);
+        assertTrue(added.out.contains("com.acme.web.Worker → trim"), added.out);
+
+        Result withoutYes = run("add", "rule", "trim", "*.Worker");
+        assertEquals(2, withoutYes.exitCode, withoutYes.out + withoutYes.err);
+        assertTrue(withoutYes.err.contains("matches 2 currently-known loggers. Pass --yes"), withoutYes.err);
+    }
+
     @Test
     void invalidFilterPatternIsAUsageError() throws Exception {
         // A NameFilter rejection thrown server-side and carried back over the

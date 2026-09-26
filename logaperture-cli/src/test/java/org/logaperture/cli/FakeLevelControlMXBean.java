@@ -426,7 +426,8 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
                 throwableMessageContains, anyCause, belowLevel, sampleFullEnabled, sampleFullEveryMillis, reason,
                 tier, forSeconds});
         maybeThrow();
-        return addRuleDropResult;
+        throwIfRefused(target);
+        return addRuleDropResult != null ? addRuleDropResult : createdRule(target, "drop", tier);
     }
 
     final List<Object[]> addRuleTrimCalls = new ArrayList<>();
@@ -439,7 +440,26 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         addRuleTrimCalls.add(new Object[] {target, messageContains, messageIgnoreCase, throwableType,
                 throwableMessageContains, anyCause, belowLevel, frames, collapseCauses, reason, tier, forSeconds});
         maybeThrow();
-        return addRuleTrimResult;
+        throwIfRefused(target);
+        return addRuleTrimResult != null ? addRuleTrimResult : createdRule(target, "trim", tier);
+    }
+
+    /** Targets whose {@code addRuleDrop}/{@code addRuleTrim} throws -- a refusal of one of several attachments. */
+    final java.util.Map<String, RuntimeException> addRuleRefusals = new java.util.HashMap<>();
+    private int createdRules;
+
+    private void throwIfRefused(String target) {
+        RuntimeException refusal = addRuleRefusals.get(target);
+        if (refusal != null) {
+            throw refusal;
+        }
+    }
+
+    /** With no result wired up, each attachment gets its own id and names its own logger. */
+    private RuleData createdRule(String target, String action, String tier) {
+        createdRules++;
+        return new RuleData("r" + createdRules, target, action, "WARN", null, false, null, null, false, null, tier,
+                null, null, null, 0L, null, null);
     }
 
     private void maybeThrow() {

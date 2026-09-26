@@ -142,7 +142,7 @@ class RuleExpressionTest {
     }
 
     /** A POSIX-shell word splitter for what {@link RuleExpression} emits: bare words and double-quoted strings. */
-    private static List<String> shellSplit(String line) {
+    static List<String> shellSplit(String line) {
         List<String> words = new ArrayList<>();
         StringBuilder word = null;
         boolean quoted = false;

@@ -37,6 +37,7 @@ import org.logaperture.api.RuleResetOutcome;
 import org.logaperture.api.Severity;
 import org.logaperture.api.SquelchedLogger;
 import org.logaperture.api.StormReport;
+import org.logaperture.api.Trim;
 import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.EnvironmentReportOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
@@ -78,6 +79,7 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
 
     FakeOps() {
         seed("com.acme.batch.Worker");
+        seed("com.acme.web.Worker");
         seed("com.acme.web.RequestFilter");
     }
 
@@ -94,7 +96,8 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
         validateFilter(filter);
         List<LoggerInfo> matches = new ArrayList<>();
         for (LoggerInfo info : state.values()) {
-            if (filter == null || filter.isEmpty() || info.name().startsWith(filter)) {
+            if (filter == null || filter.isEmpty() || info.name().startsWith(filter)
+                    || (filter.startsWith("*.") && info.name().endsWith(filter.substring(1)))) {
                 matches.add(info);
             }
         }
@@ -272,8 +275,14 @@ final class FakeOps implements LevelControlOperations, HandlerLevelControlOperat
     @Override
     public synchronized RuleView addRuleTrim(String loggerName, CompiledMatchers matchers,
             RuleAttachOptions options, int frames, boolean collapseCauses) {
-        throw new UnsupportedOperationException("not exercised by CliEndToEndIT yet");
+        Instant now = Instant.now();
+        Instant expiresAt = options.tier() == PersistenceTier.FOR ? now.plus(options.expiresIn()) : null;
+        Trim trim = new Trim("r" + (++rulesAttached), loggerName, matchers, options.reason(), options.tier(),
+                expiresAt, now, frames, collapseCauses);
+        return new RuleView(trim, "default");
     }
+
+    private int rulesAttached;
 
     String exportVendorDefaultsToReturn = "schemaVersion: 1\n";
 

@@ -134,6 +134,9 @@ epic depends on this slice; it is the last piece needed to close #73.
   was scoped to "`add rule`" generically, not `drop` specifically; this slice's `add rule trim`
   inherits the same first-registered-context-only limitation `drop` shipped with, closed by
   #79 for both actions at once rather than a second issue.
+  *Update 2026-09-26:* the pattern-target half shipped with
+  [`guided-add-rule.md`](guided-add-rule.md) (#104, G2); #79 now covers multi-context attachment
+  only.
 - **Fixing the non-atomic `Handler.getFilter()`/`setFilter()` race** and the pre-existing
   double-stack-trace-rendering issue this slice's render wrap sits next to (#23) — #23 is
   noted as touched by this work (spike consequence #5: "This also touches #23") but fixing it

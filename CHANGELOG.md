@@ -69,6 +69,16 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   --throwable java.net.ConnectException --below WARN --sample-full 5m`), with every default spelled
   out and shell-safe quoting. `list rules --json` always includes it as `expression` (issue #98;
   `doc/specs/list-rules-verbose.md`).
+- **Guided `logctl add rule`** — on a terminal, leave out anything `add rule` needs and it asks.
+  `logctl add rule '*.Deployer'` lists the matching loggers to pick from (`1,3-5`, `all`), then
+  asks drop or trim, what to match, below which level, and how long the rule lasts, with the
+  default shown for each. A bare name typed at the prompt, like `Deployer`, finds `*.Deployer`,
+  the way a log line prints it. Before applying, it prints the equivalent one-line command to copy
+  into a script. Complete commands, scripts without a terminal, and `--yes` never prompt (issue
+  #104; `doc/specs/guided-add-rule.md`).
+- **Pattern targets for `add rule drop|trim`** — `add rule trim '*.Deployer' …` picks from the
+  matching loggers on a terminal, or adds one rule to each with `--yes`; `--json` then prints an
+  array (issue #104).
 
 ### Fixed
 
@@ -86,8 +96,7 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Known limitations
 
-- `add rule drop|trim` takes an exact logger name only, and attaches in the first logging context;
-  pattern targets and multi-context fan-out are
+- `add rule drop|trim` attaches in the first logging context; multi-context attachment is
   [#79](https://github.com/ddeuchert/logaperture/issues/79).
 - `trim` doesn't apply to structured (JSON/XML) formatters
   ([#83](https://github.com/ddeuchert/logaperture/issues/83)).
