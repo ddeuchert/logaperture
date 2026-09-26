@@ -36,6 +36,8 @@ import java.util.List;
 final class FakeLevelControlMXBean implements LevelControlMXBean {
 
     final List<String> listLoggersFilters = new ArrayList<>();
+    /** Filters {@link #listLoggers} rejects, as {@code NameFilter} rejects an invalid pattern. */
+    final List<String> invalidFilters = new ArrayList<>();
     final List<Object[]> setLevelCalls = new ArrayList<>();
     final List<String> resetLevelCalls = new ArrayList<>();
     final List<Object[]> setHandlerLevelCalls = new ArrayList<>();
@@ -65,6 +67,10 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     public List<LoggerInfoData> listLoggers(String filter) {
         listLoggersFilters.add(filter);
         maybeThrow();
+        if (invalidFilters.contains(filter)) {
+            // NameFilter's own rejection, as the real server raises it.
+            throw new IllegalArgumentException("invalid filter '" + filter + "'");
+        }
         if (filter == null) {
             return loggers;
         }
@@ -426,7 +432,8 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
                 throwableMessageContains, anyCause, belowLevel, sampleFullEnabled, sampleFullEveryMillis, reason,
                 tier, forSeconds});
         maybeThrow();
-        return addRuleDropResult;
+        throwIfRefused(target);
+        return addRuleDropResult != null ? addRuleDropResult : createdRule(target, "drop", tier);
     }
 
     final List<Object[]> addRuleTrimCalls = new ArrayList<>();
@@ -439,7 +446,26 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         addRuleTrimCalls.add(new Object[] {target, messageContains, messageIgnoreCase, throwableType,
                 throwableMessageContains, anyCause, belowLevel, frames, collapseCauses, reason, tier, forSeconds});
         maybeThrow();
-        return addRuleTrimResult;
+        throwIfRefused(target);
+        return addRuleTrimResult != null ? addRuleTrimResult : createdRule(target, "trim", tier);
+    }
+
+    /** Targets whose {@code addRuleDrop}/{@code addRuleTrim} throws -- a refusal of one of several attachments. */
+    final java.util.Map<String, RuntimeException> addRuleRefusals = new java.util.HashMap<>();
+    private int createdRules;
+
+    private void throwIfRefused(String target) {
+        RuntimeException refusal = addRuleRefusals.get(target);
+        if (refusal != null) {
+            throw refusal;
+        }
+    }
+
+    /** With no result wired up, each attachment gets its own id and names its own logger. */
+    private RuleData createdRule(String target, String action, String tier) {
+        createdRules++;
+        return new RuleData("r" + createdRules, target, action, "WARN", null, false, null, null, false, null, tier,
+                null, null, null, 0L, null, null);
     }
 
     private void maybeThrow() {

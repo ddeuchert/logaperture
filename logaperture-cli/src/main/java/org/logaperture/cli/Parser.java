@@ -16,7 +16,6 @@
 package org.logaperture.cli;
 
 import org.logaperture.api.Level;
-import org.logaperture.api.SampleFullPolicy;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -47,7 +46,16 @@ final class Parser {
     private Parser() {
     }
 
+    /** As {@link #parse(String[], boolean)} with no terminal attached -- nothing is ever asked. */
     static Invocation parse(String[] argv) {
+        return parse(argv, false);
+    }
+
+    /**
+     * @param interactive whether a terminal is attached: an incomplete {@code add rule} is then a
+     *                    guided command rather than a usage error (doc/specs/guided-add-rule.md G1)
+     */
+    static Invocation parse(String[] argv, boolean interactive) {
         List<String> positionals = new ArrayList<>();
         Long pid = null;
         boolean json = false;
@@ -250,18 +258,17 @@ final class Parser {
 
         boolean isSetLogger = command.equals("set") && !rest.isEmpty() && rest.get(0).equals("logger");
         boolean isSetHandler = command.equals("set") && !rest.isEmpty() && rest.get(0).equals("handler");
-        boolean isAddRuleDrop = command.equals("add") && rest.size() >= 2 && rest.get(0).equals("rule")
-                && rest.get(1).equals("drop");
-        boolean isAddRuleTrim = command.equals("add") && rest.size() >= 2 && rest.get(0).equals("rule")
-                && rest.get(1).equals("trim");
+        boolean isAddRule = command.equals("add") && !rest.isEmpty() && rest.get(0).equals("rule");
+        boolean isAddRuleDrop = isAddRule && rest.size() >= 2 && rest.get(1).equals(AddRuleRequest.DROP);
+        boolean isAddRuleTrim = isAddRule && rest.size() >= 2 && rest.get(1).equals(AddRuleRequest.TRIM);
+        boolean isAddRuleUntyped = isAddRule && !isAddRuleDrop && !isAddRuleTrim;
         boolean isAlterRule = command.equals("alter") && !rest.isEmpty() && rest.get(0).equals("rule");
 
-        if (yes && !isSetLogger) {
-            throw usage("--yes applies only to 'set logger'.");
+        if (yes && !isSetLogger && !isAddRule) {
+            throw usage("--yes applies only to 'set logger' or 'add rule'.");
         }
-        if (reason != null && !isSetLogger && !isSetHandler && !isAddRuleDrop && !isAddRuleTrim && !isAlterRule) {
-            throw usage("--reason applies only to 'set logger', 'set handler', 'add rule drop', 'add rule trim', "
-                    + "or 'alter rule'.");
+        if (reason != null && !isSetLogger && !isSetHandler && !isAddRule && !isAlterRule) {
+            throw usage("--reason applies only to 'set logger', 'set handler', 'add rule', or 'alter rule'.");
         }
         if (toNative && !(command.equals("reset") && !rest.isEmpty() && List.of("logger", "loggers", "handler",
                 "handlers", "default-handler", "rule", "rules").contains(rest.get(0)))) {
@@ -291,7 +298,7 @@ final class Parser {
         if (showAll && !command.equals("list")) {
             throw usage("--show-all applies only to 'list loggers' or 'list handlers'.");
         }
-        if (!isAddRuleDrop && !isAddRuleTrim && !isAlterRule) {
+        if (!isAddRule && !isAlterRule) {
             if (messageContains != null || throwableType != null || throwableMessageContains != null || anyCause
                     || belowLevel != null) {
                 throw usage("the rule-matcher options apply only to 'add rule drop', 'add rule trim' or "
@@ -303,10 +310,18 @@ final class Parser {
             throw usage("--no-message-contains, --no-throwable, --no-throwable-message-contains, --no-any-cause "
                     + "and --no-collapse-causes apply only to 'alter rule'.");
         }
-        if (!isAddRuleDrop && !isAlterRule && (sampleFullEveryMillis != null || noSampleFull)) {
+        if (isAddRuleUntyped && (sampleFullEveryMillis != null || noSampleFull)) {
+            throw usage("--sample-full / --no-sample-full apply to drop rules -- name the type: "
+                    + "'add rule drop <target> ...'.");
+        }
+        if (isAddRuleUntyped && (frames != null || collapseCauses)) {
+            throw usage("--frames / --collapse-causes apply to trim rules -- name the type: "
+                    + "'add rule trim <target> ...'.");
+        }
+        if (!isAddRuleDrop && !isAlterRule && !isAddRuleUntyped && (sampleFullEveryMillis != null || noSampleFull)) {
             throw usage("--sample-full / --no-sample-full apply only to 'add rule drop' or 'alter rule'.");
         }
-        if (!isAddRuleTrim && !isAlterRule && (frames != null || collapseCauses)) {
+        if (!isAddRuleTrim && !isAlterRule && !isAddRuleUntyped && (frames != null || collapseCauses)) {
             throw usage("--frames / --collapse-causes apply only to 'add rule trim' or 'alter rule'.");
         }
         if ((messageContains != null && noMessageContains) || (throwableType != null && noThrowable)
@@ -483,65 +498,33 @@ final class Parser {
                 };
             }
             case "add" -> {
-                if (rest.size() < 2 || !rest.get(0).equals("rule")) {
+                if (!isAddRule) {
                     throw usage("'add' needs 'rule drop <target> ...' or 'rule trim <target> ...'.");
                 }
-                String action = rest.get(1);
-                List<String> actionRest = rest.subList(2, rest.size());
-                yield switch (action) {
-                    case "drop" -> {
-                        if (actionRest.isEmpty()) {
-                            throw usage("'add rule drop' needs <target>, e.g. 'add rule drop com.acme.Worker "
-                                    + "--message-contains \"...\"'.");
-                        }
-                        if (messageContains == null && throwableType == null && throwableMessageContains == null) {
-                            throw usage("'add rule drop' needs at least one content matcher "
-                                    + "(--message-contains, --message-contains-ignore-case, --throwable, or "
-                                    + "--throwable-message-contains) -- use 'set logger' to change a logger's "
-                                    + "level instead.");
-                        }
-                        String target = actionRest.get(0);
-                        if (target.endsWith(".*")) {
-                            throw usage("'add rule drop' rejects a trailing '.*' -- a bare name already reaches "
-                                    + "every descendant.");
-                        }
-                        TierChoice tier = resolveTier(actionRest.subList(1, actionRest.size()));
-                        boolean sampleFullEnabled = !noSampleFull;
-                        long everyMillis = sampleFullEveryMillis != null ? sampleFullEveryMillis
-                                : SampleFullPolicy.DEFAULT_INTERVAL.toMillis();
-                        // Omitted --below defaults to the ERROR keep-floor (doc/specs/drop-rule.md
-                        // "Safety set") -- resolved here, not left null, so a bare "add rule drop"
-                        // never compiles into an unbounded matcher that would also drop ERROR and
-                        // above (a code-review finding).
-                        String belowLevelOrDefault = belowLevel != null ? belowLevel : parseBelowLevel("ERROR");
-                        yield Commands.addRuleDrop(target, messageContains, messageIgnoreCase, throwableType,
-                                throwableMessageContains, anyCause, belowLevelOrDefault, sampleFullEnabled,
-                                everyMillis, reason, tier.tierName(), tier.forSeconds(), json);
-                    }
-                    case "trim" -> {
-                        if (actionRest.isEmpty()) {
-                            throw usage(
-                                    "'add rule trim' needs <target>, e.g. 'add rule trim com.acme.Worker --below WARN'.");
-                        }
-                        // Unlike 'add rule drop', no content matcher is required here --
-                        // doc/specs/trim-rule.md "Matchers in use": a bare level-bounded trim is a
-                        // first-class case (the original #34 per-logger exceptionDetail threshold).
-                        String target = actionRest.get(0);
-                        if (target.endsWith(".*")) {
-                            throw usage("'add rule trim' rejects a trailing '.*' -- a bare name already reaches "
-                                    + "every descendant.");
-                        }
-                        TierChoice tier = resolveTier(actionRest.subList(1, actionRest.size()));
-                        // Same "resolve the default here, not leave it null" discipline as
-                        // 'add rule drop' -- doc/specs/trim-rule.md "Command surface".
-                        String belowLevelOrDefault = belowLevel != null ? belowLevel : parseBelowLevel("ERROR");
-                        int framesOrDefault = frames != null ? frames : 0;
-                        yield Commands.addRuleTrim(target, messageContains, messageIgnoreCase, throwableType,
-                                throwableMessageContains, anyCause, belowLevelOrDefault, framesOrDefault,
-                                collapseCauses, reason, tier.tierName(), tier.forSeconds(), json);
-                    }
-                    default -> throw usage("'add rule' needs 'drop' or 'trim', got '" + action + "'.");
-                };
+                List<String> ruleRest = rest.subList(1, rest.size());
+                String action = isAddRuleUntyped ? null : ruleRest.get(0);
+                List<String> afterAction = isAddRuleUntyped ? ruleRest : ruleRest.subList(1, ruleRest.size());
+                String target = afterAction.isEmpty() ? null : afterAction.get(0);
+                List<String> tierTokens = afterAction.isEmpty() ? List.of() : afterAction.subList(1, afterAction.size());
+                if (action == null && !tierTokens.isEmpty() && !List.of("session", "sticky", "for")
+                        .contains(tierTokens.get(0))) {
+                    // "add rule foo bar": 'foo' was surely meant as the type, not the target.
+                    throw usage("'add rule' needs 'drop' or 'trim', got '" + target + "'.");
+                }
+                if (target != null && target.endsWith(".*")) {
+                    throw usage("'add rule' rejects a trailing '.*' -- a bare name already reaches every "
+                            + "descendant.");
+                }
+                Boolean sampleFullEnabled = noSampleFull ? Boolean.FALSE
+                        : sampleFullEveryMillis != null ? Boolean.TRUE : null;
+                AddRuleRequest request = new AddRuleRequest(action, target, messageContains, messageIgnoreCase,
+                        throwableType, throwableMessageContains, anyCause, belowLevel, sampleFullEnabled,
+                        sampleFullEveryMillis, frames, collapseCauses, resolveAlterTier(tierTokens), reason, yes,
+                        json);
+                if (!request.complete() && (!interactive || yes || json)) {
+                    throw usage(missingPart(request) + "\n" + PROMPT_HINT);
+                }
+                yield Commands.addRule(request);
             }
             case "export" -> {
                 if (rest.size() != 1 || !rest.get(0).equals("vendor-defaults")) {
@@ -580,6 +563,26 @@ final class Parser {
         };
 
         return new Invocation(false, false, debug, pid, resolved);
+    }
+
+    static final String PROMPT_HINT = "Run this in a terminal to be prompted for the missing parts.";
+
+    /** The usage error for an incomplete {@code add rule} with no terminal to ask on -- the first missing part. */
+    private static String missingPart(AddRuleRequest request) {
+        if (request.action() == null) {
+            return request.target() == null
+                    ? "'add' needs 'rule drop <target> ...' or 'rule trim <target> ...'."
+                    : "'add rule " + request.target() + "' needs the rule type first: 'add rule drop "
+                            + request.target() + " ...' or 'add rule trim " + request.target() + " ...'.";
+        }
+        if (request.target() == null) {
+            return request.action().equals(AddRuleRequest.DROP)
+                    ? "'add rule drop' needs <target>, e.g. 'add rule drop com.acme.Worker --message-contains \"...\"'."
+                    : "'add rule trim' needs <target>, e.g. 'add rule trim com.acme.Worker --below WARN'.";
+        }
+        return "'add rule drop' needs at least one content matcher (--message-contains, "
+                + "--message-contains-ignore-case, --throwable, or --throwable-message-contains) -- use 'set logger' "
+                + "to change a logger's level instead.";
     }
 
     /** The trailing {@code [session | for <duration> | sticky]} token(s). Package-private for direct testing. */
@@ -629,7 +632,7 @@ final class Parser {
      * ERROR}; see that spec's "Divergence from prior specs") — it resolves
      * to {@code ERROR} itself, since nothing more severe exists to spare.
      */
-    private static String parseBelowLevel(String token) {
+    static String parseBelowLevel(String token) {
         if (token.equalsIgnoreCase("FATAL")) {
             return Level.ERROR.name();
         }

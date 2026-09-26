@@ -47,7 +47,7 @@ After this feature, the user will be able to:
   `--throwable-message-contains "Failed to connect"`, `--any-cause` to match inside a cause
   chain rather than only the top exception.
 - Target several loggers at once with a leading-star pattern
-  (`--logger '*.AutoUpdateHelper'`), previewed and confirmed like any other pattern target,
+  (`add rule drop '*.AutoUpdateHelper' …`), previewed and confirmed like any other pattern target,
   producing one independent drop rule per currently-known match.
 - Attach a drop to a logger and have it reach that logger's descendants automatically,
   including ones created later — the same way a level does — unless a descendant in between
@@ -146,6 +146,9 @@ mistaken for "done"):
   `set logger`'s preview/confirm/multi-context broadcast is real additional scope, not folded
   in silently here — a fast-follow, same discipline `rule-pipeline-foundation.md`'s own
   "reset logger's rule-removal side effect is scoped to the exact-name path only" used.
+  *Update 2026-09-26:* the pattern-target half shipped with
+  [`guided-add-rule.md`](guided-add-rule.md) (#104, G2); #79 now covers multi-context attachment
+  only.
 - **`WildFlyContainerIT`** ([#80](https://github.com/ddeuchert/logaperture/issues/80)) — the
   epic's own required real-WildFly scenario (ERROR trimmed... restated for drop: INFO dropped,
   ERROR kept, non-matching/other-logger kept, survives

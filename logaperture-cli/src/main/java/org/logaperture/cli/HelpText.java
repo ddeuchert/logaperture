@@ -43,9 +43,9 @@ final class HelpText {
             "logctl reset handlers [--include-sticky] [--to-native]",
             "logctl reset default-handler [--to-native]",
             "logctl add rule drop <target> [matchers] [--below level] [--sample-full duration | --no-sample-full] "
-                    + "[session | for <duration> | sticky]",
+                    + "[session | for <duration> | sticky] [--yes]",
             "logctl add rule trim <target> [matchers] [--below level] [--frames n] [--collapse-causes] "
-                    + "[session | for <duration> | sticky]",
+                    + "[session | for <duration> | sticky] [--yes]",
             "logctl alter rule <id> [changes] [session | for <duration> | sticky]",
             "logctl list rules [--verbose]",
             "logctl export vendor-defaults [--out <file>] [--force]",
@@ -66,6 +66,7 @@ final class HelpText {
         sb.append("  --pid <n>            target this JVM instead of discovering one\n");
         sb.append("  --reason <text>      why — shown in status, kept in the audit trail\n");
         sb.append("  --yes                skip the confirmation prompt when <target> is a pattern\n");
+        sb.append("                       (for 'add rule': add the rule to every logger it matches)\n");
         sb.append("  --include-sticky     for 'reset' -- also revert a sticky override, not just skip it\n");
         sb.append("  --to-native          for 'reset' -- land on the native configuration, ignoring the\n");
         sb.append("                       vendor defaults until restart (vendor rules: switched off)\n");
@@ -95,6 +96,8 @@ final class HelpText {
         sb.append("  -h, --help           this help\n");
         sb.append("\n");
         sb.append("A <duration> is <n>s, <n>m, <n>h or <n>d, for example: for 30m.\n");
+        sb.append("On a terminal, 'add rule' asks for anything left out -- 'logctl add rule' alone\n");
+        sb.append("walks through every part, starting from a logger name such as Deployer.\n");
         sb.append("A bare 'set logger'/'set handler' with no tier defaults to 'for 4h' — a\n");
         sb.append("working session, gone by morning.\n");
         sb.append("\n");

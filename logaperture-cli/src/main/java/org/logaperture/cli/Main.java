@@ -66,7 +66,7 @@ public final class Main {
             boolean interactive) {
         Invocation invocation;
         try {
-            invocation = Parser.parse(args);
+            invocation = Parser.parse(args, interactive);
         } catch (CliError e) {
             err.println(e.getMessage());
             if (e.exitCode() == CliError.USAGE) {
@@ -90,63 +90,56 @@ public final class Main {
         } catch (CliError e) {
             err.println(e.getMessage());
             return e.exitCode();
-        } catch (CapabilityDeniedException denied) {
-            // The real transport: controlPlane.mbean() is a JMX.newMXBeanProxy
-            // (AgentConnection), and MBeanServerInvocationHandler unwraps a
-            // RuntimeMBeanException back to the original unchecked exception
-            // before rethrowing it -- an unchecked exception the operation
-            // throws arrives here directly, never wrapped. Caught ahead of
-            // IllegalArgumentException since this isn't one.
-            err.println("Refused: this JVM's policy does not grant " + denied.capability() + ".");
-            return CliError.REFUSED;
-        } catch (ConfirmationRequiredException e) {
-            // logctl's own setLogger flow always resolves confirmed=true (a
-            // typed "y" or --yes) before it ever calls the server for real
-            // (doc/specs/pattern-level-targeting.md "Confirmation and CLI
-            // behavior") -- reaching here means a race between the preview
-            // and the apply call, or a bug, not a usage mistake. Printed
-            // plainly rather than falling through to a raw stack trace.
-            err.println("logctl: " + messageOf(e));
-            return CliError.UNEXPECTED;
-        } catch (IllegalArgumentException e) {
-            // Bad-argument validation done server-side (e.g. NameFilter's
-            // grammar) is still a usage error (doc/specs/cli-transport.md "is
-            // a usage error naming the problem"), not an unexpected failure,
-            // even though it only surfaces after a successful parse -- once
-            // we're here the command itself was well-formed, so there's no
-            // usage block to print alongside it.
-            err.println("logctl: " + messageOf(e));
-            return CliError.USAGE;
-        } catch (RuntimeMBeanException e) {
-            // Kept as a defensive fallback in case some invocation path (a
-            // future non-proxy MBean access, a different JDK's unwrapping
-            // behavior) does hand this back still wrapped, rather than
-            // unwrapped as the two catches above assume.
-            Throwable target = e.getTargetException();
-            if (target instanceof CapabilityDeniedException denied) {
-                err.println("Refused: this JVM's policy does not grant " + denied.capability() + ".");
-                return CliError.REFUSED;
-            }
-            if (target instanceof ConfirmationRequiredException) {
-                err.println("logctl: " + messageOf(target));
-                return CliError.UNEXPECTED;
-            }
-            if (target instanceof IllegalArgumentException) {
-                err.println("logctl: " + messageOf(target));
-                return CliError.USAGE;
-            }
-            if (invocation.debug()) {
-                e.printStackTrace(err);
-            }
-            err.println("logctl: " + messageOf(target));
-            return CliError.UNEXPECTED;
         } catch (Exception e) {
-            if (invocation.debug()) {
+            Failure failure = failureOf(e);
+            if (invocation.debug() && failure.exitCode() == CliError.UNEXPECTED) {
                 e.printStackTrace(err);
             }
-            err.println("logctl: " + messageOf(e));
-            return CliError.UNEXPECTED;
+            err.println(failure.message());
+            return failure.exitCode();
         }
+    }
+
+    /** What {@code logctl} prints for a failed operation, and the exit code it returns. */
+    record Failure(int exitCode, String message) {
+    }
+
+    /**
+     * Maps a failed operation to its message and exit code -- shared by {@link #run} and by a command
+     * that keeps going after one of several operations fails (doc/specs/guided-add-rule.md G10).
+     *
+     * <p>The real transport is a {@code JMX.newMXBeanProxy} (AgentConnection), and
+     * MBeanServerInvocationHandler unwraps a RuntimeMBeanException back to the original unchecked
+     * exception before rethrowing it, so an operation's own exception normally arrives here directly;
+     * the still-wrapped form is unwrapped too, as a defensive fallback in case some invocation path (a
+     * future non-proxy MBean access, a different JDK's unwrapping behavior) hands it back wrapped.
+     */
+    static Failure failureOf(Throwable failure) {
+        Throwable t = failure instanceof RuntimeMBeanException wrapped && wrapped.getTargetException() != null
+                ? wrapped.getTargetException()
+                : failure;
+        if (t instanceof CliError e) {
+            return new Failure(e.exitCode(), e.getMessage());
+        }
+        if (t instanceof CapabilityDeniedException denied) {
+            return new Failure(CliError.REFUSED, "Refused: this JVM's policy does not grant " + denied.capability()
+                    + ".");
+        }
+        if (t instanceof ConfirmationRequiredException) {
+            // logctl's own setLogger flow always resolves confirmed=true (a typed "y" or --yes) before
+            // it ever calls the server for real (doc/specs/pattern-level-targeting.md "Confirmation and
+            // CLI behavior") -- reaching here means a race between the preview and the apply call, or
+            // a bug, not a usage mistake. Reported plainly rather than as a raw stack trace.
+            return new Failure(CliError.UNEXPECTED, "logctl: " + messageOf(t));
+        }
+        if (t instanceof IllegalArgumentException) {
+            // Bad-argument validation done server-side (e.g. NameFilter's grammar) is still a usage
+            // error (doc/specs/cli-transport.md "is a usage error naming the problem"), not an
+            // unexpected failure, even though it only surfaces after a successful parse -- the
+            // command itself was well-formed, so there's no usage block to print alongside it.
+            return new Failure(CliError.USAGE, "logctl: " + messageOf(t));
+        }
+        return new Failure(CliError.UNEXPECTED, "logctl: " + messageOf(t));
     }
 
     private static String messageOf(Throwable t) {
