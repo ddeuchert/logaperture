@@ -47,6 +47,11 @@ import java.time.Instant;
  *                   during that time
  * @param expiresAt  the absolute deadline this override reverts at; {@code
  *                   null} unless {@code tier} is {@link PersistenceTier#FOR}
+ * @param    stateId the id the state file knows this override by -- assigned by the
+ *                   {@code StateStore} the first time it is saved, kept across later saves of the
+ *                   same override, and written into an exported vendor defaults file so a restart with
+ *                   that file can take the entry over (doc/specs/export-round-trip.md); {@code null}
+ *                   until it has been persisted
  */
 public record HandlerLevelOverride(
         HandlerRef handlerRef,
@@ -56,7 +61,8 @@ public record HandlerLevelOverride(
         Instant appliedAt,
         String source,
         PersistenceTier tier,
-        Instant expiresAt) {
+        Instant expiresAt,
+        String stateId) {
 
     public HandlerLevelOverride {
         if (handlerRef == null) {
@@ -91,5 +97,16 @@ public record HandlerLevelOverride(
             HandlerRef handlerRef, Level level, String reason, Instant appliedAt, String source,
             PersistenceTier tier, Instant expiresAt) {
         return new HandlerLevelOverride(handlerRef, level, HandlerLevelMode.FIXED, reason, appliedAt, source, tier, expiresAt);
+    }
+
+    /** A override not yet persisted: no {@link #stateId()} until a {@code StateStore} saves it. */
+    public HandlerLevelOverride(HandlerRef handlerRef, Level level, HandlerLevelMode mode, String reason,
+            Instant appliedAt, String source, PersistenceTier tier, Instant expiresAt) {
+        this(handlerRef, level, mode, reason, appliedAt, source, tier, expiresAt, null);
+    }
+
+    /** This override with {@code stateId}, as the {@code StateStore} assigns or restores it. */
+    public HandlerLevelOverride withStateId(String stateId) {
+        return new HandlerLevelOverride(handlerRef, level, mode, reason, appliedAt, source, tier, expiresAt, stateId);
     }
 }

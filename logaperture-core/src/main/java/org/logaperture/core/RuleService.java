@@ -509,6 +509,13 @@ public final class RuleService implements RuleOperations {
      */
     public RuleExport exportRules() {
         requireCapability(Capability.VIEW);
+        // doc/specs/export-round-trip.md: an entry from a sticky rule or alteration carries its state id.
+        Map<String, String> stateIds = new java.util.HashMap<>();
+        for (PersistedRule persisted : stateStore.loadAllRules()) {
+            if (persisted.stateId() != null && (persisted.context() == null || persisted.context().equals(context))) {
+                stateIds.put(persisted.id(), persisted.stateId());
+            }
+        }
         List<VendorDefaults.RuleDefault> rules = new ArrayList<>();
         Map<String, String> comments = new java.util.HashMap<>();
         Set<String> usedNames = new java.util.HashSet<>();
@@ -519,7 +526,8 @@ public final class RuleService implements RuleOperations {
             }
             LogRule baseline = vendorBaselines.get(id);
             LogRule current = registry.findById(id).orElse(baseline);
-            rules.add(toRuleDefault(id, current.tier() == PersistenceTier.STICKY ? current : baseline));
+            rules.add(current.tier() == PersistenceTier.STICKY ? toRuleDefault(id, current, stateIds.get(id))
+                    : toRuleDefault(id, baseline, null));
         }
         List<LogRule> operatorRules = registry.all().stream()
                 .filter(rule -> !isVendorRule(rule.id()) && rule.tier() == PersistenceTier.STICKY)
@@ -528,7 +536,7 @@ public final class RuleService implements RuleOperations {
         for (LogRule rule : operatorRules) {
             String id = VendorDefaults.RULE_ID_PREFIX + derivedName(rule, usedNames);
             usedNames.add(id);
-            rules.add(toRuleDefault(id, rule));
+            rules.add(toRuleDefault(id, rule, stateIds.get(rule.id())));
             comments.put(id, "was " + rule.id());
         }
         return new RuleExport(rules, comments);
@@ -538,12 +546,12 @@ public final class RuleService implements RuleOperations {
     public record RuleExport(List<VendorDefaults.RuleDefault> rules, Map<String, String> comments) {
     }
 
-    private static VendorDefaults.RuleDefault toRuleDefault(String id, LogRule rule) {
+    private static VendorDefaults.RuleDefault toRuleDefault(String id, LogRule rule, String stateId) {
         SampleFullPolicy sampleFull = rule instanceof Drop drop ? drop.sampleFull() : SampleFullPolicy.defaults();
         int frames = rule instanceof Trim trim ? trim.frames() : 0;
         boolean collapseCauses = rule instanceof Trim trim && trim.collapseCauses();
         return new VendorDefaults.RuleDefault(id, rule.actionName(), rule.loggerName(), rule.matchers(),
-                rule.reason(), sampleFull, frames, collapseCauses);
+                rule.reason(), sampleFull, frames, collapseCauses, stateId);
     }
 
     /**

@@ -44,14 +44,14 @@ final class VendorDefaultsExporter {
         List<VendorDefaults.LoggerDefault> loggers = new ArrayList<>();
         for (VendorDefaults.LoggerDefault logger : context.service().exportLoggers()) {
             VendorDefaults.LoggerDefault tidy = new VendorDefaults.LoggerDefault(logger.name(), logger.level(),
-                    tidyReason(logger.reason()));
+                    tidyReason(logger.reason()), logger.stateId());
             keepIfWritable(tidy, List.of(tidy), List.of(), List.of(), "logger '" + logger.name() + "'", loggers,
                     skipped);
         }
         List<VendorDefaults.HandlerDefault> handlers = new ArrayList<>();
         for (VendorDefaults.HandlerDefault handler : context.handlerService().exportHandlers()) {
             VendorDefaults.HandlerDefault tidy = new VendorDefaults.HandlerDefault(handler.ref(), handler.level(),
-                    handler.mode(), tidyReason(handler.reason()));
+                    handler.mode(), tidyReason(handler.reason()), handler.stateId());
             keepIfWritable(tidy, List.of(), List.of(tidy), List.of(), "handler '" + handler.ref().value() + "'",
                     handlers, skipped);
         }
@@ -60,14 +60,16 @@ final class VendorDefaultsExporter {
         for (VendorDefaults.RuleDefault rule : exportedRules.rules()) {
             VendorDefaults.RuleDefault tidy = new VendorDefaults.RuleDefault(rule.id(), rule.action(),
                     rule.loggerName(), rule.matchers(), tidyReason(rule.reason()), rule.sampleFull(), rule.frames(),
-                    rule.collapseCauses());
+                    rule.collapseCauses(), rule.stateId());
             String was = exportedRules.comments().get(rule.id());
             String what = rule.action() + " rule " + (was != null ? was.substring("was ".length())
                     : rule.id()) + " on '" + rule.loggerName() + "'";
             keepIfWritable(tidy, List.of(), List.of(), List.of(tidy), what, rules, skipped);
         }
         VendorDefaultsExport export = new VendorDefaultsExport(header, loggers, handlers,
-                context.handlerService().exportDefaultHandlers(), rules, exportedRules.comments(), skipped);
+                context.handlerService().exportDefaultHandlers(),
+                context.handlerService().exportDefaultHandlersStateId(),
+                context.handlerService().exportHandlerGroupStateIds(), rules, exportedRules.comments(), skipped);
 
         String text = VendorDefaultsFile.write(export);
         VendorDefaults check = VendorDefaultsFile.parse(text, Path.of("exported vendor defaults"), false);

@@ -38,6 +38,7 @@ import org.logaperture.core.StormService;
 import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.TopService;
 import org.logaperture.core.VendorDefaults;
+import org.logaperture.core.VendorStateTakeover;
 import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
@@ -159,6 +160,10 @@ public final class WildFlyContainer implements AutoCloseable {
         this.handlerInstallDelay = handlerInstallDelay;
         this.clock = clock;
         this.stateStore = openStateStore();
+        // doc/specs/export-round-trip.md: before any context resumes, the state entries this
+        // vendor defaults file was exported from are handed over to it -- once per JVM, since
+        // every context shares this one state file.
+        takeOverExportedState();
         this.aggregate = new AggregateLevelControl(CONTAINER_NAME, containerVersion,
                 stateStore.location().map(Path::toString).orElse(null), this::handlerInstallAllowed, vendorDefaults);
 
@@ -380,6 +385,16 @@ public final class WildFlyContainer implements AutoCloseable {
         Thread thread = new Thread(task, "logaperture-wildfly-sweep");
         thread.setDaemon(true);
         return thread;
+    }
+
+    private void takeOverExportedState() {
+        try {
+            VendorStateTakeover.run(vendorDefaults, stateStore, auditLog, principal(), Instant.now());
+        } catch (RuntimeException e) {
+            // Fail-open (doc/logaperture-spec.md §9): the state file then resumes in full, as before.
+            Diagnostics.warn("LogAperture: failed to hand exported sticky settings over to the vendor defaults "
+                    + "file, resuming them as usual", e);
+        }
     }
 
     private static String principal() {

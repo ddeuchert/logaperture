@@ -60,8 +60,14 @@ public final class VendorDefaults {
         REJECTED
     }
 
-    /** One {@code handlers:} entry; {@code level} is {@code null} iff {@code mode} is {@link HandlerLevelMode#AUTO}. */
-    public record HandlerDefault(HandlerRef ref, Level level, HandlerLevelMode mode, String reason) {
+    /**
+     * One {@code handlers:} entry; {@code level} is {@code null} iff {@code mode} is {@link
+     * HandlerLevelMode#AUTO}. {@code stateId}, here and on the other entry kinds, is the state id
+     * of the sticky setting the entry was exported from, or {@code null} -- doc/specs/
+     * export-round-trip.md.
+     */
+    public record HandlerDefault(HandlerRef ref, Level level, HandlerLevelMode mode, String reason,
+            String stateId) {
         public HandlerDefault {
             Objects.requireNonNull(ref, "ref");
             Objects.requireNonNull(mode, "mode");
@@ -69,13 +75,25 @@ public final class VendorDefaults {
                 throw new IllegalArgumentException("level must be null iff mode is AUTO");
             }
         }
+
+        public HandlerDefault(HandlerRef ref, Level level, HandlerLevelMode mode, String reason) {
+            this(ref, level, mode, reason, null);
+        }
+
+        public HandlerDefault withStateId(String stateId) {
+            return new HandlerDefault(ref, level, mode, reason, stateId);
+        }
     }
 
     /** One {@code loggers:} entry. */
-    public record LoggerDefault(String name, Level level, String reason) {
+    public record LoggerDefault(String name, Level level, String reason, String stateId) {
         public LoggerDefault {
             Objects.requireNonNull(name, "name");
             Objects.requireNonNull(level, "level");
+        }
+
+        public LoggerDefault(String name, Level level, String reason) {
+            this(name, level, reason, null);
         }
     }
 
@@ -84,7 +102,7 @@ public final class VendorDefaults {
      * vendor:<name>}). Action-specific fields not used by {@code action} hold their defaults.
      */
     public record RuleDefault(String id, String action, String loggerName, CompiledMatchers matchers,
-            String reason, SampleFullPolicy sampleFull, int frames, boolean collapseCauses) {
+            String reason, SampleFullPolicy sampleFull, int frames, boolean collapseCauses, String stateId) {
         public RuleDefault {
             Objects.requireNonNull(id, "id");
             Objects.requireNonNull(action, "action");
@@ -92,10 +110,16 @@ public final class VendorDefaults {
             Objects.requireNonNull(matchers, "matchers");
             Objects.requireNonNull(sampleFull, "sampleFull");
         }
+
+        public RuleDefault(String id, String action, String loggerName, CompiledMatchers matchers,
+                String reason, SampleFullPolicy sampleFull, int frames, boolean collapseCauses) {
+            this(id, action, loggerName, matchers, reason, sampleFull, frames, collapseCauses, null);
+        }
     }
 
     private static final VendorDefaults NONE =
-            new VendorDefaults(Status.NOT_CONFIGURED, null, List.of(), false, List.of(), List.of(), null, List.of());
+            new VendorDefaults(Status.NOT_CONFIGURED, null, List.of(), false, List.of(), List.of(), null, null,
+                    List.of(), List.of());
 
     private final Status status;
     private final Path path;
@@ -104,11 +128,13 @@ public final class VendorDefaults {
     private final Map<String, LoggerDefault> loggers;
     private final Map<HandlerRef, HandlerDefault> handlers;
     private final List<HandlerRef> defaultHandlers;
+    private final String defaultHandlersStateId;
+    private final List<String> handlerGroupStateIds;
     private final List<RuleDefault> rules;
 
     private VendorDefaults(Status status, Path path, List<String> errors, boolean writable,
             List<LoggerDefault> loggers, List<HandlerDefault> handlers, List<HandlerRef> defaultHandlers,
-            List<RuleDefault> rules) {
+            String defaultHandlersStateId, List<String> handlerGroupStateIds, List<RuleDefault> rules) {
         this.status = status;
         this.path = path;
         this.errors = List.copyOf(errors);
@@ -124,6 +150,8 @@ public final class VendorDefaults {
         }
         this.handlers = Collections.unmodifiableMap(handlerMap);
         this.defaultHandlers = defaultHandlers == null ? null : List.copyOf(defaultHandlers);
+        this.defaultHandlersStateId = defaultHandlers == null ? null : defaultHandlersStateId;
+        this.handlerGroupStateIds = List.copyOf(handlerGroupStateIds);
         this.rules = List.copyOf(rules);
     }
 
@@ -137,14 +165,21 @@ public final class VendorDefaults {
         if (errors.isEmpty()) {
             throw new IllegalArgumentException("a rejected file needs at least one error");
         }
-        return new VendorDefaults(Status.REJECTED, path, errors, false, List.of(), List.of(), null, List.of());
+        return new VendorDefaults(Status.REJECTED, path, errors, false, List.of(), List.of(), null, null,
+                List.of(), List.of());
     }
 
     static VendorDefaults loaded(Path path, boolean writable, List<LoggerDefault> loggers,
             List<HandlerDefault> handlers, List<HandlerRef> defaultHandlers, List<RuleDefault> rules) {
+        return loaded(path, writable, loggers, handlers, defaultHandlers, null, List.of(), rules);
+    }
+
+    static VendorDefaults loaded(Path path, boolean writable, List<LoggerDefault> loggers,
+            List<HandlerDefault> handlers, List<HandlerRef> defaultHandlers, String defaultHandlersStateId,
+            List<String> handlerGroupStateIds, List<RuleDefault> rules) {
         Objects.requireNonNull(path, "path");
         return new VendorDefaults(Status.LOADED, path, List.of(), writable, loggers, handlers, defaultHandlers,
-                rules);
+                defaultHandlersStateId, handlerGroupStateIds, rules);
     }
 
     public Status status() {
@@ -208,6 +243,22 @@ public final class VendorDefaults {
 
     public List<RuleDefault> rules() {
         return rules;
+    }
+
+    /** The {@code defaultHandlersStateId} beside the file's {@code defaultHandlers} list, if any. */
+    public Optional<String> defaultHandlersStateId() {
+        return Optional.ofNullable(defaultHandlersStateId);
+    }
+
+    /**
+     * The file's {@code handlerGroupStateIds}: the state ids of the sticky {@code ALL_HANDLERS}/
+     * {@code DEFAULT_HANDLERS} overrides the export expanded into {@code handlers:} entries. A
+     * group has no entry of its own, and a member's more specific setting replaces the group's
+     * id on that member's entry, so the group's id is recorded here as well (doc/specs/
+     * export-round-trip.md "Settled during implementation").
+     */
+    public List<String> handlerGroupStateIds() {
+        return handlerGroupStateIds;
     }
 
     /** {@code true} if this file contributes nothing at all -- not configured, rejected, or an empty file. */

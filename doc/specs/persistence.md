@@ -318,6 +318,11 @@ not a redesign of anything that calls it.
 out the same interface for handler overrides, in their own namespace within one state file — not
 repeated here to avoid two specs drifting on the same signature list.
 
+Since issue #107, the store also assigns every saved entry a `stateId` and keeps it across later
+saves of the same key, until the entry is removed (state schema 9). An exported vendor defaults
+file carries it, so a restart with that file can take the entry over:
+[`export-round-trip.md`](export-round-trip.md).
+
 #### Batch removal (issue [#17](https://github.com/ddeuchert/logaperture/issues/17))
 
 `FileStateStore` rewrites and `fsync`s the whole state file on every `save`/`remove` call (below).

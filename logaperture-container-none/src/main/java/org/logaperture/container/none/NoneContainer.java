@@ -37,6 +37,7 @@ import org.logaperture.core.StormService;
 import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.TopService;
 import org.logaperture.core.VendorDefaults;
+import org.logaperture.core.VendorStateTakeover;
 import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
@@ -97,6 +98,10 @@ public final class NoneContainer implements AutoCloseable {
         this.auditLog = auditLog;
         this.vendorDefaults = Objects.requireNonNull(vendorDefaults, "vendorDefaults");
         this.stateStore = openStateStore();
+        // doc/specs/export-round-trip.md: before any context resumes, the state entries this
+        // vendor defaults file was exported from are handed over to it -- once per JVM, since
+        // every context shares this one state file.
+        takeOverExportedState();
         // No container to name -- the none baseline -- but the state file
         // fact is universal (doc/specs/environment-report.md "State file").
         this.aggregate = new AggregateLevelControl(null, Optional::empty,
@@ -289,6 +294,16 @@ public final class NoneContainer implements AutoCloseable {
     }
 
     /** §9.7's principal for this slice — the JVM's own account name, matching the audit-trail field this feeds. */
+    private void takeOverExportedState() {
+        try {
+            VendorStateTakeover.run(vendorDefaults, stateStore, auditLog, principal(), Instant.now());
+        } catch (RuntimeException e) {
+            // Fail-open (doc/logaperture-spec.md §9): the state file then resumes in full, as before.
+            Diagnostics.warn("LogAperture: failed to hand exported sticky settings over to the vendor defaults "
+                    + "file, resuming them as usual", e);
+        }
+    }
+
     private static String principal() {
         return System.getProperty("user.name", "unknown");
     }

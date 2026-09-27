@@ -57,16 +57,20 @@ public final class VendorDefaultsFile {
     static final int SCHEMA_VERSION = 1;
 
     private static final Set<String> TOP_LEVEL_KEYS =
-            Set.of("schemaVersion", "loggers", "handlers", "defaultHandlers", "rules");
-    private static final Set<String> LOGGER_FIELDS = Set.of("name", "level", "reason");
-    private static final Set<String> HANDLER_FIELDS = Set.of("name", "level", "reason");
+            Set.of("schemaVersion", "loggers", "handlers", "handlerGroupStateIds", "defaultHandlers",
+                    "defaultHandlersStateId", "rules");
+    private static final Set<String> LOGGER_FIELDS = Set.of("name", "level", "reason", "stateId");
+    private static final Set<String> HANDLER_FIELDS = Set.of("name", "level", "reason", "stateId");
     private static final Set<String> COMMON_RULE_FIELDS = Set.of("id", "action", "logger", "below",
             "messageContains", "messageContainsIgnoreCase", "throwable", "throwableMessageContains", "anyCause",
-            "reason");
+            "reason", "stateId");
     private static final Set<String> DROP_FIELDS = Set.of("sampleFull");
     private static final Set<String> TRIM_FIELDS = Set.of("frames", "collapseCauses");
     private static final Pattern RULE_ID = Pattern.compile("[a-z0-9-]{1,40}");
     private static final Pattern DURATION = Pattern.compile("(\\d+)([smhd])");
+    /** A state id as {@code FileStateStore} assigns it (doc/specs/export-round-trip.md): a UUID, lower-case hex. */
+    private static final Pattern STATE_ID =
+            Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
 
     private VendorDefaultsFile() {
     }
@@ -118,7 +122,8 @@ public final class VendorDefaultsFile {
         if (!v.errors.isEmpty()) {
             return VendorDefaults.rejected(path, v.errors);
         }
-        return VendorDefaults.loaded(path, writable, v.loggers, v.handlers, v.defaultHandlers, v.rules);
+        return VendorDefaults.loaded(path, writable, v.loggers, v.handlers, v.defaultHandlers,
+                v.defaultHandlersStateId, v.handlerGroupStateIds, v.rules);
     }
 
     /** Values made only of these characters are written unquoted; everything else is double-quoted. */
@@ -146,6 +151,7 @@ public final class VendorDefaultsFile {
                 out.append("  - name: ").append(value(logger.name())).append('\n');
                 out.append("    level: ").append(logger.level().name()).append('\n');
                 field(out, "reason", logger.reason());
+                field(out, "stateId", logger.stateId());
             }
         }
         if (!export.handlers().isEmpty()) {
@@ -156,12 +162,22 @@ public final class VendorDefaultsFile {
                         .append(handler.mode() == HandlerLevelMode.AUTO ? "AUTO" : handler.level().name())
                         .append('\n');
                 field(out, "reason", handler.reason());
+                field(out, "stateId", handler.stateId());
+            }
+        }
+        if (!export.handlerGroupStateIds().isEmpty()) {
+            out.append("handlerGroupStateIds:\n");
+            for (String stateId : export.handlerGroupStateIds()) {
+                out.append("  - ").append(value(stateId)).append('\n');
             }
         }
         if (export.defaultHandlers() != null) {
             out.append("defaultHandlers:\n");
             for (HandlerRef ref : export.defaultHandlers()) {
                 out.append("  - ").append(value(ref.value())).append('\n');
+            }
+            if (export.defaultHandlersStateId() != null) {
+                out.append("defaultHandlersStateId: ").append(value(export.defaultHandlersStateId())).append('\n');
             }
         }
         if (!export.rules().isEmpty()) {
@@ -203,6 +219,7 @@ public final class VendorDefaultsFile {
             }
         }
         field(out, "reason", rule.reason());
+        field(out, "stateId", rule.stateId());
     }
 
     private static void field(StringBuilder out, String key, String value) {
@@ -253,6 +270,8 @@ public final class VendorDefaultsFile {
         final List<VendorDefaults.LoggerDefault> loggers = new ArrayList<>();
         final List<VendorDefaults.HandlerDefault> handlers = new ArrayList<>();
         List<HandlerRef> defaultHandlers;
+        String defaultHandlersStateId;
+        final List<String> handlerGroupStateIds = new ArrayList<>();
         final List<VendorDefaults.RuleDefault> rules = new ArrayList<>();
         private final Set<String> seenLoggerNames = new HashSet<>();
         private final Set<String> seenHandlerNames = new HashSet<>();
@@ -270,7 +289,8 @@ public final class VendorDefaultsFile {
                             + "(issue #92) will add it");
                 } else if (!TOP_LEVEL_KEYS.contains(key)) {
                     error(root.keyLines().get(key), "unknown key '" + key + "' (expected one of "
-                            + "schemaVersion, loggers, handlers, defaultHandlers, rules)");
+                            + "schemaVersion, loggers, handlers, handlerGroupStateIds, defaultHandlers, "
+                            + "defaultHandlersStateId, rules)");
                 }
             }
             Node version = root.entries().get("schemaVersion");
@@ -284,7 +304,48 @@ public final class VendorDefaultsFile {
             forEachEntry(root, "loggers", this::logger);
             forEachEntry(root, "handlers", this::handler);
             defaultHandlers(root.entries().get("defaultHandlers"));
+            Node membersStateId = root.entries().get("defaultHandlersStateId");
+            if (membersStateId != null) {
+                if (!root.entries().containsKey("defaultHandlers")) {
+                    error(membersStateId.line(), "defaultHandlersStateId needs a defaultHandlers list beside it");
+                }
+                defaultHandlersStateId = stateId(membersStateId);
+            }
+            handlerGroupStateIds(root.entries().get("handlerGroupStateIds"));
             forEachEntry(root, "rules", this::rule);
+        }
+
+        private void handlerGroupStateIds(Node node) {
+            if (node == null) {
+                return;
+            }
+            if (!(node instanceof ListNode list)) {
+                error(node.line(), "'handlerGroupStateIds' must be a list of ids written by logctl export "
+                        + "vendor-defaults");
+                return;
+            }
+            for (Node item : list.items()) {
+                String stateId = stateId(item);
+                if (stateId != null) {
+                    handlerGroupStateIds.add(stateId);
+                }
+            }
+        }
+
+        /** An optional {@code stateId} (doc/specs/export-round-trip.md S7): a UUID, or an error. */
+        private String stateId(MapNode entry) {
+            Node node = entry.entries().get("stateId");
+            return node == null ? null : stateId(node);
+        }
+
+        private String stateId(Node node) {
+            String text = text(node, "stateId");
+            if (text != null && !STATE_ID.matcher(text).matches()) {
+                error(node.line(), "stateId '" + text + "' is not an id written by logctl export vendor-defaults "
+                        + "-- remove the line, or restore it from the exported file");
+                return null;
+            }
+            return text;
         }
 
         private void forEachEntry(MapNode root, String key, Consumer<MapNode> perEntry) {
@@ -322,11 +383,12 @@ public final class VendorDefaultsFile {
                 }
             }
             String reason = optionalText(entry, "reason");
+            String stateId = stateId(entry);
             if (name != null && !seenLoggerNames.add(name)) {
                 error(line(entry, "name"), "logger '" + name + "' is listed twice");
             }
             if (errors.size() == before) {
-                loggers.add(new VendorDefaults.LoggerDefault(name, level, reason));
+                loggers.add(new VendorDefaults.LoggerDefault(name, level, reason, stateId));
             }
         }
 
@@ -345,13 +407,14 @@ public final class VendorDefaultsFile {
                 }
             }
             String reason = optionalText(entry, "reason");
+            String stateId = stateId(entry);
             if (name != null && isGroupName(name)) {
                 error(line(entry, "name"), name + " is a group, not a handler -- name each handler instead");
             } else if (name != null && !seenHandlerNames.add(name)) {
                 error(line(entry, "name"), "handler '" + name + "' is listed twice");
             }
             if (errors.size() == before) {
-                handlers.add(new VendorDefaults.HandlerDefault(new HandlerRef(name), level, mode, reason));
+                handlers.add(new VendorDefaults.HandlerDefault(new HandlerRef(name), level, mode, reason, stateId));
             }
         }
 
@@ -434,6 +497,7 @@ public final class VendorDefaultsFile {
             String throwableMessageContains = optionalText(entry, "throwableMessageContains");
             boolean anyCause = bool(entry, "anyCause", false);
             String reason = optionalText(entry, "reason");
+            String stateId = stateId(entry);
 
             String message = messageContains != null ? messageContains : messageContainsIgnoreCase;
             if ("drop".equals(action) && message == null && throwable == null && throwableMessageContains == null) {
@@ -456,7 +520,7 @@ public final class VendorDefaultsFile {
                 CompiledMatchers matchers = new CompiledMatchers(levelAtMost, message,
                         messageContainsIgnoreCase != null, throwable, throwableMessageContains, anyCause);
                 rules.add(new VendorDefaults.RuleDefault(id, action, logger, matchers, reason, sampleFull, frames,
-                        collapseCauses));
+                        collapseCauses, stateId));
             }
         }
 

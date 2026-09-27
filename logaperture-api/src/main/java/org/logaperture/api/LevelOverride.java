@@ -41,6 +41,11 @@ import java.time.Instant;
  *                      resume needs to compute *remaining* time without
  *                      resetting the clock on every restart; {@code null}
  *                      unless {@code tier} is {@link PersistenceTier#FOR}
+ * @param stateId       the id the state file knows this override by -- assigned by the
+ *                      {@code StateStore} the first time it is saved, kept across later saves of
+ *                      the same override, and written into an exported vendor defaults file so a
+ *                      restart with that file can take the entry over (doc/specs/
+ *                      export-round-trip.md); {@code null} until it has been persisted
  */
 public record LevelOverride(
         String loggerName,
@@ -49,7 +54,8 @@ public record LevelOverride(
         Instant appliedAt,
         String source,
         PersistenceTier tier,
-        Instant expiresAt) {
+        Instant expiresAt,
+        String stateId) {
 
     public LevelOverride {
         if (loggerName == null || loggerName.isEmpty()) {
@@ -74,5 +80,16 @@ public record LevelOverride(
         } else if (expiresAt != null) {
             throw new IllegalArgumentException("expiresAt must be null unless tier is FOR");
         }
+    }
+
+    /** An override not yet persisted: no {@link #stateId()} until a {@code StateStore} saves it. */
+    public LevelOverride(String loggerName, Level level, String reason, Instant appliedAt, String source,
+            PersistenceTier tier, Instant expiresAt) {
+        this(loggerName, level, reason, appliedAt, source, tier, expiresAt, null);
+    }
+
+    /** This override with {@code stateId}, as the {@code StateStore} assigns or restores it. */
+    public LevelOverride withStateId(String stateId) {
+        return new LevelOverride(loggerName, level, reason, appliedAt, source, tier, expiresAt, stateId);
     }
 }

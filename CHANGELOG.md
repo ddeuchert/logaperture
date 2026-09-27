@@ -63,7 +63,11 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   of it (`set … sticky`, `alter rule … sticky`, `add rule … sticky`). Anything reset with
   `--to-native` is left out, and `session`/`for` changes never reach the file. The agent checks the
   file loads before handing it over; `--out` never overwrites an existing file without `--force`
-  (issue #62; `doc/specs/vendor-defaults-export.md`).
+  (issue #62; `doc/specs/vendor-defaults-export.md`). Restarting the same application with the
+  exported file hands those sticky settings over to it: each is active once, from the file (no
+  `r7` running next to its exported copy), later edits to the file take effect, and the startup
+  log lists what was handed over. Exported entries carry a `stateId:` line for this (issue #107;
+  `doc/specs/export-round-trip.md`).
 - **`logctl list rules --verbose`** — adds an `EXPRESSION` column: each rule's defining options,
   written as `add rule drop|trim` takes them (e.g. `--message-contains "Can't connect"
   --throwable java.net.ConnectException --below WARN --sample-full 5m`), with every default spelled

@@ -49,6 +49,11 @@ import java.util.Map;
  *                written before this field existed, or a hand-edited file —
  *                read back as an empty map, same tolerant convention as
  *                every other optional field here
+ * @param stateId the id the state file knows this rule by -- assigned by the
+ *                {@code StateStore} the first time it is saved, kept across later saves of the
+ *                same rule, and written into an exported vendor defaults file so a restart with
+ *                that file can take the entry over (doc/specs/export-round-trip.md); {@code null}
+ *                until it has been persisted
  */
 public record PersistedRule(
         String id,
@@ -60,9 +65,22 @@ public record PersistedRule(
         Instant expiresAt,
         Instant createdAt,
         String context,
-        Map<String, String> payload) {
+        Map<String, String> payload,
+        String stateId) {
 
     public PersistedRule {
         payload = payload == null ? Map.of() : Map.copyOf(payload);
+    }
+
+    /** A rule not yet persisted: no {@link #stateId()} until a {@code StateStore} saves it. */
+    public PersistedRule(String id, String loggerName, String action, CompiledMatchers matchers, String reason,
+            PersistenceTier tier, Instant expiresAt, Instant createdAt, String context,
+            Map<String, String> payload) {
+        this(id, loggerName, action, matchers, reason, tier, expiresAt, createdAt, context, payload, null);
+    }
+
+    /** This rule with {@code stateId}, as the {@code StateStore} assigns or restores it. */
+    public PersistedRule withStateId(String stateId) {
+        return new PersistedRule(id, loggerName, action, matchers, reason, tier, expiresAt, createdAt, context, payload, stateId);
     }
 }

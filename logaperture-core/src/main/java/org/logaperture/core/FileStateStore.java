@@ -38,6 +38,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * The one {@link StateStore} implementation this slice ships — a single
@@ -64,16 +65,18 @@ public final class FileStateStore implements StateStore, Closeable {
     private final Map<String, LevelOverride> cache;
     private final Map<HandlerRef, HandlerLevelOverride> handlerCache;
     private final List<String> defaultHandlerMembersCache;
+    private String defaultHandlerMembersStateId;
     private final Map<String, PersistedRule> ruleCache;
 
     private FileStateStore(Path stateFile, FileLock lock, Map<String, LevelOverride> initial,
             Map<HandlerRef, HandlerLevelOverride> initialHandlers, List<String> initialDefaultHandlerMembers,
-            Map<String, PersistedRule> initialRules) {
+            String initialDefaultHandlerMembersStateId, Map<String, PersistedRule> initialRules) {
         this.stateFile = stateFile;
         this.lock = lock;
         this.cache = new LinkedHashMap<>(initial);
         this.handlerCache = new LinkedHashMap<>(initialHandlers);
         this.defaultHandlerMembersCache = new ArrayList<>(initialDefaultHandlerMembers);
+        this.defaultHandlerMembersStateId = initialDefaultHandlerMembersStateId;
         this.ruleCache = new LinkedHashMap<>(initialRules);
     }
 
@@ -102,20 +105,38 @@ public final class FileStateStore implements StateStore, Closeable {
         try {
             writeOwnPid(lock);
             StateFileFormat.Parsed existing = readExisting(stateFile);
+            // doc/specs/export-round-trip.md "State file" (S9): an entry written before state ids
+            // existed gets one now, and the file is rewritten once below, so the id an export
+            // writes is the one the next start reads back.
+            boolean assigned = false;
             Map<String, LevelOverride> initial = new LinkedHashMap<>();
             for (LevelOverride override : existing.overrides()) {
-                initial.put(override.loggerName(), override);
+                assigned |= override.stateId() == null;
+                initial.put(override.loggerName(),
+                        override.stateId() == null ? override.withStateId(newStateId()) : override);
             }
             Map<HandlerRef, HandlerLevelOverride> initialHandlers = new LinkedHashMap<>();
             for (HandlerLevelOverride override : existing.handlerOverrides()) {
-                initialHandlers.put(override.handlerRef(), override);
+                assigned |= override.stateId() == null;
+                initialHandlers.put(override.handlerRef(),
+                        override.stateId() == null ? override.withStateId(newStateId()) : override);
             }
             Map<String, PersistedRule> initialRules = new LinkedHashMap<>();
             for (PersistedRule rule : existing.rules()) {
-                initialRules.put(rule.id(), rule);
+                assigned |= rule.stateId() == null;
+                initialRules.put(rule.id(), rule.stateId() == null ? rule.withStateId(newStateId()) : rule);
             }
-            return new FileStateStore(stateFile, lock, initial, initialHandlers, existing.defaultHandlerMembers(),
-                    initialRules);
+            String membersStateId = existing.defaultHandlerMembersStateId();
+            if (!existing.defaultHandlerMembers().isEmpty() && membersStateId == null) {
+                assigned = true;
+                membersStateId = newStateId();
+            }
+            FileStateStore store = new FileStateStore(stateFile, lock, initial, initialHandlers,
+                    existing.defaultHandlerMembers(), membersStateId, initialRules);
+            if (assigned) {
+                store.persist();
+            }
+            return store;
         } catch (IOException | RuntimeException e) {
             // Don't leak the lock if anything after acquiring it fails --
             // otherwise this identity looks permanently held for the rest
@@ -141,8 +162,26 @@ public final class FileStateStore implements StateStore, Closeable {
 
     @Override
     public synchronized void save(LevelOverride override) {
-        cache.put(override.loggerName(), override);
+        LevelOverride existing = cache.get(override.loggerName());
+        cache.put(override.loggerName(), override.withStateId(keptOrNew(existing == null ? null : existing.stateId(),
+                override.stateId())));
         persist();
+    }
+
+    /**
+     * The state id an upserted entry keeps -- doc/specs/export-round-trip.md S3: the one the
+     * store already has for that key, else the one handed in (a resumed entry's own), else a
+     * new one.
+     */
+    private static String keptOrNew(String existing, String incoming) {
+        if (existing != null) {
+            return existing;
+        }
+        return incoming != null ? incoming : newStateId();
+    }
+
+    private static String newStateId() {
+        return UUID.randomUUID().toString();
     }
 
     @Override
@@ -170,7 +209,9 @@ public final class FileStateStore implements StateStore, Closeable {
 
     @Override
     public synchronized void saveHandler(HandlerLevelOverride override) {
-        handlerCache.put(override.handlerRef(), override);
+        HandlerLevelOverride existing = handlerCache.get(override.handlerRef());
+        handlerCache.put(override.handlerRef(), override.withStateId(
+                keptOrNew(existing == null ? null : existing.stateId(), override.stateId())));
         persist();
     }
 
@@ -201,13 +242,20 @@ public final class FileStateStore implements StateStore, Closeable {
     public synchronized void saveDefaultHandlerMembers(Collection<String> memberNames) {
         defaultHandlerMembersCache.clear();
         defaultHandlerMembersCache.addAll(memberNames);
+        defaultHandlerMembersStateId = memberNames.isEmpty() ? null : keptOrNew(defaultHandlerMembersStateId, null);
         persist();
+    }
+
+    @Override
+    public synchronized Optional<String> defaultHandlerMembersStateId() {
+        return Optional.ofNullable(defaultHandlerMembersStateId);
     }
 
     @Override
     public synchronized void removeDefaultHandlerMembers() {
         if (!defaultHandlerMembersCache.isEmpty()) {
             defaultHandlerMembersCache.clear();
+            defaultHandlerMembersStateId = null;
             persist();
         }
     }
@@ -219,7 +267,9 @@ public final class FileStateStore implements StateStore, Closeable {
 
     @Override
     public synchronized void saveRule(PersistedRule rule) {
-        ruleCache.put(rule.id(), rule);
+        PersistedRule existing = ruleCache.get(rule.id());
+        ruleCache.put(rule.id(), rule.withStateId(keptOrNew(existing == null ? null : existing.stateId(),
+                rule.stateId())));
         persist();
     }
 
@@ -248,6 +298,7 @@ public final class FileStateStore implements StateStore, Closeable {
             cache.clear();
             handlerCache.clear();
             defaultHandlerMembersCache.clear();
+            defaultHandlerMembersStateId = null;
             ruleCache.clear();
             persist();
         }
@@ -294,7 +345,8 @@ public final class FileStateStore implements StateStore, Closeable {
     private void persist() {
         try {
             String content = StateFileFormat.write(List.copyOf(cache.values()), List.copyOf(handlerCache.values()),
-                    List.copyOf(defaultHandlerMembersCache), List.copyOf(ruleCache.values()));
+                    List.copyOf(defaultHandlerMembersCache), defaultHandlerMembersStateId,
+                    List.copyOf(ruleCache.values()));
             Path tmp = Files.createTempFile(stateFile.getParent(), stateFile.getFileName().toString(), ".tmp");
             try {
                 Files.writeString(tmp, content, StandardCharsets.UTF_8);
