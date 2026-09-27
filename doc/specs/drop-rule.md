@@ -6,8 +6,8 @@ periodic summary line, `Capability.SUPPRESS`, `add rule drop`'s `AggregateLevelC
 `RuleService` wiring, persisted-payload round trip), the JUL/JBoss LogManager gate `Filter`
 (now actually denying), the JMX surface, the CLI (`logctl add rule drop`), and container
 wiring (both containers) are implemented and unit-tested — see "Implementation status" below.
-The real-WildFly cross-process proof (`WildFlyContainerIT`) is **not** part of this pass; it
-remains this issue's open exit criterion.
+The real-WildFly cross-process proof (`WildFlyContainerIT`) was not part of that pass; it
+landed separately under [#80](https://github.com/ddeuchert/logaperture/issues/80) (2026-09-27).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §4.2 (gate/render stages),
 §7.2 (rule model — `drop` action), §7.3 (evaluation semantics), §7.4 (the keep-one-in-N escape
 hatch), §9.2 (restrictions compose), §9.3 (capabilities — `rules.author`, `suppress`), §9.5
@@ -155,6 +155,12 @@ mistaken for "done"):
   `filter-spec`/`pattern-formatter`/new-handler/`:reload`, `sampleFull` and the summary line
   observed for real, a `STICKY` drop resumes after a restart) needs a running WildFly container
   this pass didn't have. Remains this issue's own open exit criterion.
+  *Update 2026-09-27:* landed under #80 — five `WildFlyContainerIT` `drop*`/`stickyDrop*`
+  scenarios, run on WildFly 26.1.3 and 33.0.0, covering every bullet in "Testing" (cross-process)
+  plus the epic's per-event hit count with several handlers, a JSON handler and an
+  `AsyncHandler`. Events are fired over HTTP by a probe servlet so they can be sent after each
+  reconfiguration. The `AsyncHandler` scenario found a trim bug, fixed in the same change — see
+  `trim-rule.md` "Evaluation".
 - **`top`'s bytes-saved figure for a drop rule**
   ([#81](https://github.com/ddeuchert/logaperture/issues/81)) — the epic's "`top` shows the
   bytes a rule saved" is not wired up; `top`'s existing byte-counting formatter wrap is

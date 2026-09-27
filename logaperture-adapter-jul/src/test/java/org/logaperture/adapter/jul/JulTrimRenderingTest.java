@@ -164,4 +164,46 @@ class JulTrimRenderingTest {
 
         assertEquals(afterLayering, handler.getFormatter());
     }
+
+    /** Shaped like JBoss LogManager's {@code AsyncHandler}: never formats, hands each record to its sub-handlers. */
+    private static final class FakeDelegatingHandler extends Handler {
+        private final Handler[] subHandlers;
+
+        FakeDelegatingHandler(Handler... subHandlers) {
+            this.subHandlers = subHandlers;
+        }
+
+        public Handler[] getHandlers() {
+            return subHandlers.clone();
+        }
+
+        @Override
+        public void publish(LogRecord record) {
+        }
+
+        @Override
+        public void flush() {
+        }
+
+        @Override
+        public void close() {
+        }
+    }
+
+    @Test
+    void installTrimRendering_wrapsTheSubHandlersOfADelegatingHandler() {
+        Handler sub = new ConsoleHandler();
+        Handler deeper = new ConsoleHandler();
+        handler = new FakeDelegatingHandler(sub, new FakeDelegatingHandler(deeper));
+        logger = Logger.getLogger(name("async"));
+        logger.addHandler(handler);
+
+        adapter.installTrimRendering(ALWAYS_ALLOW);
+        Formatter afterFirst = sub.getFormatter();
+        adapter.installTrimRendering(ALWAYS_ALLOW);
+
+        assertTrue(sub.getFormatter() instanceof JulTrimFormatter, "the sub-handler that actually formats is wrapped");
+        assertTrue(deeper.getFormatter() instanceof JulTrimFormatter, "nesting is followed all the way down");
+        assertEquals(afterFirst, sub.getFormatter(), "and a sub-handler is not double-wrapped on the next tick");
+    }
 }
