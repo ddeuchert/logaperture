@@ -1042,6 +1042,7 @@ The agent's overrides live in memory, expire on a timer, and never touch `standa
 - JVM mode is built on JBoss LogManager, so the WildFly adapter largely applies. This is the cheapest second container you will ever add, and worth doing early purely to prove the axes of §15.1 are genuinely separable.
 - `QuarkusClassLoader` and the fast-jar layout; dev mode restarts the runtime classloader on live reload.
 - Quarkus bakes much of its configuration at build time, so runtime mutability is more constrained than WildFly's. Set expectations in the documentation rather than letting users find the edges.
+- **Spiked 2026-09-27** on Quarkus 3.39.5: [`doc/spikes/quarkus-jvm-mode.md`](spikes/quarkus-jvm-mode.md). The engine works unchanged, but the WildFly readiness gate can pre-empt Quarkus's JUL initialisation and must gain one condition. Quarkus's real handlers sit inside `QuarkusDelayedHandler`, and the build-time `quarkus.log.min-level` floor makes a TRACE override a silent no-op. Overview and open decisions: [`doc/specs/quarkus-support.md`](specs/quarkus-support.md); tracked as [#114](https://github.com/ddeuchert/logaperture/issues/114).
 - **Native image is not supported and cannot be.** A GraalVM native executable has no JVM, no `-javaagent`, and no `Instrumentation`. State this in the README instead of letting people discover it. If it ever matters, the only viable route is a build-time Quarkus extension — a different project with a different architecture.
 
 ### 15.10 Never mutate the container's configuration
