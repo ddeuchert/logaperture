@@ -200,6 +200,13 @@ Extends `drop-rule.md` "Evaluation" rather than reopening it:
   3. If the copy cannot be made (record isn't an `ExtLogRecord`, or the copy constructor isn't
      reachable), **fail open**: format the original, untrimmed record. Never throw back into
      application code over a trim that couldn't apply.
+- The wrap goes on every handler that actually formats, **including the sub-handlers nested
+  inside a delegating handler** — JBoss LogManager's `AsyncHandler` never formats a record
+  itself; it hands it to its sub-handlers on its own thread. Found by #80's real-WildFly
+  `AsyncHandler` test: wrapping only the handler attached to the logger left trim a no-op behind
+  an `AsyncHandler` (full trace in its file) while the console beside it was trimmed. Sub-handlers
+  are wrapped for trim only; they stay out of the handler catalog and handler-level control,
+  which is unchanged.
 - Checks run cheapest first, same ordering as `drop` (`rule-pipeline-foundation.md` "Matcher
   library").
 
@@ -369,6 +376,11 @@ silently dropped, same discipline `drop-rule.md` used for its own gaps):
   specifically for trim is a fast-follow if it turns out to matter in practice.
 - **Structured formatters (JSON/XML)** — out of scope for this slice by design, not a gap;
   tracked as [#83](https://github.com/ddeuchert/logaperture/issues/83).
+
+**Added by #80** (`drop`'s real-WildFly scenario): `WildFlyContainerIT#dropAndTrim_onAJsonHandlerAndBehindAnAsyncHandler`
+proves trim behind a real `AsyncHandler` (trimmed, formatted on the async thread) and on a JSON
+handler (left untrimmed, per "Text formatters only") — and caught the sub-handler gap recorded in
+"Evaluation" above, fixed in the same change.
 
 ## Open decisions for sign-off
 

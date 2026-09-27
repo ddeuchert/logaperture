@@ -29,10 +29,15 @@ import org.testcontainers.utility.MountableFile;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -87,6 +92,7 @@ class WildFlyContainerIT {
     private static final String JBOSS_CLI = "/opt/jboss/wildfly/bin/jboss-cli.sh";
     private static final String BOOT_LOGGER = "org.jboss.as.server";
     private static final String APP_LOGGER = "com.myapp.probe.Worker";
+    private static final int HTTP_PORT = 8080;
 
     /**
      * Matches the version tag out of an image reference like
@@ -147,6 +153,9 @@ class WildFlyContainerIT {
         wildfly = new GenericContainer<>(image)
                 .withCopyFileToContainer(MountableFile.forHostPath(agentJar), "/opt/logaperture-agent.jar")
                 .withCopyFileToContainer(MountableFile.forHostPath(cliJar), "/opt/logctl.jar")
+                // The drop probe (issue #80) is a servlet driven over HTTP, so events can be fired on demand
+                // after each reconfiguration and across a timed burst -- not only once at deploy time.
+                .withExposedPorts(HTTP_PORT)
                 .withCommand("sh", "-c", bootScript)
                 .withLogConsumer(frame -> System.out.print("[wildfly] " + frame.getUtf8String()))
                 .waitingFor(Wait.forLogMessage(".*WFLYSRV0025.*", 1).withStartupTimeout(Duration.ofMinutes(3)));
@@ -893,6 +902,418 @@ class WildFlyContainerIT {
         Path probeClass = classes.resolve("com/myapp/probe/AlterProbe.class");
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(war))) {
             zip.putNextEntry(new ZipEntry("WEB-INF/classes/com/myapp/probe/AlterProbe.class"));
+            zip.write(Files.readAllBytes(probeClass));
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("WEB-INF/beans.xml"));
+            zip.write("<beans/>".getBytes());
+            zip.closeEntry();
+        }
+        return war;
+    }
+
+    // --- drop (doc/specs/drop-rule.md, issue #80) ----------------------------------------------
+
+    private static final String DROP_WORKER = "com.myapp.probe.DropWorker";
+    private static final String DROP_OTHER = "com.myapp.probe.DropOther";
+    private static final String DROP_TRIMMED = "com.myapp.probe.DropTrimmed";
+    private static final String DROP_MATCH = "drop probe noisy";
+    private static final String LOG_DIR = "/opt/jboss/wildfly/standalone/log";
+
+    /** Makes every {@link #fireScenario} round's lines unique across the whole shared-container run. */
+    private final AtomicInteger dropRounds = new AtomicInteger();
+
+    /**
+     * doc/specs/drop-rule.md "Testing" (cross-process), the epic's scenario restated for drop: an
+     * INFO-level matching event is dropped; an ERROR-level one (at the keep-floor), a non-matching
+     * message on the same logger and the same message on a different logger are all kept. Several
+     * handlers (stock CONSOLE and FILE) see every event, and the hit count still climbs by one per
+     * event, not one per handler (filtering-epic.md "Testing").
+     */
+    @Test
+    void drop_deniesTheMatchingEventBelowTheFloor_keepsEverythingElse_countsOncePerEvent() throws Exception {
+        String id = addDrop("--no-sample-full", "session");
+        deployDropProbeWar();
+        try {
+            assertTrue(pollUntil(() -> roundDropped(fireScenario())), "the drop takes effect");
+
+            String tag = fireScenario();
+            assertTrue(roundDropped(tag), "the INFO-level matching event is dropped");
+            assertEquals(1, countLines(tag + " error"), "an ERROR-level matching event is at the keep-floor, kept");
+            assertEquals(1, countLines(tag + " quiet"), "a non-matching message on the same logger is kept");
+            assertEquals(1, countLines(tag + " other"), "the same message on a different logger is kept");
+            String serverLog = exec("cat", SERVER_LOG).getStdout();
+            assertFalse(serverLog.contains(tag + " info"), "the FILE handler denies it too");
+            assertTrue(serverLog.contains(tag + " quiet"), "and still writes what is kept");
+
+            long before = hits(id);
+            for (int i = 0; i < 3; i++) {
+                assertTrue(roundDropped(fireScenario()));
+            }
+            assertEquals(before + 3, hits(id), "one hit per dropped event, however many handlers saw it");
+        } finally {
+            undeployDropProbeWar();
+            logctl("reset", "rule", id);
+        }
+    }
+
+    /**
+     * doc/specs/drop-rule.md "Testing": the rule keeps denying after a {@code pattern-formatter}
+     * change, a {@code filter-spec} write, a handler added at runtime and a {@code :reload} --
+     * each one polled for, within the accepted re-arm gap (one verification-sweep tick), rather
+     * than expected on the very first event after the change.
+     */
+    @Test
+    void drop_keepsDenyingThroughWildFlyReconfiguration() throws Exception {
+        String id = addDrop("--no-sample-full", "session");
+        deployDropProbeWar();
+        String originalPattern = readAttribute("/subsystem=logging/pattern-formatter=COLOR-PATTERN", "pattern");
+        try {
+            assertTrue(pollUntil(() -> roundDropped(fireScenario())), "the drop takes effect");
+
+            cli("/subsystem=logging/pattern-formatter=COLOR-PATTERN:write-attribute(name=pattern,"
+                    + "value=\"RECONF %-5p [%c] %s%e%n\")");
+            assertTrue(pollUntil(() -> roundDroppedUnderPattern("RECONF")),
+                    "still denying under the changed pattern-formatter");
+            cli("/subsystem=logging/pattern-formatter=COLOR-PATTERN:write-attribute(name=pattern,"
+                    + "value=\"" + originalPattern + "\")");
+
+            cli("/subsystem=logging/console-handler=CONSOLE:write-attribute(name=filter-spec,value=accept)");
+            assertTrue(pollUntil(() -> roundDropped(fireScenario())),
+                    "still denying after WildFly replaced the handler's filter with its own");
+
+            cli("/subsystem=logging/file-handler=LA_NEW:add(named-formatter=PATTERN,"
+                    + "file={relative-to=jboss.server.log.dir,path=la-new.log})");
+            cli("/subsystem=logging/root-logger=ROOT:add-handler(name=LA_NEW)");
+            assertTrue(pollUntil(() -> roundDroppedIn("la-new.log")), "a handler added at runtime denies it too");
+
+            reloadServer();
+            assertTrue(pollUntil(() -> roundDropped(fireScenario())), "still denying after a :reload");
+        } finally {
+            exec(JBOSS_CLI, "--connect", "--command=/subsystem=logging/pattern-formatter=COLOR-PATTERN"
+                    + ":write-attribute(name=pattern,value=\"" + originalPattern + "\")");
+            exec(JBOSS_CLI, "--connect",
+                    "--command=/subsystem=logging/console-handler=CONSOLE:undefine-attribute(name=filter-spec)");
+            exec(JBOSS_CLI, "--connect", "--command=/subsystem=logging/root-logger=ROOT:remove-handler(name=LA_NEW)");
+            exec(JBOSS_CLI, "--connect", "--command=/subsystem=logging/file-handler=LA_NEW:remove");
+            undeployDropProbeWar();
+            logctl("reset", "rule", id);
+        }
+    }
+
+    /**
+     * doc/specs/drop-rule.md "Testing": {@code sampleFull} and the periodic summary line, observed
+     * for real. A burst of matching events over several {@code --sample-full} intervals lets the
+     * first and then about one per interval through, and the summary line (on the JVM's stderr,
+     * which WildFly logs) names the rule.
+     */
+    @Test
+    void drop_sampleFull_letsOneThroughPerInterval_andTheSummaryLineAppears() throws Exception {
+        String id = addDrop("--sample-full", "2s", "session");
+        deployDropProbeWar();
+        try {
+            assertTrue(pollUntil(() -> fire("noisy", "warmup-" + dropRounds.incrementAndGet())), "probe reachable");
+            String burst = "burst-" + dropRounds.incrementAndGet();
+            int fired = 0;
+            for (int i = 0; i < 16; i++) {
+                if (fire("noisy", burst + "-" + i)) {
+                    fired++;
+                }
+                sleep(500);
+            }
+            assertEquals(16, fired, "every burst request reached the probe");
+            assertTrue(pollUntil(() -> countLines("drop summary: " + id + " ") > 0),
+                    "the periodic summary line names the rule");
+            long kept = countLines("[" + burst + "-");
+            assertTrue(kept >= 2 && kept <= 6,
+                    "about one full event per 2s interval across ~8s is let through, not all or none: " + kept);
+        } finally {
+            undeployDropProbeWar();
+            logctl("reset", "rule", id);
+        }
+    }
+
+    /**
+     * filtering-epic.md "Testing": a structured formatter and an {@code AsyncHandler} on a real
+     * server. Drop denies on both; trim collapses the trace behind the async handler (formatted on
+     * its own thread) and leaves JSON untouched, as doc/specs/trim-rule.md "Text formatters only"
+     * documents.
+     */
+    @Test
+    void dropAndTrim_onAJsonHandlerAndBehindAnAsyncHandler() throws Exception {
+        String dropId = addDrop("--no-sample-full", "session");
+        Logctl trim = logctl("add", "rule", "trim", DROP_TRIMMED, "session");
+        assertEquals(0, trim.exitCode(), trim.stderr());
+        String trimId = trim.stdout().strip().split("\\s+")[0];
+        deployDropProbeWar();
+        try {
+            cli("/subsystem=logging/json-formatter=LA_JSON:add");
+            cli("/subsystem=logging/file-handler=LA_JSON_FILE:add(named-formatter=LA_JSON,"
+                    + "file={relative-to=jboss.server.log.dir,path=la-json.log})");
+            cli("/subsystem=logging/file-handler=LA_ASYNC_FILE:add(named-formatter=PATTERN,"
+                    + "file={relative-to=jboss.server.log.dir,path=la-async.log})");
+            cli("/subsystem=logging/async-handler=LA_ASYNC:add(queue-length=512,subhandlers=[LA_ASYNC_FILE])");
+            cli("/subsystem=logging/logger=com.myapp.probe:add(handlers=[LA_JSON_FILE,LA_ASYNC])");
+
+            assertTrue(pollUntil(() -> roundDroppedIn("la-json.log", "la-async.log")),
+                    "the JSON handler and the async handler both deny the matching event");
+
+            String tag = awaitTrimmedBehindTheAsyncHandler();
+            List<String> async = exec("cat", LOG_DIR + "/la-async.log").getStdout().lines().toList();
+            assertHeaderThenMarkerThenNoFrame(async, "boom " + tag,
+                    "trimmed behind the async handler, formatted on its own thread");
+            String jsonLine = exec("cat", LOG_DIR + "/la-json.log").getStdout().lines()
+                    .filter(line -> line.contains("boom " + tag)).findFirst().orElseThrow();
+            assertFalse(jsonLine.contains("[stack trace trimmed:"), "JSON is left untrimmed:\n" + jsonLine);
+        } finally {
+            exec(JBOSS_CLI, "--connect", "--command=/subsystem=logging/logger=com.myapp.probe:remove");
+            exec(JBOSS_CLI, "--connect", "--command=/subsystem=logging/async-handler=LA_ASYNC:remove");
+            exec(JBOSS_CLI, "--connect", "--command=/subsystem=logging/file-handler=LA_ASYNC_FILE:remove");
+            exec(JBOSS_CLI, "--connect", "--command=/subsystem=logging/file-handler=LA_JSON_FILE:remove");
+            exec(JBOSS_CLI, "--connect", "--command=/subsystem=logging/json-formatter=LA_JSON:remove");
+            undeployDropProbeWar();
+            logctl("reset", "rule", dropId);
+            logctl("reset", "rule", trimId);
+        }
+    }
+
+    /**
+     * doc/specs/drop-rule.md "Testing": a {@code STICKY} drop survives a real restart and resumes
+     * denying without a fresh {@code add rule drop} -- same id, still {@code STICKY}.
+     */
+    @Test
+    void stickyDrop_survivesAContainerRestart() throws Exception {
+        String id = addDrop("--no-sample-full", "sticky");
+        deployDropProbeWar();
+        try {
+            assertTrue(pollUntil(() -> roundDropped(fireScenario())), "the drop takes effect");
+
+            restartServer();
+
+            assertTrue(pollUntil(() -> roundDropped(fireScenario())), "denying again after the restart");
+            assertTrue(logctl("list", "rules").stdout().lines().anyMatch(line -> line.strip().startsWith(id + " ")
+                    && line.contains("STICKY")), "the same rule, resumed rather than re-added");
+        } finally {
+            logctl("reset", "rule", id, "--include-sticky");
+            undeployDropProbeWar();
+        }
+    }
+
+    /** Fires a round and reports it dropped on the console, with the kept "quiet" line rendered starting with {@code prefix}. */
+    private boolean roundDroppedUnderPattern(String prefix) {
+        String tag = fireScenario();
+        return roundDropped(tag) && wildfly.getLogs().lines()
+                .anyMatch(line -> line.startsWith(prefix) && line.contains(tag + " quiet"));
+    }
+
+    /** Fires a round and reports it dropped on the console and in each of {@code files} (under the server log dir), which still carry its "quiet" line. */
+    private boolean roundDroppedIn(String... files) {
+        String tag = fireScenario();
+        if (!roundDropped(tag)) {
+            return false;
+        }
+        for (String file : files) {
+            String content = exec("cat", LOG_DIR + "/" + file).getStdout();
+            if (!content.contains(tag + " quiet") || content.contains(tag + " info")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Fires the {@code trim} event until one is rendered trimmed in {@code la-async.log} (the rule is
+     * installed on the new handlers by a sweep tick, not at once); returns that event's {@code [tag]}.
+     */
+    private String awaitTrimmedBehindTheAsyncHandler() {
+        for (int attempt = 0; attempt < 30; attempt++) {
+            String bare = "trim-" + dropRounds.incrementAndGet();
+            String tag = "[" + bare + "]";
+            if (fire("trim", bare)) {
+                sleep(1000); // the async handler writes on its own thread
+                boolean trimmed = exec("cat", LOG_DIR + "/la-async.log").getStdout().lines()
+                        .anyMatch(line -> line.contains("boom " + tag) && line.contains("[stack trace trimmed:"));
+                if (trimmed) {
+                    return tag;
+                }
+            } else {
+                sleep(1000);
+            }
+        }
+        throw new AssertionError("trim never collapsed the trace behind the async handler:\n"
+                + exec("cat", LOG_DIR + "/la-async.log").getStdout());
+    }
+
+    /** {@code add rule drop} on {@link #DROP_WORKER} matching {@link #DROP_MATCH}; returns the new rule's id. */
+    private String addDrop(String... options) {
+        String[] args = new String[6 + options.length];
+        args[0] = "add";
+        args[1] = "rule";
+        args[2] = "drop";
+        args[3] = DROP_WORKER;
+        args[4] = "--message-contains";
+        args[5] = DROP_MATCH;
+        System.arraycopy(options, 0, args, 6, options.length);
+        Logctl added = logctl(args);
+        assertEquals(0, added.exitCode(), added.stdout() + added.stderr());
+        return added.stdout().strip().split("\\s+")[0];
+    }
+
+    /** The HITS column (last) of {@code list rules}' row for {@code id}. */
+    private long hits(String id) {
+        String row = logctl("list", "rules").stdout().lines()
+                .filter(line -> line.strip().startsWith(id + " ")).findFirst()
+                .orElseThrow(() -> new AssertionError("no list rules row for " + id));
+        String[] cells = row.strip().split("\\s+");
+        return Long.parseLong(cells[cells.length - 1]);
+    }
+
+    /**
+     * One round of the scenario, each line tagged {@code [T]} -- "info" (matches, below the floor),
+     * "error" (matches, at the floor), "quiet" (same logger, no match), "other" (match, other
+     * logger). Returns the round's tag, or a tag no line will ever carry if the probe was
+     * unreachable (mid-reload), so {@link #roundDropped} reports it as not-yet.
+     */
+    private String fireScenario() {
+        String tag = "r" + dropRounds.incrementAndGet();
+        return fire("scenario", tag) ? "[" + tag + "]" : "[unreached-" + tag + "]";
+    }
+
+    /**
+     * Whether round {@code tag}'s INFO-level event was dropped -- read once its last line
+     * ("other") has reached the console, since the four are logged in order on one thread.
+     */
+    private boolean roundDropped(String tag) {
+        for (int i = 0; i < 10; i++) {
+            if (countLines(tag + " other") > 0) {
+                return countLines(tag + " info") == 0;
+            }
+            sleep(500);
+        }
+        return false;
+    }
+
+    /** GET the drop probe; false (not an exception) while the server is mid-reload or mid-restart. */
+    private boolean fire(String set, String tag) {
+        URI uri = URI.create("http://" + wildfly.getHost() + ":" + wildfly.getMappedPort(HTTP_PORT)
+                + "/dropprobe/fire?set=" + set + "&tag=" + tag);
+        try {
+            HttpResponse<String> response = HttpClient.newHttpClient().send(
+                    HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(10)).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            return response.statusCode() == 200;
+        } catch (IOException e) {
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    /** Run one management operation, failing the test unless WildFly reports success. */
+    private void cli(String operation) {
+        ExecResult result = exec(JBOSS_CLI, "--connect", "--command=" + operation);
+        assertTrue(result.getExitCode() == 0 && result.getStdout().contains("\"outcome\" => \"success\""),
+                operation + "\n" + result.getStdout() + result.getStderr());
+    }
+
+    private String readAttribute(String address, String name) {
+        ExecResult result = exec(JBOSS_CLI, "--connect", "--command=" + address + ":read-attribute(name=" + name + ")");
+        Matcher value = Pattern.compile("\"result\" => \"(.*)\"").matcher(result.getStdout());
+        assertTrue(value.find(), result.getStdout() + result.getStderr());
+        return value.group(1);
+    }
+
+    /** {@code :reload}: same JVM and agent, WildFly's own services (logging subsystem included) rebuilt. */
+    private void reloadServer() throws InterruptedException {
+        awaitNextBoot("--command=:reload");
+    }
+
+    /** {@code :shutdown(restart=true)}: standalone.sh starts a fresh JVM, agent included. */
+    private void restartServer() throws InterruptedException {
+        awaitNextBoot("--command=:shutdown(restart=true)");
+    }
+
+    private void awaitNextBoot(String command) throws InterruptedException {
+        long bootsBefore = countLines("WFLYSRV0025");
+        exec(JBOSS_CLI, "--connect", command);
+        for (int attempt = 0; attempt < 120; attempt++) {
+            if (countLines("WFLYSRV0025") > bootsBefore) {
+                awaitControlPlane();
+                return;
+            }
+            Thread.sleep(1000);
+        }
+        fail("WildFly did not come back after " + command);
+    }
+
+    private void deployDropProbeWar() throws Exception {
+        Path war = buildDropProbeWar();
+        exec("rm", "-f", DEPLOYMENTS + "/dropprobe.war.undeployed");
+        wildfly.copyFileToContainer(MountableFile.forHostPath(war), DEPLOYMENTS + "/dropprobe.war");
+        assertTrue(awaitFile(DEPLOYMENTS + "/dropprobe.war.deployed"), "dropprobe.war deployed");
+    }
+
+    private void undeployDropProbeWar() {
+        exec("rm", "-f", DEPLOYMENTS + "/dropprobe.war");
+        awaitFile(DEPLOYMENTS + "/dropprobe.war.undeployed");
+        exec("rm", "-f", DEPLOYMENTS + "/dropprobe.war.deployed");
+    }
+
+    /**
+     * A servlet at {@code /dropprobe/fire?set=...&tag=...}: {@code scenario} logs the four
+     * {@link #fireScenario} lines, {@code noisy} one matching INFO event, {@code trim} one INFO
+     * event with an exception on {@link #DROP_TRIMMED}.
+     */
+    private Path buildDropProbeWar() throws IOException {
+        String servletPackage = jakartaServletNamespace ? "jakarta.servlet" : "javax.servlet";
+        String source = """
+                package com.myapp.probe;
+                import %s.annotation.WebServlet;
+                import %s.http.HttpServlet;
+                import %s.http.HttpServletRequest;
+                import %s.http.HttpServletResponse;
+                import java.io.IOException;
+                import java.util.logging.Level;
+                import java.util.logging.Logger;
+                @WebServlet("/fire")
+                public class DropProbe extends HttpServlet {
+                    @Override protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+                        Logger worker = Logger.getLogger("%s");
+                        String tag = "[" + req.getParameter("tag") + "]";
+                        switch (req.getParameter("set")) {
+                            case "scenario" -> {
+                                worker.info("%s " + tag + " info");
+                                worker.severe("%s " + tag + " error");
+                                worker.info("drop probe quiet " + tag + " quiet");
+                                Logger.getLogger("%s").info("%s " + tag + " other");
+                            }
+                            case "noisy" -> worker.info("%s " + tag + " info");
+                            case "trim" -> Logger.getLogger("%s").log(Level.INFO, "drop probe trim " + tag,
+                                    new RuntimeException("boom " + tag));
+                            default -> resp.setStatus(400);
+                        }
+                        resp.getWriter().print("ok");
+                    }
+                }
+                """.formatted(servletPackage, servletPackage, servletPackage, servletPackage,
+                DROP_WORKER, DROP_MATCH, DROP_MATCH, DROP_OTHER, DROP_MATCH, DROP_MATCH, DROP_TRIMMED);
+        Path src = scratch.resolve("com/myapp/probe/DropProbe.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, source);
+        Path classes = Files.createDirectories(scratch.resolve("drop-classes"));
+
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        assertNotNull(compiler, "a JDK (not JRE) is required to build the probe WAR");
+        int rc = compiler.run(null, null, null,
+                "--release", "17",
+                "-classpath", probeCompileClasspath(),
+                "-d", classes.toString(), src.toString());
+        assertEquals(0, rc, "drop probe compile failed");
+
+        Path war = scratch.resolve("dropprobe.war");
+        Path probeClass = classes.resolve("com/myapp/probe/DropProbe.class");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(war))) {
+            zip.putNextEntry(new ZipEntry("WEB-INF/classes/com/myapp/probe/DropProbe.class"));
             zip.write(Files.readAllBytes(probeClass));
             zip.closeEntry();
             zip.putNextEntry(new ZipEntry("WEB-INF/beans.xml"));

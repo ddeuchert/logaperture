@@ -380,28 +380,45 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      * byte-counting-outside regardless of which tick actually did the
      * wrapping. Idempotent the same way {@link #installByteCounting} is: a
      * handler already correctly layered is left alone.
+     *
+     * <p>Also wraps every handler nested inside one ({@link SubHandlers}):
+     * an {@code AsyncHandler} never formats, its sub-handlers do, so wrapping
+     * only the handler attached to the logger left trim a no-op behind it
+     * (issue #80). The sub-handlers deliberately stay out of {@link
+     * #realHandlers()}, which also feeds the handler catalog and handler-level
+     * control.
      */
     @Override
     public void installTrimRendering(RuleGate gate) {
+        Set<Handler> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         for (HandlerRef ref : realHandlers()) {
             Handler handler = handlersByRef.get(ref);
-            if (handler == null) {
-                continue; // no longer resolvable
+            if (handler != null) {
+                installTrimRendering(handler, gate, seen);
             }
-            Formatter current = handler.getFormatter();
-            if (current == null || current instanceof JulTrimFormatter) {
-                continue; // nothing to wrap around, or already innermost-wrapped
-            }
-            if (current instanceof ByteCountingFormatter counting) {
-                if (counting.delegate() instanceof JulTrimFormatter) {
-                    continue; // already correctly layered
-                }
-                handler.setFormatter(new ByteCountingFormatter(new JulTrimFormatter(counting.delegate(), gate),
-                        topCounters));
-                continue;
-            }
-            handler.setFormatter(new JulTrimFormatter(current, gate));
         }
+    }
+
+    private void installTrimRendering(Handler handler, RuleGate gate, Set<Handler> seen) {
+        if (!seen.add(handler)) {
+            return; // shared, or nested in a cycle -- already handled
+        }
+        for (Handler nested : SubHandlers.of(handler)) {
+            installTrimRendering(nested, gate, seen);
+        }
+        Formatter current = handler.getFormatter();
+        if (current == null || current instanceof JulTrimFormatter) {
+            return; // nothing to wrap around, or already innermost-wrapped
+        }
+        if (current instanceof ByteCountingFormatter counting) {
+            if (counting.delegate() instanceof JulTrimFormatter) {
+                return; // already correctly layered
+            }
+            handler.setFormatter(new ByteCountingFormatter(new JulTrimFormatter(counting.delegate(), gate),
+                    topCounters));
+            return;
+        }
+        handler.setFormatter(new JulTrimFormatter(current, gate));
     }
 
     /**
