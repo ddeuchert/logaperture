@@ -741,7 +741,19 @@ Every gate-stage evaluation happens on the caller's thread inside the logging ca
 
 ## 11. Compatibility matrix
 
-| Axis | v1 target |
+**What 1.0 supports** (agreed 2026-09-27, §17.1). This is the matrix the 1.0 release states; the table after it is the long-term target, not a 1.0 promise.
+
+| Axis | 1.0 |
+|---|---|
+| JDK | 17, 21, 25. The codebase uses records and switch expressions throughout, so a lower floor is a port, not a flag change. EAP 7.4 on JDK 8/11 is a known gap. |
+| WildFly | Standalone mode, 26.1 through current. Every feature: level and handler control, vendor defaults, recipes, `drop` / `trim`, `top`, `doctor`, storm detection. No domain mode; no EAP claim until one is tested. |
+| Plain `java -jar` | Logback: level control, plus the level settings in vendor defaults and recipes. `java.util.logging` alone is not yet detected (no container integration binds the JUL adapter outside WildFly). |
+| Quarkus JVM mode | Only as a preview, and only if the §17.1 Quarkus spike supports it (decided 2026-10-04). |
+| Not supported | Log4j 2, Spring Boot, Tomcat, Jetty, Quarkus native image. |
+
+**Long-term target:**
+
+| Axis | Long-term target |
 |---|---|
 | JDK | 8 through current LTS+ (compile to 8 bytecode for the agent core, multi-release jar for `StackWalker` and JPMS handling) |
 | Logback | 1.2.x, 1.3.x, 1.4.x, 1.5.x (note the jakarta split at 1.3) |
@@ -1191,6 +1203,40 @@ The important change from the previous draft: **M1 ships nothing that modifies b
 **Pulled forward: reset command surface split + `--include-sticky`.** `logctl reset` and `logctl handler <name> reset` grew independently and now can't scope a reset to just loggers or just handlers, and can't protect a deliberately-set `--sticky` override from a broad reset. Restructures reset into `reset logger <pattern>` / `reset loggers` / `reset handler <name>` / `reset handlers`, all taking `--include-sticky` (new default: sticky is skipped unless asked for) — a breaking rename of the already-shipped `handler <name> reset`, accepted pre-1.0. Reuses #41/#49's glob matcher for the logger form rather than duplicating it. Now slice 1 of a broader `set`/`reset`/`list` command-surface refactor. Full write-up: §18.9, [`reset-command-surface.md`](specs/reset-command-surface.md); tracked as [#42](https://github.com/ddeuchert/logaperture/issues/42).
 
 **Pulled toward the alpha line: guided `logctl add rule`.** Manual testing of the filtering epic found that applying a rule was the most laborious step: a log line prints only the last segment of the logger name, so the first step is `logctl list logger '*.Deployer'`, and a conditional `drop`/`trim` is a long command in exact syntax that an operator writes too rarely to memorize. On a terminal, `logctl add rule '*.deployer'` would list the matching loggers to pick from, prompt for the rest, and print the equivalent one-line command before applying it. The pattern expansion it needs is part of the same spec. An AI skill that authors rules from a pasted log line is a named later phase. Roadmap write-up: §18.15; tracked as [#104](https://github.com/ddeuchert/logaperture/issues/104), alpha-3. Spec: [`doc/specs/guided-add-rule.md`](specs/guided-add-rule.md), signed off 2026-09-26; it also takes over #79's pattern-target half.
+
+### 17.1 Release plan to 1.0 (agreed 2026-09-27)
+
+The M0–M6 plan above stays the long-term map. It is too much to build before anyone uses it, so the next releases cut across it: ship the control story that already works, then widen it. Review record: decisions #1–#16 of the "Road to 1.0" review, signed off in the thread on 2026-09-27.
+
+**Versions follow §11.1.** Release 1 is `1.0.0`; Release 2 is `1.1.0`, not `2.0.0`, because adding containers and backends is additive. A major version is kept for a real break in the §11.1 contract.
+
+| Version | Target | Content |
+|---|---|---|
+| `0.1.0-alpha.3` | ~Oct 1 | Everything on `develop` today. Last GitHub-only release. |
+| `1.0.0-beta.1` | Oct 15 | **Feature freeze.** Adds library recipes (#92) if its spec is signed off by Oct 4, otherwise recipes move to 1.1. First Maven Central publish; docs site live. |
+| `1.0.0-beta.N`, `-rc.1` | rc by Nov 9 | Fixes only, plus renames from the contract review. |
+| `1.0.0` | Nov 16 | The §11.1 compatibility promise starts; the "not for production" warning comes off within the §11 1.0 matrix. |
+| `1.1.0` | early 2027 | Release 2: Spring Boot, Logback depth (rules, `top`, `doctor`, storms), configurable storm suppression (#27), Tomcat with per-webapp Logback. |
+| `1.2+` | later | `logctl console` (#33), Log4j 2, the rest of §15.3, in the order feedback suggests. |
+
+**Release 1 scope.** Everything the alpha line built (Layer 0, Layer 1, the handler and vendor-defaults work, and the `drop` / `trim` half of M2) plus recipes, #85, #31 and #69. #24, #23 and #18 go in only if the overhead measurement shows they matter. Deferred to 1.x: #79, #81, #83, #56. Deferred to Release 2: #27, #77. #63 is closed as obsolete. Milestones: `1.0.0`, `1.1.0`, `1.x`.
+
+**Beta 1 is a hard feature freeze.** Between beta 1 and 1.0 the only changes are fixes, contract-review renames, docs and packaging. A new idea in that window becomes a 1.1 issue.
+
+**What earns 1.0:**
+
+- **Contract review** before rc.1: every MXBean operation, `logctl` verb and flag, `--json` field, agent option and `-Dlogaperture.*` property, and the vendor-defaults and `recipes.yaml` formats, each marked keep / rename / remove. Plus a state-file migration test: a 1.0 agent loads a state file from each alpha schema without losing sticky overrides.
+- **Production readiness**: the §9.12 threat model and control mapping, published overhead numbers (§10) for an idle agent, a `trim` rule, and `top` counting, and a 24-hour soak on WildFly with rules expiring and reapplying.
+
+**Quarkus JVM mode** is a spike running now, decided on Oct 4. It is a preview in 1.0 if the WildFly readiness gate and the verification sweep work unchanged, otherwise a `1.1.0` of its own ahead of Spring Boot. The same shared readiness gate would also bind the JUL adapter for plain-JVM `java.util.logging` apps.
+
+**Tomcat** waits for Release 2. JULI gives each webapp its own logger tree, which the multi-context core can already broadcast to, but most webapps on Tomcat log through their own Logback or Log4j 2. Those only become reachable with the Logback work Spring Boot needs.
+
+**Distribution.** Maven Central under `org.logaperture` from beta 1 (namespace verification by DNS on `logaperture.org` started 2026-09-27), publishing only `logaperture-agent`, `logaperture-cli` and the release zip. For 1.0: GitHub Releases with checksums, GPG signatures, a CycloneDX SBOM, build-provenance attestation, a `SECURITY.md`, and a small container image holding the agent jar and `logctl` for Kubernetes init containers. SDKMAN and a Homebrew tap follow in a 1.0.x. JBang is not used: it delivers only `logctl`, which needs the agent already on `-javaagent`. It becomes worthwhile only if `logctl` gains dynamic attach, which JEP 451 restricts. A WildFly Galleon feature pack is later, on request.
+
+**User documentation** is a separate tree from the design docs: Markdown in `guide/`, built with MkDocs Material and versioned with `mike` (one version per minor, plus `dev` from `develop`, with `latest` aliased), published on GitHub Pages at `logaperture.org`. The rendered HTML also ships inside the release zip for sites with no network path out. The command reference is generated from `logctl`'s own help. `USER_GUIDE_NOTES.md` is absorbed into it. Once `guide/` exists, a PR that changes user-visible behaviour updates it in the same PR.
+
+**Launch.** At beta 1, a quiet call for testers in the WildFly community (Zulip `#wildfly-users`, the Google Group) and among the pilot's peers. At 1.0, a public announcement: a foojay.io article, Show HN, r/java, and suggestions to the InfoQ Java News Roundup and JetBrains' Java Annotated Monthly.
 
 ---
 
