@@ -1216,7 +1216,7 @@ The M0–M6 plan above stays the long-term map. It is too much to build before a
 | `1.0.0-beta.1` | Oct 15 | **Feature freeze.** Adds library recipes (#92) if its spec is signed off by Oct 4, otherwise recipes move to 1.1. First Maven Central publish; docs site live. |
 | `1.0.0-beta.N`, `-rc.1` | rc by Nov 9 | Fixes only, plus renames from the contract review. |
 | `1.0.0` | Nov 16 | The §11.1 compatibility promise starts; the "not for production" warning comes off within the §11 1.0 matrix. |
-| `1.1.0` | early 2027 | Release 2: Spring Boot, Logback depth (rules, `top`, `doctor`, storms), configurable storm suppression (#27), Tomcat with per-webapp Logback. |
+| `1.1.0` | Dec 2026 – early 2027 | Quarkus JVM mode and plain-JVM JUL (#114), unless it made 1.0. Then Release 2: Spring Boot, Logback depth (rules, `top`, `doctor`, storms), configurable storm suppression (#27), Tomcat with per-webapp Logback. If Quarkus takes 1.1, Release 2 becomes 1.2. |
 | `1.2+` | later | `logctl console` (#33), Log4j 2, the rest of §15.3, in the order feedback suggests. |
 
 **Release 1 scope.** Everything the alpha line built (Layer 0, Layer 1, the handler and vendor-defaults work, and the `drop` / `trim` half of M2) plus recipes, #85, #31 and #69. #24, #23 and #18 go in only if the overhead measurement shows they matter. Deferred to 1.x: #79, #81, #83, #56. Deferred to Release 2: #27, #77. #63 is closed as obsolete. Milestones: `1.0.0`, `1.1.0`, `1.x`.
@@ -1228,7 +1228,7 @@ The M0–M6 plan above stays the long-term map. It is too much to build before a
 - **Contract review** before rc.1: every MXBean operation, `logctl` verb and flag, `--json` field, agent option and `-Dlogaperture.*` property, and the vendor-defaults and `recipes.yaml` formats, each marked keep / rename / remove. Plus a state-file migration test: a 1.0 agent loads a state file from each alpha schema without losing sticky overrides.
 - **Production readiness**: the §9.12 threat model and control mapping, published overhead numbers (§10) for an idle agent, a `trim` rule, and `top` counting, and a 24-hour soak on WildFly with rules expiring and reapplying.
 
-**Quarkus JVM mode** is a spike running now, decided on Oct 4. It is a preview in 1.0 if the WildFly readiness gate and the verification sweep work unchanged, otherwise a `1.1.0` of its own ahead of Spring Boot. The same shared readiness gate would also bind the JUL adapter for plain-JVM `java.util.logging` apps.
+**Quarkus JVM mode** ([#114](https://github.com/ddeuchert/logaperture/issues/114)) was spiked on 2026-09-27 ([`doc/spikes/quarkus-jvm-mode.md`](spikes/quarkus-jvm-mode.md); overview and open decisions in [`doc/specs/quarkus-support.md`](specs/quarkus-support.md)). The engine works unchanged. The WildFly readiness gate needs one more condition, and a usable preview also needs an early re-sweep, Quarkus's hidden handlers made visible, and a warning when the build-time `quarkus.log.min-level` blocks a level. That's 6–7 days of work, which doesn't fit the Oct 4–13 window next to recipes. So: a preview in 1.0 only if recipes (#92) are cut to 1.1 on Oct 4, otherwise a `1.1.0` of its own in December, ahead of Spring Boot, which then moves to 1.2. The same gate also binds the JUL adapter for plain-JVM `java.util.logging` apps.
 
 **Tomcat** waits for Release 2. JULI gives each webapp its own logger tree, which the multi-context core can already broadcast to, but most webapps on Tomcat log through their own Logback or Log4j 2. Those only become reachable with the Logback work Spring Boot needs.
 
