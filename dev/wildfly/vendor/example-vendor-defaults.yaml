@@ -1,0 +1,46 @@
+# Copyright 2026 David Deuchert
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# A vendor defaults file for trying the feature in the dev environment:
+#
+#   python3 dev/wildfly/wildflyctl.py up --vendor-defaults dev/wildfly/vendor/example-vendor-defaults.yaml
+#
+# The vend.* loggers don't exist until something logs through them; the sample
+# app creates any of them on demand, e.g.
+#   curl "http://localhost:8080/logaperture-sample-war/log?logger=vend.Health&message=ping+ok"
+# Format: doc/specs/vendor-defaults.md.
+schemaVersion: 1
+
+loggers:
+  - name: vend.Quiet
+    level: WARN
+  - name: vend.Chatty
+    level: DEBUG
+
+handlers:
+  - name: CONSOLE
+    level: WARN
+
+rules:
+  - id: ping-noise
+    action: drop
+    logger: vend.Health
+    messageContains: "ping ok"
+    below: WARN
+  - id: connect-trace
+    action: trim
+    logger: vend.Client
+    throwable: java.net.ConnectException
+    below: FATAL
+    frames: 0

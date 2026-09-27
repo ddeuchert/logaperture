@@ -18,6 +18,16 @@
 #   $WILDFLY_IMAGE                  from .env (kept in sync with pom wildfly.image)
 #   ${DEBUG_SUSPEND:-n}            wildflyctl passes 'y' for `up --debug-suspend`
 #   ${LOGAPERTURE_SWEEP_SECONDS:-5} wildflyctl passes `up --sweep-seconds N`
+#   ${LOGAPERTURE_AGENT_ARGS:-}     wildflyctl passes `=--vendor-defaults=...` for
+#                                   `up --vendor-defaults FILE`; empty otherwise
+#   ${LOGAPERTURE_VENDOR_MOUNT_MODE:-ro}
+#                                   `rw` only for `up --vendor-defaults-writable`
+#
+# The vendor defaults file is never mounted from where it lives: wildflyctl
+# copies it into ./vendor/.active (emptied on every `up`) and that directory is
+# mounted, so `:z` only ever relabels a directory this environment owns, and an
+# edit to the original takes effect on the next `up`, the way a restart with an
+# edited file would in production.
 #
 # $$ escapes a literal $ so the container shell — not Compose — expands
 # $JBOSS_HOME and $JAVA_OPTS. The echo content is single-quoted so $JAVA_OPTS is
@@ -60,7 +70,7 @@ services:
         grep -qF -- '-javaagent:/opt/logaperture-agent.jar' "$$JBOSS_HOME/bin/standalone.conf"
         || echo 'JAVA_OPTS="$$JAVA_OPTS
         -agentlib:jdwp=transport=dt_socket,server=y,suspend=${DEBUG_SUSPEND:-n},address=*:8787
-        -javaagent:/opt/logaperture-agent.jar
+        -javaagent:/opt/logaperture-agent.jar${LOGAPERTURE_AGENT_ARGS:-}
         -Dlogaperture.sweep.seconds=${LOGAPERTURE_SWEEP_SECONDS:-5}
         -Dlogaperture.handlerInstallDelaySeconds=${LOGAPERTURE_HANDLER_DELAY_SECONDS:-3}
         -Dlogaperture.home=/opt/jboss/wildfly/standalone/tmp/logaperture"'
@@ -74,6 +84,7 @@ services:
       - ../../logaperture-agent/target/logaperture-agent.jar:/opt/logaperture-agent.jar:ro,z
       - ../../logaperture-cli/target/logaperture-cli.jar:/opt/logctl.jar:ro,z
       - ./deployments:/opt/jboss/wildfly/standalone/deployments:z
+      - ./vendor/.active:/opt/logaperture-vendor:${LOGAPERTURE_VENDOR_MOUNT_MODE:-ro},z
       # Match the container's clock to the host's, not the image default (UTC)
       # -- otherwise a 'logctl' run inside the container (wildflyctl.py's
       # docker exec) prints override-expiry times in the wrong zone, which

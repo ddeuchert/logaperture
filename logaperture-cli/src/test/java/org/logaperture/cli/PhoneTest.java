@@ -47,4 +47,16 @@ class PhoneTest {
             assertTrue(usage.contains(synopsis), "help text is missing synopsis: " + synopsis);
         }
     }
+
+    /** Guards the reverse direction: a command the parser accepts but --help never mentions. */
+    @Test
+    void everyTopLevelCommandHasASynopsis() {
+        for (String command : new String[] {
+                "list", "status", "doctor", "env", "top", "storms", "set", "reset", "add", "alter", "export", "show",
+                "apply"}) {
+            assertTrue(HelpText.SYNOPSES.stream().anyMatch(s -> s.startsWith("logctl " + command + " ")
+                            || s.equals("logctl " + command)),
+                    "no synopsis for top-level command '" + command + "'");
+        }
+    }
 }

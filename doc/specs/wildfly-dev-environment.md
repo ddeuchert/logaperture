@@ -36,6 +36,9 @@ After this feature, a developer with the repo open in VSCode will be able to:
   first instruction, by starting the server with `wildflyctl up --debug-suspend`
   (or the `WildFly: up (debug-suspend)` task) so the JVM waits for the debugger
   before it runs.
+- Start the server with a vendor defaults file
+  (`wildflyctl up --vendor-defaults dev/wildfly/vendor/example-vendor-defaults.yaml`),
+  and try `logctl doctor`'s writable-file warning with `--vendor-defaults-writable`.
 - Tail the server log (`WildFly: tail server.log` / `wildflyctl tail`) and tear
   the environment down (`WildFly: down` / `wildflyctl down`).
 
@@ -105,6 +108,8 @@ One service, `wildfly`:
   - `../../logaperture-cli/target/logaperture-cli.jar` → `/opt/logctl.jar`
     (read-only)
   - `./deployments` → `/opt/jboss/wildfly/standalone/deployments` (read-write)
+  - `./vendor/.active` → `/opt/logaperture-vendor` (read-only, or read-write
+    with `--vendor-defaults-writable`; see "Vendor defaults" below)
 - **Ports:** `8080:8080` (app), `9990:9990` (management), `8787:8787` (JDWP).
 - **Command** — mirrors `WildFlyContainerIT`'s proven shape. The image ignores
   `JAVA_OPTS_APPEND` and setting `JAVA_OPTS` wholesale wipes the image's
@@ -115,7 +120,7 @@ One service, `wildfly`:
   sh -c 'grep -qF -- "-javaagent:/opt/logaperture-agent.jar" "\$JBOSS_HOME/bin/standalone.conf" \
     || echo "JAVA_OPTS=\"\$JAVA_OPTS \
       -agentlib:jdwp=transport=dt_socket,server=y,suspend=${DEBUG_SUSPEND:-n},address=*:8787 \
-      -javaagent:/opt/logaperture-agent.jar \
+      -javaagent:/opt/logaperture-agent.jar${LOGAPERTURE_AGENT_ARGS:-} \
       -Dlogaperture.sweep.seconds=${LOGAPERTURE_SWEEP_SECONDS:-5} \
       -Dlogaperture.home=/opt/jboss/wildfly/standalone/tmp/logaperture\"" \
       >> "\$JBOSS_HOME/bin/standalone.conf" \
@@ -150,8 +155,9 @@ One service, `wildfly`:
 - **`container_name: logaperture-wildfly`** and a fixed `project name` (via
   `wildflyctl` passing `-p logaperture`) so `exec` / `logs` targeting is stable.
 
-`DEBUG_SUSPEND` and `LOGAPERTURE_SWEEP_SECONDS` are passed through by
-`wildflyctl`, not stored in `.env` (which holds only `WILDFLY_IMAGE`).
+`DEBUG_SUSPEND`, `LOGAPERTURE_SWEEP_SECONDS`, `LOGAPERTURE_AGENT_ARGS` and
+`LOGAPERTURE_VENDOR_MOUNT_MODE` are passed through by `wildflyctl`, not stored in
+`.env` (which holds only `WILDFLY_IMAGE`).
 
 ### `wildflyctl.py`
 
@@ -164,14 +170,35 @@ Subcommands:
 
 | Command | Behaviour |
 |---|---|
-| `up [--debug-suspend] [--sweep-seconds N] [--build]` | Verify `logaperture-agent/target/logaperture-agent.jar` and `logaperture-cli/target/logaperture-cli.jar` exist; if missing (or `--build`), run `mvn -q -pl logaperture-agent,logaperture-cli -am package`; otherwise warn if either looks stale (see below). Then `docker compose -p logaperture up -d`, exporting `DEBUG_SUSPEND` / `LOGAPERTURE_SWEEP_SECONDS`. Print the attach hint and, with `--debug-suspend`, that the JVM is paused until the debugger connects. |
+| `up [--debug-suspend] [--sweep-seconds N] [--build] [--vendor-defaults FILE [--vendor-defaults-writable]]` | Verify `logaperture-agent/target/logaperture-agent.jar` and `logaperture-cli/target/logaperture-cli.jar` exist; if missing (or `--build`), run `mvn -q -pl logaperture-agent,logaperture-cli -am package`; otherwise warn if either looks stale (see below). Then `docker compose -p logaperture up -d`, exporting `DEBUG_SUSPEND` / `LOGAPERTURE_SWEEP_SECONDS` and the vendor defaults variables (with `--vendor-defaults`, `up -d --force-recreate`, see "Vendor defaults" below). Print the attach hint and, with `--debug-suspend`, that the JVM is paused until the debugger connects. |
 | `down` | `docker compose -p logaperture down`. |
-| `restart-agent [--build]` | Rebuild the agent jar (default on), then `docker compose -p logaperture up -d --force-recreate wildfly` — a recreate, not a plain `restart`, so `standalone.conf` and `server.log` start fresh (a `restart` re-runs the container command against the same filesystem, re-appending the agent flags). Comes back in normal, non-suspend mode. |
+| `restart-agent [--vendor-defaults FILE [--vendor-defaults-writable]]` | Rebuild the agent jar, then `docker compose -p logaperture up -d --force-recreate wildfly` — a recreate, not a plain `restart`, so `standalone.conf` and `server.log` start fresh (a `restart` re-runs the container command against the same filesystem, re-appending the agent flags). Comes back in normal, non-suspend mode, with a vendor defaults file only if given one again. |
 | `deploy [PATH]` | Copy `PATH` (default: the built `logaperture-sample-war/target/*.war`) into `dev/wildfly/deployments/`; poll for the `<name>.war.deployed` marker via `docker compose exec`; fail on `<name>.war.failed`. On a redeploy of the same archive, first removes it and waits for `.undeployed`, then clears the scanner's stale status markers — otherwise the poll can match the previous deploy's `.deployed` (or a stale `.failed`). Warns if the WAR looks stale (only when `PATH` is omitted — a caller-supplied archive isn't this reactor's to judge). |
 | `undeploy [NAME]` | Remove the archive from `deployments/`; wait for `.undeployed`. Default `NAME` = the sample. |
 | `logctl -- ARG...` | `docker compose -p logaperture exec -T wildfly java -jar /opt/logctl.jar ARG...`. The `--` separates driver args from `logctl` args. |
 | `tail [--lines N]` | Follow `server.log` (`docker compose exec wildfly tail -n N -f …`). |
 | `status` | Container state + `logctl status` + a `WILDFLY_IMAGE` vs pom drift check + an agent/CLI jar staleness check (see below). |
+
+**Vendor defaults.** `--vendor-defaults FILE` starts the agent with a vendor defaults file
+(`doc/specs/vendor-defaults.md`). `wildflyctl` empties `dev/wildfly/vendor/.active/`, copies
+`FILE` into it, and sets `LOGAPERTURE_AGENT_ARGS` to `=--vendor-defaults=/opt/logaperture-vendor/<name>`;
+without the option `.active` stays empty and the variable is blank, so every `up` states the
+vendor file it runs with. Three choices:
+
+- **A copy, not a mount of the file's own directory.** `:z` relabels whatever it mounts, so
+  mounting an arbitrary caller-named directory could relabel something outside the repo. The
+  copy keeps relabelling inside `dev/wildfly/`.
+- **Always recreate.** The agent reads the file only at startup, and an edited file with the
+  same name leaves the compose config unchanged, so a plain `up -d` would keep the running
+  container and the old contents. With `--vendor-defaults`, `up` passes `--force-recreate`.
+- **Read-only unless asked.** A read-only mount means `doctor`'s writable-file check
+  (`vendor-defaults.writable`) stays quiet, as it should for a correctly installed file.
+  `--vendor-defaults-writable` mounts it read-write and makes the copy and directory
+  world-writable, since the container's uid can't be known in advance (the same reason as
+  `ensure_deployments_dir`).
+
+`dev/wildfly/vendor/example-vendor-defaults.yaml` is a tracked starting point; anything else
+in `dev/wildfly/vendor/` is git-ignored.
 
 **Source staleness check.** `up`, `deploy` and `status` warn (non-fatal) when a built jar/WAR
 predates a source change under the module tree(s) that feed it — the newer of the latest
@@ -364,6 +391,8 @@ shorthand.
 ```
 dev/wildfly/deployments/*
 !dev/wildfly/deployments/.gitkeep
+dev/wildfly/vendor/*
+!dev/wildfly/vendor/example-vendor-defaults.yaml
 ```
 
 (`*.war`, `*.jar` are already globally ignored, so the sample's build output and

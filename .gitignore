@@ -31,6 +31,10 @@ dependency-reduced-pom.xml
 dev/wildfly/deployments/*
 !dev/wildfly/deployments/.gitkeep
 
+# --- dev/wildfly: scratch vendor defaults files (and the staged copy in .active/) ---
+dev/wildfly/vendor/*
+!dev/wildfly/vendor/example-vendor-defaults.yaml
+
 # Python bytecode cache (dev/wildfly/wildflyctl.py is plain stdlib scripting)
 __pycache__/
 *.py[cod]

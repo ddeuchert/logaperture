@@ -110,9 +110,9 @@ The container publishes JDWP on **8787**. Two VSCode launch configs:
 
 | Command | |
 |---|---|
-| `up [--debug-suspend] [--sweep-seconds N] [--build]` | start; builds the agent/CLI jars if missing |
+| `up [--debug-suspend] [--sweep-seconds N] [--build] [--vendor-defaults FILE [--vendor-defaults-writable]]` | start; builds the agent/CLI jars if missing |
 | `down` | stop and remove the container |
-| `restart-agent` | rebuild `logaperture-agent`, recreate WildFly (normal mode) to pick it up |
+| `restart-agent [--vendor-defaults FILE [--vendor-defaults-writable]]` | rebuild `logaperture-agent`, recreate WildFly (normal mode) to pick it up |
 | `deploy [PATH]` | deploy a WAR/EAR (default: the sample); waits for `.deployed` |
 | `undeploy [NAME]` | undeploy (default: the sample) |
 | `logctl -- ARG…` | run `logctl` inside the container |
@@ -121,6 +121,26 @@ The container publishes JDWP on **8787**. Two VSCode launch configs:
 
 Deploy your own app with `wildflyctl deploy path/to/app.war`, or just drop an
 archive into `dev/wildfly/deployments/` (git-ignored).
+
+## Vendor defaults
+
+To start the agent with a vendor defaults file
+([`doc/specs/vendor-defaults.md`](../../doc/specs/vendor-defaults.md)):
+
+```sh
+python3 dev/wildfly/wildflyctl.py up --vendor-defaults dev/wildfly/vendor/example-vendor-defaults.yaml
+```
+
+`wildflyctl` copies the file into `dev/wildfly/vendor/.active/`, mounts that
+read-only at `/opt/logaperture-vendor/`, and adds
+`=--vendor-defaults=/opt/logaperture-vendor/<file>` to the `-javaagent` line. It
+recreates the container every time, so an edited file takes effect on the next
+`up`. An `up` (or `restart-agent`) without the option starts with no vendor file.
+Add `--vendor-defaults-writable` to mount the copy writable by the server, which is
+what `logctl doctor`'s writable-file warning looks for.
+
+Other files you put in `dev/wildfly/vendor/` are git-ignored; only the example is
+tracked.
 
 ## WildFly version
 
