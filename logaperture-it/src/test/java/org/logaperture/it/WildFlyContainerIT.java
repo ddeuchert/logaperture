@@ -922,6 +922,9 @@ class WildFlyContainerIT {
     /** Makes every {@link #fireScenario} round's lines unique across the whole shared-container run. */
     private final AtomicInteger dropRounds = new AtomicInteger();
 
+    /** One client for every {@link #fire} call, rather than one per request. */
+    private final HttpClient http = HttpClient.newHttpClient();
+
     /**
      * doc/specs/drop-rule.md "Testing" (cross-process), the epic's scenario restated for drop: an
      * INFO-level matching event is dropped; an ERROR-level one (at the keep-floor), a non-matching
@@ -1197,7 +1200,7 @@ class WildFlyContainerIT {
         URI uri = URI.create("http://" + wildfly.getHost() + ":" + wildfly.getMappedPort(HTTP_PORT)
                 + "/dropprobe/fire?set=" + set + "&tag=" + tag);
         try {
-            HttpResponse<String> response = HttpClient.newHttpClient().send(
+            HttpResponse<String> response = http.send(
                     HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(10)).build(),
                     HttpResponse.BodyHandlers.ofString());
             return response.statusCode() == 200;
