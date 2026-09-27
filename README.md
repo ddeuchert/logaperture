@@ -35,7 +35,7 @@
 **Tested on:**
 
 - **Standalone WildFly** (26.x, JBoss LogManager) — the full command set, end to end in a real server.
-- **Plain `java -jar`** with **Logback** or **`java.util.logging`** — runtime level changes, enforced expiry, and persistence (a `sticky` override survives a real restart), verified cross-process.
+- **Plain `java -jar`** with **Logback** — runtime level changes, enforced expiry, and persistence (a `sticky` override survives a real restart), verified cross-process. A plain JVM that logs through `java.util.logging` alone (no Logback) is not picked up yet.
 
 Working today:
 
