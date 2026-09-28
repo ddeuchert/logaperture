@@ -348,6 +348,9 @@ And while building slice (c):
   lifetime, so leaving out the default would change what the line means.
 - **Changes given without an id** (`alter rule --below WARN`) are kept: the rule is picked, no parts
   are asked, and the command with those changes is printed and confirmed.
+- **A vendor rule switched off until restart** can't be altered (the agent refuses until `reset
+  rule` switches it back on), so it is left out of the pick list, and naming one by id stops with
+  the agent's own message before any question (code-review finding).
 
 ## Testing
 

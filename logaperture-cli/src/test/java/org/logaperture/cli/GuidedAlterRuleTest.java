@@ -248,6 +248,44 @@ class GuidedAlterRuleTest {
         assertTrue(out().contains("No rules are attached; nothing to alter."), out());
     }
 
+    /** The agent refuses to alter a vendor rule switched off until restart: don't offer one. */
+    @Test
+    void alterRule_withoutAnId_leavesOutSwitchedOffVendorRules() {
+        mbean.rules.set(2, switchedOffVendorRule());
+
+        guided(lines("3"), "alter", "rule");
+
+        assertFalse(out().contains("vendor:quiet"), out());
+        assertTrue(out().contains("3 isn't in the list -- choose from 1 to 2."), out());
+    }
+
+    @Test
+    void alterRule_whenEveryRuleIsSwitchedOff_saysSo() {
+        mbean.rules = new ArrayList<>(List.of(switchedOffVendorRule()));
+
+        assertEquals(CliError.OK, guided(lines(), "alter", "rule"));
+
+        assertTrue(out().contains("Every rule is a vendor rule switched off until restart -- 'logctl reset rule <id>' "
+                + "switches one back on first."), out());
+    }
+
+    @Test
+    void alterRule_aSwitchedOffVendorRuleById_isRefusedBeforeAnyQuestion() {
+        mbean.rules.set(2, switchedOffVendorRule());
+
+        assertEquals(CliError.USAGE, guided(lines("1"), "alter", "rule", "vendor:quiet"));
+
+        assertTrue(err().contains("vendor:quiet is switched off until restart -- 'reset rule vendor:quiet' switches "
+                + "it back on first."), err());
+        assertFalse(out().contains("Which?"), out());
+        assertTrue(mbean.alterRuleCalls.isEmpty());
+    }
+
+    private static RuleData switchedOffVendorRule() {
+        return new RuleData("vendor:quiet", "com.acme.perf", "drop", "INFO", "x", false, null, null, false, null, null,
+                null, null, null, 0L, null, null, "vendor-defaults", true, true, 300_000L, false);
+    }
+
     @Test
     void alterRule_anUnknownId_isAnError() {
         assertEquals(CliError.USAGE, guided(lines(), "alter", "rule", "r99"));

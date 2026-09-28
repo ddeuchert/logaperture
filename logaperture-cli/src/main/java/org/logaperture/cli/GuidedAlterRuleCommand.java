@@ -81,10 +81,23 @@ final class GuidedAlterRuleCommand implements Command {
                     out.println("No rules are attached; nothing to alter.");
                     return CliError.OK;
                 }
-                rule = pickRule(prompter, rules);
+                // The agent refuses to alter a vendor rule switched off until restart, so offering one would
+                // only fail after every question has been answered.
+                List<RuleData> alterable = rules.stream().filter(row -> !row.isToNative()).toList();
+                if (alterable.isEmpty()) {
+                    out.println("Every rule is a vendor rule switched off until restart -- 'logctl reset rule <id>' "
+                            + "switches one back on first.");
+                    return CliError.OK;
+                }
+                rule = pickRule(prompter, alterable);
             } else {
                 rule = rules.stream().filter(row -> row.getId().equals(id)).findFirst().orElseThrow(
                         () -> new CliError(CliError.USAGE, "No rule with id '" + id + "' -- see 'logctl list rules'."));
+                if (rule.isToNative()) {
+                    // The agent's own refusal, before any question rather than after the last one.
+                    throw new CliError(CliError.USAGE, id + " is switched off until restart -- 'reset rule " + id
+                            + "' switches it back on first.");
+                }
             }
             Commands.RuleAlteration alteration = given != null ? given : askChanges(prompter, rule);
             if (alteration == null) {
