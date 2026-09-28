@@ -1,8 +1,8 @@
 # Guided `list`, `set`, `reset` and `alter rule` (issue #116)
 
-Status: **signed off 2026-09-27** (#1–#20 agreed; #19 revised at sign-off, see below). Slices (a)
-— guided `list` and `set` — and (b) — guided `reset` — **implemented** (see "Settled during
-implementation").
+Status: **signed off 2026-09-27** (#1–#20 agreed; #19 revised at sign-off, see below);
+**implemented** — all three slices: (a) `list` and `set`, (b) `reset`, (c) `alter rule` (see
+"Settled during implementation").
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §18.15 (guided `add rule`, whose
 G11 named these as follow-ups).
 Builds on: [`guided-add-rule.md`](guided-add-rule.md) (when guided mode starts, picking loggers from
@@ -332,6 +332,22 @@ And while building slice (b):
 - **Rules are reset first.** A logger's reset also removes the rules attached to it, so with a
   logger and one of its rules both picked, the rule's line would otherwise report `nothing to
   reset`. The printed commands follow the same order.
+
+And while building slice (c):
+
+- **Questions.** The rule is picked with `Which rule? (a number; Enter to cancel)`; the parts with
+  the shared `Which? (e.g. 1,3 or 1-2 or all; Enter to cancel)` rather than a separate `Change
+  which?` wording. Each part's question shows its current value in brackets, and Enter keeps it.
+- **Ignore case.** The command line sets a message and its case rule together
+  (`--message-contains` / `--message-contains-ignore-case`), so changing only ignore case prints the
+  message again with the other option. With no message, it says that ignoring case changes nothing.
+- **The reason** can be replaced but not removed: `alter rule` has no `--no-reason`.
+- **A drop rule left with no matcher** is refused and the whole parts list is shown again, with
+  every answer from that round discarded.
+- **A lifetime answer is always printed**, even `for 4h`: without a tier, `alter` keeps the rule's
+  lifetime, so leaving out the default would change what the line means.
+- **Changes given without an id** (`alter rule --below WARN`) are kept: the rule is picked, no parts
+  are asked, and the command with those changes is printed and confirmed.
 
 ## Testing
 

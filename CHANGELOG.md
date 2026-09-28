@@ -102,6 +102,11 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   to go back to the vendor defaults or the application's own configuration, so neither
   `--include-sticky` nor `--to-native` has to be remembered. One `logctl reset …` line per item is
   printed before anything changes (issue #116).
+- **Guided `logctl alter rule`** — on a terminal, `logctl alter rule` alone lists the rules to pick
+  one, and `logctl alter rule r3` with no changes lists the rule's parts with their current values
+  (message, exception, level, sampling or stack frames, lifetime, reason); pick the ones to change,
+  answer only those, and the `alter rule` command naming just those changes is printed before it's
+  applied. `-` removes an optional part; answers that change nothing apply nothing (issue #116).
 
 ### Changed
 

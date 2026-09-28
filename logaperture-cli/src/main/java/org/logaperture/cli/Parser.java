@@ -53,7 +53,7 @@ final class Parser {
 
     /**
      * @param interactive whether a terminal is attached: an incomplete {@code add rule}, {@code list},
-     *                    {@code set} or {@code reset} is then a guided command rather than a usage error
+     *                    {@code set}, {@code reset} or {@code alter rule} is then a guided command rather than a usage error
      *                    (doc/specs/guided-add-rule.md G1, doc/specs/guided-commands.md)
      */
     static Invocation parse(String[] argv, boolean interactive) {
@@ -571,18 +571,11 @@ final class Parser {
                     throw usage("'alter' needs 'rule <id> [changes] [session | for <duration> | sticky]'.");
                 }
                 List<String> ruleRest = rest.subList(1, rest.size());
-                if (ruleRest.isEmpty()) {
-                    throw usage("'alter rule' needs the id of the rule to change -- see 'logctl list rules'.");
-                }
-                TierChoice tier = resolveAlterTier(ruleRest.subList(1, ruleRest.size()));
+                TierChoice tier = ruleRest.isEmpty() ? null : resolveAlterTier(ruleRest.subList(1, ruleRest.size()));
                 boolean anyPart = messageContains != null || noMessageContains || throwableType != null || noThrowable
                         || throwableMessageContains != null || noThrowableMessageContains || anyCause || noAnyCause
                         || belowLevel != null || sampleFullEveryMillis != null || noSampleFull || frames != null
                         || collapseCauses || noCollapseCauses || reason != null;
-                if (!anyPart && tier == null) {
-                    throw usage("'alter rule' needs something to change: a matcher option, --below, an action "
-                            + "option, a tier, or --reason.");
-                }
                 Boolean sampleFullEnabled = noSampleFull ? Boolean.FALSE : sampleFullEveryMillis != null ? Boolean.TRUE
                         : null;
                 Commands.RuleAlteration alteration = new Commands.RuleAlteration(messageContains, messageIgnoreCase,
@@ -591,6 +584,21 @@ final class Parser {
                         belowLevel, sampleFullEnabled, sampleFullEveryMillis, frames,
                         collapseCauses ? Boolean.TRUE : noCollapseCauses ? Boolean.FALSE : null, reason,
                         tier == null ? null : tier.tierName(), tier == null ? 0L : tier.forSeconds());
+                if (ruleRest.isEmpty()) {
+                    if (guided) {
+                        // doc/specs/guided-commands.md #16: pick the rule; changes given here are kept.
+                        yield new GuidedAlterRuleCommand(null, anyPart ? alteration : null);
+                    }
+                    throw usage("'alter rule' needs the id of the rule to change -- see 'logctl list rules'.\n"
+                            + PROMPT_HINT);
+                }
+                if (!anyPart && tier == null) {
+                    if (guided) {
+                        yield new GuidedAlterRuleCommand(ruleRest.get(0), null); // #17
+                    }
+                    throw usage("'alter rule' needs something to change: a matcher option, --below, an action "
+                            + "option, a tier, or --reason.\n" + PROMPT_HINT);
+                }
                 yield Commands.alterRule(ruleRest.get(0), alteration, json);
             }
             default -> throw usage("Unknown command '" + command + "'.");
