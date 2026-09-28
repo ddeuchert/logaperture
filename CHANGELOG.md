@@ -95,6 +95,13 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   from a numbered list that shows each one's current level, and the equivalent one-line command is
   printed before anything changes. Scripts, `--yes` and `--json` never prompt (issue #116;
   `doc/specs/guided-commands.md`).
+- **Guided `logctl reset`** — on a terminal, `logctl reset` alone lists everything currently changed
+  (overridden loggers and handlers, rules, an assigned default-handler membership) to pick from;
+  `reset logger`, `reset handler` or `reset rule` with no name lists only that kind. Picking a
+  sticky item asks once whether to reset it too, and with a vendor defaults file it asks whether
+  to go back to the vendor defaults or the application's own configuration, so neither
+  `--include-sticky` nor `--to-native` has to be remembered. One `logctl reset …` line per item is
+  printed before anything changes (issue #116).
 
 ### Changed
 

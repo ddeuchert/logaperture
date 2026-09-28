@@ -1,7 +1,8 @@
 # Guided `list`, `set`, `reset` and `alter rule` (issue #116)
 
-Status: **signed off 2026-09-27** (#1–#20 agreed; #19 revised at sign-off, see below). Slice (a) —
-guided `list` and `set` — **implemented** (see "Settled during implementation").
+Status: **signed off 2026-09-27** (#1–#20 agreed; #19 revised at sign-off, see below). Slices (a)
+— guided `list` and `set` — and (b) — guided `reset` — **implemented** (see "Settled during
+implementation").
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §18.15 (guided `add rule`, whose
 G11 named these as follow-ups).
 Builds on: [`guided-add-rule.md`](guided-add-rule.md) (when guided mode starts, picking loggers from
@@ -311,6 +312,26 @@ Small points the decisions above left open, settled while building slice (a):
   be members.
 - **Several loggers or handlers:** a blocking-handler warning after `set logger` is printed once
   per handler, however many of the chosen loggers it affects.
+
+And while building slice (b):
+
+- **What counts as changed (#11).** A logger or handler with an active override, or one reset to
+  native (a plain reset undoes that too, so it is listed as `native default, until restart`);
+  every rule (#15); and an explicitly assigned `DEFAULT_HANDLERS` membership, told apart from the
+  automatic pick and the vendor defaults' list by the catalog's members summary. A vendor default
+  with no override on top isn't a change and isn't listed.
+- **The list** shows each item's level and lifetime (`session`, `sticky`, `reverts in 3h 1m`); a
+  vendor rule shows `vendor`, `vendor, altered, …` or `vendor, off until restart`.
+- **Sticky (#13).** One item picked: `This is sticky -- it is kept across restarts. Reset it
+  anyway? [y/N]`; several: `2 of these are sticky … Reset them too?`. Declining the only picks is
+  `Not applied.`. `--include-sticky` given with the guided form answers the question in advance,
+  and `--to-native` does the same for #14 (`reset --to-native` alone is now accepted for this).
+- **Default handlers** are never asked about #14: the members summary can't say whether a vendor
+  list lies under an explicit assignment. `reset default-handler --to-native` stays available as a
+  complete command.
+- **Rules are reset first.** A logger's reset also removes the rules attached to it, so with a
+  logger and one of its rules both picked, the rule's line would otherwise report `nothing to
+  reset`. The printed commands follow the same order.
 
 ## Testing
 

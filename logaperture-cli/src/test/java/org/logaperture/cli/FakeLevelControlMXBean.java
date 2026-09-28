@@ -62,6 +62,8 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     HandlerLevelOverrideData setHandlerLevelResult;
     HandlerLevelOverrideData setHandlerAutoResult;
     RuntimeException throwOnNextCall;
+    /** Every single-target reset, in order: {kind, name, includeSticky, toNative}. */
+    final List<Object[]> resetCalls = new ArrayList<>();
     /** Loggers and handlers whose {@code setLogger}/{@code setHandlerLevel} is refused, as the server refuses one. */
     final java.util.Set<String> refused = new java.util.HashSet<>();
 
@@ -163,9 +165,11 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     @Override
     public ResetOutcomeData resetLogger(String target, boolean includeSticky) {
         resetLevelCalls.add(target);
+        resetCalls.add(new Object[] {"logger", target, includeSticky, false});
         lastToNative = false;
         lastIncludeSticky = includeSticky;
         maybeThrow();
+        refuseIfListed(target);
         if (target.indexOf('*') >= 0) {
             return resetMatching(row -> matchesFilter(target, row.getName()), includeSticky);
         }
@@ -189,6 +193,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     public ResetOutcomeData resetLogger(String target, boolean includeSticky, boolean toNative) {
         ResetOutcomeData outcome = resetLogger(target, includeSticky);
         lastToNative = toNative;
+        resetCalls.get(resetCalls.size() - 1)[3] = toNative;
         return outcome;
     }
 
@@ -260,6 +265,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     @Override
     public HandlerResetOutcomeData resetHandler(String handlerRef, boolean includeSticky) {
         resetHandlerCalls.add(handlerRef);
+        resetCalls.add(new Object[] {"handler", handlerRef, includeSticky, false});
         lastToNative = false;
         lastIncludeSticky = includeSticky;
         maybeThrow();
@@ -272,6 +278,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     public HandlerResetOutcomeData resetHandler(String handlerRef, boolean includeSticky, boolean toNative) {
         HandlerResetOutcomeData outcome = resetHandler(handlerRef, includeSticky);
         lastToNative = toNative;
+        resetCalls.get(resetCalls.size() - 1)[3] = toNative;
         return outcome;
     }
 
@@ -377,6 +384,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     @Override
     public RuleData resetRule(String id, boolean includeSticky) {
         resetRuleCalls.add(new Object[] {id, includeSticky});
+        resetCalls.add(new Object[] {"rule", id, includeSticky, false});
         maybeThrow();
         return resetRuleResult;
     }
@@ -398,8 +406,10 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
 
     @Override
     public RuleData resetRule(String id, boolean includeSticky, boolean toNative) {
+        RuleData result = resetRule(id, includeSticky);
         lastToNative = toNative;
-        return resetRule(id, includeSticky);
+        resetCalls.get(resetCalls.size() - 1)[3] = toNative;
+        return result;
     }
 
     @Override

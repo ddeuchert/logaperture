@@ -148,13 +148,22 @@ final class Picker {
         for (int i = 0; i < rows.size(); i++) {
             out.println(INDENT + String.format("%" + width + "d", i + 1) + "  " + rows.get(i));
         }
+        return askSelection(prompter, rows.size());
+    }
+
+    /**
+     * Asks which of {@code count} already-printed, numbered rows; the chosen 1-based positions, or
+     * {@code null} if the operator cancelled. An invalid answer is explained and asked again.
+     */
+    static List<Integer> askSelection(Prompter prompter, int count) {
+        PrintStream out = prompter.out();
         while (true) {
             String answer = prompter.ask("", "Which? (e.g. 1,3 or 1-2 or all; Enter to cancel)");
             if (answer.isEmpty()) {
                 return null;
             }
             try {
-                return parseSelection(answer, rows.size());
+                return parseSelection(answer, count);
             } catch (IllegalArgumentException invalid) {
                 out.println(invalid.getMessage());
             }

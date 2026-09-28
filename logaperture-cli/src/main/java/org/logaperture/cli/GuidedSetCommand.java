@@ -113,7 +113,7 @@ final class GuidedSetCommand implements Command {
                     ? Commands.setHandlerAuto(ref, chosenReason, tier.tierName(), tier.forSeconds(), false)
                     : Commands.setHandlerLevel(ref, level, chosenReason, tier.tierName(), tier.forSeconds(), false));
         }
-        return runEach(mbean, out, err, in, interactive, refs, commands);
+        return Commands.runEach(mbean, out, err, in, interactive, refs, commands);
     }
 
     static String handlerCommandLine(String ref, String level, Parser.TierChoice tier, String reason) {
@@ -127,34 +127,6 @@ final class GuidedSetCommand implements Command {
             line.append(" --reason ").append(RuleExpression.quote(reason));
         }
         return line.toString();
-    }
-
-    /**
-     * Runs each handler's command in turn. With several, a refused one doesn't stop the others: refusals
-     * are printed after the successes and the exit code is the first failure's (guided-add-rule.md G10).
-     */
-    private static int runEach(LevelControlMXBean mbean, PrintStream out, PrintStream err, InputStream in,
-            boolean interactive, List<String> refs, List<Command> commands) {
-        if (commands.size() == 1) {
-            return commands.get(0).run(mbean, out, err, in, interactive);
-        }
-        List<String> refusals = new ArrayList<>();
-        int exitCode = CliError.OK;
-        for (int i = 0; i < commands.size(); i++) {
-            try {
-                commands.get(i).run(mbean, out, err, in, interactive);
-            } catch (RuntimeException e) {
-                Main.Failure failure = Main.failureOf(e);
-                refusals.add(refs.get(i) + ": " + failure.message());
-                if (exitCode == CliError.OK) {
-                    exitCode = failure.exitCode();
-                }
-            }
-        }
-        for (String refusal : refusals) {
-            err.println(refusal);
-        }
-        return exitCode;
     }
 
     // --- set default-handler (#9) ---------------------------------------------------------------

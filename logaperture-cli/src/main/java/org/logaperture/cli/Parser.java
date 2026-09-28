@@ -52,8 +52,8 @@ final class Parser {
     }
 
     /**
-     * @param interactive whether a terminal is attached: an incomplete {@code add rule}, {@code list} or
-     *                    {@code set} is then a guided command rather than a usage error
+     * @param interactive whether a terminal is attached: an incomplete {@code add rule}, {@code list},
+     *                    {@code set} or {@code reset} is then a guided command rather than a usage error
      *                    (doc/specs/guided-add-rule.md G1, doc/specs/guided-commands.md)
      */
     static Invocation parse(String[] argv, boolean interactive) {
@@ -271,8 +271,8 @@ final class Parser {
         if (reason != null && !isSetLogger && !isSetHandler && !isAddRule && !isAlterRule) {
             throw usage("--reason applies only to 'set logger', 'set handler', 'add rule', or 'alter rule'.");
         }
-        if (toNative && !(command.equals("reset") && !rest.isEmpty() && List.of("logger", "loggers", "handler",
-                "handlers", "default-handler", "rule", "rules").contains(rest.get(0)))) {
+        if (toNative && !(command.equals("reset") && (rest.isEmpty() || List.of("logger", "loggers", "handler",
+                "handlers", "default-handler", "rule", "rules").contains(rest.get(0))))) {
             throw usage("--to-native applies only to 'reset logger', 'reset loggers', 'reset handler', "
                     + "'reset handlers', 'reset default-handler', 'reset rule' and 'reset rules'.");
         }
@@ -409,15 +409,21 @@ final class Parser {
             }
             case "reset" -> {
                 if (rest.isEmpty()) {
+                    if (guided) {
+                        yield new GuidedResetCommand(null, includeSticky, toNative);
+                    }
                     throw usage("'reset' needs 'logger <target>', 'loggers', 'handler <name>', 'handlers', "
-                            + "'rule <id>', or 'rules'.");
+                            + "'rule <id>', or 'rules'.\n" + PROMPT_HINT);
                 }
                 String noun = rest.get(0);
                 List<String> nounRest = rest.subList(1, rest.size());
                 yield switch (noun) {
                     case "logger" -> {
+                        if (nounRest.isEmpty() && guided) {
+                            yield new GuidedResetCommand(GuidedResetCommand.LOGGER, includeSticky, toNative);
+                        }
                         if (nounRest.size() != 1) {
-                            throw usage("'reset logger' needs exactly one target.");
+                            throw usage("'reset logger' needs exactly one target." + (nounRest.isEmpty() ? "\n" + PROMPT_HINT : ""));
                         }
                         yield Commands.resetLogger(nounRest.get(0), includeSticky, toNative, json);
                     }
@@ -428,8 +434,11 @@ final class Parser {
                         yield Commands.resetAllLoggers(includeSticky, toNative, json);
                     }
                     case "handler" -> {
+                        if (nounRest.isEmpty() && guided) {
+                            yield new GuidedResetCommand(GuidedResetCommand.HANDLER, includeSticky, toNative);
+                        }
                         if (nounRest.size() != 1) {
-                            throw usage("'reset handler' needs exactly one handler name.");
+                            throw usage("'reset handler' needs exactly one handler name." + (nounRest.isEmpty() ? "\n" + PROMPT_HINT : ""));
                         }
                         yield Commands.resetHandler(nounRest.get(0), includeSticky, toNative, json);
                     }
@@ -440,8 +449,11 @@ final class Parser {
                         yield Commands.resetAllHandlers(includeSticky, toNative, json);
                     }
                     case "rule" -> {
+                        if (nounRest.isEmpty() && guided) {
+                            yield new GuidedResetCommand(GuidedResetCommand.RULE, includeSticky, toNative);
+                        }
                         if (nounRest.size() != 1) {
-                            throw usage("'reset rule' needs exactly one id.");
+                            throw usage("'reset rule' needs exactly one id." + (nounRest.isEmpty() ? "\n" + PROMPT_HINT : ""));
                         }
                         yield Commands.resetRule(nounRest.get(0), includeSticky, toNative, json);
                     }

@@ -97,10 +97,11 @@ final class HelpText {
         sb.append("  -h, --help           this help\n");
         sb.append("\n");
         sb.append("A <duration> is <n>s, <n>m, <n>h or <n>d, for example: for 30m.\n");
-        sb.append("On a terminal, 'list', 'set' and 'add rule' ask for anything left out --\n");
-        sb.append("'logctl set' or 'logctl add rule' alone walks through every part, starting\n");
-        sb.append("from a logger name such as Deployer, and shows the full command before\n");
-        sb.append("applying it.\n");
+        sb.append("On a terminal, 'list', 'set', 'reset' and 'add rule' ask for anything left\n");
+        sb.append("out -- 'logctl set' or 'logctl add rule' alone walks through every part,\n");
+        sb.append("starting from a logger name such as Deployer; 'logctl reset' alone lists\n");
+        sb.append("everything currently changed to pick from. Each shows the full command\n");
+        sb.append("before applying it.\n");
         sb.append("A bare 'set logger'/'set handler' with no tier defaults to 'for 4h' — a\n");
         sb.append("working session, gone by morning.\n");
         sb.append("\n");

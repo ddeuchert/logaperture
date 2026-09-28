@@ -1016,6 +1016,39 @@ final class Commands {
     }
 
     /**
+     * Runs one command per chosen item, in turn -- the guided commands' apply step (doc/specs/
+     * guided-commands.md #1). With several, a refused one doesn't stop the others: refusals are printed
+     * after the successes and the exit code is the first failure's (guided-add-rule.md G10). With one, a
+     * failure is the command's, reported by {@code Main}.
+     *
+     * @param names each command's item, naming it in its refusal line
+     */
+    static int runEach(org.logaperture.control.jmx.LevelControlMXBean mbean, java.io.PrintStream out,
+            java.io.PrintStream err, java.io.InputStream in, boolean interactive, List<String> names,
+            List<Command> commands) {
+        if (commands.size() == 1) {
+            return commands.get(0).run(mbean, out, err, in, interactive);
+        }
+        List<String> refusals = new ArrayList<>();
+        int exitCode = CliError.OK;
+        for (int i = 0; i < commands.size(); i++) {
+            try {
+                commands.get(i).run(mbean, out, err, in, interactive);
+            } catch (RuntimeException e) {
+                Main.Failure failure = Main.failureOf(e);
+                refusals.add(names.get(i) + ": " + failure.message());
+                if (exitCode == CliError.OK) {
+                    exitCode = failure.exitCode();
+                }
+            }
+        }
+        for (String refusal : refusals) {
+            err.println(refusal);
+        }
+        return exitCode;
+    }
+
+    /**
      * {@code logctl add rule} -- doc/specs/drop-rule.md and doc/specs/trim-rule.md "Command surface",
      * with the pattern targets and guided questions of doc/specs/guided-add-rule.md.
      */
