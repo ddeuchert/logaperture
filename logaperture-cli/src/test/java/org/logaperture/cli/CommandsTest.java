@@ -676,29 +676,80 @@ class CommandsTest {
         assertTrue(output().contains("org.apache.Worker → DEBUG"), output());
     }
 
+    /** doc/specs/guided-commands.md #10: on a terminal, a pattern's matches are listed to pick from. */
     @Test
-    void setLevel_pattern_interactiveTypedY_previewsThenApplies() {
-        mbean.loggers = List.of(new LoggerInfoData("org.apache.Worker", "INFO", "INFO", false, null, null, null, null));
-        mbean.setLevelResult = setLevelResult(new LevelOverrideData(
-                "org.apache.Worker", "DEBUG", null, Instant.now().toString(), "jmx", "SESSION", null),
-                List.of());
+    void setLevel_pattern_interactive_picksFromTheMatchesThenAppliesToThoseOnly() {
+        mbean.loggers = List.of(
+                new LoggerInfoData("org.apache.Worker", "INFO", "INFO", false, null, null, null, null),
+                new LoggerInfoData("org.acme.Worker", "WARN", "WARN", true, "jmx", null, "SESSION", null));
 
-        int exit = run(Commands.setLogger("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "y", true);
+        int exit = run(Commands.setLogger("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "2", true);
 
         assertEquals(CliError.OK, exit);
         String text = output();
-        assertTrue(text.contains("This will set DEBUG on 1 currently-known logger"), text);
-        assertTrue(text.contains("org.apache.Worker"), "the preview lists the current match: " + text);
-        assertTrue(text.contains("not affected"), "reworded to drop the standing-rule framing: " + text);
-        assertTrue(mbean.setLevelCalls.get(0)[5].equals(true), "a typed 'y' confirms exactly like --yes");
+        assertTrue(text.contains("2 loggers match '*.Worker':"), text);
+        assertTrue(text.contains("  1  org.acme.Worker   (WARN, override)\n  2  org.apache.Worker (INFO, native)\n"),
+                text);
+        assertEquals(1, mbean.setLevelCalls.size());
+        assertArrayEquals(new Object[] {"org.apache.Worker", "DEBUG", null, "SESSION", 0L, true},
+                mbean.setLevelCalls.get(0), "the chosen exact name, already confirmed");
+        assertTrue(text.contains("org.apache.Worker → DEBUG"), text);
     }
 
     @Test
-    void setLevel_pattern_interactiveTypedN_declinesWithoutCallingSetLevel() {
-        int exit = run(Commands.setLogger("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "n", true);
+    void setLevel_pattern_interactive_oneMatchIsShownAndApplied() {
+        mbean.loggers = List.of(new LoggerInfoData("org.apache.Worker", "INFO", "INFO", false, null, null, null, null));
+
+        int exit = run(Commands.setLogger("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "", true);
 
         assertEquals(CliError.OK, exit);
-        assertTrue(mbean.setLevelCalls.isEmpty(), "declining must never reach the server");
+        assertTrue(output().contains("1 logger matches '*.Worker': org.apache.Worker (INFO, native)"), output());
+        assertEquals("org.apache.Worker", mbean.setLevelCalls.get(0)[0]);
+    }
+
+    @Test
+    void setLevel_pattern_interactive_enterAtThePickListAppliesNothing() {
+        mbean.loggers = List.of(
+                new LoggerInfoData("org.apache.Worker", "INFO", "INFO", false, null, null, null, null),
+                new LoggerInfoData("org.acme.Worker", "INFO", "INFO", false, null, null, null, null));
+
+        int exit = run(Commands.setLogger("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "", true);
+
+        assertEquals(CliError.OK, exit);
+        assertTrue(mbean.setLevelCalls.isEmpty(), "cancelling must never reach the server");
+        assertTrue(output().contains("Not applied."), output());
+    }
+
+    /** #10: more matches than the pick list shows keeps the all-or-nothing preview. */
+    @Test
+    void setLevel_pattern_interactive_tooManyToList_previewsAndConfirmsAllOrNothing() {
+        List<LoggerInfoData> many = new ArrayList<>();
+        for (int i = 0; i <= Picker.MAX_LISTED; i++) {
+            many.add(new LoggerInfoData("com.acme.w" + i + ".Worker", "INFO", "INFO", false, null, null, null, null));
+        }
+        mbean.loggers = many;
+
+        run(Commands.setLogger("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "y", true);
+
+        String text = output();
+        assertTrue(text.contains("This will set DEBUG on 31 currently-known loggers matching '*.Worker':"), text);
+        assertTrue(text.contains("not affected"), text);
+        assertTrue(text.contains("Apply? [y/N]"), text);
+        assertArrayEquals(new Object[] {"*.Worker", "DEBUG", null, "SESSION", 0L, true}, mbean.setLevelCalls.get(0),
+                "a typed 'y' applies the pattern itself, confirmed");
+    }
+
+    @Test
+    void setLevel_pattern_interactive_tooManyToList_declinedAppliesNothing() {
+        List<LoggerInfoData> many = new ArrayList<>();
+        for (int i = 0; i <= Picker.MAX_LISTED; i++) {
+            many.add(new LoggerInfoData("com.acme.w" + i + ".Worker", "INFO", "INFO", false, null, null, null, null));
+        }
+        mbean.loggers = many;
+
+        run(Commands.setLogger("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "", true);
+
+        assertTrue(mbean.setLevelCalls.isEmpty());
         assertTrue(output().contains("Not applied."), output());
     }
 

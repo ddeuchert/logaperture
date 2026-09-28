@@ -1,6 +1,7 @@
 # Guided `list`, `set`, `reset` and `alter rule` (issue #116)
 
-Status: **signed off 2026-09-27** (#1–#20 agreed; #19 revised at sign-off, see below).
+Status: **signed off 2026-09-27** (#1–#20 agreed; #19 revised at sign-off, see below). Slice (a) —
+guided `list` and `set` — **implemented** (see "Settled during implementation").
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §18.15 (guided `add rule`, whose
 G11 named these as follow-ups).
 Builds on: [`guided-add-rule.md`](guided-add-rule.md) (when guided mode starts, picking loggers from
@@ -68,7 +69,7 @@ does. With several items, a refused one doesn't stop the others and the exit cod
 failure's (G10).
 
 **#2 — Guided `list` prints its command but doesn't ask to confirm.** It changes nothing, so the
-command is printed as a one-line hint (`Command: logctl list loggers '*.Deployer' --show-all`)
+command is printed as a one-line hint (`Command: logctl list loggers "*.Deployer" --show-all`)
 and the listing follows straight away.
 
 **#3 — Handlers and rules are picked from numbered lists too.** Same answer format as loggers
@@ -85,7 +86,7 @@ List loggers, handlers or rules? [loggers/handlers/rules]
 > l
 Logger name or pattern, e.g. Deployer or org.jboss (Enter for every overridden logger)
 > Deployer
-Command: logctl list loggers '*.Deployer' --show-all
+Command: logctl list loggers "*.Deployer" --show-all
 LOGGER                                     LEVEL  ...
 ```
 
@@ -269,9 +270,9 @@ No new §18 roadmap entry: this is the follow-up §18.15 already anticipated.
   `listLoggers(filter)` (current levels and sources), `listHandlers()`,
   `listHandlerOverrides()`, `listRules()` (every rule field, `isAltered()`, `getOrigin()`), and
   the default-handler membership from `listHandlers()` (`DEFAULT_HANDLERS`' `getMembersSummary()`).
-  One thing still to check: whether that row shows an *explicitly assigned* membership apart from
-  the automatic pick, which #11 needs in order to list it as "changed". If it doesn't, the
-  default-handlers group is left out of #11 rather than adding an MXBean field.
+  That row's summary already tells an explicitly assigned membership (plain names) from the
+  automatic pick (`(auto: …)`) and the vendor defaults' list (`(vendor: …)`), which is what #11
+  needs to list it as "changed".
 - The logger picker, the numbered-selection parser (`1,3-5`, `all`) and the printed-command
   quoting in `AddRuleCommand` move to a shared place used by all five guided commands;
   `AddRuleCommand` keeps its behavior.
@@ -284,6 +285,32 @@ No new §18 roadmap entry: this is the follow-up §18.15 already anticipated.
 - The printed commands are fed back through `Parser` in tests (round trip), as for `add rule`.
 - `HelpText`: the note `On a terminal, 'add rule' asks for anything left out` becomes a general one
   covering all five.
+
+## Settled during implementation
+
+Small points the decisions above left open, settled while building slice (a):
+
+- **A short name on the command line.** `set logger Deployer` with no level looks up `*.Deployer`,
+  as the #7 sample shows, because an incomplete command has no meaning of its own to keep. That is
+  wider than guided `add rule`'s G4, where only a typed answer gets the shorthand; `add rule` is
+  unchanged.
+- **One match (#10).** A complete `set logger '<pattern>' <level>` on a terminal whose pattern
+  matches exactly one logger shows the match and applies it without a question, as `add rule`'s
+  pick list does (G5). Before, it asked `Apply? [y/N]` even for one match. No match asks for
+  another pattern, also as `add rule` does.
+- **Printed commands quote with double quotes**, like guided `add rule` and `list rules --verbose`
+  (`"*.Deployer"`), including the `Command:` hint `list` prints.
+- **`list`** ends quietly on Ctrl-D (there is nothing to "not apply"). `--show-all` given with a
+  bare `list` is kept for loggers and handlers; answering `rules` with it is `list rules`'s own
+  usage error.
+- **`set handler`** always shows the numbered list, even with one real handler, since the
+  catalog always includes `ALL_HANDLERS` and `DEFAULT_HANDLERS`. A handler present in several
+  logging contexts is listed once. A framework whose handlers have no level (Logback) says so and
+  asks nothing.
+- **`set default-handler`** lists only real handlers: `ALL_HANDLERS` and `DEFAULT_HANDLERS` can't
+  be members.
+- **Several loggers or handlers:** a blocking-handler warning after `set logger` is printed once
+  per handler, however many of the chosen loggers it affects.
 
 ## Testing
 

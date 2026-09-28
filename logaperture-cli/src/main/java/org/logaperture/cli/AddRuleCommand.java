@@ -18,16 +18,13 @@ package org.logaperture.cli;
 import org.logaperture.api.Level;
 import org.logaperture.api.SampleFullPolicy;
 import org.logaperture.control.jmx.LevelControlMXBean;
-import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.RuleData;
 
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.StringJoiner;
-import java.util.TreeSet;
 
 /**
  * {@code logctl add rule}: a complete command attaches straight away; a leading-star target is
@@ -38,11 +35,7 @@ import java.util.TreeSet;
  */
 final class AddRuleCommand implements Command {
 
-    /** G5: more matches than this are not listed; the operator is asked for a narrower pattern. */
-    static final int MAX_LISTED = 30;
-
     private static final String DEFAULT_BELOW = Parser.parseBelowLevel("ERROR");
-    private static final Parser.TierChoice DEFAULT_TIER = Parser.resolveTier(List.of());
     private static final long DEFAULT_SAMPLE_FULL_MILLIS = SampleFullPolicy.DEFAULT_INTERVAL.toMillis();
     private static final String INDENT = "  ";
 
@@ -77,18 +70,18 @@ final class AddRuleCommand implements Command {
         }
         List<String> names;
         if (request.yes()) {
-            names = matchingNames(mbean, target);
+            names = Picker.matchingNames(mbean, target);
         } else if (!interactive || request.json()) {
             // As 'set logger' (pattern-selection-semantics.md Decision #4): fail fast rather than block
             // on a stdin nothing will write to.
-            int count = matchingNames(mbean, target).size();
+            int count = Picker.matchingNames(mbean, target).size();
             throw new CliError(CliError.USAGE, count == 0
                     ? "'" + target + "' matches no currently-known logger."
                     : "'" + target + "' matches " + count + " currently-known logger" + (count == 1 ? "" : "s")
                             + ". Pass --yes to add this rule to all of them (this affects only loggers that exist "
                             + "right now).");
         } else {
-            names = pickLoggers(mbean, prompter, target);
+            names = Picker.loggers(mbean, prompter, target, "attach anyway?", null);
             if (names == null) {
                 throw new Prompter.Cancelled();
             }
@@ -106,7 +99,7 @@ final class AddRuleCommand implements Command {
 
     private int runGuided(LevelControlMXBean mbean, Prompter prompter, PrintStream err) {
         PrintStream out = prompter.out();
-        List<String> names = pickLoggers(mbean, prompter, request.target());
+        List<String> names = Picker.loggers(mbean, prompter, request.target(), "attach anyway?", null);
         if (names == null) {
             throw new Prompter.Cancelled();
         }
@@ -125,165 +118,11 @@ final class AddRuleCommand implements Command {
         return apply(mbean, out, err, answered, names);
     }
 
-    // --- picking loggers (G4, G5) -------------------------------------------------------------
-
-    /**
-     * The exact logger names the rule goes on, or {@code null} if the operator cancelled. {@code
-     * target} is the command line's (kept as given) or {@code null}, in which case it is asked for --
-     * and an answer typed here gets the {@code *.<answer>} shorthand (G4).
-     */
-    private static List<String> pickLoggers(LevelControlMXBean mbean, Prompter prompter, String target) {
-        PrintStream out = prompter.out();
-        String current = target;
-        // Whether current was typed at the prompt: an invalid one is explained and asked again, while
-        // an invalid command-line target stays the usage error it is today.
-        boolean typed = false;
-        while (true) {
-            if (current == null) {
-                String answer = prompter.ask("", "Which logger? A name or pattern, e.g. Deployer or "
-                        + "*.deployment.* (Enter to cancel)");
-                if (answer.isEmpty()) {
-                    return null;
-                }
-                current = answer.indexOf('*') < 0 && answer.indexOf('.') < 0 ? "*." + answer : answer;
-                typed = true;
-            }
-            if (current.endsWith(".*")) {
-                out.println("A trailing '.*' isn't needed -- a bare name already reaches every descendant.");
-                current = null;
-                continue;
-            }
-            boolean exists;
-            List<String> matches;
-            try {
-                exists = !Commands.isPattern(current) && loggerExists(mbean, current);
-                matches = Commands.isPattern(current) ? matchingNames(mbean, current) : List.of();
-            } catch (IllegalArgumentException invalid) {
-                if (!typed) {
-                    throw invalid;
-                }
-                out.println(Main.failureOf(invalid).message());
-                current = null;
-                continue;
-            }
-            if (!Commands.isPattern(current)) {
-                if (exists || prompter.askYesNo("", "No logger named " + current
-                        + " exists yet; attach anyway?", false)) {
-                    return List.of(current);
-                }
-                current = null;
-                continue;
-            }
-            if (matches.isEmpty()) {
-                out.println("No logger matches '" + current + "'.");
-                current = null;
-                continue;
-            }
-            if (matches.size() == 1) {
-                out.println("1 logger matches '" + current + "': " + matches.get(0));
-                return matches;
-            }
-            if (matches.size() > MAX_LISTED) {
-                out.println(matches.size() + " loggers match '" + current + "' -- too many to list. Try a "
-                        + "narrower pattern.");
-                current = null;
-                continue;
-            }
-            out.println(matches.size() + " loggers match '" + current + "':");
-            int width = Integer.toString(matches.size()).length();
-            for (int i = 0; i < matches.size(); i++) {
-                out.println(INDENT + String.format("%" + width + "d", i + 1) + "  " + matches.get(i));
-            }
-            while (true) {
-                String answer = prompter.ask("", "Which? (e.g. 1,3 or 1-2 or all; Enter to cancel)");
-                if (answer.isEmpty()) {
-                    return null;
-                }
-                try {
-                    List<String> chosen = new ArrayList<>();
-                    for (int index : parseSelection(answer, matches.size())) {
-                        chosen.add(matches.get(index - 1));
-                    }
-                    return chosen;
-                } catch (IllegalArgumentException invalid) {
-                    out.println(invalid.getMessage());
-                }
-            }
-        }
-    }
-
-    /** {@code 1,3-5}, or {@code all}: the chosen 1-based positions, ascending, each once. */
-    static List<Integer> parseSelection(String answer, int count) {
-        if (answer.equalsIgnoreCase("all")) {
-            List<Integer> all = new ArrayList<>();
-            for (int i = 1; i <= count; i++) {
-                all.add(i);
-            }
-            return all;
-        }
-        TreeSet<Integer> chosen = new TreeSet<>();
-        for (String part : answer.split(",")) {
-            String token = part.trim();
-            int dash = token.indexOf('-');
-            int from = number(dash < 0 ? token : token.substring(0, dash), count, answer);
-            int to = dash < 0 ? from : number(token.substring(dash + 1), count, answer);
-            if (to < from) {
-                throw new IllegalArgumentException("'" + token + "' is a backwards range -- write it low-high.");
-            }
-            for (int i = from; i <= to; i++) {
-                chosen.add(i);
-            }
-        }
-        return new ArrayList<>(chosen);
-    }
-
-    private static int number(String token, int count, String answer) {
-        int n;
-        try {
-            n = Integer.parseInt(token.trim());
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("'" + answer + "' isn't a selection -- answer with numbers from the "
-                    + "list, e.g. 1,3 or 1-2, or all.");
-        }
-        if (n < 1 || n > count) {
-            throw new IllegalArgumentException(n + " isn't in the list -- choose from 1 to " + count + ".");
-        }
-        return n;
-    }
-
-    private static List<String> matchingNames(LevelControlMXBean mbean, String pattern) {
-        TreeSet<String> names = new TreeSet<>();
-        for (LoggerInfoData logger : mbean.listLoggers(pattern)) {
-            names.add(logger.getName());
-        }
-        return new ArrayList<>(names);
-    }
-
-    private static boolean loggerExists(LevelControlMXBean mbean, String name) {
-        for (LoggerInfoData logger : mbean.listLoggers(name)) {
-            if (logger.getName().equals(name)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     // --- the remaining questions (G6) ---------------------------------------------------------
 
     private static String askAction(Prompter prompter) {
         prompter.out().println();
-        while (true) {
-            String answer = prompter.ask("", "Drop or trim? [drop/trim]").toLowerCase(Locale.ROOT);
-            switch (answer) {
-                case "drop", "d" -> {
-                    return AddRuleRequest.DROP;
-                }
-                case "trim", "t" -> {
-                    return AddRuleRequest.TRIM;
-                }
-                default -> prompter.out().println("Answer drop or trim.");
-            }
-        }
+        return Questions.askChoice(prompter, "Drop or trim?", List.of(AddRuleRequest.DROP, AddRuleRequest.TRIM));
     }
 
     private static AddRuleRequest askMatchers(Prompter prompter, AddRuleRequest given) {
@@ -303,14 +142,14 @@ final class AddRuleCommand implements Command {
                 out.println("What should the rule match? Leave a question empty to skip it.");
             }
             if (askMessage) {
-                message = emptyToNull(prompter.ask(INDENT, "Message contains"));
+                message = Questions.emptyToNull(prompter.ask(INDENT, "Message contains"));
                 ignoreCase = message != null && prompter.askYesNo(INDENT, "Ignore case?", false);
             }
             if (askThrowable) {
-                throwable = emptyToNull(prompter.ask(INDENT, "Exception class (fully qualified)"));
+                throwable = Questions.emptyToNull(prompter.ask(INDENT, "Exception class (fully qualified)"));
             }
             if (askThrowableMessage) {
-                throwableMessage = emptyToNull(prompter.ask(INDENT, "Exception message contains"));
+                throwableMessage = Questions.emptyToNull(prompter.ask(INDENT, "Exception message contains"));
             }
             if (!anyCause && (throwable != null || throwableMessage != null)) {
                 anyCause = prompter.askYesNo(INDENT, "Also look for the exception anywhere in the cause chain?",
@@ -376,37 +215,15 @@ final class AddRuleCommand implements Command {
             }
         }
 
-        Parser.TierChoice tier = given.tier();
-        while (tier == null) {
-            String answer = prompter.ask("", "How long should the rule last? session, for <duration> "
-                    + "(e.g. for 30m), or sticky [for 4h]");
-            try {
-                tier = answer.isEmpty() ? DEFAULT_TIER : parseTierAnswer(answer);
-            } catch (CliError invalid) {
-                out.println(invalid.getMessage());
-            }
-        }
+        Parser.TierChoice tier = given.tier() != null ? given.tier()
+                : Questions.askTier(prompter, "How long should the rule last?");
 
         String reason = given.reason();
         if (reason == null) {
-            reason = emptyToNull(prompter.ask("", "Reason (optional)"));
+            reason = Questions.emptyToNull(prompter.ask("", "Reason (optional)"));
         }
         return given.withOptions(below, sampleFullEnabled, sampleFullEveryMillis, frames, collapseCauses, tier,
                 reason);
-    }
-
-    /** The tier question also takes a bare duration ({@code 30m}) as {@code for 30m}. */
-    private static Parser.TierChoice parseTierAnswer(String answer) {
-        List<String> tokens = List.of(answer.split("\\s+"));
-        if (tokens.size() == 1 && !tokens.get(0).equals("session") && !tokens.get(0).equals("sticky")
-                && !tokens.get(0).equals("for")) {
-            return new Parser.TierChoice("FOR", Durations.parse(tokens.get(0)).toSeconds());
-        }
-        return Parser.resolveTier(tokens);
-    }
-
-    private static String emptyToNull(String answer) {
-        return answer.isEmpty() ? null : answer;
     }
 
     // --- the command and applying it (G7, G10) ------------------------------------------------
@@ -450,15 +267,9 @@ final class AddRuleCommand implements Command {
                 line.add("--collapse-causes");
             }
         }
-        Parser.TierChoice tier = effectiveTier(rule);
-        switch (tier.tierName()) {
-            case "SESSION" -> line.add("session");
-            case "STICKY" -> line.add("sticky");
-            default -> {
-                if (!tier.equals(DEFAULT_TIER)) {
-                    line.add("for").add(org.logaperture.api.RuleExpression.duration(tier.forSeconds() * 1000));
-                }
-            }
+        String tierWords = Questions.tierWords(effectiveTier(rule));
+        if (!tierWords.isEmpty()) {
+            line.add(tierWords);
         }
         if (rule.reason() != null) {
             line.add("--reason").add(org.logaperture.api.RuleExpression.quote(rule.reason()));
@@ -551,6 +362,6 @@ final class AddRuleCommand implements Command {
     }
 
     private static Parser.TierChoice effectiveTier(AddRuleRequest rule) {
-        return rule.tier() != null ? rule.tier() : DEFAULT_TIER;
+        return rule.tier() != null ? rule.tier() : Questions.DEFAULT_TIER;
     }
 }

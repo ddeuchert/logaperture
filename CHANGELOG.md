@@ -88,6 +88,20 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 - **Pattern targets for `add rule drop|trim`** — `add rule trim '*.Deployer' …` picks from the
   matching loggers on a terminal, or adds one rule to each with `--yes`; `--json` then prints an
   array (issue #104).
+- **Guided `logctl list` and `logctl set`** — on a terminal, `logctl list` alone asks whether to
+  list loggers, handlers or rules; for loggers, typing a name such as `Deployer` finds every
+  matching logger, not only overridden ones. `logctl set` alone, `set logger Deployer`, `set
+  handler` and `set default-handler` ask for whatever is missing. Loggers and handlers are picked
+  from a numbered list that shows each one's current level, and the equivalent one-line command is
+  printed before anything changes. Scripts, `--yes` and `--json` never prompt (issue #116;
+  `doc/specs/guided-commands.md`).
+
+### Changed
+
+- **`logctl set logger '<pattern>' <level>` on a terminal lists the matches to pick from** (`1,3-5`,
+  `all`, Enter to cancel) rather than asking once to apply to all of them, the same as `add rule`. A
+  pattern matching a single logger is applied without asking. More than 30 matches still get the
+  all-or-nothing `[y/N]`. Without a terminal, and with `--yes`, nothing changes (issue #116).
 
 ### Fixed
 

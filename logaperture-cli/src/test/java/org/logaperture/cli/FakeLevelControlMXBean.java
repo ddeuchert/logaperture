@@ -62,6 +62,8 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     HandlerLevelOverrideData setHandlerLevelResult;
     HandlerLevelOverrideData setHandlerAutoResult;
     RuntimeException throwOnNextCall;
+    /** Loggers and handlers whose {@code setLogger}/{@code setHandlerLevel} is refused, as the server refuses one. */
+    final java.util.Set<String> refused = new java.util.HashSet<>();
 
     @Override
     public List<LoggerInfoData> listLoggers(String filter) {
@@ -88,6 +90,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
             boolean confirmed) {
         setLevelCalls.add(new Object[] {target, level, reason, tier, forSeconds, confirmed});
         maybeThrow();
+        refuseIfListed(target);
         if (target.indexOf('*') >= 0 && target.endsWith(".*")) {
             // Mirrors LevelControlService's trailing-wildcard rejection
             // (doc/specs/pattern-selection-semantics.md, Decision #5)
@@ -111,6 +114,12 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
                 }
             }
             throw new org.logaperture.core.ConfirmationRequiredException(target, matchedNames);
+        }
+        if (setLevelResult == null) {
+            // Nothing wired up: the override the call asked for, so a test setting several loggers in
+            // turn sees one result per logger.
+            return new SetLevelResultData(List.of(new org.logaperture.control.jmx.LevelOverrideData(target, level,
+                    reason, null, "jmx", tier, null)), List.of());
         }
         return setLevelResult;
     }
@@ -237,6 +246,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
             long forSeconds) {
         setHandlerLevelCalls.add(new Object[] {handlerRef, level, reason, tier, forSeconds});
         maybeThrow();
+        refuseIfListed(handlerRef);
         return setHandlerLevelResult;
     }
 
@@ -466,6 +476,12 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         createdRules++;
         return new RuleData("r" + createdRules, target, action, "WARN", null, false, null, null, false, null, tier,
                 null, null, null, 0L, null, null);
+    }
+
+    private void refuseIfListed(String name) {
+        if (refused.contains(name)) {
+            throw new IllegalArgumentException("'" + name + "' is protected");
+        }
     }
 
     private void maybeThrow() {

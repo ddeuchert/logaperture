@@ -52,8 +52,9 @@ final class Parser {
     }
 
     /**
-     * @param interactive whether a terminal is attached: an incomplete {@code add rule} is then a
-     *                    guided command rather than a usage error (doc/specs/guided-add-rule.md G1)
+     * @param interactive whether a terminal is attached: an incomplete {@code add rule}, {@code list} or
+     *                    {@code set} is then a guided command rather than a usage error
+     *                    (doc/specs/guided-add-rule.md G1, doc/specs/guided-commands.md)
      */
     static Invocation parse(String[] argv, boolean interactive) {
         List<String> positionals = new ArrayList<>();
@@ -333,10 +334,17 @@ final class Parser {
             throw usage("only one of --sample-full / --no-sample-full.");
         }
 
+        // doc/specs/guided-commands.md: a command missing a part asks for it only on a terminal, and
+        // never with --json (its questions and a JSON document can't share stdout) or --yes.
+        boolean guided = interactive && !json;
+
         Command resolved = switch (command) {
             case "list" -> {
                 if (rest.isEmpty()) {
-                    throw usage("'list' needs 'loggers [filter]', 'handlers', or 'rules'.");
+                    if (guided) {
+                        yield new GuidedListCommand(showAll);
+                    }
+                    throw usage("'list' needs 'loggers [filter]', 'handlers', or 'rules'.\n" + PROMPT_HINT);
                 }
                 String noun = rest.get(0);
                 List<String> nounRest = rest.subList(1, rest.size());
@@ -455,15 +463,22 @@ final class Parser {
             }
             case "set" -> {
                 if (rest.isEmpty()) {
+                    if (guided) {
+                        yield new GuidedSetCommand(null, null, null);
+                    }
                     throw usage("'set' needs 'logger <target> <level>', 'handler <name> <level>', "
-                            + "or 'default-handler <name> ...'.");
+                            + "or 'default-handler <name> ...'.\n" + PROMPT_HINT);
                 }
                 String noun = rest.get(0);
                 List<String> nounRest = rest.subList(1, rest.size());
                 yield switch (noun) {
                     case "logger" -> {
                         if (nounRest.size() < 2) {
-                            throw usage("'set logger' needs <target> <level> [session | for <duration> | sticky].");
+                            if (guided && !yes) {
+                                yield Commands.setLoggerGuided(nounRest.isEmpty() ? null : nounRest.get(0), reason);
+                            }
+                            throw usage("'set logger' needs <target> <level> [session | for <duration> | sticky].\n"
+                                    + PROMPT_HINT);
                         }
                         TierChoice tier = resolveTier(nounRest.subList(2, nounRest.size()));
                         yield Commands.setLogger(nounRest.get(0), parseLevel(nounRest.get(1)), reason,
@@ -471,7 +486,11 @@ final class Parser {
                     }
                     case "handler" -> {
                         if (nounRest.size() < 2) {
-                            throw usage("'set handler' needs <name> <level> or <name> AUTO.");
+                            if (guided) {
+                                yield new GuidedSetCommand(GuidedSetCommand.HANDLER,
+                                        nounRest.isEmpty() ? null : nounRest.get(0), reason);
+                            }
+                            throw usage("'set handler' needs <name> <level> or <name> AUTO.\n" + PROMPT_HINT);
                         }
                         String handlerRef = nounRest.get(0);
                         TierChoice tier = resolveTier(nounRest.subList(2, nounRest.size()));
@@ -484,8 +503,11 @@ final class Parser {
                     }
                     case "default-handler" -> {
                         if (nounRest.isEmpty()) {
+                            if (guided) {
+                                yield new GuidedSetCommand(GuidedSetCommand.DEFAULT_HANDLER, null, null);
+                            }
                             throw usage("'set default-handler' needs one or more handler names -- "
-                                    + "use 'reset default-handler' to clear it.");
+                                    + "use 'reset default-handler' to clear it.\n" + PROMPT_HINT);
                         }
                         // No tier token here (doc/specs/handler-floor-control.md "Default
                         // handler group": membership is a standing config value, always
@@ -612,7 +634,7 @@ final class Parser {
         return tokens.isEmpty() ? null : resolveTier(tokens);
     }
 
-    private static String parseLevel(String token) {
+    static String parseLevel(String token) {
         try {
             return Level.valueOf(token.toUpperCase(Locale.ROOT)).name();
         } catch (IllegalArgumentException e) {
