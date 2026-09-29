@@ -33,6 +33,7 @@ final class HelpText {
             "logctl doctor",
             "logctl env",
             "logctl top [--limit n]",
+            "logctl storms [--limit n]",
             "logctl set logger <target> <level> [session | for <duration> | sticky]",
             "logctl set handler <name> <level> [session | for <duration> | sticky]",
             "logctl set handler <name> AUTO [session | for <duration> | sticky]",
@@ -79,7 +80,8 @@ final class HelpText {
         sb.append("  --verbose            for 'list rules' -- add each rule's defining options (EXPRESSION);\n");
         sb.append("                       for 'list recipes' -- full source paths, shadowed recipes, file errors\n");
         sb.append("  --from <source>      for 'show recipe'/'apply recipe' -- pick among recipes that share an id\n");
-        sb.append("  --limit <n>          for 'top' — worst N offenders, 0 for every one tracked\n");
+        sb.append("  --limit <n>          for 'top'/'storms' — worst N, 0 for every one tracked\n");
+        sb.append("                       (default: 10 for 'top', every one for 'storms')\n");
         sb.append("  --message-contains <text>\n");
         sb.append("                       for 'add rule'/'alter rule' -- match a log message substring\n");
         sb.append("  --message-contains-ignore-case <text>\n");

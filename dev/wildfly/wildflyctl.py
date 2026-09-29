@@ -20,6 +20,7 @@ wrapper that runs the right `docker compose` / `mvn` command from the repo root
 with the right environment. See doc/specs/wildfly-dev-environment.md.
 
     python3 dev/wildfly/wildflyctl.py up [--debug-suspend] [--sweep-seconds N] [--build]
+                                         [--vendor-defaults FILE [--vendor-defaults-writable]]
     python3 dev/wildfly/wildflyctl.py deploy [PATH]
     python3 dev/wildfly/wildflyctl.py logctl -- debug org.acme.Foo for 30m
     python3 dev/wildfly/wildflyctl.py tail
@@ -40,12 +41,14 @@ REPO_ROOT = HERE.parent.parent
 COMPOSE_FILE = HERE / "docker-compose.yml"
 ENV_FILE = HERE / ".env"
 DEPLOYMENTS = HERE / "deployments"
+VENDOR_ACTIVE = HERE / "vendor" / ".active"      # mounted at CONTAINER_VENDOR_DIR
 POM = REPO_ROOT / "pom.xml"
 
 PROJECT = "logaperture"
 SERVICE = "wildfly"
 CONTAINER_LOG = "/opt/jboss/wildfly/standalone/log/server.log"
 CONTAINER_DEPLOY_DIR = "/opt/jboss/wildfly/standalone/deployments"
+CONTAINER_VENDOR_DIR = "/opt/logaperture-vendor"
 DEFAULT_IMAGE = "quay.io/wildfly/wildfly:26.1.3.Final-jdk17"
 
 AGENT_JAR = REPO_ROOT / "logaperture-agent" / "target" / "logaperture-agent.jar"
@@ -242,6 +245,45 @@ def relabel_for_container(path):
     subprocess.run(["chcon", "-t", "container_file_t", str(path)], check=False)
 
 
+def stage_vendor_defaults(path, writable):
+    """Copy a vendor defaults file into dev/wildfly/vendor/.active and return the
+    compose environment that makes the agent load it.
+
+    .active is emptied every time, so an `up` without --vendor-defaults starts
+    with none. A copy rather than a mount of the file's own directory keeps
+    `:z` relabelling to a directory this environment owns, and lets `sed -i` or
+    an editor replace the original without the container seeing it mid-run.
+
+    Read-only by default, so `doctor`'s writable-file warning stays quiet; with
+    `writable` the mount is rw and the copy world-writable, so the container's
+    jboss user can write it under both plain Docker and rootless Podman (see
+    ensure_deployments_dir for why the uid can't be known in advance).
+    """
+    if writable and path is None:
+        sys.exit("error: --vendor-defaults-writable needs --vendor-defaults FILE")
+    VENDOR_ACTIVE.mkdir(parents=True, exist_ok=True)
+    for old in VENDOR_ACTIVE.iterdir():
+        old.unlink()
+    if os.name != "nt":
+        VENDOR_ACTIVE.chmod(0o777 if writable else 0o755)
+    if path is None:
+        return {"LOGAPERTURE_AGENT_ARGS": "", "LOGAPERTURE_VENDOR_MOUNT_MODE": "ro"}
+
+    src = Path(path).resolve()
+    if not src.is_file():
+        sys.exit(f"error: vendor defaults file not found: {path}")
+    dst = VENDOR_ACTIVE / src.name
+    shutil.copyfile(src, dst)
+    if os.name != "nt":
+        dst.chmod(0o666 if writable else 0o644)
+    relabel_for_container(dst)
+    container_path = f"{CONTAINER_VENDOR_DIR}/{src.name}"
+    print(f"vendor defaults: {src} -> {container_path} ({'rw' if writable else 'ro'})",
+          file=sys.stderr)
+    return {"LOGAPERTURE_AGENT_ARGS": f"=--vendor-defaults={container_path}",
+            "LOGAPERTURE_VENDOR_MOUNT_MODE": "rw" if writable else "ro"}
+
+
 # --- readiness -------------------------------------------------------------
 
 def truncate_server_log():
@@ -297,8 +339,15 @@ def cmd_up(a):
     env = dict(os.environ)
     env["DEBUG_SUSPEND"] = "y" if a.debug_suspend else "n"
     env["LOGAPERTURE_SWEEP_SECONDS"] = str(a.sweep_seconds)
+    env.update(stage_vendor_defaults(a.vendor_defaults, a.vendor_defaults_writable))
 
-    compose("up", "-d", env=env)
+    # The agent reads the vendor file only at startup, and an edited file under
+    # the same name leaves the compose config unchanged — so recreate whenever
+    # one is given, or `up` would silently keep running the old contents.
+    if a.vendor_defaults:
+        compose("up", "-d", "--force-recreate", env=env)
+    else:
+        compose("up", "-d", env=env)
 
     if a.debug_suspend:
         print(
@@ -330,12 +379,14 @@ def cmd_down(a):
 def cmd_restart_agent(a):
     require_docker()
     ensure_jars(build=True)
+    env = dict(os.environ)
+    env.update(stage_vendor_defaults(a.vendor_defaults, a.vendor_defaults_writable))
     # Recreate rather than `compose restart`: a plain restart re-runs the
     # container command against the same filesystem, which (absent the compose
     # file's grep guard) would append the JAVA_OPTS block to standalone.conf a
     # second time. Recreate also gives a fresh server.log for wait_for_boot().
     # Comes back in normal (non-suspend) mode.
-    compose("up", "-d", "--force-recreate", SERVICE)
+    compose("up", "-d", "--force-recreate", SERVICE, env=env)
     truncate_server_log()
     if wait_for_boot():
         print("WildFly recreated with the rebuilt agent (normal mode).", file=sys.stderr)
@@ -429,6 +480,15 @@ def cmd_status(a):
 
 # --- arg parsing ----------------------------------------------------------
 
+def add_vendor_arguments(parser):
+    parser.add_argument("--vendor-defaults", metavar="FILE",
+                        help="start the agent with this vendor defaults file (copied in, "
+                             "read-only); without it, none")
+    parser.add_argument("--vendor-defaults-writable", action="store_true",
+                        help="mount the vendor defaults file writable by the server, to "
+                             "try doctor's writable-file warning")
+
+
 def build_parser():
     p = argparse.ArgumentParser(
         prog="wildflyctl",
@@ -442,12 +502,14 @@ def build_parser():
                     help="logaperture.sweep.seconds (default 5)")
     up.add_argument("--build", action="store_true",
                     help="rebuild the agent + CLI jars first")
+    add_vendor_arguments(up)
     up.set_defaults(func=cmd_up)
 
     down = sub.add_parser("down", help="stop and remove the container")
     down.set_defaults(func=cmd_down)
 
     ra = sub.add_parser("restart-agent", help="rebuild the agent jar and restart WildFly")
+    add_vendor_arguments(ra)
     ra.set_defaults(func=cmd_restart_agent)
 
     dep = sub.add_parser("deploy", help="deploy a WAR (default: the sample)")
