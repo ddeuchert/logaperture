@@ -3,7 +3,7 @@
 Status: **signed off 2026-09-28** (#1–#14 agreed, inside the 2026-10-04 cut line of
 `logaperture-spec.md` §17.1). **Slice (a) implemented** (discover and read: `list recipes`, `show
 recipe`); slice (b) (apply and reset) **in design**: its open points are B1–B12 in "Slice (b):
-apply and reset", for sign-off. See also "Settled during implementation".
+apply and reset", **agreed 2026-09-28**; being built. See also "Settled during implementation".
 Parent spec: [`vendor-config-epic.md`](vendor-config-epic.md) slice 3, "Library-bundled recipes" —
 epic decisions #14–#21 are agreed and not reopened here; this spec settles what they left open.
 Also [`doc/logaperture-spec.md`](../logaperture-spec.md) §16.5 (named recipes), §9.3/§9.5
@@ -353,14 +353,14 @@ it (unlike #116, which was a stated beta dependency).
 ## Slice (b): apply and reset
 
 Decisions #4–#13 already fix what `apply recipe` and `reset recipe` do. Building them on the slice (a)
-code leaves the points below open. Each is proposed; none is agreed yet.
+code left the points below open. All twelve were agreed as proposed on 2026-09-28.
 
 ### B1 — What was shown is what gets applied
 
 `logctl` shows the changes (`showRecipe`), asks, then applies (`applyRecipe`, #12). A folder file can
 be edited, or a library redeployed, between the two calls.
 
-**Proposed:** `showRecipe` returns a fingerprint of the recipe's content, and `applyRecipe` takes it:
+**Agreed:** `showRecipe` returns a fingerprint of the recipe's content, and `applyRecipe` takes it:
 when the recipe no longer matches, nothing is applied and the error says `recipe io.undertow:sessions
 changed since it was shown -- run the command again`. `--yes` calls `applyRecipe` without a
 fingerprint, since nothing was shown. This adds a `fingerprint` parameter to #12's `applyRecipe`.
@@ -370,7 +370,7 @@ fingerprint, since nothing was shown. This adds a `fingerprint` parameter to #12
 #5 checks every change before making any. A change can still fail after the check passes: an
 adapter fault, or a handler that disappears in a WildFly reload.
 
-**Proposed:** apply in order: loggers, then handlers, then rules. On the first failure, stop, leave
+**Agreed:** apply in order: loggers, then handlers, then rules. On the first failure, stop, leave
 what was already applied in place (it carries the recipe id, so `reset recipe` undoes it), and
 report both lists: `Applied 2 of 4 changes before this failed: ...`. No rollback, the same as a
 `set logger` broadcast across WildFly contexts, where a mid-broadcast fault is left for the
@@ -382,7 +382,7 @@ leave a state that is harder to explain.
 #7 says re-applying sets its changes again with the new tier. Loggers and handlers are simply
 overwritten, but a rule is a new object each time it is added.
 
-**Proposed:** the recipe's rules that still carry its id are removed, then the recipe's rules are
+**Agreed:** the recipe's rules that still carry its id are removed, then the recipe's rules are
 added again, with new `rN` ids. Applying twice never doubles a rule, and a rule changed by hand (so
 no longer tagged, #7) is left alone. The output shows the new ids. Alternative: alter the tagged
 rules in place and keep their ids. More code, and it breaks down when the recipe's rule list itself
@@ -392,7 +392,7 @@ changed between the two applies.
 
 #6 adds a `recipe` field to logger overrides, handler overrides and rules.
 
-**Proposed:** one `recipe:` line per record in the state file (schema 10), written only when set; a
+**Agreed:** one `recipe:` line per record in the state file (schema 10), written only when set; a
 schema 9 file reads with no recipe on anything. The field sits in `api`'s `LevelOverride` and
 `HandlerLevelOverride`, in `core`'s `PersistedRule` and `RuleView`, and in the matching MXBean data
 types as a new optional attribute. A context that appears after a redeploy gets the re-broadcast
@@ -404,7 +404,7 @@ like any other sticky change; the file has no `recipe` field, so the tag isn't e
 #13 says each change is audited with source `recipe`, the recipe id and its source location.
 `AuditRecord` has no field for either.
 
-**Proposed:** `AuditRecord` gains one optional field, `origin`, e.g. `recipe io.undertow:sessions from
+**Agreed:** `AuditRecord` gains one optional field, `origin`, e.g. `recipe io.undertow:sessions from
 jar:file:/.../undertow-core.jar!/META-INF/logaperture/recipes.yaml`, printed by the stderr audit log as
 `origin=...`. Its `source` is `recipe`. Every other audit record leaves `origin` empty.
 
@@ -414,7 +414,7 @@ jar:file:/.../undertow-core.jar!/META-INF/logaperture/recipes.yaml`, printed by 
 that needs the list of changes the apply made, which #7 deliberately avoids storing: #4's skips mean
 it isn't simply the recipe's entries.
 
-**Proposed:** show a count instead: `APPLIED` is `-` when nothing carries the recipe id, otherwise
+**Agreed:** show a count instead: `APPLIED` is `-` when nothing carries the recipe id, otherwise
 the tier and how many of the recipe's entries still carry it, e.g. `for, 22m left (2 of 3)`. The
 tier is the one that ends soonest when they differ. A skipped entry counts as not applied, which is
 what it is. This replaces #7's `partly` wording; the rule itself (a change made by hand drops the
@@ -425,7 +425,7 @@ tag) is unchanged.
 A library's recipe disappears from `list recipes` when the library is undeployed, and a folder file
 can be deleted, while changes it made are still in force.
 
-**Proposed:** `list recipes` also lists every recipe id that live changes carry but no source offers,
+**Agreed:** `list recipes` also lists every recipe id that live changes carry but no source offers,
 with `SUMMARY` `(no longer offered)` and its `APPLIED` count, so it can still be found and reset.
 `reset recipe` works by id alone (#9), so it needs nothing more. `show` and `apply` refuse it.
 
@@ -434,7 +434,7 @@ with `SUMMARY` `(no longer offered)` and its `APPLIED` count, so it can still be
 #4 compares against the live level. On WildFly with several logging contexts, one logger can have
 a different level in each.
 
-**Proposed:** an entry is skipped if it would lower the level in any context, the same way the
+**Agreed:** an entry is skipped if it would lower the level in any context, the same way the
 capability pre-check already judges raise-versus-lower per context (`AggregateLevelControl`).
 
 ### B9 — Handler entries that can't be resolved yet
@@ -442,13 +442,13 @@ capability pre-check already judges raise-versus-lower per context (`AggregateLe
 On WildFly, handler names resolve once the server's logging model is up; before that, a named
 handler isn't known.
 
-**Proposed:** an unknown handler is a refusal in the pre-check (#5), so the whole recipe is refused
+**Agreed:** an unknown handler is a refusal in the pre-check (#5), so the whole recipe is refused
 with `handler FILE is not known yet`. Consistent with #5, and a vendor or folder recipe naming
 handlers is operator-placed and can be retried.
 
 ### B10 — `apply recipe` output and `--json`
 
-**Proposed:** one line per change, like `set logger` / `set handler` / `add rule`, then `Applied
+**Agreed:** one line per change, like `set logger` / `set handler` / `add rule`, then `Applied
 recipe io.undertow:sessions (2 changes, for 4h).` Skipped entries are listed after it. `--json`
 prints one object: the recipe id, tier, expiry, and the changes applied and skipped, each change
 shaped as `show recipe --json` shapes it, plus the new rule ids. `--json` never prompts, so it
@@ -456,14 +456,14 @@ needs `--yes`, as a pattern `set logger` without a terminal does.
 
 ### B11 — `reset recipe` output
 
-**Proposed:** one `logctl reset ...`-style line per change put back, then `Reset recipe
+**Agreed:** one `logctl reset ...`-style line per change put back, then `Reset recipe
 io.undertow:sessions (2 changes).` Sticky changes left in place are listed with `(sticky, kept -- add
 --include-sticky)`. Nothing tagged: `Nothing to reset: no changes carry recipe io.undertow:sessions.`,
 exit 0. `--json`: the ids and names reset and kept.
 
 ### B12 — Guided prompting, in detail
 
-#10 fixes the behaviour. **Proposed** additions, following `guided-commands.md`:
+#10 fixes the behaviour. **Agreed** additions, following `guided-commands.md`:
 
 - The recipe pick list shows `ID  SUMMARY  SOURCE`, the same columns as `list recipes`. An
   ambiguous id (epic #20) is listed once per source, so picking one also picks `--from`.
@@ -542,15 +542,15 @@ Slice (a):
 | 12 | Four new MXBean operations; recipes resolved and applied agent-side | **Agreed** |
 | 13 | Per-change capability checks; audit source `recipe` with id and location | **Agreed** |
 | 14 | Beta 1, two slices (read, then apply/reset); (b) moves to 1.1 before the beta date moves | **Agreed** |
-| B1 | `applyRecipe` takes the fingerprint `showRecipe` returned; a changed recipe applies nothing | Proposed |
-| B2 | Apply loggers, handlers, rules in order; stop at a failure, keep what applied, report both | Proposed |
-| B3 | Re-apply removes the recipe's still-tagged rules and adds them again (new ids) | Proposed |
-| B4 | `recipe:` line per record, state schema 10; kept across redeploy; not exported | Proposed |
-| B5 | `AuditRecord` gains an optional `origin` field | Proposed |
-| B6 | `APPLIED` shows tier and `N of M` entries still tagged, replacing #7's `partly` | Proposed |
-| B7 | Recipes no longer offered but still applied are listed as `(no longer offered)` | Proposed |
-| B8 | A library entry is skipped if it would lower the level in any context | Proposed |
-| B9 | An unknown handler refuses the whole recipe in the pre-check | Proposed |
-| B10 | `apply` prints a line per change and a summary; `--json` needs `--yes` | Proposed |
-| B11 | `reset recipe` prints what it put back and any sticky ones kept | Proposed |
-| B12 | Guided pick list, tier question, `--from` only when ambiguous; guided reset picks applied ones | Proposed |
+| B1 | `applyRecipe` takes the fingerprint `showRecipe` returned; a changed recipe applies nothing | **Agreed** |
+| B2 | Apply loggers, handlers, rules in order; stop at a failure, keep what applied, report both | **Agreed** |
+| B3 | Re-apply removes the recipe's still-tagged rules and adds them again (new ids) | **Agreed** |
+| B4 | `recipe:` line per record, state schema 10; kept across redeploy; not exported | **Agreed** |
+| B5 | `AuditRecord` gains an optional `origin` field | **Agreed** |
+| B6 | `APPLIED` shows tier and `N of M` entries still tagged, replacing #7's `partly` | **Agreed** |
+| B7 | Recipes no longer offered but still applied are listed as `(no longer offered)` | **Agreed** |
+| B8 | A library entry is skipped if it would lower the level in any context | **Agreed** |
+| B9 | An unknown handler refuses the whole recipe in the pre-check | **Agreed** |
+| B10 | `apply` prints a line per change and a summary; `--json` needs `--yes` | **Agreed** |
+| B11 | `reset recipe` prints what it put back and any sticky ones kept | **Agreed** |
+| B12 | Guided pick list, tier question, `--from` only when ambiguous; guided reset picks applied ones | **Agreed** |
