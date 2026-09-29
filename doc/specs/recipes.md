@@ -20,15 +20,15 @@ After this feature, the user will be able to:
 - Run `logctl list recipes` to see the logging recipes available in the running application — from
   the libraries it has loaded, from the vendor defaults file, and from a recipes folder — with a
   one-line summary of each and whether it is switched on.
-- Run `logctl show recipe undertow:sessions` to read what a recipe is for, what it will change
+- Run `logctl show recipe io.undertow:sessions` to read what a recipe is for, what it will change
   (each logger's level now and after), and where it came from, before switching it on.
-- Run `logctl apply recipe undertow:sessions for 30m` to switch it on — for a while, for this
+- Run `logctl apply recipe io.undertow:sessions for 30m` to switch it on — for a while, for this
   session, or `sticky` — after seeing the changes and confirming.
-- Run `logctl reset recipe undertow:sessions` to switch it off again, leaving anything they have
+- Run `logctl reset recipe io.undertow:sessions` to switch it off again, leaving anything they have
   since changed by hand alone.
 - See in `logctl list loggers` which settings a recipe made.
 - Ship recipes with a library, with a product, or as a file dropped in a folder, so a support team
-  can say "apply recipe acme:billing" instead of dictating logger names.
+  can say "apply recipe com.acme:billing" instead of dictating logger names.
 
 ## Scope
 
@@ -63,7 +63,7 @@ Same YAML subset and parser as the vendor defaults file ([`vendor-defaults.md`](
 
 ```yaml
 schemaVersion: 1
-namespace: undertow
+namespace: io.undertow
 recipes:
   - name: sessions
     summary: Watch HTTP session creation, expiry and invalidation
@@ -86,7 +86,7 @@ and with rule `id` optional.
 | Key | Shape | Notes |
 |---|---|---|
 | `schemaVersion` | integer, required | `1` |
-| `namespace` | required in a recipe file; required in a vendor defaults file that has `recipes:` | `[a-z0-9][a-z0-9.-]{0,39}`; `vendor` and `logaperture` are reserved (#1) |
+| `namespace` | required in a recipe file; required in a vendor defaults file that has `recipes:` | `[a-z0-9][a-z0-9.-]{0,63}`; reverse-domain recommended (`io.undertow`); `vendor`, `logaperture` and `org.logaperture` reserved (#1) |
 | `recipes` | list, required in a recipe file | entries below |
 | `recipes[].name` | required | `[a-z0-9-]{1,40}`; the id is `<namespace>:<name>` |
 | `recipes[].summary` | required | one line, shown in `list recipes` |
@@ -116,9 +116,9 @@ logctl reset recipe <id> [--include-sticky] [--json]
 
 ```
 ID                    SUMMARY                                               SOURCE                          APPLIED
-acme:billing          Trace invoice generation end to end                   vendor defaults                 -
-undertow:requests     Log each HTTP request line and status                 recipes/undertow.yaml           -
-undertow:sessions     Watch HTTP session creation, expiry and invalidation  undertow-core-2.3.10.Final.jar  for, 22m left
+com.acme:billing      Trace invoice generation end to end                   vendor defaults                 -
+io.undertow:requests  Log each HTTP request line and status                 recipes/undertow.yaml           -
+io.undertow:sessions  Watch HTTP session creation, expiry and invalidation  undertow-core-2.3.10.Final.jar  for, 22m left
 ```
 
 - `SOURCE` is a short label: `vendor defaults`, `recipes/<file>`, or the jar's file name (for a
@@ -135,7 +135,7 @@ undertow:sessions     Watch HTTP session creation, expiry and invalidation  unde
 ### `logctl show recipe <id>`
 
 ```
-undertow:sessions — Watch HTTP session creation, expiry and invalidation
+io.undertow:sessions — Watch HTTP session creation, expiry and invalidation
 Source: jar:file:/opt/wildfly/modules/system/layers/base/io/undertow/core/main/undertow-core-2.3.10.Final.jar!/META-INF/logaperture/recipes.yaml
 
   Logs each session create/expire/invalidate with its id. Moderate volume
@@ -145,7 +145,7 @@ Changes:
   logger io.undertow.server.session   INFO -> DEBUG   session lifecycle events
   logger io.undertow.request          INFO -> DEBUG
 
-Switch it on with: logctl apply recipe undertow:sessions for 4h
+Switch it on with: logctl apply recipe io.undertow:sessions for 4h
 ```
 
 Each change shows the current effective level and the recipe's level. A change that would be refused
@@ -158,7 +158,7 @@ Prints the same `Changes:` block, then `Apply? [Y/n]`; `--yes` skips the questio
 terminal `--yes` is required (the usage error names it), as for a pattern `set logger`
 ([`set-command-surface.md`](set-command-surface.md)). Tier and its default (`for 4h`) are those of `set
 logger` (epic #18). The result prints one line per change, like `set logger`, then `Applied recipe
-undertow:sessions (2 changes, for 4h).`
+io.undertow:sessions (2 changes, for 4h).`
 
 - Each change is an ordinary override (loggers, handlers) or rule, carrying the recipe id (#6). A
   logger or handler that already has an override is overwritten, exactly as `set` would.
@@ -174,7 +174,7 @@ changed by hand no longer carries it and is left alone (epic #18, #7). Like `res
 sticky changes unless `--include-sticky` is given (#9). It resets to whatever is underneath — the
 vendor defaults or the native level — as a plain `reset` does; there is no `--to-native` here (#9).
 No confirmation: it only undoes what `apply` did. Prints one line per reset, then `Reset recipe
-undertow:sessions (2 changes).`, or `Nothing to reset: no changes carry recipe undertow:sessions.`
+io.undertow:sessions (2 changes).`, or `Nothing to reset: no changes carry recipe io.undertow:sessions.`
 The recipe need not still be discoverable — the id on the changes is enough.
 
 ## Decisions
@@ -182,11 +182,18 @@ The recipe need not still be discoverable — the id on the changes is enough.
 ### #1 — The namespace in the vendor defaults file
 
 Epic #20 says "namespace declared in the file", and the epic's own example has a vendor saying "apply
-recipe acme:billing". The vendor defaults file has no namespace today.
+recipe com.acme:billing". The vendor defaults file has no namespace today.
 
 **Proposed:** the vendor defaults file gains an optional top-level `namespace:` key, required when it
-has `recipes:`. `vendor` and `logaperture` are reserved namespaces, so a recipe id can never be
-mistaken for a `vendor:` rule id or a future built-in. Alternative considered: fix vendor recipes to
+has `recipes:`. `vendor`, `logaperture` and `org.logaperture` are reserved namespaces, so a recipe id
+can never be mistaken for a `vendor:` rule id or a future built-in.
+
+**Namespaces are reverse-domain by convention, not by rule.** The documentation and every example
+recommend a reverse domain the author controls — for a library, its Maven `groupId` (`io.undertow`,
+`com.acme`) — which is collision-free the way Java packages are, and lines up with the logger names
+a recipe sets (`io.undertow:sessions` → `io.undertow.server.session`). It isn't enforced: the agent
+can't check that a namespace belongs to whoever uses it, and a short namespace is reasonable for an
+operator's own folder recipes. The format allows dots and up to 64 characters. Alternative considered: fix vendor recipes to
 `vendor:<name>` — shorter, but "apply recipe vendor:billing" tells a support engineer nothing about
 which product it belongs to, and two vendors bundled in one JVM would collide.
 
@@ -244,7 +251,7 @@ shown before confirming.
 Epic #18 says each override records its recipe and `list loggers` shows it.
 
 **Proposed:** logger overrides, handler overrides and rules gain an optional `recipe` field (the
-id, e.g. `undertow:sessions`), carried in memory, in the state file, over JMX and in `--json`. The
+id, e.g. `io.undertow:sessions`), carried in memory, in the state file, over JMX and in `--json`. The
 state file's schema goes from 9 to 10; a version-9 file loads with no recipe on anything (the 1.0
 state-file migration test, §17.1, covers it). `list loggers` and `list handlers` gain a `RECIPE`
 column, shown only when at least one row has one (so it costs nothing for users who never use
@@ -354,7 +361,7 @@ it (unlike #116, which was a stated beta dependency).
 
 | # | Decision | Status |
 |---|---|---|
-| 1 | Vendor defaults file gains `namespace:`, required with `recipes:`; `vendor`, `logaperture` reserved | Proposed |
+| 1 | Vendor defaults file gains `namespace:`, required with `recipes:`; reverse-domain recommended, not enforced; `vendor`, `logaperture`, `org.logaperture` reserved | Proposed |
 | 2 | Parser gains literal block scalars (`\|`, clip chomping only) | Proposed |
 | 3 | Location is `META-INF/logaperture/recipes.yaml` on the class path (war: `WEB-INF/classes/…`) | Proposed |
 | 4 | Library recipes only raise levels; a lowering entry is skipped at apply time and shown | Proposed |
