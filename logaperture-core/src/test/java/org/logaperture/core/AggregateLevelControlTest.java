@@ -31,10 +31,12 @@ import org.logaperture.api.RuleAttachOptions;
 import org.logaperture.api.RuleResetOutcome;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
+import org.logaperture.api.Severity;
 import org.logaperture.core.AggregateLevelControl.ContextControl;
 import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.StateStore;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -64,6 +66,12 @@ class AggregateLevelControlTest {
         sharedStore = new InMemoryStateStore();
         auditLog = new InMemoryAuditLog();
         aggregate = new AggregateLevelControl();
+        // The test JVM's own -javaagent entries are not what these tests are about.
+        aggregate.useAgentOrderCheck(agentOrderCheck());
+    }
+
+    private static AgentOrderCheck agentOrderCheck(String... arguments) {
+        return new AgentOrderCheck(() -> List.of(arguments), Optional.empty(), Path.of("/work"));
     }
 
     private final class Ctx {
@@ -238,6 +246,37 @@ class AggregateLevelControlTest {
         assertTrue(findings.stream().anyMatch(f -> "system".equals(f.context())));
         assertTrue(findings.stream().anyMatch(f -> "myapp.war".equals(f.context())));
         assertTrue(findings.stream().allMatch(f -> f.context() != null), "every row is tagged with its context");
+    }
+
+    // --- diagnose: -javaagent ordering (doc/specs/doctor-agent-order.md) ------------------------
+
+    @Test
+    void diagnose_agentOrderRows_appearOnce_withNoContext_acrossSeveralContexts() {
+        aggregate.useAgentOrderCheck(agentOrderCheck("-javaagent:/opt/destiny-agent.jar",
+                "-javaagent:/opt/logaperture-agent.jar"));
+        aggregate.register(new Ctx("system").control);
+        aggregate.register(new Ctx("myapp.war").control);
+
+        List<DoctorFinding> order = aggregate.diagnose().stream()
+                .filter(f -> f.check().equals("agent.order")).toList();
+
+        assertEquals(1, order.size(), "process-wide -- once, not once per context");
+        assertNull(order.get(0).context());
+        assertEquals(Severity.INFO, order.get(0).severity());
+    }
+
+    @Test
+    void diagnose_agentArgumentsUnreadable_noAgentRows_restOfDiagnoseUnaffected() {
+        java.util.function.Supplier<List<String>> refusing = () -> {
+            throw new SecurityException("denied");
+        };
+        aggregate.useAgentOrderCheck(new AgentOrderCheck(refusing, Optional.empty(), Path.of("/work")));
+        aggregate.register(new Ctx("system").control);
+
+        List<DoctorFinding> findings = aggregate.diagnose();
+
+        assertTrue(findings.stream().noneMatch(f -> f.check().startsWith("agent.")), findings.toString());
+        assertTrue(findings.stream().anyMatch(f -> "system".equals(f.context())), "per-context checks still ran");
     }
 
     // --- environmentReport (doc/specs/environment-report.md) -----------------------------------

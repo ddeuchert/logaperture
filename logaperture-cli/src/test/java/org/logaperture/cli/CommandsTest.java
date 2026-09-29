@@ -261,6 +261,26 @@ class CommandsTest {
     }
 
     @Test
+    void doctor_agentOrderRow_hasNoContextPrefix_andCountsAsInfo() {
+        // doc/specs/doctor-agent-order.md: a process-wide row, context null, next to one context's rows.
+        mbean.findings = List.of(
+                new DoctorFindingData("agent.order", "INFO", "/opt/logaperture-agent.jar",
+                        "1 agent is listed ahead of logaperture-agent.jar: destiny-agent.jar.",
+                        "an agent listed earlier runs its premain first.",
+                        "list -javaagent:/opt/logaperture-agent.jar before the other -javaagent entries.", null),
+                new DoctorFindingData("handler.autoflush", "OK", "handlers",
+                        "no autoflush handlers found on a busy path.", null, null, "system"));
+
+        assertEquals(CliError.OK, run(Commands.doctor(false)));
+
+        String text = output();
+        assertTrue(text.contains("[INFO]  1 agent is listed ahead of logaperture-agent.jar: destiny-agent.jar."),
+                text);
+        assertTrue(text.contains("suggested: list -javaagent:/opt/logaperture-agent.jar before"), text);
+        assertTrue(text.contains("2 checks run — 0 critical, 0 warning, 1 info, 1 clean."), text);
+    }
+
+    @Test
     void doctor_noFindings_printsANoteInsteadOfAnEmptySummary() {
         mbean.findings = List.of();
 

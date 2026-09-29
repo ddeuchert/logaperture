@@ -23,10 +23,16 @@ are absorbed into the real guide.
 - Early events from other agents may not go through JUL/JBoss LogManager at all
   (own formatter, console, private buffer); if so they are out of reach. The fix
   then belongs in the emitting agent's configuration.
-- Listing the same agent jar twice is harmless but pointless; remove one.
+- Listing the same agent jar twice is pointless; remove one. For `logaperture-agent.jar` itself it
+  is worse: the second copy fails to lock the state file and to register its control surface, and
+  logs errors at startup.
+- `logctl doctor` reports the order it sees (`agent.order`: `OK` when LogAperture is first, `INFO`
+  naming the agents ahead of it) and any jar listed twice (`agent.duplicate`). Agents set in
+  `JAVA_TOOL_OPTIONS` / `JDK_JAVA_OPTIONS` count as listed first. No ordering line when
+  LogAperture was attached to a running JVM; a jar listed twice is still reported.
 - Example: a `destiny-agent` `premain` logging a `ConnectException` at boot while
   the sticky trim rule only works later in the log.
-- Roadmap: spec §18.14; doctor check tracked in #85; the startup-abort fix in #86; mechanism
+- Roadmap: spec §18.14; doctor check in `doc/specs/doctor-agent-order.md` (#85); the startup-abort fix in #86; mechanism
   follow-up in #87.
 
 ## Configuration layers, reset and `--to-native`
