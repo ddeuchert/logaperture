@@ -1,7 +1,7 @@
 # Logging recipes (issue #92)
 
-Status: **draft for sign-off** (2026-09-28). Not implemented. Cut line: signed off by **2026-10-04**
-or recipes move to 1.1 (`logaperture-spec.md` §17.1).
+Status: **signed off 2026-09-28** (#1–#14 agreed, inside the 2026-10-04 cut line of
+`logaperture-spec.md` §17.1). Not implemented.
 Parent spec: [`vendor-config-epic.md`](vendor-config-epic.md) slice 3, "Library-bundled recipes" —
 epic decisions #14–#21 are agreed and not reopened here; this spec settles what they left open.
 Also [`doc/logaperture-spec.md`](../logaperture-spec.md) §16.5 (named recipes), §9.3/§9.5
@@ -184,7 +184,7 @@ The recipe need not still be discoverable — the id on the changes is enough.
 Epic #20 says "namespace declared in the file", and the epic's own example has a vendor saying "apply
 recipe com.acme:billing". The vendor defaults file has no namespace today.
 
-**Proposed:** the vendor defaults file gains an optional top-level `namespace:` key, required when it
+**Agreed:** the vendor defaults file gains an optional top-level `namespace:` key, required when it
 has `recipes:`. `vendor`, `logaperture` and `org.logaperture` are reserved namespaces, so a recipe id
 can never be mistaken for a `vendor:` rule id or a future built-in.
 
@@ -202,11 +202,17 @@ which product it belongs to, and two vendors bundled in one JVM would collide.
 The epic's example uses `description: |`. The YAML subset shared with the vendor defaults file
 supports no block scalars today.
 
-**Proposed:** add YAML literal block scalars (`|`, with the default "clip" chomping only — no `|-`,
+**Agreed:** add YAML literal block scalars (`|`, with the default "clip" chomping only — no `|-`,
 `|+`, `>` or explicit indentation indicators) to `VendorYaml`. It's the natural way to write a
 paragraph, and every recipe author will reach for it. The vendor defaults file accepts it too, for
 `reason:`. Alternative: `description` as a double-quoted string with `\n` — no parser change, but
-unpleasant to write and review.
+unpleasant to write and review. Also considered: `description` as a block list of lines, which the
+parser already reads — no parser change, but not how anyone writes prose in YAML, so authors would try
+`|` first and hit an error.
+
+Only plain `|` is accepted; `>`, `|-`, `|+` and explicit indentation indicators stay rejected, with a
+message naming `|` as the supported form. The change only widens what the parser accepts, so every
+existing vendor defaults file stays valid.
 
 ### #3 — Wars and ears
 
@@ -214,7 +220,7 @@ Epic #15 names jar, war and ear. On WildFly, a war's class loader sees `WEB-INF/
 `WEB-INF/lib/*.jar`, not the war's own `META-INF/`; an ear's own `META-INF/` isn't on a class path
 at all.
 
-**Proposed:** the location is `META-INF/logaperture/recipes.yaml` *on the class path*. A jar carries
+**Agreed:** the location is `META-INF/logaperture/recipes.yaml` *on the class path*. A jar carries
 it at its root; a war carries it as `WEB-INF/classes/META-INF/logaperture/recipes.yaml` (the
 standard place for a war's own class-path resources); an ear carries it in any jar in its `lib/`.
 Documented with an example for each. This needs no WildFly-specific code, and the same rule works
@@ -226,7 +232,7 @@ Epic #17 limits library recipes to logger levels because "a dependency should be
 more visibility; it should not be able to ship something that hides output". A logger level set to
 `ERROR` hides output as surely as a `drop` rule.
 
-**Proposed:** a library recipe's logger entry is applied only if it makes the logger *more* verbose
+**Agreed:** a library recipe's logger entry is applied only if it makes the logger *more* verbose
 than its current effective level; an entry that would lower it is skipped and shown as `skipped: would
 lower INFO -> ERROR (library recipes only raise levels)`. The rest of the recipe still applies. This
 is checked at `show`/`apply` time against the live level, not at parse time, since "lower" depends
@@ -239,7 +245,7 @@ a raise from `WARN` and a lowering from `DEBUG`.
 A recipe is several changes. Guided multi-item commands let one refusal not stop the others
 ([`guided-commands.md`](guided-commands.md) #1).
 
-**Proposed:** a recipe applies all or nothing, except #4's skips. Before changing anything, the agent
+**Agreed:** a recipe applies all or nothing, except #4's skips. Before changing anything, the agent
 checks every change against capabilities, protected categories and verbosity ceilings (epic #19); if
 any would be refused, nothing is applied and the error lists each refused change. A half-applied
 "watch sessions" recipe watches the wrong thing, and the operator can't tell from a partly-succeeded
@@ -250,7 +256,7 @@ shown before confirming.
 
 Epic #18 says each override records its recipe and `list loggers` shows it.
 
-**Proposed:** logger overrides, handler overrides and rules gain an optional `recipe` field (the
+**Agreed:** logger overrides, handler overrides and rules gain an optional `recipe` field (the
 id, e.g. `io.undertow:sessions`), carried in memory, in the state file, over JMX and in `--json`. The
 state file's schema goes from 9 to 10; a version-9 file loads with no recipe on anything (the 1.0
 state-file migration test, §17.1, covers it). `list loggers` and `list handlers` gain a `RECIPE`
@@ -260,7 +266,7 @@ alone: it answers "which control surface", a different question.
 
 ### #7 — What "changed by hand since" means
 
-**Proposed:** the recipe id lives on the override or rule itself. Any later change to that logger,
+**Agreed:** the recipe id lives on the override or rule itself. Any later change to that logger,
 handler or rule — `set`, `alter rule`, or another recipe's `apply` — replaces the record, and the
 replacement carries no recipe id (or the other recipe's). So `reset recipe` never needs a history:
 it resets exactly the records still tagged with its id. `list recipes` shows `partly` when some of
@@ -269,13 +275,13 @@ today.
 
 ### #8 — The reason on a recipe's changes
 
-**Proposed:** per entry, the entry's own `reason` if it has one; else `--reason` from the command;
+**Agreed:** per entry, the entry's own `reason` if it has one; else `--reason` from the command;
 else `recipe <id>`. The audit record carries the recipe id and its source location separately (epic
 #19), so the reason stays human text.
 
 ### #9 — `reset recipe` options
 
-**Proposed:** `--include-sticky` as on `reset loggers` (a sticky recipe survives a plain `reset recipe`,
+**Agreed:** `--include-sticky` as on `reset loggers` (a sticky recipe survives a plain `reset recipe`,
 consistent with every other broad reset). No `--to-native`: a recipe sits on top of whatever baseline
 is there; taking it off should land on that baseline. An operator who wants the native level runs
 `reset logger X --to-native` afterwards. Plain `logctl reset loggers` / `reset handlers` / `reset
@@ -283,7 +289,7 @@ rules` still reset recipe-made changes like any other.
 
 ### #10 — Guided `apply` and `reset recipe`
 
-**Proposed**, following [`guided-commands.md`](guided-commands.md):
+**Agreed**, following [`guided-commands.md`](guided-commands.md):
 
 - `logctl apply recipe` alone on a terminal lists the recipes (numbered, with summary and source) to
   pick exactly one, then shows `Changes:`, asks how long (`for 4h` default), and prints the complete
@@ -299,7 +305,7 @@ rules` still reset recipe-made changes like any other.
 A jar's recipe file is written by a library author and read on demand, not at startup, so there's no
 startup log line and `doctor` doesn't see it unless discovery runs.
 
-**Proposed:** a file that fails validation contributes no recipes; `list recipes` prints a count after
+**Agreed:** a file that fails validation contributes no recipes; `list recipes` prints a count after
 the table and `--verbose` lists each file with its errors and line numbers. `doctor` runs discovery
 and reports broken recipe files as an informational finding — informational because it's a library's
 bug, not the operator's. The vendor defaults file's `recipes:` section is the exception: validated at
@@ -307,7 +313,7 @@ startup with the rest of that file, all or nothing (vendor-defaults epic #8).
 
 ### #12 — The MXBean surface
 
-**Proposed**, all new operations (additive, §11.1):
+**Agreed**, all new operations (additive, §11.1):
 
 - `listRecipes()` → `List<RecipeData>` (id, summary, source label, source URL, applied state, shadowed).
 - `showRecipe(String id, String from)` → `RecipeDetailData` (the above plus description and each
@@ -331,7 +337,7 @@ record. `reset recipe` is audited like the resets it performs.
 
 ### #14 — Release placement and slices
 
-**Proposed:** 1.0.0-beta.1 if signed off by 2026-10-04 (§17.1), in two slices, each its own PR:
+**Agreed:** 1.0.0-beta.1 if signed off by 2026-10-04 (§17.1), in two slices, each its own PR:
 
 - **(a) Discover and read:** file format and parser changes (#1, #2), the three sources, discovery
   and caching, `list recipes`, `show recipe`, broken-file reporting (#11), `doctor` finding.
@@ -361,17 +367,17 @@ it (unlike #116, which was a stated beta dependency).
 
 | # | Decision | Status |
 |---|---|---|
-| 1 | Vendor defaults file gains `namespace:`, required with `recipes:`; reverse-domain recommended, not enforced; `vendor`, `logaperture`, `org.logaperture` reserved | Proposed |
-| 2 | Parser gains literal block scalars (`\|`, clip chomping only) | Proposed |
-| 3 | Location is `META-INF/logaperture/recipes.yaml` on the class path (war: `WEB-INF/classes/…`) | Proposed |
-| 4 | Library recipes only raise levels; a lowering entry is skipped at apply time and shown | Proposed |
-| 5 | A recipe applies all or nothing (except #4 skips); every change checked first | Proposed |
-| 6 | `recipe` field on overrides and rules; state schema 10; `RECIPE` column shown when used | Proposed |
-| 7 | "Changed by hand" = the record no longer carries the recipe id; `partly` in `list recipes` | Proposed |
-| 8 | Reason: entry `reason`, else `--reason`, else `recipe <id>` | Proposed |
-| 9 | `reset recipe` has `--include-sticky`, no `--to-native`, no confirmation | Proposed |
-| 10 | Guided `apply recipe` picks one; guided `reset recipe` picks applied ones | Proposed |
-| 11 | Broken files: counted in `list recipes`, detailed with `--verbose`, `doctor` info finding | Proposed |
-| 12 | Four new MXBean operations; recipes resolved and applied agent-side | Proposed |
-| 13 | Per-change capability checks; audit source `recipe` with id and location | Proposed |
-| 14 | Beta 1, two slices (read, then apply/reset); (b) moves to 1.1 before the beta date moves | Proposed |
+| 1 | Vendor defaults file gains `namespace:`, required with `recipes:`; reverse-domain recommended, not enforced; `vendor`, `logaperture`, `org.logaperture` reserved | **Agreed** |
+| 2 | Parser gains literal block scalars (`\|`, clip chomping only) | **Agreed** |
+| 3 | Location is `META-INF/logaperture/recipes.yaml` on the class path (war: `WEB-INF/classes/…`) | **Agreed** |
+| 4 | Library recipes only raise levels; a lowering entry is skipped at apply time and shown | **Agreed** |
+| 5 | A recipe applies all or nothing (except #4 skips); every change checked first | **Agreed** |
+| 6 | `recipe` field on overrides and rules; state schema 10; `RECIPE` column shown when used | **Agreed** |
+| 7 | "Changed by hand" = the record no longer carries the recipe id; `partly` in `list recipes` | **Agreed** |
+| 8 | Reason: entry `reason`, else `--reason`, else `recipe <id>` | **Agreed** |
+| 9 | `reset recipe` has `--include-sticky`, no `--to-native`, no confirmation | **Agreed** |
+| 10 | Guided `apply recipe` picks one; guided `reset recipe` picks applied ones | **Agreed** |
+| 11 | Broken files: counted in `list recipes`, detailed with `--verbose`, `doctor` info finding | **Agreed** |
+| 12 | Four new MXBean operations; recipes resolved and applied agent-side | **Agreed** |
+| 13 | Per-change capability checks; audit source `recipe` with id and location | **Agreed** |
+| 14 | Beta 1, two slices (read, then apply/reset); (b) moves to 1.1 before the beta date moves | **Agreed** |
