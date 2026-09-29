@@ -48,6 +48,8 @@ final class HelpText {
                     + "[session | for <duration> | sticky] [--yes]",
             "logctl alter rule <id> [changes] [session | for <duration> | sticky]",
             "logctl list rules [--verbose]",
+            "logctl list recipes [--verbose]",
+            "logctl show recipe <id> [--from <source>]",
             "logctl export vendor-defaults [--out <file>] [--force]",
             "logctl reset rule <id> [--include-sticky] [--to-native]",
             "logctl reset rules [--include-sticky] [--to-native]");
@@ -72,7 +74,9 @@ final class HelpText {
         sb.append("  --to-native          for 'reset' -- land on the native configuration, ignoring the\n");
         sb.append("                       vendor defaults until restart (vendor rules: switched off)\n");
         sb.append("  --show-all           for 'list' -- every known logger or handler, not just overridden ones\n");
-        sb.append("  --verbose            for 'list rules' -- add each rule's defining options (EXPRESSION)\n");
+        sb.append("  --verbose            for 'list rules' -- add each rule's defining options (EXPRESSION);\n");
+        sb.append("                       for 'list recipes' -- full source paths, shadowed recipes, file errors\n");
+        sb.append("  --from <source>      for 'show recipe' -- pick among recipes that share an id\n");
         sb.append("  --limit <n>          for 'top' — worst N offenders, 0 for every one tracked\n");
         sb.append("  --message-contains <text>\n");
         sb.append("                       for 'add rule'/'alter rule' -- match a log message substring\n");
@@ -184,6 +188,13 @@ final class HelpText {
         sb.append("JVM started with, plus every sticky change made on top of it (session and\n");
         sb.append("'for' changes are left out, and so is anything reset --to-native). Tune in\n");
         sb.append("a sandbox with 'sticky', then export.\n");
+        sb.append("\n");
+        sb.append("A recipe is a named, documented set of logger levels for watching one thing,\n");
+        sb.append("shipped by a library (META-INF/logaperture/recipes.yaml on its class path),\n");
+        sb.append("by the vendor defaults file, or as a file in the recipes folder\n");
+        sb.append("(~/.logaperture/recipes, or -Dlogaperture.recipes=<dir>). 'list recipes'\n");
+        sb.append("shows what's on offer -- a library's recipes appear once it has loaded --\n");
+        sb.append("and 'show recipe io.undertow:sessions' prints what one would change.\n");
         sb.append("\n");
         sb.append("'doctor' is read-only — it never changes anything. It flags common\n");
         sb.append("misconfigurations (unbounded file handlers, DEBUG/TRACE left on,\n");

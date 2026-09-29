@@ -241,12 +241,13 @@ class VendorDefaultsFileTest {
                 "line 1: schemaVersion must be 1");
     }
 
+    /** doc/specs/recipes.md #1: recipes need the file's namespace; RecipeFileTest covers the rest. */
     @Test
-    void recipes_isRejectedWithItsOwnMessage() {
+    void recipes_withoutANamespace_areRejected() {
         VendorDefaults defaults = VendorDefaultsFile.parse("schemaVersion: 1\nrecipes:\n  - name: x\n", PATH, false);
 
         assertEquals(VendorDefaults.Status.REJECTED, defaults.status());
-        assertContains(defaults.errors(), "line 2: 'recipes' is not supported yet");
+        assertContains(defaults.errors(), "line 1: a vendor defaults file with 'recipes:' needs a 'namespace:'");
     }
 
     @Test
@@ -316,8 +317,8 @@ class VendorDefaultsFileTest {
         VendorDefaults tabs = VendorDefaultsFile.parse("schemaVersion: 1\nloggers:\n\t- name: x\n", PATH, false);
         assertEquals(List.of("line 3: tabs are not allowed for indentation -- use spaces"), tabs.errors());
 
-        VendorDefaults blockScalar = VendorDefaultsFile.parse("schemaVersion: 1\nx: |\n  text\n", PATH, false);
-        assertContains(blockScalar.errors(), "line 2: block scalars");
+        VendorDefaults folded = VendorDefaultsFile.parse("schemaVersion: 1\nx: >\n  text\n", PATH, false);
+        assertContains(folded.errors(), "line 2: only plain '|' block text is supported");
 
         VendorDefaults badIndent = VendorDefaultsFile.parse("schemaVersion: 1\n  loggers:\n", PATH, false);
         assertContains(badIndent.errors(), "line 2: unexpected indentation");

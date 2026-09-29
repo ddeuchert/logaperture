@@ -179,4 +179,31 @@ class ExportCommandsTest {
         assertEquals("2 loggers, 1 handler, default handlers, 1 rule", Commands.exportSummary(FILE));
         assertEquals("", Commands.exportSummary("# header\nschemaVersion: 1\n"));
     }
+
+    /** doc/specs/recipes.md: the summary counts recipes too, and a blank line inside '|' text doesn't end the section. */
+    @Test
+    void summary_countsRecipes_acrossBlankLinesInTheirText() {
+        assertEquals("1 logger, 2 recipes", Commands.exportSummary("""
+                schemaVersion: 1
+                loggers:
+                  - name: a
+                    level: WARN
+                namespace: com.acme
+                recipes:
+                  - name: one
+                    summary: s
+                    description: |
+                      para one
+
+                      para two
+                    loggers:
+                      - name: b
+                        level: DEBUG
+                  - name: two
+                    summary: s
+                    loggers:
+                      - name: c
+                        level: DEBUG
+                """));
+    }
 }

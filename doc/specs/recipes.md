@@ -1,7 +1,8 @@
 # Logging recipes (issue #92)
 
 Status: **signed off 2026-09-28** (#1–#14 agreed, inside the 2026-10-04 cut line of
-`logaperture-spec.md` §17.1). Not implemented.
+`logaperture-spec.md` §17.1). **Slice (a) implemented** (discover and read: `list recipes`, `show
+recipe`); slice (b) (apply and reset) not started. See "Settled during implementation".
 Parent spec: [`vendor-config-epic.md`](vendor-config-epic.md) slice 3, "Library-bundled recipes" —
 epic decisions #14–#21 are agreed and not reopened here; this spec settles what they left open.
 Also [`doc/logaperture-spec.md`](../logaperture-spec.md) §16.5 (named recipes), §9.3/§9.5
@@ -347,6 +348,41 @@ record. `reset recipe` is audited like the resets it performs.
 Slice (a) is useful alone (operators can read what a library recommends and apply it by hand), so if
 time runs short at the Oct 15 freeze, (a) ships and (b) moves to 1.1 — the beta date doesn't move for
 it (unlike #116, which was a stated beta dependency).
+
+## Settled during implementation
+
+Slice (a):
+
+- **Discovery on WildFly works through the deployment's class loader.** Checked on WildFly 26 by
+  `WildFlyContainerIT`: a war's recipes are found both in `WEB-INF/classes` and in a `WEB-INF/lib`
+  jar that has no classes of its own, with sources labelled `probe.war!/WEB-INF/classes` and
+  `probe.war!/WEB-INF/lib/probe-recipes.jar`. No WildFly-specific code (#3 holds).
+- **`list recipes` columns.** No `APPLIED` column yet: nothing can be applied until slice (b), which
+  adds it. A recipe offered by several sources shows the first one's label and `(+N more)`.
+  `--verbose` shows the full location and a `NOTE` column (`shadowed`, `needs --from`, `also
+  <labels>`) in place of `APPLIED`, then each unreadable file's errors. When recipes share an id but
+  differ, a line after the table says to pick one with `show recipe <id> --from <source>`.
+- **`show recipe`** leaves out the "Switch it on with" line until `apply recipe` exists (slice
+  (b)). A logger or handler not known yet shows `—` as its current level. The notes shown now are
+  the library raise-only skip (#4) and a protected category; capability refusals come with slice
+  (b)'s pre-check (#5).
+- **`--from`** matches a source's label or its full location.
+- **Block text** (#2) is stored without its final line break, since every field is shown inline:
+  the value `|-` would give, though only `|` is accepted.
+- **Rule entries** in a recipe may leave out `id`; the entry is then labelled `rule-<n>` (only a
+  label -- applying it will give an ordinary `rN` id).
+- **Recipe folder**: only `*.yaml` files are read, in name order. Library files are cached by URL
+  and last-modified time (a `jar:`/`file:` URL uses the file's own time, so checking never opens a
+  jar); a library no longer loaded is forgotten.
+- **MXBean** (#12): `listRecipes()` returns `RecipeListData` -- the recipes plus the unreadable
+  files (#11) -- rather than a bare list. `showRecipe(id, from)` returns `RecipeDetailData`.
+- **`doctor`** adds the `recipe-files` check beside the per-context checks: an `OK` row when every
+  recipe file reads cleanly, an `INFO` finding per unreadable one, nothing when there are none.
+- **Guided `list`** offers `recipes` as a fourth answer. A one-letter answer now counts only when no
+  other choice starts with it, so `r` (rules or recipes) is asked again.
+- **The vendor defaults file** counts its recipes in `status`/`env` (`… , 2 recipes`), and
+  `logctl export vendor-defaults` carries its `namespace:` and `recipes:` over unchanged -- without
+  that, exporting would silently drop them.
 
 ## Testing
 

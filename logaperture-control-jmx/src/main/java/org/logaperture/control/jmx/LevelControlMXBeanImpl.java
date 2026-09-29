@@ -28,6 +28,7 @@ import org.logaperture.core.DoctorOperations;
 import org.logaperture.core.EnvironmentReportOperations;
 import org.logaperture.core.HandlerLevelControlOperations;
 import org.logaperture.core.LevelControlOperations;
+import org.logaperture.core.RecipeOperations;
 import org.logaperture.core.RuleOperations;
 import org.logaperture.core.RuleView;
 import org.logaperture.core.StormOperations;
@@ -39,6 +40,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 /**
  * Wraps a {@link LevelControlOperations} and a {@link
@@ -63,11 +65,22 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     private final RuleOperations ruleOperations;
     private final EnvironmentReportOperations environmentReportOperations;
     private final VendorDefaultsExportOperations exportOperations;
+    private final RecipeOperations recipeOperations;
 
     public LevelControlMXBeanImpl(LevelControlOperations operations, HandlerLevelControlOperations handlerOperations,
             DoctorOperations doctorOperations, TopOperations topOperations, StormOperations stormOperations,
             RuleOperations ruleOperations, EnvironmentReportOperations environmentReportOperations,
             VendorDefaultsExportOperations exportOperations) {
+        this(operations, handlerOperations, doctorOperations, topOperations, stormOperations, ruleOperations,
+                environmentReportOperations, exportOperations, RecipeOperations.none());
+    }
+
+    /** @param recipeOperations {@code list recipes} / {@code show recipe} (doc/specs/recipes.md) */
+    public LevelControlMXBeanImpl(LevelControlOperations operations, HandlerLevelControlOperations handlerOperations,
+            DoctorOperations doctorOperations, TopOperations topOperations, StormOperations stormOperations,
+            RuleOperations ruleOperations, EnvironmentReportOperations environmentReportOperations,
+            VendorDefaultsExportOperations exportOperations, RecipeOperations recipeOperations) {
+        this.recipeOperations = Objects.requireNonNull(recipeOperations, "recipeOperations");
         this.operations = Objects.requireNonNull(operations, "operations");
         this.handlerOperations = Objects.requireNonNull(handlerOperations, "handlerOperations");
         this.doctorOperations = Objects.requireNonNull(doctorOperations, "doctorOperations");
@@ -178,7 +191,9 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
 
     @Override
     public List<DoctorFindingData> diagnose() {
-        return doctorOperations.diagnose().stream().map(DoctorFindingData::from).toList();
+        // doc/specs/recipes.md #11: the recipe-files check sits beside the per-context ones.
+        return Stream.concat(doctorOperations.diagnose().stream(), recipeOperations.recipeFindings().stream())
+                .map(DoctorFindingData::from).toList();
     }
 
     @Override
@@ -199,6 +214,16 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     @Override
     public String exportVendorDefaults() {
         return exportOperations.exportVendorDefaults();
+    }
+
+    @Override
+    public RecipeListData listRecipes() {
+        return RecipeListData.from(recipeOperations.listRecipes());
+    }
+
+    @Override
+    public RecipeDetailData showRecipe(String id, String from) {
+        return RecipeDetailData.from(recipeOperations.showRecipe(id, from));
     }
 
     @Override

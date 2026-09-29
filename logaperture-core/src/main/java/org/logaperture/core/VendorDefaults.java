@@ -119,7 +119,7 @@ public final class VendorDefaults {
 
     private static final VendorDefaults NONE =
             new VendorDefaults(Status.NOT_CONFIGURED, null, List.of(), false, List.of(), List.of(), null, null,
-                    List.of(), List.of());
+                    List.of(), List.of(), List.of());
 
     private final Status status;
     private final Path path;
@@ -131,10 +131,13 @@ public final class VendorDefaults {
     private final String defaultHandlersStateId;
     private final List<String> handlerGroupStateIds;
     private final List<RuleDefault> rules;
+    /** Its {@code recipes:} section -- doc/specs/recipes.md; never applied by loading the file. */
+    private final List<Recipe> recipes;
 
     private VendorDefaults(Status status, Path path, List<String> errors, boolean writable,
             List<LoggerDefault> loggers, List<HandlerDefault> handlers, List<HandlerRef> defaultHandlers,
-            String defaultHandlersStateId, List<String> handlerGroupStateIds, List<RuleDefault> rules) {
+            String defaultHandlersStateId, List<String> handlerGroupStateIds, List<RuleDefault> rules,
+            List<Recipe> recipes) {
         this.status = status;
         this.path = path;
         this.errors = List.copyOf(errors);
@@ -153,6 +156,7 @@ public final class VendorDefaults {
         this.defaultHandlersStateId = defaultHandlers == null ? null : defaultHandlersStateId;
         this.handlerGroupStateIds = List.copyOf(handlerGroupStateIds);
         this.rules = List.copyOf(rules);
+        this.recipes = List.copyOf(recipes);
     }
 
     /** No vendor defaults file configured. */
@@ -166,20 +170,20 @@ public final class VendorDefaults {
             throw new IllegalArgumentException("a rejected file needs at least one error");
         }
         return new VendorDefaults(Status.REJECTED, path, errors, false, List.of(), List.of(), null, null,
-                List.of(), List.of());
+                List.of(), List.of(), List.of());
     }
 
     static VendorDefaults loaded(Path path, boolean writable, List<LoggerDefault> loggers,
             List<HandlerDefault> handlers, List<HandlerRef> defaultHandlers, List<RuleDefault> rules) {
-        return loaded(path, writable, loggers, handlers, defaultHandlers, null, List.of(), rules);
+        return loaded(path, writable, loggers, handlers, defaultHandlers, null, List.of(), rules, List.of());
     }
 
     static VendorDefaults loaded(Path path, boolean writable, List<LoggerDefault> loggers,
             List<HandlerDefault> handlers, List<HandlerRef> defaultHandlers, String defaultHandlersStateId,
-            List<String> handlerGroupStateIds, List<RuleDefault> rules) {
+            List<String> handlerGroupStateIds, List<RuleDefault> rules, List<Recipe> recipes) {
         Objects.requireNonNull(path, "path");
         return new VendorDefaults(Status.LOADED, path, List.of(), writable, loggers, handlers, defaultHandlers,
-                defaultHandlersStateId, handlerGroupStateIds, rules);
+                defaultHandlersStateId, handlerGroupStateIds, rules, recipes);
     }
 
     public Status status() {
@@ -261,7 +265,18 @@ public final class VendorDefaults {
         return handlerGroupStateIds;
     }
 
-    /** {@code true} if this file contributes nothing at all -- not configured, rejected, or an empty file. */
+    /**
+     * The recipes its {@code recipes:} section offers -- doc/specs/recipes.md. They are listed by
+     * {@code logctl list recipes}, never applied by loading the file (epic #19).
+     */
+    public List<Recipe> recipes() {
+        return recipes;
+    }
+
+    /**
+     * {@code true} if this file sets nothing at all -- not configured, rejected, or an empty file.
+     * Recipes don't count: loading the file never applies them.
+     */
     public boolean isEmpty() {
         return loggers.isEmpty() && handlers.isEmpty() && defaultHandlers == null && rules.isEmpty();
     }
@@ -277,7 +292,7 @@ public final class VendorDefaults {
             case REJECTED -> "REJECTED (" + errors.size() + (errors.size() == 1 ? " error" : " errors")
                     + "), see logctl doctor";
             case LOADED -> {
-                if (isEmpty()) {
+                if (isEmpty() && recipes.isEmpty()) {
                     yield "loaded, no settings";
                 }
                 List<String> parts = new ArrayList<>();
@@ -292,6 +307,9 @@ public final class VendorDefaults {
                 }
                 if (!rules.isEmpty()) {
                     parts.add(count(rules.size(), "rule"));
+                }
+                if (!recipes.isEmpty()) {
+                    parts.add(count(recipes.size(), "recipe"));
                 }
                 yield String.join(", ", parts);
             }

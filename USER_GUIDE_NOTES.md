@@ -49,3 +49,17 @@ tables into the guide more or less as they are.
   `set … <native level> sticky` / `reset --to-native`) and what each puts in the exported file:
   the table in §6.6.
 - Rules (vendor `drop`/`trim` rules) and `--to-native`: being redesigned in #96.
+
+## Recipes
+
+- A library's recipe file lives at `META-INF/logaperture/recipes.yaml` **on its class path**. In a
+  war that means `WEB-INF/classes/META-INF/logaperture/recipes.yaml` (the war's own `META-INF/` is not
+  on the class path), or inside any jar in `WEB-INF/lib`. In an ear: inside a jar in `lib/`.
+- Namespaces: use a reverse domain you control, normally the library's Maven `groupId`
+  (`io.undertow:sessions`). Not enforced; `vendor`, `logaperture` and `org.logaperture` are reserved.
+- A library's recipes appear only once the library has loaded — `list recipes` looks at what's
+  running.
+- A library's recipe can only raise levels; lowering ones are skipped. Rules and handler levels are
+  only allowed in the vendor defaults file or the recipes folder.
+- Writing a description: `description: |` then the text indented below it. `#` inside it is text.
+

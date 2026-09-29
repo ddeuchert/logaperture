@@ -22,6 +22,10 @@ import org.logaperture.control.jmx.JmxRegistrar;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.CapabilityPolicy;
+import org.logaperture.core.LibraryRecipeScanner;
+import org.logaperture.core.RecipeCatalog;
+import org.logaperture.core.RecipeOperations;
+import org.logaperture.core.RecipeService;
 import org.logaperture.core.StderrAuditLog;
 import org.logaperture.core.VendorDefaults;
 import org.logaperture.core.VendorDefaultsFile;
@@ -94,8 +98,8 @@ final class AgentBootstrap {
             // (the CLI polls for the MBean, then calls it). The callback is
             // handed the aggregate directly, so there is no return value to
             // race against the async install.
-            Consumer<AggregateLevelControl> onFirstContextReady =
-                    operations -> publishControlSurface(container, operations);
+            Consumer<AggregateLevelControl> onFirstContextReady = operations -> publishControlSurface(container,
+                    operations, recipes(inst, policy, vendorDefaults, operations));
             container.activate(inst, policy, auditLog, vendorDefaults, onFirstContextReady);
         } catch (Throwable t) {
             Diagnostics.error("LogAperture agent bootstrap failed to start", t);
@@ -141,10 +145,29 @@ final class AgentBootstrap {
         }
     }
 
-    private static void publishControlSurface(ContainerIntegration container, AggregateLevelControl operations) {
+    /**
+     * {@code list recipes} / {@code show recipe} (doc/specs/recipes.md): the vendor defaults file's
+     * recipes, the recipes folder, and the libraries found through {@code inst}'s loaded classes.
+     * Never throws -- a failure here leaves the rest of the control surface working, with no recipes.
+     */
+    static RecipeOperations recipes(Instrumentation inst, CapabilityPolicy policy, VendorDefaults vendorDefaults,
+            AggregateLevelControl operations) {
+        try {
+            LibraryRecipeScanner scanner = inst == null ? LibraryRecipeScanner.none()
+                    : new LibraryRecipeScanner(inst::getAllLoadedClasses);
+            RecipeCatalog catalog = new RecipeCatalog(vendorDefaults.recipes(), RecipeCatalog.defaultFolder(), scanner);
+            return new RecipeService(policy, catalog, operations, operations);
+        } catch (RuntimeException e) {
+            Diagnostics.warn("LogAperture: recipes are unavailable", e);
+            return RecipeOperations.none();
+        }
+    }
+
+    private static void publishControlSurface(ContainerIntegration container, AggregateLevelControl operations,
+            RecipeOperations recipes) {
         try {
             JmxRegistrar.register(operations, operations, operations, operations, operations, operations, operations,
-                    operations); // AggregateLevelControl implements all eight interfaces
+                    operations, recipes); // AggregateLevelControl implements all eight operation interfaces
             System.setProperty(VERSION_PROPERTY, agentVersion());
             Diagnostics.info("LogAperture level control installed (" + container.id() + " container, JMX surface)");
         } catch (Throwable t) {

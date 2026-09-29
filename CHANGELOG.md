@@ -7,6 +7,28 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ## [Unreleased]
 
+### Added
+
+- **`logctl list recipes`** — the logging recipes on offer in the running application: named,
+  documented sets of logger levels for watching one thing, e.g. `io.undertow:sessions`. They come
+  from the libraries it has loaded (`META-INF/logaperture/recipes.yaml` on a class path, including a
+  war's `WEB-INF/classes` and `WEB-INF/lib` jars), from the vendor defaults file's new `recipes:`
+  section, and from a recipes folder (`~/.logaperture/recipes`, or `-Dlogaperture.recipes=<dir>`),
+  read afresh each time. A folder or vendor recipe with a library's id takes its place; `--verbose`
+  shows full sources and any recipe file that couldn't be read, which `logctl doctor` also reports
+  (issue #92; `doc/specs/recipes.md`).
+- **`logctl show recipe <id>`** — what a recipe is for, where it came from, and each change it would
+  make against the live level (`INFO -> DEBUG`). A library's recipe may only raise levels: an entry
+  that would lower one is shown as skipped. `--from <source>` picks among recipes sharing an id.
+  Recipes can't be switched on yet — `apply recipe` and `reset recipe` follow (issue #92).
+- **Vendor defaults file: `namespace:` and `recipes:`**, and multi-line text written as YAML's
+  `key: |` block text (issue #92). `logctl export vendor-defaults` carries both sections over.
+
+### Changed
+
+- **Guided `logctl list`** also offers `recipes`. A one-letter answer to a guided question now
+  counts only when no other choice starts with that letter, so `r` asks again (rules or recipes).
+
 ## [0.1.0-alpha.3] — 2026-09-28
 
 The first suppression features: `drop` and `trim` rules, report-only storm detection, a vendor

@@ -36,11 +36,22 @@ import java.util.Objects;
  * @param ruleComments     per rule id, a comment written above its entry (e.g. {@code "was r7"})
  * @param skippedComments  one comment line per setting left out because the file can't hold it
  *                         (e.g. a rule on the root logger), written after the header
+ * @param recipes          the started-from file's recipes, carried over as they are -- doc/specs/
+ *                         recipes.md "Settled during implementation"; their namespace is written too
  */
 public record VendorDefaultsExport(List<String> headerComments, List<VendorDefaults.LoggerDefault> loggers,
         List<VendorDefaults.HandlerDefault> handlers, List<HandlerRef> defaultHandlers, String defaultHandlersStateId,
         List<String> handlerGroupStateIds, List<VendorDefaults.RuleDefault> rules, Map<String, String> ruleComments,
-        List<String> skippedComments) {
+        List<String> skippedComments, List<Recipe> recipes) {
+
+    /** An export with no recipes. */
+    public VendorDefaultsExport(List<String> headerComments, List<VendorDefaults.LoggerDefault> loggers,
+            List<VendorDefaults.HandlerDefault> handlers, List<HandlerRef> defaultHandlers,
+            String defaultHandlersStateId, List<String> handlerGroupStateIds, List<VendorDefaults.RuleDefault> rules,
+            Map<String, String> ruleComments, List<String> skippedComments) {
+        this(headerComments, loggers, handlers, defaultHandlers, defaultHandlersStateId, handlerGroupStateIds, rules,
+                ruleComments, skippedComments, List.of());
+    }
 
     /** An export without state ids, e.g. one written by hand in a test. */
     public VendorDefaultsExport(List<String> headerComments, List<VendorDefaults.LoggerDefault> loggers,
@@ -60,10 +71,12 @@ public record VendorDefaultsExport(List<String> headerComments, List<VendorDefau
         rules = List.copyOf(rules);
         ruleComments = Map.copyOf(Objects.requireNonNull(ruleComments, "ruleComments"));
         skippedComments = List.copyOf(skippedComments);
+        recipes = List.copyOf(recipes);
     }
 
     /** {@code true} if the file carries no settings at all (doc/specs/vendor-defaults-export.md X9). */
     public boolean isEmpty() {
-        return loggers.isEmpty() && handlers.isEmpty() && defaultHandlers == null && rules.isEmpty();
+        return loggers.isEmpty() && handlers.isEmpty() && defaultHandlers == null && rules.isEmpty()
+                && recipes.isEmpty();
     }
 }

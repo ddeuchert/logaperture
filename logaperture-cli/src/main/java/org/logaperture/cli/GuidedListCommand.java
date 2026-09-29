@@ -40,13 +40,20 @@ final class GuidedListCommand implements Command {
     public int run(LevelControlMXBean mbean, PrintStream out, InputStream in, boolean interactive) {
         Prompter prompter = new Prompter(in, out);
         try {
-            String noun = Questions.askChoice(prompter, "List loggers, handlers or rules?",
-                    List.of("loggers", "handlers", "rules"));
+            String noun = Questions.askChoice(prompter, "List loggers, handlers, rules or recipes?",
+                    List.of("loggers", "handlers", "rules", "recipes"));
             return switch (noun) {
                 case "loggers" -> listLoggers(mbean, prompter, in, interactive);
                 case "handlers" -> {
                     out.println("Command: logctl list handlers" + (showAll ? " --show-all" : ""));
                     yield Commands.listHandlers(showAll, false).run(mbean, out, in, interactive);
+                }
+                case "recipes" -> {
+                    if (showAll) {
+                        throw new CliError(CliError.USAGE, "--show-all does not apply to 'list recipes'.");
+                    }
+                    out.println("Command: logctl list recipes");
+                    yield Commands.listRecipes(false, false).run(mbean, out, in, interactive);
                 }
                 default -> {
                     if (showAll) {

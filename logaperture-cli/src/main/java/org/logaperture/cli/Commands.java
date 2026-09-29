@@ -23,6 +23,11 @@ import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
+import org.logaperture.control.jmx.RecipeChangeData;
+import org.logaperture.control.jmx.RecipeData;
+import org.logaperture.control.jmx.RecipeDetailData;
+import org.logaperture.control.jmx.RecipeFileProblemData;
+import org.logaperture.control.jmx.RecipeListData;
 import org.logaperture.control.jmx.SquelchedLoggerData;
 import org.logaperture.control.jmx.StormData;
 import org.logaperture.control.jmx.StormReportData;
@@ -909,6 +914,127 @@ final class Commands {
     }
 
     /**
+     * {@code logctl list recipes} -- doc/specs/recipes.md "logctl list recipes". {@code verbose}
+     * shows full source locations, the recipes a vendor or folder recipe shadows, and each
+     * unreadable file's errors (#11).
+     */
+    static Command listRecipes(boolean verbose, boolean json) {
+        return (mbean, out, in, interactive) -> {
+            RecipeListData list = mbean.listRecipes();
+            if (json) {
+                out.println(Json.recipes(list));
+                return CliError.OK;
+            }
+            List<RecipeData> rows = list.getRecipes().stream().filter(row -> verbose || !row.isShadowed()).toList();
+            if (rows.isEmpty()) {
+                out.println("No recipes found. Libraries' recipes appear once the library has loaded.");
+            } else {
+                List<List<String>> table = new ArrayList<>();
+                boolean ambiguous = false;
+                for (RecipeData row : rows) {
+                    ambiguous |= row.isAmbiguous() && !row.isShadowed();
+                    List<String> cells = new ArrayList<>(List.of(row.getId(), row.getSummary()));
+                    if (verbose) {
+                        cells.add(row.getSourceLocation());
+                        cells.add(recipeNote(row));
+                    } else {
+                        int others = row.getOtherSourceLabels().size();
+                        cells.add(row.getSourceLabel() + (others == 0 ? "" : " (+" + others + " more)"));
+                    }
+                    table.add(cells);
+                }
+                List<String> headers = new ArrayList<>(List.of("ID", "SUMMARY", "SOURCE"));
+                if (verbose) {
+                    headers.add("NOTE");
+                }
+                out.println(Format.table(headers, table));
+                if (ambiguous) {
+                    out.println("Some recipes share an id but differ between sources -- pick one with "
+                            + "'logctl show recipe <id> --from <source>'.");
+                }
+            }
+            List<RecipeFileProblemData> broken = list.getBrokenFiles();
+            if (!broken.isEmpty() && !verbose) {
+                out.println(broken.size() + (broken.size() == 1 ? " recipe file" : " recipe files")
+                        + " could not be read -- see logctl list recipes --verbose");
+            }
+            if (verbose) {
+                for (RecipeFileProblemData file : broken) {
+                    out.println();
+                    out.println("Could not read " + file.getSourceLocation() + ":");
+                    for (String error : file.getErrors()) {
+                        out.println("  " + error);
+                    }
+                }
+            }
+            return CliError.OK;
+        };
+    }
+
+    private static String recipeNote(RecipeData row) {
+        List<String> notes = new ArrayList<>();
+        if (row.isShadowed()) {
+            notes.add("shadowed");
+        } else if (row.isAmbiguous()) {
+            notes.add("needs --from");
+        }
+        if (!row.getOtherSourceLabels().isEmpty()) {
+            notes.add("also " + String.join(", ", row.getOtherSourceLabels()));
+        }
+        return String.join("; ", notes);
+    }
+
+    /**
+     * {@code logctl show recipe <id>} -- doc/specs/recipes.md "logctl show recipe": what the
+     * recipe is for, where it came from, and each change against the live level. A change that
+     * would be skipped or refused shows why instead of an arrow.
+     */
+    static Command showRecipe(String id, String from, boolean json) {
+        return (mbean, out, in, interactive) -> {
+            RecipeDetailData detail = mbean.showRecipe(id, from);
+            if (json) {
+                out.println(Json.recipe(detail));
+                return CliError.OK;
+            }
+            RecipeData recipe = detail.getRecipe();
+            out.println(recipe.getId() + " — " + recipe.getSummary());
+            out.println("Source: " + recipe.getSourceLocation());
+            if (!recipe.getOtherSourceLabels().isEmpty()) {
+                out.println("Also offered by: " + String.join(", ", recipe.getOtherSourceLabels()));
+            }
+            if (detail.getDescription() != null) {
+                out.println();
+                for (String line : detail.getDescription().split("\n", -1)) {
+                    out.println(line.isEmpty() ? "" : "  " + line);
+                }
+            }
+            out.println();
+            out.println("Changes:");
+            List<List<String>> rows = new ArrayList<>();
+            for (RecipeChangeData change : detail.getChanges()) {
+                String what = change.getKind() + " " + change.getTarget();
+                // The level column stays narrow: a skip or refusal note, and a rule's options, go last.
+                if (change.getNote() != null) {
+                    rows.add(List.of(what, "", change.getNote()));
+                } else if (change.getNewLevel() != null) {
+                    String current = change.getCurrentLevel() == null ? Format.NONE : change.getCurrentLevel();
+                    rows.add(List.of(what, current + " -> " + change.getNewLevel(), orEmpty(change.getDetail())));
+                } else {
+                    rows.add(List.of(what, "", orEmpty(change.getDetail())));
+                }
+            }
+            for (String line : Format.table(rows).split("\n")) {
+                out.println("  " + line);
+            }
+            return CliError.OK;
+        };
+    }
+
+    private static String orEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    /**
      * doc/specs/alter-rule.md A10: a vendor rule shows its origin instead of a tier -- plus the
      * alteration's tier when altered, or {@code (off)} when switched off until restart.
      */
@@ -1149,6 +1275,9 @@ final class Commands {
         Map<String, Integer> counts = new java.util.LinkedHashMap<>();
         String section = null;
         for (String line : text.lines().toList()) {
+            if (line.isEmpty()) {
+                continue; // a blank line inside a recipe's '|' description
+            }
             if (!line.startsWith(" ") && !line.startsWith("#") && line.endsWith(":")) {
                 section = line.substring(0, line.length() - 1);
                 counts.put(section, 0);
@@ -1166,6 +1295,7 @@ final class Commands {
                 case "handlers" -> parts.add(n + (n == 1 ? " handler" : " handlers"));
                 case "defaultHandlers" -> parts.add("default handlers");
                 case "rules" -> parts.add(n + (n == 1 ? " rule" : " rules"));
+                case "recipes" -> parts.add(n + (n == 1 ? " recipe" : " recipes"));
                 default -> { }
             }
         }

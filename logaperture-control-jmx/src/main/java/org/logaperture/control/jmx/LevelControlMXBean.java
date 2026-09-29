@@ -357,4 +357,24 @@ public interface LevelControlMXBean {
      * nothing else changes (logaperture-spec.md §11.1).
      */
     String exportVendorDefaults();
+
+    /**
+     * {@code logctl list recipes} -- doc/specs/recipes.md: every recipe on offer from the loaded
+     * libraries, the vendor defaults file and the recipes folder, discovered afresh on each call,
+     * plus the recipe files that couldn't be read. Read-only (capability {@code VIEW}). A new
+     * operation, nothing else changes (logaperture-spec.md §11.1).
+     */
+    RecipeListData listRecipes();
+
+    /**
+     * {@code logctl show recipe <id>} -- doc/specs/recipes.md: the recipe and each change it would
+     * make, against the live levels, with any change that would be skipped or refused marked.
+     * Read-only (capability {@code VIEW}).
+     *
+     * @param from a source label or location, to pick among same-id recipes; {@code null} when
+     *             there's only one
+     * @throws IllegalArgumentException if no recipe has {@code id}, or several do and {@code from}
+     *                                  doesn't pick one
+     */
+    RecipeDetailData showRecipe(String id, String from);
 }

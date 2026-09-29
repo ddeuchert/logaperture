@@ -87,6 +87,7 @@ final class Parser {
         boolean noCollapseCauses = false;
         String outPath = null;
         boolean force = false;
+        String from = null;
 
         for (int i = 0; i < argv.length; i++) {
             String arg = argv[i];
@@ -203,6 +204,13 @@ final class Parser {
                     }
                     reason = argv[i];
                 }
+                case "--from" -> {
+                    i++;
+                    if (i >= argv.length) {
+                        throw usage("--from needs a source, as 'logctl list recipes' shows it.");
+                    }
+                    from = argv[i];
+                }
                 case "--limit" -> {
                     i++;
                     if (i >= argv.length) {
@@ -293,8 +301,12 @@ final class Parser {
         if (limit != null && !command.equals("top") && !command.equals("storms")) {
             throw usage("--limit applies only to 'top' or 'storms'.");
         }
-        if (verbose && !(command.equals("list") && !rest.isEmpty() && rest.get(0).equals("rules"))) {
-            throw usage("--verbose applies only to 'list rules'.");
+        if (verbose && !(command.equals("list") && !rest.isEmpty()
+                && (rest.get(0).equals("rules") || rest.get(0).equals("recipes")))) {
+            throw usage("--verbose applies only to 'list rules' or 'list recipes'.");
+        }
+        if (from != null && !(command.equals("show") && !rest.isEmpty() && rest.get(0).equals("recipe"))) {
+            throw usage("--from applies only to 'show recipe'.");
         }
         if (showAll && !command.equals("list")) {
             throw usage("--show-all applies only to 'list loggers' or 'list handlers'.");
@@ -344,7 +356,8 @@ final class Parser {
                     if (guided) {
                         yield new GuidedListCommand(showAll);
                     }
-                    throw usage("'list' needs 'loggers [filter]', 'handlers', or 'rules'.\n" + PROMPT_HINT);
+                    throw usage("'list' needs 'loggers [filter]', 'handlers', 'rules', or 'recipes'.\n"
+                            + PROMPT_HINT);
                 }
                 String noun = rest.get(0);
                 List<String> nounRest = rest.subList(1, rest.size());
@@ -373,9 +386,28 @@ final class Parser {
                         }
                         yield Commands.listRules(verbose, json);
                     }
-                    default -> throw usage(
-                            "'list' needs 'loggers [filter]', 'handlers', or 'rules', got '" + noun + "'.");
+                    case "recipes" -> {
+                        if (!nounRest.isEmpty()) {
+                            throw usage("'list recipes' takes no arguments.");
+                        }
+                        if (showAll) {
+                            throw usage("--show-all does not apply to 'list recipes' -- '--verbose' also lists "
+                                    + "shadowed recipes.");
+                        }
+                        yield Commands.listRecipes(verbose, json);
+                    }
+                    default -> throw usage("'list' needs 'loggers [filter]', 'handlers', 'rules', or 'recipes', got '"
+                            + noun + "'.");
                 };
+            }
+            case "show" -> {
+                if (rest.isEmpty() || !rest.get(0).equals("recipe")) {
+                    throw usage("'show' needs 'recipe <id>'.");
+                }
+                if (rest.size() != 2) {
+                    throw usage("'show recipe' needs exactly one recipe id -- 'logctl list recipes' shows them.");
+                }
+                yield Commands.showRecipe(rest.get(1), from, json);
             }
             case "status" -> {
                 if (!rest.isEmpty()) {

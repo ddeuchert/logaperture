@@ -68,8 +68,9 @@ This is LogAperture's first agent argument. `LogApertureAgent.premain`/`agentmai
 
 A YAML subset, parsed by a hand-written parser in `core` (same approach and reasoning as
 `StateFileFormat`, `persistence.md` "File format"; epic #5). Supported: block maps, block lists of
-maps, flow lists of scalars (`[A, B]`), plain and double-quoted scalars, `#` comments. Not
-supported: anchors/aliases, multiple documents, block scalars, tabs for indentation. Encoding
+maps, flow lists of scalars (`[A, B]`), plain and double-quoted scalars, literal block text
+(`key: |`, added by [`recipes.md`](recipes.md) #2), `#` comments. Not supported: anchors/aliases,
+multiple documents, other block scalars (`>`, `|-`, `|+`), tabs for indentation. Encoding
 UTF-8.
 
 ```yaml
@@ -116,6 +117,8 @@ rules:
 | `handlerGroupStateIds` | list of UUIDs, optional | written by the export for sticky group overrides ([`export-round-trip.md`](export-round-trip.md)) |
 | `defaultHandlersStateId` | UUID, optional | only beside `defaultHandlers`; written by the export ([`export-round-trip.md`](export-round-trip.md)) |
 | `rules` | list, optional | see below |
+| `namespace` | text, optional; required with `recipes` | recipe ids' namespace -- [`recipes.md`](recipes.md) #1 |
+| `recipes` | list, optional | recipes the file offers, never applied by loading it -- [`recipes.md`](recipes.md) |
 
 Every `loggers`, `handlers` and `rules` entry may also carry a `stateId` (a UUID). The export
 writes it on entries that came from a sticky setting, so a restart with the file takes that
