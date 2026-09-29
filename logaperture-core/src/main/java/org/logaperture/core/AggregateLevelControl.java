@@ -177,6 +177,13 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     private final Object handlerInstallLock = new Object();
 
+    /**
+     * {@code doctor}'s {@code -javaagent} ordering checks -- doc/specs/doctor-agent-order.md. Process-
+     * wide, run once per {@link #diagnose()} next to the vendor-defaults findings. Replaceable only by
+     * tests ({@link #useAgentOrderCheck}), so they don't depend on the test JVM's own arguments.
+     */
+    private volatile AgentOrderCheck agentOrderCheck = AgentOrderCheck.forThisJvm();
+
     /** No container, no known state file — the minimal construction tests reach for; production always supplies both (even {@code none} passes its real {@code StateStore} location through the 3-arg constructor). */
     public AggregateLevelControl() {
         this(null, Optional::empty, null);
@@ -334,10 +341,13 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * {@code stableKey}; unlike {@code listHandlerOverrides}, findings are
      * never unioned/deduped across contexts, since two contexts can
      * legitimately have different underlying configuration to report on.
+     * The process-wide rows (vendor defaults, {@code -javaagent} ordering)
+     * come first, once, with no context.
      */
     @Override
     public List<DoctorFinding> diagnose() {
         List<DoctorFinding> result = new ArrayList<>(vendorDefaultsFindings());
+        result.addAll(agentOrderCheck.findings());
         for (ContextControl context : sortedByKey()) {
             String key = context.stableKey();
             for (DoctorFinding finding : context.doctorService().diagnose()) {
@@ -353,6 +363,11 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             }
         }
         return List.copyOf(result);
+    }
+
+    /** Test seam: swaps in an {@link AgentOrderCheck} fed synthetic JVM arguments. */
+    void useAgentOrderCheck(AgentOrderCheck check) {
+        this.agentOrderCheck = Objects.requireNonNull(check, "check");
     }
 
     /**

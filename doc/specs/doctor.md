@@ -16,6 +16,8 @@ Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §16.2 (`doctor
 Builds on: [`doc/specs/level-control.md`](level-control.md) (`LoggingAdapter` SPI,
 `listLoggers`), [`doc/specs/handler-floor-control.md`](handler-floor-control.md) (the
 handler-level SPI this extends with configuration, not just level, per handler).
+Follow-on check: [`doc/specs/doctor-agent-order.md`](doctor-agent-order.md) (`-javaagent`
+ordering, issue #85).
 
 ## Functional summary
 

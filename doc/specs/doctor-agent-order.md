@@ -1,7 +1,7 @@
 # `logctl doctor` — `-javaagent` Ordering Check
 
-Status: **draft, awaiting sign-off.** Tracked as
-[#85](https://github.com/ddeuchert/logaperture/issues/85).
+Status: implemented. Decisions #1–#4 signed off 2026-09-29, all on the recommended option. Tracked
+as [#85](https://github.com/ddeuchert/logaperture/issues/85).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §16.2 (`doctor`), §18.14
 (filtering events logged before the container's logging is ready — "document the `-javaagent`
 ordering constraints … `logctl doctor` output, which could flag agents listed ahead of ours").
@@ -69,7 +69,7 @@ after the prefix up to the first `=` (the JVM's own split; the rest is that agen
 Each path is resolved against `user.dir` and normalised, then to its real path where the file
 exists, so `./lib/a.jar`, `lib/a.jar` and a symlink to it compare equal.
 
-**Which entry is ours** (Decision #3): the entry whose resolved path equals the jar LogAperture's
+**Which entry is ours** (Decision #3, resolved: Option A): the entry whose resolved path equals the jar LogAperture's
 own classes were loaded from (the agent classes' code source). If that can't be determined — no
 code source, or it isn't a jar — the first entry whose file name starts with `logaperture-agent`
 and ends in `.jar`.
@@ -78,7 +78,7 @@ and ends in `.jar`.
 
 - LogAperture's entry is first → one `OK` row:
   `logaperture-agent.jar is the first -javaagent.`
-- One or more entries precede it → one row, severity per Decision #1 (proposed `INFO`):
+- One or more entries precede it → one `INFO` row (Decision #1, resolved: Option A):
 
 ```
 [INFO]  3 agents are listed ahead of logaperture-agent.jar: perfmon4j.jar, fss-security-agent.jar,
@@ -104,8 +104,11 @@ For each jar path (resolved as above) that appears in more than one `-javaagent:
 
   - `subject`: the resolved path.
   - `suggestedFix`: `remove all but one -javaagent:<path as first given> entry.`
-  - Severity per Decision #4 (proposed: `INFO` for another agent's jar, `WARNING` for
-    LogAperture's own).
+  - Severity (Decision #4, resolved: Option A): `INFO` for another agent's jar, `WARNING` for
+    LogAperture's own, whose `detail` says what that costs: every copy after the first fails to
+    lock the state file and to register its control surface, and logs those errors at startup
+    (observed with the shaded jar, 2026-09-29). A guard against a second bootstrap is a separate
+    bug, not part of this feature.
   - No `OK` row when nothing is duplicated. This departs from the other checks, which report a
     clean `OK` line: a duplicate is rare enough that a permanent "no duplicate agents" line would
     be noise next to `agent.order`'s own `OK` line, which already tells the user the agent list
@@ -127,8 +130,9 @@ never a `doctor` failure.
 
 The input arguments are process-wide, so the findings carry `context: null` and are produced once
 by `AggregateLevelControl.diagnose()`, next to the vendor-defaults findings — never once per
-logging context. The text renderer shows no `[context]` prefix on them (the existing rule), and
-`--json` rows have `"context": null`.
+logging context. The text renderer treats them like the vendor-defaults rows: no prefix when the
+output covers one context, a `[-]` prefix when it spans several (the existing rule). `--json` rows
+have `"context": null`.
 
 Order in the output: the vendor-defaults rows, then `agent.order`, then `agent.duplicate`, then the
 per-context rows, as today. The summary line's counts include them like any other finding.
@@ -159,10 +163,15 @@ The `logctl doctor` exit code is unchanged: advisory findings never make it non-
 - CLI — `CommandsTest`: an `agent.order` `INFO` row renders without a context prefix and counts in
   the summary line.
 - Cross-process — `LevelControlEndToEndIT` already launches a fixture JVM with the shaded agent:
-  assert `logctl doctor --json` reports `agent.order` `OK` there (the fixture's only agent), which
-  exercises the real code-source match against the real shaded jar.
+  assert `diagnose()` over JMX reports one `agent.order` `OK` row with no context there (the
+  fixture's only agent), and no `agent.duplicate` row.
+- Manual, with the shaded jar in a Logback app, reading the MBean in-process (2026-09-29): the jar
+  renamed to `la.jar` behind another agent is identified by code source and reported `INFO`; a
+  second agent listed twice is `INFO`; our own jar listed twice is `WARNING`; ours alone is `OK`.
 
-## Open decisions (sign-off)
+## Decisions (signed off 2026-09-29)
+
+All four resolved on Option A, the recommendation. The options are kept below for the record.
 
 **#1 — Severity when agents are listed ahead of LogAperture.**
 - **A (recommended): `INFO`.** Many sites are required to list an APM or security agent first,
@@ -189,8 +198,7 @@ The `logctl doctor` exit code is unchanged: advisory findings never make it non-
 **#4 — Severity of a duplicated agent jar.**
 - **A (recommended): `INFO` for another agent's jar, `WARNING` for LogAperture's own.** The JVM
   calls `premain` once per entry; for LogAperture that means two bootstraps, which `AgentBootstrap`
-  has no guard against today. Whether that is merely wasteful or actually double-wraps handlers is
-  confirmed during implementation — if it turns out harmful, a guard is a separate bug, not part
-  of this slice.
+  has no guard against today. Checked during implementation: it is harmful, not merely wasteful
+  (see `agent.duplicate`). The guard is a separate bug, not part of this slice.
 - B: `INFO` for every duplicate, including ours (`USER_GUIDE_NOTES.md` currently calls a
   duplicate "harmless but pointless").

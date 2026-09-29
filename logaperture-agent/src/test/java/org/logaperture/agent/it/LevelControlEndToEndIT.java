@@ -20,6 +20,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.logaperture.api.Level;
+import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.JmxRegistrar;
 import org.logaperture.control.jmx.LevelControlMXBean;
@@ -138,6 +139,28 @@ class LevelControlEndToEndIT {
         } finally {
             vm.detach();
         }
+    }
+
+    /**
+     * doc/specs/doctor-agent-order.md "Testing": the real {@code RuntimeMXBean} input arguments of a
+     * real process, read by {@code diagnose()} across the real JMX boundary. The fixture's only
+     * {@code -javaagent} is ours, so the order check reports one clean row, with no context.
+     */
+    @Test
+    void doctor_agentOrder_reportsOursFirst_forARealProcess() throws Exception {
+        String agentJarPath = System.getProperty("logaperture.agent.jar");
+        assertNotNull(agentJarPath, "system property logaperture.agent.jar must point at the shaded jar");
+
+        Process fixtureProcess = launchFixtureProcess(agentJarPath);
+        LevelControlMXBean proxy = pollForMxBeanProxy(attachAndConnect(fixtureProcess.pid()));
+
+        List<DoctorFindingData> order = proxy.diagnose().stream()
+                .filter(f -> "agent.order".equals(f.getCheck()))
+                .toList();
+        assertEquals(1, order.size(), "one process-wide row: " + order);
+        assertEquals("OK", order.get(0).getSeverity(), order.get(0).getSummary());
+        assertEquals(null, order.get(0).getContext());
+        assertTrue(proxy.diagnose().stream().noneMatch(f -> "agent.duplicate".equals(f.getCheck())));
     }
 
     /**
