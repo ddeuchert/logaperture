@@ -382,7 +382,7 @@ public final class FileStateStore implements StateStore, Closeable {
         }
     }
 
-    private static Path resolveHome() {
+    static Path resolveHome() {
         String explicit = System.getProperty(HOME_PROPERTY);
         if (explicit != null && !explicit.isBlank()) {
             return Path.of(explicit);

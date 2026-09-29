@@ -17,6 +17,11 @@ package org.logaperture.cli;
 
 import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.EnvironmentReportData;
+import org.logaperture.control.jmx.RecipeChangeData;
+import org.logaperture.control.jmx.RecipeData;
+import org.logaperture.control.jmx.RecipeDetailData;
+import org.logaperture.control.jmx.RecipeFileProblemData;
+import org.logaperture.control.jmx.RecipeListData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
@@ -410,6 +415,63 @@ final class Json {
     }
 
     /** {@code logctl list rules --json} (doc/specs/rule-pipeline-foundation.md "Command surface"). */
+    /** {@code logctl list recipes --json} -- doc/specs/recipes.md. */
+    static String recipes(RecipeListData list) {
+        StringJoiner recipes = new StringJoiner(",", "[", "]");
+        for (RecipeData row : list.getRecipes()) {
+            recipes.add(recipeObj(row).toString());
+        }
+        StringJoiner broken = new StringJoiner(",", "[", "]");
+        for (RecipeFileProblemData file : list.getBrokenFiles()) {
+            broken.add(new Obj()
+                    .str("sourceKind", file.getSourceKind())
+                    .str("sourceLabel", file.getSourceLabel())
+                    .str("sourceLocation", file.getSourceLocation())
+                    .raw("errors", strings(file.getErrors()))
+                    .toString());
+        }
+        return new Obj().raw("recipes", recipes.toString()).raw("brokenFiles", broken.toString()).toString();
+    }
+
+    /** {@code logctl show recipe --json} -- doc/specs/recipes.md. */
+    static String recipe(RecipeDetailData detail) {
+        StringJoiner changes = new StringJoiner(",", "[", "]");
+        for (RecipeChangeData change : detail.getChanges()) {
+            changes.add(new Obj()
+                    .str("kind", change.getKind())
+                    .str("target", change.getTarget())
+                    .str("currentLevel", change.getCurrentLevel())
+                    .str("newLevel", change.getNewLevel())
+                    .str("detail", change.getDetail())
+                    .str("note", change.getNote())
+                    .toString());
+        }
+        return recipeObj(detail.getRecipe())
+                .str("description", detail.getDescription())
+                .raw("changes", changes.toString())
+                .toString();
+    }
+
+    private static Obj recipeObj(RecipeData row) {
+        return new Obj()
+                .str("id", row.getId())
+                .str("summary", row.getSummary())
+                .str("sourceKind", row.getSourceKind())
+                .str("sourceLabel", row.getSourceLabel())
+                .str("sourceLocation", row.getSourceLocation())
+                .raw("otherSourceLabels", strings(row.getOtherSourceLabels()))
+                .bool("ambiguous", row.isAmbiguous())
+                .bool("shadowed", row.isShadowed());
+    }
+
+    private static String strings(List<String> values) {
+        StringJoiner array = new StringJoiner(",", "[", "]");
+        for (String value : values) {
+            array.add(quote(value));
+        }
+        return array.toString();
+    }
+
     static String rules(List<RuleData> rows) {
         StringJoiner array = new StringJoiner(",", "[", "]");
         for (RuleData row : rows) {

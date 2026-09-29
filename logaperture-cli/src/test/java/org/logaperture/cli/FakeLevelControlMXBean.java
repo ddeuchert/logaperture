@@ -21,6 +21,8 @@ import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.HandlerResetOutcomeData;
 import org.logaperture.control.jmx.LevelControlMXBean;
 import org.logaperture.control.jmx.LoggerInfoData;
+import org.logaperture.control.jmx.RecipeDetailData;
+import org.logaperture.control.jmx.RecipeListData;
 import org.logaperture.control.jmx.ResetOutcomeData;
 import org.logaperture.control.jmx.RuleAlterationData;
 import org.logaperture.control.jmx.RuleData;
@@ -500,6 +502,26 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
             throwOnNextCall = null;
             throw toThrow;
         }
+    }
+
+    RecipeListData recipeList = new RecipeListData(new ArrayList<>(), new ArrayList<>());
+    int listRecipesCalls;
+
+    @Override
+    public RecipeListData listRecipes() {
+        listRecipesCalls++;
+        maybeThrow();
+        return recipeList;
+    }
+
+    RecipeDetailData recipeDetail;
+    final List<String[]> showRecipeCalls = new ArrayList<>();
+
+    @Override
+    public RecipeDetailData showRecipe(String id, String from) {
+        showRecipeCalls.add(new String[] {id, from});
+        maybeThrow();
+        return recipeDetail;
     }
 
     String exportVendorDefaultsResult = "schemaVersion: 1\n";

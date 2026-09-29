@@ -1,6 +1,7 @@
 # Epic: vendor configuration file — shipped logging defaults
 
-Status: **signed off 2026-09-24** — all 21 decisions agreed. Not yet implemented.
+Status: **signed off 2026-09-24** — all 21 decisions agreed. Slices 1 and 2 implemented; slice 3
+(recipes) has its own member spec, [`recipes.md`](recipes.md), and is being built.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §18.10, §18.11, §18.12 (roadmap
 entries), §6.6 (precedence item 3, "static rules file supplied at agent start"), §9.2–§9.5
 (policy layering, capabilities, protected categories), §16.6 (vendor-authored, customer-applied).
@@ -55,7 +56,7 @@ Proposed stack after this epic, highest first (Decision #2):
    persisted state, and make `reset` land on it. Member spec: [`vendor-defaults.md`](vendor-defaults.md).
 2. **#62**: `logctl export vendor-defaults`. Member spec: [`vendor-defaults-export.md`](vendor-defaults-export.md).
 3. **Library-bundled recipes** ([#92](https://github.com/ddeuchert/logaperture/issues/92)): a metadata convention for jar/war/ear files,
-   plus `logctl list/show/apply/reset recipe`. Decisions #14–#21.
+   plus `logctl list/show/apply/reset recipe`. Decisions #14–#21. Member spec: [`recipes.md`](recipes.md).
 
 ## Decisions
 

@@ -106,7 +106,7 @@ class GuidedCommandsTest {
         int exit = guided(lines("l", "Deployer"), "list");
 
         assertEquals(CliError.OK, exit, err());
-        assertTrue(out().contains("List loggers, handlers or rules? [loggers/handlers/rules]"), out());
+        assertTrue(out().contains("List loggers, handlers, rules or recipes? [loggers/handlers/rules/recipes]"), out());
         assertTrue(out().contains("Command: logctl list loggers \"*.Deployer\" --show-all\n"), out());
         assertTrue(out().contains("org.jboss.as.server.deployment.Deployer"), "a logger with no override is listed: "
                 + out());
@@ -153,7 +153,7 @@ class GuidedCommandsTest {
     void list_anUnknownAnswerIsAskedAgain() {
         guided(lines("everything", "h"), "list");
 
-        assertTrue(out().contains("Answer loggers, handlers or rules."), out());
+        assertTrue(out().contains("Answer loggers, handlers, rules or recipes."), out());
         assertTrue(out().contains("Command: logctl list handlers"), out());
     }
 
@@ -168,7 +168,7 @@ class GuidedCommandsTest {
     void list_withoutATerminal_isTheUsageErrorPlusTheHint() {
         assertEquals(CliError.USAGE, scripted("list"));
 
-        assertTrue(err().contains("'list' needs 'loggers [filter]', 'handlers', or 'rules'."), err());
+        assertTrue(err().contains("'list' needs 'loggers [filter]', 'handlers', 'rules', or 'recipes'."), err());
         assertTrue(err().contains(Parser.PROMPT_HINT), err());
     }
 

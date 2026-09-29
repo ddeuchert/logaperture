@@ -69,7 +69,8 @@ final class VendorDefaultsExporter {
         VendorDefaultsExport export = new VendorDefaultsExport(header, loggers, handlers,
                 context.handlerService().exportDefaultHandlers(),
                 context.handlerService().exportDefaultHandlersStateId(),
-                context.handlerService().exportHandlerGroupStateIds(), rules, exportedRules.comments(), skipped);
+                context.handlerService().exportHandlerGroupStateIds(), rules, exportedRules.comments(), skipped,
+                startedFrom.recipes());
 
         String text = VendorDefaultsFile.write(export);
         VendorDefaults check = VendorDefaultsFile.parse(text, Path.of("exported vendor defaults"), false);

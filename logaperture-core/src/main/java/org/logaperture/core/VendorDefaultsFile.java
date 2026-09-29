@@ -58,7 +58,14 @@ public final class VendorDefaultsFile {
 
     private static final Set<String> TOP_LEVEL_KEYS =
             Set.of("schemaVersion", "loggers", "handlers", "handlerGroupStateIds", "defaultHandlers",
-                    "defaultHandlersStateId", "rules");
+                    "defaultHandlersStateId", "rules", "namespace", "recipes");
+    private static final Set<String> RECIPE_FIELDS =
+            Set.of("name", "summary", "description", "loggers", "handlers", "rules");
+    /** doc/specs/recipes.md #1: reverse-domain recommended, not enforced; up to 64 characters. */
+    private static final Pattern NAMESPACE = Pattern.compile("[a-z0-9][a-z0-9.-]{0,63}");
+    private static final Pattern RECIPE_NAME = Pattern.compile("[a-z0-9-]{1,40}");
+    /** Namespaces no recipe file may declare (#1) -- {@code org.logaperture} covers its subdomains too. */
+    private static final Set<String> RESERVED_NAMESPACES = Set.of("vendor", "logaperture", "org.logaperture");
     private static final Set<String> LOGGER_FIELDS = Set.of("name", "level", "reason", "stateId");
     private static final Set<String> HANDLER_FIELDS = Set.of("name", "level", "reason", "stateId");
     private static final Set<String> COMMON_RULE_FIELDS = Set.of("id", "action", "logger", "below",
@@ -67,6 +74,8 @@ public final class VendorDefaultsFile {
     private static final Set<String> DROP_FIELDS = Set.of("sampleFull");
     private static final Set<String> TRIM_FIELDS = Set.of("frames", "collapseCauses");
     private static final Pattern RULE_ID = Pattern.compile("[a-z0-9-]{1,40}");
+    /** A recipe rule's id until {@code labelUnnamedRules} gives it one; never a valid id, so never collides. */
+    private static final String UNLABELLED = "";
     private static final Pattern DURATION = Pattern.compile("(\\d+)([smhd])");
     /** A state id as {@code FileStateStore} assigns it (doc/specs/export-round-trip.md): a UUID, lower-case hex. */
     private static final Pattern STATE_ID =
@@ -117,13 +126,14 @@ public final class VendorDefaultsFile {
         } catch (VendorYaml.SyntaxException e) {
             return VendorDefaults.rejected(path, List.of("line " + e.line() + ": " + e.getMessage()));
         }
-        Validation v = new Validation(protectedCategories);
-        v.run(root);
+        Validation v = new Validation(new ArrayList<>(), protectedCategories, false);
+        List<Recipe> recipes = v.run(root, new RecipeSource(RecipeSource.Kind.VENDOR_DEFAULTS,
+                RecipeSource.VENDOR_DEFAULTS_LABEL, path.toString()));
         if (!v.errors.isEmpty()) {
             return VendorDefaults.rejected(path, v.errors);
         }
         return VendorDefaults.loaded(path, writable, v.loggers, v.handlers, v.defaultHandlers,
-                v.defaultHandlersStateId, v.handlerGroupStateIds, v.rules);
+                v.defaultHandlersStateId, v.handlerGroupStateIds, v.rules, recipes);
     }
 
     /** Values made only of these characters are written unquoted; everything else is double-quoted. */
@@ -187,44 +197,107 @@ public final class VendorDefaultsFile {
                 if (comment != null) {
                     out.append("  # ").append(comment).append('\n');
                 }
-                writeRule(out, rule);
+                writeRule(out, "  ", rule, rule.id().substring(VendorDefaults.RULE_ID_PREFIX.length()));
             }
+        }
+        if (!export.recipes().isEmpty()) {
+            writeRecipes(out, export.recipes());
         }
         return out.toString();
     }
 
-    private static void writeRule(StringBuilder out, VendorDefaults.RuleDefault rule) {
+    /** The {@code namespace:} and {@code recipes:} sections -- doc/specs/recipes.md "The recipe file". */
+    private static void writeRecipes(StringBuilder out, List<Recipe> recipes) {
+        out.append("namespace: ").append(value(recipes.get(0).namespace())).append('\n');
+        out.append("recipes:\n");
+        for (Recipe recipe : recipes) {
+            out.append("  - name: ").append(recipe.name()).append('\n');
+            field(out, "    ", "summary", recipe.summary());
+            if (recipe.description() != null) {
+                text(out, "    ", "description", recipe.description());
+            }
+            if (!recipe.loggers().isEmpty()) {
+                out.append("    loggers:\n");
+                for (VendorDefaults.LoggerDefault logger : recipe.loggers()) {
+                    out.append("      - name: ").append(value(logger.name())).append('\n');
+                    out.append("        level: ").append(logger.level().name()).append('\n');
+                    field(out, "        ", "reason", logger.reason());
+                }
+            }
+            if (!recipe.handlers().isEmpty()) {
+                out.append("    handlers:\n");
+                for (VendorDefaults.HandlerDefault handler : recipe.handlers()) {
+                    out.append("      - name: ").append(value(handler.ref().value())).append('\n');
+                    out.append("        level: ")
+                            .append(handler.mode() == HandlerLevelMode.AUTO ? "AUTO" : handler.level().name())
+                            .append('\n');
+                    field(out, "        ", "reason", handler.reason());
+                }
+            }
+            if (!recipe.rules().isEmpty()) {
+                out.append("    rules:\n");
+                for (VendorDefaults.RuleDefault rule : recipe.rules()) {
+                    writeRule(out, "      ", rule, rule.id());
+                }
+            }
+        }
+    }
+
+    /**
+     * Multi-line text as {@code |} block text (doc/specs/recipes.md #2), so it reads back
+     * unchanged; a value {@code |} can't hold as written -- one line, or a first line starting with
+     * a space, which would be read as indentation -- is written as a quoted value instead.
+     */
+    private static void text(StringBuilder out, String indent, String key, String text) {
+        String firstLine = text.lines().filter(line -> !line.isBlank()).findFirst().orElse("");
+        if (!text.contains("\n") || firstLine.startsWith(" ") || text.contains("\r") || text.contains("\t")) {
+            field(out, indent, key, text);
+            return;
+        }
+        out.append(indent).append(key).append(": |\n");
+        for (String line : text.split("\n", -1)) {
+            out.append(line.isEmpty() ? "" : indent + "  " + line).append('\n');
+        }
+    }
+
+    /** One rule entry at {@code indent} ({@code "  "} for the file's own rules), with {@code id} as written. */
+    private static void writeRule(StringBuilder out, String indent, VendorDefaults.RuleDefault rule, String id) {
+        String fields = indent + "  ";
         CompiledMatchers m = rule.matchers();
-        out.append("  - id: ").append(rule.id().substring(VendorDefaults.RULE_ID_PREFIX.length())).append('\n');
-        out.append("    action: ").append(rule.action()).append('\n');
-        out.append("    logger: ").append(value(rule.loggerName())).append('\n');
-        field(out, m.messageIgnoreCase() ? "messageContainsIgnoreCase" : "messageContains", m.messageContains());
-        field(out, "throwable", m.throwableType());
-        field(out, "throwableMessageContains", m.throwableMessageContains());
+        out.append(indent).append("- id: ").append(id).append('\n');
+        out.append(fields).append("action: ").append(rule.action()).append('\n');
+        out.append(fields).append("logger: ").append(value(rule.loggerName())).append('\n');
+        field(out, fields, m.messageIgnoreCase() ? "messageContainsIgnoreCase" : "messageContains", m.messageContains());
+        field(out, fields, "throwable", m.throwableType());
+        field(out, fields, "throwableMessageContains", m.throwableMessageContains());
         if (m.anyCause()) {
-            out.append("    anyCause: true\n");
+            out.append(fields).append("anyCause: true\n");
         }
         if (m.levelAtMost() != null) {
             // No 'below' line for an unbounded rule (possible only through JMX, never logctl): the
             // file can't say "no bound", and reloads it with the ERROR keep-floor -- the safer side.
-            out.append("    below: ").append(RuleExpression.belowFor(m.levelAtMost())).append('\n');
+            out.append(fields).append("below: ").append(RuleExpression.belowFor(m.levelAtMost())).append('\n');
         }
         if ("drop".equals(rule.action())) {
-            out.append("    sampleFull: ").append(rule.sampleFull().enabled()
+            out.append(fields).append("sampleFull: ").append(rule.sampleFull().enabled()
                     ? RuleExpression.duration(rule.sampleFull().every().toMillis()) : "false").append('\n');
         } else if ("trim".equals(rule.action())) {
-            out.append("    frames: ").append(rule.frames()).append('\n');
+            out.append(fields).append("frames: ").append(rule.frames()).append('\n');
             if (rule.collapseCauses()) {
-                out.append("    collapseCauses: true\n");
+                out.append(fields).append("collapseCauses: true\n");
             }
         }
-        field(out, "reason", rule.reason());
-        field(out, "stateId", rule.stateId());
+        field(out, fields, "reason", rule.reason());
+        field(out, fields, "stateId", rule.stateId());
     }
 
     private static void field(StringBuilder out, String key, String value) {
+        field(out, "    ", key, value);
+    }
+
+    private static void field(StringBuilder out, String indent, String key, String value) {
         if (value != null) {
-            out.append("    ").append(key).append(": ").append(value(value)).append('\n');
+            out.append(indent).append(key).append(": ").append(value(value)).append('\n');
         }
     }
 
@@ -264,9 +337,14 @@ public final class VendorDefaultsFile {
         }
     }
 
-    /** One pass over the parsed tree, collecting every error rather than stopping at the first. */
-    private static final class Validation {
-        final List<String> errors = new ArrayList<>();
+    /**
+     * One pass over the parsed tree, collecting every error rather than stopping at the first.
+     * Also validates recipe files ({@link RecipeFile}) and each recipe's entries: in {@code
+     * recipeEntries} mode an entry takes no {@code stateId}, and a rule's {@code id} is optional
+     * and not {@code vendor:}-prefixed (doc/specs/recipes.md "The recipe file").
+     */
+    static final class Validation {
+        final List<String> errors;
         final List<VendorDefaults.LoggerDefault> loggers = new ArrayList<>();
         final List<VendorDefaults.HandlerDefault> handlers = new ArrayList<>();
         List<HandlerRef> defaultHandlers;
@@ -277,30 +355,29 @@ public final class VendorDefaultsFile {
         private final Set<String> seenHandlerNames = new HashSet<>();
         private final Set<String> seenRuleIds = new HashSet<>();
         private final ProtectedCategories protectedCategories;
+        private final boolean recipeEntries;
 
-        Validation(ProtectedCategories protectedCategories) {
+        /**
+         * @param errors        where errors are collected -- shared with the validation of the file
+         *                      that holds these entries, so a recipe's entry errors reject that file
+         * @param recipeEntries whether the entries are a recipe's (see the class doc)
+         */
+        Validation(List<String> errors, ProtectedCategories protectedCategories, boolean recipeEntries) {
+            this.errors = errors;
             this.protectedCategories = protectedCategories;
+            this.recipeEntries = recipeEntries;
         }
 
-        void run(MapNode root) {
+        /** Validates a whole vendor defaults file; its recipes, if it has any, are returned. */
+        List<Recipe> run(MapNode root, RecipeSource source) {
             for (String key : root.entries().keySet()) {
-                if (key.equals("recipes")) {
-                    error(root.keyLines().get(key), "'recipes' is not supported yet -- library recipes "
-                            + "(issue #92) will add it");
-                } else if (!TOP_LEVEL_KEYS.contains(key)) {
+                if (!TOP_LEVEL_KEYS.contains(key)) {
                     error(root.keyLines().get(key), "unknown key '" + key + "' (expected one of "
                             + "schemaVersion, loggers, handlers, handlerGroupStateIds, defaultHandlers, "
-                            + "defaultHandlersStateId, rules)");
+                            + "defaultHandlersStateId, rules, namespace, recipes)");
                 }
             }
-            Node version = root.entries().get("schemaVersion");
-            if (version == null) {
-                error(root.line(), "schemaVersion is missing -- the first line should be 'schemaVersion: "
-                        + SCHEMA_VERSION + "'");
-            } else if (!(version instanceof ScalarNode scalar) || !scalar.value().equals(
-                    String.valueOf(SCHEMA_VERSION))) {
-                error(version.line(), "schemaVersion must be " + SCHEMA_VERSION);
-            }
+            schemaVersion(root);
             forEachEntry(root, "loggers", this::logger);
             forEachEntry(root, "handlers", this::handler);
             defaultHandlers(root.entries().get("defaultHandlers"));
@@ -313,6 +390,114 @@ public final class VendorDefaultsFile {
             }
             handlerGroupStateIds(root.entries().get("handlerGroupStateIds"));
             forEachEntry(root, "rules", this::rule);
+            String namespace = namespace(root, root.entries().containsKey("recipes"),
+                    "a vendor defaults file with 'recipes:' needs a 'namespace:' for their ids, e.g. "
+                            + "'namespace: com.acme'");
+            return root.entries().containsKey("recipes") ? recipes(root, namespace, source) : List.of();
+        }
+
+        void schemaVersion(MapNode root) {
+            Node version = root.entries().get("schemaVersion");
+            if (version == null) {
+                error(root.line(), "schemaVersion is missing -- the first line should be 'schemaVersion: "
+                        + SCHEMA_VERSION + "'");
+            } else if (!(version instanceof ScalarNode scalar) || !scalar.value().equals(
+                    String.valueOf(SCHEMA_VERSION))) {
+                error(version.line(), "schemaVersion must be " + SCHEMA_VERSION);
+            }
+        }
+
+        /**
+         * The top-level {@code namespace:} -- doc/specs/recipes.md #1. {@code null} when absent
+         * (an error if {@code required}) or invalid.
+         */
+        String namespace(MapNode root, boolean required, String missingMessage) {
+            Node node = root.entries().get("namespace");
+            if (node == null) {
+                if (required) {
+                    error(root.line(), missingMessage);
+                }
+                return null;
+            }
+            String namespace = text(node, "namespace");
+            if (namespace == null) {
+                return null;
+            }
+            if (!NAMESPACE.matcher(namespace).matches()) {
+                error(node.line(), "namespace '" + namespace + "' must be up to 64 characters of a-z, 0-9, '.' and "
+                        + "'-' -- a reverse domain you control is recommended, e.g. io.undertow");
+                return null;
+            }
+            if (RESERVED_NAMESPACES.contains(namespace) || namespace.startsWith("org.logaperture.")) {
+                error(node.line(), "namespace '" + namespace + "' is reserved -- use a reverse domain you control, "
+                        + "e.g. com.acme");
+                return null;
+            }
+            return namespace;
+        }
+
+        /**
+         * The {@code recipes:} list under {@code root} -- doc/specs/recipes.md "The recipe file".
+         * Each recipe's entries are validated in recipe mode into this validation's errors. With
+         * any error, the result is not used (the caller rejects the whole file), so partial
+         * results here are harmless.
+         */
+        List<Recipe> recipes(MapNode root, String namespace, RecipeSource source) {
+            List<Recipe> recipes = new ArrayList<>();
+            Set<String> names = new HashSet<>();
+            Consumer<MapNode> perRecipe = entry -> {
+                Recipe recipe = recipe(entry, namespace, source, names);
+                if (recipe != null) {
+                    recipes.add(recipe);
+                }
+            };
+            Node node = root.entries().get("recipes");
+            if (node instanceof ListNode list && list.items().isEmpty()
+                    || node instanceof ScalarNode scalar && scalar.value().isEmpty()) {
+                error(node.line(), "'recipes' is empty -- list at least one recipe");
+                return recipes;
+            }
+            forEachEntry(root, "recipes", perRecipe);
+            return recipes;
+        }
+
+        private Recipe recipe(MapNode entry, String namespace, RecipeSource source, Set<String> names) {
+            int before = errors.size();
+            unknownFields(entry, RECIPE_FIELDS, "recipe");
+            String name = requiredText(entry, "name");
+            if (name != null && !RECIPE_NAME.matcher(name).matches()) {
+                error(line(entry, "name"), "recipe name '" + name + "' must be 1-40 characters of a-z, 0-9 and '-'");
+            } else if (name != null && !names.add(name)) {
+                error(line(entry, "name"), "recipe '" + name + "' is listed twice");
+            }
+            String summary = requiredText(entry, "summary");
+            if (summary != null && summary.contains("\n")) {
+                error(line(entry, "summary"), "summary must be one line -- put the rest in 'description'");
+            }
+            String description = optionalText(entry, "description");
+            if (source.kind() == RecipeSource.Kind.LIBRARY) {
+                for (String field : List.of("handlers", "rules")) {
+                    if (entry.entries().containsKey(field)) {
+                        error(line(entry, field), "a library's recipe may only set logger levels -- handler "
+                                + "levels and rules belong in a vendor defaults file or recipes folder recipe");
+                    }
+                }
+            }
+            Validation entries = new Validation(errors, ProtectedCategories.none(), true);
+            entries.forEachEntry(entry, "loggers", entries::logger);
+            entries.forEachEntry(entry, "handlers", entries::handler);
+            entries.forEachEntry(entry, "rules", entries::rule);
+            entries.labelUnnamedRules();
+            if (entries.loggers.isEmpty() && entries.handlers.isEmpty() && entries.rules.isEmpty()
+                    && errors.size() == before) {
+                error(entry.line(), "recipe '" + name + "' changes nothing -- give it loggers"
+                        + (source.kind() == RecipeSource.Kind.LIBRARY ? "" : ", handlers or rules"));
+            }
+            if (errors.size() != before || namespace == null) {
+                return null;
+            }
+            return new Recipe(namespace, name, summary, description, entries.loggers, entries.handlers,
+                    entries.rules, source);
         }
 
         private void handlerGroupStateIds(Node node) {
@@ -348,7 +533,7 @@ public final class VendorDefaultsFile {
             return text;
         }
 
-        private void forEachEntry(MapNode root, String key, Consumer<MapNode> perEntry) {
+        void forEachEntry(MapNode root, String key, Consumer<MapNode> perEntry) {
             Node node = root.entries().get(key);
             if (node == null) {
                 return;
@@ -371,7 +556,7 @@ public final class VendorDefaultsFile {
 
         private void logger(MapNode entry) {
             int before = errors.size();
-            unknownFields(entry, LOGGER_FIELDS, "logger");
+            unknownFields(entry, entryFields(LOGGER_FIELDS), "logger");
             String name = loggerName(entry, "name");
             Level level = null;
             String levelText = requiredText(entry, "level");
@@ -394,7 +579,7 @@ public final class VendorDefaultsFile {
 
         private void handler(MapNode entry) {
             int before = errors.size();
-            unknownFields(entry, HANDLER_FIELDS, "handler");
+            unknownFields(entry, entryFields(HANDLER_FIELDS), "handler");
             String name = requiredText(entry, "name");
             String levelText = requiredText(entry, "level");
             Level level = null;
@@ -456,7 +641,7 @@ public final class VendorDefaultsFile {
         private void rule(MapNode entry) {
             int before = errors.size();
             String action = requiredText(entry, "action");
-            Set<String> allowed = new HashSet<>(COMMON_RULE_FIELDS);
+            Set<String> allowed = new HashSet<>(entryFields(COMMON_RULE_FIELDS));
             if ("drop".equals(action)) {
                 allowed.addAll(DROP_FIELDS);
             } else if ("trim".equals(action)) {
@@ -468,17 +653,19 @@ public final class VendorDefaultsFile {
                 unknownFields(entry, allowed, action == null ? "rule" : action + " rule");
             }
 
-            String name = requiredText(entry, "id");
+            String name = recipeEntries ? optionalText(entry, "id") : requiredText(entry, "id");
             String id = null;
             if (name != null) {
                 if (!RULE_ID.matcher(name).matches()) {
                     error(line(entry, "id"), "id '" + name + "' must be 1-40 characters of a-z, 0-9 and '-'");
                 } else {
-                    id = VendorDefaults.RULE_ID_PREFIX + name;
+                    id = recipeEntries ? name : VendorDefaults.RULE_ID_PREFIX + name;
                     if (!seenRuleIds.add(id)) {
                         error(line(entry, "id"), "rule id '" + name + "' is used twice");
                     }
                 }
+            } else if (recipeEntries) {
+                id = UNLABELLED; // labelled once every rule's own id is known -- see labelUnnamedRules
             }
             String logger = loggerName(entry, "logger");
             if (logger != null && protectedCategories.isProtected(logger)) {
@@ -669,7 +856,7 @@ public final class VendorDefaultsFile {
             return node == null ? null : text(node, field);
         }
 
-        private String text(Node node, String field) {
+        String text(Node node, String field) {
             if (!(node instanceof ScalarNode scalar)) {
                 error(node.line(), "'" + field + "' must be a single value, not a list or map");
                 return null;
@@ -685,7 +872,40 @@ public final class VendorDefaultsFile {
             return name.equals(HandlerRef.ALL_HANDLERS.value()) || name.equals(HandlerRef.DEFAULT_HANDLERS.value());
         }
 
-        private void unknownFields(MapNode entry, Set<String> allowed, String what) {
+        /**
+         * Gives each recipe rule written without an {@code id} the label {@code rule-<n>}, the
+         * lowest {@code n} no other rule in the recipe uses -- a label only (applying the rule gives
+         * it an ordinary {@code rN} id), but one export writes back, so it must not repeat an id
+         * given explicitly, before or after it.
+         */
+        void labelUnnamedRules() {
+            int n = 0;
+            for (int i = 0; i < rules.size(); i++) {
+                VendorDefaults.RuleDefault rule = rules.get(i);
+                if (!rule.id().equals(UNLABELLED)) {
+                    continue;
+                }
+                String label;
+                do {
+                    label = "rule-" + ++n;
+                } while (seenRuleIds.contains(label));
+                seenRuleIds.add(label);
+                rules.set(i, new VendorDefaults.RuleDefault(label, rule.action(), rule.loggerName(), rule.matchers(),
+                        rule.reason(), rule.sampleFull(), rule.frames(), rule.collapseCauses(), rule.stateId()));
+            }
+        }
+
+        /** {@code fields}, less {@code stateId} for a recipe's entries -- a recipe is never exported. */
+        private Set<String> entryFields(Set<String> fields) {
+            if (!recipeEntries) {
+                return fields;
+            }
+            Set<String> without = new HashSet<>(fields);
+            without.remove("stateId");
+            return without;
+        }
+
+        void unknownFields(MapNode entry, Set<String> allowed, String what) {
             for (Map.Entry<String, Integer> key : entry.keyLines().entrySet()) {
                 if (!allowed.contains(key.getKey())) {
                     error(key.getValue(), "unknown field '" + key.getKey() + "' in a " + what + " entry");
@@ -698,7 +918,7 @@ public final class VendorDefaultsFile {
             return line != null ? line : entry.line();
         }
 
-        private void error(int line, String message) {
+        void error(int line, String message) {
             errors.add("line " + line + ": " + message);
         }
     }

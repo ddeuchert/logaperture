@@ -66,6 +66,8 @@ if it wasn't started with one):
 | Operator rule | every `sticky` one; `session`/`for` rules are left out. |
 
 - **Reasons** travel: a sticky override's or rule's `--reason`, or the file entry's `reason:`.
+- **Recipes** travel unchanged: the file's `namespace:` and `recipes:` are written back as they were
+  loaded ([`recipes.md`](recipes.md) "Settled during implementation"). Nothing live changes them.
 - **Exact names only.** Sticky overrides are already per exact logger name (a pattern `set` expands
   to one override per match), so no pattern ever reaches the file.
 - **Order:** loggers and handlers sorted by name; rules in file order first, then operator rules

@@ -23,8 +23,9 @@ import java.util.Map;
 /**
  * The YAML subset the vendor defaults file is written in — doc/specs/vendor-defaults.md
  * "Format": block maps, block lists (of maps or scalars), flow lists of scalars ({@code [A,
- * B]}), plain, single- and double-quoted scalars, and {@code #} comments. Nothing else: no
- * anchors, no multiple documents, no block scalars, no tabs in indentation. Hand-written for
+ * B]}), plain, single- and double-quoted scalars, literal block text ({@code key: |}, doc/specs/
+ * recipes.md #2), and {@code #} comments. Nothing else: no anchors, no multiple documents, no
+ * folded or chomping-indicator block scalars, no tabs in indentation. Hand-written for
  * the same reason {@link StateFileFormat} is — no third-party parser in the agent — but,
  * unlike that format, this one is authored by a person, so every node keeps its line number
  * for error messages.
@@ -64,26 +65,37 @@ final class VendorYaml {
         }
     }
 
-    /** One non-blank, comment-stripped source line. */
-    private record Line(int number, int indent, String text) {
+    /**
+     * One non-blank, comment-stripped source line. {@code error} is a syntax error found while
+     * tokenizing it, raised only if the parser reads the line as structure -- the same line inside
+     * {@code |} block text is text, and fine.
+     */
+    private record Line(int number, int indent, String text, String error) {
     }
 
     private final List<Line> lines;
+    /** Every source line as written, for {@code |} block text, which keeps comments and blank lines. */
+    private final String[] raw;
     private int position;
 
-    private VendorYaml(List<Line> lines) {
+    private VendorYaml(List<Line> lines, String[] raw) {
         this.lines = lines;
+        this.raw = raw;
     }
 
     /**
      * @return the document's root map; an empty document is an empty map
      */
     static MapNode parse(String content) throws SyntaxException {
-        VendorYaml reader = new VendorYaml(tokenize(content));
+        String[] raw = content.split("\r\n|\n|\r", -1);
+        if (raw.length > 0 && raw[0].startsWith("\uFEFF")) {
+            raw[0] = raw[0].substring(1); // tolerate a UTF-8 byte-order mark
+        }
+        VendorYaml reader = new VendorYaml(tokenize(raw), raw);
         if (reader.lines.isEmpty()) {
             return new MapNode(new LinkedHashMap<>(), new LinkedHashMap<>(), 1);
         }
-        Line first = reader.lines.get(0);
+        Line first = checked(reader.lines.get(0));
         if (first.indent() != 0) {
             throw new SyntaxException(first.number(), "the document must start at column 1");
         }
@@ -92,42 +104,46 @@ final class VendorYaml {
         }
         MapNode root = reader.parseMap(0);
         if (reader.position < reader.lines.size()) {
-            Line extra = reader.lines.get(reader.position);
+            Line extra = checked(reader.lines.get(reader.position));
             throw new SyntaxException(extra.number(), "unexpected indentation");
         }
         return root;
     }
 
-    private static List<Line> tokenize(String content) throws SyntaxException {
+    private static List<Line> tokenize(String[] raw) {
         List<Line> result = new ArrayList<>();
-        String[] raw = content.split("\r\n|\n|\r", -1);
         for (int i = 0; i < raw.length; i++) {
             int number = i + 1;
-            String line = raw[i];
-            if (number == 1 && line.startsWith("﻿")) {
-                line = line.substring(1); // tolerate a UTF-8 byte-order mark
-            }
-            String stripped = stripComment(line, number);
+            String stripped = stripComment(raw[i]);
             if (stripped.isBlank()) {
                 continue;
             }
             int indent = 0;
+            String error = null;
             while (indent < stripped.length() && (stripped.charAt(indent) == ' ' || stripped.charAt(indent) == '\t')) {
-                if (stripped.charAt(indent) == '\t') {
-                    throw new SyntaxException(number, "tabs are not allowed for indentation -- use spaces");
+                if (stripped.charAt(indent) == '\t' && error == null) {
+                    error = "tabs are not allowed for indentation -- use spaces";
                 }
                 indent++;
             }
-            if (stripped.trim().equals("---") || stripped.trim().equals("...")) {
-                throw new SyntaxException(number, "multiple documents are not supported");
+            if (error == null && (stripped.trim().equals("---") || stripped.trim().equals("..."))) {
+                error = "multiple documents are not supported";
             }
-            result.add(new Line(number, indent, stripped.substring(indent).stripTrailing()));
+            result.add(new Line(number, indent, stripped.substring(indent).stripTrailing(), error));
         }
         return result;
     }
 
+    /** {@code line}, once it is read as structure: raises the syntax error tokenizing found on it, if any. */
+    private static Line checked(Line line) throws SyntaxException {
+        if (line.error() != null) {
+            throw new SyntaxException(line.number(), line.error());
+        }
+        return line;
+    }
+
     /** Removes a {@code #} comment that is outside quotes and at line start or after whitespace. */
-    private static String stripComment(String line, int number) throws SyntaxException {
+    private static String stripComment(String line) {
         char quote = 0;
         for (int i = 0; i < line.length(); i++) {
             char c = line.charAt(i);
@@ -173,7 +189,7 @@ final class VendorYaml {
         Map<String, Integer> keyLines = new LinkedHashMap<>();
         int mapLine = lines.get(position).number();
         while (position < lines.size()) {
-            Line line = lines.get(position);
+            Line line = checked(lines.get(position));
             if (line.indent() < indent) {
                 break;
             }
@@ -209,9 +225,12 @@ final class VendorYaml {
         }
         String rest = text.substring(colon + 1).trim();
         Node value;
-        if (!rest.isEmpty()) {
+        if (rest.equals("|")) {
+            value = blockText(line.number(), indent);
+        } else if (!rest.isEmpty()) {
             if (rest.startsWith("|") || rest.startsWith(">")) {
-                throw new SyntaxException(line.number(), "block scalars ('|' or '>') are not supported");
+                throw new SyntaxException(line.number(), "only plain '|' block text is supported, not '" + rest
+                        + "' -- write 'key: |' and the text indented on the lines below");
             }
             if (rest.startsWith("&") || rest.startsWith("*")) {
                 throw new SyntaxException(line.number(), "anchors and aliases are not supported");
@@ -233,6 +252,54 @@ final class VendorYaml {
         keyLines.put(key, line.number());
     }
 
+    /**
+     * The literal block text after a {@code key: |} on line {@code keyLine} -- doc/specs/recipes.md
+     * #2. Its lines are every following source line that is blank or indented deeper than the key
+     * ({@code keyIndent}), read raw: a {@code #} in them is text, not a comment. The first
+     * non-blank line fixes the text's indentation, which is removed from every line; line breaks
+     * are kept. The final line break is dropped -- every field is shown inline, so the value is
+     * what {@code |-} would give, though only {@code |} is accepted. No indented lines: empty text.
+     */
+    private ScalarNode blockText(int keyLine, int keyIndent) throws SyntaxException {
+        int contentIndent = -1;
+        int last = keyLine; // 1-based number of the last source line that belongs to the text
+        List<String> body = new ArrayList<>();
+        for (int i = keyLine; i < raw.length; i++) { // raw[i] is source line i + 1
+            String text = raw[i];
+            if (text.isBlank()) {
+                body.add("");
+                continue;
+            }
+            int indent = 0;
+            while (indent < text.length() && text.charAt(indent) == ' ') {
+                indent++;
+            }
+            if (indent < text.length() && text.charAt(indent) == '\t') {
+                throw new SyntaxException(i + 1, "tabs are not allowed for indentation -- use spaces");
+            }
+            if (contentIndent < 0) {
+                if (indent <= keyIndent) {
+                    break;
+                }
+                contentIndent = indent;
+            } else if (indent < contentIndent) {
+                if (indent > keyIndent) {
+                    throw new SyntaxException(i + 1, "block text is indented less than its first line");
+                }
+                break;
+            }
+            body.add(text.substring(contentIndent).stripTrailing());
+            last = i + 1;
+        }
+        while (!body.isEmpty() && body.get(body.size() - 1).isEmpty()) {
+            body.remove(body.size() - 1); // trailing blank lines belong to no one
+        }
+        while (position < lines.size() && lines.get(position).number() <= last) {
+            position++; // tokenized copies of the text's lines, read here instead
+        }
+        return new ScalarNode(String.join("\n", body), true, keyLine);
+    }
+
     /** The {@code :} ending the key -- outside quotes and followed by a space or end of line. */
     private static int keyColon(String text, int number) throws SyntaxException {
         for (int i = 0; i < text.length(); i++) {
@@ -251,7 +318,7 @@ final class VendorYaml {
         List<Node> items = new ArrayList<>();
         int listLine = lines.get(position).number();
         while (position < lines.size()) {
-            Line line = lines.get(position);
+            Line line = checked(lines.get(position));
             if (line.indent() < indent) {
                 break;
             }
@@ -295,6 +362,9 @@ final class VendorYaml {
                 items.add(new MapNode(entries, keyLines, line.number()));
             } else if (rest.startsWith("[")) {
                 items.add(parseFlowList(rest, line.number()));
+            } else if (rest.startsWith("|") || rest.startsWith(">")) {
+                throw new SyntaxException(line.number(), "block text ('|') is supported only as a key's value, "
+                        + "e.g. 'description: |'");
             } else {
                 items.add(scalar(rest, line.number()));
             }

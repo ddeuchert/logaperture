@@ -78,17 +78,23 @@ final class Questions {
     }
 
     /**
-     * One of {@code choices}, or its first letter; returned as the full word. Asked again, naming the
-     * choices, until one is given.
+     * One of {@code choices}, or its first letter when no other choice starts with it; returned as the
+     * full word. Asked again, naming the choices, until one is given.
      */
     static String askChoice(Prompter prompter, String question, List<String> choices) {
         while (true) {
             String answer = prompter.ask("", question + " [" + String.join("/", choices) + "]")
                     .toLowerCase(Locale.ROOT);
             for (String choice : choices) {
-                if (answer.equals(choice) || answer.equals(choice.substring(0, 1))) {
+                if (answer.equals(choice)) {
                     return choice;
                 }
+            }
+            // A first letter answers only when no other choice shares it ('r' can't pick rules over recipes).
+            List<String> byLetter = choices.stream()
+                    .filter(choice -> answer.length() == 1 && choice.startsWith(answer)).toList();
+            if (byLetter.size() == 1) {
+                return byLetter.get(0);
             }
             prompter.out().println("Answer " + String.join(", ", choices.subList(0, choices.size() - 1)) + " or "
                     + choices.get(choices.size() - 1) + ".");

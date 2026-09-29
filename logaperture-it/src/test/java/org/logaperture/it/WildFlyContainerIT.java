@@ -467,6 +467,62 @@ class WildFlyContainerIT {
         }
     }
 
+    // --- recipes (doc/specs/recipes.md) -----------------------------------------------------------
+
+    private static final String PROBE_RECIPES = """
+            schemaVersion: 1
+            namespace: com.myapp.probe
+            recipes:
+              - name: watch
+                summary: Watch the probe worker
+                description: |
+                  Everything the probe worker does.
+                  # a line that is text, not a comment
+                loggers:
+                  - name: com.myapp.probe.Worker
+                    level: DEBUG
+                    reason: probe activity
+            """;
+
+    private static final String PROBE_LIB_RECIPES = """
+            schemaVersion: 1
+            namespace: com.myapp.lib
+            recipes:
+              - name: quiet
+                summary: A library's recipe inside the war
+                loggers:
+                  - name: com.myapp.lib
+                    level: DEBUG
+            """;
+
+    @Test
+    void deployedWarsRecipe_isListedAndShown_fromItsClassPath() throws Exception {
+        deployProbeWar();
+        try {
+            Logctl list = logctl("list", "recipes");
+            assertEquals(0, list.exitCode(), list.stderr());
+            assertTrue(list.stdout().contains("com.myapp.probe:watch"), "WEB-INF/classes' recipe:\n" + list.stdout());
+            assertTrue(list.stdout().contains("probe.war!/WEB-INF/classes"), "its source names the deployment:\n"
+                    + list.stdout());
+            assertTrue(list.stdout().contains("com.myapp.lib:quiet"), "a WEB-INF/lib jar's recipe:\n" + list.stdout());
+            assertTrue(list.stdout().contains("probe.war!/WEB-INF/lib/probe-recipes.jar"), list.stdout());
+
+            Logctl show = logctl("show", "recipe", "com.myapp.probe:watch");
+            assertEquals(0, show.exitCode(), show.stderr());
+            assertTrue(show.stdout().contains("# a line that is text, not a comment"), show.stdout());
+            assertTrue(show.stdout().contains("logger com.myapp.probe.Worker") && show.stdout().contains("-> DEBUG"),
+                    show.stdout());
+            assertFalse(logctl("status").stdout().contains("com.myapp.probe.Worker"),
+                    "show recipe changes nothing");
+
+            Logctl json = logctl("list", "recipes", "--json");
+            assertTrue(json.stdout().contains("\"sourceKind\":\"LIBRARY\""), json.stdout());
+            assertTrue(logctl("doctor").stdout().contains("recipe"), "doctor runs the recipe-files check");
+        } finally {
+            undeployProbeWar();
+        }
+    }
+
     // --- doctor (doc/specs/doctor.md) ------------------------------------------------------------
 
     @Test
@@ -1416,6 +1472,17 @@ class WildFlyContainerIT {
         awaitFile(DEPLOYMENTS + "/probe.war.undeployed");
     }
 
+    /** A jar holding only {@code META-INF/logaperture/recipes.yaml}. */
+    private static byte[] recipesJar(String recipes) throws IOException {
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        try (ZipOutputStream jar = new ZipOutputStream(bytes)) {
+            jar.putNextEntry(new ZipEntry("META-INF/logaperture/recipes.yaml"));
+            jar.write(recipes.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            jar.closeEntry();
+        }
+        return bytes.toByteArray();
+    }
+
     private Path buildProbeWar() throws IOException {
         String servletPackage = jakartaServletNamespace ? "jakarta.servlet" : "javax.servlet";
         String source = """
@@ -1457,6 +1524,14 @@ class WildFlyContainerIT {
             zip.closeEntry();
             zip.putNextEntry(new ZipEntry("WEB-INF/beans.xml"));
             zip.write("<beans/>".getBytes());
+            zip.closeEntry();
+            // doc/specs/recipes.md #3: a war's recipes sit on its class path -- under WEB-INF/classes,
+            // or in a WEB-INF/lib jar (here one with no classes at all, only recipes).
+            zip.putNextEntry(new ZipEntry("WEB-INF/classes/META-INF/logaperture/recipes.yaml"));
+            zip.write(PROBE_RECIPES.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("WEB-INF/lib/probe-recipes.jar"));
+            zip.write(recipesJar(PROBE_LIB_RECIPES));
             zip.closeEntry();
         }
         return war;
