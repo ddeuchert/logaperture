@@ -28,6 +28,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -93,6 +94,24 @@ class AgentOrderCheckTest {
 
         assertEquals("3 agents are listed ahead of logaperture-agent.jar: perfmon4j.jar, "
                 + "fss-security-agent.jar, destiny-agent.jar.", order.summary());
+    }
+
+    @Test
+    void twoDifferentJarsSharingAFileName_ahead_areNamedInFullInTheDetail() {
+        DoctorFinding order = single(run("-javaagent:/a/agent.jar", "-javaagent:/b/agent.jar",
+                "-javaagent:/opt/logaperture-agent.jar"), AgentOrderCheck.ORDER_CHECK);
+
+        assertEquals("2 agents are listed ahead of logaperture-agent.jar: agent.jar, agent.jar.", order.summary());
+        assertTrue(order.detail().endsWith("Listed ahead, in order: " + Path.of("/a/agent.jar") + ", "
+                + Path.of("/b/agent.jar") + "."), order.detail());
+    }
+
+    @Test
+    void distinctFileNamesAhead_noFullPathsInTheDetail() {
+        DoctorFinding order = single(run("-javaagent:/a/one.jar", "-javaagent:/a/one.jar",
+                "-javaagent:/b/two.jar", "-javaagent:/opt/logaperture-agent.jar"), AgentOrderCheck.ORDER_CHECK);
+
+        assertFalse(order.detail().contains("Listed ahead, in order"), order.detail());
     }
 
     @Test

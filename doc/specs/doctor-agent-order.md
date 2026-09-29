@@ -17,8 +17,9 @@ After this feature, the user will be able to:
   LogAperture's, which ones, and why that matters: anything those agents log while starting up
   is out of reach of `drop`/`trim` rules.
 - See when the same agent jar is listed twice on the command line.
-- See a clean `OK` line when LogAperture is the first agent, and nothing at all when LogAperture
-  was attached to a running JVM rather than started with `-javaagent`.
+- See a clean `OK` line when LogAperture is the first agent, and no ordering line when LogAperture
+  was attached to a running JVM rather than started with `-javaagent` (a jar listed twice is still
+  reported).
 
 ## Motivation
 
@@ -91,8 +92,10 @@ and ends in `.jar`.
     agent writes outside the logging framework (its own console or file) stays out of reach
     either way.`
   - `suggestedFix`: `list -javaagent:<our path as given> before the other -javaagent entries.`
-  - The summary names the other agents by file name, in command-line order; `detail` is where
-    full paths would go if two share a file name.
+  - The summary names the other agents by file name, in command-line order. When two different
+    jars ahead share a file name, `detail` ends with their full resolved paths, in order
+    (`Listed ahead, in order: /a/agent.jar, /b/agent.jar.`). The same jar listed twice is not a
+    name clash; `agent.duplicate` reports it.
 
 ### `agent.duplicate`
 

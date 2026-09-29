@@ -28,8 +28,8 @@ are absorbed into the real guide.
   logs errors at startup.
 - `logctl doctor` reports the order it sees (`agent.order`: `OK` when LogAperture is first, `INFO`
   naming the agents ahead of it) and any jar listed twice (`agent.duplicate`). Agents set in
-  `JAVA_TOOL_OPTIONS` / `JDK_JAVA_OPTIONS` count as listed first. Nothing is reported when
-  LogAperture was attached to a running JVM.
+  `JAVA_TOOL_OPTIONS` / `JDK_JAVA_OPTIONS` count as listed first. No ordering line when
+  LogAperture was attached to a running JVM; a jar listed twice is still reported.
 - Example: a `destiny-agent` `premain` logging a `ConnectException` at boot while
   the sticky trim rule only works later in the log.
 - Roadmap: spec §18.14; doctor check in `doc/specs/doctor-agent-order.md` (#85); the startup-abort fix in #86; mechanism

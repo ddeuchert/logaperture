@@ -171,17 +171,24 @@ final class AgentOrderCheck {
             return new DoctorFinding(ORDER_CHECK, Severity.OK, subject,
                     own.fileName() + " is the first -javaagent.", null, null);
         }
-        List<String> ahead = agents.subList(0, ownIndex).stream().map(AgentEntry::fileName).toList();
+        List<AgentEntry> aheadEntries = agents.subList(0, ownIndex);
+        List<String> ahead = aheadEntries.stream().map(AgentEntry::fileName).toList();
         String count = ahead.size() == 1 ? "1 agent is" : ahead.size() + " agents are";
+        String detail = "an agent listed earlier runs its premain first, so anything it logs while starting up is "
+                + "out of reach of drop/trim rules. Listing LogAperture first narrows that window; output an agent "
+                + "writes outside the logging framework (its own console or file) stays out of reach either way.";
+        // Two different jars with one file name read as the same agent in the summary -- name them in full.
+        long distinctNames = aheadEntries.stream().map(AgentEntry::fileName).distinct().count();
+        long distinctPaths = aheadEntries.stream().map(AgentEntry::resolved).distinct().count();
+        if (distinctNames < distinctPaths) {
+            detail += " Listed ahead, in order: "
+                    + String.join(", ", aheadEntries.stream().map(e -> e.resolved().toString()).toList()) + ".";
+        }
         // doc/specs/doctor-agent-order.md Decision #1: INFO -- it explains a missed rule, it isn't a
         // misconfiguration, and many sites are required to list another agent first.
         return new DoctorFinding(ORDER_CHECK, Severity.INFO, subject,
                 count + " listed ahead of " + own.fileName() + ": " + String.join(", ", ahead) + ".",
-                "an agent listed earlier runs its premain first, so anything it logs while starting up is out of "
-                        + "reach of drop/trim rules. Listing LogAperture first narrows that window; output an agent "
-                        + "writes outside the logging framework (its own console or file) stays out of reach "
-                        + "either way.",
-                "list -javaagent:" + own.given() + " before the other -javaagent entries.");
+                detail, "list -javaagent:" + own.given() + " before the other -javaagent entries.");
     }
 
     // --- agent.duplicate --------------------------------------------------------------------------
