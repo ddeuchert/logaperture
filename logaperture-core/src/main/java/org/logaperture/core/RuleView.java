@@ -43,7 +43,12 @@ import org.logaperture.api.LogRule;
  *                 for an operator rule, whose alterations change it in place
  */
 public record RuleView(LogRule rule, String context, long hitCount, String origin, boolean toNative,
-        boolean altered) {
+        boolean altered, String recipe) {
+
+    /** Not made by a recipe. */
+    public RuleView(LogRule rule, String context, long hitCount, String origin, boolean toNative, boolean altered) {
+        this(rule, context, hitCount, origin, toNative, altered, null);
+    }
 
     /** {@code hitCount} defaults to {@code 0} -- most call sites outside {@link RuleService} itself just tag a context. */
     public RuleView(LogRule rule, String context) {
@@ -57,6 +62,6 @@ public record RuleView(LogRule rule, String context, long hitCount, String origi
 
     /** This same row, stamped with its owning context's stable key. */
     public RuleView withContext(String context) {
-        return new RuleView(rule, context, hitCount, origin, toNative, altered);
+        return new RuleView(rule, context, hitCount, origin, toNative, altered, recipe);
     }
 }

@@ -115,7 +115,7 @@ class RecipeServiceTest {
                 new RecipeSource(RecipeSource.Kind.VENDOR_DEFAULTS, "vendor defaults", "/v.yaml"));
         RecipeService service = new RecipeService(CapabilityPolicy.allowAll(),
                 new RecipeCatalog(List.of(vendor), Optional.empty(), LibraryRecipeScanner.none()), loggers(), handlers(),
-                name -> name.startsWith("com.acme.security"));
+                rules(), name -> name.startsWith("com.acme.security"));
 
         assertEquals("refused: com.acme.security is a protected category",
                 service.showRecipe("com.acme:audit", null).changes().get(0).note());
@@ -171,7 +171,7 @@ class RecipeServiceTest {
     @Test
     void everyOperation_needsView() {
         RecipeService denied = new RecipeService(CapabilityPolicy.denyAll(),
-                new RecipeCatalog(List.of(), Optional.empty(), LibraryRecipeScanner.none()), loggers(), handlers());
+                new RecipeCatalog(List.of(), Optional.empty(), LibraryRecipeScanner.none()), loggers(), handlers(), rules());
 
         assertThrows(CapabilityDeniedException.class, denied::listRecipes);
         assertThrows(CapabilityDeniedException.class, () -> denied.showRecipe("a:b", null));
@@ -185,7 +185,7 @@ class RecipeServiceTest {
     }
 
     private RecipeService service(RecipeCatalog catalog) {
-        return new RecipeService(CapabilityPolicy.allowAll(), catalog, loggers(), handlers());
+        return new RecipeService(CapabilityPolicy.allowAll(), catalog, loggers(), handlers(), rules());
     }
 
     /** Only {@code listLoggers} is called: each known logger's live level, prefix-filtered as the real one is. */
@@ -197,16 +197,30 @@ class RecipeServiceTest {
                     }
                     String filter = (String) args[0];
                     return liveLevels.entrySet().stream()
-                            .filter(entry -> entry.getKey().startsWith(filter))
+                            .filter(entry -> filter == null || entry.getKey().startsWith(filter))
                             .map(entry -> new LoggerInfo(entry.getKey(), null, entry.getValue(), false, null, null, null,
                                     null))
                             .toList();
                 });
     }
 
+    /** Only {@code listRules} is called, by {@code list recipes}: no rules. */
+    private RuleOperations rules() {
+        return (RuleOperations) Proxy.newProxyInstance(getClass().getClassLoader(),
+                new Class<?>[] {RuleOperations.class}, (proxy, method, args) -> {
+                    if (!method.getName().equals("listRules")) {
+                        throw new UnsupportedOperationException(method.getName());
+                    }
+                    return List.of();
+                });
+    }
+
     private HandlerLevelControlOperations handlers() {
         return (HandlerLevelControlOperations) Proxy.newProxyInstance(getClass().getClassLoader(),
                 new Class<?>[] {HandlerLevelControlOperations.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("listHandlerOverrides")) {
+                        return List.of();
+                    }
                     if (!method.getName().equals("listHandlers")) {
                         throw new UnsupportedOperationException(method.getName());
                     }

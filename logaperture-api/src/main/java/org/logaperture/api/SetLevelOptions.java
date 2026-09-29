@@ -35,7 +35,13 @@ import java.util.Objects;
  *                  exact-name target, which carries none of a batch
  *                  mutation's risk regardless of tier
  */
-public record SetLevelOptions(String reason, Duration expiresIn, PersistenceTier tier, boolean confirmed) {
+public record SetLevelOptions(String reason, Duration expiresIn, PersistenceTier tier, boolean confirmed,
+        RecipeTag recipe) {
+
+    /** Not made by a recipe. */
+    public SetLevelOptions(String reason, Duration expiresIn, PersistenceTier tier, boolean confirmed) {
+        this(reason, expiresIn, tier, confirmed, null);
+    }
 
     public SetLevelOptions {
         Objects.requireNonNull(tier, "tier");
@@ -70,6 +76,11 @@ public record SetLevelOptions(String reason, Duration expiresIn, PersistenceTier
 
     /** A copy of this options value with {@code confirmed} set — the CLI's own preview-then-apply step. */
     public SetLevelOptions withConfirmed(boolean confirmed) {
-        return new SetLevelOptions(reason, expiresIn, tier, confirmed);
+        return new SetLevelOptions(reason, expiresIn, tier, confirmed, recipe);
+    }
+
+    /** These options for a change made by applying {@code recipe} (doc/specs/recipes.md B4). */
+    public SetLevelOptions withRecipe(RecipeTag recipe) {
+        return new SetLevelOptions(reason, expiresIn, tier, confirmed, recipe);
     }
 }

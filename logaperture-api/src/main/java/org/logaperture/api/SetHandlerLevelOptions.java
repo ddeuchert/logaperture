@@ -29,7 +29,17 @@ import java.util.Objects;
  *                  is {@link PersistenceTier#FOR}; {@code null} otherwise
  * @param tier      the durability tier (default {@link PersistenceTier#SESSION})
  */
-public record SetHandlerLevelOptions(String reason, Duration expiresIn, PersistenceTier tier) {
+public record SetHandlerLevelOptions(String reason, Duration expiresIn, PersistenceTier tier, RecipeTag recipe) {
+
+    /** Not made by a recipe. */
+    public SetHandlerLevelOptions(String reason, Duration expiresIn, PersistenceTier tier) {
+        this(reason, expiresIn, tier, null);
+    }
+
+    /** These options for a change made by applying {@code recipe} (doc/specs/recipes.md B4). */
+    public SetHandlerLevelOptions withRecipe(RecipeTag recipe) {
+        return new SetHandlerLevelOptions(reason, expiresIn, tier, recipe);
+    }
 
     public SetHandlerLevelOptions {
         Objects.requireNonNull(tier, "tier");

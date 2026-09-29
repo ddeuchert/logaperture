@@ -66,7 +66,8 @@ public record PersistedRule(
         Instant createdAt,
         String context,
         Map<String, String> payload,
-        String stateId) {
+        String stateId,
+        String recipe) {
 
     public PersistedRule {
         payload = payload == null ? Map.of() : Map.copyOf(payload);
@@ -80,7 +81,15 @@ public record PersistedRule(
     }
 
     /** This rule with {@code stateId}, as the {@code StateStore} assigns or restores it. */
+    /** Not made by a recipe. */
+    public PersistedRule(String id, String loggerName, String action, CompiledMatchers matchers, String reason,
+            PersistenceTier tier, Instant expiresAt, Instant createdAt, String context,
+            Map<String, String> payload, String stateId) {
+        this(id, loggerName, action, matchers, reason, tier, expiresAt, createdAt, context, payload, stateId, null);
+    }
+
     public PersistedRule withStateId(String stateId) {
-        return new PersistedRule(id, loggerName, action, matchers, reason, tier, expiresAt, createdAt, context, payload, stateId);
+        return new PersistedRule(id, loggerName, action, matchers, reason, tier, expiresAt, createdAt, context, payload,
+                stateId, recipe);
     }
 }

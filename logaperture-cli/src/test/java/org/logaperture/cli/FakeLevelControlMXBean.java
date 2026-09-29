@@ -21,8 +21,10 @@ import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.HandlerResetOutcomeData;
 import org.logaperture.control.jmx.LevelControlMXBean;
 import org.logaperture.control.jmx.LoggerInfoData;
+import org.logaperture.control.jmx.RecipeApplyResultData;
 import org.logaperture.control.jmx.RecipeDetailData;
 import org.logaperture.control.jmx.RecipeListData;
+import org.logaperture.control.jmx.RecipeResetResultData;
 import org.logaperture.control.jmx.ResetOutcomeData;
 import org.logaperture.control.jmx.RuleAlterationData;
 import org.logaperture.control.jmx.RuleData;
@@ -522,6 +524,28 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         showRecipeCalls.add(new String[] {id, from});
         maybeThrow();
         return recipeDetail;
+    }
+
+    RecipeApplyResultData recipeApplyResult;
+    final List<Object[]> applyRecipeCalls = new ArrayList<>();
+
+    @Override
+    public RecipeApplyResultData applyRecipe(String id, String from, String fingerprint, String reason, String tier,
+            long forSeconds) {
+        applyRecipeCalls.add(new Object[] {id, from, fingerprint, reason, tier, forSeconds});
+        maybeThrow();
+        return recipeApplyResult;
+    }
+
+    RecipeResetResultData recipeResetResult;
+    final List<Object[]> resetRecipeCalls = new ArrayList<>();
+
+    @Override
+    public RecipeResetResultData resetRecipe(String id, boolean includeSticky) {
+        resetRecipeCalls.add(new Object[] {id, includeSticky});
+        maybeThrow();
+        return recipeResetResult != null ? recipeResetResult
+                : new RecipeResetResultData(id, List.of(), List.of(), List.of(), List.of());
     }
 
     String exportVendorDefaultsResult = "schemaVersion: 1\n";

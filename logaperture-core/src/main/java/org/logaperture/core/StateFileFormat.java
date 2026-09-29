@@ -109,10 +109,15 @@ import java.util.Map;
  * exported vendor defaults file carries so a restart with it can take the
  * entry over. A version-≤8 record has no {@code stateId:} line and reads as
  * {@code null}; {@link FileStateStore} assigns one when it opens the file.
+ *
+ * <p>Schema version 10 (doc/specs/recipes.md B4) adds an optional {@code
+ * recipe:} line to {@code overrides:}, {@code handlerOverrides:} and {@code
+ * rules:} records -- the id of the recipe that made the change, written only
+ * when there is one. A version-≤9 record has none and reads as {@code null}.
  */
 final class StateFileFormat {
 
-    private static final int SCHEMA_VERSION = 9;
+    private static final int SCHEMA_VERSION = 10;
     private static final char PAYLOAD_ENTRY_SEPARATOR = '\u0001';
     private static final char PAYLOAD_KV_SEPARATOR = '\u0002';
     private static final int MIN_SUPPORTED_SCHEMA_VERSION = 1;
@@ -143,6 +148,7 @@ final class StateFileFormat {
                 out.append("    tier: ").append(override.tier().name()).append('\n');
                 out.append("    expiresAt: ").append(override.expiresAt() == null ? "null" : override.expiresAt()).append('\n');
                 appendStateId(out, override.stateId());
+                appendRecipe(out, override.recipe());
             }
         }
 
@@ -160,6 +166,7 @@ final class StateFileFormat {
                 out.append("    tier: ").append(override.tier().name()).append('\n');
                 out.append("    expiresAt: ").append(override.expiresAt() == null ? "null" : override.expiresAt()).append('\n');
                 appendStateId(out, override.stateId());
+                appendRecipe(out, override.recipe());
             }
         }
 
@@ -200,9 +207,16 @@ final class StateFileFormat {
                         .append(rule.payload().isEmpty() ? "null" : quote(encodePayload(rule.payload())))
                         .append('\n');
                 appendStateId(out, rule.stateId());
+                appendRecipe(out, rule.recipe());
             }
         }
         return out.toString();
+    }
+
+    private static void appendRecipe(StringBuilder out, String recipe) {
+        if (recipe != null) {
+            out.append("    recipe: ").append(quote(recipe)).append('\n');
+        }
     }
 
     private static void appendStateId(StringBuilder out, String stateId) {
@@ -372,7 +386,13 @@ final class StateFileFormat {
                 unquote(fields.get("source")),
                 PersistenceTier.valueOf(fields.get("tier")),
                 nullable(fields.get("expiresAt")) == null ? null : Instant.parse(fields.get("expiresAt")),
-                stateId(fields));
+                stateId(fields),
+                recipe(fields));
+    }
+
+    /** A version-≤9 record has no {@code recipe:} line -- {@code null}, not made by a recipe. */
+    private static String recipe(Map<String, String> fields) {
+        return nullable(fields.get("recipe")) == null ? null : unquote(fields.get("recipe"));
     }
 
     /** A version-≤8 record has no {@code stateId:} line -- {@code null}, assigned later by {@link FileStateStore}. */
@@ -393,7 +413,8 @@ final class StateFileFormat {
                 unquote(fields.get("source")),
                 PersistenceTier.valueOf(fields.get("tier")),
                 nullable(fields.get("expiresAt")) == null ? null : Instant.parse(fields.get("expiresAt")),
-                stateId(fields));
+                stateId(fields),
+                recipe(fields));
     }
 
     private static PersistedRule toRule(Map<String, String> fields) {
@@ -422,7 +443,8 @@ final class StateFileFormat {
                 // A version-<=7 file has no "payload:" line at all -- reads as empty, per this
                 // schema bump's own javadoc paragraph above.
                 nullable(fields.get("payload")) == null ? Map.of() : decodePayload(unquote(fields.get("payload"))),
-                stateId(fields));
+                stateId(fields),
+                recipe(fields));
     }
 
     /**

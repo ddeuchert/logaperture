@@ -23,7 +23,6 @@ import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
-import org.logaperture.control.jmx.RecipeChangeData;
 import org.logaperture.control.jmx.RecipeData;
 import org.logaperture.control.jmx.RecipeDetailData;
 import org.logaperture.control.jmx.RecipeFileProblemData;
@@ -87,6 +86,8 @@ final class Commands {
             }
             boolean showContext = spansMultipleContexts(rows, LoggerInfoData::getContext);
             boolean showVendor = rows.stream().anyMatch(row -> row.getVendorDefaultLevel() != null);
+            // doc/specs/recipes.md #6: only when a recipe made one of the rows' overrides.
+            boolean showRecipe = rows.stream().anyMatch(row -> row.getOverrideRecipe() != null);
             List<List<String>> table = new ArrayList<>();
             for (LoggerInfoData row : rows) {
                 List<String> cells = new ArrayList<>();
@@ -100,6 +101,9 @@ final class Commands {
                 }
                 cells.add(orDash(row.getEffectiveLevel()));
                 cells.add(overrideCell(row));
+                if (showRecipe) {
+                    cells.add(orDash(row.getOverrideRecipe()));
+                }
                 table.add(cells);
             }
             List<String> headers = new ArrayList<>();
@@ -111,6 +115,9 @@ final class Commands {
                 headers.add("VENDOR");
             }
             headers.addAll(List.of("EFFECTIVE", "OVERRIDE"));
+            if (showRecipe) {
+                headers.add("RECIPE");
+            }
             out.println(Format.table(headers, table));
             return CliError.OK;
         };
@@ -824,6 +831,7 @@ final class Commands {
             }
             boolean showContext = spansMultipleContexts(rows, HandlerInfoData::getContext);
             boolean showVendor = rows.stream().anyMatch(row -> row.getVendorDefault() != null);
+            boolean showRecipe = rows.stream().anyMatch(row -> row.getOverrideRecipe() != null);
             List<List<String>> table = new ArrayList<>();
             for (HandlerInfoData row : rows) {
                 boolean notALiveHandler = row.getLevel() == null && !row.isPersistent()
@@ -842,6 +850,9 @@ final class Commands {
                 // otherwise-unused cell shows its current members instead.
                 cells.add(row.getMembersSummary() != null ? row.getMembersSummary() : orDash(row.getTargetPath()));
                 cells.add(handlerCatalogOverrideCell(row));
+                if (showRecipe) {
+                    cells.add(orDash(row.getOverrideRecipe()));
+                }
                 table.add(cells);
             }
             List<String> headers = new ArrayList<>();
@@ -853,6 +864,9 @@ final class Commands {
                 headers.add("VENDOR");
             }
             headers.addAll(List.of("PERSISTS", "TARGET", "OVERRIDE"));
+            if (showRecipe) {
+                headers.add("RECIPE");
+            }
             out.println(Format.table(headers, table));
             return CliError.OK;
         };
@@ -882,6 +896,7 @@ final class Commands {
                 return CliError.OK;
             }
             boolean showContext = spansMultipleContexts(rows, org.logaperture.control.jmx.RuleData::getContext);
+            boolean showRecipe = rows.stream().anyMatch(row -> row.getRecipe() != null);
             List<List<String>> table = new ArrayList<>();
             for (org.logaperture.control.jmx.RuleData row : rows) {
                 List<String> cells = new ArrayList<>();
@@ -897,6 +912,9 @@ final class Commands {
                 cells.add(ruleTierCell(row));
                 cells.add(orDash(row.getExpiresAt()));
                 cells.add(String.valueOf(row.getHitCount()));
+                if (showRecipe) {
+                    cells.add(orDash(row.getRecipe()));
+                }
                 table.add(cells);
             }
             List<String> headers = new ArrayList<>();
@@ -908,6 +926,9 @@ final class Commands {
                 headers.add("EXPRESSION");
             }
             headers.addAll(List.of("ACTION", "TIER", "EXPIRES", "HITS"));
+            if (showRecipe) {
+                headers.add("RECIPE");
+            }
             out.println(Format.table(headers, table));
             return CliError.OK;
         };
@@ -933,17 +954,23 @@ final class Commands {
                 boolean ambiguous = false;
                 for (RecipeData row : rows) {
                     ambiguous |= row.isAmbiguous() && !row.isShadowed();
-                    List<String> cells = new ArrayList<>(List.of(row.getId(), row.getSummary()));
-                    if (verbose) {
+                    List<String> cells = new ArrayList<>(List.of(row.getId(),
+                            row.isOffered() ? row.getSummary() : "(no longer offered)"));
+                    if (!row.isOffered()) {
+                        cells.add(Format.NONE); // B7: still applied, so it can be found and reset
+                    } else if (verbose) {
                         cells.add(row.getSourceLocation());
-                        cells.add(recipeNote(row));
                     } else {
                         int others = row.getOtherSourceLabels().size();
                         cells.add(row.getSourceLabel() + (others == 0 ? "" : " (+" + others + " more)"));
                     }
+                    cells.add(RecipeCommands.appliedCell(row));
+                    if (verbose) {
+                        cells.add(recipeNote(row));
+                    }
                     table.add(cells);
                 }
-                List<String> headers = new ArrayList<>(List.of("ID", "SUMMARY", "SOURCE"));
+                List<String> headers = new ArrayList<>(List.of("ID", "SUMMARY", "SOURCE", "APPLIED"));
                 if (verbose) {
                     headers.add("NOTE");
                 }
@@ -996,42 +1023,9 @@ final class Commands {
                 out.println(Json.recipe(detail));
                 return CliError.OK;
             }
-            RecipeData recipe = detail.getRecipe();
-            out.println(recipe.getId() + " — " + recipe.getSummary());
-            out.println("Source: " + recipe.getSourceLocation());
-            if (!recipe.getOtherSourceLabels().isEmpty()) {
-                out.println("Also offered by: " + String.join(", ", recipe.getOtherSourceLabels()));
-            }
-            if (detail.getDescription() != null) {
-                out.println();
-                for (String line : detail.getDescription().split("\n", -1)) {
-                    out.println(line.isEmpty() ? "" : "  " + line);
-                }
-            }
-            out.println();
-            out.println("Changes:");
-            List<List<String>> rows = new ArrayList<>();
-            for (RecipeChangeData change : detail.getChanges()) {
-                String what = change.getKind() + " " + change.getTarget();
-                // The level column stays narrow: a skip or refusal note, and a rule's options, go last.
-                if (change.getNote() != null) {
-                    rows.add(List.of(what, "", change.getNote()));
-                } else if (change.getNewLevel() != null) {
-                    String current = change.getCurrentLevel() == null ? Format.NONE : change.getCurrentLevel();
-                    rows.add(List.of(what, current + " -> " + change.getNewLevel(), orEmpty(change.getDetail())));
-                } else {
-                    rows.add(List.of(what, "", orEmpty(change.getDetail())));
-                }
-            }
-            for (String line : Format.table(rows).split("\n")) {
-                out.println("  " + line);
-            }
+            RecipeCommands.printRecipe(out, detail);
             return CliError.OK;
         };
-    }
-
-    private static String orEmpty(String value) {
-        return value == null ? "" : value;
     }
 
     /**

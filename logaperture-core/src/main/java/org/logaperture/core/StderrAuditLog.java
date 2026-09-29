@@ -56,7 +56,8 @@ public final class StderrAuditLog implements AuditLog {
                 + " logger=" + record.loggerName()
                 + " previous=" + record.previousValue()
                 + " new=" + record.newValue()
-                + " reason=" + (record.reason() == null ? "" : record.reason()));
+                + " reason=" + (record.reason() == null ? "" : record.reason())
+                + (record.origin() == null ? "" : " origin=" + record.origin()));
     }
 
     private static PrintStream resolveTarget() {

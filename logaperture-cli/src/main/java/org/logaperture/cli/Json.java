@@ -17,11 +17,13 @@ package org.logaperture.cli;
 
 import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.EnvironmentReportData;
+import org.logaperture.control.jmx.RecipeApplyResultData;
 import org.logaperture.control.jmx.RecipeChangeData;
 import org.logaperture.control.jmx.RecipeData;
 import org.logaperture.control.jmx.RecipeDetailData;
 import org.logaperture.control.jmx.RecipeFileProblemData;
 import org.logaperture.control.jmx.RecipeListData;
+import org.logaperture.control.jmx.RecipeResetResultData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
@@ -77,7 +79,8 @@ final class Json {
                 .str("tier", row.getTier())
                 .str("expiresAt", row.getExpiresAt())
                 .str("vendorDefaultLevel", row.getVendorDefaultLevel())
-                .bool("resetToNative", row.isResetToNative());
+                .bool("resetToNative", row.isResetToNative())
+                .str("recipe", row.getOverrideRecipe());
     }
 
     static String override(LevelOverrideData data) {
@@ -313,6 +316,7 @@ final class Json {
                     .str("context", row.getContext())
                     .str("vendorDefault", row.getVendorDefault())
                     .bool("resetToNative", row.isResetToNative())
+                    .str("recipe", row.getOverrideRecipe())
                     .toString());
         }
         return new Obj().raw("handlers", array.toString()).toString();
@@ -435,9 +439,39 @@ final class Json {
 
     /** {@code logctl show recipe --json} -- doc/specs/recipes.md. */
     static String recipe(RecipeDetailData detail) {
-        StringJoiner changes = new StringJoiner(",", "[", "]");
-        for (RecipeChangeData change : detail.getChanges()) {
-            changes.add(new Obj()
+        return recipeObj(detail.getRecipe())
+                .str("description", detail.getDescription())
+                .raw("changes", changes(detail.getChanges()))
+                .str("fingerprint", detail.getFingerprint())
+                .toString();
+    }
+
+    /** {@code logctl apply recipe --json} -- doc/specs/recipes.md B10. */
+    static String recipeApply(RecipeApplyResultData result) {
+        return recipeObj(result.getRecipe())
+                .str("tier", result.getTier())
+                .str("expiresAt", result.getExpiresAt())
+                .raw("applied", changes(result.getApplied()))
+                .raw("skipped", changes(result.getSkipped()))
+                .raw("ruleIds", strings(result.getRuleIds()))
+                .toString();
+    }
+
+    /** {@code logctl reset recipe --json} -- doc/specs/recipes.md B11. */
+    static String recipeReset(RecipeResetResultData result) {
+        return new Obj()
+                .str("id", result.getRecipeId())
+                .raw("loggers", strings(result.getLoggers()))
+                .raw("handlers", strings(result.getHandlers()))
+                .raw("rules", strings(result.getRules()))
+                .raw("keptSticky", strings(result.getKeptSticky()))
+                .toString();
+    }
+
+    private static String changes(List<RecipeChangeData> changes) {
+        StringJoiner array = new StringJoiner(",", "[", "]");
+        for (RecipeChangeData change : changes) {
+            array.add(new Obj()
                     .str("kind", change.getKind())
                     .str("target", change.getTarget())
                     .str("currentLevel", change.getCurrentLevel())
@@ -446,10 +480,7 @@ final class Json {
                     .str("note", change.getNote())
                     .toString());
         }
-        return recipeObj(detail.getRecipe())
-                .str("description", detail.getDescription())
-                .raw("changes", changes.toString())
-                .toString();
+        return array.toString();
     }
 
     private static Obj recipeObj(RecipeData row) {
@@ -461,7 +492,12 @@ final class Json {
                 .str("sourceLocation", row.getSourceLocation())
                 .raw("otherSourceLabels", strings(row.getOtherSourceLabels()))
                 .bool("ambiguous", row.isAmbiguous())
-                .bool("shadowed", row.isShadowed());
+                .bool("shadowed", row.isShadowed())
+                .bool("offered", row.isOffered())
+                .raw("appliedCount", String.valueOf(row.getAppliedCount()))
+                .raw("entryCount", String.valueOf(row.getEntryCount()))
+                .str("appliedTier", row.getAppliedTier())
+                .str("appliedExpiresAt", row.getAppliedExpiresAt());
     }
 
     private static String strings(List<String> values) {
@@ -506,6 +542,7 @@ final class Json {
                 .str("origin", row.getOrigin())
                 .bool("toNative", row.isToNative())
                 .bool("altered", row.isAltered())
+                .str("recipe", row.getRecipe())
                 .raw("sampleFullEnabled", row.getSampleFullEnabled() == null ? "null"
                         : String.valueOf(row.getSampleFullEnabled()))
                 .raw("sampleFullEveryMillis", row.getSampleFullEveryMillis() == null ? "null"

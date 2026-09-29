@@ -62,4 +62,8 @@ tables into the guide more or less as they are.
 - A library's recipe can only raise levels; lowering ones are skipped. Rules and handler levels are
   only allowed in the vendor defaults file or the recipes folder.
 - Writing a description: `description: |` then the text indented below it. `#` inside it is text.
-
+- `apply recipe` changes are ordinary overrides and rules that remember the recipe. Changing one by
+  hand (`set logger`, `alter rule`) makes it yours: `reset recipe` then leaves it alone.
+- Re-applying a recipe replaces its rules (new `rN` ids) and resets the tier of its levels.
+- A recipe's changes stay after its library is undeployed; `list recipes` still shows it as `(no
+  longer offered)` so it can be reset.

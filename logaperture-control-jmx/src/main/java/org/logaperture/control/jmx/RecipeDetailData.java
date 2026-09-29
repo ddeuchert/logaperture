@@ -26,17 +26,19 @@ public final class RecipeDetailData {
     private final RecipeData recipe;
     private final String description;
     private final List<RecipeChangeData> changes;
+    private final String fingerprint;
 
-    @ConstructorProperties({"recipe", "description", "changes"})
-    public RecipeDetailData(RecipeData recipe, String description, List<RecipeChangeData> changes) {
+    @ConstructorProperties({"recipe", "description", "changes", "fingerprint"})
+    public RecipeDetailData(RecipeData recipe, String description, List<RecipeChangeData> changes, String fingerprint) {
         this.recipe = recipe;
         this.description = description;
         this.changes = changes;
+        this.fingerprint = fingerprint;
     }
 
     public static RecipeDetailData from(RecipeDetail detail) {
-        return new RecipeDetailData(RecipeData.from(detail.listing()), detail.listing().recipe().description(),
-                detail.changes().stream().map(RecipeChangeData::from).toList());
+        return new RecipeDetailData(RecipeData.from(detail.listing(), null), detail.listing().recipe().description(),
+                detail.changes().stream().map(RecipeChangeData::from).toList(), detail.fingerprint());
     }
 
     public RecipeData getRecipe() {
@@ -50,5 +52,10 @@ public final class RecipeDetailData {
 
     public List<RecipeChangeData> getChanges() {
         return changes;
+    }
+
+    /** The recipe's content, hashed: passed back to {@code applyRecipe} so it applies exactly what was shown (B1). */
+    public String getFingerprint() {
+        return fingerprint;
     }
 }

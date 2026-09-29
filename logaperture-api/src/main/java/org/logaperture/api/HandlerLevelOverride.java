@@ -52,6 +52,8 @@ import java.time.Instant;
  *                   same override, and written into an exported vendor defaults file so a restart with
  *                   that file can take the entry over (doc/specs/export-round-trip.md); {@code null}
  *                   until it has been persisted
+ * @param recipe     the id of the recipe that made it (doc/specs/recipes.md #6), or {@code null};
+ *                   a later change made by hand replaces the override and so drops it (#7)
  */
 public record HandlerLevelOverride(
         HandlerRef handlerRef,
@@ -62,7 +64,8 @@ public record HandlerLevelOverride(
         String source,
         PersistenceTier tier,
         Instant expiresAt,
-        String stateId) {
+        String stateId,
+        String recipe) {
 
     public HandlerLevelOverride {
         if (handlerRef == null) {
@@ -106,7 +109,14 @@ public record HandlerLevelOverride(
     }
 
     /** This override with {@code stateId}, as the {@code StateStore} assigns or restores it. */
+    /** Not made by a recipe. */
+    public HandlerLevelOverride(HandlerRef handlerRef, Level level, HandlerLevelMode mode, String reason,
+            Instant appliedAt, String source, PersistenceTier tier, Instant expiresAt, String stateId) {
+        this(handlerRef, level, mode, reason, appliedAt, source, tier, expiresAt, stateId, null);
+    }
+
     public HandlerLevelOverride withStateId(String stateId) {
-        return new HandlerLevelOverride(handlerRef, level, mode, reason, appliedAt, source, tier, expiresAt, stateId);
+        return new HandlerLevelOverride(handlerRef, level, mode, reason, appliedAt, source, tier, expiresAt, stateId,
+                recipe);
     }
 }

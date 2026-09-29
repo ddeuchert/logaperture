@@ -16,8 +16,10 @@
 package org.logaperture.control.jmx;
 
 import org.logaperture.core.RecipeList;
+import org.logaperture.core.RecipeListing;
 
 import java.beans.ConstructorProperties;
+import java.util.ArrayList;
 import java.util.List;
 
 /** {@code logctl list recipes}'s result -- doc/specs/recipes.md. */
@@ -33,11 +35,17 @@ public final class RecipeListData {
     }
 
     public static RecipeListData from(RecipeList list) {
-        return new RecipeListData(list.recipes().stream().map(RecipeData::from).toList(),
-                list.brokenFiles().stream().map(RecipeFileProblemData::from).toList());
+        List<RecipeData> rows = new ArrayList<>();
+        for (RecipeListing listing : list.recipes()) {
+            rows.add(RecipeData.from(listing, list.applied().get(listing.id())));
+        }
+        for (String id : list.noLongerOffered()) {
+            rows.add(RecipeData.noLongerOffered(list.applied().get(id)));
+        }
+        return new RecipeListData(rows, list.brokenFiles().stream().map(RecipeFileProblemData::from).toList());
     }
 
-    /** Every recipe, shadowed ones included and flagged. */
+    /** Every recipe, shadowed ones included and flagged, then any applied but no longer offered (B7). */
     public List<RecipeData> getRecipes() {
         return recipes;
     }

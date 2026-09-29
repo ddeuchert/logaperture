@@ -403,12 +403,12 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return Optional.of(trackAutoOverride(override));
         }
 
-        Optional<Level> target = applyAutoTarget(ref, explicit, source, opts.reason());
+        Optional<Level> target = applyAutoTarget(ref, explicit, auditSource(opts), opts.reason(), origin(opts));
         if (target.isEmpty()) {
             return Optional.empty(); // no active floor and no baseline to fall back to -- nothing to track
         }
-        HandlerLevelOverride override = new HandlerLevelOverride(
-                ref, target.get(), HandlerLevelMode.AUTO, opts.reason(), now, source, opts.tier(), expiresAt);
+        HandlerLevelOverride override = new HandlerLevelOverride(ref, target.get(), HandlerLevelMode.AUTO,
+                opts.reason(), now, source, opts.tier(), expiresAt, null, recipeId(opts));
         return Optional.of(trackAutoOverride(override));
     }
 
@@ -663,8 +663,10 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (tracked == current.level()) {
             return; // nothing moved -- registry entry stays exactly as it was
         }
+        // A recompute follows the logger floor; it isn't a change by hand, so a recipe's tag stays (recipes.md #7).
         HandlerLevelOverride updated = new HandlerLevelOverride(ref, tracked, HandlerLevelMode.AUTO,
-                current.reason(), current.appliedAt(), current.source(), current.tier(), current.expiresAt());
+                current.reason(), current.appliedAt(), current.source(), current.tier(), current.expiresAt(), null,
+                current.recipe());
 
         Optional<HandlerLevelOverride> afterApply = overrides.get(ref);
         if (!afterApply.map(current::equals).orElse(false)) {
@@ -696,6 +698,12 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      */
     private Optional<Level> applyAutoTarget(HandlerRef ref, Optional<Level> explicitTarget, String auditSource,
             String reason) {
+        return applyAutoTarget(ref, explicitTarget, auditSource, reason, null);
+    }
+
+    /** @param origin the audit record's origin (doc/specs/recipes.md B5), or {@code null} */
+    private Optional<Level> applyAutoTarget(HandlerRef ref, Optional<Level> explicitTarget, String auditSource,
+            String reason, String origin) {
         baselines.captureIfAbsent(ref, adapter);
         Optional<Level> target = explicitTarget.isPresent() ? explicitTarget
                 : baselines.isCaptured(ref) ? baselines.get(ref) : Optional.empty();
@@ -715,7 +723,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return Optional.empty();
         }
         auditLog.record(new AuditRecord(Instant.now(), principal, auditSource, ref.value(), previousValue,
-                target.get().toString(), reason, AuditRecord.Action.MUTATION));
+                target.get().toString(), reason, AuditRecord.Action.MUTATION, origin));
         return target;
     }
 
@@ -1284,7 +1292,8 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                     null,
                     null,
                     baselines.vendorDefault(ref).map(HandlerLevelControlService::describeVendor).orElse(null),
-                    baselines.isResetToNative(ref)));
+                    baselines.isResetToNative(ref),
+                    override == null ? null : override.recipe()));
         }
         HandlerLevelOverride defaultHandlersOverride = overrides.get(HandlerRef.DEFAULT_HANDLERS).orElse(null);
         rows.add(new HandlerInfo(
@@ -1581,14 +1590,28 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         return override;
     }
 
+    /** The recipe id a change made by applying a recipe carries (doc/specs/recipes.md B4), else {@code null}. */
+    private static String recipeId(SetHandlerLevelOptions opts) {
+        return opts.recipe() == null ? null : opts.recipe().id();
+    }
+
+    /** A recipe's change is audited as source {@code recipe} (doc/specs/recipes.md #13). */
+    private String auditSource(SetHandlerLevelOptions opts) {
+        return opts.recipe() == null ? source : LevelControlService.RECIPE_AUDIT_SOURCE;
+    }
+
+    private static String origin(SetHandlerLevelOptions opts) {
+        return opts.recipe() == null ? null : opts.recipe().origin();
+    }
+
     private HandlerLevelOverride applyAndRecordMutation(HandlerRef ref, Level level, SetHandlerLevelOptions opts) {
         baselines.captureIfAbsent(ref, adapter);
         String previousValue = adapter.handlerLevel(ref).map(Level::toString).orElse("<none>");
 
         Instant now = Instant.now();
         Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
-        HandlerLevelOverride override = HandlerLevelOverride.fixed(
-                ref, level, opts.reason(), now, source, opts.tier(), expiresAt);
+        HandlerLevelOverride override = new HandlerLevelOverride(ref, level, HandlerLevelMode.FIXED, opts.reason(),
+                now, source, opts.tier(), expiresAt, null, recipeId(opts));
         HandlerOverrideApplier.apply(override, adapter, this::membersOf); // mutation: the point of no return
         pendingResume.remove(ref); // a direct, successful apply proves ref resolves now, if it was ever pending
 
@@ -1599,8 +1622,8 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             safePersist(() -> stateStore.removeHandler(ref));
         }
         auditLog.record(new AuditRecord(
-                now, principal, source, ref.value(), previousValue, level.toString(), opts.reason(),
-                AuditRecord.Action.MUTATION));
+                now, principal, auditSource(opts), ref.value(), previousValue, level.toString(), opts.reason(),
+                AuditRecord.Action.MUTATION, origin(opts)));
 
         return override;
     }
