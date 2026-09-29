@@ -41,10 +41,10 @@ class RecipeCommandsTest {
     private static final String JAR_URL =
             "jar:file:/opt/wildfly/modules/undertow-core-2.3.10.Final.jar!/META-INF/logaperture/recipes.yaml";
 
-    private static final RecipeData SESSIONS = new RecipeData("io.undertow:sessions",
+    private static final RecipeData SESSIONS = row("io.undertow:sessions",
             "Watch HTTP session creation, expiry and invalidation", "LIBRARY", "undertow-core-2.3.10.Final.jar",
             JAR_URL, List.of(), false, false);
-    private static final RecipeData BILLING = new RecipeData("com.acme:billing", "Trace invoice generation end to end",
+    private static final RecipeData BILLING = row("com.acme:billing", "Trace invoice generation end to end",
             "VENDOR_DEFAULTS", "vendor defaults", "/opt/app/vendor-defaults.yaml", List.of(), false, false);
 
     private final FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
@@ -70,19 +70,19 @@ class RecipeCommandsTest {
         assertEquals(CliError.OK, run("list", "recipes"));
 
         assertEquals("""
-                ID                    SUMMARY                                               SOURCE
-                com.acme:billing      Trace invoice generation end to end                   vendor defaults
-                io.undertow:sessions  Watch HTTP session creation, expiry and invalidation  undertow-core-2.3.10.Final.jar
+                ID                    SUMMARY                                               SOURCE                          APPLIED
+                com.acme:billing      Trace invoice generation end to end                   vendor defaults                 -
+                io.undertow:sessions  Watch HTTP session creation, expiry and invalidation  undertow-core-2.3.10.Final.jar  -
                 """, out());
     }
 
     @Test
     void list_mergedSources_ambiguousIds_shadowedRows_andBrokenFiles() {
-        RecipeData merged = new RecipeData("io.undertow:sessions", "s", "LIBRARY", "a.war!/WEB-INF/lib/u.jar",
+        RecipeData merged = row("io.undertow:sessions", "s", "LIBRARY", "a.war!/WEB-INF/lib/u.jar",
                 "vfs:/a", List.of("b.war!/WEB-INF/lib/u.jar"), false, false);
-        RecipeData ambiguousA = new RecipeData("com.acme:x", "s", "LIBRARY", "a.jar", "file:/a", List.of(), true, false);
-        RecipeData ambiguousB = new RecipeData("com.acme:x", "s", "LIBRARY", "b.jar", "file:/b", List.of(), true, false);
-        RecipeData shadowed = new RecipeData("com.acme:y", "s", "LIBRARY", "c.jar", "file:/c", List.of(), false, true);
+        RecipeData ambiguousA = row("com.acme:x", "s", "LIBRARY", "a.jar", "file:/a", List.of(), true, false);
+        RecipeData ambiguousB = row("com.acme:x", "s", "LIBRARY", "b.jar", "file:/b", List.of(), true, false);
+        RecipeData shadowed = row("com.acme:y", "s", "LIBRARY", "c.jar", "file:/c", List.of(), false, true);
         RecipeFileProblemData broken = new RecipeFileProblemData("FOLDER", "recipes/bad.yaml", "/r/bad.yaml",
                 List.of("line 1: 'recipes' is missing"));
         mbean.recipeList = new RecipeListData(List.of(ambiguousA, ambiguousB, shadowed, merged), List.of(broken));
@@ -98,8 +98,8 @@ class RecipeCommandsTest {
 
     @Test
     void listVerbose_showsLocations_notes_andEachFilesErrors() {
-        RecipeData shadowed = new RecipeData("com.acme:y", "s", "LIBRARY", "c.jar", "file:/c", List.of(), false, true);
-        RecipeData merged = new RecipeData("io.undertow:sessions", "s", "LIBRARY", "a.jar", "file:/a",
+        RecipeData shadowed = row("com.acme:y", "s", "LIBRARY", "c.jar", "file:/c", List.of(), false, true);
+        RecipeData merged = row("io.undertow:sessions", "s", "LIBRARY", "a.jar", "file:/a",
                 List.of("b.jar"), false, false);
         RecipeFileProblemData broken = new RecipeFileProblemData("FOLDER", "recipes/bad.yaml", "/r/bad.yaml",
                 List.of("line 1: 'recipes' is missing"));
@@ -109,8 +109,8 @@ class RecipeCommandsTest {
 
         String text = out();
         assertTrue(text.contains("NOTE"), text);
-        assertTrue(text.contains("com.acme:y            s        file:/c  shadowed"), text);
-        assertTrue(text.contains("file:/a  also b.jar"), text);
+        assertTrue(text.contains("com.acme:y            s        file:/c  -        shadowed"), text);
+        assertTrue(text.contains("file:/a  -        also b.jar"), text);
         assertTrue(text.contains("Could not read /r/bad.yaml:\n  line 1: 'recipes' is missing"), text);
     }
 
@@ -132,7 +132,8 @@ class RecipeCommandsTest {
         assertEquals("{\"recipes\":[{\"id\":\"io.undertow:sessions\",\"summary\":\"Watch HTTP session creation, expiry "
                 + "and invalidation\",\"sourceKind\":\"LIBRARY\",\"sourceLabel\":\"undertow-core-2.3.10.Final.jar\","
                 + "\"sourceLocation\":\"" + JAR_URL + "\",\"otherSourceLabels\":[],\"ambiguous\":false,"
-                + "\"shadowed\":false}],\"brokenFiles\":[{\"sourceKind\":\"LIBRARY\",\"sourceLabel\":\"x.jar\","
+                + "\"shadowed\":false,\"offered\":true,\"appliedCount\":0,\"entryCount\":2,\"appliedTier\":null,"
+                + "\"appliedExpiresAt\":null}],\"brokenFiles\":[{\"sourceKind\":\"LIBRARY\",\"sourceLabel\":\"x.jar\","
                 + "\"sourceLocation\":\"jar:file:/x.jar!/r\",\"errors\":[\"line 2: bad\"]}]}", out().strip());
     }
 
@@ -140,7 +141,7 @@ class RecipeCommandsTest {
 
     @Test
     void show_printsTheSpecsLayout() {
-        mbean.recipeDetail = new RecipeDetailData(SESSIONS,
+        mbean.recipeDetail = detail(SESSIONS,
                 "Logs each session create/expire/invalidate with its id. Moderate volume\n"
                         + "under load. Session ids are sensitive; don't leave this on.",
                 List.of(new RecipeChangeData("logger", "io.undertow.server.session", "INFO", "DEBUG",
@@ -173,9 +174,9 @@ class RecipeCommandsTest {
 
     @Test
     void show_passesFrom_andNamesOtherSources() {
-        RecipeData merged = new RecipeData("io.undertow:sessions", "s", "LIBRARY", "a.jar", "file:/a",
+        RecipeData merged = row("io.undertow:sessions", "s", "LIBRARY", "a.jar", "file:/a",
                 List.of("b.jar"), false, false);
-        mbean.recipeDetail = new RecipeDetailData(merged, null,
+        mbean.recipeDetail = detail(merged, null,
                 List.of(new RecipeChangeData("logger", "io.undertow", "INFO", "DEBUG", null, null)));
 
         assertEquals(CliError.OK, run("show", "recipe", "io.undertow:sessions", "--from", "a.jar"));
@@ -186,7 +187,7 @@ class RecipeCommandsTest {
 
     @Test
     void show_json() {
-        mbean.recipeDetail = new RecipeDetailData(SESSIONS, "text",
+        mbean.recipeDetail = detail(SESSIONS, "text",
                 List.of(new RecipeChangeData("logger", "io.undertow", "INFO", "DEBUG", null, null)));
 
         assertEquals(CliError.OK, run("show", "recipe", "io.undertow:sessions", "--json"));
@@ -194,7 +195,8 @@ class RecipeCommandsTest {
         String text = out().strip();
         assertTrue(text.startsWith("{\"id\":\"io.undertow:sessions\""), text);
         assertTrue(text.endsWith("\"description\":\"text\",\"changes\":[{\"kind\":\"logger\",\"target\":\"io.undertow\","
-                + "\"currentLevel\":\"INFO\",\"newLevel\":\"DEBUG\",\"detail\":null,\"note\":null}]}"), text);
+                + "\"currentLevel\":\"INFO\",\"newLevel\":\"DEBUG\",\"detail\":null,\"note\":null}],"
+                + "\"fingerprint\":\"fp0123456789abcd\"}"), text);
     }
 
     // ---- usage ----
@@ -205,7 +207,7 @@ class RecipeCommandsTest {
         assertUsage("'show' needs 'recipe <id>'.", "show", "rule", "r1");
         assertUsage("'show recipe' needs exactly one recipe id -- 'logctl list recipes' shows them.", "show", "recipe");
         assertUsage("'list recipes' takes no arguments.", "list", "recipes", "x");
-        assertUsage("--from applies only to 'show recipe'.", "list", "recipes", "--from", "a.jar");
+        assertUsage("--from applies only to 'show recipe' or 'apply recipe'.", "list", "recipes", "--from", "a.jar");
         assertUsage("--from needs a source, as 'logctl list recipes' shows it.", "show", "recipe", "a:b", "--from");
         assertUsage("--verbose applies only to 'list rules' or 'list recipes'.", "show", "recipe", "a:b", "--verbose");
         assertUsage("--show-all does not apply to 'list recipes' -- '--verbose' also lists shadowed recipes.",
@@ -226,6 +228,16 @@ class RecipeCommandsTest {
         assertTrue(out().contains("Answer loggers, handlers, rules or recipes."), "'r' is ambiguous: " + out());
         assertTrue(out().contains("Command: logctl list recipes\n"), out());
         assertTrue(out().contains("io.undertow:sessions"), out());
+    }
+
+    /** An offered recipe with nothing applied. */
+    private static RecipeData row(String id, String summary, String kind, String label, String location,
+            List<String> others, boolean ambiguous, boolean shadowed) {
+        return new RecipeData(id, summary, kind, label, location, others, ambiguous, shadowed, true, 0, 2, null, null);
+    }
+
+    private static RecipeDetailData detail(RecipeData recipe, String description, List<RecipeChangeData> changes) {
+        return new RecipeDetailData(recipe, description, changes, "fp0123456789abcd");
     }
 
     private static void assertUsage(String message, String... argv) {

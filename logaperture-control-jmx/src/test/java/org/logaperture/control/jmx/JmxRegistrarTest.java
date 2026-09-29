@@ -21,7 +21,10 @@ import org.logaperture.api.Level;
 import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.Severity;
+import org.logaperture.api.PersistenceTier;
 import org.logaperture.core.Recipe;
+import org.logaperture.core.RecipeApplyResult;
+import org.logaperture.core.RecipeResetResult;
 import org.logaperture.core.RecipeDetail;
 import org.logaperture.core.RecipeFileResult;
 import org.logaperture.core.RecipeList;
@@ -33,6 +36,8 @@ import org.logaperture.core.VendorDefaults;
 import javax.management.JMX;
 import javax.management.MBeanServer;
 import java.lang.management.ManagementFactory;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -75,6 +80,7 @@ class JmxRegistrarTest {
                 List.of(new VendorDefaults.LoggerDefault("io.undertow.server.session", Level.DEBUG, null)), List.of(),
                 List.of(), jar);
         RecipeListing listing = new RecipeListing(recipe, List.of(jar, other), false, false);
+        List<Object[]> applyCalls = new java.util.ArrayList<>();
         RecipeFileResult broken = new RecipeFileResult(new RecipeSource(RecipeSource.Kind.FOLDER, "recipes/bad.yaml",
                 "/r/bad.yaml"), List.of(), List.of("line 1: 'recipes' is missing"), List.of());
         RecipeOperations recipes = new RecipeOperations() {
@@ -86,7 +92,22 @@ class JmxRegistrarTest {
             @Override
             public RecipeDetail showRecipe(String id, String from) {
                 return new RecipeDetail(listing, List.of(new RecipeDetail.Change("logger", "io.undertow.server.session",
-                        "INFO", "DEBUG", null, null)));
+                        "INFO", "DEBUG", null, null)), "0a1b2c3d4e5f6a7b");
+            }
+
+            @Override
+            public RecipeApplyResult applyRecipe(String id, String from, String fingerprint, String reason,
+                    PersistenceTier tier, Duration expiresIn) {
+                applyCalls.add(new Object[] {id, from, fingerprint, reason, tier, expiresIn});
+                return new RecipeApplyResult(listing, tier, Instant.parse("2026-09-28T12:30:00Z"),
+                        List.of(new RecipeDetail.Change("logger", "io.undertow.server.session", "INFO", "DEBUG", null,
+                                null)), List.of(), List.of("r7"));
+            }
+
+            @Override
+            public RecipeResetResult resetRecipe(String id, boolean includeSticky) {
+                return new RecipeResetResult(id, List.of("io.undertow.server.session"), List.of(), List.of("r7"),
+                        List.of("handler CONSOLE"));
             }
 
             @Override
@@ -100,6 +121,16 @@ class JmxRegistrarTest {
         LevelControlMXBean proxy = JMX.newMXBeanProxy(ManagementFactory.getPlatformMBeanServer(),
                 JmxRegistrar.OBJECT_NAME, LevelControlMXBean.class);
 
+        RecipeApplyResultData applied = proxy.applyRecipe("io.undertow:sessions", null, "0a1b2c3d4e5f6a7b", "INC-1",
+                "for", 1800);
+        assertEquals("FOR", applied.getTier());
+        assertEquals("2026-09-28T12:30:00Z", applied.getExpiresAt());
+        assertEquals(List.of("r7"), applied.getRuleIds());
+        assertEquals(PersistenceTier.FOR, applyCalls.get(0)[4]);
+        assertEquals(Duration.ofSeconds(1800), applyCalls.get(0)[5]);
+        RecipeResetResultData reset = proxy.resetRecipe("io.undertow:sessions", false);
+        assertEquals(List.of("handler CONSOLE"), reset.getKeptSticky());
+
         RecipeListData list = proxy.listRecipes();
         RecipeData row = list.getRecipes().get(0);
         assertEquals("io.undertow:sessions", row.getId());
@@ -109,6 +140,7 @@ class JmxRegistrarTest {
 
         RecipeDetailData detail = proxy.showRecipe("io.undertow:sessions", null);
         assertEquals("line one\nline two", detail.getDescription());
+        assertEquals("0a1b2c3d4e5f6a7b", detail.getFingerprint());
         assertEquals("DEBUG", detail.getChanges().get(0).getNewLevel());
 
         assertTrue(proxy.diagnose().stream().anyMatch(finding -> finding.getCheck().equals("recipe-files")),

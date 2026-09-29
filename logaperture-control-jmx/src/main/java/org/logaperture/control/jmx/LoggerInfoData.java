@@ -51,6 +51,7 @@ public final class LoggerInfoData {
     private final String context;
     private final String vendorDefaultLevel;
     private final boolean resetToNative;
+    private final String overrideRecipe;
 
     /**
      * Every field, including {@code resetToNative} (doc/specs/reset-to-native.md "Surfaces"). The
@@ -58,6 +59,35 @@ public final class LoggerInfoData {
      * existed still reconstructs this type -- the MXBean additive-evolution pattern
      * (logaperture-spec.md §11.1).
      */
+    @ConstructorProperties({"name", "configuredLevel", "effectiveLevel", "overrideActive", "overrideSource",
+            "overrideReason", "tier", "expiresAt", "context", "vendorDefaultLevel", "resetToNative", "overrideRecipe"})
+    public LoggerInfoData(
+            String name,
+            String configuredLevel,
+            String effectiveLevel,
+            boolean overrideActive,
+            String overrideSource,
+            String overrideReason,
+            String tier,
+            String expiresAt,
+            String context,
+            String vendorDefaultLevel,
+            boolean resetToNative, String overrideRecipe) {
+        this.name = name;
+        this.configuredLevel = configuredLevel;
+        this.effectiveLevel = effectiveLevel;
+        this.overrideActive = overrideActive;
+        this.overrideSource = overrideSource;
+        this.overrideReason = overrideReason;
+        this.tier = tier;
+        this.expiresAt = expiresAt;
+        this.context = context;
+        this.vendorDefaultLevel = vendorDefaultLevel;
+        this.resetToNative = resetToNative;
+        this.overrideRecipe = overrideRecipe;
+    }
+
+    /** Every field but {@code overrideRecipe} -- the shape before doc/specs/recipes.md. */
     @ConstructorProperties({"name", "configuredLevel", "effectiveLevel", "overrideActive", "overrideSource",
             "overrideReason", "tier", "expiresAt", "context", "vendorDefaultLevel", "resetToNative"})
     public LoggerInfoData(
@@ -72,17 +102,8 @@ public final class LoggerInfoData {
             String context,
             String vendorDefaultLevel,
             boolean resetToNative) {
-        this.name = name;
-        this.configuredLevel = configuredLevel;
-        this.effectiveLevel = effectiveLevel;
-        this.overrideActive = overrideActive;
-        this.overrideSource = overrideSource;
-        this.overrideReason = overrideReason;
-        this.tier = tier;
-        this.expiresAt = expiresAt;
-        this.context = context;
-        this.vendorDefaultLevel = vendorDefaultLevel;
-        this.resetToNative = resetToNative;
+        this(name, configuredLevel, effectiveLevel, overrideActive, overrideSource, overrideReason, tier, expiresAt,
+                context, vendorDefaultLevel, resetToNative, null);
     }
 
     /** Every field but {@code resetToNative} (doc/specs/vendor-defaults.md "Surfaces"). */
@@ -145,7 +166,8 @@ public final class LoggerInfoData {
                 info.overrideExpiresAt() == null ? null : info.overrideExpiresAt().toString(),
                 info.context(),
                 info.vendorDefaultLevel() == null ? null : info.vendorDefaultLevel().name(),
-                info.resetToNative());
+                info.resetToNative(),
+                info.overrideRecipe());
     }
 
     public String getName() {
@@ -192,5 +214,10 @@ public final class LoggerInfoData {
     /** Whether that vendor level is being ignored until restart ({@code reset logger --to-native}). */
     public boolean isResetToNative() {
         return resetToNative;
+    }
+
+    /** The id of the recipe that made the active override, or {@code null} (doc/specs/recipes.md #6). */
+    public String getOverrideRecipe() {
+        return overrideRecipe;
     }
 }

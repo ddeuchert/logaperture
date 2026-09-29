@@ -156,7 +156,7 @@ final class AgentBootstrap {
             LibraryRecipeScanner scanner = inst == null ? LibraryRecipeScanner.none()
                     : new LibraryRecipeScanner(inst::getAllLoadedClasses);
             RecipeCatalog catalog = new RecipeCatalog(vendorDefaults.recipes(), RecipeCatalog.defaultFolder(), scanner);
-            return new RecipeService(policy, catalog, operations, operations);
+            return new RecipeService(policy, catalog, operations, operations, operations);
         } catch (RuntimeException e) {
             Diagnostics.warn("LogAperture: recipes are unavailable", e);
             return RecipeOperations.none();

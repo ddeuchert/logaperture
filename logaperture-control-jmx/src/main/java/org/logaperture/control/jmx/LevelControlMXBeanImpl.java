@@ -227,6 +227,20 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
+    public RecipeApplyResultData applyRecipe(String id, String from, String fingerprint, String reason, String tier,
+            long forSeconds) {
+        PersistenceTier persistenceTier = PersistenceTier.valueOf(tier.toUpperCase(Locale.ROOT));
+        Duration expiresIn = persistenceTier == PersistenceTier.FOR ? Duration.ofSeconds(forSeconds) : null;
+        return RecipeApplyResultData.from(
+                recipeOperations.applyRecipe(id, from, fingerprint, reason, persistenceTier, expiresIn));
+    }
+
+    @Override
+    public RecipeResetResultData resetRecipe(String id, boolean includeSticky) {
+        return RecipeResetResultData.from(recipeOperations.resetRecipe(id, includeSticky));
+    }
+
+    @Override
     public List<RuleData> listRules() {
         return ruleOperations.listRules().stream().map(RuleData::from).toList();
     }

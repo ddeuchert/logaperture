@@ -50,6 +50,8 @@ final class HelpText {
             "logctl list rules [--verbose]",
             "logctl list recipes [--verbose]",
             "logctl show recipe <id> [--from <source>]",
+            "logctl apply recipe <id> [session | for <duration> | sticky] [--from <source>] [--yes]",
+            "logctl reset recipe <id> [--include-sticky]",
             "logctl export vendor-defaults [--out <file>] [--force]",
             "logctl reset rule <id> [--include-sticky] [--to-native]",
             "logctl reset rules [--include-sticky] [--to-native]");
@@ -76,7 +78,7 @@ final class HelpText {
         sb.append("  --show-all           for 'list' -- every known logger or handler, not just overridden ones\n");
         sb.append("  --verbose            for 'list rules' -- add each rule's defining options (EXPRESSION);\n");
         sb.append("                       for 'list recipes' -- full source paths, shadowed recipes, file errors\n");
-        sb.append("  --from <source>      for 'show recipe' -- pick among recipes that share an id\n");
+        sb.append("  --from <source>      for 'show recipe'/'apply recipe' -- pick among recipes that share an id\n");
         sb.append("  --limit <n>          for 'top' — worst N offenders, 0 for every one tracked\n");
         sb.append("  --message-contains <text>\n");
         sb.append("                       for 'add rule'/'alter rule' -- match a log message substring\n");
@@ -195,6 +197,10 @@ final class HelpText {
         sb.append("(~/.logaperture/recipes, or -Dlogaperture.recipes=<dir>). 'list recipes'\n");
         sb.append("shows what's on offer -- a library's recipes appear once it has loaded --\n");
         sb.append("and 'show recipe io.undertow:sessions' prints what one would change.\n");
+        sb.append("'apply recipe io.undertow:sessions for 30m' shows the changes, asks, then\n");
+        sb.append("makes them ('for 4h' unless you give a tier); each change remembers the\n");
+        sb.append("recipe. 'reset recipe io.undertow:sessions' puts back the ones you haven't\n");
+        sb.append("changed by hand since. A library's recipe only ever raises levels.\n");
         sb.append("\n");
         sb.append("'doctor' is read-only — it never changes anything. It flags common\n");
         sb.append("misconfigurations (unbounded file handlers, DEBUG/TRACE left on,\n");

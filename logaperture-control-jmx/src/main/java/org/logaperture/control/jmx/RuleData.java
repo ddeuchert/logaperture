@@ -58,6 +58,7 @@ public final class RuleData {
     private final boolean altered;
     private final Boolean sampleFullEnabled;
     private final Long sampleFullEveryMillis;
+    private final String recipe;
 
     /**
      * Every field, including a drop rule's {@code sampleFullEnabled}/{@code sampleFullEveryMillis}
@@ -68,12 +69,12 @@ public final class RuleData {
     @ConstructorProperties({"id", "loggerName", "action", "levelAtMost", "messageContains", "messageIgnoreCase",
             "throwableType", "throwableMessageContains", "anyCause", "reason", "tier", "expiresAt", "createdAt",
             "context", "hitCount", "frames", "collapseCauses", "origin", "toNative", "sampleFullEnabled",
-            "sampleFullEveryMillis", "altered"})
+            "sampleFullEveryMillis", "altered", "recipe"})
     public RuleData(String id, String loggerName, String action, String levelAtMost, String messageContains,
             boolean messageIgnoreCase, String throwableType, String throwableMessageContains, boolean anyCause,
             String reason, String tier, String expiresAt, String createdAt, String context, long hitCount,
             Integer frames, Boolean collapseCauses, String origin, boolean toNative, Boolean sampleFullEnabled,
-            Long sampleFullEveryMillis, boolean altered) {
+            Long sampleFullEveryMillis, boolean altered, String recipe) {
         this.id = id;
         this.loggerName = loggerName;
         this.action = action;
@@ -96,6 +97,22 @@ public final class RuleData {
         this.altered = altered;
         this.sampleFullEnabled = sampleFullEnabled;
         this.sampleFullEveryMillis = sampleFullEveryMillis;
+        this.recipe = recipe;
+    }
+
+    /** Every field but {@code recipe} -- the shape before doc/specs/recipes.md. */
+    @ConstructorProperties({"id", "loggerName", "action", "levelAtMost", "messageContains", "messageIgnoreCase",
+            "throwableType", "throwableMessageContains", "anyCause", "reason", "tier", "expiresAt", "createdAt",
+            "context", "hitCount", "frames", "collapseCauses", "origin", "toNative", "sampleFullEnabled",
+            "sampleFullEveryMillis", "altered"})
+    public RuleData(String id, String loggerName, String action, String levelAtMost, String messageContains,
+            boolean messageIgnoreCase, String throwableType, String throwableMessageContains, boolean anyCause,
+            String reason, String tier, String expiresAt, String createdAt, String context, long hitCount,
+            Integer frames, Boolean collapseCauses, String origin, boolean toNative, Boolean sampleFullEnabled,
+            Long sampleFullEveryMillis, boolean altered) {
+        this(id, loggerName, action, levelAtMost, messageContains, messageIgnoreCase, throwableType,
+                throwableMessageContains, anyCause, reason, tier, expiresAt, createdAt, context, hitCount, frames,
+                collapseCauses, origin, toNative, sampleFullEnabled, sampleFullEveryMillis, altered, null);
     }
 
     /** Every field but the sampling ones and {@code altered}. */
@@ -148,7 +165,8 @@ public final class RuleData {
                 view.toNative(),
                 rule instanceof Drop drop ? drop.sampleFull().enabled() : null,
                 rule instanceof Drop drop ? drop.sampleFull().every().toMillis() : null,
-                view.altered());
+                view.altered(),
+                view.recipe());
     }
 
     /** {@code "vendor-defaults"} for a rule from the vendor defaults file, else {@code null}. */
@@ -242,5 +260,10 @@ public final class RuleData {
     /** A drop rule's {@code --sample-full} interval in milliseconds; {@code null} for any other action. */
     public Long getSampleFullEveryMillis() {
         return sampleFullEveryMillis;
+    }
+
+    /** The id of the recipe that added the rule, or {@code null} (doc/specs/recipes.md #6). */
+    public String getRecipe() {
+        return recipe;
     }
 }

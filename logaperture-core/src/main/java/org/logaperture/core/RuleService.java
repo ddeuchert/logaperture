@@ -112,6 +112,11 @@ public final class RuleService implements RuleOperations {
     /** Per-event, not per-handler (rule-pipeline-foundation.md "Evaluation"): a verdict computed for one handler's filter is reused by every sibling handler's filter evaluating the same framework record. */
     private final Map<Object, GateVerdict> decisionCache = Collections.synchronizedMap(new WeakHashMap<>());
     private final Map<String, LongAdder> hitCounters = new ConcurrentHashMap<>();
+    /**
+     * Rule id to the id of the recipe that added it -- doc/specs/recipes.md #6, B4. Kept here rather
+     * than on {@link LogRule} (no rule type needs it); dropped when the rule is removed or altered (#7).
+     */
+    private final Map<String, String> recipes = new ConcurrentHashMap<>();
     /** {@code Long.MIN_VALUE} sentinel = "never sampled yet" -- doc/specs/drop-rule.md "The keep-one-in-N escape hatch": the very first match is always kept. */
     private final Map<String, AtomicLong> nextSampleAtNanos = new ConcurrentHashMap<>();
     /** Suppressed (denied) hits since the rule's last-emitted summary line -- distinct from {@link #hitCounters}, which never resets. */
@@ -256,11 +261,16 @@ public final class RuleService implements RuleOperations {
                 Map.of());
 
         registry.attach(rule);
+        if (opts.recipe() != null) {
+            recipes.put(id, opts.recipe().id()); // doc/specs/recipes.md #6, before it's persisted
+        }
         if (rule.tier() != PersistenceTier.SESSION) {
             safePersist(() -> stateStore.saveRule(toPersisted(rule)));
         }
-        auditLog.record(new AuditRecord(now, principal, source, loggerName, null, describe(rule), opts.reason(),
-                AuditRecord.Action.MUTATION));
+        auditLog.record(new AuditRecord(now, principal,
+                opts.recipe() == null ? source : LevelControlService.RECIPE_AUDIT_SOURCE, loggerName, null,
+                describe(rule), opts.reason(), AuditRecord.Action.MUTATION,
+                opts.recipe() == null ? null : opts.recipe().origin()));
         return rule;
     }
 
@@ -274,7 +284,7 @@ public final class RuleService implements RuleOperations {
     public RuleView addRuleDrop(String loggerName, CompiledMatchers matchers, RuleAttachOptions options,
             SampleFullPolicy sampleFull) {
         LogRule rule = attach(loggerName, matchers, options, DropFactories.attach(sampleFull), Capability.SUPPRESS);
-        return new RuleView(rule, context, hitCount(rule.id()));
+        return view(rule);
     }
 
     /**
@@ -288,7 +298,7 @@ public final class RuleService implements RuleOperations {
             boolean collapseCauses) {
         LogRule rule = attach(loggerName, matchers, options, TrimFactories.attach(frames, collapseCauses),
                 Capability.SUPPRESS);
-        return new RuleView(rule, context, hitCount(rule.id()));
+        return view(rule);
     }
 
     /**
@@ -350,7 +360,8 @@ public final class RuleService implements RuleOperations {
     private RuleView view(LogRule rule) {
         boolean vendor = isVendorRule(rule.id());
         return new RuleView(rule, context, hitCount(rule.id()), vendor ? VendorDefaults.AUDIT_SOURCE : null,
-                vendor && toNativeVendorRules.containsKey(rule.id()), isAlteredVendorRule(rule));
+                vendor && toNativeVendorRules.containsKey(rule.id()), isAlteredVendorRule(rule),
+                recipes.get(rule.id()));
     }
 
     /** Whether this service holds {@code id} at all -- attached, or a vendor rule switched off until restart. */
@@ -434,6 +445,7 @@ public final class RuleService implements RuleOperations {
         if (!registry.replaceIfCurrent(current, candidate)) {
             throw new IllegalStateException("rule " + id + " changed while it was being altered -- try again.");
         }
+        recipes.remove(id); // doc/specs/recipes.md #7: altered by hand, so no longer the recipe's
         if (definitionChanged) {
             forgetEvaluationState(id);
         }
@@ -610,11 +622,12 @@ public final class RuleService implements RuleOperations {
             throw new IllegalArgumentException(id + " is STICKY -- reset refused without --include-sticky.");
         }
         long finalHitCount = hitCount(id);
+        String recipe = recipes.get(id);
         registry.removeById(id);
         forgetEvaluationState(id);
         safePersist(() -> stateStore.removeRule(id));
         auditRemoval(rule);
-        return Optional.of(new RuleView(rule, context, finalHitCount));
+        return Optional.of(new RuleView(rule, context, finalHitCount, null, false, false, recipe));
     }
 
     private Optional<RuleView> resetVendorRule(String id, boolean includeSticky, boolean toNative) {
@@ -903,6 +916,9 @@ public final class RuleService implements RuleOperations {
                 persisted.reason(), persisted.tier(), persisted.expiresAt(), persisted.createdAt(),
                 persisted.payload());
         registry.attach(rule);
+        if (persisted.recipe() != null) {
+            recipes.put(rule.id(), persisted.recipe());
+        }
         auditLog.record(new AuditRecord(now, principal, "resume", persisted.loggerName(), null, describe(rule),
                 persisted.reason(), AuditRecord.Action.MUTATION));
     }
@@ -963,7 +979,8 @@ public final class RuleService implements RuleOperations {
 
     private PersistedRule toPersisted(LogRule rule) {
         return new PersistedRule(rule.id(), rule.loggerName(), rule.actionName(), rule.matchers(), rule.reason(),
-                rule.tier(), rule.expiresAt(), rule.createdAt(), context, rule.persistedPayload());
+                rule.tier(), rule.expiresAt(), rule.createdAt(), context, rule.persistedPayload(), null,
+                recipes.get(rule.id()));
     }
 
     /**
@@ -1212,6 +1229,7 @@ public final class RuleService implements RuleOperations {
 
     /** Drops every per-rule evaluation-time entry keyed by {@code ruleId} -- called whenever a rule is actually removed, so these maps don't grow for the life of the process (a code-review finding). {@link #decisionCache} needs no equivalent: it's keyed by framework record identity, already bounded by {@link WeakHashMap}'s own GC-driven eviction. */
     private void forgetEvaluationState(String ruleId) {
+        recipes.remove(ruleId);
         hitCounters.remove(ruleId);
         nextSampleAtNanos.remove(ruleId);
         pendingSummaryCounters.remove(ruleId);

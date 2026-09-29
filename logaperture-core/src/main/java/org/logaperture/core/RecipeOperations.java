@@ -16,13 +16,15 @@
 package org.logaperture.core;
 
 import org.logaperture.api.DoctorFinding;
+import org.logaperture.api.PersistenceTier;
 
+import java.time.Duration;
 import java.util.List;
 
 /**
- * {@code logctl list recipes} and {@code show recipe} -- doc/specs/recipes.md, slice (a). Both
- * read only; each call discovers afresh (epic #16), so a library loaded since the last call
- * shows up.
+ * {@code logctl list recipes}, {@code show recipe}, {@code apply recipe} and {@code reset recipe}
+ * -- doc/specs/recipes.md. Each call discovers afresh (epic #16), so a library loaded since the
+ * last call shows up.
  */
 public interface RecipeOperations {
 
@@ -47,6 +49,27 @@ public interface RecipeOperations {
      */
     List<DoctorFinding> recipeFindings();
 
+    /**
+     * Switches a recipe on -- doc/specs/recipes.md "logctl apply recipe", #5, B1-B3. Every change is
+     * checked before any is made; a library's entry that would lower a level is skipped.
+     *
+     * @param fingerprint what {@link #showRecipe} returned, so a recipe changed since then applies
+     *                    nothing (B1); {@code null} when nothing was shown ({@code --yes})
+     * @param expiresIn   for {@code FOR}, else {@code null}
+     * @throws IllegalArgumentException if the recipe can't be found or picked, changed since shown, or
+     *                                  any change would be refused -- nothing is applied
+     * @throws IllegalStateException    if a change fails part-way through; what applied stays (B2)
+     */
+    RecipeApplyResult applyRecipe(String id, String from, String fingerprint, String reason, PersistenceTier tier,
+            Duration expiresIn);
+
+    /**
+     * Switches a recipe off -- doc/specs/recipes.md "logctl reset recipe", #9: puts back every change
+     * still carrying its id. Sticky ones are kept unless {@code includeSticky}. Works for a recipe no
+     * longer on offer (B7).
+     */
+    RecipeResetResult resetRecipe(String id, boolean includeSticky);
+
     /** No recipes anywhere -- a control surface built without a catalog. */
     static RecipeOperations none() {
         return new RecipeOperations() {
@@ -63,6 +86,17 @@ public interface RecipeOperations {
             @Override
             public List<DoctorFinding> recipeFindings() {
                 return List.of();
+            }
+
+            @Override
+            public RecipeApplyResult applyRecipe(String id, String from, String fingerprint, String reason,
+                    PersistenceTier tier, Duration expiresIn) {
+                throw new IllegalArgumentException("no recipe named '" + id + "'");
+            }
+
+            @Override
+            public RecipeResetResult resetRecipe(String id, boolean includeSticky) {
+                return new RecipeResetResult(id, List.of(), List.of(), List.of(), List.of());
             }
         };
     }

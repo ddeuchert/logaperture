@@ -21,8 +21,11 @@ import java.util.Objects;
 /**
  * {@code logctl show recipe}'s result -- doc/specs/recipes.md "logctl show recipe <id>": the
  * recipe and each change it would make, against the live levels.
+ *
+ * @param fingerprint the recipe's content, hashed -- passed back to {@code applyRecipe} so it
+ *                    applies exactly what was shown (B1)
  */
-public record RecipeDetail(RecipeListing listing, List<Change> changes) {
+public record RecipeDetail(RecipeListing listing, List<Change> changes, String fingerprint) {
 
     /**
      * One change.
@@ -48,5 +51,6 @@ public record RecipeDetail(RecipeListing listing, List<Change> changes) {
     public RecipeDetail {
         Objects.requireNonNull(listing, "listing");
         changes = List.copyOf(changes);
+        Objects.requireNonNull(fingerprint, "fingerprint");
     }
 }

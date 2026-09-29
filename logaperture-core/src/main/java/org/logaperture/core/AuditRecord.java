@@ -30,6 +30,8 @@ import java.time.Instant;
  *                      {@link Action#REVERSION} for {@code resetLogger}/
  *                      {@code resetAll} — "records the revert as well as
  *                      the change" (§9.7)
+ * @param origin        what made the change beyond its source, or {@code null}: for a recipe's
+ *                      change, {@code recipe <id> from <location>} (doc/specs/recipes.md B5)
  */
 public record AuditRecord(
         Instant timestamp,
@@ -39,7 +41,14 @@ public record AuditRecord(
         String previousValue,
         String newValue,
         String reason,
-        Action action) {
+        Action action,
+        String origin) {
+
+    /** A record with no origin -- every change not made by a recipe. */
+    public AuditRecord(Instant timestamp, String principal, String source, String loggerName, String previousValue,
+            String newValue, String reason, Action action) {
+        this(timestamp, principal, source, loggerName, previousValue, newValue, reason, action, null);
+    }
 
     public enum Action {
         MUTATION,

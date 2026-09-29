@@ -15,16 +15,17 @@
  */
 package org.logaperture.control.jmx;
 
+import org.logaperture.core.RecipeApplication;
 import org.logaperture.core.RecipeListing;
 import org.logaperture.core.RecipeSource;
 
-import java.beans.ConstructorProperties;
 import java.util.List;
+import java.beans.ConstructorProperties;
 
 /**
  * One row of {@code logctl list recipes} -- MXBean-friendly mirror of {@code core}'s {@code
- * RecipeListing} (doc/specs/recipes.md), a plain class for the same reason as {@link
- * EnvironmentReportData}.
+ * RecipeListing} plus what of it is applied (doc/specs/recipes.md B6, B7), a plain class for the
+ * same reason as {@link EnvironmentReportData}.
  */
 public final class RecipeData {
 
@@ -36,9 +37,14 @@ public final class RecipeData {
     private final List<String> otherSourceLabels;
     private final boolean ambiguous;
     private final boolean shadowed;
+    private final boolean offered;
+    private final int appliedCount;
+    private final int entryCount;
+    private final String appliedTier;
+    private final String appliedExpiresAt;
 
-    @ConstructorProperties({"id", "summary", "sourceKind", "sourceLabel", "sourceLocation", "otherSourceLabels", "ambiguous", "shadowed"})
-    public RecipeData(String id, String summary, String sourceKind, String sourceLabel, String sourceLocation, List<String> otherSourceLabels, boolean ambiguous, boolean shadowed) {
+    @ConstructorProperties({"id", "summary", "sourceKind", "sourceLabel", "sourceLocation", "otherSourceLabels", "ambiguous", "shadowed", "offered", "appliedCount", "entryCount", "appliedTier", "appliedExpiresAt"})
+    public RecipeData(String id, String summary, String sourceKind, String sourceLabel, String sourceLocation, List<String> otherSourceLabels, boolean ambiguous, boolean shadowed, boolean offered, int appliedCount, int entryCount, String appliedTier, String appliedExpiresAt) {
         this.id = id;
         this.summary = summary;
         this.sourceKind = sourceKind;
@@ -47,13 +53,29 @@ public final class RecipeData {
         this.otherSourceLabels = otherSourceLabels;
         this.ambiguous = ambiguous;
         this.shadowed = shadowed;
+        this.offered = offered;
+        this.appliedCount = appliedCount;
+        this.entryCount = entryCount;
+        this.appliedTier = appliedTier;
+        this.appliedExpiresAt = appliedExpiresAt;
     }
 
-    public static RecipeData from(RecipeListing listing) {
+    /** @param applied the live changes carrying its id, or {@code null} when none do */
+    public static RecipeData from(RecipeListing listing, RecipeApplication applied) {
         RecipeSource source = listing.recipe().source();
         return new RecipeData(listing.id(), listing.recipe().summary(), source.kind().name(), source.label(),
                 source.location(), listing.sources().stream().skip(1).map(RecipeSource::label).toList(),
-                listing.ambiguous(), listing.shadowed());
+                listing.ambiguous(), listing.shadowed(), true,
+                applied == null ? 0 : applied.countOf(listing.recipe()), RecipeApplication.entriesOf(listing.recipe()),
+                applied == null ? null : applied.tier().name(),
+                applied == null || applied.expiresAt() == null ? null : applied.expiresAt().toString());
+    }
+
+    /** B7: a recipe id live changes carry that no source offers any more. */
+    public static RecipeData noLongerOffered(RecipeApplication applied) {
+        return new RecipeData(applied.recipeId(), null, null, null, null, List.of(), false, false, false,
+                applied.count(), 0, applied.tier().name(),
+                applied.expiresAt() == null ? null : applied.expiresAt().toString());
     }
 
     /** {@code <namespace>:<name>} */
@@ -61,21 +83,22 @@ public final class RecipeData {
         return id;
     }
 
+    /** The recipe's summary; {@code null} for one no longer offered. */
     public String getSummary() {
         return summary;
     }
 
-    /** {@code LIBRARY}, {@code VENDOR_DEFAULTS} or {@code FOLDER} */
+    /** {@code LIBRARY}, {@code VENDOR_DEFAULTS} or {@code FOLDER}; {@code null} for one no longer offered. */
     public String getSourceKind() {
         return sourceKind;
     }
 
-    /** The short source name {@code --from} accepts. */
+    /** The short source name {@code --from} accepts; {@code null} for one no longer offered. */
     public String getSourceLabel() {
         return sourceLabel;
     }
 
-    /** The full path or URL. */
+    /** The full path or URL; {@code null} for one no longer offered. */
     public String getSourceLocation() {
         return sourceLocation;
     }
@@ -93,5 +116,30 @@ public final class RecipeData {
     /** A vendor defaults file or recipes folder recipe with this id wins over this one. */
     public boolean isShadowed() {
         return shadowed;
+    }
+
+    /** {@code false} for a recipe live changes still carry that no source offers any more (B7). */
+    public boolean isOffered() {
+        return offered;
+    }
+
+    /** How many of its entries still carry its id -- or, when not offered, how many changes do (B6). */
+    public int getAppliedCount() {
+        return appliedCount;
+    }
+
+    /** How many entries it has; {@code 0} when not offered. */
+    public int getEntryCount() {
+        return entryCount;
+    }
+
+    /** The tier of the applied change that ends soonest, or {@code null} when none is applied. */
+    public String getAppliedTier() {
+        return appliedTier;
+    }
+
+    /** That change's expiry (ISO-8601) when its tier is {@code FOR}, else {@code null}. */
+    public String getAppliedExpiresAt() {
+        return appliedExpiresAt;
     }
 }

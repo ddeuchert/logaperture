@@ -68,6 +68,8 @@ import java.time.Instant;
  *                          it (doc/specs/vendor-defaults.md "Surfaces")
  * @param resetToNative     whether that vendor setting is being ignored until restart
  *                          ({@code logctl reset handler --to-native}, doc/specs/reset-to-native.md)
+ * @param overrideRecipe    the id of the recipe that made the active override, or {@code null}
+ *                          (doc/specs/recipes.md #6)
  */
 public record HandlerInfo(
         String ref,
@@ -83,7 +85,17 @@ public record HandlerInfo(
         String membersSummary,
         String context,
         String vendorDefault,
-        boolean resetToNative) {
+        boolean resetToNative,
+        String overrideRecipe) {
+
+    /** Every field but {@code overrideRecipe} -- the shape before doc/specs/recipes.md. */
+    public HandlerInfo(String ref, Level level, boolean persistent, String targetPath, Boolean autoFlush,
+            boolean overrideActive, Level overrideLevel, HandlerLevelMode overrideMode, PersistenceTier overrideTier,
+            Instant overrideExpiresAt, String membersSummary, String context, String vendorDefault,
+            boolean resetToNative) {
+        this(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel, overrideMode, overrideTier,
+                overrideExpiresAt, membersSummary, context, vendorDefault, resetToNative, null);
+    }
 
     public HandlerInfo {
         if (ref == null || ref.isEmpty()) {
@@ -121,6 +133,7 @@ public record HandlerInfo(
     /** This same row, tagged with its owning context's stable key. */
     public HandlerInfo withContext(String context) {
         return new HandlerInfo(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel,
-                overrideMode, overrideTier, overrideExpiresAt, membersSummary, context, vendorDefault, resetToNative);
+                overrideMode, overrideTier, overrideExpiresAt, membersSummary, context, vendorDefault, resetToNative,
+                overrideRecipe);
     }
 }

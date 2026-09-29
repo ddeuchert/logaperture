@@ -523,6 +523,31 @@ class WildFlyContainerIT {
         }
     }
 
+    /** doc/specs/recipes.md slice (b): apply a deployed war's recipe, see it carried, then reset it. */
+    @Test
+    void deployedWarsRecipe_appliesAndResets() throws Exception {
+        deployProbeWar();
+        try {
+            Logctl applied = logctl("apply", "recipe", "com.myapp.probe:watch", "for", "10m", "--yes");
+            assertEquals(0, applied.exitCode(), applied.stderr());
+            assertTrue(applied.stdout().contains("Applied recipe com.myapp.probe:watch (1 change, FOR"),
+                    applied.stdout());
+
+            String loggers = logctl("list", "loggers", "com.myapp.probe.Worker").stdout();
+            assertTrue(loggers.contains("DEBUG") && loggers.contains("RECIPE") && loggers.contains("com.myapp.probe:watch"),
+                    "the override carries the recipe:\n" + loggers);
+            assertTrue(logctl("list", "recipes").stdout().contains("(1 of 1)"), "APPLIED counts it");
+
+            Logctl reset = logctl("reset", "recipe", "com.myapp.probe:watch");
+            assertEquals(0, reset.exitCode(), reset.stderr());
+            assertTrue(reset.stdout().contains("Reset recipe com.myapp.probe:watch (1 change)."), reset.stdout());
+            assertFalse(logctl("status").stdout().contains("com.myapp.probe.Worker"), "nothing left in force");
+        } finally {
+            logctl("reset", "recipe", "com.myapp.probe:watch", "--include-sticky");
+            undeployProbeWar();
+        }
+    }
+
     // --- doctor (doc/specs/doctor.md) ------------------------------------------------------------
 
     @Test
@@ -1494,8 +1519,11 @@ class WildFlyContainerIT {
                 import java.util.logging.Logger;
                 @WebListener
                 public class Probe implements ServletContextListener {
+                    // Held for as long as the deployment is: JBoss LogManager can drop an unreferenced,
+                    // unconfigured logger once it's garbage-collected, so 'list loggers' may not see it (#69).
+                    private static final Logger WORKER = Logger.getLogger("com.myapp.probe.Worker");
                     @Override public void contextInitialized(ServletContextEvent e) {
-                        Logger.getLogger("com.myapp.probe.Worker").info("probe deployed");
+                        WORKER.info("probe deployed");
                         // FINEST == LogAperture TRACE (LevelMapper) -- the handler-floor-control.md
                         // exit criterion's marker line: only reaches the console once the CONSOLE
                         // handler itself has been lowered, however verbose the logger is.

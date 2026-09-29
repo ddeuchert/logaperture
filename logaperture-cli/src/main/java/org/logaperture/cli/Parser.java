@@ -272,12 +272,14 @@ final class Parser {
         boolean isAddRuleTrim = isAddRule && rest.size() >= 2 && rest.get(1).equals(AddRuleRequest.TRIM);
         boolean isAddRuleUntyped = isAddRule && !isAddRuleDrop && !isAddRuleTrim;
         boolean isAlterRule = command.equals("alter") && !rest.isEmpty() && rest.get(0).equals("rule");
+        boolean isApply = command.equals("apply");
 
-        if (yes && !isSetLogger && !isAddRule) {
-            throw usage("--yes applies only to 'set logger' or 'add rule'.");
+        if (yes && !isSetLogger && !isAddRule && !isApply) {
+            throw usage("--yes applies only to 'set logger', 'add rule' or 'apply recipe'.");
         }
-        if (reason != null && !isSetLogger && !isSetHandler && !isAddRule && !isAlterRule) {
-            throw usage("--reason applies only to 'set logger', 'set handler', 'add rule', or 'alter rule'.");
+        if (reason != null && !isSetLogger && !isSetHandler && !isAddRule && !isAlterRule && !isApply) {
+            throw usage("--reason applies only to 'set logger', 'set handler', 'add rule', 'alter rule', or "
+                    + "'apply recipe'.");
         }
         if (toNative && !(command.equals("reset") && (rest.isEmpty() || List.of("logger", "loggers", "handler",
                 "handlers", "default-handler", "rule", "rules").contains(rest.get(0))))) {
@@ -305,8 +307,8 @@ final class Parser {
                 && (rest.get(0).equals("rules") || rest.get(0).equals("recipes")))) {
             throw usage("--verbose applies only to 'list rules' or 'list recipes'.");
         }
-        if (from != null && !(command.equals("show") && !rest.isEmpty() && rest.get(0).equals("recipe"))) {
-            throw usage("--from applies only to 'show recipe'.");
+        if (from != null && !isApply && !(command.equals("show") && !rest.isEmpty() && rest.get(0).equals("recipe"))) {
+            throw usage("--from applies only to 'show recipe' or 'apply recipe'.");
         }
         if (showAll && !command.equals("list")) {
             throw usage("--show-all applies only to 'list loggers' or 'list handlers'.");
@@ -399,6 +401,20 @@ final class Parser {
                     default -> throw usage("'list' needs 'loggers [filter]', 'handlers', 'rules', or 'recipes', got '"
                             + noun + "'.");
                 };
+            }
+            case "apply" -> {
+                // doc/specs/recipes.md "logctl apply recipe", #10, B10-B12.
+                if (rest.isEmpty() || (rest.size() == 1 && rest.get(0).equals("recipe"))) {
+                    if (guided && !yes) {
+                        yield RecipeCommands.guidedApply(reason);
+                    }
+                    throw usage("'apply' needs 'recipe <id>' -- 'logctl list recipes' shows them.\n" + PROMPT_HINT);
+                }
+                if (!rest.get(0).equals("recipe")) {
+                    throw usage("'apply' needs 'recipe <id>', got '" + rest.get(0) + "'.");
+                }
+                TierChoice tier = resolveTier(rest.subList(2, rest.size()));
+                yield RecipeCommands.apply(rest.get(1), from, reason, tier, yes, json);
             }
             case "show" -> {
                 if (rest.isEmpty() || !rest.get(0).equals("recipe")) {
@@ -495,6 +511,17 @@ final class Parser {
                         }
                         yield Commands.resetAllRules(includeSticky, toNative, json);
                     }
+                    case "recipe" -> {
+                        // doc/specs/recipes.md #9, B11; guided per #10/B12.
+                        if (nounRest.isEmpty() && guided) {
+                            yield RecipeCommands.guidedReset(includeSticky);
+                        }
+                        if (nounRest.size() != 1) {
+                            throw usage("'reset recipe' needs exactly one recipe id." + (nounRest.isEmpty() ? "\n"
+                                    + PROMPT_HINT : ""));
+                        }
+                        yield RecipeCommands.reset(nounRest.get(0), includeSticky, json);
+                    }
                     case "default-handler" -> {
                         if (!nounRest.isEmpty()) {
                             throw usage("'reset default-handler' takes no arguments.");
@@ -502,7 +529,8 @@ final class Parser {
                         yield Commands.resetDefaultHandler(toNative, json);
                     }
                     default -> throw usage("'reset' needs 'logger <target>', 'loggers', 'handler <name>', "
-                            + "'handlers', 'rule <id>', 'rules', or 'default-handler', got '" + noun + "'.");
+                            + "'handlers', 'rule <id>', 'rules', 'default-handler', or 'recipe <id>', got '" + noun
+                            + "'.");
                 };
             }
             case "set" -> {

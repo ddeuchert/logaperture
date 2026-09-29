@@ -46,6 +46,8 @@ import java.time.Instant;
  *                      the same override, and written into an exported vendor defaults file so a
  *                      restart with that file can take the entry over (doc/specs/
  *                      export-round-trip.md); {@code null} until it has been persisted
+ * @param recipe        the id of the recipe that made it (doc/specs/recipes.md #6), or {@code
+ *                      null}; a later change made by hand replaces the override and so drops it (#7)
  */
 public record LevelOverride(
         String loggerName,
@@ -55,7 +57,8 @@ public record LevelOverride(
         String source,
         PersistenceTier tier,
         Instant expiresAt,
-        String stateId) {
+        String stateId,
+        String recipe) {
 
     public LevelOverride {
         if (loggerName == null || loggerName.isEmpty()) {
@@ -89,7 +92,13 @@ public record LevelOverride(
     }
 
     /** This override with {@code stateId}, as the {@code StateStore} assigns or restores it. */
+    /** Not made by a recipe. */
+    public LevelOverride(String loggerName, Level level, String reason, Instant appliedAt, String source,
+            PersistenceTier tier, Instant expiresAt, String stateId) {
+        this(loggerName, level, reason, appliedAt, source, tier, expiresAt, stateId, null);
+    }
+
     public LevelOverride withStateId(String stateId) {
-        return new LevelOverride(loggerName, level, reason, appliedAt, source, tier, expiresAt, stateId);
+        return new LevelOverride(loggerName, level, reason, appliedAt, source, tier, expiresAt, stateId, recipe);
     }
 }

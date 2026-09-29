@@ -21,6 +21,7 @@ import org.logaperture.api.Level;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
+import org.logaperture.api.RecipeTag;
 import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
@@ -57,6 +58,9 @@ public final class LevelControlService implements LevelControlOperations {
     private final StateStore stateStore;
     private final String principal;
     private final String source;
+
+    /** The audit source of a change made by applying a recipe (doc/specs/recipes.md #13). */
+    static final String RECIPE_AUDIT_SOURCE = "recipe";
     private final LoggerOverrideChangeListener changeListener;
 
     /** Convenience overload for every context that doesn't need to react to logger-override changes (doc/specs/handler-floor-control.md "AUTO handler level"). */
@@ -126,7 +130,8 @@ public final class LevelControlService implements LevelControlOperations {
                     override.map(LevelOverride::expiresAt).orElse(null),
                     null,
                     baselines.vendorLevel(name).orElse(null),
-                    baselines.isResetToNative(name)));
+                    baselines.isResetToNative(name),
+                    override.map(LevelOverride::recipe).orElse(null)));
         }
         return List.copyOf(result);
     }
@@ -886,9 +891,12 @@ public final class LevelControlService implements LevelControlOperations {
 
         Instant now = Instant.now();
         Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
-        LevelOverride override = new LevelOverride(
-                loggerName, level, opts.reason(), now, source, opts.tier(), expiresAt);
-        installOverride(override, source, previousValue);
+        RecipeTag recipe = opts.recipe();
+        LevelOverride override = new LevelOverride(loggerName, level, opts.reason(), now, source, opts.tier(),
+                expiresAt, null, recipe == null ? null : recipe.id());
+        // doc/specs/recipes.md #13, B5: a recipe's change is audited as source "recipe", with its origin.
+        installOverride(override, recipe == null ? source : RECIPE_AUDIT_SOURCE, previousValue,
+                recipe == null ? null : recipe.origin());
         return override;
     }
 
@@ -899,7 +907,7 @@ public final class LevelControlService implements LevelControlOperations {
      * registry, persist per {@code override}'s tier, and audit it under
      * {@code auditSource}.
      */
-    private void installOverride(LevelOverride override, String auditSource, String previousValue) {
+    private void installOverride(LevelOverride override, String auditSource, String previousValue, String origin) {
         OverrideApplier.apply(override, adapter); // mutation: the point of no return
 
         overrides.put(override); // commit
@@ -913,7 +921,7 @@ public final class LevelControlService implements LevelControlOperations {
         }
         auditLog.record(new AuditRecord(
                 override.appliedAt(), principal, auditSource, override.loggerName(), previousValue,
-                override.level().toString(), override.reason(), AuditRecord.Action.MUTATION)); // audit
+                override.level().toString(), override.reason(), AuditRecord.Action.MUTATION, origin)); // audit
     }
 
     /**

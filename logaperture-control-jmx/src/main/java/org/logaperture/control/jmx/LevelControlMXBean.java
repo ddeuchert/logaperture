@@ -377,4 +377,27 @@ public interface LevelControlMXBean {
      *                                  doesn't pick one
      */
     RecipeDetailData showRecipe(String id, String from);
+
+    /**
+     * {@code logctl apply recipe <id>} -- doc/specs/recipes.md: makes every change the recipe lists,
+     * each carrying its id, after checking none would be refused (#5). A library recipe's entry that
+     * would lower a level is skipped (#4). Needs the capabilities the equivalent commands need.
+     *
+     * @param from        picks among same-id recipes; {@code null} when there's only one
+     * @param fingerprint {@link RecipeDetailData#getFingerprint()} from the {@link #showRecipe} whose
+     *                    changes were confirmed, or {@code null} (B1)
+     * @param tier        {@code "SESSION"}, {@code "FOR"} or {@code "STICKY"}
+     * @param forSeconds  the {@code FOR} duration; ignored otherwise
+     * @throws IllegalArgumentException if nothing was applied: unknown or ambiguous id, a recipe changed
+     *                                  since shown, or a change that would be refused
+     * @throws IllegalStateException    if a change failed part-way through; the ones before it stay (B2)
+     */
+    RecipeApplyResultData applyRecipe(String id, String from, String fingerprint, String reason, String tier,
+            long forSeconds);
+
+    /**
+     * {@code logctl reset recipe <id>} -- doc/specs/recipes.md #9: puts back every change still
+     * carrying the recipe's id, keeping sticky ones unless {@code includeSticky}.
+     */
+    RecipeResetResultData resetRecipe(String id, boolean includeSticky);
 }

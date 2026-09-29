@@ -2,8 +2,8 @@
 
 Status: **signed off 2026-09-28** (#1–#14 agreed, inside the 2026-10-04 cut line of
 `logaperture-spec.md` §17.1). **Slice (a) implemented** (discover and read: `list recipes`, `show
-recipe`); slice (b) (apply and reset) is being built; its decisions B1–B12 are in "Slice (b):
-apply and reset" (agreed 2026-09-28). See also "Settled during implementation".
+recipe`) and **slice (b) implemented** (`apply recipe`, `reset recipe`; decisions B1–B12 in
+"Slice (b): apply and reset", agreed 2026-09-28). See also "Settled during implementation".
 Parent spec: [`vendor-config-epic.md`](vendor-config-epic.md) slice 3, "Library-bundled recipes" —
 epic decisions #14–#21 are agreed and not reopened here; this spec settles what they left open.
 Also [`doc/logaperture-spec.md`](../logaperture-spec.md) §16.5 (named recipes), §9.3/§9.5
@@ -508,6 +508,43 @@ Slice (a):
 - **The vendor defaults file** counts its recipes in `status`/`env` (`… , 2 recipes`), and
   `logctl export vendor-defaults` carries its `namespace:` and `recipes:` over unchanged -- without
   that, exporting would silently drop them.
+
+Slice (b):
+
+- **Carrying the id.** A small `api` type, `RecipeTag` (the recipe id and where it came from), rides
+  on `SetLevelOptions`, `SetHandlerLevelOptions` and `RuleAttachOptions`; each keeps its old
+  constructor, so nothing else changes. Logger and handler overrides store the id in a new `recipe`
+  component. A rule's id lives in a map inside `RuleService` (rule id to recipe id), persisted on
+  `PersistedRule`, rather than on `LogRule`, which no rule type needs to know about. `alter rule`
+  drops it (#7); an `AUTO` handler's recompute, which follows the logger floor, keeps it.
+- **Audit (B5).** `AuditRecord` gained `origin`; a recipe's change is audited with source `recipe`,
+  and the stderr audit log appends `origin=recipe <id> from <location>`.
+- **The pre-check (#5)** applies what the equivalent commands check. A logger raise needs
+  `LEVEL_RAISE`, a lower `LEVEL_LOWER`, judged against every context's level; a logger not known
+  yet counts as a raise. A handler let through more (or set to `AUTO`) needs `HANDLER_LOWER`, else
+  `HANDLER_RAISE`. A rule needs `RULES_AUTHOR` and `SUPPRESS`. Any non-`session` tier needs
+  `PERSIST`. A protected category refuses a logger or rule entry. `show recipe` shows the same
+  refusals, less `PERSIST`, since it has no tier.
+- **Fingerprint (B1):** the first 8 bytes of a SHA-256 of the recipe's content, as hex. The same
+  recipe from any source has the same fingerprint.
+- **`list recipes`** always has the `APPLIED` column now. A recipe no longer offered (B7) shows `—`
+  as its source and counts changes rather than entries: `sticky (2 changes)`.
+- **`RECIPE` column** (#6) in `list loggers`, `list handlers` and `list rules`, shown when a row has
+  one. `LoggerInfoData`, `HandlerInfoData` and `RuleData` gained the attribute (plus `recipe` in
+  their `--json`); the override types `status` uses did not, since `status` doesn't show it.
+- **Output (B10, B11):** `apply` prints `logger <name> → <level>`, `handler <name> → <level>` and
+  `r7 rule trim <logger> <options>` lines, `Skipped ... -- <why>` lines, then `Applied recipe <id>
+  (N changes, <tier as set logger shows it>).`; `reset` prints `logger <name> reset.`, `rule r7
+  removed.`, `<kind> <name> (sticky, kept -- add --include-sticky)`, then `Reset recipe <id> (N
+  changes).`
+- **Guided (B12):** guided `apply` asks only how long, as #10 says; `--reason` on the command line is
+  used and printed. Guided `reset recipe` asks about sticky changes when a picked recipe's
+  soonest-ending change is sticky; a sticky change in a recipe with a shorter-lived one too is then
+  kept, and the output says so with the `--include-sticky` hint.
+- **WildFly test fix (#69).** The IT's probe servlet now keeps a static reference to its logger. An
+  unreferenced, unconfigured logger can be garbage-collected out of JBoss LogManager's names, so
+  `list loggers` intermittently missed it after a deploy -- the symptom #69 tracks. Two of three runs
+  of the recipe ITs failed that way before the change; three of three passed after.
 
 ## Testing
 

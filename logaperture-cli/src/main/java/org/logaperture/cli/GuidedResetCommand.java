@@ -243,7 +243,8 @@ final class GuidedResetCommand implements Command {
         List<Item> items = new ArrayList<>();
         for (LoggerInfoData row : byName.values()) {
             List<String> cells = row.isOverrideActive()
-                    ? List.of(row.getName(), orDash(row.getEffectiveLevel()), lifetime(row.getTier(), row.getExpiresAt()))
+                    ? List.of(row.getName(), orDash(row.getEffectiveLevel()),
+                            withRecipe(lifetime(row.getTier(), row.getExpiresAt()), row.getOverrideRecipe()))
                     : List.of(row.getName(), orDash(row.getEffectiveLevel()), "native default, until restart");
             items.add(new Item(LOGGER, row.getName(), cells, "STICKY".equals(row.getTier()),
                     row.getVendorDefaultLevel() != null, false));
@@ -267,7 +268,9 @@ final class GuidedResetCommand implements Command {
             }
             String level = "AUTO".equals(row.getOverrideMode()) ? "AUTO" : orDash(row.getOverrideLevel());
             List<String> cells = row.isOverrideActive()
-                    ? List.of(row.getRef(), level, lifetime(row.getOverrideTier(), row.getOverrideExpiresAt()))
+                    ? List.of(row.getRef(), level,
+                            withRecipe(lifetime(row.getOverrideTier(), row.getOverrideExpiresAt()),
+                                    row.getOverrideRecipe()))
                     : List.of(row.getRef(), orDash(row.getLevel()), "native level, until restart");
             items.add(new Item(HANDLER, row.getRef(), cells, "STICKY".equals(row.getOverrideTier()),
                     row.getVendorDefault() != null, false));
@@ -276,6 +279,11 @@ final class GuidedResetCommand implements Command {
     }
 
     /** #15: every rule, a vendor rule too even when unaltered -- resetting one to native switches it off. */
+    /** doc/specs/recipes.md #10: a change a recipe made names the recipe beside it. */
+    private static String withRecipe(String lifetime, String recipe) {
+        return recipe == null ? lifetime : lifetime + ", recipe " + recipe;
+    }
+
     private static List<Item> rules(LevelControlMXBean mbean) {
         List<Item> items = new ArrayList<>();
         for (RuleData row : mbean.listRules()) {
@@ -286,7 +294,8 @@ final class GuidedResetCommand implements Command {
                     : "vendor";
             boolean sticky = "STICKY".equals(row.getTier()) && (!vendor || row.isAltered());
             items.add(new Item(RULE, row.getId(), List.of(row.getId(), row.getAction() + " " + row.getLoggerName(),
-                    lifetime), sticky, vendor, vendor && !row.isAltered() && !row.isToNative()));
+                    withRecipe(lifetime, row.getRecipe())), sticky, vendor,
+                    vendor && !row.isAltered() && !row.isToNative()));
         }
         return items;
     }

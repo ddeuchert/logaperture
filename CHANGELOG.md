@@ -19,8 +19,18 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   (issue #92; `doc/specs/recipes.md`).
 - **`logctl show recipe <id>`** — what a recipe is for, where it came from, and each change it would
   make against the live level (`INFO -> DEBUG`). A library's recipe may only raise levels: an entry
-  that would lower one is shown as skipped. `--from <source>` picks among recipes sharing an id.
-  Recipes can't be switched on yet — `apply recipe` and `reset recipe` follow (issue #92).
+  that would lower one is shown as skipped. `--from <source>` picks among recipes sharing an id
+  (issue #92).
+- **`logctl apply recipe <id> [session | for <duration> | sticky]`** — switch a recipe on: shows the
+  changes, asks, then makes them (`--yes` to skip asking; `for 4h` unless a tier is given). Every
+  change is checked first, and if any would be refused nothing changes. Each change remembers the
+  recipe: `list loggers`, `list handlers` and `list rules` show a `RECIPE` column, `list recipes`
+  an `APPLIED` column (`for, 22m left (2 of 3)`), and the audit log names the recipe and where it
+  came from. Applying it again replaces its rules rather than adding them twice (issue #92).
+- **`logctl reset recipe <id>`** — switch it off: puts back every change that still carries the
+  recipe, leaving anything changed by hand since alone; sticky ones need `--include-sticky`. Works
+  for a recipe whose library has since been undeployed. On a terminal, `logctl apply` and `logctl
+  reset recipe` alone pick from a list (issue #92).
 - **Vendor defaults file: `namespace:` and `recipes:`**, and multi-line text written as YAML's
   `key: |` block text (issue #92). `logctl export vendor-defaults` carries both sections over.
 

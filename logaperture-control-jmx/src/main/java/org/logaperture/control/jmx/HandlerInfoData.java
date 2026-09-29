@@ -42,6 +42,7 @@ public final class HandlerInfoData {
     private final String context;
     private final String vendorDefault;
     private final boolean resetToNative;
+    private final String overrideRecipe;
 
     /**
      * Every field, including {@code resetToNative} (doc/specs/reset-to-native.md "Surfaces"); the
@@ -49,11 +50,11 @@ public final class HandlerInfoData {
      */
     @ConstructorProperties({"ref", "level", "persistent", "targetPath", "autoFlush", "overrideActive",
             "overrideLevel", "overrideMode", "overrideTier", "overrideExpiresAt", "membersSummary", "context",
-            "vendorDefault", "resetToNative"})
+            "vendorDefault", "resetToNative", "overrideRecipe"})
     public HandlerInfoData(String ref, String level, boolean persistent, String targetPath, Boolean autoFlush,
             boolean overrideActive, String overrideLevel, String overrideMode, String overrideTier,
             String overrideExpiresAt, String membersSummary, String context, String vendorDefault,
-            boolean resetToNative) {
+            boolean resetToNative, String overrideRecipe) {
         this.ref = ref;
         this.level = level;
         this.persistent = persistent;
@@ -68,6 +69,19 @@ public final class HandlerInfoData {
         this.context = context;
         this.vendorDefault = vendorDefault;
         this.resetToNative = resetToNative;
+        this.overrideRecipe = overrideRecipe;
+    }
+
+    /** Every field but {@code overrideRecipe} -- the shape before doc/specs/recipes.md. */
+    @ConstructorProperties({"ref", "level", "persistent", "targetPath", "autoFlush", "overrideActive",
+            "overrideLevel", "overrideMode", "overrideTier", "overrideExpiresAt", "membersSummary", "context",
+            "vendorDefault", "resetToNative"})
+    public HandlerInfoData(String ref, String level, boolean persistent, String targetPath, Boolean autoFlush,
+            boolean overrideActive, String overrideLevel, String overrideMode, String overrideTier,
+            String overrideExpiresAt, String membersSummary, String context, String vendorDefault,
+            boolean resetToNative) {
+        this(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel, overrideMode, overrideTier,
+                overrideExpiresAt, membersSummary, context, vendorDefault, resetToNative, null);
     }
 
     /** Every field but {@code resetToNative} (doc/specs/vendor-defaults.md "Surfaces"). */
@@ -115,7 +129,8 @@ public final class HandlerInfoData {
                 info.membersSummary(),
                 info.context(),
                 info.vendorDefault(),
-                info.resetToNative());
+                info.resetToNative(),
+                info.overrideRecipe());
     }
 
     public String getRef() {
@@ -181,5 +196,10 @@ public final class HandlerInfoData {
     /** Whether that vendor setting is being ignored until restart ({@code reset handler --to-native}). */
     public boolean isResetToNative() {
         return resetToNative;
+    }
+
+    /** The id of the recipe that made the active override, or {@code null} (doc/specs/recipes.md #6). */
+    public String getOverrideRecipe() {
+        return overrideRecipe;
     }
 }
