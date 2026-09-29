@@ -224,7 +224,8 @@ actually lives in rather than the first registered one — stays in #79, which i
 ## Out of scope (G11, G12)
 
 - **Guided `set logger`, `alter rule`, `reset`.** The same approach could apply; each is its own
-  follow-up once this one has been used.
+  follow-up once this one has been used. Taken up, together with `list`, in
+  [`guided-commands.md`](guided-commands.md) (issue #116).
 - **Picking the JVM.** When several LogAperture JVMs are running, every command stops with the
   `pass --pid <n>` table. Offering a numbered pick there helps every command, not only `add rule`,
   so it is a separate issue.

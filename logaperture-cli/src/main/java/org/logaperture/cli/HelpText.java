@@ -66,7 +66,7 @@ final class HelpText {
         sb.append("  --pid <n>            target this JVM instead of discovering one\n");
         sb.append("                       (without it, several JVMs are listed to pick from on a terminal)\n");
         sb.append("  --reason <text>      why — shown in status, kept in the audit trail\n");
-        sb.append("  --yes                skip the confirmation prompt when <target> is a pattern\n");
+        sb.append("  --yes                never ask: a pattern <target> takes every match\n");
         sb.append("                       (for 'add rule': add the rule to every logger it matches)\n");
         sb.append("  --include-sticky     for 'reset' -- also revert a sticky override, not just skip it\n");
         sb.append("  --to-native          for 'reset' -- land on the native configuration, ignoring the\n");
@@ -97,8 +97,12 @@ final class HelpText {
         sb.append("  -h, --help           this help\n");
         sb.append("\n");
         sb.append("A <duration> is <n>s, <n>m, <n>h or <n>d, for example: for 30m.\n");
-        sb.append("On a terminal, 'add rule' asks for anything left out -- 'logctl add rule' alone\n");
-        sb.append("walks through every part, starting from a logger name such as Deployer.\n");
+        sb.append("On a terminal, 'list', 'set', 'reset', 'add rule' and 'alter rule' ask for\n");
+        sb.append("anything left out -- 'logctl set' or 'logctl add rule' alone walks through\n");
+        sb.append("every part, starting from a logger name such as Deployer; 'logctl reset'\n");
+        sb.append("alone lists everything currently changed to pick from; 'logctl alter rule\n");
+        sb.append("r3' shows the rule's parts to pick what to change. Each shows the full\n");
+        sb.append("command before applying it.\n");
         sb.append("A bare 'set logger'/'set handler' with no tier defaults to 'for 4h' — a\n");
         sb.append("working session, gone by morning.\n");
         sb.append("\n");
@@ -130,9 +134,9 @@ final class HelpText {
         sb.append("\n");
         sb.append("A <target> for 'set logger' is an exact logger name,\n");
         sb.append("or a leading-* pattern like '*.Worker' — a one-time selection applied\n");
-        sb.append("to every currently-known match, nothing more: it previews those matches\n");
-        sb.append("and asks to confirm before applying (--yes skips the prompt), but a\n");
-        sb.append("logger created afterward that would also match is never touched. A\n");
+        sb.append("to every currently-known match, nothing more: on a terminal it lists\n");
+        sb.append("those matches to pick from (--yes takes all of them without asking), but\n");
+        sb.append("a logger created afterward that would also match is never touched. A\n");
         sb.append("trailing-* target ('org.apache.*') is rejected for this command --\n");
         sb.append("every descendant already inherits a set ancestor's level from the\n");
         sb.append("logging framework itself, so 'logctl set logger org.apache DEBUG' alone\n");

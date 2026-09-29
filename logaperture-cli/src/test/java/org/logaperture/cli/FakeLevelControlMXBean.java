@@ -62,6 +62,10 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     HandlerLevelOverrideData setHandlerLevelResult;
     HandlerLevelOverrideData setHandlerAutoResult;
     RuntimeException throwOnNextCall;
+    /** Every single-target reset, in order: {kind, name, includeSticky, toNative}. */
+    final List<Object[]> resetCalls = new ArrayList<>();
+    /** Loggers and handlers whose {@code setLogger}/{@code setHandlerLevel} is refused, as the server refuses one. */
+    final java.util.Set<String> refused = new java.util.HashSet<>();
 
     @Override
     public List<LoggerInfoData> listLoggers(String filter) {
@@ -88,6 +92,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
             boolean confirmed) {
         setLevelCalls.add(new Object[] {target, level, reason, tier, forSeconds, confirmed});
         maybeThrow();
+        refuseIfListed(target);
         if (target.indexOf('*') >= 0 && target.endsWith(".*")) {
             // Mirrors LevelControlService's trailing-wildcard rejection
             // (doc/specs/pattern-selection-semantics.md, Decision #5)
@@ -111,6 +116,12 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
                 }
             }
             throw new org.logaperture.core.ConfirmationRequiredException(target, matchedNames);
+        }
+        if (setLevelResult == null) {
+            // Nothing wired up: the override the call asked for, so a test setting several loggers in
+            // turn sees one result per logger.
+            return new SetLevelResultData(List.of(new org.logaperture.control.jmx.LevelOverrideData(target, level,
+                    reason, null, "jmx", tier, null)), List.of());
         }
         return setLevelResult;
     }
@@ -154,9 +165,11 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     @Override
     public ResetOutcomeData resetLogger(String target, boolean includeSticky) {
         resetLevelCalls.add(target);
+        resetCalls.add(new Object[] {"logger", target, includeSticky, false});
         lastToNative = false;
         lastIncludeSticky = includeSticky;
         maybeThrow();
+        refuseIfListed(target);
         if (target.indexOf('*') >= 0) {
             return resetMatching(row -> matchesFilter(target, row.getName()), includeSticky);
         }
@@ -180,6 +193,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     public ResetOutcomeData resetLogger(String target, boolean includeSticky, boolean toNative) {
         ResetOutcomeData outcome = resetLogger(target, includeSticky);
         lastToNative = toNative;
+        resetCalls.get(resetCalls.size() - 1)[3] = toNative;
         return outcome;
     }
 
@@ -237,6 +251,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
             long forSeconds) {
         setHandlerLevelCalls.add(new Object[] {handlerRef, level, reason, tier, forSeconds});
         maybeThrow();
+        refuseIfListed(handlerRef);
         return setHandlerLevelResult;
     }
 
@@ -250,6 +265,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     @Override
     public HandlerResetOutcomeData resetHandler(String handlerRef, boolean includeSticky) {
         resetHandlerCalls.add(handlerRef);
+        resetCalls.add(new Object[] {"handler", handlerRef, includeSticky, false});
         lastToNative = false;
         lastIncludeSticky = includeSticky;
         maybeThrow();
@@ -262,6 +278,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     public HandlerResetOutcomeData resetHandler(String handlerRef, boolean includeSticky, boolean toNative) {
         HandlerResetOutcomeData outcome = resetHandler(handlerRef, includeSticky);
         lastToNative = toNative;
+        resetCalls.get(resetCalls.size() - 1)[3] = toNative;
         return outcome;
     }
 
@@ -367,6 +384,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     @Override
     public RuleData resetRule(String id, boolean includeSticky) {
         resetRuleCalls.add(new Object[] {id, includeSticky});
+        resetCalls.add(new Object[] {"rule", id, includeSticky, false});
         maybeThrow();
         return resetRuleResult;
     }
@@ -388,8 +406,10 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
 
     @Override
     public RuleData resetRule(String id, boolean includeSticky, boolean toNative) {
+        RuleData result = resetRule(id, includeSticky);
         lastToNative = toNative;
-        return resetRule(id, includeSticky);
+        resetCalls.get(resetCalls.size() - 1)[3] = toNative;
+        return result;
     }
 
     @Override
@@ -466,6 +486,12 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         createdRules++;
         return new RuleData("r" + createdRules, target, action, "WARN", null, false, null, null, false, null, tier,
                 null, null, null, 0L, null, null);
+    }
+
+    private void refuseIfListed(String name) {
+        if (refused.contains(name)) {
+            throw new IllegalArgumentException("'" + name + "' is protected");
+        }
     }
 
     private void maybeThrow() {

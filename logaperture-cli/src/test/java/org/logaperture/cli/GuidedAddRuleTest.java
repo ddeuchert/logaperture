@@ -242,9 +242,9 @@ class GuidedAddRuleTest {
 
     @Test
     void parseSelection_acceptsListsRangesAndAll() {
-        assertEquals(List.of(1, 3, 4, 5), AddRuleCommand.parseSelection("5, 1,3-4", 5));
-        assertEquals(List.of(1, 2, 3), AddRuleCommand.parseSelection("ALL", 3));
-        assertThrows(IllegalArgumentException.class, () -> AddRuleCommand.parseSelection("0", 3));
+        assertEquals(List.of(1, 3, 4, 5), Picker.parseSelection("5, 1,3-4", 5));
+        assertEquals(List.of(1, 2, 3), Picker.parseSelection("ALL", 3));
+        assertThrows(IllegalArgumentException.class, () -> Picker.parseSelection("0", 3));
     }
 
     @Test
@@ -284,7 +284,7 @@ class GuidedAddRuleTest {
 
     @Test
     void moreThanThirtyMatches_areNotListed() {
-        for (int i = 0; i < AddRuleCommand.MAX_LISTED + 1; i++) {
+        for (int i = 0; i < Picker.MAX_LISTED + 1; i++) {
             mbean.loggers.add(logger("com.many.M" + i + ".Deployer"));
         }
         guided(lines("*.batch.Deployer", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule", "*.Deployer");

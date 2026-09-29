@@ -273,41 +273,46 @@ class MainRunTest {
     }
 
     @Test
-    void patternWithoutYes_interactive_promptsAndAppliesOnAConfirmingAnswer() {
+    void patternWithoutYes_interactive_picksAMatchAndAppliesToIt() {
         // Code-review finding: without the 6-arg run(..., in, interactive)
         // seam below, no test could reach this branch through Main at all --
         // `interactive` has no other injection point than System.console().
         FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
-        mbean.loggers = List.of(new LoggerInfoData("org.acme.Worker", "INFO", "INFO", false, null, null, null, null));
+        mbean.loggers = List.of(
+                new LoggerInfoData("org.acme.Worker", "INFO", "INFO", false, null, null, null, null),
+                new LoggerInfoData("org.acme.batch.Worker", "INFO", "INFO", false, null, null, null, null));
         mbean.setLevelResult = new org.logaperture.control.jmx.SetLevelResultData(
                 List.of(new org.logaperture.control.jmx.LevelOverrideData(
                         "org.acme.Worker", "DEBUG", null, "2026-09-13T00:00:00Z", "jmx", "STICKY",
                         null)),
                 List.of());
-        java.io.InputStream typedYes = new java.io.ByteArrayInputStream("y\n".getBytes(StandardCharsets.UTF_8));
+        java.io.InputStream typed = new java.io.ByteArrayInputStream("1\n".getBytes(StandardCharsets.UTF_8));
 
-        int exitCode = Main.run(new String[] {"set", "logger", "*.acme.Worker", "DEBUG", "sticky"}, out, err,
-                connectorFor(mbean), typedYes, true);
+        int exitCode = Main.run(new String[] {"set", "logger", "*.Worker", "DEBUG", "sticky"}, out, err,
+                connectorFor(mbean), typed, true);
 
         assertEquals(0, exitCode);
-        assertTrue(out().contains("Apply? [y/N]"), out());
+        assertTrue(out().contains("Which? (e.g. 1,3 or 1-2 or all; Enter to cancel)"), out());
         assertTrue(out().contains("org.acme.Worker → DEBUG"), out());
         Object[] call = mbean.setLevelCalls.get(0); // {target, level, reason, tier, forSeconds, confirmed}
-        assertEquals(true, call[5], "the typed 'y' resolved confirmed=true on the real call to the server");
+        assertEquals("org.acme.Worker", call[0], "the picked exact name, not the pattern");
+        assertEquals(true, call[5]);
     }
 
     @Test
-    void patternWithoutYes_interactive_declinedAnswerAppliesNothing() {
+    void patternWithoutYes_interactive_cancelledPickAppliesNothing() {
         FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
-        mbean.loggers = List.of(new LoggerInfoData("org.acme.Worker", "INFO", "INFO", false, null, null, null, null));
-        java.io.InputStream typedNo = new java.io.ByteArrayInputStream("n\n".getBytes(StandardCharsets.UTF_8));
+        mbean.loggers = List.of(
+                new LoggerInfoData("org.acme.Worker", "INFO", "INFO", false, null, null, null, null),
+                new LoggerInfoData("org.acme.batch.Worker", "INFO", "INFO", false, null, null, null, null));
+        java.io.InputStream enter = new java.io.ByteArrayInputStream("\n".getBytes(StandardCharsets.UTF_8));
 
-        int exitCode = Main.run(new String[] {"set", "logger", "*.acme.Worker", "DEBUG"}, out, err,
-                connectorFor(mbean), typedNo, true);
+        int exitCode = Main.run(new String[] {"set", "logger", "*.Worker", "DEBUG"}, out, err,
+                connectorFor(mbean), enter, true);
 
         assertEquals(0, exitCode);
         assertTrue(out().contains("Not applied."), out());
-        assertEquals(0, mbean.setLevelCalls.size(), "declining the prompt must never call the server");
+        assertEquals(0, mbean.setLevelCalls.size(), "cancelling the pick must never call the server");
     }
 
     /** A connector that must not be reached (help/version/usage paths never open a connection). */

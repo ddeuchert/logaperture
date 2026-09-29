@@ -52,8 +52,9 @@ final class Parser {
     }
 
     /**
-     * @param interactive whether a terminal is attached: an incomplete {@code add rule} is then a
-     *                    guided command rather than a usage error (doc/specs/guided-add-rule.md G1)
+     * @param interactive whether a terminal is attached: an incomplete {@code add rule}, {@code list},
+     *                    {@code set}, {@code reset} or {@code alter rule} is then a guided command rather than a usage error
+     *                    (doc/specs/guided-add-rule.md G1, doc/specs/guided-commands.md)
      */
     static Invocation parse(String[] argv, boolean interactive) {
         List<String> positionals = new ArrayList<>();
@@ -270,8 +271,8 @@ final class Parser {
         if (reason != null && !isSetLogger && !isSetHandler && !isAddRule && !isAlterRule) {
             throw usage("--reason applies only to 'set logger', 'set handler', 'add rule', or 'alter rule'.");
         }
-        if (toNative && !(command.equals("reset") && !rest.isEmpty() && List.of("logger", "loggers", "handler",
-                "handlers", "default-handler", "rule", "rules").contains(rest.get(0)))) {
+        if (toNative && !(command.equals("reset") && (rest.isEmpty() || List.of("logger", "loggers", "handler",
+                "handlers", "default-handler", "rule", "rules").contains(rest.get(0))))) {
             throw usage("--to-native applies only to 'reset logger', 'reset loggers', 'reset handler', "
                     + "'reset handlers', 'reset default-handler', 'reset rule' and 'reset rules'.");
         }
@@ -333,10 +334,17 @@ final class Parser {
             throw usage("only one of --sample-full / --no-sample-full.");
         }
 
+        // doc/specs/guided-commands.md: a command missing a part asks for it only on a terminal, and
+        // never with --json (its questions and a JSON document can't share stdout) or --yes.
+        boolean guided = interactive && !json;
+
         Command resolved = switch (command) {
             case "list" -> {
                 if (rest.isEmpty()) {
-                    throw usage("'list' needs 'loggers [filter]', 'handlers', or 'rules'.");
+                    if (guided) {
+                        yield new GuidedListCommand(showAll);
+                    }
+                    throw usage("'list' needs 'loggers [filter]', 'handlers', or 'rules'.\n" + PROMPT_HINT);
                 }
                 String noun = rest.get(0);
                 List<String> nounRest = rest.subList(1, rest.size());
@@ -401,15 +409,21 @@ final class Parser {
             }
             case "reset" -> {
                 if (rest.isEmpty()) {
+                    if (guided) {
+                        yield new GuidedResetCommand(null, includeSticky, toNative);
+                    }
                     throw usage("'reset' needs 'logger <target>', 'loggers', 'handler <name>', 'handlers', "
-                            + "'rule <id>', or 'rules'.");
+                            + "'rule <id>', or 'rules'.\n" + PROMPT_HINT);
                 }
                 String noun = rest.get(0);
                 List<String> nounRest = rest.subList(1, rest.size());
                 yield switch (noun) {
                     case "logger" -> {
+                        if (nounRest.isEmpty() && guided) {
+                            yield new GuidedResetCommand(GuidedResetCommand.LOGGER, includeSticky, toNative);
+                        }
                         if (nounRest.size() != 1) {
-                            throw usage("'reset logger' needs exactly one target.");
+                            throw usage("'reset logger' needs exactly one target." + (nounRest.isEmpty() ? "\n" + PROMPT_HINT : ""));
                         }
                         yield Commands.resetLogger(nounRest.get(0), includeSticky, toNative, json);
                     }
@@ -420,8 +434,11 @@ final class Parser {
                         yield Commands.resetAllLoggers(includeSticky, toNative, json);
                     }
                     case "handler" -> {
+                        if (nounRest.isEmpty() && guided) {
+                            yield new GuidedResetCommand(GuidedResetCommand.HANDLER, includeSticky, toNative);
+                        }
                         if (nounRest.size() != 1) {
-                            throw usage("'reset handler' needs exactly one handler name.");
+                            throw usage("'reset handler' needs exactly one handler name." + (nounRest.isEmpty() ? "\n" + PROMPT_HINT : ""));
                         }
                         yield Commands.resetHandler(nounRest.get(0), includeSticky, toNative, json);
                     }
@@ -432,8 +449,11 @@ final class Parser {
                         yield Commands.resetAllHandlers(includeSticky, toNative, json);
                     }
                     case "rule" -> {
+                        if (nounRest.isEmpty() && guided) {
+                            yield new GuidedResetCommand(GuidedResetCommand.RULE, includeSticky, toNative);
+                        }
                         if (nounRest.size() != 1) {
-                            throw usage("'reset rule' needs exactly one id.");
+                            throw usage("'reset rule' needs exactly one id." + (nounRest.isEmpty() ? "\n" + PROMPT_HINT : ""));
                         }
                         yield Commands.resetRule(nounRest.get(0), includeSticky, toNative, json);
                     }
@@ -455,15 +475,22 @@ final class Parser {
             }
             case "set" -> {
                 if (rest.isEmpty()) {
+                    if (guided) {
+                        yield new GuidedSetCommand(null, null, null);
+                    }
                     throw usage("'set' needs 'logger <target> <level>', 'handler <name> <level>', "
-                            + "or 'default-handler <name> ...'.");
+                            + "or 'default-handler <name> ...'.\n" + PROMPT_HINT);
                 }
                 String noun = rest.get(0);
                 List<String> nounRest = rest.subList(1, rest.size());
                 yield switch (noun) {
                     case "logger" -> {
                         if (nounRest.size() < 2) {
-                            throw usage("'set logger' needs <target> <level> [session | for <duration> | sticky].");
+                            if (guided && !yes) {
+                                yield Commands.setLoggerGuided(nounRest.isEmpty() ? null : nounRest.get(0), reason);
+                            }
+                            throw usage("'set logger' needs <target> <level> [session | for <duration> | sticky].\n"
+                                    + PROMPT_HINT);
                         }
                         TierChoice tier = resolveTier(nounRest.subList(2, nounRest.size()));
                         yield Commands.setLogger(nounRest.get(0), parseLevel(nounRest.get(1)), reason,
@@ -471,7 +498,11 @@ final class Parser {
                     }
                     case "handler" -> {
                         if (nounRest.size() < 2) {
-                            throw usage("'set handler' needs <name> <level> or <name> AUTO.");
+                            if (guided) {
+                                yield new GuidedSetCommand(GuidedSetCommand.HANDLER,
+                                        nounRest.isEmpty() ? null : nounRest.get(0), reason);
+                            }
+                            throw usage("'set handler' needs <name> <level> or <name> AUTO.\n" + PROMPT_HINT);
                         }
                         String handlerRef = nounRest.get(0);
                         TierChoice tier = resolveTier(nounRest.subList(2, nounRest.size()));
@@ -484,8 +515,11 @@ final class Parser {
                     }
                     case "default-handler" -> {
                         if (nounRest.isEmpty()) {
+                            if (guided) {
+                                yield new GuidedSetCommand(GuidedSetCommand.DEFAULT_HANDLER, null, null);
+                            }
                             throw usage("'set default-handler' needs one or more handler names -- "
-                                    + "use 'reset default-handler' to clear it.");
+                                    + "use 'reset default-handler' to clear it.\n" + PROMPT_HINT);
                         }
                         // No tier token here (doc/specs/handler-floor-control.md "Default
                         // handler group": membership is a standing config value, always
@@ -537,18 +571,11 @@ final class Parser {
                     throw usage("'alter' needs 'rule <id> [changes] [session | for <duration> | sticky]'.");
                 }
                 List<String> ruleRest = rest.subList(1, rest.size());
-                if (ruleRest.isEmpty()) {
-                    throw usage("'alter rule' needs the id of the rule to change -- see 'logctl list rules'.");
-                }
-                TierChoice tier = resolveAlterTier(ruleRest.subList(1, ruleRest.size()));
+                TierChoice tier = ruleRest.isEmpty() ? null : resolveAlterTier(ruleRest.subList(1, ruleRest.size()));
                 boolean anyPart = messageContains != null || noMessageContains || throwableType != null || noThrowable
                         || throwableMessageContains != null || noThrowableMessageContains || anyCause || noAnyCause
                         || belowLevel != null || sampleFullEveryMillis != null || noSampleFull || frames != null
                         || collapseCauses || noCollapseCauses || reason != null;
-                if (!anyPart && tier == null) {
-                    throw usage("'alter rule' needs something to change: a matcher option, --below, an action "
-                            + "option, a tier, or --reason.");
-                }
                 Boolean sampleFullEnabled = noSampleFull ? Boolean.FALSE : sampleFullEveryMillis != null ? Boolean.TRUE
                         : null;
                 Commands.RuleAlteration alteration = new Commands.RuleAlteration(messageContains, messageIgnoreCase,
@@ -557,6 +584,21 @@ final class Parser {
                         belowLevel, sampleFullEnabled, sampleFullEveryMillis, frames,
                         collapseCauses ? Boolean.TRUE : noCollapseCauses ? Boolean.FALSE : null, reason,
                         tier == null ? null : tier.tierName(), tier == null ? 0L : tier.forSeconds());
+                if (ruleRest.isEmpty()) {
+                    if (guided) {
+                        // doc/specs/guided-commands.md #16: pick the rule; changes given here are kept.
+                        yield new GuidedAlterRuleCommand(null, anyPart ? alteration : null);
+                    }
+                    throw usage("'alter rule' needs the id of the rule to change -- see 'logctl list rules'.\n"
+                            + PROMPT_HINT);
+                }
+                if (!anyPart && tier == null) {
+                    if (guided) {
+                        yield new GuidedAlterRuleCommand(ruleRest.get(0), null); // #17
+                    }
+                    throw usage("'alter rule' needs something to change: a matcher option, --below, an action "
+                            + "option, a tier, or --reason.\n" + PROMPT_HINT);
+                }
                 yield Commands.alterRule(ruleRest.get(0), alteration, json);
             }
             default -> throw usage("Unknown command '" + command + "'.");
@@ -612,7 +654,7 @@ final class Parser {
         return tokens.isEmpty() ? null : resolveTier(tokens);
     }
 
-    private static String parseLevel(String token) {
+    static String parseLevel(String token) {
         try {
             return Level.valueOf(token.toUpperCase(Locale.ROOT)).name();
         } catch (IllegalArgumentException e) {

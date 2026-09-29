@@ -21,19 +21,13 @@ import org.logaperture.control.jmx.EnvironmentReportData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
-import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
-import org.logaperture.control.jmx.SetLevelResultData;
 import org.logaperture.control.jmx.SquelchedLoggerData;
 import org.logaperture.control.jmx.StormData;
 import org.logaperture.control.jmx.StormReportData;
 import org.logaperture.control.jmx.TopReportData;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -261,105 +255,22 @@ final class Commands {
      * {@code target.endsWith(".*")}; if that check ever grows more
      * conditions on one side, mirror it on the other.
      */
-    private static boolean isTrailingWildcard(String target) {
+    static boolean isTrailingWildcard(String target) {
         return target.endsWith(".*");
     }
 
     /**
      * {@code target} is either an exact logger name or a pattern (doc/specs/
-     * pattern-selection-semantics.md) — a {@code *} anywhere in it means the
-     * latter, resolved the same way {@code logctl list loggers} already detects
-     * one. A leading-star pattern is a one-time selection: it previews its
-     * current matches and asks for confirmation ({@code --yes} skips the
-     * prompt) before applying, since a single wildcard can match more
-     * loggers than the operator expects. A trailing-star target is rejected
-     * by the server before confirmation is even evaluated, so it skips this
-     * whole preview dance entirely.
+     * pattern-selection-semantics.md) -- see {@link SetLoggerCommand}.
      */
     static Command setLogger(String target, String level, String reason, String tierName, long forSeconds,
             boolean yes, boolean json) {
-        return (mbean, out, in, interactive) -> {
-            boolean isPattern = isPattern(target);
-            boolean isTrailingWildcard = isPattern && isTrailingWildcard(target);
-            boolean confirmed = yes || !isPattern || isTrailingWildcard;
-            // Non-null only when a preview was actually shown -- the set of
-            // names the preview promised, kept around so the apply below
-            // can call out any it silently drops instead of leaving the
-            // discrepancy unexplained.
-            List<LoggerInfoData> previewed = null;
-            // !confirmed alone already excludes a trailing-wildcard target --
-            // confirmed is unconditionally true whenever isTrailingWildcard is
-            // (line above) -- so an explicit "&& !isTrailingWildcard" here
-            // would be a redundant conjunct that only obscures that (a
-            // code-review finding).
-            if (isPattern && !confirmed) {
-                previewed = mbean.listLoggers(target);
-                if (!interactive) {
-                    // Decision #4: fail fast rather than block forever on a
-                    // read from a stdin nothing will ever write to.
-                    throw new CliError(CliError.USAGE, previewed.isEmpty()
-                            ? "'" + target + "' matches no currently-known logger. Pass --yes to apply " + level
-                                    + " anyway (this affects only loggers that exist right now)."
-                            : "'" + target + "' matches " + previewed.size() + " currently-known logger"
-                                    + (previewed.size() == 1 ? "" : "s") + ". Pass --yes to apply " + level
-                                    + " to all of them non-interactively (this affects only loggers that exist "
-                                    + "right now).");
-                }
-                printPatternPreview(out, target, level, previewed);
-                if (!readYesAnswer(in)) {
-                    out.println("Not applied.");
-                    return CliError.OK;
-                }
-                confirmed = true;
-            }
-
-            SetLevelResultData result = mbean.setLogger(target, level, reason, tierName, forSeconds, confirmed);
-            List<LevelOverrideData> overrides = result.getOverrides();
-            if (json) {
-                out.println(Json.setLevelResult(result));
-                return CliError.OK;
-            }
-            if (overrides.isEmpty()) {
-                // A pattern currently matching no logger -- a one-time
-                // selection over nothing does nothing, and nothing will
-                // happen later either (doc/specs/pattern-selection-semantics.md).
-                out.println("'" + target + "' matches no currently-known logger; nothing to set.");
-                return CliError.OK;
-            }
-            for (LevelOverrideData override : overrides) {
-                out.println(override.getLoggerName() + " → " + override.getLevel() + "   ("
-                        + tierDetail(override.getTier(), override.getExpiresAt()) + ")");
-            }
-            printBlockingHandlersWarning(out, level, result.getBlockingHandlers());
-            return CliError.OK;
-        };
+        return new SetLoggerCommand(target, level, reason, new Parser.TierChoice(tierName, forSeconds), yes, json);
     }
 
-    /** The confirmation preview (doc/specs/pattern-selection-semantics.md "Confirmation and CLI behavior"). */
-    private static void printPatternPreview(java.io.PrintStream out, String pattern, String level,
-            List<LoggerInfoData> matches) {
-        if (matches.isEmpty()) {
-            out.println("'" + pattern + "' matches no currently-known logger.");
-        } else {
-            out.println("This will set " + level + " on " + matches.size() + " currently-known logger"
-                    + (matches.size() == 1 ? "" : "s") + " matching '" + pattern + "':");
-            for (LoggerInfoData match : matches) {
-                out.println("  " + match.getName());
-            }
-            out.println("A logger created later that would also match this pattern is not affected — re-run "
-                    + "this command if you need it too.");
-        }
-        out.print("Apply? [y/N] ");
-        out.flush();
-    }
-
-    private static boolean readYesAnswer(java.io.InputStream in) {
-        try {
-            String line = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8)).readLine();
-            return line != null && (line.equalsIgnoreCase("y") || line.equalsIgnoreCase("yes"));
-        } catch (IOException e) {
-            return false;
-        }
+    /** {@code set logger [<target>]} with the level left out, on a terminal (doc/specs/guided-commands.md #7). */
+    static Command setLoggerGuided(String target, String reason) {
+        return new SetLoggerCommand(target, null, reason, null, false, false);
     }
 
     /**
@@ -369,7 +280,7 @@ final class Commands {
      * logctl set handler} command to clear each one — one per handler, since
      * a developer may only want the console lowered, not every sink.
      */
-    private static void printBlockingHandlersWarning(java.io.PrintStream out, String level, List<HandlerFloorData> blocking) {
+    static void printBlockingHandlersWarning(java.io.PrintStream out, String level, List<HandlerFloorData> blocking) {
         if (blocking.isEmpty()) {
             return;
         }
@@ -1102,6 +1013,39 @@ final class Commands {
             boolean clearThrowableMessage, Boolean anyCause, String belowLevel, Boolean sampleFullEnabled,
             Long sampleFullEveryMillis, Integer frames, Boolean collapseCauses, String reason, String tierName,
             long forSeconds) {
+    }
+
+    /**
+     * Runs one command per chosen item, in turn -- the guided commands' apply step (doc/specs/
+     * guided-commands.md #1). With several, a refused one doesn't stop the others: refusals are printed
+     * after the successes and the exit code is the first failure's (guided-add-rule.md G10). With one, a
+     * failure is the command's, reported by {@code Main}.
+     *
+     * @param names each command's item, naming it in its refusal line
+     */
+    static int runEach(org.logaperture.control.jmx.LevelControlMXBean mbean, java.io.PrintStream out,
+            java.io.PrintStream err, java.io.InputStream in, boolean interactive, List<String> names,
+            List<Command> commands) {
+        if (commands.size() == 1) {
+            return commands.get(0).run(mbean, out, err, in, interactive);
+        }
+        List<String> refusals = new ArrayList<>();
+        int exitCode = CliError.OK;
+        for (int i = 0; i < commands.size(); i++) {
+            try {
+                commands.get(i).run(mbean, out, err, in, interactive);
+            } catch (RuntimeException e) {
+                Main.Failure failure = Main.failureOf(e);
+                refusals.add(names.get(i) + ": " + failure.message());
+                if (exitCode == CliError.OK) {
+                    exitCode = failure.exitCode();
+                }
+            }
+        }
+        for (String refusal : refusals) {
+            err.println(refusal);
+        }
+        return exitCode;
     }
 
     /**
