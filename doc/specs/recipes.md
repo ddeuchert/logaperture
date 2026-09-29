@@ -2,8 +2,8 @@
 
 Status: **signed off 2026-09-28** (#1–#14 agreed, inside the 2026-10-04 cut line of
 `logaperture-spec.md` §17.1). **Slice (a) implemented** (discover and read: `list recipes`, `show
-recipe`); slice (b) (apply and reset) **in design**: its open points are B1–B12 in "Slice (b):
-apply and reset", **agreed 2026-09-28**; being built. See also "Settled during implementation".
+recipe`); slice (b) (apply and reset) is being built; its decisions B1–B12 are in "Slice (b):
+apply and reset" (agreed 2026-09-28). See also "Settled during implementation".
 Parent spec: [`vendor-config-epic.md`](vendor-config-epic.md) slice 3, "Library-bundled recipes" —
 epic decisions #14–#21 are agreed and not reopened here; this spec settles what they left open.
 Also [`doc/logaperture-spec.md`](../logaperture-spec.md) §16.5 (named recipes), §9.3/§9.5
