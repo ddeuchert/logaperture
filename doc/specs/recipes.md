@@ -541,6 +541,13 @@ Slice (b):
   used and printed. Guided `reset recipe` asks about sticky changes when a picked recipe's
   soonest-ending change is sticky; a sticky change in a recipe with a shorter-lived one too is then
   kept, and the output says so with the `--include-sticky` hint.
+- **A logger not created yet** (code review of PR #121): #4 compares against the level it would
+  inherit, read from its nearest existing parent logger. When no logger on its path exists either, a
+  library entry is skipped (`its current level can't be read yet`), since nothing shows it is a
+  raise; a vendor or folder entry is applied. The capability check uses the same inherited level.
+- **Re-apply (B3)** removes the recipe's old rules only once its loggers and handlers are in, so a
+  failure before then leaves them in place. A `for` tier without a positive duration is refused
+  before anything changes.
 - **WildFly test fix (#69).** The IT's probe servlet now keeps a static reference to its logger. An
   unreferenced, unconfigured logger can be garbage-collected out of JBoss LogManager's names, so
   `list loggers` intermittently missed it after a deploy -- the symptom #69 tracks. Two of three runs

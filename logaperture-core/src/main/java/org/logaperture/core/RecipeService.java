@@ -100,6 +100,9 @@ public final class RecipeService implements RecipeOperations {
             PersistenceTier tier, Duration expiresIn) {
         requireCapability(Capability.VIEW);
         Objects.requireNonNull(tier, "tier");
+        if (tier == PersistenceTier.FOR && (expiresIn == null || expiresIn.isZero() || expiresIn.isNegative())) {
+            throw new IllegalArgumentException("a 'for' tier needs a positive duration");
+        }
         RecipeListing listing = resolve(catalog.read(), id, from);
         Recipe recipe = listing.recipe();
         if (fingerprint != null && !fingerprint.equals(fingerprint(recipe))) {
@@ -123,17 +126,20 @@ public final class RecipeService implements RecipeOperations {
         List<Planned> toApply = plan.stream().filter(planned -> !planned.skipped()).toList();
         List<RecipeDetail.Change> skipped = plan.stream().filter(Planned::skipped).map(Planned::change).toList();
 
-        // B3: re-applying replaces the recipe's rules rather than adding them a second time.
-        if (!recipe.rules().isEmpty()) {
-            for (RuleView rule : taggedRules(recipe.id())) {
-                rules.resetRule(rule.rule().id(), true);
-            }
-        }
-
         List<RecipeDetail.Change> applied = new ArrayList<>();
         List<String> ruleIds = new ArrayList<>();
+        boolean oldRulesRemoved = false;
         for (Planned planned : toApply) {
             try {
+                if (planned.rule() != null && !oldRulesRemoved) {
+                    // B3: re-applying replaces the recipe's rules rather than adding them a second time --
+                    // removed only now, once its loggers and handlers are in, so an earlier failure can't
+                    // leave the recipe with its rules gone and nothing to reset.
+                    for (RuleView rule : taggedRules(recipe.id())) {
+                        rules.resetRule(rule.rule().id(), true);
+                    }
+                    oldRulesRemoved = true;
+                }
                 String ruleId = apply(planned, reasonFor(planned, reason, recipe), tier, expiresIn, tag);
                 if (ruleId != null) {
                     ruleIds.add(ruleId);
@@ -323,10 +329,7 @@ public final class RecipeService implements RecipeOperations {
         boolean persists = tier != null && tier != PersistenceTier.SESSION;
         List<Planned> plan = new ArrayList<>();
         for (VendorDefaults.LoggerDefault logger : recipe.loggers()) {
-            List<Level> current = loggers.listLoggers(logger.name()).stream()
-                    .filter(row -> row.name().equals(logger.name()))
-                    .map(LoggerInfo::effectiveLevel)
-                    .toList();
+            List<Level> current = liveLevels(logger.name());
             String shown = current.isEmpty() ? null : current.get(0).name();
             String note = null;
             boolean skipped = false;
@@ -334,6 +337,10 @@ public final class RecipeService implements RecipeOperations {
                     .findFirst().orElse(null);
             if (protectedCategories.isProtected(logger.name())) {
                 note = "refused: " + logger.name() + " is a protected category";
+            } else if (library && current.isEmpty()) {
+                // #4: with no level to compare against, a library entry can't be shown to be a raise.
+                note = "skipped: its current level can't be read yet (library recipes only raise levels)";
+                skipped = true;
             } else if (library && lowered != null) {
                 // #4, B8: skipped if it would lower the level in any context.
                 note = "skipped: would lower " + lowered + " -> " + logger.level() + " (library recipes only raise levels)";
@@ -370,6 +377,26 @@ public final class RecipeService implements RecipeOperations {
                     expression, note), false, note != null, null, null, rule));
         }
         return plan;
+    }
+
+    /**
+     * {@code name}'s effective level in each context -- for a logger not created yet, the level it
+     * would inherit from its nearest existing parent (#4 compares against it). Empty when no logger on
+     * its path is known.
+     */
+    private List<Level> liveLevels(String name) {
+        for (String candidate = name; !candidate.isEmpty();
+                candidate = candidate.contains(".") ? candidate.substring(0, candidate.lastIndexOf('.')) : "") {
+            String exact = candidate;
+            List<Level> levels = loggers.listLoggers(exact).stream()
+                    .filter(row -> row.name().equals(exact))
+                    .map(LoggerInfo::effectiveLevel)
+                    .toList();
+            if (!levels.isEmpty()) {
+                return levels;
+            }
+        }
+        return List.of();
     }
 
     /** What {@code set logger} would check: a raise and/or a lower, against each context's level. */

@@ -188,6 +188,7 @@ class RecipeApplyTest {
     @Test
     void libraryRecipe_skipsAnEntryThatWouldLower_andAppliesTheRest() {
         aggregate.setLogger("io.undertow.request", Level.DEBUG, SetLevelOptions.defaults());
+        aggregate.setLogger("io.undertow.server", Level.INFO, SetLevelOptions.defaults()); // session inherits INFO
         Recipe library = new Recipe("io.undertow", "quiet", "s", null, List.of(
                 new VendorDefaults.LoggerDefault("io.undertow.request", Level.ERROR, null),
                 new VendorDefaults.LoggerDefault("io.undertow.server.session", Level.DEBUG, null)),
@@ -273,6 +274,63 @@ class RecipeApplyTest {
         assertEquals("Applied 3 of 5 changes before this failed: rule trim com.acme.billing: adapter fault -- "
                 + "'logctl reset recipe com.acme:billing' undoes the ones that applied", failed.getMessage());
         assertEquals("com.acme:billing", override("com.acme.billing").orElseThrow().recipe(), "B2: no rollback");
+    }
+
+    /** Code review of PR #121: a failure before the rules must not leave the recipe's old rules removed. */
+    @Test
+    void reapply_thatFailsBeforeItsRules_keepsTheOldRules() {
+        RecipeService service = service();
+        service.applyRecipe("com.acme:billing", null, null, null, PersistenceTier.SESSION, null);
+        List<String> before = aggregate.listRules().stream().map(rule -> rule.rule().id()).toList();
+        LevelControlOperations failingSets = (LevelControlOperations) Proxy.newProxyInstance(
+                getClass().getClassLoader(), new Class<?>[] {LevelControlOperations.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("setLogger")) {
+                        throw new IllegalStateException("adapter fault");
+                    }
+                    try {
+                        return method.invoke(aggregate, args);
+                    } catch (InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
+        RecipeService failing = new RecipeService(CapabilityPolicy.allowAll(),
+                new RecipeCatalog(List.of(), Optional.of(folder), LibraryRecipeScanner.none()), failingSets, aggregate,
+                aggregate);
+
+        assertThrows(IllegalStateException.class,
+                () -> failing.applyRecipe("com.acme:billing", null, null, null, PersistenceTier.SESSION, null));
+
+        assertEquals(before, aggregate.listRules().stream().map(rule -> rule.rule().id()).toList());
+    }
+
+    @Test
+    void aForTierWithoutAPositiveDuration_isRefusedUpFront() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service().applyRecipe("com.acme:billing", null, null, null, PersistenceTier.FOR, Duration.ZERO));
+
+        assertTrue(override("com.acme.billing").isEmpty());
+    }
+
+    /** Code review of PR #121: #4 holds for a logger not created yet -- compared with what it would inherit. */
+    @Test
+    void libraryRecipe_onALoggerNotCreatedYet_comparesWithTheInheritedLevel() {
+        aggregate.setLogger("com.acme.audit", Level.INFO, SetLevelOptions.defaults());
+        Recipe library = new Recipe("com.acme", "hush", "s", null, List.of(
+                new VendorDefaults.LoggerDefault("com.acme.audit.trail", Level.OFF, null),
+                new VendorDefaults.LoggerDefault("com.acme.audit.detail", Level.DEBUG, null),
+                new VendorDefaults.LoggerDefault("zz.nothing.known", Level.DEBUG, null)),
+                List.of(), List.of(), RecipeCatalogTest.library("acme.jar"));
+
+        RecipeApplyResult result = service(List.of(library), CapabilityPolicy.allowAll())
+                .applyRecipe("com.acme:hush", null, null, null, PersistenceTier.SESSION, null);
+
+        assertEquals(List.of("com.acme.audit.detail"), result.applied().stream().map(RecipeDetail.Change::target)
+                .toList());
+        assertEquals("skipped: would lower INFO -> OFF (library recipes only raise levels)",
+                result.skipped().get(0).note());
+        assertEquals("skipped: its current level can't be read yet (library recipes only raise levels)",
+                result.skipped().get(1).note());
+        assertTrue(override("com.acme.audit.trail").isEmpty());
     }
 
     // ---- reset ----
