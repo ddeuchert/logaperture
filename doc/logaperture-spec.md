@@ -1213,8 +1213,8 @@ The M0–M6 plan above stays the long-term map. It is too much to build before a
 
 | Version | Target | Content |
 |---|---|---|
-| `0.1.0-alpha.3` | ~Oct 1 | Everything on `develop` today. Last GitHub-only release. |
-| `1.0.0-beta.1` | Oct 15, or later | **Feature freeze.** Adds guided `list`, `set`, `reset` and `alter rule` (#116); the beta waits for them if they need more time, and rc.1 and 1.0.0 move by the same amount. Adds library recipes (#92) if its spec is signed off by Oct 4, otherwise recipes move to 1.1. First Maven Central publish; docs site live. |
+| `0.1.0-alpha.3` | ~Oct 1 | Everything on `develop` today, plus guided `list`, `set`, `reset` and `alter rule` (#116), which finished early and was pulled forward from beta 1 (2026-09-28). Last GitHub-only release. |
+| `1.0.0-beta.1` | Oct 15 | **Feature freeze.** Adds library recipes (#92) if its spec is signed off by Oct 4, otherwise recipes move to 1.1. First Maven Central publish; docs site live. |
 | `1.0.0-beta.N`, `-rc.1` | rc by Nov 9 | Fixes only, plus renames from the contract review. |
 | `1.0.0` | Nov 16 | The §11.1 compatibility promise starts; the "not for production" warning comes off within the §11 1.0 matrix. |
 | `1.1.0` | Dec 2026 – early 2027 | Quarkus JVM mode and plain-JVM JUL (#114), unless it made 1.0. Then Release 2: Spring Boot, Logback depth (rules, `top`, `doctor`, storms), configurable storm suppression (#27), Tomcat with per-webapp Logback. If Quarkus takes 1.1, Release 2 becomes 1.2. |
@@ -1638,7 +1638,7 @@ It drives `logctl --json`, whose shapes are already a compatibility contract (§
   - where the agent must stop for approval;
   - whether formatter-pattern knowledge from the agent should help parse a pasted line.
 
-**Status note.** Specced in [`doc/specs/guided-add-rule.md`](specs/guided-add-rule.md), signed off 2026-09-26 (G1–G12). The first three open questions above are resolved there: no JLine (G12), `add rule` only (G11), and the rule type may be left out (G3). The AI-phase questions remain open. Kept here as the roadmap record. After manual testing, prompting was extended to `list`, `set`, `reset` and `alter rule` in [`doc/specs/guided-commands.md`](specs/guided-commands.md) ([#116](https://github.com/ddeuchert/logaperture/issues/116)), signed off 2026-09-27 for beta 1.
+**Status note.** Specced in [`doc/specs/guided-add-rule.md`](specs/guided-add-rule.md), signed off 2026-09-26 (G1–G12). The first three open questions above are resolved there: no JLine (G12), `add rule` only (G11), and the rule type may be left out (G3). The AI-phase questions remain open. Kept here as the roadmap record. After manual testing, prompting was extended to `list`, `set`, `reset` and `alter rule` in [`doc/specs/guided-commands.md`](specs/guided-commands.md) ([#116](https://github.com/ddeuchert/logaperture/issues/116)), signed off 2026-09-27 for beta 1 and shipped early, in 0.1.0-alpha.3.
 
 ### 18.16 Restarting with a just-exported vendor file duplicates its sticky sources
 

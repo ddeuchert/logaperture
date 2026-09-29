@@ -2,7 +2,7 @@
 
 **Runtime logging control for the JVM.** See, tune, and bound what your application logs — without restarting it, editing its configuration, or knowing in advance what will go wrong.
 
-> ### Status: 0.1.0-alpha.2 — early, evaluation only
+> ### Status: 0.1.0-alpha.3 — early, evaluation only
 >
 > **Not for production.** It does real work on a running JVM — see [Try the alpha](#try-the-alpha) — but the feature set is partial, the override store's on-disk format may still change between builds with no migration, and there is no support commitment.
 >
@@ -30,7 +30,7 @@
 
 ## Try the alpha
 
-`0.1.0-alpha.2` is a **measure-and-control** slice — it reads what your app logs, and it changes log levels. It does not suppress anything yet.
+`0.1.0-alpha.3` reads what your app logs, changes log levels, and — new in this build — suppresses noise you name: `drop` and `trim` rules, plus report-only storm detection.
 
 **Tested on:**
 
@@ -45,12 +45,16 @@ Working today:
 - **`logctl doctor`** — flag common logging-config problems: unbounded file-handler growth, verbosity left on, the same content written twice, autoflush on a busy handler, disk headroom vs. write rate.
 - **`logctl top`** — bytes written per logger, worst-first, with a projected daily total and the stack-trace-byte fraction.
 - **`logctl status`** / **`logctl reset loggers`** / **`logctl reset handlers`** — what LogAperture has changed, and undo all of it.
+- **`logctl add rule drop|trim <logger> …`** — drop a known-noisy message, or keep it but shorten its stack trace, without touching the logger's level. Rules get ids, expire like overrides, and are listed, changed and removed with `list rules`, `alter rule` and `reset rule`.
+- **`logctl storms`** — the log storms the agent has detected (a burst of near-identical events from one logger), first occurrence kept in full. Report-only: nothing is suppressed.
+- **Vendor defaults file** (`-javaagent:…=--vendor-defaults=<file>`) — ship baseline levels and rules with a product; `logctl reset` returns to them, and `logctl export vendor-defaults` writes your sticky settings out as one.
+- **Guided commands** — on a terminal, leave out what `set`, `reset`, `list`, `add rule` or `alter rule` needs and `logctl` asks, picking loggers, handlers and rules from numbered lists, then prints the equivalent one-line command.
 
-`doctor`, `top`, and `logctl list handlers` currently inspect `java.util.logging` / JBoss LogManager only — on a Logback application they report nothing yet (a Logback pass is on the roadmap). Every change is capability-checked and written to a tamper-evident audit trail. The agent opens no sockets; `logctl` reaches it over the local attach API, UID-gated by the OS.
+`doctor`, `top`, `logctl list handlers`, rules and storm detection currently work with `java.util.logging` / JBoss LogManager only — on a Logback application they report nothing yet (a Logback pass is on the roadmap). Every change is capability-checked and written to a tamper-evident audit trail. The agent opens no sockets; `logctl` reaches it over the local attach API, UID-gated by the OS.
 
-**Not in this build:** automatic storm collapse or any suppression, per-rule squelching, the Log4j 2 adapter, and any Spring Boot / Tomcat / Quarkus-JVM integration (a Spring Boot fat-jar attaches as a plain JVM, so level control *may* work against its Logback, but it is untested).
+**Not in this build:** automatic storm collapse, `drop`/`trim` on Logback, the Log4j 2 adapter, and any Spring Boot / Tomcat / Quarkus-JVM integration (a Spring Boot fat-jar attaches as a plain JVM, so level control *may* work against its Logback, but it is untested).
 
-**Getting it:** download [`logaperture-0.1.0-alpha.2.zip`](https://github.com/ddeuchert/logaperture/releases/download/v0.1.0-alpha.2/logaperture-0.1.0-alpha.2.zip) (or browse [all releases](../../releases)), unzip, and follow the bundled `INSTALL-wildfly.md`. [DEVELOPMENT.md](DEVELOPMENT.md) covers a plain-JVM setup and running `logctl`.
+**Getting it:** download [`logaperture-0.1.0-alpha.3.zip`](https://github.com/ddeuchert/logaperture/releases/download/v0.1.0-alpha.3/logaperture-0.1.0-alpha.3.zip) (or browse [all releases](../../releases)), unzip, and follow the bundled `INSTALL-wildfly.md`. [DEVELOPMENT.md](DEVELOPMENT.md) covers a plain-JVM setup and running `logctl`.
 
 ## Design principles
 

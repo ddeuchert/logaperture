@@ -1,6 +1,7 @@
 # Epic: filtering by content — `drop` and `trim` rules
 
-Status: **draft for sign-off** (2026-09-21). Nothing is implemented. This is an *epic* spec: it fixes
+Status: **implemented** — all four members are on `develop` and ship in 0.1.0-alpha.3 (signed off
+2026-09-21, complete 2026-09-28). This is an *epic* spec: it fixes
 the shared design, the sequencing and the cross-cutting decisions. Each member still gets its own
 `doc/specs/<feature>.md` and its own sign-off before code, per CLAUDE.md.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §7 (Feature 3 — the squelch engine:
@@ -62,9 +63,9 @@ the child specs fix; the behaviour is what this epic agrees.
 
 | Step | Piece | Issue |
 |---|---|---|
-| 1 | Storm detection supplies the always-on gate observer this epic builds on | #26 (spec signed off) |
-| 2 | **Rule foundation:** matcher library, compiled rule plan, safety scaffolding, rule management | new |
-| 3 | **`drop`** | [#72](https://github.com/ddeuchert/logaperture/issues/72) — spec signed off: [`drop-rule.md`](drop-rule.md) |
+| 1 | Storm detection supplies the always-on gate observer this epic builds on | [#26](https://github.com/ddeuchert/logaperture/issues/26) — implemented: [`storm-detection.md`](storm-detection.md) |
+| 2 | **Rule foundation:** matcher library, compiled rule plan, safety scaffolding, rule management | [#71](https://github.com/ddeuchert/logaperture/issues/71) — implemented: [`rule-pipeline-foundation.md`](rule-pipeline-foundation.md) |
+| 3 | **`drop`** | [#72](https://github.com/ddeuchert/logaperture/issues/72) — implemented: [`drop-rule.md`](drop-rule.md) |
 | 4 | **`trim`** — #34 reshaped: a rule with a "below LEVEL" bound, not a knob beside `level` | [#34](https://github.com/ddeuchert/logaperture/issues/34) — implemented: [`trim-rule.md`](trim-rule.md) |
 
 Each gets its own spec, branch and PR. The epic gets a tracking issue listing them. Automatic storm
@@ -239,7 +240,7 @@ Design consequences, all from [`doc/spikes/rule-pipeline.md`](../spikes/rule-pip
 | 9 | FATAL is a hard limit; suppression floor applies; hit counts are per event; dry-run deferred | **Agreed** |
 | 10 | Structured formatters (JSON/XML): hybrid rendering — synthetic frameless throwable for text formatters (keeps the cause chain), message suffix with a per-cause summary for structured ones (avoids the wrong `exceptionType`) | **Superseded for `trim`'s first slice** — [`trim-rule.md`](trim-rule.md) ships text formatters only; structured formatters are untrimmed, tracked as [#83](https://github.com/ddeuchert/logaperture/issues/83) |
 | 11 | #63 is labelled `obsolete`, not closed. Reconsider if drop/trim leave a gap (its one uncovered case: raising a level for whatever emits X) | **Agreed** |
-| 12 | Release: #26 + foundation + `drop` + `trim` in alpha-3; #27, #33 and the rest in beta-1. Revisit once the feature set is complete | **Provisional** |
+| 12 | Release: #26 + foundation + `drop` + `trim` in alpha-3; #27, #33 and the rest in beta-1. Revisit once the feature set is complete | **Agreed** (2026-09-28): all four ship in 0.1.0-alpha.3; #27 and the rest follow in later releases (beta-1 became the 1.0.0 milestone) |
 | 13 | Accept the fail-open re-arm gap (foundation point 2) | **Agreed** |
 | 14 | A rule is attached to a specific logger and reaches descendants by tree inheritance, modelled on `use-parent-handlers`, not by a per-event pattern test anchored on level configuration (supersedes the original wording of this decision) | **Agreed** |
 | 15 | Each logger carries a `useParentRules` flag, default `true`; effective rules accumulate up the tree and stop at the first ancestor with the flag `false` (inclusive) — the handler algorithm, not the level algorithm; rules and levels are fully independent axes | **Agreed** |

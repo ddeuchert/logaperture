@@ -45,7 +45,7 @@ logctl env
 ```
 
 ```
-LogAperture agent    0.1.0-alpha.2  (logctl 0.1.0-alpha.2)
+LogAperture agent    0.1.0-alpha.3  (logctl 0.1.0-alpha.3)
 Java                 17.0.5  Eclipse Adoptium
 OS                   Linux 6.8.0  amd64
 Logging backend      JBoss LogManager 2.1.18.Final

@@ -7,6 +7,13 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ## [Unreleased]
 
+## [0.1.0-alpha.3] — 2026-09-28
+
+The first suppression features: `drop` and `trim` rules, report-only storm detection, a vendor
+defaults file, and guided (ask-for-what's-missing) `logctl` commands.
+**Evaluation only — not for production.** The override store's and vendor defaults file's on-disk
+formats may still change between builds without a migration path.
+
 ### Added
 
 - **`logctl storms`** — lists the log storms the agent has detected: a burst of near-identical
@@ -252,6 +259,7 @@ store's on-disk format may still change between builds without a migration path.
   `/subsystem=logging` reconfiguration
   ([#31](https://github.com/ddeuchert/logaperture/issues/31)).
 
-[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v0.1.0-alpha.2...HEAD
+[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v0.1.0-alpha.3...HEAD
+[0.1.0-alpha.3]: https://github.com/ddeuchert/logaperture/releases/tag/v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/ddeuchert/logaperture/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/ddeuchert/logaperture/releases/tag/v0.1.0-alpha.1
