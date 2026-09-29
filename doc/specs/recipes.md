@@ -369,8 +369,9 @@ Slice (a):
 - **`--from`** matches a source's label or its full location.
 - **Block text** (#2) is stored without its final line break, since every field is shown inline:
   the value `|-` would give, though only `|` is accepted.
-- **Rule entries** in a recipe may leave out `id`; the entry is then labelled `rule-<n>` (only a
-  label -- applying it will give an ordinary `rN` id).
+- **Rule entries** in a recipe may leave out `id`; the entry is then labelled `rule-<n>`, the lowest
+  `n` no other rule in the recipe uses (only a label -- applying it will give an ordinary `rN` id;
+  but export writes it back, so it must not repeat an explicit id).
 - **Recipe folder**: only `*.yaml` files are read, in name order. Library files are cached by URL
   and last-modified time (a `jar:`/`file:` URL uses the file's own time, so checking never opens a
   jar); a library no longer loaded is forgotten.

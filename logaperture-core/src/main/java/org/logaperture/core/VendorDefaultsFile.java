@@ -74,6 +74,8 @@ public final class VendorDefaultsFile {
     private static final Set<String> DROP_FIELDS = Set.of("sampleFull");
     private static final Set<String> TRIM_FIELDS = Set.of("frames", "collapseCauses");
     private static final Pattern RULE_ID = Pattern.compile("[a-z0-9-]{1,40}");
+    /** A recipe rule's id until {@code labelUnnamedRules} gives it one; never a valid id, so never collides. */
+    private static final String UNLABELLED = "";
     private static final Pattern DURATION = Pattern.compile("(\\d+)([smhd])");
     /** A state id as {@code FileStateStore} assigns it (doc/specs/export-round-trip.md): a UUID, lower-case hex. */
     private static final Pattern STATE_ID =
@@ -485,6 +487,7 @@ public final class VendorDefaultsFile {
             entries.forEachEntry(entry, "loggers", entries::logger);
             entries.forEachEntry(entry, "handlers", entries::handler);
             entries.forEachEntry(entry, "rules", entries::rule);
+            entries.labelUnnamedRules();
             if (entries.loggers.isEmpty() && entries.handlers.isEmpty() && entries.rules.isEmpty()
                     && errors.size() == before) {
                 error(entry.line(), "recipe '" + name + "' changes nothing -- give it loggers"
@@ -662,7 +665,7 @@ public final class VendorDefaultsFile {
                     }
                 }
             } else if (recipeEntries) {
-                id = "rule-" + (rules.size() + 1); // only a label: applying it gives an ordinary rN id
+                id = UNLABELLED; // labelled once every rule's own id is known -- see labelUnnamedRules
             }
             String logger = loggerName(entry, "logger");
             if (logger != null && protectedCategories.isProtected(logger)) {
@@ -867,6 +870,29 @@ public final class VendorDefaultsFile {
 
         private static boolean isGroupName(String name) {
             return name.equals(HandlerRef.ALL_HANDLERS.value()) || name.equals(HandlerRef.DEFAULT_HANDLERS.value());
+        }
+
+        /**
+         * Gives each recipe rule written without an {@code id} the label {@code rule-<n>}, the
+         * lowest {@code n} no other rule in the recipe uses -- a label only (applying the rule gives
+         * it an ordinary {@code rN} id), but one export writes back, so it must not repeat an id
+         * given explicitly, before or after it.
+         */
+        void labelUnnamedRules() {
+            int n = 0;
+            for (int i = 0; i < rules.size(); i++) {
+                VendorDefaults.RuleDefault rule = rules.get(i);
+                if (!rule.id().equals(UNLABELLED)) {
+                    continue;
+                }
+                String label;
+                do {
+                    label = "rule-" + ++n;
+                } while (seenRuleIds.contains(label));
+                seenRuleIds.add(label);
+                rules.set(i, new VendorDefaults.RuleDefault(label, rule.action(), rule.loggerName(), rule.matchers(),
+                        rule.reason(), rule.sampleFull(), rule.frames(), rule.collapseCauses(), rule.stateId()));
+            }
         }
 
         /** {@code fields}, less {@code stateId} for a recipe's entries -- a recipe is never exported. */

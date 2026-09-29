@@ -361,6 +361,42 @@ class RecipeFileTest {
         assertTrue(text.contains("    description: |\n      First paragraph, with a # that is text.\n\n"), text);
     }
 
+    /** Code review of PR #118: an unnamed rule's label must not repeat an explicit id, or export can't read its own file. */
+    @Test
+    void unnamedRuleLabel_skipsExplicitIds_andExportStillReadsBack() {
+        Path path = Path.of("/opt/app/vendor-defaults.yaml");
+        VendorDefaults started = VendorDefaultsFile.parse("""
+                schemaVersion: 1
+                namespace: com.acme
+                recipes:
+                  - name: billing
+                    summary: s
+                    rules:
+                      - action: trim
+                        logger: com.acme.a
+                      - id: rule-1
+                        action: trim
+                        logger: com.acme.b
+                      - id: rule-3
+                        action: trim
+                        logger: com.acme.c
+                      - action: trim
+                        logger: com.acme.d
+                      - action: trim
+                        logger: com.acme.e
+                """, path, false);
+
+        assertEquals(List.of(), started.errors());
+        assertEquals(List.of("rule-2", "rule-1", "rule-3", "rule-4", "rule-5"),
+                started.recipes().get(0).rules().stream().map(VendorDefaults.RuleDefault::id).toList());
+
+        String text = VendorDefaultsFile.write(new VendorDefaultsExport(List.of(), List.of(), List.of(), null, null,
+                List.of(), List.of(), java.util.Map.of(), List.of(), started.recipes()));
+        VendorDefaults reread = VendorDefaultsFile.parse(text, path, false);
+        assertEquals(List.of(), reread.errors(), text);
+        assertTrue(started.recipes().get(0).sameContent(reread.recipes().get(0)), text);
+    }
+
     static String recipeFile(String namespace) {
         return "schemaVersion: 1\nnamespace: " + namespace + "\nrecipes:\n  - name: a\n    summary: s\n"
                 + "    loggers:\n      - name: x\n        level: DEBUG\n";
