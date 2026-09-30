@@ -242,13 +242,13 @@ still change between builds without a migration path.
 - Handler override resume resilience across restarts: pending overrides and
   baseline-key migration (#29).
 - `StateStore` batches removals in reset and expiry sweeps (#17).
+- The adapter's handler-ref maps are pruned when a handler is detached, so repeated
+  `/subsystem=logging` reconfiguration no longer grows them without bound
+  ([#31](https://github.com/ddeuchert/logaperture/issues/31)).
 - `WildFlyContainerIT` runs against any WildFly image (#65).
 
 ### Known limitations
 
-- The adapter's handler-ref maps are not pruned across repeated
-  `/subsystem=logging` reconfiguration
-  ([#31](https://github.com/ddeuchert/logaperture/issues/31)).
 - Still no log suppression; see the alpha.1 "Not yet in this build" list.
 
 ## [0.1.0-alpha.1] — 2026-09-07
