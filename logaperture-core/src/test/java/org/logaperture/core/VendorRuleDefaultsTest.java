@@ -142,6 +142,21 @@ class VendorRuleDefaultsTest {
         assertEquals("vendor default switched off until restart", last.reason());
     }
 
+    /** doc/specs/quieter-output.md Q4: switching a vendor rule off doesn't hide what it dropped (§9.6). */
+    @Test
+    void resetRule_toNative_stillReportsTheDropsInTheNextSummary_once() {
+        service.attachVendorRules(vendorRules, Instant.now());
+        service.gate().evaluate(new Object(), event(HEALTH, "ping ok"));
+        service.gate().evaluate(new Object(), event(HEALTH, "ping ok"));
+
+        service.resetRule("vendor:healthcheck-noise", false, true);
+
+        assertEquals(List.of(new RuleService.DropCount("vendor:healthcheck-noise", HEALTH, 2, 0)),
+                service.takeDropCounts());
+        service.resetRule("vendor:healthcheck-noise", false, false); // back on
+        assertEquals(List.of(), service.takeDropCounts(), "reported once, not again after switching back on");
+    }
+
     @Test
     void aPlainReset_afterToNative_switchesTheVendorRuleBackOn() {
         service.attachVendorRules(vendorRules, Instant.now());

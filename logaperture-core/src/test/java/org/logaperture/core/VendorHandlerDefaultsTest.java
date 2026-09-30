@@ -88,6 +88,17 @@ class VendorHandlerDefaultsTest {
     }
 
     @Test
+    void applyVendorDefaults_anAutoHandlerThatMoves_isNotAuditedPerEntryEither() {
+        activeLoggerOverrides.add(debugOverride("com.acme")); // so AUTO actually changes CONSOLE at load
+
+        service.applyVendorDefaults(Instant.now());
+
+        assertEquals(Optional.of(Level.DEBUG), adapter.handlerLevel(CONSOLE));
+        assertTrue(auditLog.records().isEmpty(), "doc/specs/quieter-output.md Q1: the load is audited once, "
+                + "for AUTO handlers as for fixed levels");
+    }
+
+    @Test
     void vendorAuto_tracksTheLowestActiveLoggerOverride() {
         service.applyVendorDefaults(Instant.now());
 

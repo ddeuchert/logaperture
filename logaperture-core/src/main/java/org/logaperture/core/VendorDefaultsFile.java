@@ -16,6 +16,7 @@
 package org.logaperture.core;
 
 import org.logaperture.api.CompiledMatchers;
+import org.logaperture.api.DurationSyntax;
 import org.logaperture.api.HandlerLevelMode;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
@@ -76,7 +77,6 @@ public final class VendorDefaultsFile {
     private static final Pattern RULE_ID = Pattern.compile("[a-z0-9-]{1,40}");
     /** A recipe rule's id until {@code labelUnnamedRules} gives it one; never a valid id, so never collides. */
     private static final String UNLABELLED = "";
-    private static final Pattern DURATION = Pattern.compile("(\\d+)([smhd])");
     /** A state id as {@code FileStateStore} assigns it (doc/specs/export-round-trip.md): a UUID, lower-case hex. */
     private static final Pattern STATE_ID =
             Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
@@ -763,32 +763,15 @@ public final class VendorDefaultsFile {
         }
 
         private Duration duration(ScalarNode scalar) {
-            Matcher m = DURATION.matcher(scalar.value());
-            if (!m.matches()) {
-                error(scalar.line(), "'" + scalar.value() + "' is not a duration -- expected <n>s, <n>m, <n>h or "
-                        + "<n>d, e.g. 5m, or false");
-                return null;
-            }
-            long value;
             try {
-                value = Long.parseLong(m.group(1));
-            } catch (NumberFormatException e) {
-                error(scalar.line(), "duration '" + scalar.value() + "' is out of range");
-                return null;
-            }
-            if (value == 0) {
-                error(scalar.line(), "a duration must be greater than zero");
-                return null;
-            }
-            try {
-                return switch (m.group(2)) {
-                    case "s" -> Duration.ofSeconds(value);
-                    case "m" -> Duration.ofMinutes(value);
-                    case "h" -> Duration.ofHours(value);
-                    default -> Duration.ofDays(value);
-                };
-            } catch (ArithmeticException e) {
-                error(scalar.line(), "duration '" + scalar.value() + "' is out of range");
+                return DurationSyntax.parse(scalar.value());
+            } catch (DurationSyntax.Invalid e) {
+                error(scalar.line(), switch (e.problem()) {
+                    case SYNTAX -> "'" + scalar.value() + "' is not a duration -- expected <n>s, <n>m, <n>h or "
+                            + "<n>d, e.g. 5m, or false";
+                    case OUT_OF_RANGE -> "duration '" + scalar.value() + "' is out of range";
+                    case ZERO -> "a duration must be greater than zero";
+                });
                 return null;
             }
         }

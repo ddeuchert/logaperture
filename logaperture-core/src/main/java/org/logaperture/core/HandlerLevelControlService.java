@@ -562,7 +562,8 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                 return false;
             }
             if (vendor.mode() == HandlerLevelMode.AUTO) {
-                applyAutoTarget(ref, activeLoggerFloor.lowestActive(), VendorDefaults.AUDIT_SOURCE, vendor.reason());
+                // Not audited: the load's one record covers it, as for a fixed level (quieter-output.md Q1).
+                applyAutoTarget(ref, activeLoggerFloor.lowestActive(), null, vendor.reason());
                 return true;
             }
             Optional<Level> current = adapter.handlerLevel(ref);
@@ -699,7 +700,10 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         return applyAutoTarget(ref, explicitTarget, auditSource, reason, null);
     }
 
-    /** @param origin the audit record's origin (doc/specs/recipes.md B5), or {@code null} */
+    /**
+     * @param auditSource the audit record's source, or {@code null} to set the level unaudited
+     * @param origin the audit record's origin (doc/specs/recipes.md B5), or {@code null}
+     */
     private Optional<Level> applyAutoTarget(HandlerRef ref, Optional<Level> explicitTarget, String auditSource,
             String reason, String origin) {
         baselines.captureIfAbsent(ref, adapter);
@@ -720,8 +724,10 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                     + "', leaving it unchanged: " + e);
             return Optional.empty();
         }
-        auditLog.record(new AuditRecord(Instant.now(), principal, auditSource, ref.value(), previousValue,
-                target.get().toString(), reason, AuditRecord.Action.MUTATION, origin));
+        if (auditSource != null) {
+            auditLog.record(new AuditRecord(Instant.now(), principal, auditSource, ref.value(), previousValue,
+                    target.get().toString(), reason, AuditRecord.Action.MUTATION, origin));
+        }
         return target;
     }
 

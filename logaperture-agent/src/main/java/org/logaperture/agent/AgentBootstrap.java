@@ -87,7 +87,6 @@ final class AgentBootstrap {
             CapabilityPolicy policy = CapabilityPolicy.allowAll();
             AuditLog auditLog = new StderrAuditLog();
             VendorDefaults vendorDefaults = loadVendorDefaults(agentArgs);
-            auditVendorDefaults(vendorDefaults, auditLog);
 
             ContainerIntegration container = integrations().stream()
                     .filter(ContainerIntegration::detect)
@@ -101,8 +100,13 @@ final class AgentBootstrap {
             // (the CLI polls for the MBean, then calls it). The callback is
             // handed the aggregate directly, so there is no return value to
             // race against the async install.
-            Consumer<AggregateLevelControl> onFirstContextReady = operations -> publishControlSurface(container,
-                    operations, recipes(inst, policy, vendorDefaults, operations), vendorDefaults);
+            // The vendor defaults load is audited here too, not in premain: only an installed context
+            // actually applies the file (a container that never installs one applied nothing).
+            Consumer<AggregateLevelControl> onFirstContextReady = operations -> {
+                auditVendorDefaults(vendorDefaults, auditLog);
+                publishControlSurface(container, operations, recipes(inst, policy, vendorDefaults, operations),
+                        vendorDefaults);
+            };
             container.activate(inst, policy, auditLog, vendorDefaults, onFirstContextReady);
         } catch (Throwable t) {
             Diagnostics.error("LogAperture agent bootstrap failed to start", t);
@@ -119,7 +123,7 @@ final class AgentBootstrap {
         try {
             AgentArguments arguments = AgentArguments.parse(agentArgs, Path.of(System.getProperty("user.dir", ".")));
             for (String warning : arguments.warnings()) {
-                Diagnostics.warn("" + warning);
+                Diagnostics.warn(warning);
             }
             if (arguments.vendorDefaults().isEmpty()) {
                 return VendorDefaults.none();

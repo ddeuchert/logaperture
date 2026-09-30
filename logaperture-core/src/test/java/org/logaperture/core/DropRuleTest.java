@@ -309,6 +309,7 @@ class DropRuleTest {
 
         assertEquals(java.util.List.of(new RuleService.DropCount(drop.id(), "com.acme.Worker", 1, 0)),
                 service.takeDropCounts());
+        assertEquals(java.util.List.of(), service.takeDropCounts(), "reported once");
     }
 
     /** doc/specs/quieter-output.md Q5: no rule reaches the drop summary's category, and none can be attached. */

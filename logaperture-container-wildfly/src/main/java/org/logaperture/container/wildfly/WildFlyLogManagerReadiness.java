@@ -78,7 +78,7 @@ final class WildFlyLogManagerReadiness {
         Class<?> managerClass;
         while ((managerClass = loadedManagerClass.get()) == null) {
             if (System.nanoTime() - deadline >= 0) {
-                Diagnostics.warn("" + JBOSS_LOG_MANAGER + " was not loaded within " + maxWaitMs
+                Diagnostics.warn(JBOSS_LOG_MANAGER + " was not loaded within " + maxWaitMs
                         + "ms; not installing WildFly level control");
                 return;
             }
@@ -91,14 +91,14 @@ final class WildFlyLogManagerReadiness {
         }
 
         ClassLoader managerLoader = managerClass.getClassLoader();
-        Diagnostics.debug("" + JBOSS_LOG_MANAGER + " loaded by " + managerLoader);
+        Diagnostics.debug(JBOSS_LOG_MANAGER + " loaded by " + managerLoader);
         Supplier<String> firstJulCall = () -> java.util.logging.LogManager.getLogManager().getClass().getName();
         String installed = callWithContextClassLoader(managerLoader, firstJulCall);
         if (JBOSS_LOG_MANAGER.equals(installed)) {
             onReady.run();
             return;
         }
-        Diagnostics.warn("" + JBOSS_LOG_MANAGER + " is loaded but the installed LogManager is "
+        Diagnostics.warn(JBOSS_LOG_MANAGER + " is loaded but the installed LogManager is "
                 + installed + "; not installing WildFly level control");
     }
 

@@ -20,7 +20,6 @@ import org.logaperture.core.ActiveLoggerFloor;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AggregateLevelControl.ContextControl;
 import org.logaperture.core.AuditLog;
-import org.logaperture.core.AuditRecord;
 import org.logaperture.core.BaselineRegistry;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.DefaultHandlerGroupRegistry;
@@ -196,7 +195,8 @@ public final class NoneContainer implements AutoCloseable {
             // doc/specs/drop-rule.md/trim-rule.md "Persistence" -- a persisted STICKY/unexpired-FOR
             // Drop or Trim now resumes as a live rule (both factories were registered just above).
             int rules = ruleService.resumeFromStateStore(Instant.now());
-            recordResume(loggers, handlers, rules);
+            aggregate.recordResume(auditLog, principal(), stateStore.location().map(Path::toString).orElse("state store"),
+                    loggers, handlers, rules);
             // One AUTO recompute pass now that both halves have resumed --
             // doc/specs/handler-floor-control.md "AUTO handler level",
             // AUTO-5: an AUTO override's persisted level is a cache, never
@@ -304,26 +304,6 @@ public final class NoneContainer implements AutoCloseable {
             Diagnostics.warn("failed to hand exported sticky settings over to the vendor defaults "
                     + "file, resuming them as usual", e);
         }
-    }
-
-    /**
-     * One audit record for the whole resume (doc/specs/quieter-output.md Q2), written once per JVM --
-     * a later context shares the same state file and would only count the same entries again.
-     */
-    private void recordResume(int loggers, int handlers, int rules) {
-        int total = loggers + handlers + rules;
-        if (total == 0 || aggregate.restoredSettings() > 0) {
-            return;
-        }
-        aggregate.recordRestored(total);
-        auditLog.record(new AuditRecord(Instant.now(), principal(), "resume",
-                stateStore.location().map(Path::toString).orElse("state store"), null,
-                "restored " + count(loggers, "logger override") + ", " + count(handlers, "handler override") + ", "
-                        + count(rules, "rule"), null, AuditRecord.Action.MUTATION));
-    }
-
-    private static String count(int n, String noun) {
-        return n + " " + noun + (n == 1 ? "" : "s");
     }
 
     private static String principal() {

@@ -57,6 +57,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -235,16 +236,33 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     private volatile Consumer<String> dropSummarySink = Diagnostics::warn;
 
     /** How many saved settings the first context's resume put back in force (quieter-output.md Q2, Q3). */
-    private volatile int restoredSettings;
+    private final AtomicInteger restoredSettings = new AtomicInteger();
 
-    /** Records how many saved settings were restored, for the startup banner. */
-    public void recordRestored(int count) {
-        restoredSettings = count;
+    /**
+     * One audit record for the whole resume (doc/specs/quieter-output.md Q2), written once per JVM --
+     * a later context shares the same state file and would only count the same entries again. Also
+     * keeps the total for the startup banner.
+     *
+     * @param location the state file the settings came from
+     */
+    public void recordResume(AuditLog auditLog, String principal, String location, int loggers, int handlers,
+            int rules) {
+        int total = loggers + handlers + rules;
+        if (total == 0 || !restoredSettings.compareAndSet(0, total)) {
+            return;
+        }
+        auditLog.record(new AuditRecord(Instant.now(), principal, "resume", location, null,
+                "restored " + count(loggers, "logger override") + ", " + count(handlers, "handler override") + ", "
+                        + count(rules, "rule"), null, AuditRecord.Action.MUTATION));
+    }
+
+    private static String count(int n, String noun) {
+        return n + " " + noun + (n == 1 ? "" : "s");
     }
 
     /** How many saved settings the resume restored -- the startup banner's "N sticky settings restored". */
     public int restoredSettings() {
-        return restoredSettings;
+        return restoredSettings.get();
     }
 
     /** The vendor defaults file this JVM was started with ({@link VendorDefaults#none()} if none). */

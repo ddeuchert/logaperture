@@ -57,8 +57,19 @@ class DropSummaryTest {
     }
 
     @Test
+    void line_aRuleThatOnlySampledThrough_isNeitherCountedNorNamed() {
+        List<RuleService.DropCount> counts = List.of(count("r1", 4),
+                new RuleService.DropCount("r2", "com.acme.r2", 0, 5));
+
+        assertEquals("drop summary: 4 events suppressed by 1 rule in the last 10m (r1 4); 5 sampled through",
+                DropSummary.line(counts, Duration.ofMinutes(10)));
+    }
+
+    @Test
     void line_nothingDropped_isNoLine() {
         assertNull(DropSummary.line(List.of(), Duration.ofMinutes(10)));
+        assertNull(DropSummary.line(List.of(new RuleService.DropCount("r1", "com.acme.r1", 0, 5)),
+                Duration.ofMinutes(10)), "sampled through only: nothing was suppressed");
     }
 
     @Test
@@ -67,6 +78,8 @@ class DropSummaryTest {
         assertEquals(Duration.ofMinutes(30), DropSummary.interval("30m"));
         assertEquals(Duration.ofHours(2), DropSummary.interval("2h"));
         assertEquals(Duration.ofMinutes(1), DropSummary.interval("10s"), "below the minimum");
+        assertEquals(Duration.ofMinutes(1), DropSummary.interval("0m"), "zero is below the minimum too");
+        assertEquals(Duration.ofMinutes(10), DropSummary.interval("99999999999999999999m"), "out of range");
         assertEquals(Duration.ofMinutes(10), DropSummary.interval("often"));
     }
 

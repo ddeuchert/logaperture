@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.DurationSyntax;
 import org.logaperture.api.RuleExpression;
 import org.logaperture.bridge.Diagnostics;
 
@@ -24,8 +25,6 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * The one drop-summary line per interval -- doc/specs/quieter-output.md Q4, Q9 -- and its interval
@@ -34,6 +33,12 @@ import java.util.regex.Pattern;
  */
 public final class DropSummary {
 
+    /**
+     * The category the summary is logged under where a platform logger takes it (Q5). {@link
+     * RuleService} never lets a rule reach it or its descendants, so no {@code drop} can hide a
+     * summary.
+     */
+    public static final String CATEGORY = "org.logaperture.drop";
     /** Names the interval, e.g. {@code 30m}. */
     public static final String INTERVAL_PROPERTY = "logaperture.drop.summaryInterval";
     /** Q9: raised from 5m at sign-off. */
@@ -41,8 +46,6 @@ public final class DropSummary {
     static final Duration MINIMUM_INTERVAL = Duration.ofMinutes(1);
     /** The busiest rules named in the line; the rest are counted as {@code +N more}. */
     static final int NAMED_RULES = 5;
-
-    private static final Pattern DURATION = Pattern.compile("(\\d+)([smhd])");
 
     private DropSummary() {
     }
@@ -56,25 +59,18 @@ public final class DropSummary {
         if (raw == null || raw.isBlank()) {
             return DEFAULT_INTERVAL;
         }
-        Matcher m = DURATION.matcher(raw.trim());
-        if (!m.matches()) {
-            Diagnostics.warn("ignoring " + INTERVAL_PROPERTY + "='" + raw + "' (expected e.g. 10m or 1h), using "
-                    + RuleExpression.duration(DEFAULT_INTERVAL.toMillis()));
-            return DEFAULT_INTERVAL;
-        }
         Duration interval;
         try {
-            long value = Long.parseLong(m.group(1));
-            interval = switch (m.group(2)) {
-                case "s" -> Duration.ofSeconds(value);
-                case "m" -> Duration.ofMinutes(value);
-                case "h" -> Duration.ofHours(value);
-                default -> Duration.ofDays(value);
-            };
-        } catch (NumberFormatException | ArithmeticException e) {
-            Diagnostics.warn("ignoring " + INTERVAL_PROPERTY + "='" + raw + "' (out of range), using "
-                    + RuleExpression.duration(DEFAULT_INTERVAL.toMillis()));
-            return DEFAULT_INTERVAL;
+            interval = DurationSyntax.parse(raw.trim());
+        } catch (DurationSyntax.Invalid e) {
+            if (e.problem() == DurationSyntax.Problem.ZERO) {
+                interval = Duration.ZERO; // below the minimum, like any other too-short interval
+            } else {
+                String why = e.problem() == DurationSyntax.Problem.SYNTAX ? "expected e.g. 10m or 1h" : "out of range";
+                Diagnostics.warn("ignoring " + INTERVAL_PROPERTY + "='" + raw + "' (" + why + "), using "
+                        + RuleExpression.duration(DEFAULT_INTERVAL.toMillis()));
+                return DEFAULT_INTERVAL;
+            }
         }
         if (interval.compareTo(MINIMUM_INTERVAL) < 0) {
             Diagnostics.warn(INTERVAL_PROPERTY + "='" + raw + "' is below the minimum, using 1m");
@@ -86,7 +82,9 @@ public final class DropSummary {
     /**
      * The summary line for {@code counts} over {@code interval}, e.g. {@code drop summary: 440 events
      * suppressed by 10 rules in the last 10m (vendor:drop-deployment 307, r3 60, ...)}; {@code null}
-     * when nothing was dropped or sampled. The same rule counted twice (two contexts) is merged.
+     * when nothing was suppressed. Only rules that suppressed something are counted and named;
+     * sampled-through events are a trailing figure, never a summary of their own. The same rule
+     * counted twice (two contexts) is merged.
      */
     static String line(List<RuleService.DropCount> counts, Duration interval) {
         Map<String, long[]> byRule = new LinkedHashMap<>();
@@ -97,10 +95,15 @@ public final class DropSummary {
         }
         long suppressed = byRule.values().stream().mapToLong(totals -> totals[0]).sum();
         long sampled = byRule.values().stream().mapToLong(totals -> totals[1]).sum();
-        if (suppressed == 0 && sampled == 0) {
+        if (suppressed == 0) {
             return null;
         }
-        List<Map.Entry<String, long[]>> ranked = new ArrayList<>(byRule.entrySet());
+        List<Map.Entry<String, long[]>> ranked = new ArrayList<>();
+        for (Map.Entry<String, long[]> entry : byRule.entrySet()) {
+            if (entry.getValue()[0] > 0) {
+                ranked.add(entry);
+            }
+        }
         ranked.sort(Comparator.comparingLong((Map.Entry<String, long[]> entry) -> entry.getValue()[0]).reversed()
                 .thenComparing(Map.Entry::getKey));
         List<String> named = new ArrayList<>();
@@ -110,7 +113,7 @@ public final class DropSummary {
         if (ranked.size() > NAMED_RULES) {
             named.add("+" + (ranked.size() - NAMED_RULES) + " more");
         }
-        int rules = byRule.size();
+        int rules = ranked.size();
         return "drop summary: " + suppressed + (suppressed == 1 ? " event" : " events") + " suppressed by " + rules
                 + (rules == 1 ? " rule" : " rules") + " in the last " + RuleExpression.duration(interval.toMillis())
                 + " (" + String.join(", ", named) + ")"

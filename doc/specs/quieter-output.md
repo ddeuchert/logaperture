@@ -158,12 +158,18 @@ consolidated summary (Q4) ships through the diagnostics writer.
   checks the banner.
 - **Rate-limited warnings** (Q7) use four keys: rule evaluation, trim evaluation, storm observation
   (JUL filter) and the storm detector itself -- one line per key per minute.
+- **The vendor defaults record** (Q1) is written when the first logging context installs, not when
+  the agent starts: a container that never installs a context (WildFly domain mode, a plain JVM
+  without Logback) applied nothing, so it records nothing. Vendor handlers set to `AUTO` are covered
+  by that record too, like fixed levels.
 - **The resume record** (Q2) is written by the container once per JVM, with the state file's path
   and counts (`restored 2 logger overrides, 0 handler overrides, 0 rules`); a later context sharing
   the same state file doesn't write another.
 - **The summary** (Q4) is scheduled by `AggregateLevelControl` from the sweep tick; each context's
   `RuleService` hands over its counts. A rule removed before the summary still has its drops
-  reported in the next one (they used to be lost on removal). Sampled-through events are added as
+  reported in the next one (they used to be lost on removal), and so does a vendor rule switched off
+  with `reset --to-native`. A summary is written only when something was suppressed, and only rules
+  that suppressed something are counted and named. Sampled-through events are added as
   `; N sampled through`. If the platform logger throws, the line falls back to a `Diagnostics`
   warning, so it is never lost.
 - **Without the platform logger** (Logback / none) the summary is a `Diagnostics` `WARN`, so it
@@ -181,7 +187,7 @@ consolidated summary (Q4) ships through the diagnostics writer.
 
 - Unit: one vendor audit record with the file's hash; one resume record with counts; the banner
   text; consolidated summary format, ordering, `+N more`, and no summary before one interval; the
-  rule gate skipping `org.logaperture` records and `add rule` refusing the target; every former
+  rule gate skipping `org.logaperture.drop` records and `add rule` refusing the target; every former
   direct print now honouring the level; rate-limiting of per-event failures.
 - `WildFlyContainerIT`: the drop summary appears in `server.log` at `INFO` under
   `org.logaperture.drop`, not as `ERROR [stderr]`; a start with a vendor defaults file writes one
@@ -195,7 +201,7 @@ consolidated summary (Q4) ships through the diagnostics writer.
 | Q2 | One audit record per resume, with counts; per-entry only for exceptions | **Agreed** |
 | Q3 | One startup banner replaces the INFO lines; shown at every level but `ERROR` | **Agreed** |
 | Q4 | One consolidated drop summary per interval; none before the first interval | **Agreed** |
-| Q5 | On JUL/WildFly the summary goes through `org.logaperture.drop` at INFO; rules never apply to `org.logaperture` | **Agreed** |
+| Q5 | On JUL/WildFly the summary goes through `org.logaperture.drop` at INFO; rules never apply to `org.logaperture.drop` | **Agreed** |
 | Q6 | Audit to its own file by default | **Not done now** -- stays stderr; `-Dlogaperture.audit.file` remains |
 | Q7 | Every message through `Diagnostics`, one format, captured stderr, default `WARN`, per-event failures rate-limited | **Agreed** |
 | Q8 | No vendor-file setting for LogAperture's own verbosity in this change | **Agreed** |

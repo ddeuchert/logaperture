@@ -39,9 +39,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 
@@ -122,12 +124,14 @@ public final class RuleService implements RuleOperations {
     private int resumedRules;
     /** {@code Long.MIN_VALUE} sentinel = "never sampled yet" -- doc/specs/drop-rule.md "The keep-one-in-N escape hatch": the very first match is always kept. */
     private final Map<String, AtomicLong> nextSampleAtNanos = new ConcurrentHashMap<>();
-    /** Suppressed (denied) hits since the rule's last-emitted summary line -- distinct from {@link #hitCounters}, which never resets. */
-    private final Map<String, LongAdder> pendingSummaryCounters = new ConcurrentHashMap<>();
-    /** {@code sampleFull}-kept hits since the rule's last-emitted summary line -- doc/specs/drop-rule.md's own worked example ("41,209 suppressed ..., 8 sampled through") reports these as a separate figure, never folded into "suppressed". */
-    private final Map<String, LongAdder> pendingSampledCounters = new ConcurrentHashMap<>();
-    /** Counts of drop rules removed since the last summary, still to be reported (quieter-output.md Q4). */
-    private final List<DropCount> retiredDropCounts = new ArrayList<>();
+    /** Each drop rule's hits since its last summary (quieter-output.md Q4) -- distinct from {@link #hitCounters}, which never resets. */
+    private final Map<String, DropTally> dropTallies = new ConcurrentHashMap<>();
+    /**
+     * Tallies of drop rules no longer attached, reported once more by the next {@link #takeDropCounts}
+     * and then let go. The tally itself is queued, not a snapshot of its counts, so a hit racing the
+     * rule's removal still lands somewhere that gets reported (§9.6).
+     */
+    private final Queue<DropTally> retiredTallies = new ConcurrentLinkedQueue<>();
 
     public RuleService(LoggingAdapter adapter, CapabilityPolicy policy, AuditLog auditLog, StateStore stateStore,
             String context, String principal, String source) {
@@ -315,7 +319,8 @@ public final class RuleService implements RuleOperations {
      * the same {@link DropFactories}/{@link TrimFactories} a live {@code add rule} uses; never
      * written to the state file (the vendor file is their persistence), so their tier is {@code
      * SESSION} internally and they report as vendor rules instead. No capability check
-     * (vendor-config-epic.md Decision #11); one {@code "vendor-defaults"} audit record per rule.
+     * (vendor-config-epic.md Decision #11); not audited per rule -- the load's one {@code
+     * "vendor-defaults"} record covers them (doc/specs/quieter-output.md Q1).
      * Each rule as attached here is its <em>baseline</em>: what {@code reset rule} returns it to
      * (doc/specs/alter-rule.md "Vendor rules").
      */
@@ -456,7 +461,7 @@ public final class RuleService implements RuleOperations {
         }
         recipes.remove(id); // doc/specs/recipes.md #7: altered by hand, so no longer the recipe's
         if (definitionChanged) {
-            forgetEvaluationState(id, current.loggerName());
+            forgetEvaluationState(id);
         }
         if (candidate.tier() != PersistenceTier.SESSION) {
             safePersist(() -> stateStore.saveRule(toPersisted(candidate)));
@@ -633,7 +638,7 @@ public final class RuleService implements RuleOperations {
         long finalHitCount = hitCount(id);
         String recipe = recipes.get(id);
         registry.removeById(id);
-        forgetEvaluationState(id, rule.loggerName());
+        forgetEvaluationState(id);
         safePersist(() -> stateStore.removeRule(id));
         auditRemoval(rule);
         return Optional.of(new RuleView(rule, context, finalHitCount, null, false, false, recipe));
@@ -678,7 +683,7 @@ public final class RuleService implements RuleOperations {
         }
         toNativeVendorRules.put(baseline.id(), baseline);
         if (!sameDefinition(current, baseline)) {
-            forgetEvaluationState(current.id(), current.loggerName());
+            forgetEvaluationState(current.id());
         }
         // Otherwise evaluation state is left alone: the vendor set is small and fixed, and keeping the hit
         // counter lets `list rules` show what the rule had matched before it was switched off.
@@ -702,7 +707,7 @@ public final class RuleService implements RuleOperations {
             throw new IllegalStateException("rule " + current.id() + " changed while it was being reset -- try again.");
         }
         if (!sameDefinition(current, baseline)) {
-            forgetEvaluationState(current.id(), current.loggerName());
+            forgetEvaluationState(current.id());
         }
         auditLog.record(new AuditRecord(Instant.now(), principal, auditSource, current.loggerName(),
                 describeFull(current, true), describeFull(baseline, false), auditReason,
@@ -779,7 +784,7 @@ public final class RuleService implements RuleOperations {
                 vendorReset.add(rule.id());
             } else {
                 registry.removeById(rule.id());
-                forgetEvaluationState(rule.id(), rule.loggerName());
+                forgetEvaluationState(rule.id());
                 removed.add(rule.id());
                 auditRemoval(rule);
             }
@@ -826,7 +831,7 @@ public final class RuleService implements RuleOperations {
                 }
                 expired.add(rule.id());
             } else if (registry.removeIfCurrent(rule)) {
-                forgetEvaluationState(rule.id(), rule.loggerName());
+                forgetEvaluationState(rule.id());
                 expired.add(rule.id());
                 auditLog.record(new AuditRecord(now, principal, "expiry-sweep", rule.loggerName(), describe(rule),
                         null, "expired", AuditRecord.Action.REVERSION));
@@ -1117,11 +1122,12 @@ public final class RuleService implements RuleOperations {
                 continue;
             }
             hitCounters.computeIfAbsent(drop.id(), id -> new LongAdder()).increment();
+            DropTally tally = dropTallies.computeIfAbsent(drop.id(), id -> new DropTally(id, drop.loggerName()));
             if (shouldSampleFull(drop)) {
-                pendingSampledCounters.computeIfAbsent(drop.id(), id -> new LongAdder()).increment();
+                tally.sampled.increment();
                 break; // sampled through -- fall through to the trim pass below, same as any other survivor
             }
-            pendingSummaryCounters.computeIfAbsent(drop.id(), id -> new LongAdder()).increment();
+            tally.suppressed.increment();
             return GateVerdict.deny(drop.id());
         }
         return GateVerdict.allowWithTrim(mostRestrictiveTrim(effective, event));
@@ -1199,50 +1205,61 @@ public final class RuleService implements RuleOperations {
 
     /**
      * Every drop rule's counts since the last call, and resets them; rules with nothing to report are
-     * left out. Includes rules removed since the last call, so a reset before the summary doesn't hide
-     * what they dropped (§9.6). Called by {@link AggregateLevelControl#reportDueDropSummaries} once per
-     * summary interval, never a background thread of its own.
+     * left out. Includes rules removed or switched off since the last call, so a reset before the
+     * summary doesn't hide what they dropped (§9.6). Called by {@link
+     * AggregateLevelControl#reportDueDropSummaries} once per summary interval, never a background
+     * thread of its own.
      */
     public List<DropCount> takeDropCounts() {
         List<DropCount> counts = new ArrayList<>();
-        synchronized (retiredDropCounts) {
-            counts.addAll(retiredDropCounts);
-            retiredDropCounts.clear();
+        // Retired before this call: a hit that raced the removal has long since landed.
+        for (DropTally retired = retiredTallies.poll(); retired != null; retired = retiredTallies.poll()) {
+            retired.takeInto(counts);
         }
-        for (LogRule rule : registry.all()) {
-            if (rule instanceof Drop drop) {
-                DropCount count = takeCount(drop.id(), drop.loggerName());
-                if (count != null) {
-                    counts.add(count);
-                }
+        for (DropTally tally : dropTallies.values()) {
+            tally.takeInto(counts);
+            // Detached without forgetEvaluationState (a vendor rule switched off with --to-native), or
+            // recreated by a hit racing the rule's removal: reported once more next time, then gone.
+            if (registry.findById(tally.ruleId).isEmpty() && dropTallies.remove(tally.ruleId, tally)) {
+                retiredTallies.add(tally);
             }
         }
         return counts;
     }
 
-    /** {@code ruleId}'s pending counts, reset; {@code null} when there are none. */
-    private DropCount takeCount(String ruleId, String loggerName) {
-        // sumThenReset(), not sum() then reset(): a hit landing between the two would be lost.
-        LongAdder pending = pendingSummaryCounters.get(ruleId);
-        long suppressed = pending == null ? 0L : pending.sumThenReset();
-        LongAdder sampledAdder = pendingSampledCounters.get(ruleId);
-        long sampled = sampledAdder == null ? 0L : sampledAdder.sumThenReset();
-        return suppressed == 0L && sampled == 0L ? null : new DropCount(ruleId, loggerName, suppressed, sampled);
+    /** One drop rule's hits since its last summary. */
+    private static final class DropTally {
+        final String ruleId;
+        final String loggerName;
+        final LongAdder suppressed = new LongAdder();
+        /** {@code sampleFull}-kept hits -- doc/specs/drop-rule.md's own worked example ("41,209 suppressed ..., 8 sampled through") reports these as a separate figure, never folded into "suppressed". */
+        final LongAdder sampled = new LongAdder();
+
+        DropTally(String ruleId, String loggerName) {
+            this.ruleId = ruleId;
+            this.loggerName = loggerName;
+        }
+
+        /** Adds this tally's counts to {@code counts}, if there are any, and resets them. */
+        void takeInto(List<DropCount> counts) {
+            // sumThenReset(), not sum() then reset(): a hit landing between the two would be lost.
+            long suppressedNow = suppressed.sumThenReset();
+            long sampledNow = sampled.sumThenReset();
+            if (suppressedNow != 0L || sampledNow != 0L) {
+                counts.add(new DropCount(ruleId, loggerName, suppressedNow, sampledNow));
+            }
+        }
     }
 
     /** Drops every per-rule evaluation-time entry keyed by {@code ruleId} -- called whenever a rule is actually removed, so these maps don't grow for the life of the process (a code-review finding). {@link #decisionCache} needs no equivalent: it's keyed by framework record identity, already bounded by {@link WeakHashMap}'s own GC-driven eviction. */
-    private void forgetEvaluationState(String ruleId, String loggerName) {
-        DropCount unreported = takeCount(ruleId, loggerName);
-        if (unreported != null) {
-            synchronized (retiredDropCounts) {
-                retiredDropCounts.add(unreported); // reported in the next summary (quieter-output.md Q4)
-            }
+    private void forgetEvaluationState(String ruleId) {
+        DropTally tally = dropTallies.remove(ruleId);
+        if (tally != null) {
+            retiredTallies.add(tally); // reported in the next summary (quieter-output.md Q4)
         }
         recipes.remove(ruleId);
         hitCounters.remove(ruleId);
         nextSampleAtNanos.remove(ruleId);
-        pendingSummaryCounters.remove(ruleId);
-        pendingSampledCounters.remove(ruleId);
     }
 
     /**
@@ -1256,7 +1273,7 @@ public final class RuleService implements RuleOperations {
     }
 
     /** The category LogAperture writes its drop summary under. */
-    static final String OWN_CATEGORY = "org.logaperture.drop";
+    static final String OWN_CATEGORY = DropSummary.CATEGORY;
 
     private void requireCapability(Capability capability) {
         if (!policy.isGranted(capability)) {
