@@ -297,6 +297,11 @@ event), and gives the same guarantee §7.4 asks for: nothing is ever more than `
 
 ### Periodic summary line
 
+> **Superseded (1.0.0-beta.1)** by [`quieter-output.md`](quieter-output.md) Q4, Q5, Q9: one line per
+> interval for every drop rule together (default 10m, `-Dlogaperture.drop.summaryInterval`), none
+> during the first interval, written through the platform logger `org.logaperture.drop` on WildFly.
+> The per-rule cadence below is the original design.
+
 Modeled directly on storm detection's own end-of-storm/continuing lines
 (`storm-detection.md` "The operation"), reusing the same `[logaperture]` logger identity so
 both land in the same, already-expected place in the log:

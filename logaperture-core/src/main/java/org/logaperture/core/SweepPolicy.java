@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.bridge.Diagnostics;
 import java.time.Duration;
 
 /**
@@ -47,7 +48,7 @@ public final class SweepPolicy {
             long seconds = Long.parseLong(raw.trim());
             return Duration.ofSeconds(Math.max(MIN_SECONDS, Math.min(MAX_SECONDS, seconds)));
         } catch (NumberFormatException e) {
-            System.err.println("[logaperture] ignoring non-numeric " + INTERVAL_PROPERTY + "='" + raw
+            Diagnostics.warn("ignoring non-numeric " + INTERVAL_PROPERTY + "='" + raw
                     + "', using 30s");
             return DEFAULT_INTERVAL;
         }

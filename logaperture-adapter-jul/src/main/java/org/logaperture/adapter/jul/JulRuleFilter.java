@@ -15,6 +15,7 @@
  */
 package org.logaperture.adapter.jul;
 
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.GateVerdict;
 import org.logaperture.core.RuleGate;
 
@@ -54,8 +55,8 @@ final class JulRuleFilter implements Filter {
         } catch (RuntimeException e) {
             // Fail open -- doc/logaperture-spec.md §9's fail-open discipline: a gate-evaluation
             // bug must never itself become a reason to lose an event.
-            System.err.println("[logaperture-adapter-jul] rule evaluation failed, event passes through unaffected: "
-                    + e);
+            Diagnostics.warnThrottled("rule-evaluation", "rule evaluation failed, event passes through unaffected: "
+                    + e, null);
         }
         if (!allowed) {
             // A code-review finding caught this session's own earlier draft getting this

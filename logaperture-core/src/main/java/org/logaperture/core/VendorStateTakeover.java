@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.api.HandlerLevelMode;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
@@ -214,11 +215,11 @@ public final class VendorStateTakeover {
                 return;
             }
             int n = takenOver.size();
-            System.err.println("[logaperture-state] " + n + " sticky setting" + (n == 1 ? " is" : "s are")
+            Diagnostics.notice(n + " sticky setting" + (n == 1 ? " is" : "s are")
                     + " now in the vendor defaults file and " + (n == 1 ? "was" : "were")
                     + " removed from the state file: " + String.join(", ", takenOver));
             for (String warning : warnings) {
-                System.err.println("[logaperture-state] WARN " + warning);
+                Diagnostics.warn(warning);
             }
         }
 

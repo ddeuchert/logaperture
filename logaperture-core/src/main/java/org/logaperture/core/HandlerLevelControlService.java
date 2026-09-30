@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerInfo;
 import org.logaperture.api.HandlerLevelMode;
@@ -561,22 +562,20 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                 return false;
             }
             if (vendor.mode() == HandlerLevelMode.AUTO) {
-                applyAutoTarget(ref, activeLoggerFloor.lowestActive(), VendorDefaults.AUDIT_SOURCE, vendor.reason());
+                // Not audited: the load's one record covers it, as for a fixed level (quieter-output.md Q1).
+                applyAutoTarget(ref, activeLoggerFloor.lowestActive(), null, vendor.reason());
                 return true;
             }
             Optional<Level> current = adapter.handlerLevel(ref);
             if (current.isPresent() && current.get() == vendor.level()) {
                 return true;
             }
-            adapter.setHandlerLevel(ref, vendor.level());
-            auditLog.record(new AuditRecord(now, principal, VendorDefaults.AUDIT_SOURCE, ref.value(),
-                    current.map(Level::toString).orElse("<none>"), vendor.level().toString(), vendor.reason(),
-                    AuditRecord.Action.MUTATION));
+            adapter.setHandlerLevel(ref, vendor.level()); // audited once per load (quieter-output.md Q1)
             return true;
         } catch (UnknownHandlerException e) {
             return false;
         } catch (RuntimeException e) {
-            System.err.println("[logaperture-core] failed to apply the vendor default for handler '" + ref
+            Diagnostics.warn("failed to apply the vendor default for handler '" + ref
                     + "', will retry: " + e);
             return false;
         }
@@ -701,7 +700,10 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         return applyAutoTarget(ref, explicitTarget, auditSource, reason, null);
     }
 
-    /** @param origin the audit record's origin (doc/specs/recipes.md B5), or {@code null} */
+    /**
+     * @param auditSource the audit record's source, or {@code null} to set the level unaudited
+     * @param origin the audit record's origin (doc/specs/recipes.md B5), or {@code null}
+     */
     private Optional<Level> applyAutoTarget(HandlerRef ref, Optional<Level> explicitTarget, String auditSource,
             String reason, String origin) {
         baselines.captureIfAbsent(ref, adapter);
@@ -718,12 +720,14 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         try {
             adapter.setHandlerLevel(ref, target.get());
         } catch (RuntimeException e) {
-            System.err.println("[logaperture-core] AUTO: failed to set handler '" + ref
+            Diagnostics.warn("AUTO: failed to set handler '" + ref
                     + "', leaving it unchanged: " + e);
             return Optional.empty();
         }
-        auditLog.record(new AuditRecord(Instant.now(), principal, auditSource, ref.value(), previousValue,
-                target.get().toString(), reason, AuditRecord.Action.MUTATION, origin));
+        if (auditSource != null) {
+            auditLog.record(new AuditRecord(Instant.now(), principal, auditSource, ref.value(), previousValue,
+                    target.get().toString(), reason, AuditRecord.Action.MUTATION, origin));
+        }
         return target;
     }
 
@@ -1048,7 +1052,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                         targetAdapter.setHandlerLevel(vendor.ref(), baselines.nativeLevel(vendor.ref()).orElseThrow());
                     }
                 } catch (RuntimeException e) {
-                    System.err.println("[logaperture-core] failed to re-apply the vendor default for handler '"
+                    Diagnostics.warn("failed to re-apply the vendor default for handler '"
                             + vendor.ref() + "', leaving it for the verification sweep: " + e);
                 }
             }
@@ -1142,12 +1146,12 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                         // first chance to apply.
                         continue;
                     }
-                    System.err.println("[logaperture-core] verification sweep: handler '" + ref
+                    Diagnostics.warn("verification sweep: handler '" + ref
                             + "' no longer resolves, dropping it from tracking: " + e);
                     overrides.removeIfCurrent(ref, override);
                     continue;
                 } catch (RuntimeException e) {
-                    System.err.println("[logaperture-core] verification sweep: failed to read handler '"
+                    Diagnostics.warn("verification sweep: failed to read handler '"
                             + ref + "', leaving it for the next tick: " + e);
                     continue;
                 }
@@ -1173,12 +1177,12 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                 // The handler itself is gone (context torn down, config
                 // dropped it) -- not a transient failure, so don't leave a
                 // permanently-undead override that fails every future tick.
-                System.err.println("[logaperture-core] verification sweep: handler '" + ref
+                Diagnostics.warn("verification sweep: handler '" + ref
                         + "' no longer resolves, dropping it from tracking: " + e);
                 overrides.removeIfCurrent(ref, override);
                 continue;
             } catch (RuntimeException e) {
-                System.err.println("[logaperture-core] verification sweep: failed to re-apply handler '"
+                Diagnostics.warn("verification sweep: failed to re-apply handler '"
                         + ref + "', leaving it drifted for the next tick: " + e);
                 continue;
             }
@@ -1361,7 +1365,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         try {
             HandlerOverrideApplier.apply(override, adapter, this::membersOf);
         } catch (RuntimeException e) {
-            System.err.println("[logaperture-core] failed to adopt handler override for '"
+            Diagnostics.warn("failed to adopt handler override for '"
                     + override.handlerRef() + "' onto this context, skipping it: " + e);
             return;
         }
@@ -1385,7 +1389,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
      * @param now injected so tests can simulate "time has passed since the
      *            override was persisted" without a real sleep
      */
-    public void resumeFromStateStore(Instant now) {
+    public int resumeFromStateStore(Instant now) {
         List<String> savedMembers = stateStore.loadDefaultHandlerMembers();
         if (!savedMembers.isEmpty()) {
             // Loaded first, before any persisted handler override, so a
@@ -1395,34 +1399,37 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             defaultHandlerGroup.setExplicit(
                     savedMembers.stream().map(HandlerRef::new).collect(Collectors.toCollection(LinkedHashSet::new)));
         }
+        int resumed = 0;
         for (HandlerLevelOverride persisted : stateStore.loadAllHandlers()) {
             try {
-                resumeOne(persisted, now);
+                if (resumeOne(persisted, now)) {
+                    resumed++;
+                }
             } catch (RuntimeException e) {
-                System.err.println("[logaperture-state] failed to resume persisted handler override for '"
+                Diagnostics.warn("failed to resume persisted handler override for '"
                         + persisted.handlerRef() + "', skipping it: " + e);
             }
         }
+        return resumed;
     }
 
-    private void resumeOne(HandlerLevelOverride persisted, Instant now) {
+    /**
+     * @return whether {@code persisted} is now in force, or tracked to apply once it resolves; the
+     *         resume is audited once, by the composition root (doc/specs/quieter-output.md Q2)
+     */
+    private boolean resumeOne(HandlerLevelOverride persisted, Instant now) {
         captureBaselineFor(persisted.handlerRef());
 
         if (persisted.tier() == PersistenceTier.FOR && !persisted.expiresAt().isAfter(now)) {
             recordReversionForNeverApplied(persisted, now);
             safePersist(() -> stateStore.removeHandler(persisted.handlerRef()));
-            return;
+            return false;
         }
 
         if (isGroupRef(persisted.handlerRef())) {
-            List<HandlerRef> reals = membersOf(persisted.handlerRef());
-            List<String> previousValues = previousValuesOf(reals);
             HandlerOverrideApplier.apply(persisted, adapter, this::membersOf);
             overrides.put(persisted);
-            // Decision #3 (issue #13): one audit row per real handler, not
-            // one for the group (code-review finding).
-            recordGroupMutationAudit("resume", reals, previousValues, persisted.level(), persisted.reason(), now);
-            return;
+            return true;
         }
 
         try {
@@ -1435,12 +1442,10 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             // nothing was actually applied.
             overrides.put(persisted);
             pendingResume.add(persisted.handlerRef());
-            return;
+            return true;
         }
         overrides.put(persisted);
-        auditLog.record(new AuditRecord(
-                now, principal, "resume", persisted.handlerRef().value(), null,
-                persisted.level().toString(), persisted.reason(), AuditRecord.Action.MUTATION));
+        return true;
     }
 
     /** Every real handler's own current level, right now, in the same order as {@code reals}. */
@@ -1550,7 +1555,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             try {
                 adapter.setHandlerLevel(real, level); // mutation
             } catch (RuntimeException e) {
-                System.err.println("[logaperture-core] " + groupRef + ": failed to set handler '" + real
+                Diagnostics.warn(groupRef + ": failed to set handler '" + real
                         + "', leaving it unchanged: " + e);
                 continue;
             }
@@ -1671,7 +1676,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                 adapter.setHandlerLevel(ref, baseline); // mutation
             }
         } catch (RuntimeException e) {
-            System.err.println("[logaperture-core] failed to revert handler '" + ref
+            Diagnostics.warn("failed to revert handler '" + ref
                     + "', dropping it from tracking without reverting it: " + e);
             return true;
         }
@@ -1735,7 +1740,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             }
             return true;
         } catch (RuntimeException e) {
-            System.err.println("[logaperture-core] group reset: failed to " + action + " handler '" + ref
+            Diagnostics.warn("group reset: failed to " + action + " handler '" + ref
                     + "', leaving it unchanged: " + e);
             return false;
         }
@@ -1745,7 +1750,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         try {
             stateStoreCall.run();
         } catch (RuntimeException e) {
-            System.err.println("[logaperture-state] state store operation failed, continuing in-memory only: " + e);
+            Diagnostics.warn("state store operation failed, continuing in-memory only: " + e);
         }
     }
 

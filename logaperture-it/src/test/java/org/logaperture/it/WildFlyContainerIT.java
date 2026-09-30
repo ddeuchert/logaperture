@@ -147,6 +147,10 @@ class WildFlyContainerIT {
         String bootScript = "echo 'JAVA_OPTS=\"$JAVA_OPTS -javaagent:/opt/logaperture-agent.jar"
                 + " -Dlogaperture.sweep.seconds=3"
                 + " -Dlogaperture.handlerInstallDelaySeconds=3"
+                // doc/specs/quieter-output.md: INFO so the handler-install messages this suite checks are
+                // written (the default is WARN); a 1m summary so the drop-summary test needn't wait 10m.
+                + " -Dlogaperture.diagnostics.level=INFO"
+                + " -Dlogaperture.drop.summaryInterval=1m"
                 + " -Dlogaperture.home=/opt/jboss/wildfly/standalone/tmp/logaperture\"'"
                 + " >> \"$JBOSS_HOME/bin/standalone.conf\" && exec \"$JBOSS_HOME/bin/standalone.sh\" -b 0.0.0.0";
 
@@ -1105,8 +1109,21 @@ class WildFlyContainerIT {
                 sleep(500);
             }
             assertEquals(16, fired, "every burst request reached the probe");
-            assertTrue(pollUntil(() -> countLines("drop summary: " + id + " ") > 0),
-                    "the periodic summary line names the rule");
+            // doc/specs/quieter-output.md Q4/Q5: one consolidated line, through the server's own logging at
+            // INFO under org.logaperture.drop -- never System.err, which WildFly files as ERROR [stderr].
+            boolean summarised = false;
+            for (int i = 0; i < 75 && !summarised; i++) {
+                summarised = wildfly.getLogs().lines().anyMatch(line -> line.contains("INFO")
+                        && line.contains("[org.logaperture.drop]") && line.contains("drop summary:")
+                        && line.contains(id + " "));
+                if (!summarised) {
+                    sleep(1000);
+                }
+            }
+            assertTrue(summarised, "the summary names the rule, at INFO under org.logaperture.drop");
+            assertEquals(0, wildfly.getLogs().lines()
+                    .filter(line -> line.contains("[stderr]") && line.contains("drop summary")).count(),
+                    "no summary goes through System.err");
             long kept = countLines("[" + burst + "-");
             assertTrue(kept >= 2 && kept <= 6,
                     "about one full event per 2s interval across ~8s is let through, not all or none: " + kept);

@@ -15,49 +15,29 @@
  */
 package org.logaperture.cli;
 
+import org.logaperture.api.DurationSyntax;
+
 import java.time.Duration;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
- * The {@code <duration>} grammar from doc/specs/cli-transport.md: an
- * integer and one unit suffix, no spaces, no punctuation — {@code 30m},
- * {@code 2h}, {@code 90s}, {@code 1d}. Zero and bare integers are usage
- * errors, matching {@code SetLevelOptions}'s "FOR requires a positive
- * expiresIn" validation on the far side.
+ * The {@code <duration>} grammar from doc/specs/cli-transport.md ({@link DurationSyntax}), as
+ * {@code logctl} usage errors. Zero and bare integers are usage errors, matching {@code
+ * SetLevelOptions}'s "FOR requires a positive expiresIn" validation on the far side.
  */
 final class Durations {
-
-    private static final Pattern SYNTAX = Pattern.compile("(\\d+)([smhd])");
 
     private Durations() {
     }
 
     static Duration parse(String token) {
-        Matcher m = SYNTAX.matcher(token);
-        if (!m.matches()) {
-            throw new CliError(CliError.USAGE,
-                    "Unparseable duration '" + token + "' — expected <n>s, <n>m, <n>h or <n>d, e.g. 30m.");
-        }
-        long value;
         try {
-            value = Long.parseLong(m.group(1));
-        } catch (NumberFormatException overflow) {
-            throw new CliError(CliError.USAGE, "Duration '" + token + "' is out of range.");
-        }
-        if (value == 0) {
-            throw new CliError(CliError.USAGE, "A duration must be greater than zero.");
-        }
-        try {
-            return switch (m.group(2)) {
-                case "s" -> Duration.ofSeconds(value);
-                case "m" -> Duration.ofMinutes(value);
-                case "h" -> Duration.ofHours(value);
-                case "d" -> Duration.ofDays(value);
-                default -> throw new AssertionError("unit regex admitted an unexpected suffix");
-            };
-        } catch (ArithmeticException overflow) {
-            throw new CliError(CliError.USAGE, "Duration '" + token + "' is out of range.");
+            return DurationSyntax.parse(token);
+        } catch (DurationSyntax.Invalid e) {
+            throw new CliError(CliError.USAGE, switch (e.problem()) {
+                case SYNTAX -> "Unparseable duration '" + token + "' — expected <n>s, <n>m, <n>h or <n>d, e.g. 30m.";
+                case OUT_OF_RANGE -> "Duration '" + token + "' is out of range.";
+                case ZERO -> "A duration must be greater than zero.";
+            });
         }
     }
 }

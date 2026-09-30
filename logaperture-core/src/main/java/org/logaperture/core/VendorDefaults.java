@@ -119,7 +119,7 @@ public final class VendorDefaults {
 
     private static final VendorDefaults NONE =
             new VendorDefaults(Status.NOT_CONFIGURED, null, List.of(), false, List.of(), List.of(), null, null,
-                    List.of(), List.of(), List.of());
+                    List.of(), List.of(), List.of(), null);
 
     private final Status status;
     private final Path path;
@@ -133,11 +133,13 @@ public final class VendorDefaults {
     private final List<RuleDefault> rules;
     /** Its {@code recipes:} section -- doc/specs/recipes.md; never applied by loading the file. */
     private final List<Recipe> recipes;
+    /** The hex SHA-256 of the loaded file's text, or {@code null} (doc/specs/quieter-output.md Q1). */
+    private final String sha256;
 
     private VendorDefaults(Status status, Path path, List<String> errors, boolean writable,
             List<LoggerDefault> loggers, List<HandlerDefault> handlers, List<HandlerRef> defaultHandlers,
             String defaultHandlersStateId, List<String> handlerGroupStateIds, List<RuleDefault> rules,
-            List<Recipe> recipes) {
+            List<Recipe> recipes, String sha256) {
         this.status = status;
         this.path = path;
         this.errors = List.copyOf(errors);
@@ -157,6 +159,12 @@ public final class VendorDefaults {
         this.handlerGroupStateIds = List.copyOf(handlerGroupStateIds);
         this.rules = List.copyOf(rules);
         this.recipes = List.copyOf(recipes);
+        this.sha256 = sha256;
+    }
+
+    /** The hex SHA-256 of the loaded file's text -- what its one audit record names (quieter-output.md Q1). */
+    public Optional<String> sha256() {
+        return Optional.ofNullable(sha256);
     }
 
     /** No vendor defaults file configured. */
@@ -170,7 +178,7 @@ public final class VendorDefaults {
             throw new IllegalArgumentException("a rejected file needs at least one error");
         }
         return new VendorDefaults(Status.REJECTED, path, errors, false, List.of(), List.of(), null, null,
-                List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), null);
     }
 
     static VendorDefaults loaded(Path path, boolean writable, List<LoggerDefault> loggers,
@@ -181,9 +189,17 @@ public final class VendorDefaults {
     static VendorDefaults loaded(Path path, boolean writable, List<LoggerDefault> loggers,
             List<HandlerDefault> handlers, List<HandlerRef> defaultHandlers, String defaultHandlersStateId,
             List<String> handlerGroupStateIds, List<RuleDefault> rules, List<Recipe> recipes) {
+        return loaded(path, writable, loggers, handlers, defaultHandlers, defaultHandlersStateId, handlerGroupStateIds,
+                rules, recipes, null);
+    }
+
+    /** @param sha256 the hex SHA-256 of the file's text, audited on load (doc/specs/quieter-output.md Q1) */
+    static VendorDefaults loaded(Path path, boolean writable, List<LoggerDefault> loggers,
+            List<HandlerDefault> handlers, List<HandlerRef> defaultHandlers, String defaultHandlersStateId,
+            List<String> handlerGroupStateIds, List<RuleDefault> rules, List<Recipe> recipes, String sha256) {
         Objects.requireNonNull(path, "path");
         return new VendorDefaults(Status.LOADED, path, List.of(), writable, loggers, handlers, defaultHandlers,
-                defaultHandlersStateId, handlerGroupStateIds, rules, recipes);
+                defaultHandlersStateId, handlerGroupStateIds, rules, recipes, sha256);
     }
 
     public Status status() {

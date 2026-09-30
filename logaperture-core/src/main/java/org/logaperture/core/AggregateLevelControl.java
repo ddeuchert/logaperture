@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.api.BackendInfo;
 import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.EnvironmentReport;
@@ -56,7 +57,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -224,6 +227,42 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         this.containerVersion = Objects.requireNonNull(containerVersion, "containerVersion");
         this.stateFilePath = stateFilePath;
         this.handlerInstallAllowed = Objects.requireNonNull(handlerInstallAllowed, "handlerInstallAllowed");
+    }
+
+    /** Q4, Q9: how often the drop summary is written, from {@code -Dlogaperture.drop.summaryInterval}. */
+    private final Duration dropSummaryInterval = DropSummary.intervalFromProperty();
+    /** The first summary is due one interval after this control is created -- none during startup. */
+    private Instant nextDropSummaryAt = Instant.now().plus(dropSummaryInterval);
+    private volatile Consumer<String> dropSummarySink = Diagnostics::warn;
+
+    /** How many saved settings the first context's resume put back in force (quieter-output.md Q2, Q3). */
+    private final AtomicInteger restoredSettings = new AtomicInteger();
+
+    /**
+     * One audit record for the whole resume (doc/specs/quieter-output.md Q2), written once per JVM --
+     * a later context shares the same state file and would only count the same entries again. Also
+     * keeps the total for the startup banner.
+     *
+     * @param location the state file the settings came from
+     */
+    public void recordResume(AuditLog auditLog, String principal, String location, int loggers, int handlers,
+            int rules) {
+        int total = loggers + handlers + rules;
+        if (total == 0 || !restoredSettings.compareAndSet(0, total)) {
+            return;
+        }
+        auditLog.record(new AuditRecord(Instant.now(), principal, "resume", location, null,
+                "restored " + count(loggers, "logger override") + ", " + count(handlers, "handler override") + ", "
+                        + count(rules, "rule"), null, AuditRecord.Action.MUTATION));
+    }
+
+    private static String count(int n, String noun) {
+        return n + " " + noun + (n == 1 ? "" : "s");
+    }
+
+    /** How many saved settings the resume restored -- the startup banner's "N sticky settings restored". */
+    public int restoredSettings() {
+        return restoredSettings.get();
     }
 
     /** The vendor defaults file this JVM was started with ({@link VendorDefaults#none()} if none). */
@@ -644,22 +683,43 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     }
 
     /**
-     * The periodic drop-summary line's scheduling entry point (doc/specs/
-     * drop-rule.md "Periodic summary line") — fanned out to every
-     * registered context's own {@link RuleService#reportDueDropSummaries},
-     * called from the same sweep tick that already drives expiry and
-     * reconfiguration re-application. A misbehaving context must not stop
-     * its siblings from reporting.
+     * The drop summary's scheduling entry point -- doc/specs/quieter-output.md Q4: called from the
+     * sweep tick that already drives expiry, it writes one line for every context's drop rules once
+     * per interval, the first one interval after this control was created (so none during startup).
+     * A misbehaving context must not stop its siblings from being counted.
      */
-    public void reportDueDropSummaries(Instant now) {
+    public synchronized void reportDueDropSummaries(Instant now) {
+        if (now.isBefore(nextDropSummaryAt)) {
+            return;
+        }
+        nextDropSummaryAt = now.plus(dropSummaryInterval);
+        List<RuleService.DropCount> counts = new ArrayList<>();
         for (ContextControl context : sortedByKey()) {
             try {
-                context.ruleService().reportDueDropSummaries(now);
+                counts.addAll(context.ruleService().takeDropCounts());
             } catch (RuntimeException e) {
-                System.err.println("[logaperture] failed to report drop summaries for context '"
-                        + context.handle().stableKey() + "', continuing: " + e);
+                Diagnostics.warn("failed to collect drop counts for context '" + context.handle().stableKey()
+                        + "', continuing: " + e);
             }
         }
+        String line = DropSummary.line(counts, dropSummaryInterval);
+        if (line == null) {
+            return;
+        }
+        try {
+            dropSummarySink.accept(line);
+        } catch (RuntimeException e) {
+            Diagnostics.warn(line); // the platform logger failed: never lose the summary (§9.6)
+        }
+    }
+
+    /**
+     * Where the drop summary is written -- doc/specs/quieter-output.md Q5: WildFly passes its
+     * platform logger ({@code org.logaperture.drop}); by default it is a {@code Diagnostics} warning,
+     * visible at the default level.
+     */
+    public void setDropSummarySink(Consumer<String> sink) {
+        this.dropSummarySink = Objects.requireNonNull(sink, "sink");
     }
 
     /**
@@ -689,7 +749,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 // environment-report.md "Failure handling": an unresolved fact is left
                 // out, never a command failure. Same per-context isolation as
                 // setHandlerLevel/setHandlerAuto's own broadcast loops.
-                System.err.println("[logaperture-core] backendInfo() failed in context '"
+                Diagnostics.warn("backendInfo() failed in context '"
                         + context.stableKey() + "', treating its backend as unresolved: " + e);
             }
         }
@@ -731,7 +791,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         try {
             return containerVersion.get().orElse(null);
         } catch (RuntimeException e) {
-            System.err.println("[logaperture-core] the container version supplier failed, treating it as unresolved: " + e);
+            Diagnostics.warn("the container version supplier failed, treating it as unresolved: " + e);
             return null;
         }
     }
@@ -929,7 +989,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                     }
                 }
             } catch (RuntimeException e) {
-                System.err.println("[logaperture-core] setHandlerLevel(" + ref + ") failed in context '"
+                Diagnostics.warn("setHandlerLevel(" + ref + ") failed in context '"
                         + context.stableKey() + "', that context is unchanged: " + e);
             }
         }
@@ -999,7 +1059,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                     }
                 }
             } catch (RuntimeException e) {
-                System.err.println("[logaperture-core] setHandlerAuto(" + ref + ") failed in context '"
+                Diagnostics.warn("setHandlerAuto(" + ref + ") failed in context '"
                         + context.stableKey() + "', that context is unchanged: " + e);
             }
         }
@@ -1144,7 +1204,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                     fromSystem = result;
                 }
             } catch (RuntimeException e) {
-                System.err.println("[logaperture-core] " + operation + " failed in context '"
+                Diagnostics.warn(operation + " failed in context '"
                         + context.stableKey() + "', that context is unchanged: " + e);
             }
         }
@@ -1248,14 +1308,14 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             context.ruleService().installTrimRendering();
         } catch (RuntimeException e) {
             allSucceeded = false;
-            System.err.println("[logaperture-core] failed to (re-)arm trim rendering for context '"
+            Diagnostics.warn("failed to (re-)arm trim rendering for context '"
                     + context.stableKey() + "', that context is unchanged: " + e);
         }
         try {
             context.topService().startMeasuring();
         } catch (RuntimeException e) {
             allSucceeded = false;
-            System.err.println("[logaperture-core] failed to (re-)arm byte counting for context '"
+            Diagnostics.warn("failed to (re-)arm byte counting for context '"
                     + context.stableKey() + "', that context is unchanged: " + e);
         }
         try {
@@ -1264,7 +1324,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             context.stormService().startDetection();
         } catch (RuntimeException e) {
             allSucceeded = false;
-            System.err.println("[logaperture-core] failed to (re-)arm storm detection for context '"
+            Diagnostics.warn("failed to (re-)arm storm detection for context '"
                     + context.stableKey() + "', that context is unchanged: " + e);
         }
         try {
@@ -1272,7 +1332,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             context.ruleService().installPipeline();
         } catch (RuntimeException e) {
             allSucceeded = false;
-            System.err.println("[logaperture-core] failed to (re-)arm the rule pipeline for context '"
+            Diagnostics.warn("failed to (re-)arm the rule pipeline for context '"
                     + context.stableKey() + "', that context is unchanged: " + e);
         }
         return allSucceeded;

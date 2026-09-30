@@ -92,7 +92,7 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
         if (System.getProperty(DOMAIN_BASE_DIR_PROPERTY) != null
                 || launchCommand.contains("org.jboss.as.host-controller")
                 || launchCommand.contains("org.jboss.as.process-controller")) {
-            Diagnostics.warn("LogAperture: WildFly domain mode is not supported (v1); level control not installed");
+            Diagnostics.warn("WildFly domain mode is not supported (v1); level control not installed");
             return false;
         }
         return true;
@@ -116,7 +116,7 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
                 host.installContext(ContextHandle.of(ContextHandle.SYSTEM, "wildfly", adapter));
                 wireConfigurationListener(host, adapter);
                 onFirstContextReady.accept(host.operations());
-                Diagnostics.info("LogAperture level control installed (wildfly container, system LogContext)");
+                Diagnostics.debug("level control installed (wildfly container, system LogContext)");
             } catch (Throwable t) {
                 Diagnostics.error("LogAperture failed to install level control for WildFly", t);
             }
@@ -258,9 +258,9 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
             host.runVerificationSweepNow();
         };
         if (registerConfigurationListener(java.util.logging.LogManager.getLogManager(), onConfigChange)) {
-            Diagnostics.debug("LogAperture: registered a JBoss LogManager configuration-change listener");
+            Diagnostics.debug("registered a JBoss LogManager configuration-change listener");
         } else {
-            Diagnostics.debug("LogAperture: no JBoss LogManager configuration-change hook; "
+            Diagnostics.debug("no JBoss LogManager configuration-change hook; "
                     + "relying on the periodic verification sweep");
         }
     }
@@ -283,7 +283,7 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
                     .invoke(logManager, callback);
             return true;
         } catch (ReflectiveOperationException | RuntimeException noHook) {
-            Diagnostics.debug("LogAperture: addConfigurationListener not available (" + noHook + ")");
+            Diagnostics.debug("addConfigurationListener not available (" + noHook + ")");
             return false;
         }
     }

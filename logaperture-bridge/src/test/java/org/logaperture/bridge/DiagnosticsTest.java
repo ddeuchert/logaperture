@@ -22,6 +22,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -78,5 +79,57 @@ class DiagnosticsTest {
         Diagnostics.error("boom", new RuntimeException("root cause"));
 
         assertTrue(captured.toString(StandardCharsets.UTF_8).contains("root cause"));
+    }
+
+    /** doc/specs/quieter-output.md Q7: one format, no timestamp of its own. */
+    @Test
+    void format_isPrefixLevelMessage() {
+        Diagnostics.configure(new PrintStream(captured, true, StandardCharsets.UTF_8), DiagnosticLevel.WARN);
+
+        Diagnostics.warn("careful");
+
+        assertEquals("[logaperture] WARN careful" + System.lineSeparator(), captured.toString(StandardCharsets.UTF_8));
+    }
+
+    /** Q3: the banner shows at every level but ERROR, with no level word. */
+    @Test
+    void notice_showsUnlessOnlyErrors() {
+        Diagnostics.configure(new PrintStream(captured, true, StandardCharsets.UTF_8), DiagnosticLevel.WARN);
+        Diagnostics.notice("LogAperture 1.0 active (JVM)");
+        assertEquals("[logaperture] LogAperture 1.0 active (JVM)" + System.lineSeparator(),
+                captured.toString(StandardCharsets.UTF_8));
+
+        captured.reset();
+        Diagnostics.configure(new PrintStream(captured, true, StandardCharsets.UTF_8), DiagnosticLevel.ERROR);
+        Diagnostics.notice("LogAperture 1.0 active (JVM)");
+        assertEquals("", captured.toString(StandardCharsets.UTF_8));
+    }
+
+    /** Q7: a per-event failure is written at most once a minute per key. */
+    @Test
+    void warnThrottled_writesOncePerKey() {
+        Diagnostics.configure(new PrintStream(captured, true, StandardCharsets.UTF_8), DiagnosticLevel.WARN);
+
+        Diagnostics.warnThrottled("rule-evaluation", "rule evaluation failed", null);
+        Diagnostics.warnThrottled("rule-evaluation", "rule evaluation failed", null);
+        Diagnostics.warnThrottled("storm-observation", "storm observation failed", null);
+
+        String output = captured.toString(StandardCharsets.UTF_8);
+        assertEquals(1, output.split("rule evaluation failed", -1).length - 1, output);
+        assertTrue(output.contains("storm observation failed"), output);
+    }
+
+    /** Q7: the default level is WARN -- INFO is quiet unless asked for. */
+    @Test
+    void defaultLevel_isWarn() {
+        String before = System.clearProperty("logaperture.diagnostics.level");
+        try {
+            Diagnostics.resetToDefault();
+            assertEquals(DiagnosticLevel.WARN, Diagnostics.threshold());
+        } finally {
+            if (before != null) {
+                System.setProperty("logaperture.diagnostics.level", before);
+            }
+        }
     }
 }

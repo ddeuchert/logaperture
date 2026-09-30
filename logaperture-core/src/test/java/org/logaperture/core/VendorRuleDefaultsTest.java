@@ -77,7 +77,8 @@ class VendorRuleDefaultsTest {
                 rows.stream().map(row -> row.rule().id()).toList());
         assertTrue(rows.stream().allMatch(row -> "vendor-defaults".equals(row.origin()) && !row.toNative() && !row.altered()));
         assertTrue(stateStore.loadAllRules().isEmpty(), "the vendor file is their persistence");
-        assertEquals(2, auditLog.records().stream().filter(r -> r.source().equals("vendor-defaults")).count());
+        assertEquals(0, auditLog.records().stream().filter(r -> r.source().equals("vendor-defaults")).count(),
+                "doc/specs/quieter-output.md Q1: audited once per load, not per rule");
     }
 
     @Test
@@ -139,6 +140,21 @@ class VendorRuleDefaultsTest {
         AuditRecord last = auditLog.records().get(auditLog.records().size() - 1);
         assertEquals(AuditRecord.Action.REVERSION, last.action());
         assertEquals("vendor default switched off until restart", last.reason());
+    }
+
+    /** doc/specs/quieter-output.md Q4: switching a vendor rule off doesn't hide what it dropped (§9.6). */
+    @Test
+    void resetRule_toNative_stillReportsTheDropsInTheNextSummary_once() {
+        service.attachVendorRules(vendorRules, Instant.now());
+        service.gate().evaluate(new Object(), event(HEALTH, "ping ok"));
+        service.gate().evaluate(new Object(), event(HEALTH, "ping ok"));
+
+        service.resetRule("vendor:healthcheck-noise", false, true);
+
+        assertEquals(List.of(new RuleService.DropCount("vendor:healthcheck-noise", HEALTH, 2, 0)),
+                service.takeDropCounts());
+        service.resetRule("vendor:healthcheck-noise", false, false); // back on
+        assertEquals(List.of(), service.takeDropCounts(), "reported once, not again after switching back on");
     }
 
     @Test

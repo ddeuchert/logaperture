@@ -83,11 +83,19 @@ class VendorHandlerDefaultsTest {
         assertEquals(Optional.of(Level.INFO), adapter.handlerLevel(CONSOLE),
                 "AUTO with no logger overrides sits at its own native level");
 
-        AuditRecord fileRecord = auditLog.records().stream()
-                .filter(r -> r.loggerName().equals("FILE")).findFirst().orElseThrow();
-        assertEquals("vendor-defaults", fileRecord.source());
-        assertEquals("ALL", fileRecord.previousValue());
-        assertEquals("quiet the file", fileRecord.reason());
+        assertTrue(auditLog.records().stream().noneMatch(r -> r.loggerName().equals("FILE")),
+                "doc/specs/quieter-output.md Q1: the load is audited once, not per entry");
+    }
+
+    @Test
+    void applyVendorDefaults_anAutoHandlerThatMoves_isNotAuditedPerEntryEither() {
+        activeLoggerOverrides.add(debugOverride("com.acme")); // so AUTO actually changes CONSOLE at load
+
+        service.applyVendorDefaults(Instant.now());
+
+        assertEquals(Optional.of(Level.DEBUG), adapter.handlerLevel(CONSOLE));
+        assertTrue(auditLog.records().isEmpty(), "doc/specs/quieter-output.md Q1: the load is audited once, "
+                + "for AUTO handlers as for fixed levels");
     }
 
     @Test

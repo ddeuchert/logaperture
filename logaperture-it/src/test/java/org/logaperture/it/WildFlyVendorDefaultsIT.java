@@ -123,8 +123,14 @@ class WildFlyVendorDefaultsIT {
 
         assertTrue(logctl("status").stdout().startsWith("Vendor defaults: " + VENDOR_FILE), logctl("status").stdout());
         assertTrue(logctl("env").stdout().contains(VENDOR_FILE + "  loaded"), logctl("env").stdout());
-        assertTrue(wildfly.getLogs().contains("vendor defaults loaded from " + VENDOR_FILE),
-                "the agent reported the file at startup");
+        // doc/specs/quieter-output.md Q3: one banner line, at the default diagnostics level.
+        assertTrue(wildfly.getLogs().contains("[logaperture] LogAperture ")
+                        && wildfly.getLogs().contains(" active (WildFly): vendor defaults " + VENDOR_FILE),
+                "the agent's startup banner names the file:\n" + wildfly.getLogs().lines()
+                        .filter(line -> line.contains("[logaperture")).toList());
+        assertTrue(wildfly.getLogs().lines().noneMatch(line -> line.contains("[logaperture-audit]")
+                        && line.contains("source=vendor-defaults logger=com.vendor.probe")),
+                "Q1: no per-entry audit record for the vendor file");
     }
 
     @Test

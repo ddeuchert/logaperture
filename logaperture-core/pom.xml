@@ -37,6 +37,12 @@
       <groupId>org.logaperture</groupId>
       <artifactId>logaperture-api</artifactId>
     </dependency>
+    <!-- The dependency-free diagnostic writer (doc/specs/quieter-output.md Q7): every message
+         core prints goes through it, so one level setting governs all of them. -->
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-bridge</artifactId>
+    </dependency>
   </dependencies>
 
   <build>

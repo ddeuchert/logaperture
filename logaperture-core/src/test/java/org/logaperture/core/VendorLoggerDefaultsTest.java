@@ -69,12 +69,8 @@ class VendorLoggerDefaultsTest {
         assertEquals(Optional.empty(), baselines.nativeLevel(NOT_YET_CREATED));
         assertEquals(Optional.of(Level.WARN), baselines.get(HIBERNATE), "the effective baseline is the vendor's");
 
-        List<AuditRecord> records = auditLog.records();
-        assertEquals(2, records.size());
-        AuditRecord first = records.stream().filter(r -> r.loggerName().equals(HIBERNATE)).findFirst().orElseThrow();
-        assertEquals("vendor-defaults", first.source());
-        assertEquals("DEBUG", first.previousValue());
-        assertEquals("WARN", first.newValue());
+        assertEquals(List.of(), auditLog.records(), "doc/specs/quieter-output.md Q1: audited once per load, not "
+                + "per entry");
     }
 
     @Test
@@ -181,7 +177,6 @@ class VendorLoggerDefaultsTest {
         service.applyVendorDefaults(Instant.now());
 
         assertEquals(Level.TRACE, adapter.effectiveLevel(NOT_YET_CREATED));
-        assertEquals(1, auditLog.records().size());
     }
 
     private static LoggerInfo find(List<LoggerInfo> rows, String name) {

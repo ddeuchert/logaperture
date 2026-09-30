@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.LevelOverride;
@@ -362,7 +363,7 @@ public final class FileStateStore implements StateStore, Closeable {
             // "Failure handling": the in-memory mutation this call followed
             // already succeeded, so degrading silently to session-only
             // behavior here is a safe direction to fail in.
-            System.err.println("[logaperture-state] failed to persist state file '" + stateFile
+            Diagnostics.warn("failed to persist state file '" + stateFile
                     + "', this change will not survive a restart: " + e);
         }
     }
@@ -376,7 +377,7 @@ public final class FileStateStore implements StateStore, Closeable {
         } catch (IOException | RuntimeException e) {
             // A JVM that can't read its own state starts clean rather than
             // refusing to start -- fail-open, per doc/logaperture-spec.md §9.
-            System.err.println("[logaperture-state] failed to load state file '" + stateFile
+            Diagnostics.warn("failed to load state file '" + stateFile
                     + "', resuming with nothing persisted: " + e);
             return new StateFileFormat.Parsed(List.of(), List.of(), List.of(), List.of());
         }

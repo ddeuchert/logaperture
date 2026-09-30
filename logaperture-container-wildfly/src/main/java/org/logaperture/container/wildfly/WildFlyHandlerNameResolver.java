@@ -114,7 +114,7 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
             return resolveInternal(handlers);
         } catch (Throwable failure) {
             dbg("resolveInternal threw: " + failure);
-            Diagnostics.debug("LogAperture: WildFly handler name resolution failed this pass (" + failure + ")");
+            Diagnostics.debug("WildFly handler name resolution failed this pass (" + failure + ")");
             return Map.of();
         }
     }
@@ -159,7 +159,7 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
         Map<Handler, String> bound = bind(handlers, nameToType, fileNameByHandlerName);
         dbg("bound " + bound.size() + " of " + handlers.size());
         if (!bound.isEmpty()) {
-            Diagnostics.debug("LogAperture: resolved " + bound.size() + " of " + handlers.size()
+            Diagnostics.debug("resolved " + bound.size() + " of " + handlers.size()
                     + " WildFly handler name(s) from /subsystem=logging");
         }
         return bound;

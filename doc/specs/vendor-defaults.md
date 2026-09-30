@@ -281,8 +281,9 @@ Anything that re-asserts overrides today re-asserts the vendor layer first:
 
 ### Audit
 
-Source `vendor-defaults` for every entry applied at install, one record per entry
-(`Action.MUTATION`, principal = the JVM's account). Rejection writes no mutation records; it's
+Source `vendor-defaults`, one record per load naming the file and its SHA-256 (since 1.0.0-beta.1,
+[`quieter-output.md`](quieter-output.md) Q1; originally one record per entry applied at install),
+`Action.MUTATION`, principal = the JVM's account. Rejection writes no mutation records; it's
 reported through diagnostics and `doctor`. Suspensions and resets are audited as today, with their
 usual sources.
 

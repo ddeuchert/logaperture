@@ -803,7 +803,7 @@ class HandlerLevelControlServiceTest {
     }
 
     @Test
-    void resumeFromStateStore_allHandlers_auditsOneRowPerRealHandler_notOneForTheGroup() {
+    void resumeFromStateStore_allHandlers_isCountedOnce_notAuditedPerHandler() {
         HandlerRef file = new HandlerRef("FILE");
         adapter.addHandler(file, Level.DEBUG);
         service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.sticky());
@@ -816,12 +816,11 @@ class HandlerLevelControlServiceTest {
                 new HandlerBaselineRegistry(), new HandlerOverrideRegistry(),
                 new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(), resumeAuditLog, stateStore, "alice", "resume");
 
-        resumed.resumeFromStateStore(Instant.now());
+        assertEquals(1, resumed.resumeFromStateStore(Instant.now()), "one group override restored");
 
-        assertEquals(2, resumeAuditLog.records().size(), "one row per real handler, not one for the group");
-        assertTrue(resumeAuditLog.records().stream().anyMatch(r -> r.loggerName().equals("CONSOLE")));
-        assertTrue(resumeAuditLog.records().stream().anyMatch(r -> r.loggerName().equals("FILE")));
-        assertTrue(resumeAuditLog.records().stream().noneMatch(r -> r.loggerName().equals("ALL_HANDLERS")));
+        assertEquals(Optional.of(Level.TRACE), freshAdapter.handlerLevel(file), "applied to every real handler");
+        assertTrue(resumeAuditLog.records().isEmpty(), "doc/specs/quieter-output.md Q2: audited once, by the "
+                + "composition root");
     }
 
     @Test
