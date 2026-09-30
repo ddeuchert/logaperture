@@ -36,6 +36,7 @@ import java.lang.instrument.Instrumentation;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -60,6 +61,15 @@ final class AgentBootstrap {
      */
     private static final String VERSION_PROPERTY = "logaperture.version";
 
+    /**
+     * Set by the first {@link #start} that gets past the kill switch, whether or not that start then
+     * succeeds (issue #120). The JVM calls {@code premain} once per {@code -javaagent:} entry, and
+     * {@code agentmain} again on every attach; every call after the first must not bootstrap a second
+     * time. One flag covers them all: every entry resolves {@code LogApertureAgent} through the system
+     * class loader, so they all share this class.
+     */
+    private static final AtomicBoolean STARTED = new AtomicBoolean();
+
     private AgentBootstrap() {
     }
 
@@ -72,16 +82,32 @@ final class AgentBootstrap {
     }
 
     static void start(Instrumentation inst) {
-        start(inst, null);
+        start(inst, null, Entry.PREMAIN);
+    }
+
+    /** How the JVM entered the agent -- only named in the line a duplicate start writes. */
+    enum Entry {
+        PREMAIN("the duplicate -javaagent entry"),
+        AGENTMAIN("the attach request");
+
+        private final String ignored;
+
+        Entry(String ignored) {
+            this.ignored = ignored;
+        }
     }
 
     /**
      * @param agentArgs the {@code -javaagent:...=<args>} string, or {@code null} -- doc/specs/
      *                  vendor-defaults.md "Agent arguments"
      */
-    static void start(Instrumentation inst, String agentArgs) {
+    static void start(Instrumentation inst, String agentArgs, Entry entry) {
         if (Boolean.getBoolean(DISABLED_PROPERTY)) {
             return; // global kill switch, honoured without needing the control plane reachable
+        }
+        if (!STARTED.compareAndSet(false, true)) {
+            Diagnostics.warn(duplicateStartMessage(entry));
+            return;
         }
         try {
             CapabilityPolicy policy = CapabilityPolicy.allowAll();
@@ -111,6 +137,11 @@ final class AgentBootstrap {
         } catch (Throwable t) {
             Diagnostics.error("LogAperture agent bootstrap failed to start", t);
         }
+    }
+
+    /** Issue #120: the one line a second start writes instead of bootstrapping again. */
+    static String duplicateStartMessage(Entry entry) {
+        return "LogAperture is already started in this JVM; ignoring " + entry.ignored + ".";
     }
 
     /**

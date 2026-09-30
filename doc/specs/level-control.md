@@ -237,6 +237,14 @@ holes in it."
 
 - Adapter install failure: log a diagnostic (§4.5), do nothing further, application
   starts normally regardless (§9 "ordinary failure handling").
+- The agent starts at most once per JVM (issue #120). The JVM calls `premain` once per
+  `-javaagent:` entry and `agentmain` on every attach, so the same jar listed twice, or
+  attached to a JVM that already runs it, enters the agent again. Every entry after the
+  first — whether or not the first start succeeded — writes one `WARN` diagnostic and
+  returns: `LogAperture is already started in this JVM; ignoring the duplicate -javaagent
+  entry.` (or `… ignoring the attach request.`). No second install, state-file lock or
+  MBean registration is attempted. The `logaperture.disabled` kill switch is checked
+  first, so a disabled agent writes nothing for any entry.
 - Any exception during a `setLevel`/`resetLevel` call is caught, logged to the agent's
   own diagnostic writer, and surfaces to the JMX caller as a failed operation — this is a
   control-plane call, not the logging hot path, so fail-open here means "don't crash the

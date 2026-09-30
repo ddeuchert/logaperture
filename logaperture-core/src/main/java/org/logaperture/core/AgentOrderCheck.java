@@ -206,13 +206,13 @@ final class AgentOrderCheck {
             }
             AgentEntry first = listed.get(0);
             boolean ours = entry.getKey().equals(ownResolved);
-            // Decision #4: WARNING for our own jar -- the JVM runs premain once per entry, so LogAperture
-            // bootstraps once per entry too; INFO for any other agent's jar.
+            // Decision #4: WARNING for our own jar -- the JVM runs premain once per entry; LogAperture starts
+            // from the first and ignores the rest (issue #120), but writes a warning for each at startup.
+            // INFO for any other agent's jar.
             Severity severity = ours ? Severity.WARNING : Severity.INFO;
             String detail = ours
-                    ? "the JVM runs premain once per entry, so LogAperture starts once per entry; every copy "
-                            + "after the first fails to lock the state file and to register its control surface, "
-                            + "and logs those errors at startup."
+                    ? "the JVM runs premain once per entry; LogAperture starts from the first and ignores the "
+                            + "rest, writing a warning for each at startup."
                     : null;
             findings.add(new DoctorFinding(DUPLICATE_CHECK, severity, entry.getKey().toString(),
                     first.fileName() + " is listed " + listed.size() + " times as a -javaagent.", detail,

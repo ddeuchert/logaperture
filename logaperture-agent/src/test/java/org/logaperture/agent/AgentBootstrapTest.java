@@ -38,6 +38,15 @@ class AgentBootstrapTest {
         assertDoesNotThrow(() -> AgentBootstrap.start(null));
     }
 
+    /** Issue #120: the line a second start writes names how the JVM entered the agent again. */
+    @Test
+    void duplicateStartMessage_namesTheIgnoredEntry() {
+        assertEquals("LogAperture is already started in this JVM; ignoring the duplicate -javaagent entry.",
+                AgentBootstrap.duplicateStartMessage(AgentBootstrap.Entry.PREMAIN));
+        assertEquals("LogAperture is already started in this JVM; ignoring the attach request.",
+                AgentBootstrap.duplicateStartMessage(AgentBootstrap.Entry.AGENTMAIN));
+    }
+
     /** doc/specs/quieter-output.md Q3: the one startup line. */
     @Test
     void banner_namesTheContainer_theVendorFile_andWhatWasRestored() throws Exception {

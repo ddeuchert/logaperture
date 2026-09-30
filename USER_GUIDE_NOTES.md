@@ -23,9 +23,10 @@ are absorbed into the real guide.
 - Early events from other agents may not go through JUL/JBoss LogManager at all
   (own formatter, console, private buffer); if so they are out of reach. The fix
   then belongs in the emitting agent's configuration.
-- Listing the same agent jar twice is pointless; remove one. For `logaperture-agent.jar` itself it
-  is worse: the second copy fails to lock the state file and to register its control surface, and
-  logs errors at startup.
+- Listing the same agent jar twice is pointless; remove one. For `logaperture-agent.jar` itself,
+  LogAperture starts once, from the first entry, and every later entry only writes one startup
+  warning: `LogAperture is already started in this JVM; ignoring the duplicate -javaagent entry.`
+  Attaching the agent to a JVM that already runs it does the same ("ignoring the attach request").
 - `logctl doctor` reports the order it sees (`agent.order`: `OK` when LogAperture is first, `INFO`
   naming the agents ahead of it) and any jar listed twice (`agent.duplicate`). Agents set in
   `JAVA_TOOL_OPTIONS` / `JDK_JAVA_OPTIONS` count as listed first. No ordering line when
