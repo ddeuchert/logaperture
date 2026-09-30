@@ -39,6 +39,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -57,6 +58,8 @@ import static org.junit.jupiter.api.Assertions.fail;
 class LevelControlEndToEndIT {
 
     private static final String FIXTURE_LOGGER = "org.logaperture.agent.it.fixture.Worker";
+
+    private static final Pattern BANNER = Pattern.compile("\\[logaperture] LogAperture \\S+ active \\(");
 
     @TempDir
     private Path logapertureHome;
@@ -466,6 +469,75 @@ class LevelControlEndToEndIT {
                 && f.getSeverity().equals("WARNING")));
     }
 
+    /**
+     * Issue #120: the JVM calls {@code premain} once per {@code -javaagent:} entry. The second call must
+     * write one line and return -- no failed state-file lock, no failed MBean registration, one banner.
+     */
+    @Test
+    void agentJarListedTwice_startsOnce_andSaysSo() throws Exception {
+        String agentJarPath = System.getProperty("logaperture.agent.jar");
+        assertNotNull(agentJarPath, "system property logaperture.agent.jar must point at the shaded jar");
+        Path output = logapertureHome.resolve("fixture-output.txt");
+
+        Process fixtureProcess = launchFixtureProcess(
+                List.of("-javaagent:" + agentJarPath, "-javaagent:" + agentJarPath), logapertureHome,
+                ProcessBuilder.Redirect.to(output.toFile()));
+        LevelControlMXBean proxy = pollForMxBeanProxy(attachAndConnect(fixtureProcess.pid()));
+        assertEquals("INFO", pollUntilKnown(proxy, FIXTURE_LOGGER).getEffectiveLevel());
+
+        String log = readOnceBannerWritten(output);
+        assertTrue(log.contains("[logaperture] WARN LogAperture is already started in this JVM; ignoring the "
+                + "duplicate -javaagent entry."), log);
+        assertSingleCleanStart(log);
+        assertTrue(proxy.diagnose().stream().anyMatch(f -> "agent.duplicate".equals(f.getCheck())
+                && "WARNING".equals(f.getSeverity())), "doctor still flags the duplicate entry");
+    }
+
+    /** Issue #120: an attach after {@code premain} (the {@code agentmain} path) is ignored the same way. */
+    @Test
+    void attachAfterPremain_isIgnored_andSaysSo() throws Exception {
+        String agentJarPath = System.getProperty("logaperture.agent.jar");
+        assertNotNull(agentJarPath, "system property logaperture.agent.jar must point at the shaded jar");
+        Path output = logapertureHome.resolve("fixture-output.txt");
+
+        Process fixtureProcess = launchFixtureProcess(List.of("-javaagent:" + agentJarPath), logapertureHome,
+                ProcessBuilder.Redirect.to(output.toFile()));
+        LevelControlMXBean proxy = pollForMxBeanProxy(attachAndConnect(fixtureProcess.pid()));
+
+        VirtualMachine vm = VirtualMachine.attach(Long.toString(fixtureProcess.pid()));
+        try {
+            vm.loadAgent(agentJarPath);
+        } finally {
+            vm.detach();
+        }
+        assertEquals("INFO", pollUntilKnown(proxy, FIXTURE_LOGGER).getEffectiveLevel()); // control surface still up
+
+        String log = readOnceBannerWritten(output);
+        assertTrue(log.contains("[logaperture] WARN LogAperture is already started in this JVM; ignoring the "
+                + "attach request."), log);
+        assertSingleCleanStart(log);
+    }
+
+    /** The banner follows the MBean registration the caller already polled for, so give it a moment. */
+    private static String readOnceBannerWritten(Path output) throws Exception {
+        for (int attempt = 0; attempt < 50; attempt++) {
+            String log = Files.readString(output);
+            if (BANNER.matcher(log).find()) {
+                return log;
+            }
+            Thread.sleep(100);
+        }
+        return Files.readString(output);
+    }
+
+    private static void assertSingleCleanStart(String log) {
+        assertEquals(1, BANNER.matcher(log).results().count(), "exactly one startup banner:\n" + log);
+        assertFalse(log.contains("already locked"), log);
+        assertFalse(log.contains("InstanceLockedException"), log);
+        assertFalse(log.contains("failed to register the JMX control surface"), log);
+        assertFalse(log.contains("bootstrap failed to start"), log);
+    }
+
     private Process launchFixtureProcess(String agentJarPath) throws Exception {
         return launchFixtureProcess(agentJarPath, null);
     }
@@ -475,18 +547,26 @@ class LevelControlEndToEndIT {
     }
 
     private Process launchFixtureProcess(String agentJarPath, String agentArgs, Path home) throws Exception {
+        String agentOption = "-javaagent:" + agentJarPath + (agentArgs == null ? "" : "=" + agentArgs);
+        return launchFixtureProcess(List.of(agentOption), home, ProcessBuilder.Redirect.INHERIT);
+    }
+
+    private Process launchFixtureProcess(List<String> agentOptions, Path home, ProcessBuilder.Redirect output)
+            throws Exception {
         String javaBin = System.getProperty("java.home") + "/bin/java";
         String classpath = System.getProperty("java.class.path");
 
-        ProcessBuilder builder = new ProcessBuilder(
-                javaBin,
-                "-javaagent:" + agentJarPath + (agentArgs == null ? "" : "=" + agentArgs),
+        List<String> command = new ArrayList<>();
+        command.add(javaBin);
+        command.addAll(agentOptions);
+        command.addAll(List.of(
                 "-Dlogaperture.home=" + home,
                 "-Dlogaperture.sweep.seconds=1", // so a standing-rule-discovers-a-new-logger test doesn't wait 30s
                 "-cp", classpath,
-                "org.logaperture.agent.it.FixtureApp");
+                "org.logaperture.agent.it.FixtureApp"));
+        ProcessBuilder builder = new ProcessBuilder(command);
         builder.redirectErrorStream(true);
-        builder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+        builder.redirectOutput(output);
         Process process = builder.start();
         fixtureProcesses.add(process);
         return process;

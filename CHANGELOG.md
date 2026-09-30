@@ -50,6 +50,15 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 - **Guided `logctl list`** also offers `recipes`. A one-letter answer to a guided question now
   counts only when no other choice starts with that letter, so `r` asks again (rules or recipes).
 
+### Fixed
+
+- **`logaperture-agent.jar` listed twice on `-javaagent`** no longer starts LogAperture twice. The
+  second copy used to fail to lock the state file and to register its control surface, logging
+  both at startup; now LogAperture starts once, from the first entry, and every later entry writes
+  one line, `LogAperture is already started in this JVM; ignoring the duplicate -javaagent entry.`
+  Attaching the agent to a JVM that already runs it is ignored the same way. `logctl doctor` still
+  flags the duplicate entry (issue #120).
+
 ## [0.1.0-alpha.3] — 2026-09-28
 
 The first suppression features: `drop` and `trim` rules, report-only storm detection, a vendor

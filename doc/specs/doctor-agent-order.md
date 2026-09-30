@@ -108,10 +108,11 @@ For each jar path (resolved as above) that appears in more than one `-javaagent:
   - `subject`: the resolved path.
   - `suggestedFix`: `remove all but one -javaagent:<path as first given> entry.`
   - Severity (Decision #4, resolved: Option A): `INFO` for another agent's jar, `WARNING` for
-    LogAperture's own, whose `detail` says what that costs: every copy after the first fails to
-    lock the state file and to register its control surface, and logs those errors at startup
-    (observed with the shaded jar, 2026-09-29). A guard against a second bootstrap is a separate
-    bug, not part of this feature.
+    LogAperture's own, whose `detail` says what that costs: LogAperture starts from the first entry
+    and ignores the rest, writing a warning for each at startup. (Before issue #120's guard, every
+    copy after the first failed to lock the state file and to register its control surface, and
+    logged those errors at startup; observed with the shaded jar, 2026-09-29. The guard is
+    described in `level-control.md` "Failure handling".)
   - No `OK` row when nothing is duplicated. This departs from the other checks, which report a
     clean `OK` line: a duplicate is rare enough that a permanent "no duplicate agents" line would
     be noise next to `agent.order`'s own `OK` line, which already tells the user the agent list
@@ -200,8 +201,9 @@ All four resolved on Option A, the recommendation. The options are kept below fo
 
 **#4 — Severity of a duplicated agent jar.**
 - **A (recommended): `INFO` for another agent's jar, `WARNING` for LogAperture's own.** The JVM
-  calls `premain` once per entry; for LogAperture that means two bootstraps, which `AgentBootstrap`
-  has no guard against today. Checked during implementation: it is harmful, not merely wasteful
-  (see `agent.duplicate`). The guard is a separate bug, not part of this slice.
+  calls `premain` once per entry; for LogAperture that meant two bootstraps, which `AgentBootstrap`
+  had no guard against. Checked during implementation: it was harmful, not merely wasteful
+  (see `agent.duplicate`). The guard was a separate bug, since fixed in issue #120; the duplicate
+  stays a `WARNING` because it is still a configuration mistake that writes a warning at startup.
 - B: `INFO` for every duplicate, including ours (`USER_GUIDE_NOTES.md` currently calls a
   duplicate "harmless but pointless").
