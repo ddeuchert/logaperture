@@ -36,6 +36,17 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Changed
 
+- **Much quieter startup and drop summaries** (issue #123; `doc/specs/quieter-output.md`). A start
+  prints one line, `[logaperture] LogAperture <version> active (WildFly): vendor defaults <file>
+  (…); N sticky settings restored`, in place of several INFO lines. Loading a vendor defaults file
+  is audited once, with the file's SHA-256, and a restart's resume once, with counts -- no longer
+  one record per entry. Drop summaries are one line for every rule, every 10 minutes
+  (`-Dlogaperture.drop.summaryInterval`), none during the first interval; on WildFly they go
+  through the server's own logging at INFO under `org.logaperture.drop` instead of appearing as
+  `ERROR [stderr]`. No rule can match LogAperture's own `org.logaperture` categories. Every
+  LogAperture message now honours `-Dlogaperture.diagnostics.level`, whose default is now `WARN`,
+  in one format (`[logaperture] LEVEL message`); a failure repeated on every log event is written
+  at most once a minute.
 - **Guided `logctl list`** also offers `recipes`. A one-letter answer to a guided question now
   counts only when no other choice starts with that letter, so `r` asks again (rules or recipes).
 

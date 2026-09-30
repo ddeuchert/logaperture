@@ -133,7 +133,17 @@ public final class VendorDefaultsFile {
             return VendorDefaults.rejected(path, v.errors);
         }
         return VendorDefaults.loaded(path, writable, v.loggers, v.handlers, v.defaultHandlers,
-                v.defaultHandlersStateId, v.handlerGroupStateIds, v.rules, recipes);
+                v.defaultHandlersStateId, v.handlerGroupStateIds, v.rules, recipes, sha256(content));
+    }
+
+    /** The hex SHA-256 of {@code content}'s UTF-8 bytes. */
+    static String sha256(String content) {
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(content.getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is missing from this JVM", e);
+        }
     }
 
     /** Values made only of these characters are written unquoted; everything else is double-quoted. */

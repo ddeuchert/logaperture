@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
@@ -643,21 +644,18 @@ public final class LevelControlService implements LevelControlOperations {
      * {@link #resumeFromStateStore}, so persisted overrides land on top. Each logger's native
      * baseline is captured first, so the application's own value is never read back as the
      * vendor's. Eager (Decision M1): a logger that doesn't exist yet is configured now. No
-     * capability check (vendor-config-epic.md Decision #11); one {@code "vendor-defaults"} audit
-     * record per logger. A logger whose apply throws is skipped, the rest still apply.
+     * capability check (vendor-config-epic.md Decision #11). No audit record per logger: the load
+     * itself is audited once, with the file's hash (doc/specs/quieter-output.md Q1). A logger whose
+     * apply throws is skipped, the rest still apply.
      */
     public void applyVendorDefaults(Instant now) {
         for (String name : baselines.vendorLoggerNames()) {
             try {
                 baselines.captureIfAbsent(name, adapter);
                 Level vendorLevel = baselines.vendorLevel(name).orElseThrow();
-                String previousValue = adapter.effectiveLevel(name).toString();
                 adapter.applyLevel(name, vendorLevel);
-                auditLog.record(new AuditRecord(now, principal, VendorDefaults.AUDIT_SOURCE, name, previousValue,
-                        vendorLevel.toString(), baselines.vendorReason(name).orElse(null),
-                        AuditRecord.Action.MUTATION));
             } catch (RuntimeException e) {
-                System.err.println("[logaperture] failed to apply the vendor default for logger '" + name
+                Diagnostics.warn("failed to apply the vendor default for logger '" + name
                         + "', skipping it: " + e);
             }
         }
@@ -812,21 +810,26 @@ public final class LevelControlService implements LevelControlOperations {
      * @param now injected so tests can simulate "time has passed since the
      *            override was persisted" without a real sleep
      */
-    public void resumeFromStateStore(Instant now) {
+    public int resumeFromStateStore(Instant now) {
+        int resumed = 0;
         for (LevelOverride persisted : stateStore.loadAll()) {
             try {
-                resumeOne(persisted, now);
+                if (resumeOne(persisted, now)) {
+                    resumed++;
+                }
             } catch (RuntimeException e) {
                 // One bad persisted entry must not take the whole install
                 // down with it (§9's fail-open discipline) -- skip it and
                 // keep resuming the rest.
-                System.err.println("[logaperture-state] failed to resume persisted override for '"
+                Diagnostics.warn("failed to resume persisted override for '"
                         + persisted.loggerName() + "', skipping it: " + e);
             }
         }
+        return resumed;
     }
 
-    private void resumeOne(LevelOverride persisted, Instant now) {
+    /** @return whether {@code persisted} is now in force (not expired while stopped) */
+    private boolean resumeOne(LevelOverride persisted, Instant now) {
         baselines.captureIfAbsent(persisted.loggerName(), adapter);
 
         if (persisted.tier() == PersistenceTier.FOR && !persisted.expiresAt().isAfter(now)) {
@@ -836,15 +839,12 @@ public final class LevelControlService implements LevelControlOperations {
             // gap where the override simply stops existing.
             recordReversionForNeverApplied(persisted, now);
             safePersist(() -> stateStore.remove(persisted.loggerName()));
-            return;
+            return false;
         }
 
-        String previousValue = adapter.effectiveLevel(persisted.loggerName()).toString();
         OverrideApplier.apply(persisted, adapter);
         overrides.put(persisted);
-        auditLog.record(new AuditRecord(
-                now, principal, "resume", persisted.loggerName(), previousValue,
-                persisted.level().toString(), persisted.reason(), AuditRecord.Action.MUTATION));
+        return true; // audited once for the whole resume by the composition root (quieter-output.md Q2)
     }
 
     /**
@@ -967,7 +967,7 @@ public final class LevelControlService implements LevelControlOperations {
         try {
             stateStoreCall.run();
         } catch (RuntimeException e) {
-            System.err.println("[logaperture-state] state store operation failed, continuing in-memory only: " + e);
+            Diagnostics.warn("state store operation failed, continuing in-memory only: " + e);
         }
     }
 

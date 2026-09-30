@@ -15,6 +15,7 @@
  */
 package org.logaperture.adapter.jul;
 
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.GateVerdict;
 import org.logaperture.core.RuleGate;
 import org.logaperture.core.TrimDecision;
@@ -87,8 +88,7 @@ final class JulTrimFormatter extends Formatter {
             return verdict.deny() ? null : verdict.trim();
         } catch (RuntimeException e) {
             // Fail open -- doc/logaperture-spec.md §9's fail-open discipline.
-            System.err.println(
-                    "[logaperture-adapter-jul] trim evaluation failed, event formatted unaffected: " + e);
+            Diagnostics.warnThrottled("trim-evaluation", "trim evaluation failed, event formatted unaffected: " + e, null);
             return null;
         }
     }

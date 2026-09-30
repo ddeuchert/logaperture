@@ -15,6 +15,7 @@
  */
 package org.logaperture.adapter.jul;
 
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.api.LoggerByteCount;
 
 import java.util.ArrayList;
@@ -86,7 +87,7 @@ final class TopCounters {
             int configured = Integer.parseInt(raw.trim());
             return configured > 0 ? configured : DEFAULT_MAX_TRACKED;
         } catch (NumberFormatException e) {
-            System.err.println("[logaperture] ignoring non-numeric " + MAX_TRACKED_PROPERTY + "='" + raw
+            Diagnostics.warn("ignoring non-numeric " + MAX_TRACKED_PROPERTY + "='" + raw
                     + "', using " + DEFAULT_MAX_TRACKED);
             return DEFAULT_MAX_TRACKED;
         }

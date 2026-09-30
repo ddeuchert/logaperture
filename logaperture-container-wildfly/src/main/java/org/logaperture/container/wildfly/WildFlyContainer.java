@@ -20,6 +20,7 @@ import org.logaperture.core.ActiveLoggerFloor;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AggregateLevelControl.ContextControl;
 import org.logaperture.core.AuditLog;
+import org.logaperture.core.AuditRecord;
 import org.logaperture.core.BaselineRegistry;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.DefaultHandlerGroupRegistry;
@@ -58,6 +59,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
+import java.util.logging.Logger;
 
 /**
  * Composition root for standalone WildFly — see doc/specs/wildfly-support.md
@@ -166,6 +168,10 @@ public final class WildFlyContainer implements AutoCloseable {
         takeOverExportedState();
         this.aggregate = new AggregateLevelControl(CONTAINER_NAME, containerVersion,
                 stateStore.location().map(Path::toString).orElse(null), this::handlerInstallAllowed, vendorDefaults);
+        // doc/specs/quieter-output.md Q5: the drop summary goes through the server's own logging, in its
+        // format and under a category the operator controls -- written from the sweep thread, never from
+        // inside a handler, so it can't loop through LogAperture's own wrappers.
+        aggregate.setDropSummarySink(line -> Logger.getLogger(DROP_SUMMARY_CATEGORY).info(line));
 
         this.sweeper = Executors.newSingleThreadScheduledExecutor(WildFlyContainer::newDaemonThread);
         long intervalMillis = sweepInterval.toMillis();
@@ -228,15 +234,16 @@ public final class WildFlyContainer implements AutoCloseable {
                 vendorDefaults.status() == VendorDefaults.Status.LOADED, Instant.now());
 
         try {
-            service.resumeFromStateStore(Instant.now());
-            handlerService.resumeFromStateStore(Instant.now());
+            int loggers = service.resumeFromStateStore(Instant.now());
+            int handlers = handlerService.resumeFromStateStore(Instant.now());
             // doc/specs/drop-rule.md/trim-rule.md "Persistence" -- a persisted STICKY/unexpired-FOR
             // Drop or Trim now resumes as a live rule (both factories were registered just above).
-            ruleService.resumeFromStateStore(Instant.now());
+            int rules = ruleService.resumeFromStateStore(Instant.now());
+            recordResume(loggers, handlers, rules);
             // doc/specs/handler-floor-control.md "AUTO handler level", AUTO-5.
             handlerService.recomputeAuto();
         } catch (RuntimeException e) {
-            Diagnostics.warn("LogAperture: failed to resume persisted overrides, continuing without them", e);
+            Diagnostics.warn("failed to resume persisted overrides, continuing without them", e);
         }
 
         DoctorService doctorService = new DoctorService(adapter, policy);
@@ -266,7 +273,7 @@ public final class WildFlyContainer implements AutoCloseable {
         try {
             aggregate.installHandlerLevel();
         } catch (RuntimeException e) {
-            Diagnostics.warn("LogAperture: handler-level install failed, will retry on the next sweep", e);
+            Diagnostics.warn("handler-level install failed, will retry on the next sweep", e);
         }
         announceHandlerLevelIfInstalled();
     }
@@ -311,7 +318,7 @@ public final class WildFlyContainer implements AutoCloseable {
         if (handlerInstallDelay.isZero()) {
             return;
         }
-        Diagnostics.info("LogAperture: handler-level install deferred for " + handlerInstallDelay.toSeconds() + "s");
+        Diagnostics.info("handler-level install deferred for " + handlerInstallDelay.toSeconds() + "s");
         try {
             handlerInstallTask = sweeper.schedule(
                     this::runScheduledHandlerInstall, handlerInstallDelay.toMillis(), TimeUnit.MILLISECONDS);
@@ -332,7 +339,7 @@ public final class WildFlyContainer implements AutoCloseable {
         } catch (RuntimeException e) {
             handlers = -1;
         }
-        Diagnostics.info("LogAperture: handler-level install complete"
+        Diagnostics.info("handler-level install complete"
                 + (handlers >= 0 ? " (" + handlers + " handlers)" : ""));
     }
 
@@ -369,13 +376,13 @@ public final class WildFlyContainer implements AutoCloseable {
             return FileStateStore.open();
         } catch (FileStateStore.InstanceLockedException e) {
             Diagnostics.warn(
-                    "LogAperture: this JVM's working-directory identity is already locked by live process pid="
+                    "this JVM's working-directory identity is already locked by live process pid="
                             + e.holderPid() + " -- degrading to session-only persistence for this JVM's lifetime. "
                             + "Set -Dlogaperture.instanceId=<unique-id> to disambiguate.", e);
             return StateStore.noOp();
         } catch (IOException e) {
             Diagnostics.warn(
-                    "LogAperture: failed to open the persistent state store, degrading to session-only "
+                    "failed to open the persistent state store, degrading to session-only "
                             + "persistence for this JVM's lifetime", e);
             return StateStore.noOp();
         }
@@ -392,10 +399,33 @@ public final class WildFlyContainer implements AutoCloseable {
             VendorStateTakeover.run(vendorDefaults, stateStore, auditLog, principal(), Instant.now());
         } catch (RuntimeException e) {
             // Fail-open (doc/logaperture-spec.md §9): the state file then resumes in full, as before.
-            Diagnostics.warn("LogAperture: failed to hand exported sticky settings over to the vendor defaults "
+            Diagnostics.warn("failed to hand exported sticky settings over to the vendor defaults "
                     + "file, resuming them as usual", e);
         }
     }
+
+    /**
+     * One audit record for the whole resume (doc/specs/quieter-output.md Q2), written once per JVM --
+     * a later context shares the same state file and would only count the same entries again.
+     */
+    private void recordResume(int loggers, int handlers, int rules) {
+        int total = loggers + handlers + rules;
+        if (total == 0 || aggregate.restoredSettings() > 0) {
+            return;
+        }
+        aggregate.recordRestored(total);
+        auditLog.record(new AuditRecord(Instant.now(), principal(), "resume",
+                stateStore.location().map(Path::toString).orElse("state store"), null,
+                "restored " + count(loggers, "logger override") + ", " + count(handlers, "handler override") + ", "
+                        + count(rules, "rule"), null, AuditRecord.Action.MUTATION));
+    }
+
+    private static String count(int n, String noun) {
+        return n + " " + noun + (n == 1 ? "" : "s");
+    }
+
+    /** Q5: the drop summary's logger; {@code RuleService} never lets a rule reach {@code org.logaperture}. */
+    static final String DROP_SUMMARY_CATEGORY = "org.logaperture.drop";
 
     private static String principal() {
         return System.getProperty("user.name", "unknown");

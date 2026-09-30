@@ -315,7 +315,7 @@ class RuleServiceTest {
     }
 
     @Test
-    void resumeFromStateStore_stickyRuleKeepsItsExactIdAndIsAudited() {
+    void resumeFromStateStore_stickyRuleKeepsItsExactIdAndIsCounted() {
         service.registerActionFactory("TestRule", TestRule.FACTORY);
         LogRule original = service.attach("com.acme.Worker", CompiledMatchers.matchAll(),
                 RuleAttachOptions.sticky(), TestRule.FACTORY);
@@ -323,14 +323,14 @@ class RuleServiceTest {
         RuleService resumed = new RuleService(adapter, CapabilityPolicy.allowAll(), auditLog, stateStore, "system",
                 "alice", "jmx");
         resumed.registerActionFactory("TestRule", TestRule.FACTORY);
-        resumed.resumeFromStateStore(Instant.now());
+        int before = auditLog.records().size();
+        assertEquals(1, resumed.resumeFromStateStore(Instant.now()));
 
         List<RuleView> rules = resumed.listRules();
         assertEquals(1, rules.size());
         assertEquals(original.id(), rules.get(0).rule().id(), "a resumed rule keeps its persisted id, never a fresh one");
-        AuditRecord last = auditLog.records().get(auditLog.records().size() - 1);
-        assertEquals(AuditRecord.Action.MUTATION, last.action());
-        assertEquals("resume", last.source());
+        assertEquals(before, auditLog.records().size(),
+                "doc/specs/quieter-output.md Q2: the resume is audited once, by the composition root");
     }
 
     @Test

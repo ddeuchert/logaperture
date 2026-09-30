@@ -1,7 +1,7 @@
 # Quieter, consolidated LogAperture output (issue #123)
 
 Status: **signed off 2026-09-29** (Q1-Q5, Q7-Q10 agreed; Q9's default raised to 10m; Q6 not
-done now). Not implemented. Target: 1.0.0-beta.1 (feature freeze
+done now). **Implemented** -- see "Settled during implementation". Target: 1.0.0-beta.1 (feature freeze
 2026-10-15).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §4.5 (self-diagnostics), §9.6
 (suppression is never silent), §9.7 (the audit trail).
@@ -139,6 +139,33 @@ route or raise the summary's level.
 **Agreed:** 1.0.0-beta.1, one PR. Q1-Q3 and Q7 are small and local; Q4-Q5 is the largest part.
 If time runs short at the freeze, Q5 (the platform logger) moves to 1.1 with #124 and the
 consolidated summary (Q4) ships through the diagnostics writer.
+
+## Settled during implementation
+
+- **One writer.** `core` depends on the dependency-free `logaperture-bridge`; its ~45 direct
+  `System.err` prints and the JUL adapter's became `Diagnostics` calls, all `WARN` except the
+  handover note below. The redundant `LogAperture:` prefix inside messages is gone.
+- **Two once-at-startup lines are shown at the default level:** the banner, and the existing "N
+  sticky settings are now in the vendor defaults file…" handover note
+  ([`export-round-trip.md`](export-round-trip.md) promises the startup log lists it). Both go through
+  `Diagnostics.notice`, written at every level but `ERROR`.
+- **Handler install.** "handler-level install deferred/complete" were already written only when a
+  delay is configured; they stay `INFO` (hidden at the default `WARN`). `WildFlyContainerIT` runs
+  with `-Dlogaperture.diagnostics.level=INFO` to keep checking them, and with
+  `-Dlogaperture.drop.summaryInterval=1m`; `WildFlyVendorDefaultsIT` runs at the default level and
+  checks the banner.
+- **Rate-limited warnings** (Q7) use four keys: rule evaluation, trim evaluation, storm observation
+  (JUL filter) and the storm detector itself -- one line per key per minute.
+- **The resume record** (Q2) is written by the container once per JVM, with the state file's path
+  and counts (`restored 2 logger overrides, 0 handler overrides, 0 rules`); a later context sharing
+  the same state file doesn't write another.
+- **The summary** (Q4) is scheduled by `AggregateLevelControl` from the sweep tick; each context's
+  `RuleService` hands over its counts. A rule removed before the summary still has its drops
+  reported in the next one (they used to be lost on removal). Sampled-through events are added as
+  `; N sampled through`. If the platform logger throws, the line falls back to a `Diagnostics`
+  warning, so it is never lost.
+- **Without the platform logger** (Logback / none) the summary is a `Diagnostics` `WARN`, so it
+  stays visible at the default level (§9.6).
 
 ## Out of scope
 

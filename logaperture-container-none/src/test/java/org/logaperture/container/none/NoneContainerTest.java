@@ -25,6 +25,7 @@ import org.logaperture.api.Level;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.core.AggregateLevelControl;
+import org.logaperture.core.AuditRecord;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.InMemoryAuditLog;
 import org.logaperture.core.spi.ContextHandle;
@@ -162,6 +163,26 @@ class NoneContainerTest {
             LoggerInfo info = install(second).listLoggers(loggerName).get(0);
             assertEquals(Level.DEBUG, info.effectiveLevel());
             assertTrue(info.overrideActive());
+        }
+    }
+
+    /** doc/specs/quieter-output.md Q2: one audit record for the whole resume, and the count the banner shows. */
+    @Test
+    void resume_isAuditedOnce_withCounts() {
+        try (NoneContainer first = newRoot()) {
+            AggregateLevelControl operations = install(first);
+            operations.setLogger("org.logaperture.container.none.resume.A", Level.DEBUG, SetLevelOptions.sticky());
+            operations.setLogger("org.logaperture.container.none.resume.B", Level.TRACE, SetLevelOptions.sticky());
+        }
+
+        InMemoryAuditLog auditLog = new InMemoryAuditLog();
+        try (NoneContainer second = new NoneContainer(CapabilityPolicy.allowAll(), auditLog)) {
+            AggregateLevelControl operations = install(second);
+
+            List<AuditRecord> resume = auditLog.records().stream().filter(r -> r.source().equals("resume")).toList();
+            assertEquals(1, resume.size(), resume.toString());
+            assertEquals("restored 2 logger overrides, 0 handler overrides, 0 rules", resume.get(0).newValue());
+            assertEquals(2, operations.restoredSettings());
         }
     }
 

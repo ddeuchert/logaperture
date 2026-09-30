@@ -83,11 +83,8 @@ class VendorHandlerDefaultsTest {
         assertEquals(Optional.of(Level.INFO), adapter.handlerLevel(CONSOLE),
                 "AUTO with no logger overrides sits at its own native level");
 
-        AuditRecord fileRecord = auditLog.records().stream()
-                .filter(r -> r.loggerName().equals("FILE")).findFirst().orElseThrow();
-        assertEquals("vendor-defaults", fileRecord.source());
-        assertEquals("ALL", fileRecord.previousValue());
-        assertEquals("quiet the file", fileRecord.reason());
+        assertTrue(auditLog.records().stream().noneMatch(r -> r.loggerName().equals("FILE")),
+                "doc/specs/quieter-output.md Q1: the load is audited once, not per entry");
     }
 
     @Test

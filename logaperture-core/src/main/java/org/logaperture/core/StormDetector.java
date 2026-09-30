@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.api.Storm;
 import org.logaperture.api.StormFingerprint;
 import org.logaperture.api.StormStatus;
@@ -128,7 +129,7 @@ public final class StormDetector implements StormObserver {
         try {
             observeUnsafe(observation);
         } catch (RuntimeException e) { // doc/specs/storm-detection.md "Failure handling": swallow, never propagate.
-            System.err.println("[logaperture-core] StormDetector.observe failed, event passes through unaffected: " + e);
+            Diagnostics.warnThrottled("storm-observe", "StormDetector.observe failed, event passes through unaffected: " + e, null);
         }
     }
 
@@ -382,7 +383,7 @@ public final class StormDetector implements StormObserver {
             long configured = Long.parseLong(raw.trim());
             return configured > 0 ? configured : fallback;
         } catch (NumberFormatException e) {
-            System.err.println("[logaperture] ignoring non-numeric " + property + "='" + raw + "', using " + fallback);
+            Diagnostics.warn("ignoring non-numeric " + property + "='" + raw + "', using " + fallback);
             return fallback;
         }
     }

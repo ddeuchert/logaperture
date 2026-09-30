@@ -20,6 +20,7 @@ import org.logaperture.core.ActiveLoggerFloor;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AggregateLevelControl.ContextControl;
 import org.logaperture.core.AuditLog;
+import org.logaperture.core.AuditRecord;
 import org.logaperture.core.BaselineRegistry;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.DefaultHandlerGroupRegistry;
@@ -190,11 +191,12 @@ public final class NoneContainer implements AutoCloseable {
             // resumeFromStateStore; this outer guard is defense in depth
             // against a StateStore whose loadAll() itself throws -- fail-open
             // (doc/logaperture-spec.md §9).
-            service.resumeFromStateStore(Instant.now());
-            handlerService.resumeFromStateStore(Instant.now());
+            int loggers = service.resumeFromStateStore(Instant.now());
+            int handlers = handlerService.resumeFromStateStore(Instant.now());
             // doc/specs/drop-rule.md/trim-rule.md "Persistence" -- a persisted STICKY/unexpired-FOR
             // Drop or Trim now resumes as a live rule (both factories were registered just above).
-            ruleService.resumeFromStateStore(Instant.now());
+            int rules = ruleService.resumeFromStateStore(Instant.now());
+            recordResume(loggers, handlers, rules);
             // One AUTO recompute pass now that both halves have resumed --
             // doc/specs/handler-floor-control.md "AUTO handler level",
             // AUTO-5: an AUTO override's persisted level is a cache, never
@@ -202,7 +204,7 @@ public final class NoneContainer implements AutoCloseable {
             // logger overrides.
             handlerService.recomputeAuto();
         } catch (RuntimeException e) {
-            Diagnostics.warn("LogAperture: failed to resume persisted overrides, continuing without them", e);
+            Diagnostics.warn("failed to resume persisted overrides, continuing without them", e);
         }
 
         DoctorService doctorService = new DoctorService(adapter, policy);
@@ -238,7 +240,7 @@ public final class NoneContainer implements AutoCloseable {
         try {
             ruleService.installTrimRendering();
         } catch (RuntimeException e) {
-            Diagnostics.warn("LogAperture: failed to install trim rendering for this context, continuing without it", e);
+            Diagnostics.warn("failed to install trim rendering for this context, continuing without it", e);
         }
         // doc/specs/top.md: always-on from the moment this context comes up --
         // by the time an operator runs `logctl top`, the volume that mattered
@@ -251,14 +253,14 @@ public final class NoneContainer implements AutoCloseable {
         try {
             stormService.startDetection();
         } catch (RuntimeException e) {
-            Diagnostics.warn("LogAperture: failed to arm storm detection for this context, continuing without it", e);
+            Diagnostics.warn("failed to arm storm detection for this context, continuing without it", e);
         }
         // doc/specs/rule-pipeline-foundation.md: same always-on-from-install discipline, same guard
         // -- an uncaught throw here would drop this entire context's registration otherwise.
         try {
             ruleService.installPipeline();
         } catch (RuntimeException e) {
-            Diagnostics.warn("LogAperture: failed to install the rule pipeline for this context, continuing without it", e);
+            Diagnostics.warn("failed to install the rule pipeline for this context, continuing without it", e);
         }
 
         aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService,
@@ -275,13 +277,13 @@ public final class NoneContainer implements AutoCloseable {
             return FileStateStore.open();
         } catch (FileStateStore.InstanceLockedException e) {
             Diagnostics.warn(
-                    "LogAperture: this JVM's working-directory identity is already locked by live process pid="
+                    "this JVM's working-directory identity is already locked by live process pid="
                             + e.holderPid() + " -- degrading to session-only persistence for this JVM's lifetime. "
                             + "Set -Dlogaperture.instanceId=<unique-id> to disambiguate.", e);
             return StateStore.noOp();
         } catch (IOException e) {
             Diagnostics.warn(
-                    "LogAperture: failed to open the persistent state store, degrading to session-only "
+                    "failed to open the persistent state store, degrading to session-only "
                             + "persistence for this JVM's lifetime", e);
             return StateStore.noOp();
         }
@@ -299,9 +301,29 @@ public final class NoneContainer implements AutoCloseable {
             VendorStateTakeover.run(vendorDefaults, stateStore, auditLog, principal(), Instant.now());
         } catch (RuntimeException e) {
             // Fail-open (doc/logaperture-spec.md §9): the state file then resumes in full, as before.
-            Diagnostics.warn("LogAperture: failed to hand exported sticky settings over to the vendor defaults "
+            Diagnostics.warn("failed to hand exported sticky settings over to the vendor defaults "
                     + "file, resuming them as usual", e);
         }
+    }
+
+    /**
+     * One audit record for the whole resume (doc/specs/quieter-output.md Q2), written once per JVM --
+     * a later context shares the same state file and would only count the same entries again.
+     */
+    private void recordResume(int loggers, int handlers, int rules) {
+        int total = loggers + handlers + rules;
+        if (total == 0 || aggregate.restoredSettings() > 0) {
+            return;
+        }
+        aggregate.recordRestored(total);
+        auditLog.record(new AuditRecord(Instant.now(), principal(), "resume",
+                stateStore.location().map(Path::toString).orElse("state store"), null,
+                "restored " + count(loggers, "logger override") + ", " + count(handlers, "handler override") + ", "
+                        + count(rules, "rule"), null, AuditRecord.Action.MUTATION));
+    }
+
+    private static String count(int n, String noun) {
+        return n + " " + noun + (n == 1 ? "" : "s");
     }
 
     private static String principal() {

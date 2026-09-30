@@ -77,7 +77,8 @@ class VendorRuleDefaultsTest {
                 rows.stream().map(row -> row.rule().id()).toList());
         assertTrue(rows.stream().allMatch(row -> "vendor-defaults".equals(row.origin()) && !row.toNative() && !row.altered()));
         assertTrue(stateStore.loadAllRules().isEmpty(), "the vendor file is their persistence");
-        assertEquals(2, auditLog.records().stream().filter(r -> r.source().equals("vendor-defaults")).count());
+        assertEquals(0, auditLog.records().stream().filter(r -> r.source().equals("vendor-defaults")).count(),
+                "doc/specs/quieter-output.md Q1: audited once per load, not per rule");
     }
 
     @Test

@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.bridge.Diagnostics;
 import java.time.Duration;
 
 /**
@@ -53,18 +54,18 @@ public final class HandlerInstallPolicy {
         try {
             long seconds = Long.parseLong(raw.trim());
             if (seconds < MIN_SECONDS) {
-                System.err.println("[logaperture] ignoring negative " + DELAY_PROPERTY + "='" + raw
+                Diagnostics.warn("ignoring negative " + DELAY_PROPERTY + "='" + raw
                         + "', using " + DEFAULT_DELAY.toSeconds() + "s");
                 return DEFAULT_DELAY;
             }
             if (seconds > MAX_SECONDS) {
-                System.err.println("[logaperture] " + DELAY_PROPERTY + "='" + raw + "' is above the maximum, using "
+                Diagnostics.warn(DELAY_PROPERTY + "='" + raw + "' is above the maximum, using "
                         + MAX_SECONDS + "s");
                 return Duration.ofSeconds(MAX_SECONDS);
             }
             return Duration.ofSeconds(seconds);
         } catch (NumberFormatException e) {
-            System.err.println("[logaperture] ignoring non-numeric " + DELAY_PROPERTY + "='" + raw
+            Diagnostics.warn("ignoring non-numeric " + DELAY_PROPERTY + "='" + raw
                     + "', using " + DEFAULT_DELAY.toSeconds() + "s");
             return DEFAULT_DELAY;
         }

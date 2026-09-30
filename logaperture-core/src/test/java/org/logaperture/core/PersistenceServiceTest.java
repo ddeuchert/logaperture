@@ -162,13 +162,11 @@ class PersistenceServiceTest {
         stateStore.save(new LevelOverride(
                 "com.acme.Payments", Level.WARN, "known-noisy", appliedAt, "jmx", PersistenceTier.STICKY, null));
 
-        service.resumeFromStateStore(Instant.now());
+        assertEquals(1, service.resumeFromStateStore(Instant.now()));
 
         assertEquals(Level.WARN, adapter.effectiveLevel("com.acme.Payments"));
         assertTrue(overrides.get("com.acme.Payments").isPresent());
-        AuditRecord record = auditLog.records().get(0);
-        assertEquals("resume", record.source());
-        assertEquals(AuditRecord.Action.MUTATION, record.action());
+        assertTrue(auditLog.records().isEmpty(), "doc/specs/quieter-output.md Q2: audited once, by the composition root");
     }
 
     @Test

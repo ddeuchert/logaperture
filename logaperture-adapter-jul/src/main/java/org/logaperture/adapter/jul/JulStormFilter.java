@@ -15,6 +15,7 @@
  */
 package org.logaperture.adapter.jul;
 
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.StormObservation;
 import org.logaperture.core.StormObserver;
 
@@ -65,7 +66,7 @@ final class JulStormFilter implements Filter {
         try {
             observer.observe(toObservation(record));
         } catch (RuntimeException e) {
-            System.err.println("[logaperture-adapter-jul] storm observation failed, record unaffected: " + e);
+            Diagnostics.warnThrottled("storm-observation", "storm observation failed, record unaffected: " + e, null);
         }
         return delegate == null || delegate.isLoggable(record);
     }

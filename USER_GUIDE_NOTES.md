@@ -73,3 +73,13 @@ tables into the guide more or less as they are.
 - Re-applying a recipe replaces its rules (new `rN` ids) and resets the tier of its levels.
 - A recipe's changes stay after its library is undeployed; `list recipes` still shows it as `(no
   longer offered)` so it can be reset.
+
+## LogAperture's own output
+
+- Startup is one line (the banner). Anything else LogAperture prints is a warning or an error.
+- `-Dlogaperture.diagnostics.level=INFO` (or `DEBUG`) shows more; `ERROR` hides the banner too.
+- The audit trail still goes to stderr unless `-Dlogaperture.audit.file=<path>`.
+- Drop summaries: one line every 10 minutes by default (`-Dlogaperture.drop.summaryInterval=30m`,
+  minimum 1m, can't be switched off). On WildFly it's the `org.logaperture.drop` category, so it can
+  be raised, lowered or sent to its own file in `standalone.xml` like any other logger.
+

@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.core.spi.LoggingAdapter;
@@ -61,7 +62,7 @@ public final class HandlerOverrideApplier {
                 try {
                     adapter.setHandlerLevel(real, override.level());
                 } catch (RuntimeException e) {
-                    System.err.println("[logaperture-core] " + override.handlerRef()
+                    Diagnostics.warn(override.handlerRef()
                             + ": failed to apply to handler '" + real + "', leaving it unchanged: " + e);
                 }
             }

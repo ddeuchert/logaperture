@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.Drop;
 import org.logaperture.api.LogRule;
@@ -117,13 +118,16 @@ public final class RuleService implements RuleOperations {
      * than on {@link LogRule} (no rule type needs it); dropped when the rule is removed or altered (#7).
      */
     private final Map<String, String> recipes = new ConcurrentHashMap<>();
+    /** Rules (and vendor-rule alterations) {@link #resumeFromStateStore} put back in force, for its return value. */
+    private int resumedRules;
     /** {@code Long.MIN_VALUE} sentinel = "never sampled yet" -- doc/specs/drop-rule.md "The keep-one-in-N escape hatch": the very first match is always kept. */
     private final Map<String, AtomicLong> nextSampleAtNanos = new ConcurrentHashMap<>();
     /** Suppressed (denied) hits since the rule's last-emitted summary line -- distinct from {@link #hitCounters}, which never resets. */
     private final Map<String, LongAdder> pendingSummaryCounters = new ConcurrentHashMap<>();
     /** {@code sampleFull}-kept hits since the rule's last-emitted summary line -- doc/specs/drop-rule.md's own worked example ("41,209 suppressed ..., 8 sampled through") reports these as a separate figure, never folded into "suppressed". */
     private final Map<String, LongAdder> pendingSampledCounters = new ConcurrentHashMap<>();
-    private final Map<String, AtomicLong> lastSummaryAtNanos = new ConcurrentHashMap<>();
+    /** Counts of drop rules removed since the last summary, still to be reported (quieter-output.md Q4). */
+    private final List<DropCount> retiredDropCounts = new ArrayList<>();
 
     public RuleService(LoggingAdapter adapter, CapabilityPolicy policy, AuditLog auditLog, StateStore stateStore,
             String context, String principal, String source) {
@@ -253,6 +257,10 @@ public final class RuleService implements RuleOperations {
             throw new IllegalArgumentException(
                     "'" + loggerName + "' is a protected category -- no rule may be attached to it.");
         }
+        if (isOwnCategory(loggerName)) {
+            throw new IllegalArgumentException("'" + loggerName + "' is LogAperture's own category -- no rule may "
+                    + "be attached to it.");
+        }
 
         String id = "r" + idSequence.getAndIncrement();
         Instant now = Instant.now();
@@ -333,15 +341,16 @@ public final class RuleService implements RuleOperations {
                 if (protectedCategories.isProtected(vendor.loggerName())) {
                     throw new IllegalArgumentException("'" + vendor.loggerName() + "' is a protected category");
                 }
+                if (isOwnCategory(vendor.loggerName())) {
+                    throw new IllegalArgumentException("'" + vendor.loggerName() + "' is LogAperture's own category");
+                }
                 LogRule rule = factory.create(vendor.id(), vendor.loggerName(), vendor.matchers(), vendor.reason(),
                         PersistenceTier.SESSION, null, now, Map.of());
                 vendorBaselines.put(rule.id(), rule);
                 vendorRuleOrder.add(rule.id());
-                registry.attach(rule);
-                auditLog.record(new AuditRecord(now, principal, VendorDefaults.AUDIT_SOURCE, rule.loggerName(), null,
-                        describe(rule), rule.reason(), AuditRecord.Action.MUTATION));
+                registry.attach(rule); // audited once per load (doc/specs/quieter-output.md Q1)
             } catch (RuntimeException e) {
-                System.err.println("[logaperture] failed to attach vendor rule '" + vendor.id() + "', skipping it: "
+                Diagnostics.warn("failed to attach vendor rule '" + vendor.id() + "', skipping it: "
                         + e);
             }
         }
@@ -447,7 +456,7 @@ public final class RuleService implements RuleOperations {
         }
         recipes.remove(id); // doc/specs/recipes.md #7: altered by hand, so no longer the recipe's
         if (definitionChanged) {
-            forgetEvaluationState(id);
+            forgetEvaluationState(id, current.loggerName());
         }
         if (candidate.tier() != PersistenceTier.SESSION) {
             safePersist(() -> stateStore.saveRule(toPersisted(candidate)));
@@ -624,7 +633,7 @@ public final class RuleService implements RuleOperations {
         long finalHitCount = hitCount(id);
         String recipe = recipes.get(id);
         registry.removeById(id);
-        forgetEvaluationState(id);
+        forgetEvaluationState(id, rule.loggerName());
         safePersist(() -> stateStore.removeRule(id));
         auditRemoval(rule);
         return Optional.of(new RuleView(rule, context, finalHitCount, null, false, false, recipe));
@@ -669,7 +678,7 @@ public final class RuleService implements RuleOperations {
         }
         toNativeVendorRules.put(baseline.id(), baseline);
         if (!sameDefinition(current, baseline)) {
-            forgetEvaluationState(current.id());
+            forgetEvaluationState(current.id(), current.loggerName());
         }
         // Otherwise evaluation state is left alone: the vendor set is small and fixed, and keeping the hit
         // counter lets `list rules` show what the rule had matched before it was switched off.
@@ -693,7 +702,7 @@ public final class RuleService implements RuleOperations {
             throw new IllegalStateException("rule " + current.id() + " changed while it was being reset -- try again.");
         }
         if (!sameDefinition(current, baseline)) {
-            forgetEvaluationState(current.id());
+            forgetEvaluationState(current.id(), current.loggerName());
         }
         auditLog.record(new AuditRecord(Instant.now(), principal, auditSource, current.loggerName(),
                 describeFull(current, true), describeFull(baseline, false), auditReason,
@@ -770,7 +779,7 @@ public final class RuleService implements RuleOperations {
                 vendorReset.add(rule.id());
             } else {
                 registry.removeById(rule.id());
-                forgetEvaluationState(rule.id());
+                forgetEvaluationState(rule.id(), rule.loggerName());
                 removed.add(rule.id());
                 auditRemoval(rule);
             }
@@ -817,7 +826,7 @@ public final class RuleService implements RuleOperations {
                 }
                 expired.add(rule.id());
             } else if (registry.removeIfCurrent(rule)) {
-                forgetEvaluationState(rule.id());
+                forgetEvaluationState(rule.id(), rule.loggerName());
                 expired.add(rule.id());
                 auditLog.record(new AuditRecord(now, principal, "expiry-sweep", rule.loggerName(), describe(rule),
                         null, "expired", AuditRecord.Action.REVERSION));
@@ -861,15 +870,17 @@ public final class RuleService implements RuleOperations {
      * @param now injected so tests can simulate "time has passed since the
      *            rule was persisted" without a real sleep
      */
-    public void resumeFromStateStore(Instant now) {
+    public int resumeFromStateStore(Instant now) {
+        resumedRules = 0;
         for (PersistedRule persisted : stateStore.loadAllRules()) {
             try {
                 resumeOne(persisted, now);
             } catch (RuntimeException e) {
-                System.err.println("[logaperture-state] failed to resume persisted rule '" + persisted.id()
+                Diagnostics.warn("failed to resume persisted rule '" + persisted.id()
                         + "', skipping it: " + e);
             }
         }
+        return resumedRules;
     }
 
     private void resumeOne(PersistedRule persisted, Instant now) {
@@ -908,7 +919,7 @@ public final class RuleService implements RuleOperations {
             // -- leave the persisted row untouched so a later resume, once
             // #72/#34 register one, picks it up. "Skipped, not failed" --
             // doc/specs/doctor.md's own discipline for an unresolvable fact.
-            System.err.println("[logaperture-state] rule '" + persisted.id() + "' (" + persisted.action()
+            Diagnostics.warn("rule '" + persisted.id() + "' (" + persisted.action()
                     + ") not resumed: no rule type registered for that action");
             return;
         }
@@ -919,8 +930,7 @@ public final class RuleService implements RuleOperations {
         if (persisted.recipe() != null) {
             recipes.put(rule.id(), persisted.recipe());
         }
-        auditLog.record(new AuditRecord(now, principal, "resume", persisted.loggerName(), null, describe(rule),
-                persisted.reason(), AuditRecord.Action.MUTATION));
+        resumedRules++; // audited once for the whole resume by the composition root (quieter-output.md Q2)
     }
 
     /**
@@ -932,14 +942,14 @@ public final class RuleService implements RuleOperations {
      */
     private void resumeVendorAlteration(PersistedRule persisted, Instant now) {
         if (!vendorDefaultsLoaded) {
-            System.err.println("[logaperture-state] alteration of vendor rule '" + persisted.id()
+            Diagnostics.warn("alteration of vendor rule '" + persisted.id()
                     + "' not applied: the vendor defaults file isn't loaded; kept in the state file");
             return;
         }
         LogRule baseline = vendorBaselines.get(persisted.id());
         if (baseline == null || !baseline.actionName().equals(persisted.action())
                 || !baseline.loggerName().equals(persisted.loggerName())) {
-            System.err.println("[logaperture-state] WARN dropping the saved alteration of vendor rule '"
+            Diagnostics.warn("dropping the saved alteration of vendor rule '"
                     + persisted.id() + "': the vendor defaults file no longer has that " + persisted.action()
                     + " rule on " + persisted.loggerName());
             safePersist(() -> stateStore.removeRule(persisted.id()));
@@ -950,7 +960,7 @@ public final class RuleService implements RuleOperations {
         }
         RuleFactory factory = actionFactories.get(persisted.action());
         if (factory == null) {
-            System.err.println("[logaperture-state] alteration of vendor rule '" + persisted.id() + "' ("
+            Diagnostics.warn("alteration of vendor rule '" + persisted.id() + "' ("
                     + persisted.action() + ") not applied: no rule type registered for that action");
             return;
         }
@@ -958,9 +968,7 @@ public final class RuleService implements RuleOperations {
                 persisted.reason(), persisted.tier(), persisted.expiresAt(), persisted.createdAt(),
                 persisted.payload());
         if (registry.replaceIfCurrent(baseline, alteration)) {
-            auditLog.record(new AuditRecord(now, principal, "resume", persisted.loggerName(),
-                    describeFull(baseline, false), describeFull(alteration, false), persisted.reason(),
-                    AuditRecord.Action.MUTATION));
+            resumedRules++; // audited once for the whole resume (quieter-output.md Q2)
         }
     }
 
@@ -993,7 +1001,7 @@ public final class RuleService implements RuleOperations {
         try {
             stateStoreCall.run();
         } catch (RuntimeException e) {
-            System.err.println("[logaperture-state] state store operation failed, continuing in-memory only: " + e);
+            Diagnostics.warn("state store operation failed, continuing in-memory only: " + e);
         }
     }
 
@@ -1033,6 +1041,9 @@ public final class RuleService implements RuleOperations {
      */
     public List<LogRule> effectiveRules(String loggerName) {
         Objects.requireNonNull(loggerName, "loggerName");
+        if (isOwnCategory(loggerName)) {
+            return List.of(); // doc/specs/quieter-output.md Q5: no rule reaches LogAperture's own messages
+        }
         List<LogRule> effective = new ArrayList<>();
         String current = loggerName;
         while (current != null) {
@@ -1179,63 +1190,68 @@ public final class RuleService implements RuleOperations {
     }
 
     /**
-     * The periodic drop-summary line (doc/specs/drop-rule.md "Periodic
-     * summary line") -- called from the same sweep tick that already drives
-     * expiry and reconfiguration re-application (see {@link
-     * AggregateLevelControl#reportDueDropSummaries}), never a background
-     * thread of this class's own. Routed through this process's own stderr
-     * diagnostic convention (the same one {@link #resumeFromStateStore}
-     * already uses), not the target application's own logging pipeline --
-     * writing into a framework this agent instruments from inside it is a
-     * re-entrancy risk {@code logaperture-bridge}'s {@code Diagnostics}
-     * class doc already calls out, and {@code core} does not depend on that
-     * module (doc/specs/drop-rule.md "Divergence from prior specs").
+     * One drop rule's suppressions since the last summary -- doc/specs/quieter-output.md Q4.
+     *
+     * @param sampled events let through by the rule's periodic full sample
      */
-    public void reportDueDropSummaries(Instant now) {
-        long nowNanos = System.nanoTime();
-        for (LogRule rule : registry.all()) {
-            if (!(rule instanceof Drop drop)) {
-                continue;
-            }
-            LongAdder pending = pendingSummaryCounters.get(drop.id());
-            if (pending == null) {
-                continue;
-            }
-            AtomicLong lastAt = lastSummaryAtNanos.computeIfAbsent(drop.id(), id -> new AtomicLong(Long.MIN_VALUE));
-            long last = lastAt.get();
-            boolean due = last == Long.MIN_VALUE || nowNanos - last >= SampleFullPolicy.DEFAULT_INTERVAL.toNanos();
-            if (!due) {
-                continue;
-            }
-            // sumThenReset(), not a separate sum() followed by reset() -- LongAdder's own
-            // documented pattern for exactly this "read the interval's total, then start the next
-            // one" use, closing the window where a recordHit landing between a plain sum() and
-            // reset() would be silently dropped from every future summary (a code-review finding).
-            long suppressed = pending.sumThenReset();
-            LongAdder sampledAdder = pendingSampledCounters.get(drop.id());
-            long sampled = sampledAdder == null ? 0L : sampledAdder.sumThenReset();
-            if (suppressed == 0L && sampled == 0L) {
-                continue;
-            }
-            if (!lastAt.compareAndSet(last, nowNanos)) {
-                continue; // lost a race with a concurrent tick -- the counts above are already
-                          // consumed either way, and the next due tick reports whatever accrues next
-            }
-            System.err.println("[logaperture] " + now + " WARN drop summary: " + drop.id() + " ("
-                    + drop.loggerName() + ") -- " + suppressed + " suppressed since the last summary, " + sampled
-                    + " sampled through");
+    public record DropCount(String ruleId, String loggerName, long suppressed, long sampled) {
+    }
+
+    /**
+     * Every drop rule's counts since the last call, and resets them; rules with nothing to report are
+     * left out. Includes rules removed since the last call, so a reset before the summary doesn't hide
+     * what they dropped (§9.6). Called by {@link AggregateLevelControl#reportDueDropSummaries} once per
+     * summary interval, never a background thread of its own.
+     */
+    public List<DropCount> takeDropCounts() {
+        List<DropCount> counts = new ArrayList<>();
+        synchronized (retiredDropCounts) {
+            counts.addAll(retiredDropCounts);
+            retiredDropCounts.clear();
         }
+        for (LogRule rule : registry.all()) {
+            if (rule instanceof Drop drop) {
+                DropCount count = takeCount(drop.id(), drop.loggerName());
+                if (count != null) {
+                    counts.add(count);
+                }
+            }
+        }
+        return counts;
+    }
+
+    /** {@code ruleId}'s pending counts, reset; {@code null} when there are none. */
+    private DropCount takeCount(String ruleId, String loggerName) {
+        // sumThenReset(), not sum() then reset(): a hit landing between the two would be lost.
+        LongAdder pending = pendingSummaryCounters.get(ruleId);
+        long suppressed = pending == null ? 0L : pending.sumThenReset();
+        LongAdder sampledAdder = pendingSampledCounters.get(ruleId);
+        long sampled = sampledAdder == null ? 0L : sampledAdder.sumThenReset();
+        return suppressed == 0L && sampled == 0L ? null : new DropCount(ruleId, loggerName, suppressed, sampled);
     }
 
     /** Drops every per-rule evaluation-time entry keyed by {@code ruleId} -- called whenever a rule is actually removed, so these maps don't grow for the life of the process (a code-review finding). {@link #decisionCache} needs no equivalent: it's keyed by framework record identity, already bounded by {@link WeakHashMap}'s own GC-driven eviction. */
-    private void forgetEvaluationState(String ruleId) {
+    private void forgetEvaluationState(String ruleId, String loggerName) {
+        DropCount unreported = takeCount(ruleId, loggerName);
+        if (unreported != null) {
+            synchronized (retiredDropCounts) {
+                retiredDropCounts.add(unreported); // reported in the next summary (quieter-output.md Q4)
+            }
+        }
         recipes.remove(ruleId);
         hitCounters.remove(ruleId);
         nextSampleAtNanos.remove(ruleId);
         pendingSummaryCounters.remove(ruleId);
         pendingSampledCounters.remove(ruleId);
-        lastSummaryAtNanos.remove(ruleId);
     }
+
+    /** {@code org.logaperture} and its descendants: LogAperture's own messages (quieter-output.md Q5). */
+    static boolean isOwnCategory(String loggerName) {
+        return loggerName.equals(OWN_CATEGORY) || loggerName.startsWith(OWN_CATEGORY + ".");
+    }
+
+    /** The root of LogAperture's own logger categories. */
+    static final String OWN_CATEGORY = "org.logaperture";
 
     private void requireCapability(Capability capability) {
         if (!policy.isGranted(capability)) {

@@ -15,6 +15,7 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.bridge.Diagnostics;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -68,7 +69,7 @@ public final class StderrAuditLog implements AuditLog {
         try {
             return new PrintStream(new FileOutputStream(path, true), true, StandardCharsets.UTF_8);
         } catch (IOException e) {
-            System.err.println("[logaperture-audit] failed to open audit file '" + path
+            Diagnostics.warn("failed to open audit file '" + path
                     + "', falling back to stderr: " + e);
             return System.err;
         }

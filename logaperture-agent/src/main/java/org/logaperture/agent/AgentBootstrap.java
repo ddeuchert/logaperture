@@ -21,6 +21,7 @@ import org.logaperture.container.wildfly.WildFlyContainerIntegration;
 import org.logaperture.control.jmx.JmxRegistrar;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditLog;
+import org.logaperture.core.AuditRecord;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.LibraryRecipeScanner;
 import org.logaperture.core.RecipeCatalog;
@@ -33,6 +34,7 @@ import org.logaperture.core.spi.ContainerIntegration;
 
 import java.lang.instrument.Instrumentation;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -85,6 +87,7 @@ final class AgentBootstrap {
             CapabilityPolicy policy = CapabilityPolicy.allowAll();
             AuditLog auditLog = new StderrAuditLog();
             VendorDefaults vendorDefaults = loadVendorDefaults(agentArgs);
+            auditVendorDefaults(vendorDefaults, auditLog);
 
             ContainerIntegration container = integrations().stream()
                     .filter(ContainerIntegration::detect)
@@ -99,7 +102,7 @@ final class AgentBootstrap {
             // handed the aggregate directly, so there is no return value to
             // race against the async install.
             Consumer<AggregateLevelControl> onFirstContextReady = operations -> publishControlSurface(container,
-                    operations, recipes(inst, policy, vendorDefaults, operations));
+                    operations, recipes(inst, policy, vendorDefaults, operations), vendorDefaults);
             container.activate(inst, policy, auditLog, vendorDefaults, onFirstContextReady);
         } catch (Throwable t) {
             Diagnostics.error("LogAperture agent bootstrap failed to start", t);
@@ -116,7 +119,7 @@ final class AgentBootstrap {
         try {
             AgentArguments arguments = AgentArguments.parse(agentArgs, Path.of(System.getProperty("user.dir", ".")));
             for (String warning : arguments.warnings()) {
-                Diagnostics.warn("LogAperture: " + warning);
+                Diagnostics.warn("" + warning);
             }
             if (arguments.vendorDefaults().isEmpty()) {
                 return VendorDefaults.none();
@@ -125,7 +128,7 @@ final class AgentBootstrap {
             reportVendorDefaults(vendorDefaults);
             return vendorDefaults;
         } catch (RuntimeException e) {
-            Diagnostics.warn("LogAperture: failed to read the agent arguments, continuing without vendor defaults", e);
+            Diagnostics.warn("failed to read the agent arguments, continuing without vendor defaults", e);
             return VendorDefaults.none();
         }
     }
@@ -133,13 +136,13 @@ final class AgentBootstrap {
     private static void reportVendorDefaults(VendorDefaults vendorDefaults) {
         String path = vendorDefaults.path().map(Path::toString).orElse("?");
         if (vendorDefaults.status() == VendorDefaults.Status.REJECTED) {
-            Diagnostics.warn("LogAperture: vendor defaults file " + path + " was rejected -- none of its settings "
+            Diagnostics.warn("vendor defaults file " + path + " was rejected -- none of its settings "
                     + "apply:\n  " + String.join("\n  ", vendorDefaults.errors()));
             return;
         }
-        Diagnostics.info("LogAperture: vendor defaults loaded from " + path + " (" + vendorDefaults.summary() + ")");
+        // Loaded: the startup banner names it (doc/specs/quieter-output.md Q3).
         if (vendorDefaults.writable()) {
-            Diagnostics.warn("LogAperture: vendor defaults file " + path + " (or its directory) is writable by the "
+            Diagnostics.warn("vendor defaults file " + path + " (or its directory) is writable by the "
                     + "account this JVM runs as -- anyone who can run code as that account can change the "
                     + "baseline logging configuration");
         }
@@ -158,18 +161,58 @@ final class AgentBootstrap {
             RecipeCatalog catalog = new RecipeCatalog(vendorDefaults.recipes(), RecipeCatalog.defaultFolder(), scanner);
             return new RecipeService(policy, catalog, operations, operations, operations);
         } catch (RuntimeException e) {
-            Diagnostics.warn("LogAperture: recipes are unavailable", e);
+            Diagnostics.warn("recipes are unavailable", e);
             return RecipeOperations.none();
         }
     }
 
+    /**
+     * One audit record for a loaded vendor defaults file, naming its path and hash -- doc/specs/
+     * quieter-output.md Q1 -- in place of one per entry. A rejected file writes none (its errors are
+     * reported instead).
+     */
+    static void auditVendorDefaults(VendorDefaults vendorDefaults, AuditLog auditLog) {
+        if (vendorDefaults.status() != VendorDefaults.Status.LOADED) {
+            return;
+        }
+        try {
+            auditLog.record(new AuditRecord(Instant.now(), System.getProperty("user.name", "unknown"),
+                    VendorDefaults.AUDIT_SOURCE, vendorDefaults.path().map(Path::toString).orElse("?"), null,
+                    "loaded sha256=" + vendorDefaults.sha256().orElse("?") + " (" + vendorDefaults.summary() + ")",
+                    null, AuditRecord.Action.MUTATION));
+        } catch (RuntimeException e) {
+            Diagnostics.warn("failed to audit the vendor defaults load", e);
+        }
+    }
+
+    /**
+     * The one startup line -- doc/specs/quieter-output.md Q3: version, container, the vendor defaults
+     * file and what it set, and how many saved settings were restored.
+     */
+    static String banner(String version, String containerId, VendorDefaults vendorDefaults, int restored) {
+        StringBuilder line = new StringBuilder("LogAperture ").append(version).append(" active (")
+                .append("wildfly".equals(containerId) ? "WildFly" : "JVM").append(')');
+        List<String> parts = new java.util.ArrayList<>();
+        if (vendorDefaults.status() == VendorDefaults.Status.LOADED) {
+            parts.add("vendor defaults " + vendorDefaults.path().map(Path::toString).orElse("?") + " ("
+                    + vendorDefaults.summary() + ")");
+        }
+        if (restored > 0) {
+            parts.add(restored + (restored == 1 ? " sticky setting" : " sticky settings") + " restored");
+        }
+        if (!parts.isEmpty()) {
+            line.append(": ").append(String.join("; ", parts));
+        }
+        return line.toString();
+    }
+
     private static void publishControlSurface(ContainerIntegration container, AggregateLevelControl operations,
-            RecipeOperations recipes) {
+            RecipeOperations recipes, VendorDefaults vendorDefaults) {
         try {
             JmxRegistrar.register(operations, operations, operations, operations, operations, operations, operations,
                     operations, recipes); // AggregateLevelControl implements all eight operation interfaces
             System.setProperty(VERSION_PROPERTY, agentVersion());
-            Diagnostics.info("LogAperture level control installed (" + container.id() + " container, JMX surface)");
+            Diagnostics.notice(banner(agentVersion(), container.id(), vendorDefaults, operations.restoredSettings()));
         } catch (Throwable t) {
             Diagnostics.error("LogAperture failed to register the JMX control surface", t);
         }

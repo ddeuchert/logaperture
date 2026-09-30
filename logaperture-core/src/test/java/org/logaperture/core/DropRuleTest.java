@@ -274,10 +274,10 @@ class DropRuleTest {
         assertEquals(0L, service.hitCount(drop.id()), "hit count for a removed rule's id reads back as 0");
     }
 
-    // --- Periodic drop-summary line: suppressed vs. sampled (a code-review finding) -----------
+    // --- Drop counts for the summary: suppressed vs. sampled (a code-review finding) ----------
 
     @Test
-    void reportDueDropSummaries_separatesSuppressedFromSampled() {
+    void takeDropCounts_separatesSuppressedFromSampled_andResets() {
         Drop drop = attachDrop("com.acme.Worker", new CompiledMatchers(Level.WARN, "noisy", false, null, null,
                 false), new SampleFullPolicy(true, Duration.ofHours(1)));
         RuleCandidateEvent noisy = event("com.acme.Worker", Level.INFO, "noisy", null);
@@ -285,35 +285,46 @@ class DropRuleTest {
         service.gate().evaluate(new Object(), noisy); // denied
         service.gate().evaluate(new Object(), noisy); // denied
 
-        java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
-        java.io.PrintStream originalErr = System.err;
-        System.setErr(new java.io.PrintStream(captured, true, java.nio.charset.StandardCharsets.UTF_8));
-        try {
-            service.reportDueDropSummaries(Instant.now());
-        } finally {
-            System.setErr(originalErr);
-        }
-
-        String line = captured.toString(java.nio.charset.StandardCharsets.UTF_8);
-        assertTrue(line.contains(drop.id()), line);
-        assertTrue(line.contains("2 suppressed"), "two denied events, not folded in with the sample: " + line);
-        assertTrue(line.contains("1 sampled through"), "the sampled-through event reported separately: " + line);
+        assertEquals(java.util.List.of(new RuleService.DropCount(drop.id(), "com.acme.Worker", 2, 1)),
+                service.takeDropCounts());
+        assertEquals(java.util.List.of(), service.takeDropCounts(), "reset once taken");
     }
 
     @Test
-    void reportDueDropSummaries_silentForAnIdleRule() {
+    void takeDropCounts_leavesOutAnIdleRule() {
         attachDrop("com.acme.Worker", new CompiledMatchers(Level.WARN, "noisy", false, null, null, false),
                 SampleFullPolicy.disabled());
 
-        java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
-        java.io.PrintStream originalErr = System.err;
-        System.setErr(new java.io.PrintStream(captured, true, java.nio.charset.StandardCharsets.UTF_8));
-        try {
-            service.reportDueDropSummaries(Instant.now());
-        } finally {
-            System.setErr(originalErr);
-        }
+        assertEquals(java.util.List.of(), service.takeDropCounts());
+    }
 
-        assertEquals("", captured.toString(java.nio.charset.StandardCharsets.UTF_8));
+    /** doc/specs/quieter-output.md Q4: a rule reset before the summary still has its drops reported (§9.6). */
+    @Test
+    void takeDropCounts_includesARuleRemovedSinceTheLastSummary() {
+        Drop drop = attachDrop("com.acme.Worker", new CompiledMatchers(Level.WARN, "noisy", false, null, null,
+                false), SampleFullPolicy.disabled());
+        service.gate().evaluate(new Object(), event("com.acme.Worker", Level.INFO, "noisy", null));
+
+        service.resetRule(drop.id(), true);
+
+        assertEquals(java.util.List.of(new RuleService.DropCount(drop.id(), "com.acme.Worker", 1, 0)),
+                service.takeDropCounts());
+    }
+
+    /** doc/specs/quieter-output.md Q5: no rule reaches LogAperture's own messages, and none can be attached. */
+    @Test
+    void logaperturesOwnCategory_isNeverMatched_andRefusesARule() {
+        attachDrop("org", new CompiledMatchers(Level.ERROR, "drop summary", false, null, null, false),
+                SampleFullPolicy.disabled());
+
+        GateVerdict verdict = service.gate().evaluate(new Object(),
+                event("org.logaperture.drop", Level.INFO, "drop summary: 3 events", null));
+
+        assertFalse(verdict.deny(), "a rule on 'org' doesn't reach org.logaperture.drop");
+        IllegalArgumentException refused = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> attachDrop("org.logaperture.drop", new CompiledMatchers(Level.ERROR, "x", false, null, null,
+                        false), SampleFullPolicy.disabled()));
+        assertTrue(refused.getMessage().contains("LogAperture's own category"), refused.getMessage());
     }
 }
