@@ -1,0 +1,178 @@
+# Quieter, consolidated LogAperture output (issue #123)
+
+Status: **draft for sign-off** (2026-09-29). Not implemented. Target: 1.0.0-beta.1 (feature freeze
+2026-10-15).
+Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §4.5 (self-diagnostics), §9.6
+(suppression is never silent), §9.7 (the audit trail).
+Builds on: [`vendor-defaults.md`](vendor-defaults.md) ("Audit"), [`persistence.md`](persistence.md)
+(resume), [`drop-rule.md`](drop-rule.md) ("Periodic summary line"),
+[`environment-report.md`](environment-report.md).
+Split from #123's original proposal: routing *all* of LogAperture's output through the
+application's logging is [#124](https://github.com/ddeuchert/logaperture/issues/124) (1.1.0).
+
+## Functional summary
+
+After this feature, the user will be able to:
+
+- Start an application with a vendor defaults file and see one line from LogAperture saying it is
+  active, what it loaded and what it restored, instead of a screenful.
+- Scan a server's startup log for errors without LogAperture's drop summaries showing up as
+  errors: on WildFly they appear as one INFO line every few minutes, in the server's own format,
+  under a category (`org.logaperture.drop`) the operator can raise, lower or redirect like any other.
+- Find LogAperture's audit trail in its own file, `~/.logaperture/audit.log`, rather than mixed into
+  the application's console -- or keep it on the console with `-Dlogaperture.audit.file=stderr`.
+- Turn all of LogAperture's own messages up or down with one setting,
+  `-Dlogaperture.diagnostics.level`, which now covers every message.
+- See where the audit trail goes, and the diagnostics level, in `logctl env`.
+
+## What's noisy today
+
+Measured in a WildFly test run and in a real deployment's startup log (not quoted here):
+
+| Output | When | Lines | Where it lands on WildFly |
+|---|---|---|---|
+| Vendor defaults loaded | start | 1 | console only |
+| One audit record per vendor entry | start | one per logger, handler and rule entry | console only |
+| One audit record per resumed sticky setting | start | one per setting | console only |
+| "level control installed" (×2), "handler-level install deferred/complete" | start | 4 | console only |
+| Drop summary, one per `drop` rule | first sweep after each rule's first match, then every 5 min | one per rule | `server.log` as `ERROR [stderr]`, with a second, UTC timestamp and a `WARN` inside |
+| ~60 other messages printed straight to `System.err` | on failures and oddities | varies | `server.log` as `ERROR [stderr]` |
+
+Two causes: audit and startup messages are one line per item, and messages reach the console by
+two paths -- `Diagnostics` and the audit log hold the `System.err` captured when the agent
+started (the raw console), while `core`'s direct prints use whatever `System.err` is at the time,
+which WildFly has wrapped into its logging at `ERROR`.
+
+## Decisions
+
+### Q1 — One audit record per vendor defaults load
+
+**Proposed:** loading the vendor defaults file writes one audit record, source `vendor-defaults`:
+`loaded <path> sha256=<hex> (12 loggers, 2 handlers, 10 rules, 3 recipes)`. The per-entry
+`MUTATION` records at install go away. The hash proves exactly which content applied; the entries
+themselves are visible through `logctl list`'s `VENDOR` column and `list rules`. Records are still
+written per entry for what *differs* from a clean load: an entry that failed to apply, one the
+verification sweep had to put back, and the handover of exported sticky settings (already one line
+each, `export-round-trip.md`). A rejected file still writes no audit record (vendor-defaults.md).
+
+### Q2 — One audit record per resume
+
+**Proposed:** resuming saved state writes one record, source `resume`: `restored 3 logger overrides,
+1 handler override, 2 rules from <state file>`, instead of one per entry. Per-entry records remain
+for the exceptions -- expired while stopped, dropped, or not resumable -- which already print their
+own messages.
+
+### Q3 — One startup banner
+
+**Proposed:** the "vendor defaults loaded", "level control installed" (both) and "handler-level
+install complete" lines are replaced by one line, written once the first logging context is
+installed:
+
+```
+[logaperture] LogAperture 1.0.0-beta.1 active (WildFly): vendor defaults /opt/app/vendor-defaults.yaml (12 loggers, 2 handlers, 10 rules); 3 sticky settings restored
+```
+
+It is written at every level except `ERROR` (Q7), since it's the one confirmation an operator
+needs that the agent is running. A rejected vendor defaults file is still a `WARN` with every
+error listed, as today; the writable-file warning stays a `WARN`. "handler-level install deferred"
+becomes `DEBUG` unless a delay was configured (`-Dlogaperture.handlerInstallDelaySeconds` > 0).
+
+### Q4 — Drop summaries: consolidated, and not during startup
+
+**Proposed:** one line per interval for all `drop` rules together, only when something was
+dropped, listing the rules by count:
+
+```
+drop summary: 440 events suppressed by 10 rules in the last 5m (vendor:drop-deployment 307, r3 60, ...)
+```
+
+The first summary comes one interval after the agent starts, not on the first sweep after a rule's
+first match, so a normal startup writes none. More than 5 rules are listed as the top 5 and `+N
+more`; per-rule detail is `logctl list rules`' hit counts. §9.6 holds: nothing suppressed goes
+unmentioned, it is summarised.
+
+### Q5 — Drop summaries go through the platform logger on JUL/WildFly
+
+**Proposed:** where the JUL adapter is in use (WildFly, JBoss LogManager), the summary is logged
+through a `java.util.logging` logger, `org.logaperture.drop`, at `INFO`, so it appears in the
+server's own format and the operator can raise, lower or redirect it in `standalone.xml` or with
+`logctl set logger org.logaperture.drop WARN`. Elsewhere (Logback, none), it goes to the diagnostics
+writer as today. This is the narrow, safe part of #124: the summary is written from the sweep
+thread, never from inside a log handler, so it can't loop through LogAperture's own wrappers.
+
+Two guards: LogAperture's rule gate never applies a rule to a record from an `org.logaperture`
+logger (so no `drop` or `trim`, including one attached to `org` or the root, can hide or reshape a
+summary -- §9.6), and `add rule` refuses an `org.logaperture` target outright.
+
+### Q6 — The audit trail goes to its own file by default
+
+**Proposed:** the default audit destination becomes `${logaperture.home}/audit.log` (appended; the
+directory the state file lives under). `-Dlogaperture.audit.file=<path>` still names another file,
+and the new value `stderr` keeps today's behaviour. If the file can't be opened, the audit falls
+back to stderr with one `WARN`, as the explicit-file case does today. The file is size-capped:
+at 10 MB it is rolled to `audit.log.1` (one previous file kept), so it can't grow without bound --
+`doctor`'s own complaint about file handlers. `logctl env` gains an `Audit` line naming the
+destination.
+
+### Q7 — Every message through one writer; default level WARN
+
+**Proposed:** `core`'s ~40 and the JUL adapter's direct `System.err` prints go through `Diagnostics`
+(`core` takes a dependency on the dependency-free `logaperture-bridge`), so
+`-Dlogaperture.diagnostics.level` governs all of them. One prefix, `[logaperture]`, and one format,
+`[logaperture] LEVEL message` -- no second timestamp, since every console and log already has one.
+`Diagnostics` always writes to the stream captured at agent start, so no LogAperture line is
+re-labelled `ERROR [stderr]` in `server.log`; only Q5's summary goes into the platform logs. The
+default level becomes `WARN` (from `INFO`): with Q3's banner, nothing routine is lost. Each message
+gets a deliberate level; per-event failure messages (a rule or storm evaluation that threw) are
+rate-limited to one per message per minute, so a broken rule can't flood the console.
+
+### Q8 — Where this leaves the level control
+
+**Proposed:** no new setting beyond Q6's `stderr` value and Q4's interval (Q9). The vendor defaults
+file does not gain a way to set LogAperture's own verbosity in this change; it's a JVM setting
+(`-D`), as today, and could join the file in a later release if asked for.
+
+### Q9 — The drop-summary interval is configurable, not switchable off
+
+**Proposed:** `-Dlogaperture.drop.summaryInterval=<duration>` (e.g. `15m`), default `5m`, minimum
+`1m`. There is no `off`: §9.6 makes suppression never silent, and Q5 already lets the operator
+route or raise the summary's level.
+
+### Q10 — Release placement
+
+**Proposed:** 1.0.0-beta.1, one PR. Q1-Q3 and Q6-Q7 are small and local; Q4-Q5 is the largest part.
+If time runs short at the freeze, Q5 (the platform logger) moves to 1.1 with #124 and the
+consolidated summary (Q4) ships through the diagnostics writer.
+
+## Out of scope
+
+- Routing all of LogAperture's diagnostics through the application's logging, and anything on
+  Logback beyond today's stderr: #124 (1.1.0).
+- Hash-chained audit records and syslog/Event Log mirroring (§9.7): unchanged, still future work.
+- A vendor-defaults-file setting for LogAperture's own verbosity (Q8).
+
+## Testing
+
+- Unit: one vendor audit record with the file's hash; one resume record with counts; the banner
+  text; consolidated summary format, ordering, `+N more`, and no summary before one interval; the
+  rule gate skipping `org.logaperture` records and `add rule` refusing the target; audit file
+  default, `stderr`, fallback, and roll at the cap; every former direct print now honouring the
+  level; rate-limiting of per-event failures.
+- `WildFlyContainerIT`: the drop summary appears in `server.log` at `INFO` under
+  `org.logaperture.drop`, not as `ERROR [stderr]`; a start with a vendor defaults file writes one
+  banner line to the console.
+
+## Decision table
+
+| # | Decision | Status |
+|---|---|---|
+| Q1 | One audit record per vendor defaults load, with the file's SHA-256; per-entry only for exceptions | Proposed |
+| Q2 | One audit record per resume, with counts; per-entry only for exceptions | Proposed |
+| Q3 | One startup banner replaces the INFO lines; shown at every level but `ERROR` | Proposed |
+| Q4 | One consolidated drop summary per interval; none before the first interval | Proposed |
+| Q5 | On JUL/WildFly the summary goes through `org.logaperture.drop` at INFO; rules never apply to `org.logaperture` | Proposed |
+| Q6 | Audit to `${logaperture.home}/audit.log` by default, 10 MB roll, `stderr` opt-out | Proposed |
+| Q7 | Every message through `Diagnostics`, one format, captured stderr, default `WARN`, per-event failures rate-limited | Proposed |
+| Q8 | No vendor-file setting for LogAperture's own verbosity in this change | Proposed |
+| Q9 | `-Dlogaperture.drop.summaryInterval`, default 5m, minimum 1m, no `off` | Proposed |
+| Q10 | Beta 1, one PR; Q5 moves to 1.1 before the freeze moves | Proposed |

@@ -175,6 +175,8 @@ The agent must never load framework classes into its own classloader, and must n
 
 The agent cannot use the application's logging framework — that's a re-entrancy loop waiting to happen. It needs its own minimal, dependency-free diagnostic writer to stderr or a dedicated file, with its own level, controlled by `-Dlogaperture.diagnostics.level=`.
 
+Every one of the agent's own messages goes through that writer, and routine output is consolidated (one startup line, one audit record per vendor defaults load or resume, one drop summary per interval): [`doc/specs/quieter-output.md`](specs/quieter-output.md) (#123). The drop summary alone is logged through the application's logging on JUL/WildFly, from the sweep thread, never from inside a handler; routing all diagnostics that way is [#124](https://github.com/ddeuchert/logaperture/issues/124).
+
 ### 4.6 Module layout
 
 One constraint the layout must enforce: **`core` never depends on `agent`.** The agent is one delivery mechanism for the engine, not the engine itself. Keeping that direction clean is what makes in-process integrations — a Quarkus extension, a Spring Boot starter, anything embedded — cheap to add later (§18.2), and it is the kind of dependency that gets introduced accidentally by a single convenience import. Assert it in the build.
