@@ -30,7 +30,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.regex.Pattern;
 
 /**
  * {@code logctl storms}'s engine — see doc/specs/storm-detection.md
@@ -74,20 +73,7 @@ public final class StormDetector implements StormObserver {
     private static final int DEFAULT_FIRST_OCCURRENCE_BYTES = 8 * 1024;
 
     private static final int EVICTION_SAMPLE_SIZE = 5;
-    private static final int MAX_MESSAGE_LENGTH = 500;
     private static final String TRUNCATION_MARKER = "\n... [truncated]";
-
-    private static final Pattern UUID_PATTERN = Pattern.compile(
-            "\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b");
-    // The bare-hex alternative requires at least one a-f/A-F letter in the run (a lookahead), so a
-    // purely-decimal run of 6+ digits (e.g. a long numeric id) is left for DIGIT_RUN_PATTERN instead
-    // of being misread as hex -- every digit is technically a valid hex digit, so without this guard
-    // "order 482156" and "order 4821" would normalize to different placeholders (<hex> vs <n>) for
-    // what is otherwise the identical message shape.
-    private static final Pattern HEX_RUN_PATTERN = Pattern.compile(
-            "\\b0[xX][0-9a-fA-F]+\\b|\\b(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{6,}\\b");
-    private static final Pattern DIGIT_RUN_PATTERN = Pattern.compile("\\d+");
-    private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
     private final long thresholdEvents;
     private final long windowNanos;
@@ -348,21 +334,12 @@ public final class StormDetector implements StormObserver {
     /**
      * doc/specs/storm-detection.md Decision #3: a small, conservative,
      * content-agnostic transform -- collapse digit/hex/UUID runs to a
-     * placeholder, collapse whitespace, trim, cap length. Package-visible so
-     * a unit test can assert on it directly.
+     * placeholder, collapse whitespace, trim, cap length. The rules live in
+     * {@link StormMessageNormalizer}. Package-visible so a unit test can
+     * assert on it directly.
      */
     static String normalize(String message) {
-        if (message == null) {
-            return "";
-        }
-        String result = UUID_PATTERN.matcher(message).replaceAll("<uuid>");
-        result = HEX_RUN_PATTERN.matcher(result).replaceAll("<hex>");
-        result = DIGIT_RUN_PATTERN.matcher(result).replaceAll("<n>");
-        result = WHITESPACE_PATTERN.matcher(result).replaceAll(" ").trim();
-        if (result.length() > MAX_MESSAGE_LENGTH) {
-            result = result.substring(0, MAX_MESSAGE_LENGTH);
-        }
-        return result;
+        return StormMessageNormalizer.normalize(message);
     }
 
     private static long fingerprintHash(StormFingerprint fingerprint) {

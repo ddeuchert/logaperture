@@ -56,7 +56,12 @@ modifies behaviour.**
   hot path — with one sampled `getStackTrace()` to pin a top-3–5-frame sub-key *once the
   cheap key already looks like a storm* (never per-event).
 - **Message normalization** — a small, conservative, content-agnostic transform so
-  `"failed for order 4821"` and `"failed for order 9134"` fingerprint together.
+  `"failed for order 4821"` and `"failed for order 9134"` fingerprint together. It runs on
+  every event, so it is one hand-written pass over the message, not regular expressions
+  ([#129](https://github.com/ddeuchert/logaperture/issues/129): four `replaceAll` passes cost
+  microseconds per event). The rules are unchanged from the regex version, with one choice
+  made explicit: a non-ASCII letter or digit counts as a word character, so `édeadbeef` is one
+  word and not hex (the regex version's answer depended on the JDK).
 - A per-fingerprint **tally counter and two-state machine** (`ONGOING` / `ENDED`): a plain
   count that resets on a gap, crosses a threshold to declare a storm, and goes quiet to end
   it — see "Detection algorithm". No per-event timestamp history; no background timer.
