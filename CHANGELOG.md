@@ -43,7 +43,7 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   one record per entry. Drop summaries are one line for every rule, every 10 minutes
   (`-Dlogaperture.drop.summaryInterval`), none during the first interval; on WildFly they go
   through the server's own logging at INFO under `org.logaperture.drop` instead of appearing as
-  `ERROR [stderr]`. No rule can match LogAperture's own `org.logaperture` categories. Every
+  `ERROR [stderr]`. No rule can match or be attached to `org.logaperture.drop`. Every
   LogAperture message now honours `-Dlogaperture.diagnostics.level`, whose default is now `WARN`,
   in one format (`[logaperture] LEVEL message`); a failure repeated on every log event is written
   at most once a minute.

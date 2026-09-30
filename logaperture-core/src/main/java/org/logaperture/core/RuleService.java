@@ -1042,7 +1042,7 @@ public final class RuleService implements RuleOperations {
     public List<LogRule> effectiveRules(String loggerName) {
         Objects.requireNonNull(loggerName, "loggerName");
         if (isOwnCategory(loggerName)) {
-            return List.of(); // doc/specs/quieter-output.md Q5: no rule reaches LogAperture's own messages
+            return List.of(); // doc/specs/quieter-output.md Q5: no rule reaches the drop summary
         }
         List<LogRule> effective = new ArrayList<>();
         String current = loggerName;
@@ -1245,13 +1245,18 @@ public final class RuleService implements RuleOperations {
         pendingSampledCounters.remove(ruleId);
     }
 
-    /** {@code org.logaperture} and its descendants: LogAperture's own messages (quieter-output.md Q5). */
+    /**
+     * A category LogAperture writes its own messages under -- {@code org.logaperture.drop} and its
+     * descendants (quieter-output.md Q5). Only the categories it actually logs to: other {@code
+     * org.logaperture.*} loggers (an application or a test fixture using the package) take rules
+     * like any other.
+     */
     static boolean isOwnCategory(String loggerName) {
         return loggerName.equals(OWN_CATEGORY) || loggerName.startsWith(OWN_CATEGORY + ".");
     }
 
-    /** The root of LogAperture's own logger categories. */
-    static final String OWN_CATEGORY = "org.logaperture";
+    /** The category LogAperture writes its drop summary under. */
+    static final String OWN_CATEGORY = "org.logaperture.drop";
 
     private void requireCapability(Capability capability) {
         if (!policy.isGranted(capability)) {

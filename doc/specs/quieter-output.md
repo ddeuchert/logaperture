@@ -98,9 +98,11 @@ server's own format and the operator can raise, lower or redirect it in `standal
 writer as today. This is the narrow, safe part of #124: the summary is written from the sweep
 thread, never from inside a log handler, so it can't loop through LogAperture's own wrappers.
 
-Two guards: LogAperture's rule gate never applies a rule to a record from an `org.logaperture`
-logger (so no `drop` or `trim`, including one attached to `org` or the root, can hide or reshape a
-summary -- §9.6), and `add rule` refuses an `org.logaperture` target outright.
+Two guards: LogAperture's rule gate never applies a rule to a record from `org.logaperture.drop`
+(so no `drop` or `trim`, including one attached to `org` or the root, can hide or reshape a
+summary -- §9.6), and `add rule` refuses that target outright. Only the category LogAperture writes
+to is guarded, not every `org.logaperture.*` logger (settled during implementation: a test fixture,
+or an application using the package, attaches rules normally).
 
 ### Q6 — The audit trail stays where it is
 

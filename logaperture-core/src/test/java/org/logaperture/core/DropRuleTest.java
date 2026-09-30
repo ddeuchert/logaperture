@@ -311,7 +311,7 @@ class DropRuleTest {
                 service.takeDropCounts());
     }
 
-    /** doc/specs/quieter-output.md Q5: no rule reaches LogAperture's own messages, and none can be attached. */
+    /** doc/specs/quieter-output.md Q5: no rule reaches the drop summary's category, and none can be attached. */
     @Test
     void logaperturesOwnCategory_isNeverMatched_andRefusesARule() {
         attachDrop("org", new CompiledMatchers(Level.ERROR, "drop summary", false, null, null, false),
@@ -326,5 +326,7 @@ class DropRuleTest {
                 () -> attachDrop("org.logaperture.drop", new CompiledMatchers(Level.ERROR, "x", false, null, null,
                         false), SampleFullPolicy.disabled()));
         assertTrue(refused.getMessage().contains("LogAperture's own category"), refused.getMessage());
+        attachDrop("org.logaperture.sample.Worker", new CompiledMatchers(Level.ERROR, "x", false, null, null,
+                false), SampleFullPolicy.disabled()); // another org.logaperture logger takes a rule like any other
     }
 }
