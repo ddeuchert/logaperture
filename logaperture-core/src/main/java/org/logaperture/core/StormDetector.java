@@ -363,14 +363,20 @@ public final class StormDetector implements StormObserver {
         return h;
     }
 
-    /** Unlike {@link #longProperty}, {@code 0} is a real setting here: it disables the cache. */
-    private static int normalizationCacheSizeProperty() {
+    /** Unlike {@link #longProperty}, {@code 0} or less is a real setting here: it disables the cache. */
+    static int normalizationCacheSizeProperty() {
         String raw = System.getProperty(NORMALIZATION_CACHE_SIZE_PROPERTY);
-        if (raw != null && raw.trim().equals("0")) {
-            return 0;
+        if (raw == null || raw.isBlank()) {
+            return DEFAULT_NORMALIZATION_CACHE_SIZE;
         }
-        return (int) Math.min(Integer.MAX_VALUE,
-                longProperty(NORMALIZATION_CACHE_SIZE_PROPERTY, DEFAULT_NORMALIZATION_CACHE_SIZE));
+        try {
+            long configured = Long.parseLong(raw.trim());
+            return (int) Math.max(0, Math.min(Integer.MAX_VALUE, configured));
+        } catch (NumberFormatException e) {
+            Diagnostics.warn("ignoring non-numeric " + NORMALIZATION_CACHE_SIZE_PROPERTY + "='" + raw + "', using "
+                    + DEFAULT_NORMALIZATION_CACHE_SIZE);
+            return DEFAULT_NORMALIZATION_CACHE_SIZE;
+        }
     }
 
     private static long longProperty(String property, long fallback) {

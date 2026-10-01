@@ -79,6 +79,32 @@ class NormalizationCacheTest {
     }
 
     @Test
+    void sizeProperty_zeroOrLessDisables_garbageFallsBack() {
+        String key = StormDetector.NORMALIZATION_CACHE_SIZE_PROPERTY;
+        String original = System.getProperty(key);
+        try {
+            for (String off : new String[] {"0", "00", "+0", "-1", " -5 "}) {
+                System.setProperty(key, off);
+                assertEquals(0, StormDetector.normalizationCacheSizeProperty(), off);
+            }
+            System.setProperty(key, "2048");
+            assertEquals(2_048, StormDetector.normalizationCacheSizeProperty());
+            System.setProperty(key, "99999999999");
+            assertEquals(Integer.MAX_VALUE, StormDetector.normalizationCacheSizeProperty());
+            System.setProperty(key, "lots");
+            assertEquals(1_024, StormDetector.normalizationCacheSizeProperty());
+            System.clearProperty(key);
+            assertEquals(1_024, StormDetector.normalizationCacheSizeProperty());
+        } finally {
+            if (original == null) {
+                System.clearProperty(key);
+            } else {
+                System.setProperty(key, original);
+            }
+        }
+    }
+
+    @Test
     void capacity_roundsUpToAPowerOfTwo() {
         assertEquals(1_024, new NormalizationCache(1_024).capacity());
         assertEquals(1_024, new NormalizationCache(1_000).capacity());

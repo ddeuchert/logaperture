@@ -62,7 +62,9 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   normalized for storm fingerprinting (`order 4821` and `order 9134` count as one message). That
   was four regular-expression passes; it's now one pass over the text with the same result, and
   a message seen recently, such as a log statement's template, is looked up rather than
-  normalized again. `logctl storms` shows the same normalized messages as before. The lookup
+  normalized again. `logctl storms` shows the same normalized messages as before, except that a
+  non-ASCII letter touching a hex run now always counts as part of the word (`édeadbeef` stays
+  as it is; on Java 19 and later it used to become `é<hex>`). The lookup
   keeps up to 1,024 recent messages per context; `-Dlogaperture.storm.normalizationCacheSize`
   changes that, and `0` turns it off (issue #129).
 
