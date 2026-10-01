@@ -50,8 +50,11 @@ final class JulRuleFilter implements Filter {
     public boolean isLoggable(LogRecord record) {
         boolean allowed = true;
         try {
-            GateVerdict verdict = gate.evaluate(record, RuleCandidateEvents.of(record));
-            allowed = !verdict.deny();
+            // "Evaluation cost", R3: an event no rule can touch builds nothing and takes no lock.
+            if (gate.appliesTo(RuleCandidateEvents.loggerName(record))) {
+                GateVerdict verdict = gate.evaluate(record, RuleCandidateEvents.of(record));
+                allowed = !verdict.deny();
+            }
         } catch (RuntimeException e) {
             // Fail open -- doc/logaperture-spec.md §9's fail-open discipline: a gate-evaluation
             // bug must never itself become a reason to lose an event.

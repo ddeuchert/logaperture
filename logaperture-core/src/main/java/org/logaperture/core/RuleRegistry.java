@@ -38,9 +38,36 @@ final class RuleRegistry {
     private final Map<String, LogRule> byId = new ConcurrentHashMap<>();
     private final Map<String, Boolean> useParentRulesByLogger = new ConcurrentHashMap<>();
 
+    /**
+     * doc/specs/rule-pipeline-foundation.md "Evaluation cost", R1: read on every event, so a
+     * context with no rules answers "allow" without touching anything else.
+     */
+    private volatile int ruleCount;
+    /**
+     * R2: {@link RuleService}'s per-logger effective-rule cache. Replaced with an empty map by
+     * {@link #changed()} after every mutation, inside the same lock, so a list resolved from the
+     * old rules can only land in the map being discarded.
+     */
+    private volatile Map<String, List<LogRule>> resolved = new ConcurrentHashMap<>();
+
     synchronized void attach(LogRule rule) {
         rulesByLogger.computeIfAbsent(rule.loggerName(), name -> new CopyOnWriteArrayList<>()).add(rule);
         byId.put(rule.id(), rule);
+        changed();
+    }
+
+    int ruleCount() {
+        return ruleCount;
+    }
+
+    Map<String, List<LogRule>> resolvedCache() {
+        return resolved;
+    }
+
+    /** Called last in every mutator, while still holding the lock. */
+    private void changed() {
+        ruleCount = byId.size();
+        resolved = new ConcurrentHashMap<>();
     }
 
     Optional<LogRule> findById(String id) {
@@ -57,6 +84,7 @@ final class RuleRegistry {
         if (rules != null) {
             rules.remove(rule);
         }
+        changed();
         return Optional.of(rule);
     }
 
@@ -93,6 +121,7 @@ final class RuleRegistry {
         }
         rules.set(index, replacement);
         byId.put(replacement.id(), replacement);
+        changed();
         return true;
     }
 
@@ -101,6 +130,7 @@ final class RuleRegistry {
         List<LogRule> all = List.copyOf(byId.values());
         rulesByLogger.clear();
         byId.clear();
+        changed();
         return all;
     }
 
@@ -120,7 +150,8 @@ final class RuleRegistry {
         return useParentRulesByLogger.getOrDefault(loggerName, Boolean.TRUE);
     }
 
-    void setUseParentRules(String loggerName, boolean useParentRules) {
+    synchronized void setUseParentRules(String loggerName, boolean useParentRules) {
         useParentRulesByLogger.put(loggerName, useParentRules);
+        changed();
     }
 }
