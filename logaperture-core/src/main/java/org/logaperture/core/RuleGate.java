@@ -33,4 +33,14 @@ package org.logaperture.core;
 public interface RuleGate {
 
     GateVerdict evaluate(Object recordIdentity, RuleCandidateEvent event);
+
+    /**
+     * doc/specs/rule-pipeline-foundation.md "Evaluation cost", R3: whether any rule can apply to
+     * an event from this logger. Asked before building a {@link RuleCandidateEvent}, so an event
+     * no rule can touch (the normal case) allocates nothing and takes no lock. {@code false}
+     * guarantees {@link #evaluate} would return {@link GateVerdict#allow()}.
+     */
+    default boolean appliesTo(String loggerName) {
+        return true;
+    }
 }

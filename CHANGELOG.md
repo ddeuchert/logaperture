@@ -67,6 +67,11 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   as it is; on Java 19 and later it used to become `é<hex>`). The lookup
   keeps up to 1,024 recent messages per context; `-Dlogaperture.storm.normalizationCacheSize`
   changes that, and `0` turns it off (issue #129).
+- **The rule check costs nothing when no rule applies.** Every log line that reaches a handler
+  went through the `drop`/`trim` rule check, which took a lock shared by every logging thread and
+  recorded the line in a table, even with no rules attached. Now a line from a logger no rule can
+  reach is passed straight through, and lines that a rule does apply to share the remaining
+  bookkeeping across 16 locks instead of one (issue #130).
 
 ## [0.1.0-alpha.3] — 2026-09-28
 

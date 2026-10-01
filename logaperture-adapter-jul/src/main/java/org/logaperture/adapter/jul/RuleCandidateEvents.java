@@ -41,8 +41,13 @@ final class RuleCandidateEvents {
     private RuleCandidateEvents() {
     }
 
+    /** The name every rule lookup for this record uses; {@code ""} for an anonymous logger. */
+    static String loggerName(LogRecord record) {
+        return record.getLoggerName() != null ? record.getLoggerName() : "";
+    }
+
     static RuleCandidateEvent of(LogRecord record) {
-        String loggerName = record.getLoggerName() != null ? record.getLoggerName() : "";
+        String loggerName = loggerName(record);
         org.logaperture.api.Level level = LevelMapper.toApi(record.getLevel());
         Throwable thrown = record.getThrown();
         return new RuleCandidateEvent(loggerName, level, thrown,

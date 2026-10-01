@@ -81,6 +81,9 @@ final class JulTrimFormatter extends Formatter {
 
     private TrimDecision decisionFor(LogRecord record) {
         try {
+            if (!gate.appliesTo(RuleCandidateEvents.loggerName(record))) {
+                return null; // "Evaluation cost", R3
+            }
             GateVerdict verdict = gate.evaluate(record, RuleCandidateEvents.of(record));
             // A denied event never reaches this formatter in practice (its own handler's Filter
             // already blocked publish()) -- checked anyway, doc/specs/trim-rule.md "Evaluation":
