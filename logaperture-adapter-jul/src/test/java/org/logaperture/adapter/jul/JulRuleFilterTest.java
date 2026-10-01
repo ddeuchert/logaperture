@@ -104,6 +104,36 @@ class JulRuleFilterTest {
     }
 
     @Test
+    void gateThatAppliesToNothing_isNeverEvaluated() { // rule-pipeline-foundation.md "Evaluation cost", R3
+        java.util.concurrent.atomic.AtomicInteger evaluations = new java.util.concurrent.atomic.AtomicInteger();
+        RuleGate noRules = new RuleGate() {
+            @Override
+            public GateVerdict evaluate(Object recordIdentity, org.logaperture.core.RuleCandidateEvent event) {
+                evaluations.incrementAndGet();
+                return GateVerdict.deny("r1");
+            }
+
+            @Override
+            public boolean appliesTo(String loggerName) {
+                return false;
+            }
+        };
+        FakePersistentHandler handler = new FakePersistentHandler();
+        Logger logger = Logger.getLogger(name("norules"));
+        logger.addHandler(handler);
+        try {
+            adapter.installRulePipeline(noRules);
+
+            LogRecord record = new LogRecord(Level.INFO, "hello");
+            record.setLoggerName(name("norules"));
+            assertTrue(handler.getFilter().isLoggable(record));
+            assertEquals(0, evaluations.get());
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
+    @Test
     void installedFilter_chainsAPreExistingFilter_allowCase() {
         FakePersistentHandler handler = new FakePersistentHandler();
         Filter preExisting = record -> true;

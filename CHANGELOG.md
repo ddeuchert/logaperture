@@ -58,6 +58,11 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   one line, `LogAperture is already started in this JVM; ignoring the duplicate -javaagent entry.`
   Attaching the agent to a JVM that already runs it is ignored the same way. `logctl doctor` still
   flags the duplicate entry (issue #120).
+- **The rule check costs nothing when no rule applies.** Every log line that reaches a handler
+  went through the `drop`/`trim` rule check, which took a lock shared by every logging thread and
+  recorded the line in a table, even with no rules attached. Now a line from a logger no rule can
+  reach is passed straight through, and lines that a rule does apply to share the remaining
+  bookkeeping across 16 locks instead of one (issue #130).
 
 ## [0.1.0-alpha.3] — 2026-09-28
 

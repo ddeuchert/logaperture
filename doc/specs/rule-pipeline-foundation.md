@@ -1,5 +1,9 @@
 # Rule pipeline foundation: `LogRule`, `useParentRules`, matcher library
 
+**Amendment (issue [#130](https://github.com/ddeuchert/logaperture/issues/130)), signed off
+2026-09-30:** "Evaluation cost" under "Evaluation" (overhead-benchmarks.md review Decisions
+#15–#17, all on the recommended option).
+
 Status: **signed off 2026-09-22; implemented.** `core` (`RuleRegistry`/`RuleService`/matcher
 library/`useParentRules` resolution/`AggregateLevelControl` multi-context merge), the
 JUL/JBoss LogManager gate `Filter`, the JMX surface, the CLI (`list rules`/`reset rule`/`reset
@@ -324,6 +328,59 @@ next two issues consume, not the walk itself.
 gap the storm-detection spike caught in its own prototype. The counting point is the gate
 `Filter`'s single evaluation per event, before per-handler fan-out, so a rule attached to a
 logger with three handlers counts one hit per matching event, not three.
+
+### Evaluation cost *(issue #130; Decisions #15–#17, signed off 2026-09-30)*
+
+**What it costs today.** The gate `Filter` sits on every real handler, and the trim formatter
+consults the gate again for every record with a throwable it formats, so one record reaches
+`RuleService.evaluateGate` once per handler and, if it carries an exception, once more per
+formatting pass (up to four times on WildFly's default `CONSOLE` + `FILE`). Every call:
+
+1. allocates a `RuleCandidateEvent` and a message `Supplier`;
+2. calls `computeIfAbsent` on `decisionCache`, a `Collections.synchronizedMap(new
+   WeakHashMap<>())` keyed by the record: **one lock for every thread logging in the context**,
+   held across the whole verdict computation, and a weak entry per record that is only expunged
+   after a GC, so between collections the map fills with dead keys and keeps resizing;
+3. on a cache miss, resolves the logger's effective rules by walking the logger tree
+   (`effectiveRules`: a list, a copy and a parent-name `substring` per level).
+
+All of it runs even when the context has **no rules at all**, which is the normal state. The
+overhead benchmarks (#128) measured it at about 1.6 µs ± 1.3 µs per call on the smoke-run
+machine, against a budget of 50 ns. The "compiled plan" this section promises above was never
+built: evaluation walks the live registry.
+
+**The cache is only needed when a rule can apply.** It exists to make side effects happen once
+per event: a `drop`'s hit and suppressed counts, and its keep-one-in-N sampling decision, which
+must also come out the same for every handler of the event. A logger with no effective rules
+has no side effects to deduplicate; its verdict is always "allow, no trim". So:
+
+- **R1, context fast path.** `RuleRegistry` keeps a `volatile` rule count, updated inside its
+  existing `synchronized` mutators. With zero rules, the gate answers "allow" before anything
+  else: no allocation, no lock, no lookup.
+- **R2, per-logger resolution cache** (top-level §10's "per-logger resolution cache", finally
+  built). The effective rule list per logger name is cached in a `ConcurrentHashMap<String,
+  List<LogRule>>`, bounded at **4,096 logger names** (cleared when full) and replaced with an
+  empty map on every registry change (`attach`, `remove…`, `replace…`, `removeAll`,
+  `setUseParentRules`), all of which already funnel through `RuleRegistry`. The empty map is
+  swapped in *after* the registry change, inside the same `synchronized` block, so a list
+  computed from the old rules can only ever land in the map being discarded. A logger whose
+  cached list is empty is answered "allow" with no further work, exactly as under R1. This is
+  what keeps `drop-miss` (rules attached elsewhere) cheap.
+- **R3, ask before building the event.** `RuleGate` gains `boolean appliesTo(String
+  loggerName)`, answered by R1 and R2. `JulRuleFilter` and `JulTrimFormatter` call it first and
+  only build a `RuleCandidateEvent` and call `evaluate` when it's `true`.
+- **R4, deduplication when a rule can apply.** Only events whose logger has effective rules
+  reach `decisionCache`. It stays keyed by the record with weak keys and an atomic
+  `computeIfAbsent` (so the async-handler race the original code review found stays closed),
+  but is **striped**: 16 `synchronizedMap(WeakHashMap)` stripes chosen by
+  `System.identityHashCode(record)`, so unrelated threads rarely share a lock.
+
+Expected effect: the idle and `drop-miss` paths cost one `volatile` read, or one map lookup by
+logger name, and allocate nothing; only loggers with rules pay for deduplication, at a sixteenth
+of today's contention.
+
+A rule attached or removed while an event is in flight may or may not apply to that event, as
+today; R2's invalidation is synchronous with the registry change, so the next event sees it.
 
 ## Relationship to the storm-detection filter
 

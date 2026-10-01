@@ -112,8 +112,27 @@ public final class RuleService implements RuleOperations {
     // cleaned up in forgetEvaluationState whenever a rule is removed, so a long-running process
     // doing ordinary attach/reset traffic doesn't grow these maps without bound (a code-review
     // finding).
-    /** Per-event, not per-handler (rule-pipeline-foundation.md "Evaluation"): a verdict computed for one handler's filter is reused by every sibling handler's filter evaluating the same framework record. */
-    private final Map<Object, GateVerdict> decisionCache = Collections.synchronizedMap(new WeakHashMap<>());
+    /**
+     * Per-event, not per-handler (rule-pipeline-foundation.md "Evaluation"): a verdict computed for
+     * one handler's filter is reused by every sibling handler's filter evaluating the same framework
+     * record. Striped by record identity ("Evaluation cost", R4) so unrelated threads rarely share
+     * a lock; only events whose logger has effective rules reach it at all.
+     */
+    private final Map<Object, GateVerdict>[] decisionStripes = newDecisionStripes();
+    private static final int DECISION_STRIPES = 16;
+    /** "Evaluation cost", R2: beyond this many logger names the resolution cache starts over. */
+    static final int MAX_RESOLVED_LOGGERS = 4_096;
+    private final RuleGate gate = new RuleGate() {
+        @Override
+        public GateVerdict evaluate(Object recordIdentity, RuleCandidateEvent event) {
+            return evaluateGate(recordIdentity, event);
+        }
+
+        @Override
+        public boolean appliesTo(String loggerName) {
+            return !effectiveRules(loggerName).isEmpty();
+        }
+    };
     private final Map<String, LongAdder> hitCounters = new ConcurrentHashMap<>();
     /**
      * Rule id to the id of the recipe that added it -- doc/specs/recipes.md #6, B4. Kept here rather
@@ -1046,6 +1065,25 @@ public final class RuleService implements RuleOperations {
      */
     public List<LogRule> effectiveRules(String loggerName) {
         Objects.requireNonNull(loggerName, "loggerName");
+        if (registry.ruleCount() == 0) {
+            return List.of(); // "Evaluation cost", R1: the normal state, answered with one volatile read
+        }
+        // R2: read the cache reference before resolving. RuleRegistry swaps in a fresh map after
+        // each change, so a list resolved from rules that changed meanwhile lands in a discarded map.
+        Map<String, List<LogRule>> cache = registry.resolvedCache();
+        List<LogRule> cached = cache.get(loggerName);
+        if (cached != null) {
+            return cached;
+        }
+        List<LogRule> resolved = resolveEffectiveRules(loggerName);
+        if (cache.size() >= MAX_RESOLVED_LOGGERS) {
+            cache.clear();
+        }
+        cache.put(loggerName, resolved);
+        return resolved;
+    }
+
+    private List<LogRule> resolveEffectiveRules(String loggerName) {
         if (isOwnCategory(loggerName)) {
             return List.of(); // doc/specs/quieter-output.md Q5: no rule reaches the drop summary
         }
@@ -1083,7 +1121,7 @@ public final class RuleService implements RuleOperations {
      * event against -- doc/specs/drop-rule.md "Evaluation".
      */
     public RuleGate gate() {
-        return this::evaluateGate;
+        return gate;
     }
 
     /**
@@ -1099,7 +1137,21 @@ public final class RuleService implements RuleOperations {
      * mapping function, making this atomic.
      */
     private GateVerdict evaluateGate(Object recordIdentity, RuleCandidateEvent event) {
-        return decisionCache.computeIfAbsent(recordIdentity, identity -> computeVerdict(event));
+        if (effectiveRules(event.loggerName()).isEmpty()) {
+            return GateVerdict.allow(); // nothing can apply, so nothing to count once: skip the stripe
+        }
+        Map<Object, GateVerdict> stripe =
+                decisionStripes[System.identityHashCode(recordIdentity) & (DECISION_STRIPES - 1)];
+        return stripe.computeIfAbsent(recordIdentity, identity -> computeVerdict(event));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<Object, GateVerdict>[] newDecisionStripes() {
+        Map<Object, GateVerdict>[] stripes = new Map[DECISION_STRIPES];
+        for (int i = 0; i < stripes.length; i++) {
+            stripes[i] = Collections.synchronizedMap(new WeakHashMap<>());
+        }
+        return stripes;
     }
 
     /**
@@ -1251,7 +1303,7 @@ public final class RuleService implements RuleOperations {
         }
     }
 
-    /** Drops every per-rule evaluation-time entry keyed by {@code ruleId} -- called whenever a rule is actually removed, so these maps don't grow for the life of the process (a code-review finding). {@link #decisionCache} needs no equivalent: it's keyed by framework record identity, already bounded by {@link WeakHashMap}'s own GC-driven eviction. */
+    /** Drops every per-rule evaluation-time entry keyed by {@code ruleId} -- called whenever a rule is actually removed, so these maps don't grow for the life of the process (a code-review finding). {@link #decisionStripes} need no equivalent: it's keyed by framework record identity, already bounded by {@link WeakHashMap}'s own GC-driven eviction. */
     private void forgetEvaluationState(String ruleId) {
         DropTally tally = dropTallies.remove(ruleId);
         if (tally != null) {
