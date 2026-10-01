@@ -2,6 +2,8 @@
 
 Status: signed off, not implemented. Decisions #1–#8 signed off 2026-09-30, all on the recommended
 option. Tracked as [#128](https://github.com/ddeuchert/logaperture/issues/128).
+Decisions #9–#14 (issue #129 follow-up: normalization cache, message variants, revised
+budgets, published-run machine) signed off 2026-09-30, all on the recommended option.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §10 (Performance: "< 200 ns added
 per evaluated event … near-zero for loggers no rule can match … enforced by JMH benchmarks in
 CI"), §17.1 ("What earns 1.0": "published overhead numbers (§10) for an idle agent, a `trim`
@@ -116,8 +118,16 @@ Every scenario is reported as **added time per log call**: the scenario's score 
 
 ### Scenarios
 
-Each runs with a plain message and with a message carrying a throwable (20-frame stack), because
-the storm normalizer, `trim` and `top` all behave differently with one.
+Each runs with three messages (Decision #12):
+
+- `template`: the same `String` instance on every call, which is what the storm filter sees for
+  parameterized logging (JBoss Logging's `infof`, message loggers), since it reads the
+  record's unformatted template. With #129's normalization cache this is the cache-hit path.
+- `concatenated`: a new `String` per call with a changing number in it (`"Processed order " +
+  n + …`), which is what the storm filter sees for messages built by string concatenation.
+  This is the cache-miss path. Building the string is also in `baseline`, so it subtracts out.
+- `throwable`: `template` plus a 20-frame exception, because the storm normalizer, `trim` and
+  `top` all behave differently with one.
 
 | Id | Setup | Answers |
 |---|---|---|
@@ -278,6 +288,34 @@ a map lookup costs, so it's achievable without heroics.
 counting, which it can't (see Findings). The ≤ 50 ns budget applies to the two filters, the
 `rule+storm` layer over `baseline`. The trim and `top` layers of `idle` are reported, not
 budgeted, as option A intended for `top`.
+
+**Second revision (Decision #13, signed off 2026-09-30).** The first smoke runs (#129) showed a
+flat 50 ns for both filters can't hold while every message is normalized: normalization costs
+something per character, and on the smoke-run machine just copying a 52-character message into
+a new `String` costs about 94 ns. #129 adds a normalization cache, so the storm filter has a
+cheap path (a template it has seen) and a length-dependent one (a new string). The budgets:
+
+| Layer over the layer below it | Budget |
+|---|---|
+| `rule` (rule filter), any message | ≤ 50 ns |
+| `rule+storm` minus `rule` (storm filter), `template` | ≤ 100 ns |
+| `rule+storm` minus `rule` (storm filter), `concatenated` | ≤ 100 ns + 3 ns × message length in chars (length counted up to 500) |
+
+For the benchmark's 52-character message, the `concatenated` budget is 256 ns. The numbers are
+set now, before the run: 100 ns covers the storm filter's fixed work (one map lookup, one
+short lock, a timestamp, two small objects); 3 ns per character is the one-pass normalizer's
+measured ~8.6 ns per character on the 2012-era smoke-run CPU at 2.6 GHz, scaled to a current
+one.
+
+**The published-run machine (Decision #14, signed off 2026-09-30).** Absolute budgets only
+mean something on known hardware. The published run uses a current x86-64 or ARM64 desktop or
+server CPU (released within the last five years), with frequency scaling pinned as "Measurement
+method" describes, and the results page names it. For 1.0 that is a Windows Alienware desktop,
+run with `logaperture-bench/run-baseline.ps1` (High/Ultimate Performance power plan; Windows
+has no pinned-frequency equivalent of Linux's `performance` governor, so the plan is recorded
+with the results). async-profiler doesn't run on Windows, so the published flame graphs come
+from a Linux run of the same commit. The smoke-run machine (Intel i7-3740QM, 2012) doesn't qualify; its numbers
+serve for before/after comparisons only.
 
 ## Testing
 

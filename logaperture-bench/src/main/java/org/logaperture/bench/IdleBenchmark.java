@@ -74,10 +74,16 @@ public class IdleBenchmark {
         @Param({"baseline", "rule", "rule+storm", "rule+storm+trim", "idle"})
         public String layers;
 
-        @Param({"plain", "throwable"})
+        /**
+         * Decision #12. {@code template}: the same {@code String} every call, what the storm
+         * filter sees for parameterized logging. {@code concatenated}: a new {@code String} per
+         * call. {@code throwable}: {@code template} plus a 20-frame exception.
+         */
+        @Param({"template", "concatenated", "throwable"})
         public String message;
 
         Throwable thrown;
+        boolean concatenated;
         DiscardingFileHandler handler;
         LoggingAdapter adapter;
 
@@ -85,6 +91,7 @@ public class IdleBenchmark {
         public void install() {
             BenchContext.requireJBossLogManager();
             thrown = message.equals("throwable") ? BenchContext.throwable() : null;
+            concatenated = message.equals("concatenated");
             handler = BenchContext.attachHandler();
             if (layers.equals("baseline")) {
                 return;
@@ -156,6 +163,7 @@ public class IdleBenchmark {
         private static final AtomicInteger NEXT = new AtomicInteger();
 
         Logger logger;
+        int sequence;
 
         @Setup(Level.Trial)
         public void create(Install install) {
@@ -165,6 +173,10 @@ public class IdleBenchmark {
 
     @Benchmark
     public void info(Install install, ThreadLogger thread) {
-        thread.logger.log(java.util.logging.Level.INFO, BenchContext.MESSAGE, install.thrown);
+        // Built in every layer, baseline included, so the concatenation itself subtracts out.
+        String message = install.concatenated
+                ? "Processed order " + (thread.sequence++) + " for customer 7f3a9c21 in 12 ms"
+                : BenchContext.MESSAGE;
+        thread.logger.log(java.util.logging.Level.INFO, message, install.thrown);
     }
 }

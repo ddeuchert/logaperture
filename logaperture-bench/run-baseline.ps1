@@ -22,7 +22,7 @@
     original afterwards), keeps the PC from sleeping, runs the benchmarks with the spec's
     settings, and zips everything to send back.
 
-    Takes about 35 minutes. Don't use the PC while it runs.
+    Takes about 45 minutes. Don't use the PC while it runs.
 
 .PARAMETER Label
     Names the results, e.g. "baseline" (default) or "after-129".

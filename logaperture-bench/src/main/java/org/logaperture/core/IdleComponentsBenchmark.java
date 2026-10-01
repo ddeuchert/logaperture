@@ -57,6 +57,7 @@ public class IdleComponentsBenchmark {
     private RuleGate gate;
     private StormDetector detector;
     private final Supplier<String> message = () -> MESSAGE;
+    private int sequence;
 
     @Setup
     public void setUp() {
@@ -104,7 +105,15 @@ public class IdleComponentsBenchmark {
                 Instant.EPOCH));
     }
 
-    /** {@code storm-normalize}: the four-pass message normalization alone. */
+    /** {@code storm-observe}, {@code concatenated}: a new message {@code String} every call (Decision #12). */
+    @Benchmark
+    public void stormObserveConcatenated() {
+        String raw = "Processed order " + (sequence++) + " for customer 7f3a9c21 in 12 ms";
+        detector.observe(new StormObservation(LOGGER, Level.INFO, null, raw, false, null, message,
+                Instant.EPOCH));
+    }
+
+    /** {@code storm-normalize}: message normalization alone, uncached. */
     @Benchmark
     public String stormNormalize() {
         return StormDetector.normalize(MESSAGE);

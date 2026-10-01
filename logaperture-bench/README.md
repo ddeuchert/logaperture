@@ -22,7 +22,7 @@ This module is built only under the `bench` Maven profile and is never published
 ## Running the benchmarks on Windows
 
 This is for running the published measurements on a fast Windows PC. It takes about
-**40 minutes**, most of it unattended, and doesn't change anything permanent on the machine.
+**an hour**, most of it unattended, and doesn't change anything permanent on the machine.
 
 ### 1. Install Git and Java (once)
 
@@ -62,7 +62,7 @@ The first time, it spends a few minutes downloading and building. It should end 
 **Done. Send David this file:** and a path. If it stops with a red **STOPPED:** message, send
 David that message.
 
-### 4. The real run (about 35 minutes)
+### 4. The real run (about 45 minutes)
 
 1. Close everything else: browsers, games, launchers, Discord, anything with a tray icon you can
    quit. Plug in and leave the PC alone; mouse movement is fine, using it isn't.
