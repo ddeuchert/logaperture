@@ -379,8 +379,17 @@ Expected effect: the idle and `drop-miss` paths cost one `volatile` read, or one
 logger name, and allocate nothing; only loggers with rules pay for deduplication, at a sixteenth
 of today's contention.
 
-A rule attached or removed while an event is in flight may or may not apply to that event, as
-today; R2's invalidation is synchronous with the registry change, so the next event sees it.
+**A rule change and the events in flight at that instant.** An "allow" answered by R1/R2 is
+not recorded against the record (recording it would put back the per-record cost this section
+removes). So while a rule is being attached or removed, the handlers of a single event that is
+being written at that moment can disagree: with a `drop` attached mid-event, a handler that ran
+before the change lets the event through and one that runs after denies it (and counts the
+hit); with a rule reset mid-event, a handler that runs after the change lets through an event
+an earlier handler denied. Accepted as a trade-off (PR #133 review, 2026-09-30): the window is
+one event's fan-out across its handlers, microseconds, and opens only when an operator changes
+a rule; the alternative costs every log line. Outside that window, every handler of an event
+gets one verdict, as "Hit counting is per event" above requires. R2's invalidation is
+synchronous with the registry change, so the next event sees it.
 
 ## Relationship to the storm-detection filter
 
