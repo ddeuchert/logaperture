@@ -92,6 +92,9 @@ Step "Recording this machine"
 $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
 $os = Get-CimInstance Win32_OperatingSystem
 $cs = Get-CimInstance Win32_ComputerSystem
+# One System.nanoTime() call costs ~25 ns normally; a slow clock source inflates every result.
+$nanoTime = (& java (Join-Path $repo "logaperture-bench\NanoTimeCost.java") 2>$null | Select-Object -First 1)
+if ($LASTEXITCODE -ne 0 -or -not $nanoTime) { $nanoTime = "unknown" }
 $machine = @(
     "label:            $Label"
     "quick:            $Quick"
@@ -104,6 +107,7 @@ $machine = @(
     "os:               $($os.Caption) $($os.Version) build $($os.BuildNumber)"
     "git commit:       $(& cmd /c "git rev-parse HEAD 2>nul")"
     "git branch:       $(& cmd /c "git rev-parse --abbrev-ref HEAD 2>nul")"
+    "nanoTime (ns):    $nanoTime"
     "java:"
 ) + ($javaText | ForEach-Object { "    $_" })
 $machine | Set-Content -Encoding UTF8 (Join-Path $out "machine.txt")
