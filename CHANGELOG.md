@@ -58,10 +58,13 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   one line, `LogAperture is already started in this JVM; ignoring the duplicate -javaagent entry.`
   Attaching the agent to a JVM that already runs it is ignored the same way. `logctl doctor` still
   flags the duplicate entry (issue #120).
-- **Storm detection costs about a tenth of what it did per log line.** Every message that reaches a
-  handler is normalized for storm fingerprinting (`order 4821` and `order 9134` count as one
-  message); that was four regular-expression passes and is now one pass over the text, with the
-  same result. `logctl storms` shows the same normalized messages as before (issue #129).
+- **Storm detection is much cheaper per log line.** Every message that reaches a handler is
+  normalized for storm fingerprinting (`order 4821` and `order 9134` count as one message). That
+  was four regular-expression passes; it's now one pass over the text with the same result, and
+  a message seen recently, such as a log statement's template, is looked up rather than
+  normalized again. `logctl storms` shows the same normalized messages as before. The lookup
+  keeps up to 1,024 recent messages per context; `-Dlogaperture.storm.normalizationCacheSize`
+  changes that, and `0` turns it off (issue #129).
 
 ## [0.1.0-alpha.3] — 2026-09-28
 

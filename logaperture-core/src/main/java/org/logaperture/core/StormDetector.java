@@ -64,6 +64,8 @@ public final class StormDetector implements StormObserver {
     public static final String MAX_HISTORY_PROPERTY = "logaperture.storm.maxHistory";
     /** {@value}. */
     public static final String FIRST_OCCURRENCE_BYTES_PROPERTY = "logaperture.storm.firstOccurrenceBytes";
+    /** {@value}; {@code 0} disables the cache. */
+    public static final String NORMALIZATION_CACHE_SIZE_PROPERTY = "logaperture.storm.normalizationCacheSize";
 
     private static final long DEFAULT_THRESHOLD = 1_000;
     private static final long DEFAULT_WINDOW_SECONDS = 10;
@@ -71,6 +73,7 @@ public final class StormDetector implements StormObserver {
     private static final int DEFAULT_MAX_TRACKED_FINGERPRINTS = 4_000;
     private static final int DEFAULT_MAX_HISTORY = 100;
     private static final int DEFAULT_FIRST_OCCURRENCE_BYTES = 8 * 1024;
+    private static final int DEFAULT_NORMALIZATION_CACHE_SIZE = 1_024;
 
     private static final int EVICTION_SAMPLE_SIZE = 5;
     private static final String TRUNCATION_MARKER = "\n... [truncated]";
@@ -81,6 +84,7 @@ public final class StormDetector implements StormObserver {
     private final int maxTrackedFingerprints;
     private final int maxHistory;
     private final int firstOccurrenceBytes;
+    private final NormalizationCache normalizations;
 
     private final ConcurrentHashMap<Long, Entry> counters = new ConcurrentHashMap<>();
     private final Object historyLock = new Object();
@@ -93,12 +97,19 @@ public final class StormDetector implements StormObserver {
                 Duration.ofSeconds(longProperty(QUIET_PROPERTY, DEFAULT_QUIET_SECONDS)),
                 (int) longProperty(MAX_TRACKED_PROPERTY, DEFAULT_MAX_TRACKED_FINGERPRINTS),
                 (int) longProperty(MAX_HISTORY_PROPERTY, DEFAULT_MAX_HISTORY),
-                (int) longProperty(FIRST_OCCURRENCE_BYTES_PROPERTY, DEFAULT_FIRST_OCCURRENCE_BYTES));
+                (int) longProperty(FIRST_OCCURRENCE_BYTES_PROPERTY, DEFAULT_FIRST_OCCURRENCE_BYTES),
+                normalizationCacheSizeProperty());
     }
 
     /** Package-visible so a test can use small thresholds/windows instead of the real defaults. */
     StormDetector(long thresholdEvents, Duration window, Duration quiet, int maxTrackedFingerprints, int maxHistory,
             int firstOccurrenceBytes) {
+        this(thresholdEvents, window, quiet, maxTrackedFingerprints, maxHistory, firstOccurrenceBytes,
+                DEFAULT_NORMALIZATION_CACHE_SIZE);
+    }
+
+    StormDetector(long thresholdEvents, Duration window, Duration quiet, int maxTrackedFingerprints, int maxHistory,
+            int firstOccurrenceBytes, int normalizationCacheSize) {
         if (thresholdEvents < 1) {
             throw new IllegalArgumentException("thresholdEvents must be at least 1");
         }
@@ -108,6 +119,7 @@ public final class StormDetector implements StormObserver {
         this.maxTrackedFingerprints = maxTrackedFingerprints;
         this.maxHistory = maxHistory;
         this.firstOccurrenceBytes = firstOccurrenceBytes;
+        this.normalizations = new NormalizationCache(normalizationCacheSize);
     }
 
     @Override
@@ -120,7 +132,7 @@ public final class StormDetector implements StormObserver {
     }
 
     private void observeUnsafe(StormObservation observation) {
-        String normalizedMessage = normalize(observation.rawMessage());
+        String normalizedMessage = normalizations.normalize(observation.rawMessage());
         StormFingerprint cheapFingerprint = new StormFingerprint(
                 observation.loggerName(), observation.level(), observation.throwableClassName(),
                 normalizedMessage, null);
@@ -349,6 +361,16 @@ public final class StormDetector implements StormObserver {
         h = 31 * h + (fingerprint.throwableClass() == null ? 0 : fingerprint.throwableClass().hashCode());
         h = 31 * h + fingerprint.normalizedMessage().hashCode();
         return h;
+    }
+
+    /** Unlike {@link #longProperty}, {@code 0} is a real setting here: it disables the cache. */
+    private static int normalizationCacheSizeProperty() {
+        String raw = System.getProperty(NORMALIZATION_CACHE_SIZE_PROPERTY);
+        if (raw != null && raw.trim().equals("0")) {
+            return 0;
+        }
+        return (int) Math.min(Integer.MAX_VALUE,
+                longProperty(NORMALIZATION_CACHE_SIZE_PROPERTY, DEFAULT_NORMALIZATION_CACHE_SIZE));
     }
 
     private static long longProperty(String property, long fallback) {

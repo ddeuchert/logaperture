@@ -2,6 +2,9 @@
 
 Status: **sign-off complete — all ten decisions resolved and folded in.** Ready for
 implementation; nothing is implemented yet.
+**Amendment (issue [#129](https://github.com/ddeuchert/logaperture/issues/129)), signed off
+2026-09-30:** one-pass message normalization and the "Normalization cache" under "Bounded
+state" (overhead-benchmarks.md review Decisions #9–#11, all on the recommended option).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §7.1 (automatic storm
 collapse — this slice is its report-only half), §4.2 (two-stage pipeline — gate stage),
 §9.3 (capability model — `view`), §9.6 (suppression must never be silent — the reason
@@ -298,7 +301,7 @@ the first time a context arms detection — not moved forward by a later re-arm.
 
 ## Bounded state (§16.7)
 
-Two capped structures per context, all defaults `-Dlogaperture.storm.*`-tunable and seeded,
+Three capped structures per context, all defaults `-Dlogaperture.storm.*`-tunable and seeded,
 not frozen.
 
 **Fingerprint counters** — the two-number tally (`count`, `lastSeenNanos`) plus a small state
@@ -333,6 +336,41 @@ field, for *every* fingerprint seen, most of which never storm. An unbounded map
   signal.
 - Lock-free counters (`LongAdder` / CAS) are a possible later refinement, unnecessary for
   this slice given how short the critical section is.
+
+**Normalization cache** *(issue #129; Decisions #9–#11 of the overhead-benchmarks.md review,
+signed off 2026-09-30)* — the normalized
+form of recently seen raw messages, so a message the detector has already normalized is looked
+up rather than scanned again.
+
+- *Why it pays.* The storm `Filter` reads the record's raw message (`getMessage()`), which for
+  parameterized logging (JBoss Logging's `infof`/`debugf`, message loggers, `{0}`/`%s`
+  templates) is the **template**, not the formatted text: the same `String` instance every
+  time a given log statement runs. Normalization is a pure function of that string, so its
+  result can be reused. Measured on the #128 benchmark message, one-pass normalization costs
+  about 0.45 µs (2012-era CPU); a cache hit is a hash-slot read and a reference comparison.
+- *Structure.* A fixed-size **direct-mapped** array of immutable `(raw, normalized)` pairs,
+  indexed by `raw.hashCode()` masked to the table size. Lookup: read the slot; a hit is
+  `slot.raw == raw || slot.raw.equals(raw)`. A miss normalizes and **overwrites** the slot with
+  a new pair. No lock, no CAS, no resizing: a racing reader sees either the old pair or the new
+  one, both correct (immutable pairs with `final` fields are safely published by a plain array
+  write). This keeps the design's standing constraints: no per-context monitor, no
+  `ThreadLocal`, nothing allocated on a hit.
+- *Bound.* **1,024 slots** per context (`-Dlogaperture.storm.normalizationCacheSize`, rounded
+  up to a power of two; `0` disables the cache). A raw message longer than **2,000 chars** is
+  never cached (normalized every time; the 500-char output cap already bounds that work), so
+  the cache retains at most about 1,024 × 2,000 chars of message text per context, plus the
+  normalized forms.
+- *Eviction.* Collision overwrites; nothing else. With high-cardinality raw messages (text
+  built by concatenation, a new `String` per call), slots churn and those messages pay the
+  full normalization cost plus one `hashCode()`. That is the "cache miss" cost the #128
+  budget has a separate allowance for. A miss can also evict a hot template sharing its slot;
+  the template re-inserts on its next event.
+- *Retained text.* Cached raw messages are heap references only, never surfaced through any
+  command, JMX attribute or file; storm history already retains normalized text and the first
+  occurrence under the same rules (§9). A concatenated message can carry data a template
+  wouldn't; it is held no longer than until its slot is overwritten.
+- *Correctness.* The cache cannot change a result: it maps a string to the output of a pure
+  function of that string. Fingerprints, `logctl storms` and `--json` are unchanged.
 
 **Storm history** — fingerprints that reached storm state (active + recently ended). Read
 only on `logctl storms`, written only on storm engage/end — not a hot path; a plain
@@ -376,6 +414,13 @@ that per context.
   and keeps genuinely different ones apart; the counter map evicts least-recently-updated at
   capacity; storm history keeps `ONGOING` ahead of `ENDED`; a throwing observation is
   swallowed and the event passes through.
+- Unit — `core` (`StormMessageNormalizerTest`, #129): the one-pass normalizer's output equals
+  the pre-#129 regex implementation's, kept in the test as an oracle, on fixed edge cases and
+  200,000 randomized messages. The cached path returns the same result as
+  the uncached one for a template seen repeatedly, for two different raw strings colliding on
+  one slot, for a message over the 2,000-char caching limit, and with the cache disabled
+  (`0`); many threads normalizing a mix of colliding messages concurrently always get the
+  correct result.
 - Unit — `core` (`StormDetectorConcurrencyTest`): many threads feeding one fingerprint
   concurrently produce an `eventCount` equal to the number of observations (no lost updates)
   and exactly one `ONGOING` transition / one first-occurrence render; threads feeding
