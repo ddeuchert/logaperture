@@ -81,7 +81,8 @@ you press Ctrl+C.
 
 ### What's in the zip
 
-- `machine.txt`: the CPU, memory, Windows version, Java version, power plan and the exact code
+- `machine.txt`: the CPU, memory, Windows version, Java version, power plan, how long one `System.nanoTime()` call takes
+  (about 25 ns is normal) and the exact code
   version that ran. No personal files or account details, just the PC's name.
 - One `.txt` (what scrolled past on screen) and one `.json` (the same numbers for analysis) per
   run.
@@ -95,3 +96,7 @@ java -jar logaperture-bench/target/benchmarks.jar -prof gc -rf json
 
 For numbers worth comparing, pin the CPU frequency first (Linux: the `performance` governor,
 with turbo off) and close everything else.
+
+On Linux, also check `cat /sys/devices/system/clocksource/clocksource0/current_clocksource` is
+`tsc`, and run `java logaperture-bench/NanoTimeCost.java` (about 25 ns is normal). With `hpet` a
+single `System.nanoTime()` costs over a microsecond, which dwarfs the layers being measured.
