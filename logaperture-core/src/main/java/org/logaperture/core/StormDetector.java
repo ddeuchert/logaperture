@@ -30,7 +30,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.regex.Pattern;
 
 /**
  * {@code logctl storms}'s engine — see doc/specs/storm-detection.md
@@ -65,6 +64,8 @@ public final class StormDetector implements StormObserver {
     public static final String MAX_HISTORY_PROPERTY = "logaperture.storm.maxHistory";
     /** {@value}. */
     public static final String FIRST_OCCURRENCE_BYTES_PROPERTY = "logaperture.storm.firstOccurrenceBytes";
+    /** {@value}; {@code 0} disables the cache. */
+    public static final String NORMALIZATION_CACHE_SIZE_PROPERTY = "logaperture.storm.normalizationCacheSize";
 
     private static final long DEFAULT_THRESHOLD = 1_000;
     private static final long DEFAULT_WINDOW_SECONDS = 10;
@@ -72,22 +73,10 @@ public final class StormDetector implements StormObserver {
     private static final int DEFAULT_MAX_TRACKED_FINGERPRINTS = 4_000;
     private static final int DEFAULT_MAX_HISTORY = 100;
     private static final int DEFAULT_FIRST_OCCURRENCE_BYTES = 8 * 1024;
+    private static final int DEFAULT_NORMALIZATION_CACHE_SIZE = 1_024;
 
     private static final int EVICTION_SAMPLE_SIZE = 5;
-    private static final int MAX_MESSAGE_LENGTH = 500;
     private static final String TRUNCATION_MARKER = "\n... [truncated]";
-
-    private static final Pattern UUID_PATTERN = Pattern.compile(
-            "\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b");
-    // The bare-hex alternative requires at least one a-f/A-F letter in the run (a lookahead), so a
-    // purely-decimal run of 6+ digits (e.g. a long numeric id) is left for DIGIT_RUN_PATTERN instead
-    // of being misread as hex -- every digit is technically a valid hex digit, so without this guard
-    // "order 482156" and "order 4821" would normalize to different placeholders (<hex> vs <n>) for
-    // what is otherwise the identical message shape.
-    private static final Pattern HEX_RUN_PATTERN = Pattern.compile(
-            "\\b0[xX][0-9a-fA-F]+\\b|\\b(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{6,}\\b");
-    private static final Pattern DIGIT_RUN_PATTERN = Pattern.compile("\\d+");
-    private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
     private final long thresholdEvents;
     private final long windowNanos;
@@ -95,6 +84,7 @@ public final class StormDetector implements StormObserver {
     private final int maxTrackedFingerprints;
     private final int maxHistory;
     private final int firstOccurrenceBytes;
+    private final NormalizationCache normalizations;
 
     private final ConcurrentHashMap<Long, Entry> counters = new ConcurrentHashMap<>();
     private final Object historyLock = new Object();
@@ -107,12 +97,19 @@ public final class StormDetector implements StormObserver {
                 Duration.ofSeconds(longProperty(QUIET_PROPERTY, DEFAULT_QUIET_SECONDS)),
                 (int) longProperty(MAX_TRACKED_PROPERTY, DEFAULT_MAX_TRACKED_FINGERPRINTS),
                 (int) longProperty(MAX_HISTORY_PROPERTY, DEFAULT_MAX_HISTORY),
-                (int) longProperty(FIRST_OCCURRENCE_BYTES_PROPERTY, DEFAULT_FIRST_OCCURRENCE_BYTES));
+                (int) longProperty(FIRST_OCCURRENCE_BYTES_PROPERTY, DEFAULT_FIRST_OCCURRENCE_BYTES),
+                normalizationCacheSizeProperty());
     }
 
     /** Package-visible so a test can use small thresholds/windows instead of the real defaults. */
     StormDetector(long thresholdEvents, Duration window, Duration quiet, int maxTrackedFingerprints, int maxHistory,
             int firstOccurrenceBytes) {
+        this(thresholdEvents, window, quiet, maxTrackedFingerprints, maxHistory, firstOccurrenceBytes,
+                DEFAULT_NORMALIZATION_CACHE_SIZE);
+    }
+
+    StormDetector(long thresholdEvents, Duration window, Duration quiet, int maxTrackedFingerprints, int maxHistory,
+            int firstOccurrenceBytes, int normalizationCacheSize) {
         if (thresholdEvents < 1) {
             throw new IllegalArgumentException("thresholdEvents must be at least 1");
         }
@@ -122,6 +119,7 @@ public final class StormDetector implements StormObserver {
         this.maxTrackedFingerprints = maxTrackedFingerprints;
         this.maxHistory = maxHistory;
         this.firstOccurrenceBytes = firstOccurrenceBytes;
+        this.normalizations = new NormalizationCache(normalizationCacheSize);
     }
 
     @Override
@@ -134,7 +132,7 @@ public final class StormDetector implements StormObserver {
     }
 
     private void observeUnsafe(StormObservation observation) {
-        String normalizedMessage = normalize(observation.rawMessage());
+        String normalizedMessage = normalizations.normalize(observation.rawMessage());
         StormFingerprint cheapFingerprint = new StormFingerprint(
                 observation.loggerName(), observation.level(), observation.throwableClassName(),
                 normalizedMessage, null);
@@ -348,21 +346,12 @@ public final class StormDetector implements StormObserver {
     /**
      * doc/specs/storm-detection.md Decision #3: a small, conservative,
      * content-agnostic transform -- collapse digit/hex/UUID runs to a
-     * placeholder, collapse whitespace, trim, cap length. Package-visible so
-     * a unit test can assert on it directly.
+     * placeholder, collapse whitespace, trim, cap length. The rules live in
+     * {@link StormMessageNormalizer}. Package-visible so a unit test can
+     * assert on it directly.
      */
     static String normalize(String message) {
-        if (message == null) {
-            return "";
-        }
-        String result = UUID_PATTERN.matcher(message).replaceAll("<uuid>");
-        result = HEX_RUN_PATTERN.matcher(result).replaceAll("<hex>");
-        result = DIGIT_RUN_PATTERN.matcher(result).replaceAll("<n>");
-        result = WHITESPACE_PATTERN.matcher(result).replaceAll(" ").trim();
-        if (result.length() > MAX_MESSAGE_LENGTH) {
-            result = result.substring(0, MAX_MESSAGE_LENGTH);
-        }
-        return result;
+        return StormMessageNormalizer.normalize(message);
     }
 
     private static long fingerprintHash(StormFingerprint fingerprint) {
@@ -372,6 +361,22 @@ public final class StormDetector implements StormObserver {
         h = 31 * h + (fingerprint.throwableClass() == null ? 0 : fingerprint.throwableClass().hashCode());
         h = 31 * h + fingerprint.normalizedMessage().hashCode();
         return h;
+    }
+
+    /** Unlike {@link #longProperty}, {@code 0} or less is a real setting here: it disables the cache. */
+    static int normalizationCacheSizeProperty() {
+        String raw = System.getProperty(NORMALIZATION_CACHE_SIZE_PROPERTY);
+        if (raw == null || raw.isBlank()) {
+            return DEFAULT_NORMALIZATION_CACHE_SIZE;
+        }
+        try {
+            long configured = Long.parseLong(raw.trim());
+            return (int) Math.max(0, Math.min(Integer.MAX_VALUE, configured));
+        } catch (NumberFormatException e) {
+            Diagnostics.warn("ignoring non-numeric " + NORMALIZATION_CACHE_SIZE_PROPERTY + "='" + raw + "', using "
+                    + DEFAULT_NORMALIZATION_CACHE_SIZE);
+            return DEFAULT_NORMALIZATION_CACHE_SIZE;
+        }
     }
 
     private static long longProperty(String property, long fallback) {
