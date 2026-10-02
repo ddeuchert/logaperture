@@ -75,6 +75,7 @@ class AgentBootstrapTest {
         org.logaperture.core.AuditRecord record = audit.records().get(0);
         assertEquals("vendor-defaults", record.source());
         assertEquals(file.toString(), record.loggerName());
+        assertEquals(org.logaperture.core.AuditRecord.Target.FILE, record.target(), "printed as file=<path> (#137)");
         assertEquals("loaded sha256=" + vendor.sha256().orElseThrow() + " (1 logger)", record.newValue());
         assertEquals(64, vendor.sha256().orElseThrow().length());
     }

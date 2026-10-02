@@ -648,6 +648,7 @@ Detectability is a stronger and cheaper guarantee than prevention, and it degrad
 - Separate sink, which squelch rules cannot match and the runtime cannot redirect.
 - Records the **revert** as well as the change — an override that expired unnoticed is exactly what an audit needs to show.
 - Fields: principal, source (CLI / JMX / HTTP / file), what changed, previous value, expiry, `reason`.
+- **What changed is labelled by kind** (issue [#137](https://github.com/ddeuchert/logaperture/issues/137)): `logger=<name>` for a logger level or a rule (named by the logger it applies to), `handler=<name>` for a handler level or the `DEFAULT_HANDLERS` membership, `file=<path>` for a record about a whole file — the vendor defaults file loaded, the state file a resume restored from. A reader can grep `handler=` for every handler change without matching a logger that happens to share the name.
 - **Hash-chained entries** — each record includes a digest of its predecessor. Cheap to implement, makes deletion or alteration detectable, and is the sort of thing that turns a security review from an argument into a checkbox.
 - Optionally mirrored to syslog or the Windows Event Log so the record leaves the process entirely.
 

@@ -1673,7 +1673,10 @@ its own prior value (Decision #4).
   "let support raise a logger for 30 minutes" is not thereby approving "let
   support widen the console sink for the whole server".
 - **Audit** (§9.7 fields) on every `setHandlerLevel` and every reversion:
-  principal, source, `contextKey`, `handlerRef`, previous level, new level,
+  principal, source, `contextKey`, `handlerRef` (printed as `handler=<name>`,
+  never `logger=` — issue [#137](https://github.com/ddeuchert/logaperture/issues/137);
+  so is a `set`/`reset default-handler` membership record, as
+  `handler=DEFAULT_HANDLERS`), previous level, new level,
   `reason`, `tier`, `expiresAt`. One record per handler per context. Reversions
   carry `source` = `reset` / `expiry` / `resetAll` / `resume`. For
   `ALL_HANDLERS` (Decision #3, issue #13), "one record per handler" means one

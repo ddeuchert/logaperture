@@ -230,7 +230,7 @@ curl http://localhost:8080/logaperture-sample-war/log      # TRACE/DEBUG lines s
 
 python3 dev/wildfly/wildflyctl.py logctl -- handler ALL_HANDLERS TRACE
 #   the tail shows one [logaperture-audit] line naming the REAL handler
-#   touched (logger=CONSOLE), never one literally named ALL_HANDLERS
+#   touched (handler=CONSOLE), never one literally named ALL_HANDLERS
 curl http://localhost:8080/logaperture-sample-war/log      # TRACE/DEBUG lines now appear in the tail
 
 python3 dev/wildfly/wildflyctl.py logctl -- status         # one ALL_HANDLERS row

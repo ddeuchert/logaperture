@@ -672,6 +672,17 @@ class HandlerLevelControlServiceTest {
     }
 
     @Test
+    void everyRecordThisServiceWrites_namesAHandler() {
+        // Issue #137: printed as handler=CONSOLE, not logger=CONSOLE.
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());
+        service.resetHandler(CONSOLE, false);
+        service.setDefaultHandlerMembers(List.of(CONSOLE));
+
+        assertEquals(3, auditLog.records().size());
+        assertTrue(auditLog.records().stream().allMatch(r -> r.target() == AuditRecord.Target.HANDLER));
+    }
+
+    @Test
     void resetHandler_allHandlers_revertsEachRealHandlerToItsOwnBaseline() {
         HandlerRef file = new HandlerRef("FILE");
         adapter.addHandler(file, Level.DEBUG); // a different starting level than CONSOLE's INFO
