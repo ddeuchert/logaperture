@@ -422,7 +422,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         defaultHandlerGroup.setExplicit(resolved);
         safePersist(() -> stateStore.saveDefaultHandlerMembers(toNames(resolved)));
         onDefaultHandlerMembersChanged(membersBefore);
-        auditLog.record(new AuditRecord(Instant.now(), principal, source, HandlerRef.DEFAULT_HANDLERS.value(),
+        audit(new AuditRecord(Instant.now(), principal, source, HandlerRef.DEFAULT_HANDLERS.value(),
                 previousValue, describeMembers(Optional.of(resolved)), null, AuditRecord.Action.MUTATION));
         return List.copyOf(resolved);
     }
@@ -693,7 +693,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                 trySetHandlerLevel(ref, baselines.get(ref).orElse(null), "undo");
                 continue;
             }
-            auditLog.record(new AuditRecord(now, principal, "verification-sweep", ref.value(),
+            audit(new AuditRecord(now, principal, "verification-sweep", ref.value(),
                     current.get().toString(), vendor.level().toString(), vendor.reason(),
                     AuditRecord.Action.MUTATION));
             reapplied++;
@@ -792,7 +792,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return Optional.empty();
         }
         if (auditSource != null) {
-            auditLog.record(new AuditRecord(Instant.now(), principal, auditSource, ref.value(), previousValue,
+            audit(new AuditRecord(Instant.now(), principal, auditSource, ref.value(), previousValue,
                     target.get().toString(), reason, AuditRecord.Action.MUTATION, origin));
         }
         return target;
@@ -957,7 +957,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         defaultHandlerGroup.clearExplicit();
         safePersist(stateStore::removeDefaultHandlerMembers);
         String newValue = defaultHandlerGroup.vendorMembersInEffect(adapter) ? "<vendor-defaults>" : "<rule-derived>";
-        auditLog.record(new AuditRecord(Instant.now(), principal, source, HandlerRef.DEFAULT_HANDLERS.value(),
+        audit(new AuditRecord(Instant.now(), principal, source, HandlerRef.DEFAULT_HANDLERS.value(),
                 previousValue, newValue, ResetStep.reason(layerChanged, toNative), AuditRecord.Action.MUTATION));
         onDefaultHandlerMembersChanged(membersBefore);
         return membersOf(HandlerRef.DEFAULT_HANDLERS);
@@ -1085,7 +1085,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (baseline == null || !trySetHandlerLevel(ref, baseline, "revert")) {
             return;
         }
-        auditLog.record(new AuditRecord(Instant.now(), principal, source, ref.value(), previousValue,
+        audit(new AuditRecord(Instant.now(), principal, source, ref.value(), previousValue,
                 baseline.toString(), reason, AuditRecord.Action.REVERSION));
     }
 
@@ -1282,12 +1282,12 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                     if (entry.getValue().equals(target)) {
                         continue;
                     }
-                    auditLog.record(new AuditRecord(now, principal, "verification-sweep", entry.getKey().value(),
+                    audit(new AuditRecord(now, principal, "verification-sweep", entry.getKey().value(),
                             entry.getValue(), override.level().toString(), override.reason(),
                             AuditRecord.Action.MUTATION));
                 }
             } else {
-                auditLog.record(new AuditRecord(now, principal, "verification-sweep", ref.value(),
+                audit(new AuditRecord(now, principal, "verification-sweep", ref.value(),
                         currentDescription, override.level().toString(), override.reason(),
                         AuditRecord.Action.MUTATION));
             }
@@ -1446,7 +1446,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             recordGroupMutationAudit("resume", reals, previousValues, override.level(), override.reason(),
                     Instant.now());
         } else {
-            auditLog.record(new AuditRecord(
+            audit(new AuditRecord(
                     Instant.now(), principal, "resume", override.handlerRef().value(), null,
                     override.level().toString(), override.reason(), AuditRecord.Action.MUTATION));
         }
@@ -1537,7 +1537,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     private void recordGroupMutationAudit(String auditSource, List<HandlerRef> reals, List<String> previousValues,
             Level newLevel, String reason, Instant now) {
         for (int i = 0; i < reals.size(); i++) {
-            auditLog.record(new AuditRecord(now, principal, auditSource, reals.get(i).value(),
+            audit(new AuditRecord(now, principal, auditSource, reals.get(i).value(),
                     previousValues.get(i), newLevel.toString(), reason, AuditRecord.Action.MUTATION));
         }
     }
@@ -1645,7 +1645,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                 overrides.remove(real);
                 safePersist(() -> stateStore.removeHandler(real));
             }
-            auditLog.record(new AuditRecord(
+            audit(new AuditRecord(
                     now, principal, source, real.value(), previousValue, level.toString(), opts.reason(),
                     AuditRecord.Action.MUTATION));
         }
@@ -1704,7 +1704,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         } else {
             safePersist(() -> stateStore.removeHandler(ref));
         }
-        auditLog.record(new AuditRecord(
+        audit(new AuditRecord(
                 now, principal, auditSource(opts), ref.value(), previousValue, level.toString(), opts.reason(),
                 AuditRecord.Action.MUTATION, origin(opts)));
 
@@ -1760,7 +1760,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         }
 
         String newValue = baseline == null ? "<none>" : baseline.toString();
-        auditLog.record(new AuditRecord(
+        audit(new AuditRecord(
                 Instant.now(), principal, auditSource, ref.value(), previousValue, newValue, reasonFor.apply(ref),
                 AuditRecord.Action.REVERSION));
         return true;
@@ -1789,7 +1789,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                 continue;
             }
             String newValue = baseline == null ? "<none>" : baseline.toString();
-            auditLog.record(new AuditRecord(
+            audit(new AuditRecord(
                     now, principal, auditSource, real.value(), previousValue, newValue, reasonFor.apply(real),
                     AuditRecord.Action.REVERSION));
         }
@@ -1824,6 +1824,11 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         }
     }
 
+    /** Every record this service writes names a handler (or the DEFAULT_HANDLERS membership) -- issue #137. */
+    private void audit(AuditRecord record) {
+        auditLog.record(record.withTarget(AuditRecord.Target.HANDLER));
+    }
+
     private void safePersist(Runnable stateStoreCall) {
         try {
             stateStoreCall.run();
@@ -1841,7 +1846,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                 String newValue = baselines.isCaptured(real)
                         ? baselines.get(real).map(Level::toString).orElse("<none>")
                         : "<none>";
-                auditLog.record(new AuditRecord(
+                audit(new AuditRecord(
                         now, principal, "resume", real.value(), persisted.level().toString(), newValue,
                         "expired while stopped", AuditRecord.Action.REVERSION));
             }
@@ -1849,7 +1854,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         }
         Optional<Level> baseline = baselines.get(persisted.handlerRef());
         String newValue = baseline.map(Level::toString).orElse("<none>");
-        auditLog.record(new AuditRecord(
+        audit(new AuditRecord(
                 now, principal, "resume", persisted.handlerRef().value(), persisted.level().toString(), newValue,
                 "expired while stopped", AuditRecord.Action.REVERSION));
     }

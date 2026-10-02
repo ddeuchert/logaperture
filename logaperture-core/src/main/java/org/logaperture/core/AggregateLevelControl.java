@@ -253,7 +253,8 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         }
         auditLog.record(new AuditRecord(Instant.now(), principal, "resume", location, null,
                 "restored " + count(loggers, "logger override") + ", " + count(handlers, "handler override") + ", "
-                        + count(rules, "rule"), null, AuditRecord.Action.MUTATION));
+                        + count(rules, "rule"), null, AuditRecord.Action.MUTATION)
+                .withTarget(AuditRecord.Target.FILE));
     }
 
     private static String count(int n, String noun) {

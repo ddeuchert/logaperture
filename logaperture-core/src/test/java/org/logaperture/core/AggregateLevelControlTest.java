@@ -70,6 +70,17 @@ class AggregateLevelControlTest {
         aggregate.useAgentOrderCheck(agentOrderCheck());
     }
 
+    @Test
+    void recordResume_namesTheStateFileAsAFile() {
+        // Issue #137: printed as file=<path>, not logger=<path>.
+        aggregate.recordResume(auditLog, "alice", "/work/state.yaml", 2, 1, 0);
+
+        assertEquals(1, auditLog.records().size());
+        AuditRecord record = auditLog.records().get(0);
+        assertEquals("/work/state.yaml", record.loggerName());
+        assertEquals(AuditRecord.Target.FILE, record.target());
+    }
+
     private static AgentOrderCheck agentOrderCheck(String... arguments) {
         return new AgentOrderCheck(() -> List.of(arguments), Optional.empty(), Path.of("/work"));
     }

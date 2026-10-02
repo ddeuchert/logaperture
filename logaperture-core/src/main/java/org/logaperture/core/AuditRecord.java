@@ -30,8 +30,13 @@ import java.time.Instant;
  *                      {@link Action#REVERSION} for {@code resetLogger}/
  *                      {@code resetAll} — "records the revert as well as
  *                      the change" (§9.7)
+ * @param loggerName    the name of what changed -- a logger's name for a {@link Target#LOGGER}
+ *                      record, a handler's for {@link Target#HANDLER}, a path for {@link
+ *                      Target#FILE}; {@code target} says which
  * @param origin        what made the change beyond its source, or {@code null}: for a recipe's
  *                      change, {@code recipe <id> from <location>} (doc/specs/recipes.md B5)
+ * @param target        what kind of thing {@code loggerName} names, and so the label the audit
+ *                      line prints it under (doc/logaperture-spec.md §9.7, issue #137)
  */
 public record AuditRecord(
         Instant timestamp,
@@ -42,12 +47,51 @@ public record AuditRecord(
         String newValue,
         String reason,
         Action action,
-        String origin) {
+        String origin,
+        Target target) {
 
-    /** A record with no origin -- every change not made by a recipe. */
+    public AuditRecord {
+        target = target == null ? Target.LOGGER : target;
+    }
+
+    /** A logger record -- every record whose writer doesn't say otherwise. */
+    public AuditRecord(Instant timestamp, String principal, String source, String loggerName, String previousValue,
+            String newValue, String reason, Action action, String origin) {
+        this(timestamp, principal, source, loggerName, previousValue, newValue, reason, action, origin,
+                Target.LOGGER);
+    }
+
+    /** A logger record with no origin -- every change not made by a recipe. */
     public AuditRecord(Instant timestamp, String principal, String source, String loggerName, String previousValue,
             String newValue, String reason, Action action) {
         this(timestamp, principal, source, loggerName, previousValue, newValue, reason, action, null);
+    }
+
+    /** This record, naming a {@code target} of the given kind instead. */
+    public AuditRecord withTarget(Target target) {
+        return new AuditRecord(timestamp, principal, source, loggerName, previousValue, newValue, reason, action,
+                origin, target);
+    }
+
+    /** What an audit record's target names -- doc/logaperture-spec.md §9.7 (issue #137). */
+    public enum Target {
+        /** A logger; also a rule, which is printed under the logger it applies to. */
+        LOGGER("logger"),
+        /** A handler, or the {@code DEFAULT_HANDLERS} membership. */
+        HANDLER("handler"),
+        /** A file as a whole: the vendor defaults file loaded, the state file resumed from. */
+        FILE("file");
+
+        private final String label;
+
+        Target(String label) {
+            this.label = label;
+        }
+
+        /** The key the audit line prints the target under: {@code logger=}, {@code handler=}, {@code file=}. */
+        public String label() {
+            return label;
+        }
     }
 
     public enum Action {

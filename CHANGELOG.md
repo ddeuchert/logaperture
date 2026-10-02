@@ -36,6 +36,12 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Changed
 
+- **Audit lines label a handler `handler=`, not `logger=`** (issue #137). A handler change used to
+  print as `logger=FILE`, which read like a logger called FILE. Handler levels and the
+  `DEFAULT_HANDLERS` membership now print `handler=<name>`, and the records naming the vendor
+  defaults file loaded or the state file resumed from print `file=<path>`. Logger and rule records
+  still print `logger=`. If you grep the audit log for `logger=` to find handler changes, grep
+  `handler=` instead.
 - **Much quieter startup and drop summaries** (issue #123; `doc/specs/quieter-output.md`). A start
   prints one line, `[logaperture] LogAperture <version> active (WildFly): vendor defaults <file>
   (…); N sticky settings restored`, in place of several INFO lines. Loading a vendor defaults file

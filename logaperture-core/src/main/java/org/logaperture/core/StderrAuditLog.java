@@ -54,7 +54,7 @@ public final class StderrAuditLog implements AuditLog {
                 + " action=" + record.action()
                 + " principal=" + record.principal()
                 + " source=" + record.source()
-                + " logger=" + record.loggerName()
+                + " " + record.target().label() + "=" + record.loggerName()
                 + " previous=" + record.previousValue()
                 + " new=" + record.newValue()
                 + " reason=" + (record.reason() == null ? "" : record.reason())

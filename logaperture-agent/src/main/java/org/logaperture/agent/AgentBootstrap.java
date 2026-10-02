@@ -214,7 +214,7 @@ final class AgentBootstrap {
             auditLog.record(new AuditRecord(Instant.now(), System.getProperty("user.name", "unknown"),
                     VendorDefaults.AUDIT_SOURCE, vendorDefaults.path().map(Path::toString).orElse("?"), null,
                     "loaded sha256=" + vendorDefaults.sha256().orElse("?") + " (" + vendorDefaults.summary() + ")",
-                    null, AuditRecord.Action.MUTATION));
+                    null, AuditRecord.Action.MUTATION).withTarget(AuditRecord.Target.FILE));
         } catch (RuntimeException e) {
             Diagnostics.warn("failed to audit the vendor defaults load", e);
         }
