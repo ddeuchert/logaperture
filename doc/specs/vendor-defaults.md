@@ -387,7 +387,9 @@ Details the text above left open, decided while building it; none changes an agr
   other (all or nothing).
 - **"No override covers it" includes group overrides.** The vendor layer acts on a handler only
   while neither its own override nor an `ALL_HANDLERS`/`DEFAULT_HANDLERS` override it belongs to
-  is active; when that override is reset, the handler returns to its vendor level (or to AUTO
+  is active; when that override is reset, the handler returns to the next override still
+  covering it (its own, then `DEFAULT_HANDLERS`, then `ALL_HANDLERS` -- handler-floor-control.md
+  "Overlapping overrides", issue #135), and only with none left to its vendor level (or to AUTO
   tracking).
 - **Vendor rules' internal tier is `SESSION`.** They are never written to the state file; `list
   rules` shows their origin (`vendor-defaults`) instead of a tier. A suspended rule keeps the hit

@@ -15,6 +15,7 @@
  */
 package org.logaperture.cli;
 
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.EnvironmentReportData;
@@ -186,9 +187,25 @@ final class Commands {
                             row.getReason() == null ? Format.NONE : '"' + row.getReason() + '"'));
                 }
                 out.println(Format.table(List.of("HANDLER", "LEVEL", "MODE", "TIER", "REVERTS", "REASON"), table));
+                if (groupOverlapsAnother(handlerOverrides)) {
+                    out.println();
+                    out.println(OVERLAP_NOTE);
+                }
             }
             return CliError.OK;
         };
+    }
+
+    /** {@code status}'s note under the handler table -- doc/specs/handler-floor-control.md "Overlapping overrides" (issue #135). */
+    static final String OVERLAP_NOTE = "Where more than one of these covers a handler, the most specific wins: "
+            + "its own override, then DEFAULT_HANDLERS, then ALL_HANDLERS.";
+
+    /** Whether a group override is listed alongside another override that may cover some of the same handlers. */
+    private static boolean groupOverlapsAnother(List<HandlerLevelOverrideData> handlerOverrides) {
+        boolean group = handlerOverrides.stream().map(HandlerLevelOverrideData::getHandlerRef)
+                .anyMatch(ref -> HandlerRef.ALL_HANDLERS.value().equals(ref)
+                        || HandlerRef.DEFAULT_HANDLERS.value().equals(ref));
+        return group && handlerOverrides.stream().map(HandlerLevelOverrideData::getHandlerRef).distinct().count() > 1;
     }
 
     /** The {@code VENDOR} cell: the vendor setting, marked when it's reset to native (doc/specs/reset-to-native.md "Surfaces"). */

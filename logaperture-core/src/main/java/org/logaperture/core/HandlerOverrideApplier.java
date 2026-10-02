@@ -37,7 +37,8 @@ import java.util.function.BiFunction;
  * static utility has no reference to. So the caller passes a {@code
  * memberResolver}, rather than this class hardcoding {@code ALL_HANDLERS}
  * as the only group it understands — {@link
- * HandlerLevelControlService#membersOf} is what every real caller passes.
+ * HandlerLevelControlService#governedMembersOf} is what every real caller
+ * passes: the members no more specific override covers (issue #135).
  */
 public final class HandlerOverrideApplier {
 
