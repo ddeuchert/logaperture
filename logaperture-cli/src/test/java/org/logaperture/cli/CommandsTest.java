@@ -1062,6 +1062,31 @@ class CommandsTest {
         assertTrue(text.contains("MODE"), text);
         assertTrue(text.contains("AUTO"), text);
         assertTrue(text.contains("FIXED"), text);
+        assertFalse(text.contains(Commands.OVERLAP_NOTE), "no group override -- nothing overlaps");
+    }
+
+    @Test
+    void status_groupOverrideAlongsideAMoreSpecificOne_notesWhichWins() {
+        // doc/specs/handler-floor-control.md "Overlapping overrides" (issue #135).
+        mbean.handlerOverrides = List.of(
+                new HandlerLevelOverrideData("ALL_HANDLERS", "TRACE", "FIXED", null, Instant.now().toString(), "jmx",
+                        "SESSION", null, List.of()),
+                new HandlerLevelOverrideData("FILE", "DEBUG", "FIXED", null, Instant.now().toString(), "jmx",
+                        "SESSION", null, List.of()));
+
+        assertEquals(CliError.OK, run(Commands.status(false)));
+
+        assertTrue(output().contains(Commands.OVERLAP_NOTE), output());
+    }
+
+    @Test
+    void status_groupOverrideOnItsOwn_hasNoOverlapNote() {
+        mbean.handlerOverrides = List.of(new HandlerLevelOverrideData(
+                "ALL_HANDLERS", "TRACE", "FIXED", null, Instant.now().toString(), "jmx", "SESSION", null, List.of()));
+
+        assertEquals(CliError.OK, run(Commands.status(false)));
+
+        assertFalse(output().contains(Commands.OVERLAP_NOTE));
     }
 
     @Test

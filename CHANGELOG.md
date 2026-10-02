@@ -52,6 +52,14 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Fixed
 
+- **A handler set on its own under a group setting no longer flips every 30 seconds.** After
+  `logctl handler ALL_HANDLERS TRACE` then `logctl handler FILE DEBUG`, the verification sweep used
+  to put `FILE` back to `TRACE` and then to `DEBUG` on every tick, auditing both changes each time.
+  Now the most specific setting wins and stays: a handler's own setting, then `DEFAULT_HANDLERS`,
+  then `ALL_HANDLERS`. `logctl handler FILE reset` hands `FILE` back to the group's level rather
+  than its original one, and `logctl status` notes which wins when a group is listed with a more
+  specific setting. The sweep also no longer writes an audit row for a group member that was
+  already at the right level (`previous=TRACE new=TRACE`) (issue #135).
 - **`logaperture-agent.jar` listed twice on `-javaagent`** no longer starts LogAperture twice. The
   second copy used to fail to lock the state file and to register its control surface, logging
   both at startup; now LogAperture starts once, from the first entry, and every later entry writes

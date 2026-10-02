@@ -727,7 +727,8 @@ class HandlerLevelControlServiceTest {
         HandlerRef file = new HandlerRef("FILE");
         adapter.addHandler(file, Level.INFO);
         service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
-        adapter.setHandlerLevel(file, Level.INFO); // something else reconfigured just FILE out from under us
+        adapter.setHandlerLevel(file, Level.INFO); // both reconfigured out from under us
+        adapter.setHandlerLevel(CONSOLE, Level.WARN);
         int before = auditLog.records().size();
 
         service.verifyAndReapply(Instant.now());
@@ -737,6 +738,136 @@ class HandlerLevelControlServiceTest {
         assertTrue(newRecords.stream().anyMatch(r -> r.loggerName().equals("CONSOLE")));
         assertTrue(newRecords.stream().anyMatch(r -> r.loggerName().equals("FILE")));
         assertTrue(newRecords.stream().noneMatch(r -> r.loggerName().equals("ALL_HANDLERS")));
+    }
+
+    @Test
+    void verifyAndReapply_allHandlers_oneDriftedMember_auditsExactlyThatOne() {
+        // Issue #135: a member that was already at the group's level gets no X -> X row.
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+        adapter.setHandlerLevel(file, Level.DEBUG); // something else reconfigured just FILE out from under us
+        int before = auditLog.records().size();
+
+        service.verifyAndReapply(Instant.now());
+
+        List<AuditRecord> newRecords = auditLog.records().subList(before, auditLog.records().size());
+        assertEquals(1, newRecords.size());
+        AuditRecord row = newRecords.get(0);
+        assertEquals("FILE", row.loggerName());
+        assertEquals("DEBUG", row.previousValue());
+        assertEquals("TRACE", row.newValue());
+    }
+
+    // --- Overlapping overrides: the most specific wins (doc/specs/handler-floor-control.md, issue #135) --------
+
+    @Test
+    void verifyAndReapply_allHandlersPlusOwnOverride_settlesWithNoFlipFlop() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+        service.setHandlerLevel(file, Level.DEBUG, SetHandlerLevelOptions.defaults()); // peel FILE off the group
+        int before = auditLog.records().size();
+
+        int first = service.verifyAndReapply(Instant.now());
+        int second = service.verifyAndReapply(Instant.now());
+
+        assertEquals(0, first, "FILE's own override governs it -- the group isn't drifted");
+        assertEquals(0, second);
+        assertEquals(before, auditLog.records().size(), "no sweep rows at all");
+        assertEquals(Level.DEBUG, adapter.handlerLevel(file).orElseThrow());
+        assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
+    }
+
+    @Test
+    void verifyAndReapply_allHandlersPlusOwnOverride_reconfiguredBack_eachReappliesItsOwnLevel() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+        service.setHandlerLevel(file, Level.DEBUG, SetHandlerLevelOptions.defaults());
+        adapter.setHandlerLevel(file, Level.INFO); // a reload put both back to their configured levels
+        adapter.setHandlerLevel(CONSOLE, Level.INFO);
+
+        service.verifyAndReapply(Instant.now());
+        int settled = service.verifyAndReapply(Instant.now());
+
+        assertEquals(Level.DEBUG, adapter.handlerLevel(file).orElseThrow());
+        assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
+        assertEquals(0, settled, "stable after one sweep");
+    }
+
+    @Test
+    void resetHandler_ownOverrideUnderAllHandlers_handsTheHandlerBackToTheGroup() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+        service.setHandlerLevel(file, Level.DEBUG, SetHandlerLevelOptions.defaults());
+
+        service.resetHandler(file, false);
+
+        assertEquals(Level.TRACE, adapter.handlerLevel(file).orElseThrow(), "the group's level, not FILE's baseline");
+        AuditRecord last = auditLog.records().get(auditLog.records().size() - 1);
+        assertEquals(AuditRecord.Action.REVERSION, last.action());
+        assertEquals("TRACE", last.newValue());
+        assertEquals(0, service.verifyAndReapply(Instant.now()));
+    }
+
+    @Test
+    void sweepExpiredOverrides_ownOverrideUnderAllHandlers_handsTheHandlerBackToTheGroup() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+        service.setHandlerLevel(file, Level.DEBUG, SetHandlerLevelOptions.forDuration(Duration.ofMillis(1)));
+
+        service.sweepExpiredOverrides(Instant.now().plusSeconds(1));
+
+        assertEquals(Level.TRACE, adapter.handlerLevel(file).orElseThrow());
+    }
+
+    @Test
+    void resetHandler_allHandlers_leavesAMemberWithItsOwnOverrideAlone() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+        service.setHandlerLevel(file, Level.DEBUG, SetHandlerLevelOptions.defaults());
+
+        service.resetHandler(HandlerRef.ALL_HANDLERS, false);
+
+        assertEquals(Level.INFO, adapter.handlerLevel(CONSOLE).orElseThrow(), "back to its baseline");
+        assertEquals(Level.DEBUG, adapter.handlerLevel(file).orElseThrow(), "its own override still decides it");
+        assertTrue(overrides.get(file).isPresent());
+    }
+
+    @Test
+    void defaultHandlersPlusAllHandlers_defaultHandlersWinsOnItsMembers_andResetHandsThemBack() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setDefaultHandlerMembers(List.of(CONSOLE));
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+        service.setHandlerLevel(HandlerRef.DEFAULT_HANDLERS, Level.DEBUG, SetHandlerLevelOptions.defaults());
+
+        assertEquals(0, service.verifyAndReapply(Instant.now()), "settled: no flip between the two groups");
+        assertEquals(Level.DEBUG, adapter.handlerLevel(CONSOLE).orElseThrow());
+        assertEquals(Level.TRACE, adapter.handlerLevel(file).orElseThrow());
+
+        service.resetHandler(HandlerRef.DEFAULT_HANDLERS, false);
+
+        assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow(), "handed back to ALL_HANDLERS");
+        assertEquals(0, service.verifyAndReapply(Instant.now()));
+    }
+
+    @Test
+    void setHandlerLevel_allHandlers_dropsAnActiveDefaultHandlersOverride() {
+        HandlerRef file = new HandlerRef("FILE");
+        adapter.addHandler(file, Level.INFO);
+        service.setDefaultHandlerMembers(List.of(CONSOLE));
+        service.setHandlerLevel(HandlerRef.DEFAULT_HANDLERS, Level.DEBUG, SetHandlerLevelOptions.defaults());
+
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+
+        assertTrue(overrides.get(HandlerRef.DEFAULT_HANDLERS).isEmpty());
+        assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
+        assertEquals(0, service.verifyAndReapply(Instant.now()));
     }
 
     @Test
