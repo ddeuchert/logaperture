@@ -731,9 +731,9 @@ This is unglamorous and it is the difference between a tool that gets approved a
 
 ## 10. Performance
 
-Every gate-stage evaluation happens on the caller's thread inside the logging call. The budget should be explicit and enforced by JMH benchmarks in CI:
+Every gate-stage evaluation happens on the caller's thread inside the logging call. The budget is explicit and measured by JMH benchmarks ([`doc/specs/overhead-benchmarks.md`](specs/overhead-benchmarks.md)). The published numbers come from a quiet, pinned machine; CI runs a smoke pass of every benchmark to keep them working, with no threshold, because shared runners are too noisy to gate on:
 
-- **Target: < 200 ns added per evaluated event** for a typical rule set (~20 rules), and near-zero for loggers no rule can match.
+- **Target: < 200 ns added per evaluated event** for a typical rule set (~20 rules), and near-zero for loggers no rule can match. For 1.0, "near-zero" means ≤ 50 ns added for an idle agent and for a logger no rule can match, checked against the difference plus its error.
 - **Per-logger resolution cache.** Most matchers are decidable from the logger name alone. Precompute, per logger name, the subset of rules that could possibly match, cached in a bounded map. Loggers matching nothing get a fast-path no-op.
 - **Cheapest matcher first.** Compile rules so name/level checks run before message checks, and message checks before throwable-chain walks. Reject regex where a literal `contains` is equivalent — do that rewriting at compile time.
 - **Never call `Throwable.getStackTrace()` during matching.** It clones the whole array. Match on throwable type and message; if frame matching is requested, use `StackWalker` on JDK 9+ with a frame limit, and mark the matcher as expensive in documentation.
@@ -1224,7 +1224,7 @@ The M0–M6 plan above stays the long-term map. It is too much to build before a
 | `1.1.0` | Dec 2026 – early 2027 | Quarkus JVM mode and plain-JVM JUL (#114), unless it made 1.0. Then Release 2: Spring Boot, Logback depth (rules, `top`, `doctor`, storms), configurable storm suppression (#27), Tomcat with per-webapp Logback. If Quarkus takes 1.1, Release 2 becomes 1.2. |
 | `1.2+` | later | `logctl console` (#33), Log4j 2, the rest of §15.3, in the order feedback suggests. |
 
-**Release 1 scope.** Everything the alpha line built (Layer 0, Layer 1, the handler and vendor-defaults work, and the `drop` / `trim` half of M2) plus guided commands (#116), recipes, #85, #31 and #69. #24, #23 and #18 go in only if the overhead measurement shows they matter. Deferred to 1.x: #79, #81, #83, #56. Deferred to Release 2: #27, #77. #63 is closed as obsolete. Milestones: `1.0.0`, `1.1.0`, `1.x`.
+**Release 1 scope.** Everything the alpha line built (Layer 0, Layer 1, the handler and vendor-defaults work, and the `drop` / `trim` half of M2) plus guided commands (#116), recipes, #85, #31 and #69. #24 and #23 go in only if the overhead measurement shows they matter, by the rule fixed in [`doc/specs/overhead-benchmarks.md`](specs/overhead-benchmarks.md) (#128); #18 is not on the logging path and stays in 1.x. Deferred to 1.x: #79, #81, #83, #56, #18. Deferred to Release 2: #27, #77. #63 is closed as obsolete. Milestones: `1.0.0`, `1.1.0`, `1.x`.
 
 **Beta 1 is a hard feature freeze.** Between beta 1 and 1.0 the only changes are fixes, contract-review renames, docs and packaging. A new idea in that window becomes a 1.1 issue.
 
