@@ -235,6 +235,67 @@ class SetLoggerForceTest {
     }
 
     @Test
+    void aNestedForce_takesOverWhatAnAncestorForced_insteadOfKeepingItAsTheOperators() {
+        // Review finding: com.acme.db.Pool, forced by com.acme, is not "set by you" to a force on com.acme.db.
+        force(Level.TRACE, SetLevelOptions.defaults());
+        adapter.addKnownLogger("com.acme.db");
+
+        SetLevelResult result = service.setLogger("com.acme.db", Level.DEBUG, SetLevelOptions.defaults().withForce(true));
+
+        assertEquals(Level.DEBUG, adapter.effectiveLevel(POOL));
+        assertEquals("com.acme.db", overrides.get(POOL).orElseThrow().forcedBy(), "now tied to the nearer force");
+        assertTrue(result.descendants().isEmpty(), "nothing kept as the operator's");
+
+        SetLevelResult plain = service.setLogger("com.acme.db", Level.WARN, SetLevelOptions.defaults());
+        assertEquals(DescendantLevel.Kind.FORCED_EARLIER, plain.descendants().get(0).kind());
+    }
+
+    @Test
+    void aPlainReSetWithADifferentLifetime_saysTheTiedOnesKeepTheirOwn() {
+        // Review finding: same level, new tier -- the tied ones would otherwise expire on their own, unannounced.
+        force(Level.TRACE, SetLevelOptions.forDuration(Duration.ofMinutes(30)));
+
+        SetLevelResult result = service.setLogger(PARENT, Level.TRACE, SetLevelOptions.sticky());
+
+        assertEquals(List.of(POOL, OTHER), names(result.descendants()));
+        assertTrue(result.descendants().stream().allMatch(d -> d.kind() == DescendantLevel.Kind.FORCED_EARLIER));
+        assertTrue(service.setLogger(PARENT, Level.TRACE, SetLevelOptions.sticky()).descendants().stream()
+                .allMatch(d -> d.kind() == DescendantLevel.Kind.FORCED_EARLIER), "still differs: they're FOR, it's sticky");
+    }
+
+    @Test
+    void aForcedDescendant_sharesTheParentsAppliedAtAndExpiry() {
+        force(Level.TRACE, SetLevelOptions.forDuration(Duration.ofMinutes(30)));
+
+        LevelOverride parent = overrides.get(PARENT).orElseThrow();
+        assertEquals(parent.expiresAt(), overrides.get(OTHER).orElseThrow().expiresAt());
+        assertEquals(parent.appliedAt(), overrides.get(POOL).orElseThrow().appliedAt());
+    }
+
+    @Test
+    void aPatternForce_isCapabilityCheckedForItsForcedDescendantsToo() {
+        // Review finding: setLevelForPattern checked only the matches.
+        LevelControlService raiseOnly = newService(capability -> capability == Capability.LEVEL_RAISE);
+
+        assertThrows(CapabilityDeniedException.class, () -> raiseOnly.setLogger("*.acme", Level.DEBUG,
+                SetLevelOptions.defaults().withConfirmed(true).withForce(true)));
+        assertTrue(overrides.all().isEmpty());
+    }
+
+    @Test
+    void aPatternForce_neitherForcesNorReportsAMatchNestedUnderAnotherMatch() {
+        adapter.setConfiguredLevel("com.acme.x.acme", Level.WARN); // matches *.acme, and is under com.acme
+
+        SetLevelResult result = service.setLogger("*.acme", Level.TRACE,
+                SetLevelOptions.defaults().withConfirmed(true).withForce(true));
+
+        assertNull(overrides.get("com.acme.x.acme").orElseThrow().forcedBy(), "set as a match, not forced");
+        assertFalse(names(result.descendants()).contains("com.acme.x.acme"), "not 'kept, set by you'");
+        assertEquals(result.overrides().size(), result.overrides().stream().map(LevelOverride::loggerName)
+                .distinct().count(), "each logger once");
+    }
+
+    @Test
     void everyLoggerIsUnderRoot() {
         assertTrue(LevelControlService.isDescendant("ROOT", "com.acme"));
         assertFalse(LevelControlService.isDescendant("ROOT", "ROOT"));

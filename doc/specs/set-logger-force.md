@@ -40,7 +40,8 @@ Out:
 - **Rules.** A rule on `com.mycompany` already reaches every descendant (filtering-epic "Logger
   scope") — a descendant's own level doesn't block a rule.
 - **Refreshing a baseline when the server's own config changes a logger later** (F9). That affects
-  every override, not just forced ones; it is a separate issue.
+  every override, not just forced ones; it is a separate issue,
+  [#144](https://github.com/ddeuchert/logaperture/issues/144).
 
 ## Behavior
 
@@ -137,7 +138,7 @@ afterwards (`com.mycompany.other` edited to `WARN` and reloaded), the verificati
 at `TRACE` while the override lasts, and reset returns it to the `INFO` captured first, not the newer
 `WARN`. That's how every logger and handler override behaves today: the original level is captured
 once, the first time LogAperture touches a logger. Fixing it means refreshing that captured level
-when the sweep sees the native config change. Proposed as a separate issue covering all overrides,
+when the sweep sees the native config change. Filed as [#144](https://github.com/ddeuchert/logaperture/issues/144), covering all overrides,
 not built here.
 
 ## Surfaces
@@ -169,7 +170,7 @@ not built here.
 | F6 | A note after a plain `set logger` | **Yes**, at most 5 names, with the `--force` command. |
 | F7 | Confirmation and guided default | `--force` needs no extra question. Guided asks `[Y/n]`. |
 | F8 | How reset avoids undoing later changes | The **`forcedBy` tag** on each forced override; a later change replaces it (recipes #7). |
-| F9 | Native config changing a forced logger later | **Out of scope**: same as every override today; separate issue to refresh the captured level. |
+| F9 | Native config changing a forced logger later | **Out of scope**: same as every override today; separate issue ([#144](https://github.com/ddeuchert/logaperture/issues/144)) to refresh the captured level. |
 | F10 | How forced overrides show in `list loggers` / `status` | **`forced by <parent>`** in the reason column when there's no reason; no new column. |
 | F11 | Release | **1.0** if signed off by Oct 8 (leaves the freeze week for build and test); else 1.1. |
 
@@ -205,3 +206,18 @@ Details the text above left open; none changes an agreed decision.
 - **The registry's order isn't stable**, so forced descendants are reset and reported in name
   order.
 
+- **A force under an earlier force takes it over** (code review). A descendant tied to an
+  *ancestor's* force (`com.acme.db.Pool`, forced by `com.acme`) is re-forced and re-tagged by
+  `set logger com.acme.db DEBUG --force`, not kept as the operator's: nobody set it by hand. It is
+  then reset with `com.acme.db`. One forced by a logger beside or below the target stays kept.
+- **A plain re-set with a different lifetime is noted too** (code review): with the same level but
+  a new tier, or any `for`, the tied descendants keep their own lifetime, so the note names them.
+- **A forced descendant shares the parent's `appliedAt`**, so a `for` force has one deadline.
+- **`reset logger` shows what it put back**: each forced descendant reset with the target, marked
+  `(forced by <target>)`, and any sticky one left in place; `--json` carries both as
+  `forcedRevertedLoggerNames` and `forcedSkippedStickyLoggerNames`.
+- **`logctl` calls the new JMX operation only for `--force`**, so a plain `set logger` keeps working
+  against an agent from before this feature.
+- **A pattern with `--force`**: a match under another match is one of the command's own targets,
+  neither forced nor reported as kept; the capability check covers every forced descendant, as for
+  an exact target.

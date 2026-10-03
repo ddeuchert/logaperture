@@ -1161,7 +1161,7 @@ class CommandsTest {
         assertEquals(CliError.OK, run(Commands.resetLogger("com.acme.Known", false, true)));
         assertEquals(
                 "{\"name\":\"com.acme.Known\",\"overrideActive\":false,\"wasOverridden\":true,"
-                        + "\"removedRuleIds\":[],\"skippedStickyRuleIds\":[],\"vendorResetRuleIds\":[]}",
+                        + "\"removedRuleIds\":[],\"skippedStickyRuleIds\":[],\"vendorResetRuleIds\":[],\"forcedRevertedLoggerNames\":[],\"forcedSkippedStickyLoggerNames\":[]}",
                 output().strip());
     }
 

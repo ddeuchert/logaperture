@@ -36,6 +36,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -175,7 +176,7 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     private SetLevelResult setLevelForExactName(String loggerName, Level level, SetLevelOptions opts) {
-        List<DescendantLevel> descendants = descendantsNotFollowing(loggerName, level);
+        List<DescendantLevel> descendants = descendantsNotFollowing(loggerName, level, knownNames(), Set.of());
         List<String> toForce = opts.force() ? forceTargets(descendants) : List.of();
         List<String> checked = new ArrayList<>(List.of(loggerName));
         checked.addAll(toForce);
@@ -187,9 +188,9 @@ public final class LevelControlService implements LevelControlOperations {
             previousEffective.put(name, adapter.effectiveLevel(name));
         }
 
-        List<LevelOverride> created = new ArrayList<>();
-        created.add(applyAndRecordMutation(loggerName, level, opts));
-        created.addAll(applyForced(loggerName, toForce, level, opts));
+        LevelOverride parent = applyAndRecordMutation(loggerName, level, opts);
+        List<LevelOverride> created = new ArrayList<>(List.of(parent));
+        created.addAll(applyForced(loggerName, toForce, level, opts, parent.appliedAt()));
 
         // AUTO handler recompute (doc/specs/handler-floor-control.md "AUTO
         // handler level", "Recompute trigger") -- must run before the
@@ -198,7 +199,7 @@ public final class LevelControlService implements LevelControlOperations {
         changeListener.onChange();
 
         return new SetLevelResult(created, blockingFloors(previousEffective, level),
-                reportedDescendants(descendants, level, opts.force()));
+                reportedDescendants(descendants, level, opts));
     }
 
     /** The union of handlers that still swallow {@code level} on any raised logger's path, stricter reading per ref. */
@@ -216,39 +217,52 @@ public final class LevelControlService implements LevelControlOperations {
 
     // --- set logger --force (doc/specs/set-logger-force.md) ------------------------------------
 
-    /** The root logger's name in every adapter -- every other logger is under it. */
-    private static final String ROOT = "ROOT";
-
-    /** Whether {@code name} is a descendant of {@code ancestor} (not {@code ancestor} itself). */
+    /** Whether {@code name} is a descendant of {@code ancestor} -- {@link DescendantLevel#isUnder}. */
     static boolean isDescendant(String ancestor, String name) {
-        if (name.equals(ancestor)) {
-            return false;
+        return DescendantLevel.isUnder(ancestor, name);
+    }
+
+    /** Every logger name this context knows of -- built once per call and range-queried per target. */
+    private TreeSet<String> knownNames() {
+        TreeSet<String> names = new TreeSet<>(adapter.knownLoggerNames());
+        names.addAll(overrides.all().keySet());
+        names.addAll(baselines.vendorLoggerNames());
+        return names;
+    }
+
+    /** The names under {@code target} in {@code names}: a range, since '/' sorts right after '.'. */
+    private static Collection<String> under(String target, NavigableSet<String> names) {
+        if (DescendantLevel.ROOT.equals(target)) {
+            TreeSet<String> all = new TreeSet<>(names);
+            all.remove(DescendantLevel.ROOT);
+            return all;
         }
-        return ROOT.equals(ancestor) || name.startsWith(ancestor + ".");
+        return names.subSet(target + ".", true, target + "/", false);
     }
 
     /**
      * The currently-known loggers under {@code target} that don't follow {@code level}
      * ("Which loggers get forced", F2-F4): each with its own level that differs ({@code
-     * OWN_LEVEL}); each tied to {@code target} by an earlier {@code --force} ({@code
-     * FORCED_EARLIER}); each with any other override ({@code OPERATOR_OVERRIDE}). A descendant
-     * with no level of its own already follows and isn't listed.
+     * OWN_LEVEL}); each tied by an earlier {@code --force} on {@code target} or on one of its
+     * ancestors, which this force takes over ({@code FORCED_EARLIER}); each with any other override
+     * ({@code OPERATOR_OVERRIDE}). A descendant with no level of its own already follows and isn't
+     * listed, nor is one in {@code setByThisCall} -- a pattern match this same call just set.
      */
-    private List<DescendantLevel> descendantsNotFollowing(String target, Level level) {
-        TreeSet<String> names = new TreeSet<>(adapter.knownLoggerNames());
-        names.addAll(overrides.all().keySet());
-        names.addAll(baselines.vendorLoggerNames());
+    private List<DescendantLevel> descendantsNotFollowing(String target, Level level, NavigableSet<String> names,
+            Set<String> setByThisCall) {
         List<DescendantLevel> result = new ArrayList<>();
-        for (String name : names) {
-            if (!isDescendant(target, name)) {
+        for (String name : under(target, names)) {
+            if (setByThisCall.contains(name)) {
                 continue;
             }
             Optional<LevelOverride> override = overrides.get(name);
             if (override.isPresent()) {
-                DescendantLevel.Kind kind = target.equals(override.get().forcedBy())
+                String forcedBy = override.get().forcedBy();
+                boolean tiedHere = forcedBy != null
+                        && (forcedBy.equals(target) || DescendantLevel.isUnder(forcedBy, target));
+                result.add(new DescendantLevel(name, override.get().level(), tiedHere
                         ? DescendantLevel.Kind.FORCED_EARLIER
-                        : DescendantLevel.Kind.OPERATOR_OVERRIDE;
-                result.add(new DescendantLevel(name, override.get().level(), kind));
+                        : DescendantLevel.Kind.OPERATOR_OVERRIDE));
                 continue;
             }
             Optional<Level> own = adapter.configuredLevel(name);
@@ -272,17 +286,21 @@ public final class LevelControlService implements LevelControlOperations {
 
     /**
      * What the result reports: with {@code --force}, the descendants left alone because the
-     * operator set them (F3); without, the ones that won't follow -- an own level, or an
-     * earlier force at a different level (F5, F6).
+     * operator set them (F3); without, the ones that won't follow -- an own level, or an earlier
+     * force whose level or lifetime this set doesn't match (F5, F6). A {@code for} set always
+     * counts: its new deadline is never the tied ones' deadline.
      */
-    private static List<DescendantLevel> reportedDescendants(List<DescendantLevel> descendants, Level level,
-            boolean force) {
+    private List<DescendantLevel> reportedDescendants(List<DescendantLevel> descendants, Level level,
+            SetLevelOptions opts) {
         List<DescendantLevel> reported = new ArrayList<>();
         for (DescendantLevel descendant : descendants) {
-            boolean report = force
-                    ? descendant.kind() == DescendantLevel.Kind.OPERATOR_OVERRIDE
-                    : descendant.kind() == DescendantLevel.Kind.OWN_LEVEL
-                            || (descendant.kind() == DescendantLevel.Kind.FORCED_EARLIER && descendant.level() != level);
+            boolean report = switch (descendant.kind()) {
+                case OPERATOR_OVERRIDE -> opts.force();
+                case OWN_LEVEL -> !opts.force();
+                case FORCED_EARLIER -> !opts.force() && (descendant.level() != level
+                        || opts.tier() == PersistenceTier.FOR
+                        || overrides.get(descendant.loggerName()).map(o -> o.tier() != opts.tier()).orElse(false));
+            };
             if (report) {
                 reported.add(descendant);
             }
@@ -291,34 +309,33 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     /**
-     * Sets each of {@code names} to {@code level} with the parent's tier, expiry and reason,
-     * tagged {@code forcedBy: parent} so the parent's reset can find it again (F8), and audited
-     * with origin {@code forced by <parent>}.
+     * Sets each of {@code names} to {@code level} with the parent's tier, expiry and reason --
+     * built from the parent's own {@code appliedAt}, so a {@code for} force expires as one --
+     * tagged {@code forcedBy: parent} so the parent's reset can find it again (F8).
      */
-    private List<LevelOverride> applyForced(String parent, List<String> names, Level level, SetLevelOptions opts) {
+    private List<LevelOverride> applyForced(String parent, List<String> names, Level level, SetLevelOptions opts,
+            Instant parentAppliedAt) {
         List<LevelOverride> created = new ArrayList<>();
         for (String name : names) {
-            baselines.captureIfAbsent(name, adapter);
-            String previousValue = adapter.effectiveLevel(name).toString();
-            Instant now = Instant.now();
-            Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
-            LevelOverride override = new LevelOverride(name, level, opts.reason(), now, source, opts.tier(),
-                    expiresAt, null, null, parent);
-            installOverride(override, source, previousValue, "forced by " + parent);
-            created.add(override);
+            created.add(applyAndRecordMutation(name, level, opts, parentAppliedAt, parent));
         }
         return created;
     }
 
-    /** The loggers whose active override an earlier {@code --force} on {@code parent} made, in name order. */
-    private List<String> forcedBy(String parent) {
-        TreeSet<String> names = new TreeSet<>(); // the registry's own order isn't stable
-        for (LevelOverride override : overrides.all().values()) {
-            if (parent.equals(override.forcedBy())) {
-                names.add(override.loggerName());
+    /** Every {@code --force} parent with the loggers its still-tagged overrides cover, in name order. */
+    private Map<String, TreeSet<String>> forcedByParent() {
+        Map<String, TreeSet<String>> byParent = new java.util.HashMap<>();
+        for (LevelOverride override : overrides.all().values()) { // the registry's own order isn't stable
+            if (override.forcedBy() != null) {
+                byParent.computeIfAbsent(override.forcedBy(), parent -> new TreeSet<>()).add(override.loggerName());
             }
         }
-        return List.copyOf(names);
+        return byParent;
+    }
+
+    /** The loggers whose active override an earlier {@code --force} on {@code parent} made, in name order. */
+    private List<String> forcedBy(String parent) {
+        return List.copyOf(forcedByParent().getOrDefault(parent, new TreeSet<>()));
     }
 
     /**
@@ -336,7 +353,7 @@ public final class LevelControlService implements LevelControlOperations {
         // "Precedence, retired"): every match is a candidate, full stop --
         // a pattern-based set overwrites whatever a match already carries,
         // exactly as re-running an exact-name set against it would.
-        checkSetLevelPermitted(matches, level, opts);
+        checkSetLevelPermitted(withForceTargets(matches, level, opts), level, opts); // F7 covers forced ones too
         return applyToMatches(matches, level, opts);
     }
 
@@ -358,25 +375,31 @@ public final class LevelControlService implements LevelControlOperations {
             previousEffectiveByTarget.put(name, adapter.effectiveLevel(name));
         }
 
-        List<LevelOverride> created = new ArrayList<>();
+        Map<String, LevelOverride> created = new LinkedHashMap<>();
         for (String name : matches) {
-            created.add(applyAndRecordMutation(name, level, opts));
+            created.put(name, applyAndRecordMutation(name, level, opts));
         }
 
-        // --force under each match (doc/specs/set-logger-force.md), after every match is set, so a
-        // match under another match counts as the operator's own override there and is kept (F3).
+        // --force under each match (doc/specs/set-logger-force.md), after every match is set. A match
+        // under another match is one of this call's own targets, neither forced nor reported; a
+        // descendant under two matches ends up tied to the nearer one, the later in name order.
+        Set<String> matchSet = Set.copyOf(matches);
+        TreeSet<String> names = knownNames();
         Map<String, DescendantLevel> reported = new LinkedHashMap<>();
         for (String name : matches) {
-            List<DescendantLevel> descendants = descendantsNotFollowing(name, level);
+            List<DescendantLevel> descendants = descendantsNotFollowing(name, level, names, matchSet);
             if (opts.force()) {
                 List<String> toForce = forceTargets(descendants);
                 for (String forced : toForce) {
                     baselines.captureIfAbsent(forced, adapter);
                     previousEffectiveByTarget.putIfAbsent(forced, adapter.effectiveLevel(forced));
                 }
-                created.addAll(applyForced(name, toForce, level, opts));
+                for (LevelOverride forced : applyForced(name, toForce, level, opts, created.get(name).appliedAt())) {
+                    created.remove(forced.loggerName());
+                    created.put(forced.loggerName(), forced);
+                }
             }
-            for (DescendantLevel descendant : reportedDescendants(descendants, level, opts.force())) {
+            for (DescendantLevel descendant : reportedDescendants(descendants, level, opts)) {
                 reported.putIfAbsent(descendant.loggerName(), descendant);
             }
         }
@@ -384,7 +407,7 @@ public final class LevelControlService implements LevelControlOperations {
         if (!created.isEmpty()) {
             changeListener.onChange();
         }
-        return new SetLevelResult(created, blockingFloors(previousEffectiveByTarget, level),
+        return new SetLevelResult(List.copyOf(created.values()), blockingFloors(previousEffectiveByTarget, level),
                 List.copyOf(reported.values()));
     }
 
@@ -447,14 +470,22 @@ public final class LevelControlService implements LevelControlOperations {
         List<String> targets = NameFilter.isPattern(target)
                 ? resolveConfirmedMatches(target, opts)
                 : List.of(target);
-        List<String> checked = new ArrayList<>(targets);
-        if (opts.force()) {
-            for (String name : targets) {
-                checked.addAll(forceTargets(descendantsNotFollowing(name, level))); // F7: all or nothing
-            }
-        }
-        checkSetLevelPermitted(checked, level, opts);
+        checkSetLevelPermitted(withForceTargets(targets, level, opts), level, opts); // F7: all or nothing
         return targets;
+    }
+
+    /** {@code targets}, plus with {@code --force} every descendant it would force under them (F7). */
+    private List<String> withForceTargets(List<String> targets, Level level, SetLevelOptions opts) {
+        if (!opts.force()) {
+            return targets;
+        }
+        List<String> checked = new ArrayList<>(targets);
+        TreeSet<String> names = knownNames();
+        Set<String> targetSet = Set.copyOf(targets);
+        for (String name : targets) {
+            checked.addAll(forceTargets(descendantsNotFollowing(name, level, names, targetSet)));
+        }
+        return checked;
     }
 
     private void checkSetLevelPermitted(List<String> targets, Level level, SetLevelOptions opts) {
@@ -637,8 +668,9 @@ public final class LevelControlService implements LevelControlOperations {
                 candidates.add(vendorName); // named by the vendor file but not instantiated yet
             }
         }
+        Map<String, TreeSet<String>> forced = forcedByParent();
         for (String name : List.copyOf(candidates)) {
-            candidates.addAll(forcedBy(name)); // a reset match takes its forced descendants with it (F8)
+            candidates.addAll(forced.getOrDefault(name, new TreeSet<>())); // a reset match takes its forced ones (F8)
         }
         return resetEach(candidates, includeSticky, toNative, false);
     }
@@ -1070,17 +1102,26 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     private LevelOverride applyAndRecordMutation(String loggerName, Level level, SetLevelOptions opts) {
+        return applyAndRecordMutation(loggerName, level, opts, Instant.now(), null);
+    }
+
+    /**
+     * @param now      the override's {@code appliedAt}, which its expiry is computed from
+     * @param forcedBy the parent of a forced descendant (doc/specs/set-logger-force.md), audited with
+     *                 origin {@code forced by <parent>}; {@code null} for an ordinary set
+     */
+    private LevelOverride applyAndRecordMutation(String loggerName, Level level, SetLevelOptions opts, Instant now,
+            String forcedBy) {
         baselines.captureIfAbsent(loggerName, adapter);
         String previousValue = adapter.effectiveLevel(loggerName).toString();
 
-        Instant now = Instant.now();
         Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
-        RecipeTag recipe = opts.recipe();
+        RecipeTag recipe = forcedBy == null ? opts.recipe() : null;
         LevelOverride override = new LevelOverride(loggerName, level, opts.reason(), now, source, opts.tier(),
-                expiresAt, null, recipe == null ? null : recipe.id());
+                expiresAt, null, recipe == null ? null : recipe.id(), forcedBy);
         // doc/specs/recipes.md #13, B5: a recipe's change is audited as source "recipe", with its origin.
         installOverride(override, recipe == null ? source : RECIPE_AUDIT_SOURCE, previousValue,
-                recipe == null ? null : recipe.origin());
+                forcedBy != null ? "forced by " + forcedBy : recipe == null ? null : recipe.origin());
         return override;
     }
 

@@ -103,7 +103,7 @@ class SetLoggerForceCommandsTest {
 
         run("", false, "set", "logger", "com.acme", "TRACE", "sticky");
 
-        assertEquals(List.of(false), mbean.forceCalls);
+        assertTrue(mbean.forceCalls.isEmpty(), "a plain set uses the operation older agents have too");
         assertTrue(out().contains("NOTE: 2 loggers under com.acme keep their own level and won't follow TRACE: "
                 + "com.acme.db.Pool (WARN), com.acme.other (INFO)."), out());
         assertTrue(out().contains("To set them too: logctl set logger com.acme TRACE sticky --force"), out());
@@ -149,7 +149,7 @@ class SetLoggerForceCommandsTest {
         run(lines("TRACE", "", "", "n", ""), true, "set", "logger", "com.acme");
 
         assertFalse(out().contains("--force"), out());
-        assertEquals(List.of(false), mbean.forceCalls);
+        assertTrue(mbean.forceCalls.isEmpty());
     }
 
     @Test
@@ -160,7 +160,7 @@ class SetLoggerForceCommandsTest {
         outBytes.reset();
         run(lines("TRACE", "", "", ""), true, "set", "logger", "com.acme", "--force");
         assertFalse(out().contains("too? [Y/n]"), out());
-        assertEquals(List.of(false, true), mbean.forceCalls);
+        assertEquals(List.of(true), mbean.forceCalls);
     }
 
     @Test
@@ -171,6 +171,31 @@ class SetLoggerForceCommandsTest {
         run(lines("DEBUG", "", "", "", ""), true, "set", "logger", "com.acme");
 
         assertTrue(out().contains("1 logger under com.acme has its own level and won't follow DEBUG:"), out());
+    }
+
+    @Test
+    void reset_showsTheForcedLoggersItPutBack_andTheStickyOnesItLeft() {
+        mbean.exactResetOutcome = new org.logaperture.control.jmx.ResetOutcomeData(
+                List.of("com.acme", "com.acme.other"), List.of("com.acme.db.Pool"));
+
+        run("", false, "reset", "logger", "com.acme");
+
+        assertTrue(out().contains("com.acme.other → INFO"), out());
+        assertTrue(out().contains("(forced by com.acme)"), out());
+        assertTrue(out().contains("Left 1 sticky forced override(s) in place (pass --include-sticky to include them): "
+                + "com.acme.db.Pool"), out());
+        assertFalse(out().contains("nothing was overridden"), out());
+    }
+
+    @Test
+    void guided_offersAVendorDefaultedDescendant_byItsVendorLevel() {
+        mbean.loggers = new ArrayList<>(List.of(logger("com.acme", null, false, null),
+                new LoggerInfoData("com.acme.vendored", null, "WARN", false, null, null, null, null, null, "WARN",
+                        false, null, null)));
+
+        run(lines("TRACE", "", "", "n", ""), true, "set", "logger", "com.acme");
+
+        assertTrue(out().contains("com.acme.vendored  WARN"), out());
     }
 
     @Test

@@ -530,11 +530,13 @@ final class Commands {
             }
             LoggerInfoData before = findLogger(mbean.listLoggers(target), target);
             boolean wasOverridden = before != null && before.isOverrideActive();
-            if (toNative) {
-                mbean.resetLogger(target, includeSticky, true);
-            } else {
-                mbean.resetLogger(target, includeSticky);
-            }
+            org.logaperture.control.jmx.ResetOutcomeData outcome = toNative
+                    ? mbean.resetLogger(target, includeSticky, true)
+                    : mbean.resetLogger(target, includeSticky);
+            // doc/specs/set-logger-force.md F8: the loggers a force on target tied to it go back with it.
+            List<String> forcedReverted = outcome == null ? List.of() : outcome.getRevertedLoggerNames().stream()
+                    .filter(name -> !name.equals(target)).toList();
+            List<String> forcedSkipped = outcome == null ? List.of() : outcome.getSkippedStickyLoggerNames();
             LoggerInfoData after = findLogger(mbean.listLoggers(target), target);
             // doc/specs/rule-pipeline-foundation.md "Command surface": resetting a
             // logger also removes every rule attached directly to it, reusing this
@@ -544,16 +546,29 @@ final class Commands {
                     mbean.resetRulesForLogger(target, includeSticky, toNative);
             if (json) {
                 out.println(Json.resetLoggerWithRules(after, target, wasOverridden, rulesOutcome.getRemovedIds(),
-                        rulesOutcome.getSkippedStickyIds(), rulesOutcome.getVendorResetIds()));
+                        rulesOutcome.getSkippedStickyIds(), rulesOutcome.getVendorResetIds(), forcedReverted,
+                        forcedSkipped));
                 return CliError.OK;
             }
-            if (after != null) {
+            if (after != null && (wasOverridden || forcedReverted.isEmpty())) {
                 out.println(target + " → " + after.getEffectiveLevel() + landedOn(after));
             } else if (wasOverridden) {
                 out.println(target + " → baseline (not yet instantiated, so no level to show)");
-            } else {
+            } else if (forcedReverted.isEmpty() && forcedSkipped.isEmpty()) {
                 out.println(target + " — nothing was overridden.");
             }
+            if (!forcedReverted.isEmpty()) {
+                Map<String, LoggerInfoData> rows = new LinkedHashMap<>();
+                for (LoggerInfoData row : mbean.listLoggers(target)) {
+                    rows.putIfAbsent(row.getName(), row);
+                }
+                for (String name : forcedReverted) {
+                    LoggerInfoData row = rows.get(name);
+                    out.println(name + " → " + (row != null ? row.getEffectiveLevel() + landedOn(row) : "baseline")
+                            + "   (forced by " + target + ")");
+                }
+            }
+            printSkippedSticky(out, "sticky forced override(s)", forcedSkipped);
             if (!rulesOutcome.getRemovedIds().isEmpty()) {
                 out.println("Removed " + rulesOutcome.getRemovedIds().size() + " rule(s) attached to " + target + ".");
             }

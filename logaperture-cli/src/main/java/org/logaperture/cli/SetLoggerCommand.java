@@ -15,6 +15,7 @@
  */
 package org.logaperture.cli;
 
+import org.logaperture.api.DescendantLevel;
 import org.logaperture.api.RuleExpression;
 import org.logaperture.control.jmx.DescendantLevelData;
 import org.logaperture.control.jmx.HandlerFloorData;
@@ -87,8 +88,7 @@ final class SetLoggerCommand implements Command {
         if (!Commands.isPattern(target) || yes || Commands.isTrailingWildcard(target)) {
             // An exact name, --yes, or a trailing-star target the server rejects on its own: one call,
             // already confirmed.
-            return render(out, level, mbean.setLogger(target, level, reason, tier.tierName(), tier.forSeconds(), true,
-                    force), target, tier, reason);
+            return render(out, level, setLogger(mbean, target, level, reason, tier, force), target, tier, reason);
         }
         List<String> matches = Picker.matchingNames(mbean, target);
         if (!interactive) {
@@ -108,8 +108,7 @@ final class SetLoggerCommand implements Command {
             if (!prompter.askYesNo("", "Apply?", false)) {
                 throw new Prompter.Cancelled();
             }
-            return render(out, level, mbean.setLogger(target, level, reason, tier.tierName(), tier.forSeconds(), true,
-                    force), target, tier, reason);
+            return render(out, level, setLogger(mbean, target, level, reason, tier, force), target, tier, reason);
         }
         List<String> names = Picker.loggers(mbean, prompter, target, "set it anyway?", SetLoggerCommand::currently);
         if (names == null) {
@@ -153,13 +152,17 @@ final class SetLoggerCommand implements Command {
             String chosenLevel) {
         Map<String, String> behind = new java.util.TreeMap<>();
         for (String name : names) {
-            for (LoggerInfoData row : mbean.listLoggers("ROOT".equals(name) ? null : name)) {
-                if (!isDescendant(name, row.getName())) {
+            for (LoggerInfoData row : mbean.listLoggers(DescendantLevel.ROOT.equals(name) ? null : name)) {
+                if (!DescendantLevel.isUnder(name, row.getName())) {
                     continue;
                 }
-                String keeps = row.isOverrideActive()
-                        ? (name.equals(row.getOverrideForcedBy()) ? row.getEffectiveLevel() : null)
+                String forcedBy = row.getOverrideForcedBy();
+                boolean tiedHere = forcedBy != null && (forcedBy.equals(name) || DescendantLevel.isUnder(forcedBy, name));
+                // A row's configured level is the native one; the vendor level, where it applies, is its own.
+                String own = row.getVendorDefaultLevel() != null && !row.isResetToNative()
+                        ? row.getVendorDefaultLevel()
                         : row.getConfiguredLevel();
+                String keeps = row.isOverrideActive() ? (tiedHere ? row.getEffectiveLevel() : null) : own;
                 if (keeps != null && !keeps.equals(chosenLevel)) {
                     behind.putIfAbsent(row.getName(), keeps);
                 }
@@ -183,9 +186,17 @@ final class SetLoggerCommand implements Command {
                 + " too?", true);
     }
 
-    /** As the agent decides it: every logger is under ROOT, otherwise a dotted prefix. */
-    private static boolean isDescendant(String ancestor, String name) {
-        return !name.equals(ancestor) && ("ROOT".equals(ancestor) || name.startsWith(ancestor + "."));
+    /**
+     * The 6-argument operation unless {@code force} is asked for, so a plain {@code set logger} still works
+     * against an agent from before doc/specs/set-logger-force.md, as {@code reset --to-native} does.
+     */
+    private static SetLevelResultData setLogger(LevelControlMXBean mbean, String name, String chosenLevel,
+            String chosenReason, Parser.TierChoice chosenTier, boolean chosenForce) {
+        return chosenForce
+                ? mbean.setLogger(name, chosenLevel, chosenReason, chosenTier.tierName(), chosenTier.forSeconds(),
+                        true, true)
+                : mbean.setLogger(name, chosenLevel, chosenReason, chosenTier.tierName(), chosenTier.forSeconds(),
+                        true);
     }
 
     /** #7: a matching logger's current level and where it comes from. */
@@ -216,9 +227,8 @@ final class SetLoggerCommand implements Command {
     private int apply(LevelControlMXBean mbean, PrintStream out, PrintStream err, List<String> names,
             String chosenLevel, Parser.TierChoice chosenTier, String chosenReason, boolean chosenForce) {
         if (names.size() == 1) {
-            return render(out, chosenLevel, mbean.setLogger(names.get(0), chosenLevel, chosenReason,
-                    chosenTier.tierName(), chosenTier.forSeconds(), true, chosenForce), names.get(0), chosenTier,
-                    chosenReason);
+            return render(out, chosenLevel, setLogger(mbean, names.get(0), chosenLevel, chosenReason, chosenTier,
+                    chosenForce), names.get(0), chosenTier, chosenReason);
         }
         List<LevelOverrideData> overrides = new ArrayList<>();
         // One warning per handler, however many of the loggers it would block.
@@ -228,8 +238,8 @@ final class SetLoggerCommand implements Command {
         int exitCode = CliError.OK;
         for (String name : names) {
             try {
-                SetLevelResultData result = mbean.setLogger(name, chosenLevel, chosenReason, chosenTier.tierName(),
-                        chosenTier.forSeconds(), true, chosenForce);
+                SetLevelResultData result = setLogger(mbean, name, chosenLevel, chosenReason, chosenTier,
+                        chosenForce);
                 overrides.addAll(result.getOverrides());
                 for (DescendantLevelData descendant : result.getDescendants()) {
                     descendants.putIfAbsent(descendant.getLoggerName(), descendant);

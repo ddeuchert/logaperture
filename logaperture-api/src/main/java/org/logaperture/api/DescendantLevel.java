@@ -34,6 +34,20 @@ public record DescendantLevel(String loggerName, Level level, Kind kind) {
         Objects.requireNonNull(kind, "kind");
     }
 
+    /** The root logger's name in every adapter: every other logger is under it. */
+    public static final String ROOT = "ROOT";
+
+    /**
+     * Whether {@code name} is under {@code ancestor} (not {@code ancestor} itself): a dotted prefix, and
+     * every logger is under {@link #ROOT}. The one definition the agent and {@code logctl} share.
+     */
+    public static boolean isUnder(String ancestor, String name) {
+        if (name.equals(ancestor)) {
+            return false;
+        }
+        return ROOT.equals(ancestor) || name.startsWith(ancestor + ".");
+    }
+
     /** Why a descendant doesn't follow its ancestor's new level. */
     public enum Kind {
         /** It has a level of its own (native config or vendor defaults); {@code --force} would set it. */

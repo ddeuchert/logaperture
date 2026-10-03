@@ -362,11 +362,24 @@ final class Json {
      */
     static String resetLoggerWithRules(LoggerInfoData after, String target, boolean wasOverridden,
             List<String> removedRuleIds, List<String> skippedStickyRuleIds, List<String> vendorResetRuleIds) {
+        return resetLoggerWithRules(after, target, wasOverridden, removedRuleIds, skippedStickyRuleIds,
+                vendorResetRuleIds, List.of(), List.of());
+    }
+
+    /**
+     * With the loggers a {@code --force} on {@code target} tied to it: reset with it, or left for being
+     * sticky (doc/specs/set-logger-force.md).
+     */
+    static String resetLoggerWithRules(LoggerInfoData after, String target, boolean wasOverridden,
+            List<String> removedRuleIds, List<String> skippedStickyRuleIds, List<String> vendorResetRuleIds,
+            List<String> forcedReverted, List<String> forcedSkippedSticky) {
         Obj obj = after != null ? loggerObj(after) : resetObj(target, wasOverridden);
         return obj
                 .raw("removedRuleIds", stringArray(removedRuleIds))
                 .raw("skippedStickyRuleIds", stringArray(skippedStickyRuleIds))
                 .raw("vendorResetRuleIds", stringArray(vendorResetRuleIds))
+                .raw("forcedRevertedLoggerNames", stringArray(forcedReverted))
+                .raw("forcedSkippedStickyLoggerNames", stringArray(forcedSkippedSticky))
                 .toString();
     }
 
