@@ -106,6 +106,14 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
+    public SetLevelResultData setLogger(String target, String level, String reason, String tier, long forSeconds,
+            boolean confirmed, boolean force) {
+        Level parsedLevel = parseLevel(level);
+        SetLevelOptions options = toOptions(reason, tier, forSeconds, confirmed).withForce(force);
+        return SetLevelResultData.from(operations.setLogger(target, parsedLevel, options));
+    }
+
+    @Override
     public ResetOutcomeData resetLogger(String target, boolean includeSticky) {
         return ResetOutcomeData.from(operations.resetLogger(target, includeSticky));
     }

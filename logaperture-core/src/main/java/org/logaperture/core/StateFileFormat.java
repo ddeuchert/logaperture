@@ -114,10 +114,15 @@ import java.util.Map;
  * recipe:} line to {@code overrides:}, {@code handlerOverrides:} and {@code
  * rules:} records -- the id of the recipe that made the change, written only
  * when there is one. A version-≤9 record has none and reads as {@code null}.
+ *
+ * <p>Schema version 11 (doc/specs/set-logger-force.md) adds an optional {@code
+ * forcedBy:} line to {@code overrides:} records -- the logger whose {@code set
+ * logger --force} made the override, written only when there is one. A
+ * version-≤10 record has none and reads as {@code null}.
  */
 final class StateFileFormat {
 
-    private static final int SCHEMA_VERSION = 10;
+    private static final int SCHEMA_VERSION = 11;
     private static final char PAYLOAD_ENTRY_SEPARATOR = '\u0001';
     private static final char PAYLOAD_KV_SEPARATOR = '\u0002';
     private static final int MIN_SUPPORTED_SCHEMA_VERSION = 1;
@@ -149,6 +154,9 @@ final class StateFileFormat {
                 out.append("    expiresAt: ").append(override.expiresAt() == null ? "null" : override.expiresAt()).append('\n');
                 appendStateId(out, override.stateId());
                 appendRecipe(out, override.recipe());
+                if (override.forcedBy() != null) {
+                    out.append("    forcedBy: ").append(quote(override.forcedBy())).append('\n');
+                }
             }
         }
 
@@ -387,7 +395,8 @@ final class StateFileFormat {
                 PersistenceTier.valueOf(fields.get("tier")),
                 nullable(fields.get("expiresAt")) == null ? null : Instant.parse(fields.get("expiresAt")),
                 stateId(fields),
-                recipe(fields));
+                recipe(fields),
+                nullable(fields.get("forcedBy")) == null ? null : unquote(fields.get("forcedBy"))); // ≤10: none
     }
 
     /** A version-≤9 record has no {@code recipe:} line -- {@code null}, not made by a recipe. */

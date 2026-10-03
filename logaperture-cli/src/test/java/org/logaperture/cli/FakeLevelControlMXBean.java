@@ -43,6 +43,10 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     /** Filters {@link #listLoggers} rejects, as {@code NameFilter} rejects an invalid pattern. */
     final List<String> invalidFilters = new ArrayList<>();
     final List<Object[]> setLevelCalls = new ArrayList<>();
+    /** The {@code force} flag of each 7-argument {@code setLogger} call (doc/specs/set-logger-force.md). */
+    final List<Boolean> forceCalls = new ArrayList<>();
+    /** When set, what an exact-name {@code resetLogger} returns -- e.g. forced descendants it reverted. */
+    ResetOutcomeData exactResetOutcome;
     final List<String> resetLevelCalls = new ArrayList<>();
     final List<Object[]> setHandlerLevelCalls = new ArrayList<>();
     final List<Object[]> setHandlerAutoCalls = new ArrayList<>();
@@ -89,6 +93,13 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
             }
         }
         return matches;
+    }
+
+    @Override
+    public SetLevelResultData setLogger(String target, String level, String reason, String tier, long forSeconds,
+            boolean confirmed, boolean force) {
+        forceCalls.add(force);
+        return setLogger(target, level, reason, tier, forSeconds, confirmed);
     }
 
     @Override
@@ -185,6 +196,9 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
                 throw new IllegalArgumentException(
                         "'" + target + "' is STICKY -- reset refused without --include-sticky.");
             }
+        }
+        if (exactResetOutcome != null) {
+            return exactResetOutcome;
         }
         if (forgetOnReset.contains(target)) {
             loggers.removeIf(logger -> logger.getName().equals(target));

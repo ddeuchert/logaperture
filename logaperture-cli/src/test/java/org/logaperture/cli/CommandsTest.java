@@ -626,7 +626,7 @@ class CommandsTest {
         assertEquals(
                 "{\"overrides\":[{\"loggerName\":\"com.acme\",\"level\":\"DEBUG\","
                         + "\"reason\":null,\"appliedAt\":\"2026-08-25T00:00:00Z\",\"source\":\"jmx\","
-                        + "\"tier\":\"SESSION\",\"expiresAt\":null}],\"warnings\":[]}",
+                        + "\"tier\":\"SESSION\",\"expiresAt\":null,\"forcedBy\":null}],\"warnings\":[],\"descendants\":[]}",
                 output().strip());
     }
 
@@ -1161,7 +1161,7 @@ class CommandsTest {
         assertEquals(CliError.OK, run(Commands.resetLogger("com.acme.Known", false, true)));
         assertEquals(
                 "{\"name\":\"com.acme.Known\",\"overrideActive\":false,\"wasOverridden\":true,"
-                        + "\"removedRuleIds\":[],\"skippedStickyRuleIds\":[],\"vendorResetRuleIds\":[]}",
+                        + "\"removedRuleIds\":[],\"skippedStickyRuleIds\":[],\"vendorResetRuleIds\":[],\"forcedRevertedLoggerNames\":[],\"forcedSkippedStickyLoggerNames\":[]}",
                 output().strip());
     }
 

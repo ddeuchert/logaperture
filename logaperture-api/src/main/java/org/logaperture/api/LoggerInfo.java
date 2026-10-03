@@ -60,6 +60,8 @@ import java.time.Instant;
  *                         doc/specs/reset-to-native.md)
  * @param overrideRecipe    the id of the recipe that made the active override, or {@code null}
  *                          (doc/specs/recipes.md #6)
+ * @param overrideForcedBy  the logger whose {@code set logger --force} made the active override,
+ *                          or {@code null} (doc/specs/set-logger-force.md)
  */
 public record LoggerInfo(
         String name,
@@ -73,7 +75,16 @@ public record LoggerInfo(
         String context,
         Level vendorDefaultLevel,
         boolean resetToNative,
-        String overrideRecipe) {
+        String overrideRecipe,
+        String overrideForcedBy) {
+
+    /** Every field but {@code overrideForcedBy} -- the shape before doc/specs/set-logger-force.md. */
+    public LoggerInfo(String name, Level configuredLevel, Level effectiveLevel, boolean overrideActive,
+            String overrideSource, String overrideReason, PersistenceTier overrideTier, Instant overrideExpiresAt,
+            String context, Level vendorDefaultLevel, boolean resetToNative, String overrideRecipe) {
+        this(name, configuredLevel, effectiveLevel, overrideActive, overrideSource, overrideReason, overrideTier,
+                overrideExpiresAt, context, vendorDefaultLevel, resetToNative, overrideRecipe, null);
+    }
 
     /** Every field but {@code overrideRecipe} -- the shape before doc/specs/recipes.md. */
     public LoggerInfo(String name, Level configuredLevel, Level effectiveLevel, boolean overrideActive,
@@ -145,6 +156,6 @@ public record LoggerInfo(
     public LoggerInfo withContext(String context) {
         return new LoggerInfo(name, configuredLevel, effectiveLevel, overrideActive, overrideSource,
                 overrideReason, overrideTier, overrideExpiresAt, context, vendorDefaultLevel, resetToNative,
-                overrideRecipe);
+                overrideRecipe, overrideForcedBy);
     }
 }

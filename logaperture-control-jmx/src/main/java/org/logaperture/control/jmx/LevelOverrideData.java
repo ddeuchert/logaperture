@@ -34,6 +34,24 @@ public final class LevelOverrideData {
     private final String source;
     private final String tier;
     private final String expiresAt;
+    private final String forcedBy;
+
+    /**
+     * Every field, including {@code forcedBy} (doc/specs/set-logger-force.md). The narrower
+     * constructor stays annotated so an older client still reconstructs this type (§11.1).
+     */
+    @ConstructorProperties({"loggerName", "level", "reason", "appliedAt", "source", "tier", "expiresAt", "forcedBy"})
+    public LevelOverrideData(String loggerName, String level, String reason, String appliedAt, String source,
+            String tier, String expiresAt, String forcedBy) {
+        this.loggerName = loggerName;
+        this.level = level;
+        this.reason = reason;
+        this.appliedAt = appliedAt;
+        this.source = source;
+        this.tier = tier;
+        this.expiresAt = expiresAt;
+        this.forcedBy = forcedBy;
+    }
 
     @ConstructorProperties({"loggerName", "level", "reason", "appliedAt", "source", "tier", "expiresAt"})
     public LevelOverrideData(
@@ -44,13 +62,7 @@ public final class LevelOverrideData {
             String source,
             String tier,
             String expiresAt) {
-        this.loggerName = loggerName;
-        this.level = level;
-        this.reason = reason;
-        this.appliedAt = appliedAt;
-        this.source = source;
-        this.tier = tier;
-        this.expiresAt = expiresAt;
+        this(loggerName, level, reason, appliedAt, source, tier, expiresAt, null);
     }
 
     public static LevelOverrideData from(LevelOverride override) {
@@ -61,7 +73,13 @@ public final class LevelOverrideData {
                 override.appliedAt().toString(),
                 override.source(),
                 override.tier().name(),
-                override.expiresAt() == null ? null : override.expiresAt().toString());
+                override.expiresAt() == null ? null : override.expiresAt().toString(),
+                override.forcedBy());
+    }
+
+    /** The logger whose {@code set logger --force} made this override, or {@code null}. */
+    public String getForcedBy() {
+        return forcedBy;
     }
 
     public String getLoggerName() {

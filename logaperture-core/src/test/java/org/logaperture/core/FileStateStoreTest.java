@@ -335,7 +335,7 @@ class FileStateStoreTest {
             assertNotNull(stateId);
         }
         String rewritten = Files.readString(stateFile);
-        assertTrue(rewritten.contains("schemaVersion: 10"), rewritten);
+        assertTrue(rewritten.contains("schemaVersion: 11"), rewritten);
         assertTrue(rewritten.contains(stateId), rewritten);
         try (FileStateStore reopened = FileStateStore.open()) {
             assertEquals(stateId, reopened.loadAll().get(0).stateId());
