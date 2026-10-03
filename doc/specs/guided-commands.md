@@ -54,7 +54,9 @@ These carry over from `guided-add-rule.md` unchanged and are not reopened here:
   plus one line: `Run this in a terminal to be prompted for the missing parts.`
 - **Picking loggers** (G4, G5): a typed answer with no `*` and no `.` is searched as `*.<answer>`;
   one match is used directly; several are numbered, answered with `1,3-5`, `all` or Enter to
-  cancel; more than 30 asks for a narrower pattern.
+  cancel; more than 30 asks for a narrower pattern. A typed trailing `.*` picks from a subtree
+  (#139), and a package name with loggers under it counts as existing (#140) — both in
+  `guided-add-rule.md` "Picking the loggers", shared by every command that picks loggers.
 - **Invalid answers** are explained and asked again, using the command line's own checks.
 - **End of input (Ctrl-D)** at any question: `Not applied.`, exit 0.
 - **The prompter**: numbered lists and typed answers, no JLine (G12).

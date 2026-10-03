@@ -46,7 +46,7 @@ final class Picker {
      * typed here gets the {@code *.<answer>} shorthand (G4).
      *
      * @param absentQuestion asked, as {@code "No logger named X exists yet; <absentQuestion>"}, before an
-     *                       exact name no logger has yet is accepted
+     *                       exact name with no logger at or under it is accepted
      * @param detail         what to show after each matching name, e.g. its current level; {@code null}
      *                       for the name alone
      */
@@ -67,15 +67,12 @@ final class Picker {
                 current = shortNameShorthand(answer);
                 typed = true;
             }
-            if (current.endsWith(".*")) {
-                out.println("A trailing '.*' isn't needed -- a bare name already reaches every descendant.");
-                current = null;
-                continue;
-            }
-            boolean exists;
+            // A trailing '.*' only picks from a subtree here (issue #139): the picked exact names are what get
+            // set or attached. A complete command's never reaches this -- the parser or the agent refuses it.
+            List<String> known;
             TreeMap<String, LoggerInfoData> matches;
             try {
-                exists = !Commands.isPattern(current) && loggerExists(mbean, current);
+                known = Commands.isPattern(current) ? List.of() : atOrUnder(mbean, current);
                 matches = Commands.isPattern(current) ? matching(mbean, current) : new TreeMap<>();
             } catch (IllegalArgumentException invalid) {
                 if (!typed) {
@@ -86,8 +83,18 @@ final class Picker {
                 continue;
             }
             if (!Commands.isPattern(current)) {
-                if (exists || prompter.askYesNo("", "No logger named " + current + " exists yet; "
-                        + absentQuestion, false)) {
+                if (known.contains(current)) {
+                    return List.of(current);
+                }
+                if (!known.isEmpty()) {
+                    // Issue #140: a package node is often not a logger itself (just after a restart, say)
+                    // while the loggers under it are -- naming it is how to reach all of them.
+                    out.println(current + " isn't a logger itself yet; " + known.size() + " logger"
+                            + (known.size() == 1 ? "" : "s") + " under it inherit" + (known.size() == 1 ? "s" : "")
+                            + " from it (e.g. " + known.get(0) + ").");
+                    return List.of(current);
+                }
+                if (prompter.askYesNo("", "No logger named " + current + " exists yet; " + absentQuestion, false)) {
                     return List.of(current);
                 }
                 current = null;
@@ -222,12 +229,14 @@ final class Picker {
         return byName;
     }
 
-    private static boolean loggerExists(LevelControlMXBean mbean, String name) {
-        for (LoggerInfoData logger : mbean.listLoggers(name)) {
-            if (logger.getName().equals(name)) {
-                return true;
+    /** The known loggers named {@code name} or under it, in name order ({@code name} itself first if known). */
+    private static List<String> atOrUnder(LevelControlMXBean mbean, String name) {
+        TreeSet<String> names = new TreeSet<>();
+        for (LoggerInfoData logger : mbean.listLoggers(name)) { // a prefix filter: also org.wildflyx
+            if (logger.getName().equals(name) || logger.getName().startsWith(name + ".")) {
+                names.add(logger.getName());
             }
         }
-        return false;
+        return new ArrayList<>(names);
     }
 }

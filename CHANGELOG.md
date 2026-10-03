@@ -58,6 +58,18 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Fixed
 
+- **The guided logger prompt accepts a trailing `.*` to pick from a subtree.** Typing
+  `*.hibernate.*` or `org.hibernate.*` at `logctl set logger` or `logctl add rule` used to be refused
+  ("A trailing '.*' isn't needed"), though the prompt's own example was `*.deployment.*`. It now
+  lists the package and every logger under it to pick from, and sets only the names picked. A
+  complete command such as `logctl set logger 'org.hibernate.*' DEBUG` is still refused, since there
+  it would be a standing wildcard (issue #139).
+- **A package name with loggers under it is no longer reported as missing.** Just after a server
+  start, the guided prompt could say `No logger named org.wildfly exists yet; set it anyway? [y/N]`
+  even though `list loggers org.wildfly --show-all` showed dozens of loggers under it: the framework
+  hadn't created the `org.wildfly` logger itself yet. The prompt now uses the name and says what it
+  reaches (`org.wildfly isn't a logger itself yet; 37 loggers under it inherit from it ...`). A name
+  with nothing at or under it is still asked about (issue #140).
 - **A handler set on its own under a group setting no longer flips every 30 seconds.** After
   `logctl handler ALL_HANDLERS TRACE` then `logctl handler FILE DEBUG`, the verification sweep used
   to put `FILE` back to `TRACE` and then to `DEBUG` on every tick, auditing both changes each time.

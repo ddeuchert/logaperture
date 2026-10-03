@@ -319,6 +319,32 @@ class GuidedAddRuleTest {
     }
 
     @Test
+    void aTrailingWildcardOnACompleteCommand_isStillAUsageError() {
+        // Issue #139 leaves a complete command alone: attached as given it would be a standing wildcard.
+        assertEquals(CliError.USAGE, guided("", "add", "rule", "trim", "org.jboss.*"));
+        assertTrue(err().contains("'add rule' rejects a trailing '.*'"), err());
+        assertTrue(mbean.addRuleTrimCalls.isEmpty());
+    }
+
+    @Test
+    void aTrailingWildcardOnAnIncompleteCommand_picksFromTheSubtree() {
+        // No type given, so this is guided: the pattern only builds the pick list.
+        guided(lines("1", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule", "org.jboss.*");
+
+        assertTrue(out().contains("2 loggers match 'org.jboss.*'"), out());
+        assertEquals("org.jboss.as.ejb3.deployment.Deployer", mbean.addRuleTrimCalls.get(0)[0]);
+    }
+
+    @Test
+    void aTrailingWildcardTypedAtThePrompt_picksFromTheSubtree() {
+        // The prompt's own example shape, *.deployment.*.
+        guided(lines("*.deployment.*", "2", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule");
+
+        assertFalse(out().contains("trailing '.*'"), out());
+        assertEquals("org.jboss.as.server.deployment.Deployer", mbean.addRuleTrimCalls.get(0)[0]);
+    }
+
+    @Test
     void aPatternWithoutATerminal_needsYes() {
         assertEquals(CliError.USAGE, scripted("add", "rule", "trim", "*.Deployer"));
         assertTrue(err().contains("'*.Deployer' matches 3 currently-known loggers. Pass --yes"), err());
