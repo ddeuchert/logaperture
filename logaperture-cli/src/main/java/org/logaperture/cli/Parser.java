@@ -605,16 +605,18 @@ final class Parser {
                     // "add rule foo bar": 'foo' was surely meant as the type, not the target.
                     throw usage("'add rule' needs 'drop' or 'trim', got '" + target + "'.");
                 }
-                if (target != null && target.endsWith(".*")) {
-                    throw usage("'add rule' rejects a trailing '.*' -- a bare name already reaches every "
-                            + "descendant.");
-                }
                 Boolean sampleFullEnabled = noSampleFull ? Boolean.FALSE
                         : sampleFullEveryMillis != null ? Boolean.TRUE : null;
                 AddRuleRequest request = new AddRuleRequest(action, target, messageContains, messageIgnoreCase,
                         throwableType, throwableMessageContains, anyCause, belowLevel, sampleFullEnabled,
                         sampleFullEveryMillis, frames, collapseCauses, resolveAlterTier(tierTokens), reason, yes,
                         json);
+                if (target != null && target.endsWith(".*") && (request.complete() || !interactive || yes || json)) {
+                    // A trailing '.*' attached as given would be a standing wildcard; on a guided command it
+                    // only picks from a subtree (guided-add-rule.md "Picking the loggers", issue #139).
+                    throw usage("'add rule' rejects a trailing '.*' -- a bare name already reaches every "
+                            + "descendant.");
+                }
                 if (!request.complete() && (!interactive || yes || json)) {
                     throw usage(missingPart(request) + "\n" + PROMPT_HINT);
                 }
