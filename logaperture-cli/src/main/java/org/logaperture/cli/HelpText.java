@@ -34,7 +34,7 @@ final class HelpText {
             "logctl env",
             "logctl top [--limit n]",
             "logctl storms [--limit n]",
-            "logctl set logger <target> <level> [session | for <duration> | sticky]",
+            "logctl set logger <target> <level> [session | for <duration> | sticky] [--force]",
             "logctl set handler <name> <level> [session | for <duration> | sticky]",
             "logctl set handler <name> AUTO [session | for <duration> | sticky]",
             "logctl set default-handler <name> ...",
@@ -99,7 +99,8 @@ final class HelpText {
         sb.append("  --no-any-cause, --no-collapse-causes\n");
         sb.append("                       for 'alter rule' -- remove that part of the rule\n");
         sb.append("  --out <file>         for 'export vendor-defaults' -- write the file there instead of stdout\n");
-        sb.append("  --force              with --out -- overwrite an existing file\n");
+        sb.append("  --force              for 'set logger' -- also set loggers under the target that have a\n");
+        sb.append("                       level of their own; with 'export --out' -- overwrite the file\n");
         sb.append("  --json               machine-readable output\n");
         sb.append("  --version            print version and exit\n");
         sb.append("  -h, --help           this help\n");
@@ -149,7 +150,9 @@ final class HelpText {
         sb.append("every descendant already inherits a set ancestor's level from the\n");
         sb.append("logging framework itself, so 'logctl set logger org.apache DEBUG' alone\n");
         sb.append("covers org.apache and everything under it, present and future, with nothing\n");
-        sb.append("of LogAperture's own to show for the descendants.\n");
+        sb.append("of LogAperture's own to show for the descendants -- except a descendant with\n");
+        sb.append("a level of its own, which keeps it: add --force to set those too, and\n");
+        sb.append("'reset logger org.apache' puts them back with it.\n");
         sb.append("\n");
         sb.append("'reset logger <target>' takes either wildcard shape too -- it reverts\n");
         sb.append("whatever is currently overridden under that scope, including a logger\n");

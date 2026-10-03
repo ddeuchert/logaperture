@@ -162,7 +162,9 @@ final class Commands {
                     cells.add(orDash(row.getEffectiveLevel()));
                     cells.add(orDash(row.getTier()));
                     cells.add(revertsCell(row));
-                    cells.add(row.getOverrideReason() == null ? Format.NONE : '"' + row.getOverrideReason() + '"');
+                    cells.add(row.getOverrideReason() != null ? '"' + row.getOverrideReason() + '"'
+                            : row.getOverrideForcedBy() != null ? "forced by " + row.getOverrideForcedBy() // F10
+                            : Format.NONE);
                     table.add(cells);
                 }
                 List<String> headers = new ArrayList<>();
@@ -294,12 +296,24 @@ final class Commands {
      */
     static Command setLogger(String target, String level, String reason, String tierName, long forSeconds,
             boolean yes, boolean json) {
-        return new SetLoggerCommand(target, level, reason, new Parser.TierChoice(tierName, forSeconds), yes, json);
+        return setLogger(target, level, reason, tierName, forSeconds, yes, json, false);
+    }
+
+    /** With {@code force}: doc/specs/set-logger-force.md. */
+    static Command setLogger(String target, String level, String reason, String tierName, long forSeconds,
+            boolean yes, boolean json, boolean force) {
+        return new SetLoggerCommand(target, level, reason, new Parser.TierChoice(tierName, forSeconds), yes, json,
+                force);
     }
 
     /** {@code set logger [<target>]} with the level left out, on a terminal (doc/specs/guided-commands.md #7). */
     static Command setLoggerGuided(String target, String reason) {
-        return new SetLoggerCommand(target, null, reason, null, false, false);
+        return setLoggerGuided(target, reason, false);
+    }
+
+    /** With {@code force} given on the command line, the guided question about descendants isn't asked. */
+    static Command setLoggerGuided(String target, String reason, boolean force) {
+        return new SetLoggerCommand(target, null, reason, null, false, false, force);
     }
 
     /**
@@ -1513,6 +1527,8 @@ final class Commands {
         }
         if (row.getOverrideReason() != null) {
             cell.append(" — \"").append(row.getOverrideReason()).append('"');
+        } else if (row.getOverrideForcedBy() != null) {
+            cell.append(" — forced by ").append(row.getOverrideForcedBy()); // set-logger-force.md F10
         }
         return cell.toString();
     }

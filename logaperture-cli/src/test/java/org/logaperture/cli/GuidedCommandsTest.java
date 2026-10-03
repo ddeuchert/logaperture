@@ -266,7 +266,7 @@ class GuidedCommandsTest {
     @Test
     void setLogger_aPackageWithLoggersUnderIt_isSetWithoutAsking() {
         // Issue #140: com.acme isn't a logger itself (as org.wildfly often isn't just after a restart).
-        guided(lines("DEBUG", "", "", ""), "set", "logger", "com.acme");
+        guided(lines("DEBUG", "", "", "n", ""), "set", "logger", "com.acme"); // n: don't force (#142)
 
         assertTrue(out().contains("com.acme isn't a logger itself yet; 2 loggers under it inherit from it "
                 + "(e.g. com.acme.Worker)."), out());

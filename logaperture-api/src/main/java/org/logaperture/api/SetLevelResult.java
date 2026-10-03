@@ -44,12 +44,24 @@ import java.util.Objects;
  *                         the order the adapter reported them, deduplicated
  *                         by handler across every target; empty if none, or
  *                         if the change wasn't a raise
+ * @param descendants      loggers under an exact target that don't follow its new level
+ *                         (doc/specs/set-logger-force.md): without {@code force}, those keeping a
+ *                         level of their own or forced earlier; with it, those left alone because
+ *                         the operator set them. A forced descendant itself is in {@code overrides},
+ *                         with {@link LevelOverride#forcedBy()} set.
  */
-public record SetLevelResult(List<LevelOverride> overrides, List<HandlerFloor> blockingHandlers) {
+public record SetLevelResult(List<LevelOverride> overrides, List<HandlerFloor> blockingHandlers,
+        List<DescendantLevel> descendants) {
 
     public SetLevelResult {
         Objects.requireNonNull(overrides, "overrides");
         overrides = List.copyOf(overrides);
         blockingHandlers = blockingHandlers == null ? List.of() : List.copyOf(blockingHandlers);
+        descendants = descendants == null ? List.of() : List.copyOf(descendants);
+    }
+
+    /** No descendants to report -- the shape before doc/specs/set-logger-force.md. */
+    public SetLevelResult(List<LevelOverride> overrides, List<HandlerFloor> blockingHandlers) {
+        this(overrides, blockingHandlers, List.of());
     }
 }

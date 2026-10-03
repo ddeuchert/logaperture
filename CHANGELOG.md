@@ -9,6 +9,14 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Added
 
+- **`logctl set logger <name> <level> --force`** also sets the loggers under `<name>` that have a
+  level of their own, which the logging framework never lets inherit. After `set logger com.acme
+  TRACE`, `com.acme.other` configured at `INFO` stays at `INFO`. With `--force` it goes to `TRACE`
+  too, and `reset logger com.acme` puts it back to `INFO`. A logger you set yourself is kept, and so
+  is anything changed since the force. Without `--force`, `set logger` now ends with a note naming
+  the loggers that didn't follow and the command that sets them too. Guided `set logger` asks.
+  `list loggers` shows `forced by com.acme` on a forced override. The state file goes to schema 11
+  (issue #142; `doc/specs/set-logger-force.md`).
 - **`logctl list recipes`** — the logging recipes on offer in the running application: named,
   documented sets of logger levels for watching one thing, e.g. `io.undertow:sessions`. They come
   from the libraries it has loaded (`META-INF/logaperture/recipes.yaml` on a class path, including a

@@ -1674,7 +1674,7 @@ Tracked as [#107](https://github.com/ddeuchert/logaperture/issues/107); a follow
 
 ### 18.17 `set logger --force`: reach descendants that have their own level
 
-Tracked as [#142](https://github.com/ddeuchert/logaperture/issues/142); aimed at 1.0 if it is specced and signed off well before the beta.1 freeze (Oct 15), otherwise 1.1.
+Tracked as [#142](https://github.com/ddeuchert/logaperture/issues/142). **Specced and signed off 2026-10-03** for 1.0: [`doc/specs/set-logger-force.md`](specs/set-logger-force.md), decisions F1–F11; the open questions below are settled there.
 
 **Motivation.** `logctl set logger com.mycompany TRACE` reads as "everything under `com.mycompany` at TRACE". It isn't when a descendant has its own explicit level: `com.mycompany.other`, configured at INFO in the native config, keeps INFO, because every framework propagates a level only to descendants with no level of their own (§4.3). Nothing tells the user. This is the gap in [`pattern-selection-semantics.md`](specs/pattern-selection-semantics.md) Decision #5, which refuses a trailing-`.*` `set` target because a bare name "already reaches every descendant". That holds only for descendants without their own level.
 

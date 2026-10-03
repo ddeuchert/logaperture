@@ -15,6 +15,7 @@
  */
 package org.logaperture.cli;
 
+import org.logaperture.control.jmx.DescendantLevelData;
 import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.EnvironmentReportData;
 import org.logaperture.control.jmx.RecipeApplyResultData;
@@ -80,7 +81,8 @@ final class Json {
                 .str("expiresAt", row.getExpiresAt())
                 .str("vendorDefaultLevel", row.getVendorDefaultLevel())
                 .bool("resetToNative", row.isResetToNative())
-                .str("recipe", row.getOverrideRecipe());
+                .str("recipe", row.getOverrideRecipe())
+                .str("forcedBy", row.getOverrideForcedBy());
     }
 
     static String override(LevelOverrideData data) {
@@ -95,7 +97,8 @@ final class Json {
                 .str("appliedAt", data.getAppliedAt())
                 .str("source", data.getSource())
                 .str("tier", data.getTier())
-                .str("expiresAt", data.getExpiresAt());
+                .str("expiresAt", data.getExpiresAt())
+                .str("forcedBy", data.getForcedBy());
     }
 
     /**
@@ -118,7 +121,16 @@ final class Json {
                     .str("currentLevel", floor.getCurrentLevel())
                     .toString());
         }
-        return new Obj().raw("overrides", overrides.toString()).raw("warnings", warnings.toString()).toString();
+        StringJoiner descendants = new StringJoiner(",", "[", "]");
+        for (DescendantLevelData descendant : result.getDescendants()) {
+            descendants.add(new Obj()
+                    .str("loggerName", descendant.getLoggerName())
+                    .str("level", descendant.getLevel())
+                    .str("kind", descendant.getKind())
+                    .toString());
+        }
+        return new Obj().raw("overrides", overrides.toString()).raw("warnings", warnings.toString())
+                .raw("descendants", descendants.toString()).toString();
     }
 
     static String handlerOverride(HandlerLevelOverrideData data) {

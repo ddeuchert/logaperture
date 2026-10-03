@@ -34,17 +34,32 @@ public final class SetLevelResultData {
 
     private final List<LevelOverrideData> overrides;
     private final List<HandlerFloorData> blockingHandlers;
+    private final List<DescendantLevelData> descendants;
+
+    /** Every field, including {@code descendants} (doc/specs/set-logger-force.md). */
+    @ConstructorProperties({"overrides", "blockingHandlers", "descendants"})
+    public SetLevelResultData(List<LevelOverrideData> overrides, List<HandlerFloorData> blockingHandlers,
+            List<DescendantLevelData> descendants) {
+        this.overrides = overrides;
+        this.blockingHandlers = blockingHandlers;
+        this.descendants = descendants == null ? List.of() : descendants;
+    }
 
     @ConstructorProperties({"overrides", "blockingHandlers"})
     public SetLevelResultData(List<LevelOverrideData> overrides, List<HandlerFloorData> blockingHandlers) {
-        this.overrides = overrides;
-        this.blockingHandlers = blockingHandlers;
+        this(overrides, blockingHandlers, List.of());
     }
 
     public static SetLevelResultData from(SetLevelResult result) {
         return new SetLevelResultData(
                 result.overrides().stream().map(LevelOverrideData::from).toList(),
-                result.blockingHandlers().stream().map(HandlerFloorData::from).toList());
+                result.blockingHandlers().stream().map(HandlerFloorData::from).toList(),
+                result.descendants().stream().map(DescendantLevelData::from).toList());
+    }
+
+    /** Loggers under an exact target that didn't follow its new level -- see {@link SetLevelResult#descendants()}. */
+    public List<DescendantLevelData> getDescendants() {
+        return descendants;
     }
 
     public List<LevelOverrideData> getOverrides() {
