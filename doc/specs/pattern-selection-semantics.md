@@ -88,7 +88,9 @@ LogManager (WildFly's own) — already propagates an explicit level down to any 
 with no explicit level of its own, present *and* future, via its own parent-chain lookup
 (`doc/logaperture-spec.md` §4.3). Setting `org.apache` to `DEBUG` and never touching
 `org.apache.tomcat` again means a `org.apache.tomcat` logger instantiated next week inherits
-`DEBUG` automatically, with no help from LogAperture at all. This was already documented as a
+`DEBUG` automatically, with no help from LogAperture at all. (A descendant with an explicit level of its own
+is the exception: it keeps that level. Reaching those too is proposed as `set logger --force`,
+top-level §18.17 / [#142](https://github.com/ddeuchert/logaperture/issues/142), not yet specced.) This was already documented as a
 known fact in `pattern-level-targeting.md`'s "Bare name vs. trailing wildcard" section — but that
 section used it only to explain what a **bare name** target does, not to question whether a
 **trailing-wildcard** target's own standing-rule machinery was worth its cost.

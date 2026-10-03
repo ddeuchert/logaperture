@@ -1672,6 +1672,29 @@ Tracked as [#107](https://github.com/ddeuchert/logaperture/issues/107); a follow
 - File format: a new optional field under `schemaVersion: 1`, or a version bump; whether a hand-authored file ever carries ids.
 - Whether this should only apply to the file a JVM exported from, or to any vendor file that carries a matching id (a customer's state never shares ids with a vendor's file, so this may not matter).
 
+### 18.17 `set logger --force`: reach descendants that have their own level
+
+Tracked as [#142](https://github.com/ddeuchert/logaperture/issues/142); aimed at 1.0 if it is specced and signed off well before the beta.1 freeze (Oct 15), otherwise 1.1.
+
+**Motivation.** `logctl set logger com.mycompany TRACE` reads as "everything under `com.mycompany` at TRACE". It isn't when a descendant has its own explicit level: `com.mycompany.other`, configured at INFO in the native config, keeps INFO, because every framework propagates a level only to descendants with no level of their own (§4.3). Nothing tells the user. This is the gap in [`pattern-selection-semantics.md`](specs/pattern-selection-semantics.md) Decision #5, which refuses a trailing-`.*` `set` target because a bare name "already reaches every descendant". That holds only for descendants without their own level.
+
+**What the user would do.**
+
+- `logctl set logger com.mycompany TRACE --force` sets `com.mycompany` and also brings every descendant that has its own level to TRACE.
+- Guided `logctl set logger` lists those descendants (`com.mycompany.other (INFO)`) when it finds them, and asks whether to force them too.
+- Possibly, without `--force`, a one-line note after a plain `set logger` naming the descendants that keep their own level, in the manner of the blocking-handler warning.
+
+**Cost / dependencies.** New surface on an existing Layer 0 command (a flag, a guided question, perhaps a note), in `pattern-selection-semantics.md` / [`level-control.md`](specs/level-control.md) territory. Likely an additive option on the MXBean `setLogger`, so it has to land before the 1.0 contract review freezes that surface (§17.1).
+
+**Open questions, deferred until this is specced:**
+
+- What `--force` does to each such descendant: **override it** to the requested level (its own audited override), or **clear its own level** so it inherits from the parent, restored on reset.
+- Whether the forced descendants share the parent's tier and expiry, and revert with it.
+- Which descendants count: every one with an explicit level, or only those stricter than the requested level; and what happens to one that already carries a LogAperture override.
+- One-time, or standing: whether a descendant configured later (a reload adds one at WARN) is caught. Decision #5's case against standing wildcards applies.
+- Capability checks per forced descendant, as a pattern target has today, and a "too many to list" threshold for the guided question.
+- Whether `reset logger com.mycompany` also reverts the forced descendants, and how `status` / `list loggers` show them.
+
 ---
 
 ## 19. First deliverables
