@@ -51,6 +51,7 @@ public final class LoggerInfoData {
     private final String context;
     private final String vendorDefaultLevel;
     private final boolean resetToNative;
+    private final String overrideForcedBy;
     private final String overrideRecipe;
 
     /**
@@ -60,7 +61,8 @@ public final class LoggerInfoData {
      * (logaperture-spec.md §11.1).
      */
     @ConstructorProperties({"name", "configuredLevel", "effectiveLevel", "overrideActive", "overrideSource",
-            "overrideReason", "tier", "expiresAt", "context", "vendorDefaultLevel", "resetToNative", "overrideRecipe"})
+            "overrideReason", "tier", "expiresAt", "context", "vendorDefaultLevel", "resetToNative", "overrideRecipe",
+            "overrideForcedBy"})
     public LoggerInfoData(
             String name,
             String configuredLevel,
@@ -72,7 +74,8 @@ public final class LoggerInfoData {
             String expiresAt,
             String context,
             String vendorDefaultLevel,
-            boolean resetToNative, String overrideRecipe) {
+            boolean resetToNative, String overrideRecipe, String overrideForcedBy) {
+        this.overrideForcedBy = overrideForcedBy;
         this.name = name;
         this.configuredLevel = configuredLevel;
         this.effectiveLevel = effectiveLevel;
@@ -85,6 +88,16 @@ public final class LoggerInfoData {
         this.vendorDefaultLevel = vendorDefaultLevel;
         this.resetToNative = resetToNative;
         this.overrideRecipe = overrideRecipe;
+    }
+
+    /** Every field but {@code overrideForcedBy} -- the shape before doc/specs/set-logger-force.md. */
+    @ConstructorProperties({"name", "configuredLevel", "effectiveLevel", "overrideActive", "overrideSource",
+            "overrideReason", "tier", "expiresAt", "context", "vendorDefaultLevel", "resetToNative", "overrideRecipe"})
+    public LoggerInfoData(String name, String configuredLevel, String effectiveLevel, boolean overrideActive,
+            String overrideSource, String overrideReason, String tier, String expiresAt, String context,
+            String vendorDefaultLevel, boolean resetToNative, String overrideRecipe) {
+        this(name, configuredLevel, effectiveLevel, overrideActive, overrideSource, overrideReason, tier, expiresAt,
+                context, vendorDefaultLevel, resetToNative, overrideRecipe, null);
     }
 
     /** Every field but {@code overrideRecipe} -- the shape before doc/specs/recipes.md. */
@@ -167,7 +180,13 @@ public final class LoggerInfoData {
                 info.context(),
                 info.vendorDefaultLevel() == null ? null : info.vendorDefaultLevel().name(),
                 info.resetToNative(),
-                info.overrideRecipe());
+                info.overrideRecipe(),
+                info.overrideForcedBy());
+    }
+
+    /** The logger whose {@code set logger --force} made the active override, or {@code null} (set-logger-force.md). */
+    public String getOverrideForcedBy() {
+        return overrideForcedBy;
     }
 
     public String getName() {

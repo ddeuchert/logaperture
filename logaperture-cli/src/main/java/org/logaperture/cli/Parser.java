@@ -287,10 +287,13 @@ final class Parser {
                     + "'reset handlers', 'reset default-handler', 'reset rule' and 'reset rules'.");
         }
         boolean isExport = command.equals("export");
-        if ((outPath != null || force) && !isExport) {
-            throw usage("--out and --force apply only to 'export vendor-defaults'.");
+        if (outPath != null && !isExport) {
+            throw usage("--out applies only to 'export vendor-defaults'.");
         }
-        if (force && outPath == null) {
+        if (force && !isExport && !isSetLogger) {
+            throw usage("--force applies only to 'set logger' or 'export vendor-defaults --out <file>'.");
+        }
+        if (force && isExport && outPath == null) {
             throw usage("--force needs --out <file> -- it allows overwriting that file.");
         }
         if (json && isExport) {
@@ -547,14 +550,15 @@ final class Parser {
                     case "logger" -> {
                         if (nounRest.size() < 2) {
                             if (guided && !yes) {
-                                yield Commands.setLoggerGuided(nounRest.isEmpty() ? null : nounRest.get(0), reason);
+                                yield Commands.setLoggerGuided(nounRest.isEmpty() ? null : nounRest.get(0), reason,
+                                        force);
                             }
                             throw usage("'set logger' needs <target> <level> [session | for <duration> | sticky].\n"
                                     + PROMPT_HINT);
                         }
                         TierChoice tier = resolveTier(nounRest.subList(2, nounRest.size()));
                         yield Commands.setLogger(nounRest.get(0), parseLevel(nounRest.get(1)), reason,
-                                tier.tierName(), tier.forSeconds(), yes, json);
+                                tier.tierName(), tier.forSeconds(), yes, json, force);
                     }
                     case "handler" -> {
                         if (nounRest.size() < 2) {

@@ -400,7 +400,7 @@ class RecipeApplyTest {
                 List.of(), stateStore.loadAllRules());
         StateFileFormat.Parsed read = StateFileFormat.parse(written);
 
-        assertTrue(written.startsWith("schemaVersion: 10\n"), written);
+        assertTrue(written.startsWith("schemaVersion: 11\n"), written);
         assertTrue(read.overrides().stream().allMatch(o -> "com.acme:billing".equals(o.recipe())));
         assertTrue(read.handlerOverrides().stream().allMatch(o -> "com.acme:billing".equals(o.recipe())));
         assertEquals(2, read.rules().stream().filter(r -> "com.acme:billing".equals(r.recipe())).count());

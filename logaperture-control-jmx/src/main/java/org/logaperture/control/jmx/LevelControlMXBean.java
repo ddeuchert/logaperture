@@ -60,6 +60,14 @@ public interface LevelControlMXBean {
             boolean confirmed);
 
     /**
+     * {@link #setLogger(String, String, String, String, long, boolean)}, with {@code force}: each
+     * target's descendants that keep a level of their own are set too, tagged with the target, and
+     * reset along with it (doc/specs/set-logger-force.md).
+     */
+    SetLevelResultData setLogger(String target, String level, String reason, String tier, long forSeconds,
+            boolean confirmed, boolean force);
+
+    /**
      * {@code target} is either an exact logger name or a pattern (doc/specs/
      * pattern-selection-semantics.md) — resetting a pattern reverts every
      * currently-matched logger that carries an active override, a one-time
