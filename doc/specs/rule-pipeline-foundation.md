@@ -4,6 +4,12 @@
 2026-09-30:** "Evaluation cost" under "Evaluation" (overhead-benchmarks.md review Decisions
 #15–#17, all on the recommended option).
 
+**Amendment (issue [#145](https://github.com/ddeuchert/logaperture/issues/145)), signed off
+2026-10-05:** "Canonical filter layering" under "Relationship to the
+storm-detection filter". The idempotence checks on both handler filters looked at only the
+outermost filter, so every sweep tick re-wrapped both. A weekend-long WildFly burn-in ended in
+`StackOverflowError`. Decisions F1–F5.
+
 Status: **signed off 2026-09-22; implemented.** `core` (`RuleRegistry`/`RuleService`/matcher
 library/`useParentRules` resolution/`AggregateLevelControl` multi-context merge), the
 JUL/JBoss LogManager gate `Filter`, the JMX surface, the CLI (`list rules`/`reset rule`/`reset
@@ -410,9 +416,10 @@ shared filter decides to" — a much easier invariant to keep proving in a unit 
  *  on right now, evaluating each candidate event against the current
  *  compiled RulePlan. Denies (returns false) only for an event a Drop rule
  *  (#72) matches -- this slice's own plan is always empty, so it denies
- *  nothing yet. Chains any filter already installed (including a prior
- *  installRulePipeline call's own filter, and storm detection's, in
- *  whichever order both were installed). Idempotent, re-armed the same way
+ *  nothing yet. Chains any filter that is not LogAperture's own. Storm
+ *  detection's filter and any earlier rule filter are instead
+ *  re-layered into the canonical shape ("Canonical filter layering",
+ *  issue #145), never wrapped. Idempotent, re-armed the same way
  *  installStormDetection is -- doc/specs/storm-detection.md "Adapter SPI".
  *  Default no-op, for a framework this slice doesn't instrument. */
 default void installRulePipeline(RulePlanSource plan) { }
@@ -452,6 +459,112 @@ against:**
   second filter type going through the same unsynchronized path. Not fixed in this slice
   (fixing it means synchronizing every `install*` method, including `storm-detection.md`'s and
   `top.md`'s already-shipped ones — a cross-cutting change out of this issue's own scope).
+
+### Canonical filter layering *(issue [#145](https://github.com/ddeuchert/logaperture/issues/145); Decisions F1–F5, signed off 2026-10-05)*
+
+**What went wrong.** Both `install*` methods implemented "idempotent" by checking only the
+handler's *outermost* filter: `installStormDetection` skipped if `getFilter()` was a
+`JulStormFilter`, and `installRulePipeline` skipped if it was a `JulRuleFilter`. That check
+holds while one filter type is installed. It fails once both are chained. After the first
+install the handler carries `Rule(Storm(orig))`. On the next re-arm, `installStormDetection`
+sees a `JulRuleFilter` on the outside and wraps again. `installRulePipeline` then sees a
+`JulStormFilter` on the outside and wraps again too. So the chain grows by two layers on
+**every** verification-sweep tick: about 240 an hour at the 30 s default, and about 15,000 over
+a weekend. The consequences:
+
+- `isLoggable` recurses through the whole chain, so eventually any thread that logs gets a
+  `StackOverflowError`. The thread's uncaught-exception handler then logs through the same
+  chain and overflows again. A `java.util.Timer` thread that dies this way never comes back.
+- Before that, the cost of every log record grows linearly with uptime.
+- Each record reaches storm detection once per `JulStormFilter` layer, so storm counts are
+  inflated by a factor that grows with uptime.
+
+This shipped in v0.1.0-alpha.3. Unit tests called each `install*` once, and none called both
+alternately more than once, so nothing caught it. §15.5 had already named this class of bug
+("double-wrapping … compounds silently") for formatters. The formatter wraps (`trim-rule.md`,
+`top.md`) were written to check the layering properly and are not affected.
+
+**The contract (F1).** A handler's LogAperture filters have exactly one valid shape:
+
+```
+JulRuleFilter  ->  JulStormFilter  ->  <whatever was there before LogAperture, or null>
+   (outermost)        (inner)              (foreign filter, chained, never inspected)
+```
+
+Rule outermost and storm inner is `drop-rule.md` Decision #3, unchanged here. "LogAperture's
+filters" means the **leading run** of `JulRuleFilter`/`JulStormFilter` layers, followed through
+their own `delegate()` links. The first filter that isn't one of ours ends the walk. We never
+look inside a foreign filter, because we can't.
+
+Each `install*` call, on each handler, does this:
+
+1. Walk the leading run. Note the `JulRuleFilter` and `JulStormFilter` layers found there, and
+   the foreign filter (or `null`) that ends the run: the **base**.
+2. If the run is already canonical — one rule filter outside one storm filter or, for a
+   context where only one of the two is armed so far, just that one filter — do nothing. The
+   check compares filter **types** only, never gate or observer identity, as the old check
+   did. An installed filter stays as it is. This is the steady state, and it is the only case
+   a healthy sweep tick should ever hit.
+3. Otherwise **rebuild (F2)**: discard every LogAperture layer in the run, then build the
+   canonical shape on top of the base. The rebuilt chain contains the filter this call
+   installs, plus the other type's filter if the run held one, reusing that filter's gate or
+   observer. Install it with a single `setFilter`.
+
+So the chain is at most two LogAperture layers deep after *every* call, whatever order the
+calls come in and however often they repeat. That is bounded by construction, not by both
+methods happening to run in one particular order. It also replaces the ordering that
+`drop-rule.md` "Interaction with storm detection" described at the container call site: the
+adapter now enforces Decision #3 itself.
+
+**Already-grown chains (F2, scope).** Rebuilding only helps a chain grown in the same JVM. An
+agent that has the bug is replaced by restarting the JVM, and that also clears the grown chain.
+So an upgrade doesn't need a repair path for chains the old agent built. The reason to rebuild
+rather than just skip is to be self-correcting at runtime. If anything ever leaves the run
+non-canonical, the next tick fixes it rather than piling another layer on top. That could be
+the race below, a future third filter type, or a bug like this one.
+
+**A foreign filter wrapping ours (F3).** If a framework or application wraps the handler's
+current filter in a filter of its own, our filters are hidden inside a filter we can't look
+into. The leading run is then empty, the base is that foreign wrapper, and one rebuild layers a
+fresh canonical pair on top of it. From then on the run is canonical and stays put, so there is
+one extra pair, once, not one per tick. The hidden inner pair still sees each event and counts
+it a second time for storm detection; we accept that as harmless. No container LogAperture
+supports today does this. The case is documented, not engineered around.
+
+**The `getFilter()`/`setFilter()` race (F4).** The earlier design note above stays open: a
+sweep tick and a reset callback can each read the filter and then write it, and whichever
+writes last wins. Under F1–F2 a lost write leaves the run missing a layer or out of order. That
+is never deeper than canonical, and the next tick rebuilds it. The race was a correctness gap
+before. Now it only delays a layer by one tick. No synchronization is added in this amendment.
+
+**Tests (F5).** In the JUL / JBoss LogManager adapter:
+
+- **Steady state over many ticks:** call `installStormDetection` then `installRulePipeline`,
+  as the sweep does, 1,000 times. The chain stays exactly `Rule -> Storm -> base`, and one
+  record reaches the storm observer exactly once. This is the regression test for the bug as
+  reported.
+- **Either order:** start from rule first and from storm first, and repeat each pair. Both
+  end canonical.
+- **Repair:** start from a deliberately grown chain (`Storm(Rule(Storm(Rule(base))))`). One
+  `install*` call collapses it to canonical and keeps `base`.
+- **A foreign base filter is preserved:** a pre-existing allow or deny filter stays the
+  innermost delegate through every rebuild, and its verdict still decides.
+- **A foreign wrapper on the outside:** after one extra pair, the chain does not grow further
+  over many ticks (F3).
+- **Formatters, for symmetry:** `installTrimRendering` then `installByteCounting`, 1,000
+  times. The formatter stays `ByteCounting -> Trim -> original`. It already behaves; this
+  locks it in.
+
+We'll also rerun the weekend WildFly burn-in with the fix before beta.1, as the end-to-end
+check.
+
+| # | Decision | Status |
+|---|---|---|
+| F1 | One canonical shape, `Rule -> Storm -> base`. Both `install*` methods check the whole leading run of LogAperture filters, not the outermost one | **Agreed** |
+| F2 | A non-canonical run is **rebuilt** in one `setFilter`, not skipped. The adapter enforces Decision #3's order instead of relying on the order of container call sites | **Agreed** |
+| F3 | A foreign filter that wraps ours is not looked into. That costs one extra pair, once, and is documented, not engineered around | **Agreed** |
+| F4 | The `getFilter`/`setFilter` race stays unsynchronized. F2 makes it self-correcting within one tick | **Agreed** |
+| F5 | Regression tests as listed, plus a repeat of the weekend burn-in before beta.1 | **Agreed** |
 
 ## Capability and audit
 

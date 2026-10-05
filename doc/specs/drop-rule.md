@@ -359,10 +359,14 @@ reporting the same noise a second time through a different surface, and doing so
 `logctl storms` a confusing echo of rules the operator already knows about. This also means
 the rule-pipeline filter's own deny path costs nothing extra in storm detection's filter (it's
 never reached), a strictly cheaper hot path than the "keep both counting" alternative would
-have been. `installRulePipeline`/`installStormDetection`'s install call sites
-(`ContainerIntegration`'s `installContext`) are ordered accordingly: the rule pipeline installs
-first, always, on every context, so it ends up outermost — a one-line ordering change at the
-composition root, not a filter-chaining redesign.
+have been. As first written, this paragraph had the rule pipeline install *first* "so it ends
+up outermost". That is backwards, since whichever filter installs second wraps the first. The
+call sites actually install storm detection first. **Superseded by issue
+[#145](https://github.com/ddeuchert/logaperture/issues/145):** the order is no longer left to
+the call sites. The adapter enforces it itself on every `install*` call, as
+[`rule-pipeline-foundation.md`](rule-pipeline-foundation.md) "Canonical filter layering"
+describes. That amendment also fixes the unbounded re-wrapping that relying on call-site order
+caused.
 
 One consequence worth naming: a message that is *not yet* covered by a drop rule, and is
 storming right now, is still seen and reported by storm detection exactly as before — this

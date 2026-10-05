@@ -66,6 +66,13 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Fixed
 
+- **A long-running server no longer ends up throwing `StackOverflowError` from every log call.**
+  On java.util.logging and JBoss LogManager (WildFly), the agent's two filters on each handler, for
+  storm detection and for rules, wrapped each other again on every 30-second check. So every log
+  record went through a longer chain the longer the server ran. Logging got slower and storm counts
+  were inflated. After a few days, any thread that logged ran out of stack, and a timer thread that
+  died that way never came back. The filters now keep a single fixed layering however often the
+  check runs. Affects 0.1.0-alpha.3 (issue #145).
 - **The guided logger prompt accepts a trailing `.*` to pick from a subtree.** Typing
   `*.hibernate.*` or `org.hibernate.*` at `logctl set logger` or `logctl add rule` used to be refused
   ("A trailing '.*' isn't needed"), though the prompt's own example was `*.deployment.*`. It now
