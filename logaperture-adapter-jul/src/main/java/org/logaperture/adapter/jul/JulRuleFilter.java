@@ -46,6 +46,11 @@ final class JulRuleFilter implements Filter {
         return delegate;
     }
 
+    /** Kept across a {@link FilterLayering} rebuild triggered by the storm filter's install. */
+    RuleGate gate() {
+        return gate;
+    }
+
     @Override
     public boolean isLoggable(LogRecord record) {
         boolean allowed = true;
@@ -68,8 +73,8 @@ final class JulRuleFilter implements Filter {
             // an operator who attached a drop already took a deliberate mitigation step, and
             // storm detection re-reporting the same noise through a second surface adds
             // confusion, not value. So a deny short-circuits here, before the delegate (storm
-            // detection's own filter, installed first and so captured as this filter's inner
-            // delegate in production) is ever reached.
+            // detection's own filter, always this filter's inner delegate -- FilterLayering) is
+            // ever reached.
             return false;
         }
         return delegate == null || delegate.isLoggable(record);

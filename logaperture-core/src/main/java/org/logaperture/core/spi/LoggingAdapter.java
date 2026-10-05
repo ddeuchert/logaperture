@@ -277,8 +277,11 @@ public interface LoggingAdapter {
      * Idempotent: safe to call again (context-install retry, or {@code
      * core}'s periodic re-verification standing in for a reconfiguration
      * hook this framework doesn't have) without installing a second observer
-     * or losing state. Default no-op, for a framework this slice doesn't
-     * instrument (Logback, {@code none}).
+     * or losing state -- judged over the whole chain of LogAperture's own
+     * filters, not just the outermost one, since {@link #installRulePipeline}'s
+     * filter shares the attach point (doc/specs/rule-pipeline-foundation.md
+     * "Canonical filter layering", issue #145). Default no-op, for a
+     * framework this slice doesn't instrument (Logback, {@code none}).
      */
     default void installStormDetection(StormObserver detector) {
         // no-op by default
@@ -299,14 +302,14 @@ public interface LoggingAdapter {
      * storm-detection filter", doc/specs/drop-rule.md "Evaluation" (which
      * gives this filter its first real, denying verdict via {@link Drop}).
      * A deliberately <b>separate</b> filter from {@link
-     * #installStormDetection}'s — chains any filter already installed
-     * (including the other one). Install order matters once {@code gate}
-     * can actually deny (doc/specs/drop-rule.md "Interaction with storm
-     * detection"): a container installs storm detection first so this
-     * filter ends up outermost, and a denied event never reaches storm
-     * detection's own counters. Idempotent, re-armed the same way {@link
-     * #installStormDetection} is. Default no-op, for a framework this slice
-     * doesn't instrument (Logback, {@code none}).
+     * #installStormDetection}'s. Chains any filter that isn't LogAperture's
+     * own; the two LogAperture filters are instead kept in one canonical
+     * layering, this one outermost so a denied event never reaches storm
+     * detection's counters (doc/specs/drop-rule.md Decision #3), whatever
+     * order the two are installed in (doc/specs/rule-pipeline-foundation.md
+     * "Canonical filter layering", issue #145). Idempotent, re-armed the same
+     * way {@link #installStormDetection} is. Default no-op, for a framework
+     * this slice doesn't instrument (Logback, {@code none}).
      */
     default void installRulePipeline(RuleGate gate) {
         // no-op by default

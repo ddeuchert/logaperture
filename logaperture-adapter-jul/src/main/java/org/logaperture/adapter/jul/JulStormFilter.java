@@ -61,6 +61,11 @@ final class JulStormFilter implements Filter {
         return delegate;
     }
 
+    /** Kept across a {@link FilterLayering} rebuild triggered by the rule filter's install. */
+    StormObserver observer() {
+        return observer;
+    }
+
     @Override
     public boolean isLoggable(LogRecord record) {
         try {
