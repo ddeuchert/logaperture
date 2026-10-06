@@ -23,6 +23,7 @@ import java.util.Random;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 /**
  * Issue #129: the single-pass normalizer must produce exactly what the four
@@ -86,6 +87,7 @@ class StormMessageNormalizerTest {
     })
     void matchesRegexOracle(String message) {
         assertEquals(RegexOracle.normalize(message), StormMessageNormalizer.normalize(message));
+        assertHashMatchesText(message);
     }
 
     @Test
@@ -107,7 +109,41 @@ class StormMessageNormalizerTest {
             String message = sb.toString();
             assertEquals(RegexOracle.normalize(message), StormMessageNormalizer.normalize(message),
                     () -> "input: " + escape(message));
+            assertHashMatchesText(message);
         }
+    }
+
+    /**
+     * Issue #147: the storm filter keys on {@code hash}, computed without
+     * building the text, so it must be exactly the hash of the text
+     * {@code normalize} builds, including across a hex rollback, the trailing
+     * trim and the {@value StormMessageNormalizer#MAX_LENGTH}-char cut.
+     */
+    @Test
+    void hash_matchesTheHashOfTheText_atTheCut() {
+        for (int pad = 490; pad <= 505; pad++) {
+            for (String tail : new String[] {" deadbeef12 x", " 0x1f", "  \u0001 ", " 4bf92f3577b34da6a3ce929d0e0e4736",
+                    " 123e4567-e89b-12d3-a456-426614174000 tail", "     b"}) {
+                assertHashMatchesText("a".repeat(pad) + tail);
+                assertHashMatchesText("a ".repeat(pad / 2) + tail);
+            }
+        }
+        assertHashMatchesText("");
+        assertHashMatchesText("   ");
+        assertHashMatchesText("für 12 Einträge é deadbeef");
+        assertEquals(StormMessageNormalizer.hashOf(""), StormMessageNormalizer.hash(null));
+    }
+
+    @Test
+    void hash_separatesMessagesThatNormalizeDifferently() {
+        assertEquals(StormMessageNormalizer.hash("order 4821 failed"), StormMessageNormalizer.hash("order 9 failed"));
+        assertNotEquals(StormMessageNormalizer.hash("order 4821 failed"), StormMessageNormalizer.hash("order 4821 done"));
+        assertNotEquals(StormMessageNormalizer.hash("ab"), StormMessageNormalizer.hash("ba"));
+    }
+
+    private static void assertHashMatchesText(String message) {
+        assertEquals(StormMessageNormalizer.hashOf(StormMessageNormalizer.normalize(message)),
+                StormMessageNormalizer.hash(message), () -> "input: " + escape(message));
     }
 
     @Test

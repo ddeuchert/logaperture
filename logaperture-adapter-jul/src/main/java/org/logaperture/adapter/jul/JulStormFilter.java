@@ -16,12 +16,10 @@
 package org.logaperture.adapter.jul;
 
 import org.logaperture.bridge.Diagnostics;
-import org.logaperture.core.StormObservation;
 import org.logaperture.core.StormObserver;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Filter;
@@ -69,27 +67,35 @@ final class JulStormFilter implements Filter {
     @Override
     public boolean isLoggable(LogRecord record) {
         try {
-            observer.observe(toObservation(record));
+            // Issue #147: the event's fields go to the detector directly; the record itself is the
+            // source RECORD_DETAILS renders from if this event engages a storm. Nothing per event.
+            Throwable thrown = record.getThrown();
+            observer.observe(
+                    record.getLoggerName() != null ? record.getLoggerName() : "",
+                    LevelMapper.toApi(record.getLevel()),
+                    thrown == null ? null : thrown.getClass().getName(),
+                    record.getMessage() != null ? record.getMessage() : "",
+                    record.getInstant(),
+                    record,
+                    RECORD_DETAILS);
         } catch (RuntimeException e) {
             Diagnostics.warnThrottled("storm-observation", "storm observation failed, record unaffected: " + e, null);
         }
         return delegate == null || delegate.isLoggable(record);
     }
 
-    private static StormObservation toObservation(LogRecord record) {
-        String loggerName = record.getLoggerName() != null ? record.getLoggerName() : "";
-        org.logaperture.api.Level level = LevelMapper.toApi(record.getLevel());
-        Throwable thrown = record.getThrown();
-        String throwableClassName = thrown == null ? null : thrown.getClass().getName();
-        String rawMessage = record.getMessage() != null ? record.getMessage() : "";
-        boolean hasThrown = thrown != null;
-        Instant timestamp = record.getInstant();
-        return new StormObservation(
-                loggerName, level, throwableClassName, rawMessage, hasThrown,
-                hasThrown ? () -> sampleTopFrames(thrown) : null,
-                () -> renderFirstOccurrence(record, thrown),
-                timestamp);
-    }
+    /** Renders a storm's sampled details from the record that engaged it, during that same observe call. */
+    private static final StormObserver.Details<LogRecord> RECORD_DETAILS = new StormObserver.Details<>() {
+        @Override
+        public List<String> topFrames(LogRecord record) {
+            return record.getThrown() == null ? null : sampleTopFrames(record.getThrown());
+        }
+
+        @Override
+        public String firstOccurrence(LogRecord record) {
+            return renderFirstOccurrence(record, record.getThrown());
+        }
+    };
 
     private static List<String> sampleTopFrames(Throwable thrown) {
         StackTraceElement[] trace = thrown.getStackTrace();

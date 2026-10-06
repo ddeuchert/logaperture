@@ -5,6 +5,11 @@ implementation; nothing is implemented yet.
 **Amendment (issue [#129](https://github.com/ddeuchert/logaperture/issues/129)), signed off
 2026-09-30:** one-pass message normalization and the "Normalization cache" under "Bounded
 state" (overhead-benchmarks.md review Decisions #9–#11, all on the recommended option).
+**Amendment (issue [#147](https://github.com/ddeuchert/logaperture/issues/147)), proposed
+2026-10-06, signed off 2026-10-06:** the per-event key is a hash computed in the normalizing scan,
+with the text built only for a new fingerprint ("Message normalization", "Fingerprint
+counters"); the normalization cache holds that hash and admits a message on its second miss
+("Normalization cache"); an allocation-free observer entry point ("Adapter SPI").
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §7.1 (automatic storm
 collapse — this slice is its report-only half), §4.2 (two-stage pipeline — gate stage),
 §9.3 (capability model — `view`), §9.6 (suppression must never be silent — the reason
@@ -65,6 +70,12 @@ modifies behaviour.**
   microseconds per event). The rules are unchanged from the regex version, with one choice
   made explicit: a non-ASCII letter or digit counts as a word character, so `édeadbeef` is one
   word and not hex (the regex version's answer depended on the JDK).
+  *Per event, the text itself is never built* ([#147](https://github.com/ddeuchert/logaperture/issues/147)):
+  a second scan applies the same rules but only hashes the normalized characters as it would
+  produce them (64-bit FNV-1a), allocating nothing. The normalized text is built once, when a
+  fingerprint is first tracked, and is exactly what it was before: `logctl storms`, `--json`
+  and storm history are unchanged. The two scans are held together by a test, not by sharing
+  code: the hash of a message must equal the hash of its normalized text.
 - A per-fingerprint **tally counter and two-state machine** (`ONGOING` / `ENDED`): a plain
   count that resets on a gap, crosses a threshold to declare a storm, and goes quiet to end
   it — see "Detection algorithm". No per-event timestamp history; no background timer.
@@ -268,13 +279,34 @@ default void installStormDetection(StormObserver detector) { }
 default List<Storm> storms() { return List.of(); }
 ```
 
-`StormObserver` (in `core`) receives a `StormObservation` — a small value type carrying
+`StormObserver` (in `core`) receives a `StormObservation`, a small value type carrying
 `loggerName`, `level`, `throwableClassName` (nullable), the raw message, `hasThrown`, a
 lazy `Supplier<String>` for the rendered first-occurrence text (invoked at most once per
 fingerprint, only when a new storm is first recorded, and outside `StormDetector`'s
 per-entry lock), and an `Instant`. The adapter's `Filter` does the framework-specific
 extraction and nothing else; all fingerprinting, normalization, the tally counter, and the
 state machine live in `core` (`StormDetector`) — the interesting, testable logic.
+
+**The per-event entry point ([#147](https://github.com/ddeuchert/logaperture/issues/147)).**
+Building a `StormObservation` and its two suppliers for every record cost an allocation
+apiece. `StormObserver` therefore has a second method that takes the same fields as
+arguments, plus the adapter's own record and a `Details` renderer:
+
+```
+<S> void observe(String loggerName, Level level, String throwableClassName,
+                 String rawMessage, Instant timestamp, S source, Details<S> details);
+
+interface Details<S> {
+    List<String> topFrames(S source);      // null when the event has no throwable
+    String firstOccurrence(S source);      // uncapped; the detector applies the 8 KB cap
+}
+```
+
+The adapter holds one `Details` instance, never one per event. The detector calls it only
+when this event engages a storm, during the same `observe` call, so `source` is still the live
+record; that keeps the "at most once per fingerprint, outside the entry lock" contract above.
+The JUL filter uses this method. `observe(StormObservation)` stays, and the new method's
+default implementation builds one, so a test fake written as a lambda still sees every event.
 
 **JUL / JBoss LogManager attach point.** `java.util.logging` and JBoss LogManager both allow
 exactly **one** `Filter` per `Logger` and one per `Handler`. The installed filter captures
@@ -317,7 +349,17 @@ not frozen.
 field, for *every* fingerprint seen, most of which never storm. An unbounded map keyed on
 `(logger, normalized message)` is exactly the memory-leak shape §16.7 names.
 
-- A `ConcurrentHashMap` keyed by the 64-bit fingerprint hash. Each entry's per-event update
+- A `ConcurrentHashMap` keyed by a 64-bit hash of the fingerprint, in which the message is
+  its normalized-text hash from the scan above
+  ([#147](https://github.com/ddeuchert/logaperture/issues/147)). The logger, level and
+  throwable class enter the key as 32-bit `hashCode()`s, which do collide (`…Aa` and `…BB`),
+  so the entry found under a key is checked against them, and a different fingerprint moves
+  on to a derived key. Only two messages with the same 64-bit hash can share a tally:
+  vanishingly rare, and a merged count, never a lost event. (Evicting an entry partway along
+  such a chain makes a fingerprint further along it re-insert fresh, as any evicted
+  fingerprint does.) The entry's `StormFingerprint`, with the normalized text, is built only
+  when the key is first inserted. Looking the key up still boxes it as a `Long`, the one
+  allocation left on this path. Each entry's per-event update
   (`count++`, gap check, the state flip) is guarded by `synchronized` on the entry object, so
   contention is **striped per fingerprint**: threads storming one fingerprint self-contend on
   that entry, and unrelated loggers on other threads never touch it.
@@ -337,7 +379,9 @@ field, for *every* fingerprint seen, most of which never storm. An unbounded map
   in the shared map. Per-thread state with millions of virtual threads is a footgun; this is
   a standing constraint, not an implementation detail.
 - Capped at **4,000** distinct fingerprints (`-Dlogaperture.storm.maxTrackedFingerprints`),
-  **approximate-LRU** evicted: each entry carries `lastTouched`; on insert past the cap,
+  **approximate-LRU** evicted: each entry carries `lastTouched` (written opaquely, not as a
+  volatile: eviction reads it without the entry's lock and only needs it whole, and a volatile
+  write is a full fence per event, #147); on insert past the cap,
   sample a handful of entries and evict the oldest. (No `LinkedHashMap` access-order — that
   needs the very per-context lock this design removes.) A mid-ramp fingerprint that is
   evicted simply re-inserts on its next event and re-climbs; acceptable degradation, and only
@@ -347,9 +391,8 @@ field, for *every* fingerprint seen, most of which never storm. An unbounded map
   this slice given how short the critical section is.
 
 **Normalization cache** *(issue #129; Decisions #9–#11 of the overhead-benchmarks.md review,
-signed off 2026-09-30)* — the normalized
-form of recently seen raw messages, so a message the detector has already normalized is looked
-up rather than scanned again.
+signed off 2026-09-30; amended by #147)*: the normalized-text hash of recently seen raw
+messages, so a message the detector has already scanned is looked up rather than scanned again.
 
 - *Why it pays.* The storm `Filter` reads the record's raw message (`getMessage()`), which for
   parameterized logging (JBoss Logging's `infof`/`debugf`, message loggers, `{0}`/`%s`
@@ -357,29 +400,37 @@ up rather than scanned again.
   time a given log statement runs. Normalization is a pure function of that string, so its
   result can be reused. Measured on the #128 benchmark message, one-pass normalization costs
   about 0.45 µs (2012-era CPU); a cache hit is a hash-slot read and a reference comparison.
-- *Structure.* A fixed-size **direct-mapped** array of immutable `(raw, normalized)` pairs,
-  indexed by `raw.hashCode()` masked to the table size. Lookup: read the slot; a hit is
-  `slot.raw == raw || slot.raw.equals(raw)`. A miss normalizes and **overwrites** the slot with
-  a new pair. No lock, no CAS, no resizing: a racing reader sees either the old pair or the new
-  one, both correct (immutable pairs with `final` fields are safely published by a plain array
-  write). This keeps the design's standing constraints: no per-context monitor, no
-  `ThreadLocal`, nothing allocated on a hit.
+- *Structure.* A fixed-size **direct-mapped** array of immutable `(raw, hash)` pairs, indexed
+  by `raw.hashCode()` masked to the table size. Lookup: read the slot; a hit is
+  `slot.raw == raw || slot.raw.equals(raw)`. A miss scans, then **admits on the second miss**
+  (#147): beside each slot is an `int`, the `hashCode()` of the last message that missed there.
+  A message whose `hashCode()` matches it overwrites the slot with a new pair; otherwise it
+  only replaces the `int`. A template repeats, so it is admitted on its second event; text
+  built by concatenation never repeats, so it costs one `int` write, allocates nothing, and
+  never evicts a cached template. No lock, no CAS, no resizing: a racing reader sees either the
+  old pair or the new one, both correct (immutable pairs with `final` fields are safely
+  published by a plain array write). This keeps the design's standing constraints: no
+  per-context monitor, no `ThreadLocal`, nothing allocated on a hit.
 - *Bound.* **1,024 slots** per context (`-Dlogaperture.storm.normalizationCacheSize`, rounded
   up to a power of two; `0` disables the cache). A raw message longer than **2,000 chars** is
   never cached (normalized every time; the 500-char output cap already bounds that work), so
   the cache retains at most about 1,024 × 2,000 chars of message text per context, plus the
   normalized forms.
-- *Eviction.* Collision overwrites; nothing else. With high-cardinality raw messages (text
-  built by concatenation, a new `String` per call), slots churn and those messages pay the
-  full normalization cost plus one `hashCode()`. That is the "cache miss" cost the #128
-  budget has a separate allowance for. A miss can also evict a hot template sharing its slot;
-  the template re-inserts on its next event.
+- *Eviction.* Only a message admitted on its second miss overwrites a slot. High-cardinality
+  raw messages (text built by concatenation, a new `String` per call) pay the full scan plus
+  one `hashCode()` every time; that is the "cache miss" cost the #128 budget has a separate,
+  per-character allowance for (overhead-benchmarks.md Decision #23). A template evicted by
+  another repeating message re-enters after two more events. If unrelated misses keep landing
+  on its slot in between, it can stay out and pay the scan, which is the uncached cost, never
+  a wrong result.
 - *Retained text.* Cached raw messages are heap references only, never surfaced through any
   command, JMX attribute or file; storm history already retains normalized text and the first
   occurrence under the same rules (§9). A concatenated message can carry data a template
   wouldn't; it is held no longer than until its slot is overwritten.
 - *Correctness.* The cache cannot change a result: it maps a string to the output of a pure
   function of that string. Fingerprints, `logctl storms` and `--json` are unchanged.
+- *Measured* (#147, unpinned A/B on the Ryzen 5 3400G, storm layer of one `INFO` call):
+  template +108 → +35 ns, concatenated 52-character message +760 → +287 ns.
 
 **Storm history** — fingerprints that reached storm state (active + recently ended). Read
 only on `logctl storms`, written only on storm engage/end — not a hot path; a plain
@@ -425,11 +476,14 @@ that per context.
   swallowed and the event passes through.
 - Unit — `core` (`StormMessageNormalizerTest`, #129): the one-pass normalizer's output equals
   the pre-#129 regex implementation's, kept in the test as an oracle, on fixed edge cases and
-  200,000 randomized messages. The cached path returns the same result as
-  the uncached one for a template seen repeatedly, for two different raw strings colliding on
-  one slot, for a message over the 2,000-char caching limit, and with the cache disabled
-  (`0`); many threads normalizing a mix of colliding messages concurrently always get the
-  correct result.
+  200,000 randomized messages. On the same messages and at the 500-character cut (before,
+  across and after it, with hex and UUID rollbacks and trailing whitespace), the hash scan
+  equals the hash of the text `normalize` builds (#147). The cached path returns the same
+  hash as the uncached one for a template seen repeatedly, for two different raw strings
+  colliding on one slot, for a message over the 2,000-char caching limit, and with the cache
+  disabled (`0`); a message is admitted on its second miss, not its first, and a stream of
+  never-repeating messages doesn't evict a cached template; many threads hashing a mix of
+  colliding messages concurrently always get the correct result.
 - Unit — `core` (`StormDetectorConcurrencyTest`): many threads feeding one fingerprint
   concurrently produce an `eventCount` equal to the number of observations (no lost updates)
   and exactly one `ONGOING` transition / one first-occurrence render; threads feeding
