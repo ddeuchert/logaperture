@@ -105,7 +105,7 @@ final class BenchContext {
         return handler;
     }
 
-    private static void clearHandlers(Logger logger) {
+    static void clearHandlers(Logger logger) {
         for (var existing : logger.getHandlers()) {
             logger.removeHandler(existing);
         }
@@ -124,8 +124,13 @@ final class BenchContext {
 
     /** A fixed-depth exception, so every scenario formats the same trace. */
     static Throwable throwable() {
+        return throwable(THROWABLE_FRAMES);
+    }
+
+    /** {@link #throwable()} with {@code depth} frames. */
+    static Throwable throwable(int depth) {
         IllegalStateException e = new IllegalStateException("Connection refused: db-primary:5432");
-        StackTraceElement[] frames = new StackTraceElement[THROWABLE_FRAMES];
+        StackTraceElement[] frames = new StackTraceElement[depth];
         for (int i = 0; i < frames.length; i++) {
             frames[i] = new StackTraceElement("org.acme.orders.OrderService$Stage" + i, "process",
                     "OrderService.java", 100 + i);

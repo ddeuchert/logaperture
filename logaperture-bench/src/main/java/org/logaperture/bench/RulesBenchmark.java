@@ -49,10 +49,14 @@ import java.util.logging.Logger;
  *       this one, so the gate is skipped (§10 "near-zero for loggers no rule can match").</li>
  *   <li>{@code drop-hit}: {@value #RULES} rules on this logger's category, evaluated in order;
  *       the last, a {@code drop}, matches and the record is denied (§10 "&lt; 200 ns ... ~20
- *       rules"). A denied record is never formatted, so this can come in under
- *       {@code baseline}.</li>
+ *       rules", Decision #21's budget at 20 rules). A denied record is never formatted, so this
+ *       can come in under {@code baseline}.</li>
  *   <li>{@code trim}: the same, but the last rule is a 5-frame {@code trim}, which only the
  *       {@code throwable} message gives anything to cut (§17.1 "a {@code trim} rule").</li>
+ *   <li>{@code trim-typed}: {@value #RULES} 5-frame {@code trim} rules, each bound to a
+ *       throwable type; only the last one's type matches (Decision #22). Without a throwable no
+ *       trim is a candidate, so the template and concatenated messages should cost what
+ *       {@code drop-miss} does.</li>
  * </ul>
  */
 @BenchmarkMode(Mode.AverageTime)
@@ -68,7 +72,7 @@ public class RulesBenchmark {
     @State(Scope.Benchmark)
     public static class Install {
 
-        @Param({"drop-miss", "drop-hit", "trim"})
+        @Param({"drop-miss", "drop-hit", "trim", "trim-typed"})
         public String scenario;
 
         /** Decision #12, as in {@code IdleBenchmark}. */
@@ -91,33 +95,7 @@ public class RulesBenchmark {
             tree = BenchContext.attachHandlers(params.getThreads(), false);
             pipeline = Pipeline.installIdle();
             pipeline.requireInstalledOn(tree.handlers());
-            attachRules(pipeline.rules);
-        }
-
-        private void attachRules(RuleService rules) {
-            RuleAttachOptions options = RuleAttachOptions.defaults();
-            if (scenario.equals("drop-miss")) {
-                for (int i = 0; i < RULES; i++) {
-                    rules.addRuleDrop("org.acme.billing.Stage" + i, CompiledMatchers.matchAll(), options,
-                            SampleFullPolicy.defaults());
-                }
-                return;
-            }
-            // Message matchers that never match: each one makes the gate read the formatted
-            // message, the most a non-matching rule can cost.
-            for (int i = 0; i < RULES - 1; i++) {
-                CompiledMatchers miss = new CompiledMatchers(null, "connection pool exhausted (" + i + ")", false,
-                        null, null, false);
-                rules.addRuleDrop(BenchContext.CATEGORY, miss, options, SampleFullPolicy.defaults());
-            }
-            if (scenario.equals("drop-hit")) {
-                CompiledMatchers hit = new CompiledMatchers(null, "Processed order", false, null, null, false);
-                matchingRule = rules.addRuleDrop(BenchContext.CATEGORY, hit, options, SampleFullPolicy.defaults())
-                        .rule().id();
-            } else {
-                matchingRule = rules.addRuleTrim(BenchContext.CATEGORY, CompiledMatchers.matchAll(), options,
-                        TRIM_FRAMES, false).rule().id();
-            }
+            matchingRule = attachRules(pipeline.rules, scenario);
         }
 
         @TearDown(Level.Trial)
@@ -135,7 +113,7 @@ public class RulesBenchmark {
                     throw new IllegalStateException("the drop-hit rule suppressed nothing");
                 }
             }
-            if (scenario.equals("trim") && thrown != null) {
+            if (scenario.startsWith("trim") && thrown != null) {
                 requireTrimmed();
             }
         }
@@ -153,6 +131,48 @@ public class RulesBenchmark {
                 throw new IllegalStateException("the trim rule left " + frames + " frames, expected " + TRIM_FRAMES);
             }
         }
+    }
+
+    /**
+     * Attaches {@code scenario}'s {@value #RULES} rules and returns the id of
+     * the one that matches, last of them; {@code null} for {@code drop-miss}.
+     * Shared with {@link SavingsBenchmark}, so its matched records go through
+     * exactly these rules.
+     */
+    static String attachRules(RuleService rules, String scenario) {
+        RuleAttachOptions options = RuleAttachOptions.defaults();
+        if (scenario.equals("drop-miss")) {
+            for (int i = 0; i < RULES; i++) {
+                rules.addRuleDrop("org.acme.billing.Stage" + i, CompiledMatchers.matchAll(), options,
+                        SampleFullPolicy.defaults());
+            }
+            return null;
+        }
+        if (scenario.equals("trim-typed")) {
+            // The first 19 name exception types the record's throwable never is, so with a throwable
+            // each walks its class hierarchy and misses; without one, none is even a candidate.
+            for (int i = 0; i < RULES - 1; i++) {
+                CompiledMatchers miss = new CompiledMatchers(null, null, false,
+                        "org.acme.orders.OrderRejectedException" + i, null, false);
+                rules.addRuleTrim(BenchContext.CATEGORY, miss, options, TRIM_FRAMES, false);
+            }
+            CompiledMatchers hit = new CompiledMatchers(null, null, false, IllegalStateException.class.getName(),
+                    null, false);
+            return rules.addRuleTrim(BenchContext.CATEGORY, hit, options, TRIM_FRAMES, false).rule().id();
+        }
+        // Message matchers that never match: each one makes the gate read the formatted
+        // message, the most a non-matching rule can cost.
+        for (int i = 0; i < RULES - 1; i++) {
+            CompiledMatchers miss = new CompiledMatchers(null, "connection pool exhausted (" + i + ")", false,
+                    null, null, false);
+            rules.addRuleDrop(BenchContext.CATEGORY, miss, options, SampleFullPolicy.defaults());
+        }
+        if (scenario.equals("drop-hit")) {
+            CompiledMatchers hit = new CompiledMatchers(null, "Processed order", false, null, null, false);
+            return rules.addRuleDrop(BenchContext.CATEGORY, hit, options, SampleFullPolicy.defaults()).rule().id();
+        }
+        return rules.addRuleTrim(BenchContext.CATEGORY, CompiledMatchers.matchAll(), options, TRIM_FRAMES, false)
+                .rule().id();
     }
 
     @State(Scope.Thread)

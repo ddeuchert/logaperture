@@ -45,8 +45,9 @@ public final class Suite {
 
     private static final String IDLE = "org\\.logaperture\\.bench\\.IdleBenchmark\\.";
     private static final String RULES = "org\\.logaperture\\.bench\\.RulesBenchmark\\.";
+    private static final String SAVINGS = "org\\.logaperture\\.bench\\.SavingsBenchmark\\.";
     private static final String COMPONENTS =
-            "org\\.logaperture\\.(core\\.IdleComponents|adapter\\.jul\\.TopComponents)Benchmark\\.";
+            "org\\.logaperture\\.(core\\.IdleComponents|core\\.GateCurve|adapter\\.jul\\.TopComponents)Benchmark\\.";
 
     /**
      * One JMH invocation: a name for its files, and what it adds to the shared options. A run
@@ -101,6 +102,13 @@ public final class Suite {
         runs.add(new Run("idle-per-thread-t1", o -> o.include(IDLE).threads(1)
                 .param("handlers", "per-thread").param("layers", "baseline", "idle").param("message", "template")));
         runs.add(new Run("rules-t1", o -> o.include(RULES).threads(1)));
+        // Decision #22: what a matched record saves, through a real file handler. The log file goes
+        // under the results folder, a real disk, not a tmpfs /tmp. Options' jvmArgsAppend replaces
+        // the annotation's, so the LogManager setting is repeated here.
+        String savingsDir = out.resolve("savings-files").toAbsolutePath().toString();
+        runs.add(new Run("savings-t1", o -> o.include(SAVINGS).threads(1)
+                .jvmArgsAppend("-Djava.util.logging.manager=org.jboss.logmanager.LogManager",
+                        "-D" + SavingsBenchmark.DIR_PROPERTY + "=" + savingsDir)));
         for (int threads : new int[] {4, 8}) {
             if (threads > hardwareThreads) {
                 System.out.printf("Skipping the %d-thread runs: this machine has %d hardware threads.%n",

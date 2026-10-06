@@ -15,10 +15,7 @@
  */
 package org.logaperture.core;
 
-import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.Level;
-import org.logaperture.api.RuleAttachOptions;
-import org.logaperture.api.SampleFullPolicy;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -54,18 +51,22 @@ import java.util.function.Supplier;
 @State(Scope.Thread)
 public class IdleComponentsBenchmark {
 
-    private static final String LOGGER = "org.acme.orders.worker0";
-    private static final String MESSAGE = "Processed order 48213 for customer 7f3a9c21 in 12 ms";
+    static final String LOGGER = "org.acme.orders.worker0";
+    static final String MESSAGE = "Processed order 48213 for customer 7f3a9c21 in 12 ms";
 
     private RuleGate gate;
-    private RuleGate gateTwenty;
     private StormDetector detector;
     private final Supplier<String> message = () -> MESSAGE;
     private int sequence;
 
     @Setup
     public void setUp() {
-        // No logger tree is touched: an adapter with no loggers is enough for an empty rule set.
+        gate = newRuleService().gate();
+        detector = new StormDetector();
+    }
+
+    /** No logger tree is touched: an adapter with no loggers is enough for a rule set the gate reads. */
+    static RuleService newRuleService() {
         LoggingAdapter adapter = new LoggingAdapter() {
             @Override
             public List<String> knownLoggerNames() {
@@ -86,15 +87,8 @@ public class IdleComponentsBenchmark {
             public void applyLevel(String loggerName, Level level) {
             }
         };
-        gate = newRuleService(adapter).gate();
-        RuleService twenty = newRuleService(adapter);
-        for (int i = 0; i < 20; i++) {
-            CompiledMatchers miss = new CompiledMatchers(null, "connection pool exhausted (" + i + ")", false, null,
-                    null, false);
-            twenty.addRuleDrop("org.acme.orders", miss, RuleAttachOptions.defaults(), SampleFullPolicy.defaults());
-        }
-        gateTwenty = twenty.gate();
-        detector = new StormDetector();
+        return new RuleService(adapter, CapabilityPolicy.allowAll(), new InMemoryAuditLog(), StateStore.noOp(),
+                "bench", "bench", "bench");
     }
 
     /**
@@ -106,17 +100,6 @@ public class IdleComponentsBenchmark {
     public GateVerdict gateEmpty() {
         RuleCandidateEvent event = new RuleCandidateEvent(LOGGER, Level.INFO, null, message, Instant.EPOCH);
         return gate.evaluate(new Object(), event);
-    }
-
-    /**
-     * {@code gate-20}: one verdict with 20 {@code drop} rules on the logger's
-     * parent, none matching: every rule reads the message and moves on, the
-     * most an allowed record can cost the gate.
-     */
-    @Benchmark
-    public GateVerdict gateTwenty() {
-        RuleCandidateEvent event = new RuleCandidateEvent(LOGGER, Level.INFO, null, message, Instant.EPOCH);
-        return gateTwenty.evaluate(new Object(), event);
     }
 
     /** {@code storm-observe}: one observation of a message already being tracked. */
@@ -138,10 +121,5 @@ public class IdleComponentsBenchmark {
     @Benchmark
     public String stormNormalize() {
         return StormDetector.normalize(MESSAGE);
-    }
-
-    private static RuleService newRuleService(LoggingAdapter adapter) {
-        return new RuleService(adapter, CapabilityPolicy.allowAll(), new InMemoryAuditLog(), StateStore.noOp(),
-                "bench", "bench", "bench");
     }
 }

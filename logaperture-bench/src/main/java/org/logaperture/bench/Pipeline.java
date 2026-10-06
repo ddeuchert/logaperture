@@ -25,6 +25,7 @@ import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
 
 import java.util.List;
+import java.util.logging.Handler;
 
 /**
  * The pieces context install puts on the hot path, installed the way a
@@ -76,8 +77,8 @@ final class Pipeline {
     }
 
     /** A scenario that quietly installed nothing would publish the baseline twice. */
-    void requireInstalledOn(List<DiscardingFileHandler> handlers) {
-        for (DiscardingFileHandler handler : handlers) {
+    void requireInstalledOn(List<? extends Handler> handlers) {
+        for (Handler handler : handlers) {
             requireClass("filter", handler.getFilter(), "JulRuleFilter");
             if (storm) {
                 requireClass("inner filter", innerFilter(handler), "JulStormFilter");
@@ -97,7 +98,7 @@ final class Pipeline {
         }
     }
 
-    private static Object innerFilter(DiscardingFileHandler handler) {
+    private static Object innerFilter(Handler handler) {
         try {
             var delegate = handler.getFilter().getClass().getDeclaredMethod("delegate");
             delegate.setAccessible(true);

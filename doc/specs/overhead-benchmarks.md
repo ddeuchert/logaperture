@@ -8,7 +8,7 @@ Decisions #15–#20 (published run on the development box, percentages, a run-it
 supersedes #14) signed off 2026-10-05, all on the recommended option.
 Decision #21 (rule budget scales with the logarithm of the effective rule count; amends §10,
 supersedes #8's `drop-hit` / `trim` row) agreed 2026-10-05 after the full run, on #148.
-Decision #22 (scenarios for the curve and for what a match saves) proposed, not yet agreed.
+Decision #22 (scenarios for the curve and for what a match saves) agreed 2026-10-05 and implemented.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §10 (Performance: "< 200 ns added
 per evaluated event … near-zero for loggers no rule can match … enforced by JMH benchmarks in
 CI"), §17.1 ("What earns 1.0": "published overhead numbers (§10) for an idle agent, a `trim`
@@ -144,6 +144,7 @@ Each runs with three messages (Decision #12):
 | `drop-miss` | 20 `drop` rules on other loggers, none can match this one | §10 "near-zero for loggers no rule can match" |
 | `drop-hit` | 20 rules, one `drop` matches (record denied) | §10's rule budget at *n* = 20 (204 ns, Decision #21) |
 | `trim` | 20 rules, one `trim` (5 frames) matches | §17.1 "a `trim` rule" |
+| `trim-typed` | 20 `trim` rules, each bound to a throwable type; only the last matches | Decision #22: a type-bound rule costs ~nothing on records without a throwable |
 Since every scenario includes `top` counting, there is no separate `top` scenario.
 
 **The 20 rules.** `drop-miss` puts its 20 `drop` rules on 20 unrelated loggers, so none is an
@@ -153,7 +154,7 @@ the logging logger's category: 19 `drop` rules with a message-contains matcher t
 rule last, so every call evaluates all 20. The matching `drop` keeps the default periodic full
 sample; the `trim` matches every record and cuts to 5 frames, which only the `throwable` message
 gives it anything to do. A denied record is never formatted, so `drop-hit` can come in under
-`baseline`; the gate's own cost is `gate-20` below.
+`baseline`; the gate's own cost is `gate-n` below.
 
 **Idle layers.** `idle` is run as cumulative layers, installed in the container's own order, so
 each piece's share is the difference between two adjacent rows of the same run: `baseline`,
@@ -180,7 +181,7 @@ Alongside them, each hot-path piece is benchmarked on its own, with nothing arou
 | Id | Measures |
 |---|---|
 | `gate-empty` | `RuleService.evaluateGate` for a context with no rules |
-| `gate-20` | `RuleService.evaluateGate` with 20 rules on the logger's parent, none matching (message-contains matchers, as above) |
+| `gate-n` | `RuleService.evaluateGate` with *n* = 1, 5, 20, 100 rules on the logger's parent, none matching (message-contains matchers, as above); Decision #22 |
 | `storm-observe` | `StormDetector.observe`, plain message and a message with digits, hex and a UUID |
 | `storm-normalize` | `StormDetector.normalize` alone |
 | `top-record` | `TopCounters.record` |
@@ -257,6 +258,7 @@ published set, defined once in the benchmark jar (`Suite`) so the two can't drif
 | `idle-t1` | `IdleBenchmark`, every layer and message, 1 thread, shared handler | the overhead table, #13's budgets, #23 |
 | `idle-per-thread-t1` | `baseline` and `idle`, `template`, 1 thread, a handler per thread | #24's single-thread reference |
 | `rules-t1` | `RulesBenchmark`, every scenario and message, 1 thread | the rule rows and budgets |
+| `savings-t1` | `SavingsBenchmark`, every scenario and message, 1 thread, through a real file handler | "What a match saves" (Decision #22) |
 | `idle-t4`, `idle-t8` | `baseline`, `rule+storm` and `idle`; `template` and `concatenated`; both handler shapes | the concurrency rows, #24 |
 | `flamegraphs` | `idle`, every message, under async-profiler (only with `--async-profiler`) | the flame graphs; not in the report's numbers |
 
@@ -419,7 +421,7 @@ set, and then runs a report step (a small Java class in the benchmark jar, so no
 tool is needed) that turns the JMH JSON into `report.md`: the percentage table, the budgets and
 decision-rule checks, the machine. Everything goes in one results folder and a zip. Two sizes:
 `--quick` (1 fork, short iterations, about 15 minutes, numbers indicative only) and the full run
-(the published settings, about 75 minutes on this box). The scripts check and record the
+(the published settings, about 75 minutes on this box; about 85 with Decision #22's additions). The scripts check and record the
 frequency settings (governor, boost, power plan on Windows) and print how to pin them, but
 don't change them on Linux or macOS, since that needs root. B. Document the raw JMH commands
 only.
@@ -452,15 +454,24 @@ the message*), which rules out C's linear growth by construction. *n* counts onl
 effective on the logger, so `drop-miss` keeps #8's near-zero ≤ 50 ns unchanged.
 
 **#22 — Scenarios for the curve and for the savings.**
-Proposed, not yet agreed:
-- `gate-n` at *n* = 1, 5, 20, 100 effective rules (message-contains `drop`s, none matching),
-  reported as a curve against #21's budget, replacing the single `gate-20` point.
-- `trim` bound to a throwable type, on records with and without a throwable: the second should
-  cost no more than `drop-miss`.
-- Matched-record savings: `drop-hit` and a deep-stack `trim` through a **real file handler**,
-  against `baseline` through the same handler, so the result can come out negative (the agent
-  saving more than it costs). These are reported, not budgeted, and run as their own group:
-  Decision #3 keeps the disk out of every other scenario, and it still does.
+**Decided** (2026-10-05), as follows:
+- `gate-n` (`GateCurveBenchmark`) at *n* = 1, 5, 20, 100 effective rules (message-contains
+  `drop`s on the logger's parent, none matching), each checked as `gate-n` − `gate-empty`
+  against #21's budget for its *n*. It replaces the single `gate-20` point.
+- `trim-typed` (a `RulesBenchmark` scenario): 20 five-frame `trim` rules, each bound to a
+  throwable type, only the last of which the benchmark's exception is. Without a throwable no
+  trim is a candidate, so the `template` and `concatenated` rows get `drop-miss`'s ≤ 50 ns over
+  `idle`; the `throwable` row gets #21's budget at *n* = 20.
+- Matched-record savings (`SavingsBenchmark`, run `savings-t1`): `baseline` (no LogAperture),
+  `drop-hit` and `trim` (the whole agent plus `RulesBenchmark`'s 20 rules) through a **real**
+  JBoss `FileHandler` with autoflush on (WildFly's default), with `template` and a 100-frame
+  exception ("deep stack"). Single thread. Reported in the report's "What a match saves" table
+  as the change against `baseline`, not budgeted; negative means the matched record cost less
+  than with no agent. This is the only group that touches the disk; Decision #3 still keeps it
+  out of every other scenario. The file goes under the results folder (a real disk, not a tmpfs
+  `/tmp`), is truncated at the start of every iteration so disk use stays bounded, and is
+  deleted at trial end, after checking that its stack traces have 5 frames under `trim` and
+  100 under `baseline`.
 
 ## Testing
 

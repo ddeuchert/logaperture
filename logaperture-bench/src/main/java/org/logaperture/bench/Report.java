@@ -41,9 +41,14 @@ public final class Report {
 
     private static final String IDLE = "org.logaperture.bench.IdleBenchmark.info";
     private static final String RULES = "org.logaperture.bench.RulesBenchmark.info";
+    private static final String SAVINGS = "org.logaperture.bench.SavingsBenchmark.info";
+    private static final String GATE_EMPTY = "org.logaperture.core.IdleComponentsBenchmark.gateEmpty";
+    private static final String GATE_CURVE = "org.logaperture.core.GateCurveBenchmark.gate";
     private static final List<String> MESSAGES = List.of("template", "concatenated", "throwable");
     private static final List<String> SCENARIOS = List.of("rule", "rule+storm", "rule+storm+trim", "idle",
-            "drop-miss", "drop-hit", "trim");
+            "drop-miss", "drop-hit", "trim", "trim-typed");
+    /** The effective rule count of {@code RulesBenchmark}'s scenarios. */
+    private static final int RULE_COUNT = 20;
 
     /** One JMH result row. {@code error} is the 99.9 % half-width, {@code NaN} with too few iterations. */
     record Result(String benchmark, Map<String, String> params, int threads, double score, double error,
@@ -63,10 +68,18 @@ public final class Report {
             return params.getOrDefault("handlers", "shared");
         }
 
+        /** {@code Type.method}, plus any JMH parameters, so parameterized rows stay apart. */
         String shortName() {
             int method = benchmark.lastIndexOf('.');
             int type = benchmark.lastIndexOf('.', method - 1);
-            return benchmark.substring(type + 1);
+            String name = benchmark.substring(type + 1);
+            if (params.isEmpty()) {
+                return name;
+            }
+            StringBuilder withParams = new StringBuilder(name).append(" (");
+            params.forEach((key, value) -> withParams.append(key).append('=').append(value).append(", "));
+            withParams.setLength(withParams.length() - 2);
+            return withParams.append(')').toString();
         }
     }
 
@@ -157,6 +170,7 @@ public final class Report {
                 """);
         overheadTable(md);
         budgets(md);
+        savings(md);
         decisionRules(md);
         components(md);
         md.append("## Machine\n\n```\n").append(machine.strip()).append("\n```\n");
@@ -229,7 +243,9 @@ public final class Report {
     private void budgets(StringBuilder md) {
         md.append("## Budgets\n\n");
         md.append("Single thread, one shared handler. A check passes when the difference *plus* its error "
-                + "is within the budget (doc/specs/overhead-benchmarks.md Decisions #8 and #13).\n\n");
+                + "is within the budget (doc/specs/overhead-benchmarks.md Decisions #8, #13 and #21). Rule "
+                + "budgets follow #21's curve, 50 ns + 35 ns × log₂(n + 1) for *n* rules effective on the "
+                + "logger.\n\n");
         md.append("| Check | Message | Measured (ns) | Budget (ns) | Result |\n|---|---|--:|--:|---|\n");
         int concatenatedLength = BenchContext.message(true, 48213).length();
         for (String message : MESSAGES) {
@@ -247,8 +263,67 @@ public final class Report {
         }
         for (String scenario : List.of("drop-hit", "trim")) {
             for (String message : MESSAGES) {
-                budgetRow(md, "20 rules: `" + scenario + "` − `idle`", message,
-                        rules(scenario, message), layer("idle", message), 200);
+                budgetRow(md, RULE_COUNT + " rules: `" + scenario + "` − `idle`", message,
+                        rules(scenario, message), layer("idle", message), ruleBudget(RULE_COUNT));
+            }
+        }
+        // Decision #22: with no throwable, no type-bound trim is a candidate, so it gets drop-miss's budget.
+        for (String message : MESSAGES) {
+            double budget = message.equals("throwable") ? ruleBudget(RULE_COUNT) : 50;
+            budgetRow(md, RULE_COUNT + " type-bound trims: `trim-typed` − `idle`", message,
+                    rules("trim-typed", message), layer("idle", message), budget);
+        }
+        Optional<Result> gateEmpty = results.stream().filter(r -> r.benchmark().equals(GATE_EMPTY)).findFirst();
+        List<Result> curve = results.stream()
+                .filter(r -> r.benchmark().equals(GATE_CURVE))
+                .sorted(Comparator.comparingInt(r -> Integer.parseInt(r.param("rules"))))
+                .toList();
+        for (Result gate : curve) {
+            int n = Integer.parseInt(gate.param("rules"));
+            budgetRow(md, "gate alone, " + n + " rules: `gate-n` − `gate-empty`", "template",
+                    Optional.of(gate), gateEmpty, ruleBudget(n));
+        }
+        md.append('\n');
+    }
+
+    /** Decision #21: what the gate may add for {@code n} rules effective on the record's logger. */
+    static double ruleBudget(int n) {
+        return 50 + 35 * (Math.log(n + 1) / Math.log(2));
+    }
+
+    /**
+     * Decision #22: a matched record through a real file handler, against
+     * no LogAperture through the same handler. Reported, not budgeted; a
+     * negative number is the agent saving more than it costs.
+     */
+    private void savings(StringBuilder md) {
+        List<Result> rows = results.stream().filter(r -> r.benchmark().equals(SAVINGS)).toList();
+        if (rows.isEmpty()) {
+            return;
+        }
+        md.append("## What a match saves\n\n");
+        md.append("One `INFO` call through a real file handler (autoflush on), single thread: the whole agent "
+                + "with " + RULE_COUNT + " rules, the last of which matches, against no LogAperture through the "
+                + "same handler. `throwable` carries a " + SavingsBenchmark.DEEP_STACK_FRAMES + "-frame "
+                + "exception. A negative change means the matched record cost less than with no agent at "
+                + "all. Reported, not budgeted (Decision #22).\n\n");
+        md.append("| Scenario | Message | Change | Change (ns) | Score (ns/op) | No agent (ns/op) |\n");
+        md.append("|---|---|--:|--:|--:|--:|\n");
+        for (String message : List.of("template", "throwable")) {
+            Optional<Result> base = rows.stream()
+                    .filter(r -> r.scenario().equals("baseline") && r.param("message").equals(message)).findFirst();
+            for (String scenario : List.of("drop-hit", "trim")) {
+                Optional<Result> row = rows.stream()
+                        .filter(r -> r.scenario().equals(scenario) && r.param("message").equals(message)).findFirst();
+                md.append("| `").append(scenario).append("` | ").append(message).append(" | ");
+                if (row.isEmpty() || base.isEmpty()) {
+                    md.append("not run | — | — | — |\n");
+                    continue;
+                }
+                Measured change = measured(row.get()).minus(measured(base.get()));
+                md.append(percent(change.over(measured(base.get())))).append(" | ").append(signedNs(change))
+                        .append(" | ").append(ns(measured(row.get()))).append(" | ")
+                        .append(ns(measured(base.get()))).append(" |\n");
             }
         }
         md.append('\n');
@@ -319,7 +394,8 @@ public final class Report {
 
     private void components(StringBuilder md) {
         List<Result> rows = results.stream()
-                .filter(r -> !r.benchmark().equals(IDLE) && !r.benchmark().equals(RULES))
+                .filter(r -> !r.benchmark().equals(IDLE) && !r.benchmark().equals(RULES)
+                        && !r.benchmark().equals(SAVINGS))
                 .sorted(Comparator.comparing(Result::shortName))
                 .toList();
         if (rows.isEmpty()) {
