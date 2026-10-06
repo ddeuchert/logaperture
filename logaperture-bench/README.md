@@ -19,84 +19,77 @@ JMH benchmarks measuring how much time LogAperture adds to each log call. The de
 scenarios and the budgets are in [`doc/specs/overhead-benchmarks.md`](../doc/specs/overhead-benchmarks.md).
 This module is built only under the `bench` Maven profile and is never published.
 
-## Running the benchmarks on Windows
+One command builds the benchmarks, checks the machine, runs the published set and writes
+`report.md`: how much longer a log call takes with LogAperture than without it, as a percentage
+and in nanoseconds, plus the budget checks and the machine it ran on. Everything lands in one
+folder under `logaperture-bench/target/results/`, and a zip of it next to that folder.
 
-This is for running the published measurements on a fast Windows PC. It takes about
-**an hour**, most of it unattended, and doesn't change anything permanent on the machine.
+You need Git and a JDK 17 or newer; the scripts download Maven themselves.
 
-### 1. Install Git and Java (once)
+## Linux and macOS
 
-Open **PowerShell** (Start menu, type `powershell`) and run:
+```
+logaperture-bench/run-bench.sh --quick    # setup check, about 10 minutes, numbers indicative only
+logaperture-bench/run-bench.sh            # the full run, about an hour
+```
+
+Options: `--label <name>` names the results folder; `--allow-slow-clock` measures even when the
+clock check fails; `--async-profiler <path to libasyncProfiler.so>` also records flame graphs of
+the `idle` scenario (Linux).
+
+For numbers worth comparing, close everything else and pin the CPU frequency first. The script
+records the governor and boost settings and prints how to pin them, but doesn't change them,
+since that needs root:
+
+```
+sudo cpupower frequency-set -g performance
+echo 0 | sudo tee /sys/devices/system/cpu/cpufreq/boost          # acpi-cpufreq, amd-pstate
+echo 1 | sudo tee /sys/devices/system/cpu/intel_pstate/no_turbo  # intel_pstate
+```
+
+## Windows
+
+Open **PowerShell** and, once, install Git and Java, then open a new PowerShell:
 
 ```powershell
 winget install Git.Git
 winget install EclipseAdoptium.Temurin.21.JDK
 ```
 
-Then **close PowerShell and open a new one**, so it picks up both. Nothing else is needed: the
-script downloads Maven and everything the build uses by itself.
-
-### 2. Get the code
+Get the code and run:
 
 ```powershell
-cd $HOME
 git clone https://github.com/ddeuchert/logaperture.git
 cd logaperture
-git checkout feature/128-overhead-benchmarks
+powershell -ExecutionPolicy Bypass -File logaperture-bench\run-bench.ps1 -Quick   # about 10 minutes
+powershell -ExecutionPolicy Bypass -File logaperture-bench\run-bench.ps1          # about an hour
 ```
 
-If you already have the folder from an earlier run, instead:
+`-Label <name>` and `-AllowSlowClock` work as on Linux. For the run, the script switches Windows
+to its High (or Ultimate) Performance power plan and keeps the PC from sleeping; it puts the
+original plan back at the end, even if the run fails or you press Ctrl+C. If it stops with a red
+**STOPPED:** message, that message says why.
 
-```powershell
-cd $HOME\logaperture
-git pull
-```
+## The clock check
 
-### 3. Check that it works (about 5 minutes)
+Every log record reads the clock, so before anything runs the scripts time one
+`System.nanoTime()` call. About 25 ns is normal; over 100 ns, they stop. On Linux the usual cause
+is the kernel rejecting the TSC at boot and falling back to `hpet` (check
+`cat /sys/devices/system/clocksource/clocksource0/current_clocksource`, and `dmesg | grep -i tsc`);
+booting with `tsc=reliable` usually fixes it.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File logaperture-bench\run-baseline.ps1 -Quick
-```
+## What's in the results folder
 
-The first time, it spends a few minutes downloading and building. It should end with
-**Done. Send David this file:** and a path. If it stops with a red **STOPPED:** message, send
-David that message.
+- `report.md`: the overhead table, the budget and decision-rule checks, the component
+  benchmarks and the machine.
+- `machine.txt`: CPU, memory, OS, Java, frequency settings or power plan, the clock check and
+  the exact code version. No personal files or account details, just the machine's name.
+- `benchmarks.txt`: everything that scrolled past; one `.json` per run with JMH's raw numbers.
 
-### 4. The real run (about 45 minutes)
-
-1. Close everything else: browsers, games, launchers, Discord, anything with a tray icon you can
-   quit. Plug in and leave the PC alone; mouse movement is fine, using it isn't.
-2. Run:
-
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File logaperture-bench\run-baseline.ps1
-   ```
-
-3. When it says **Done**, send David the `.zip` file it names. It's in
-   `logaperture-bench\target\results\`.
-
-For the run, the script switches Windows to its High (or Ultimate) Performance power plan and
-keeps the PC from sleeping. It puts the original plan back at the end, even if the run fails or
-you press Ctrl+C.
-
-### What's in the zip
-
-- `machine.txt`: the CPU, memory, Windows version, Java version, power plan, how long one `System.nanoTime()` call takes
-  (about 25 ns is normal) and the exact code
-  version that ran. No personal files or account details, just the PC's name.
-- One `.txt` (what scrolled past on screen) and one `.json` (the same numbers for analysis) per
-  run.
-
-## Running on Linux or macOS
+## Running JMH directly
 
 ```
 ./mvnw -Pbench -pl logaperture-bench -am package -DskipTests
-java -jar logaperture-bench/target/benchmarks.jar -prof gc -rf json
+java -jar logaperture-bench/target/benchmarks.jar RulesBenchmark -prof gc
+java -cp logaperture-bench/target/benchmarks.jar org.logaperture.bench.Report <folder with JMH JSON>
 ```
-
-For numbers worth comparing, pin the CPU frequency first (Linux: the `performance` governor,
-with turbo off) and close everything else.
-
-On Linux, also check `cat /sys/devices/system/clocksource/clocksource0/current_clocksource` is
-`tsc`, and run `java logaperture-bench/NanoTimeCost.java` (about 25 ns is normal). With `hpet` a
-single `System.nanoTime()` costs over a microsecond, which dwarfs the layers being measured.

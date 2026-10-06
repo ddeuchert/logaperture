@@ -15,6 +15,7 @@
  */
 package org.logaperture.bench;
 
+import org.jboss.logmanager.ExtLogRecord;
 import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.RuleAttachOptions;
 import org.logaperture.api.SampleFullPolicy;
@@ -126,10 +127,30 @@ public class RulesBenchmark {
                 tree.requireWritten();
                 pipeline.requireCounted();
             }
-            // A trim rule only counts a hit on a record with a throwable to cut.
-            boolean expectHits = matchingRule != null && !(scenario.equals("trim") && thrown == null);
-            if (expectHits && pipeline.rules.hitCount(matchingRule) == 0) {
-                throw new IllegalStateException("the " + scenario + " rule never matched");
+            if (scenario.equals("drop-hit")) {
+                long suppressed = pipeline.rules.takeDropCounts().stream()
+                        .filter(count -> count.ruleId().equals(matchingRule))
+                        .mapToLong(RuleService.DropCount::suppressed).sum();
+                if (suppressed == 0) {
+                    throw new IllegalStateException("the drop-hit rule suppressed nothing");
+                }
+            }
+            if (scenario.equals("trim") && thrown != null) {
+                requireTrimmed();
+            }
+        }
+
+        /** One record through the handler's formatter, as the benchmark's records went: 5 frames left. */
+        private void requireTrimmed() {
+            // An ExtLogRecord, as JBoss LogManager hands handlers: the trim formatter only copies those.
+            ExtLogRecord record = new ExtLogRecord(java.util.logging.Level.INFO, BenchContext.MESSAGE,
+                    RulesBenchmark.class.getName());
+            record.setLoggerName(tree.workers().get(0).getName());
+            record.setThrown(thrown);
+            String formatted = tree.handlers().get(0).getFormatter().format(record);
+            long frames = formatted.lines().filter(line -> line.startsWith("\tat ")).count();
+            if (frames != TRIM_FRAMES) {
+                throw new IllegalStateException("the trim rule left " + frames + " frames, expected " + TRIM_FRAMES);
             }
         }
     }

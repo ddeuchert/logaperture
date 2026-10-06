@@ -14,29 +14,34 @@
 
 <#
 .SYNOPSIS
-    Runs LogAperture's overhead benchmarks on Windows and packs the results into one zip.
+    Runs LogAperture's overhead benchmarks on Windows and writes report.md plus a zip of everything.
 
 .DESCRIPTION
-    doc/specs/overhead-benchmarks.md "Measurement method": builds logaperture-bench, records the
-    machine it runs on, switches to a high-performance power plan for the run (restoring the
-    original afterwards), keeps the PC from sleeping, runs the benchmarks with the spec's
-    settings, and zips everything to send back.
+    doc/specs/overhead-benchmarks.md Decision #19, the Windows twin of run-bench.sh: builds
+    logaperture-bench, checks the clock, records the machine it runs on, switches to a
+    high-performance power plan for the run (restoring the original afterwards), keeps the PC
+    from sleeping, runs the published set of benchmarks, and writes report.md and a zip.
 
-    Takes about 45 minutes. Don't use the PC while it runs.
+    Takes about an hour. Don't use the PC while it runs.
 
 .PARAMETER Label
-    Names the results, e.g. "baseline" (default) or "after-129".
+    Names the results folder (default: "run").
 
 .PARAMETER Quick
-    A two-minute setup check with too few iterations to mean anything. Use it first.
+    A setup check of about 10 minutes: one fork, short iterations, numbers indicative only.
+    Use it first.
+
+.PARAMETER AllowSlowClock
+    Measure even if one System.nanoTime() call costs over 100 ns. The report then carries a warning.
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File logaperture-bench\run-baseline.ps1 -Quick
-    powershell -ExecutionPolicy Bypass -File logaperture-bench\run-baseline.ps1
+    powershell -ExecutionPolicy Bypass -File logaperture-bench\run-bench.ps1 -Quick
+    powershell -ExecutionPolicy Bypass -File logaperture-bench\run-bench.ps1
 #>
 param(
-    [string]$Label = "baseline",
-    [switch]$Quick
+    [string]$Label = "run",
+    [switch]$Quick,
+    [switch]$AllowSlowClock
 )
 
 $ErrorActionPreference = "Stop"
@@ -80,7 +85,7 @@ if ($LASTEXITCODE -ne 0) { Fail "The build failed. Send David the output above."
 $jar = Join-Path $repo "logaperture-bench\target\benchmarks.jar"
 if (-not (Test-Path $jar)) { Fail "The build finished but $jar is missing." }
 
-# --- 3. Results folder and machine record --------------------------------------------------------
+# --- 3. Results folder, clock check and machine record -------------------------------------------
 
 $stamp = Get-Date -Format "yyyyMMdd-HHmm"
 $name = "$Label-$env:COMPUTERNAME-$stamp"
@@ -88,13 +93,17 @@ if ($Quick) { $name = "$name-quick" }
 $out = Join-Path $repo "logaperture-bench\target\results\$name"
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 
+Step "Checking the clock"
+$clockArgs = @("-cp", $jar, "org.logaperture.bench.ClockCheck")
+if ($AllowSlowClock) { $clockArgs += "--allow-slow-clock" }
+$nanoTime = (& java @clockArgs | Select-Object -First 1)
+if ($LASTEXITCODE -ne 0) { Fail "System.nanoTime() is too slow on this PC; see above." }
+Write-Host "One System.nanoTime() call: $nanoTime ns"
+
 Step "Recording this machine"
 $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
 $os = Get-CimInstance Win32_OperatingSystem
 $cs = Get-CimInstance Win32_ComputerSystem
-# One System.nanoTime() call costs ~25 ns normally; a slow clock source inflates every result.
-$nanoTime = (& java (Join-Path $repo "logaperture-bench\NanoTimeCost.java") 2>$null | Select-Object -First 1)
-if ($LASTEXITCODE -ne 0 -or -not $nanoTime) { $nanoTime = "unknown" }
 $machine = @(
     "label:            $Label"
     "quick:            $Quick"
@@ -144,34 +153,13 @@ try {
 
     # --- 5. Benchmarks ---------------------------------------------------------------------------
 
-    # The spec's settings (3 forks, 5 x 1 s warmup, 10 x 1 s measurement) are the benchmarks'
-    # own annotations; -Quick overrides them for a setup check only.
-    $quickArgs = @()
-    if ($Quick) { $quickArgs = @("-f", "1", "-wi", "1", "-w", "1", "-i", "1", "-r", "1") }
-
-    $runs = @(
-        @{ Name = "components"; Args = @("org.logaperture.core.IdleComponentsBenchmark") },
-        @{ Name = "idle-t1"; Args = @("org.logaperture.bench.IdleBenchmark", "-t", "1") }
-    )
-    $logical = [int]$cpu.NumberOfLogicalProcessors
-    foreach ($threads in 4, 8) {
-        if ($logical -ge $threads) {
-            $runs += @{ Name = "idle-t$threads"; Args = @("org.logaperture.bench.IdleBenchmark", "-t", "$threads") }
-        } else {
-            Write-Host "Skipping the $threads-thread run: this CPU has only $logical hardware threads." -ForegroundColor Yellow
-        }
-    }
-
-    $i = 0
-    foreach ($run in $runs) {
-        $i++
-        Step "Run $i of $($runs.Count): $($run.Name)  (started $(Get-Date -Format HH:mm))"
-        $json = Join-Path $out "$($run.Name).json"
-        $text = Join-Path $out "$($run.Name).txt"
-        $javaArgs = @("-jar", $jar) + $run.Args + $quickArgs + @("-prof", "gc", "-rf", "json", "-rff", $json)
-        & java @javaArgs | Tee-Object -FilePath $text
-        if ($LASTEXITCODE -ne 0) { Fail "Benchmark run '$($run.Name)' failed; see $text" }
-    }
+    # The published set of runs lives in one place, the Suite class, so this script and
+    # run-bench.sh run exactly the same thing.
+    Step "Running the benchmarks (started $(Get-Date -Format HH:mm)); leave the PC alone until it's done"
+    $suiteArgs = @("-cp", $jar, "org.logaperture.bench.Suite", $out)
+    if ($Quick) { $suiteArgs += "--quick" }
+    & java @suiteArgs | Tee-Object -FilePath (Join-Path $out "benchmarks.txt")
+    if ($LASTEXITCODE -ne 0) { Fail "A benchmark run failed; see $(Join-Path $out "benchmarks.txt")" }
 }
 finally {
     [LogAperture.Power]::SetThreadExecutionState($ES_CONTINUOUS) | Out-Null
@@ -181,10 +169,14 @@ finally {
     }
 }
 
-# --- 6. Pack -------------------------------------------------------------------------------------
+# --- 6. Report and zip ---------------------------------------------------------------------------
 
+Step "Writing the report"
+& java -cp $jar org.logaperture.bench.Report $out | Out-Null
+if ($LASTEXITCODE -ne 0) { Fail "The report step failed." }
 $zip = Join-Path $repo "logaperture-bench\target\results\$name.zip"
 Compress-Archive -Path (Join-Path $out "*") -DestinationPath $zip -Force
 Write-Host ""
-Write-Host "Done. Send David this file:" -ForegroundColor Green
-Write-Host "    $zip" -ForegroundColor Green
+Write-Host "Done." -ForegroundColor Green
+Write-Host "    report: $(Join-Path $out "report.md")" -ForegroundColor Green
+Write-Host "    zip:    $zip" -ForegroundColor Green

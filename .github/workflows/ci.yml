@@ -46,3 +46,32 @@ jobs:
           name: test-reports
           path: '**/target/*-reports/'
           if-no-files-found: ignore
+
+  bench-smoke:
+    # doc/specs/overhead-benchmarks.md Decision #4: every benchmark runs once, with no threshold,
+    # so a scenario that throws or silently installs nothing fails here. The published numbers
+    # come from a quiet machine (logaperture-bench/run-bench.sh), never from a shared runner.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Build the benchmarks
+        run: mvn -B --no-transfer-progress -Pbench -pl logaperture-bench -am package -DskipTests
+
+      - name: Run every benchmark once
+        run: |
+          mkdir -p bench-smoke
+          java -jar logaperture-bench/target/benchmarks.jar -foe true -f 1 -wi 0 -i 1 -r 100ms \
+            -rf json -rff bench-smoke/smoke.json
+
+      - name: Write the report from the smoke results
+        run: |
+          java -cp logaperture-bench/target/benchmarks.jar org.logaperture.bench.Report bench-smoke
+          cat bench-smoke/report.md >> "$GITHUB_STEP_SUMMARY"

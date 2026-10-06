@@ -241,9 +241,31 @@ diffed against it.
 ### Running it
 
 ```
-mvn -Pbench -pl logaperture-bench -am package
-java -jar logaperture-bench/target/benchmarks.jar -rf json
+logaperture-bench/run-bench.sh --quick     # Linux, macOS; run-bench.ps1 -Quick on Windows
+logaperture-bench/run-bench.sh             # the full, published settings
 ```
+
+Both scripts build the jar, run the clock check (#18), record the machine and run the same
+published set, defined once in the benchmark jar (`Suite`) so the two can't drift apart:
+
+| Run | What | Feeds |
+|---|---|---|
+| `components` | every component benchmark | the cross-check table |
+| `idle-t1` | `IdleBenchmark`, every layer and message, 1 thread, shared handler | the overhead table, #13's budgets, #23 |
+| `idle-per-thread-t1` | `baseline` and `idle`, `template`, 1 thread, a handler per thread | #24's single-thread reference |
+| `rules-t1` | `RulesBenchmark`, every scenario and message, 1 thread | the rule rows and budgets |
+| `idle-t4`, `idle-t8` | `baseline`, `rule+storm` and `idle`; `template` and `concatenated`; both handler shapes | the concurrency rows, #24 |
+| `flamegraphs` | `idle`, `template` and `throwable`, under async-profiler (only with `--async-profiler`) | the flame graphs; not in the report's numbers |
+
+A thread count above the machine's hardware threads is skipped, not oversubscribed. A report
+step in the same jar (`Report`) turns the JSON into `report.md`. The rule scenarios' budgets are
+checked against `idle` of the same message, not `baseline`: `idle`'s own layers carry #13's
+budgets already, and what §10's "< 200 ns ... ~20 rules" and "near-zero for loggers no rule can
+match" describe is what the rules add on top.
+
+The CI smoke pass (Decision #4) is the `bench-smoke` job in `.github/workflows/ci.yml`: every
+benchmark once (1 fork, 1 short iteration, `-foe`), then the report step over its JSON, with the
+report in the job summary.
 
 ## Decisions
 
