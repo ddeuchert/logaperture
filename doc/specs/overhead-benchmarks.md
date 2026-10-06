@@ -4,6 +4,8 @@ Status: signed off, not implemented. Decisions #1–#8 signed off 2026-09-30, al
 option. Tracked as [#128](https://github.com/ddeuchert/logaperture/issues/128).
 Decisions #9–#14 (issue #129 follow-up: normalization cache, message variants, revised
 budgets, published-run machine) signed off 2026-09-30, all on the recommended option.
+Decisions #15–#20 (published run on the development box, percentages, a run-it-yourself suite;
+supersedes #14) signed off 2026-10-05, all on the recommended option.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §10 (Performance: "< 200 ns added
 per evaluated event … near-zero for loggers no rule can match … enforced by JMH benchmarks in
 CI"), §17.1 ("What earns 1.0": "published overhead numbers (§10) for an idle agent, a `trim`
@@ -22,7 +24,10 @@ After this feature, the user will be able to:
   measuring.
 - See those numbers alongside the machine and JDK they were measured on, and how they change
   when several threads log at once.
-- Re-run the same measurements on their own hardware with one documented command.
+- Read each number as a percentage: how much longer a log call takes with LogAperture than
+  without it, on the same machine.
+- Re-run the same measurements on their own hardware with one command (Linux, macOS or
+  Windows), and get the same percentage table for their machine.
 
 ## Motivation
 
@@ -307,7 +312,8 @@ short lock, a timestamp, two small objects); 3 ns per character is the one-pass 
 measured ~8.6 ns per character on the 2012-era smoke-run CPU at 2.6 GHz, scaled to a current
 one.
 
-**The published-run machine (Decision #14, signed off 2026-09-30).** Absolute budgets only
+**The published-run machine (Decision #14, signed off 2026-09-30; superseded by #15
+on 2026-10-05).** Absolute budgets only
 mean something on known hardware. The published run uses a current x86-64 or ARM64 desktop or
 server CPU (released within the last five years), with frequency scaling pinned as "Measurement
 method" describes, and the results page names it. For 1.0 that is a Windows Alienware desktop,
@@ -316,6 +322,81 @@ has no pinned-frequency equivalent of Linux's `performance` governor, so the pla
 with the results). async-profiler doesn't run on Windows, so the published flame graphs come
 from a Linux run of the same commit. The smoke-run machine (Intel i7-3740QM, 2012) doesn't qualify; its numbers
 serve for before/after comparisons only.
+
+### Revision 2026-10-05: the development box, percentages, and a suite anyone can run
+
+The Windows machine Decision #14 named isn't available for the 1.0 run. Rather than wait, the
+published run moves to the development box and the headline becomes a ratio, which carries
+across hardware far better than nanoseconds do. The same packaging lets anyone measure their
+own machine.
+
+**What "percentage" means.** For each scenario, *overhead* = (scenario − `baseline`) ÷
+`baseline`, from the same run, same message variant and same thread count. Its error is the
+usual one for a quotient: with *d* the difference and *e_d* its combined error from "Measurement
+method", the ratio's relative error is `√((e_d/d)² + (e_b/b)²)`. A row reads, e.g., "`idle`, template,
+1 thread: +12 % ± 2 %". Raw nanoseconds stay in the same table, one column over.
+
+The percentage depends on the baseline, so the baseline is part of the claim: one `INFO` call
+through JBoss LogManager, a short pattern formatter and a discarding stream. That is about the
+cheapest a real log call gets; against a real file handler, or a longer pattern, the same
+nanoseconds are a smaller percentage. The results page says so next to the table.
+
+**#15 — Where the published numbers come from (supersedes #14).**
+A. The development box: AMD Ryzen 5 3400G (Zen+, 4 cores / 8 threads, 2019), Fedora 44, Temurin
+21, with the `performance` governor, boost off, and the TSC clocksource (see #18). The flame
+graphs come from the same run. The results page names the machine and says it is a five-year-old
+desktop CPU, not a server. B. Wait for the Windows machine.
+**Decided: A** (2026-10-05). Nothing about the measurement needs the faster machine once the headline is a
+ratio, and a Linux run is the only one that also gets async-profiler flame graphs.
+
+**#16 — The headline number.**
+A. Percentage over `baseline` with its error, and raw ns/op plus ns added in the same table.
+B. Percentage only. C. Nanoseconds only, as first planned.
+**Decided: A** (2026-10-05). The percentage is what a reader can carry to their own machine; the
+nanoseconds are what the budgets (#8/#13) and the decision rule (#6) are written in, and what a
+later run is diffed against. The nanoseconds describe this box only (a 2019 CPU; a newer one
+reports fewer), and the results page says so next to those columns.
+
+**#17 — What happens to the nanosecond budgets.**
+A. Keep #8/#13 as written and check them against this box's run. It is older and slower than
+the "current CPU" #14 asked for, so a pass here is conservative; a fail here is still a #7
+blocker. B. Restate the budgets as percentages. C. Drop the budgets; publish only.
+**Decided: A** (2026-10-05). The budgets were set before measuring; restating them now, with numbers in hand,
+is the moving-goalposts #6 was written to prevent. #6's own thresholds (#23: 25 %, #24: 1.5×)
+are already ratios and carry over unchanged.
+
+**#18 — The clock must be fast.**
+Every log record reads the clock (the record's timestamp, storm detection's window), so a slow
+clocksource inflates both sides of the ratio and the result means nothing. This box shows it:
+the kernel marked the TSC unstable at boot ("frequency skew" against HPET) and fell back to HPET,
+where one `System.nanoTime()` costs about 1,440 ns. The fix is a kernel argument
+(`tsc=reliable`) and a reboot.
+A. The runner measures `System.nanoTime()` first and refuses to run if it costs over 100 ns,
+saying why and what to check; `--allow-slow-clock` overrides, and the report then carries a
+warning banner. B. Warn and run. C. Don't check.
+**Decided: A** (2026-10-05). A slow clock is invisible unless something looks, and the numbers it produces
+look plausible.
+
+**#19 — The run-it-yourself suite.**
+A. One runner per platform with the same behavior and the same output: `run-bench.sh` (Linux,
+macOS) and `run-bench.ps1` (Windows; today's `run-baseline.ps1`, renamed). Each builds the jar
+with the Maven wrapper, writes `machine.txt`, runs the clock check (#18), runs the published
+set, and then runs a report step (a small Java class in the benchmark jar, so no Python or other
+tool is needed) that turns the JMH JSON into `report.md`: the percentage table, the budgets and
+decision-rule checks, the machine. Everything goes in one results folder and a zip. Two sizes:
+`--quick` (1 fork, short iterations, about 15 minutes, numbers indicative only) and the full run
+(the published settings, about 75 minutes on this box). The scripts check and record the
+frequency settings (governor, boost, power plan on Windows) and print how to pin them, but
+don't change them on Linux or macOS, since that needs root. B. Document the raw JMH commands
+only.
+**Decided: A** (2026-10-05). "One documented command" is the functional summary's promise, and the
+percentage table is the part people want; nobody should have to compute it from JMH JSON.
+
+**#20 — The "before fixes" run.**
+A. Drop it from the published set. The published numbers describe the code that ships; the
+#129/#130 before/after comparison, if wanted, goes on those issues as a one-off. B. Publish both.
+**Decided: A** (2026-10-05). Two tables invite comparing a version nobody runs. The `bench/128-before`
+branch can be deleted when this merges.
 
 ## Testing
 
