@@ -131,6 +131,11 @@ After this feature, the user will be able to:
   name resolves, even if that happens after the agent has already come up,
   and `ALL_HANDLERS reset` still reverts to each handler's true original
   level rather than the override value.
+- Peel one handler off a group setting — `logctl handler ALL_HANDLERS TRACE`
+  then `logctl handler FILE DEBUG` leaves `FILE` at `DEBUG` and every other
+  handler at `TRACE`, and it stays that way; `logctl handler FILE reset` hands
+  `FILE` back to the group's `TRACE`
+  ([#135](https://github.com/ddeuchert/logaperture/issues/135)).
 
 ## Scope of this slice
 
@@ -1519,9 +1524,48 @@ current pick — so an operator can tell at a glance whether today's
 - **Independent lifetime.** A handler override is its own thing. Nothing about a
   logger override creates, extends, or reverts it, and vice versa. Its tier,
   `expiresAt`, reason and audit trail are its own.
-- **No overlap recomputation.** Because there is exactly one override per
-  `(contextKey, ref)`, there is no "two overrides need this handler" case and no
-  reference counting — superseding replaces, resetting restores the baseline.
+- **Overlapping overrides: the most specific one wins (issue
+  [#135](https://github.com/ddeuchert/logaperture/issues/135)).** There is
+  exactly one override per `(contextKey, ref)`, but the group refs make it
+  possible for more than one override to cover the same real handler —
+  `ALL_HANDLERS TRACE` plus `FILE DEBUG`, or `ALL_HANDLERS` plus
+  `DEFAULT_HANDLERS`. Before #135 each tick of the verification sweep let
+  the group re-assert its level on `FILE` and the per-handler override put it
+  back, so the two flipped every 30 s, auditing both changes each time. The
+  rule, the same order `logctl export vendor-defaults` already resolves
+  entries in:
+  - A handler's **own override** decides its level, over any group.
+  - Otherwise a **`DEFAULT_HANDLERS`** override decides it, if the handler is
+    a member.
+  - Otherwise an **`ALL_HANDLERS`** override decides it.
+  - Otherwise the vendor layer / baseline, as before (vendor-defaults.md).
+
+  A group override *governs* only the members nothing more specific covers.
+  Every path that applies a group override — the verification sweep and its
+  drift check, reconfiguration re-application, resume, adopting onto a new
+  context, `AUTO` recompute, a `DEFAULT_HANDLERS` membership change — touches
+  only governed members; so does a group **reset**, which leaves a member
+  with its own (or a `DEFAULT_HANDLERS`) override where it is.
+
+  Resetting or expiring the more specific override **hands the handler back**
+  to the next override that covers it instead of to its baseline: `reset
+  handler FILE` under `ALL_HANDLERS TRACE` lands `FILE` on `TRACE` (or, under
+  an `AUTO` group, on the level that group is tracking), audited as one
+  `REVERSION` row naming `TRACE` as the new value. Only with no group left
+  covering it does the handler go back to its baseline.
+
+  Setting a group **explicitly** is unchanged and remains the one exception:
+  `logctl handler ALL_HANDLERS TRACE` means "every handler at `TRACE`", so it
+  overwrites each member and drops any per-handler override on a member, as
+  it always has. By the same reasoning it now also drops an active
+  `DEFAULT_HANDLERS` override (whose members it just overwrote), rather than
+  leaving one the sweep would immediately re-assert. A group set in `AUTO`
+  mode keeps its passive carve-out: it skips every member something more
+  specific covers.
+
+  `logctl status` keeps listing each override as its own row; when it shows a
+  group override alongside a more specific one, it prints a one-line note
+  that the more specific override wins on the handlers it names.
 - **`ALL_HANDLERS`: one tracked override, N audit rows (Decision #3,
   issue #13).** `logctl status` shows one row for an `ALL_HANDLERS` override,
   not one per real handler it happened to touch — a single
@@ -1561,7 +1605,11 @@ current pick — so an operator can tell at a glance whether today's
   alongside the logger sweep — so `WildFlyContainer`'s existing periodic sweep
   and its `LogManager` configuration-change hook cover handler drift too, with
   no changes needed in `WildFlyContainer` itself (it already just calls
-  `aggregate.verificationSweep(now)`). A handler override also survives
+  `aggregate.verificationSweep(now)`). A group override counts as drifted
+  when any member it governs (above) disagrees with it, and its re-apply
+  writes one audit row per member whose level actually changed — never an
+  `X -> X` row for a member that was already right (issue
+  [#135](https://github.com/ddeuchert/logaperture/issues/135)). A handler override also survives
   **redeploy** (broadcast onto a newly-registered context, same as a logger
   override) and **resume** (below).
 - **Resume.** A persisted `--for` / `--sticky` handler override is re-applied on
@@ -1625,7 +1673,10 @@ its own prior value (Decision #4).
   "let support raise a logger for 30 minutes" is not thereby approving "let
   support widen the console sink for the whole server".
 - **Audit** (§9.7 fields) on every `setHandlerLevel` and every reversion:
-  principal, source, `contextKey`, `handlerRef`, previous level, new level,
+  principal, source, `contextKey`, `handlerRef` (printed as `handler=<name>`,
+  never `logger=` — issue [#137](https://github.com/ddeuchert/logaperture/issues/137);
+  so is a `set`/`reset default-handler` membership record, as
+  `handler=DEFAULT_HANDLERS`), previous level, new level,
   `reason`, `tier`, `expiresAt`. One record per handler per context. Reversions
   carry `source` = `reset` / `expiry` / `resetAll` / `resume`. For
   `ALL_HANDLERS` (Decision #3, issue #13), "one record per handler" means one

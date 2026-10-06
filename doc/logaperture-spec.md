@@ -648,6 +648,7 @@ Detectability is a stronger and cheaper guarantee than prevention, and it degrad
 - Separate sink, which squelch rules cannot match and the runtime cannot redirect.
 - Records the **revert** as well as the change — an override that expired unnoticed is exactly what an audit needs to show.
 - Fields: principal, source (CLI / JMX / HTTP / file), what changed, previous value, expiry, `reason`.
+- **What changed is labelled by kind** (issue [#137](https://github.com/ddeuchert/logaperture/issues/137)): `logger=<name>` for a logger level or a rule (named by the logger it applies to), `handler=<name>` for a handler level or the `DEFAULT_HANDLERS` membership, `file=<path>` for a record about a whole file — the vendor defaults file loaded, the state file a resume restored from. A reader can grep `handler=` for every handler change without matching a logger that happens to share the name.
 - **Hash-chained entries** — each record includes a digest of its predecessor. Cheap to implement, makes deletion or alteration detectable, and is the sort of thing that turns a security review from an argument into a checkbox.
 - Optionally mirrored to syslog or the Windows Event Log so the record leaves the process entirely.
 
@@ -994,7 +995,7 @@ Every environment on the list throws away installed filters and wrapped formatte
 
 Rather than enumerate hooks per container, make it an invariant of the core: **the agent must be able to re-establish its entire installed state, idempotently, at any moment, driven by either an event or a periodic verification sweep.**
 
-Idempotence is the hard half. Double-wrapping a formatter on every reload is an easy bug, compounds silently, and is expensive on the hot path — tag wrappers with a marker interface and check before wrapping. The periodic sweep is the backstop for containers that offer no usable event, and it means adding a new container starts out working correctly, if slightly late, before anyone writes a single hook.
+Idempotence is the hard half. Double-wrapping a formatter on every reload is an easy bug, compounds silently, and is expensive on the hot path — tag wrappers with a marker interface and check before wrapping. "Check before wrapping" means checking the agent's **whole** installed layering at that attach point, not just the outermost wrapper. Where two of the agent's own wrappers share one attach point, each one checking only for itself on the outside means each sees the other there and wraps again. That grows the chain on every tick (issue [#145](https://github.com/ddeuchert/logaperture/issues/145): `StackOverflowError` after a weekend on WildFly). The rule is the one [`doc/specs/rule-pipeline-foundation.md`](specs/rule-pipeline-foundation.md) "Canonical filter layering" sets out: one canonical shape per attach point, rebuilt whenever a tick finds anything else. The periodic sweep is the backstop for containers that offer no usable event, and it means adding a new container starts out working correctly, if slightly late, before anyone writes a single hook.
 
 ### 15.6 WildFly
 
@@ -1670,6 +1671,29 @@ Tracked as [#107](https://github.com/ddeuchert/logaperture/issues/107); a follow
 - Whether the replacement is reported in resume output or the audit trail (§9.7), or is truly silent.
 - File format: a new optional field under `schemaVersion: 1`, or a version bump; whether a hand-authored file ever carries ids.
 - Whether this should only apply to the file a JVM exported from, or to any vendor file that carries a matching id (a customer's state never shares ids with a vendor's file, so this may not matter).
+
+### 18.17 `set logger --force`: reach descendants that have their own level
+
+Tracked as [#142](https://github.com/ddeuchert/logaperture/issues/142). **Specced and signed off 2026-10-03** for 1.0: [`doc/specs/set-logger-force.md`](specs/set-logger-force.md), decisions F1–F11; the open questions below are settled there.
+
+**Motivation.** `logctl set logger com.mycompany TRACE` reads as "everything under `com.mycompany` at TRACE". It isn't when a descendant has its own explicit level: `com.mycompany.other`, configured at INFO in the native config, keeps INFO, because every framework propagates a level only to descendants with no level of their own (§4.3). Nothing tells the user. This is the gap in [`pattern-selection-semantics.md`](specs/pattern-selection-semantics.md) Decision #5, which refuses a trailing-`.*` `set` target because a bare name "already reaches every descendant". That holds only for descendants without their own level.
+
+**What the user would do.**
+
+- `logctl set logger com.mycompany TRACE --force` sets `com.mycompany` and also brings every descendant that has its own level to TRACE.
+- Guided `logctl set logger` lists those descendants (`com.mycompany.other (INFO)`) when it finds them, and asks whether to force them too.
+- Possibly, without `--force`, a one-line note after a plain `set logger` naming the descendants that keep their own level, in the manner of the blocking-handler warning.
+
+**Cost / dependencies.** New surface on an existing Layer 0 command (a flag, a guided question, perhaps a note), in `pattern-selection-semantics.md` / [`level-control.md`](specs/level-control.md) territory. Likely an additive option on the MXBean `setLogger`, so it has to land before the 1.0 contract review freezes that surface (§17.1).
+
+**Open questions, deferred until this is specced:**
+
+- What `--force` does to each such descendant: **override it** to the requested level (its own audited override), or **clear its own level** so it inherits from the parent, restored on reset.
+- Whether the forced descendants share the parent's tier and expiry, and revert with it.
+- Which descendants count: every one with an explicit level, or only those stricter than the requested level; and what happens to one that already carries a LogAperture override.
+- One-time, or standing: whether a descendant configured later (a reload adds one at WARN) is caught. Decision #5's case against standing wildcards applies.
+- Capability checks per forced descendant, as a pattern target has today, and a "too many to list" threshold for the guided question.
+- Whether `reset logger com.mycompany` also reverts the forced descendants, and how `status` / `list loggers` show them.
 
 ---
 

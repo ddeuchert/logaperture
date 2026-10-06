@@ -286,6 +286,15 @@ fingerprint" contract, only once per burst: two throw sites storming *concurrent
 same cheap key are not distinguished by it (sequential, non-overlapping bursts are). See
 [issue #77](https://github.com/ddeuchert/logaperture/issues/77).
 
+**Idempotence across both handler filters (issue
+[#145](https://github.com/ddeuchert/logaperture/issues/145)).** Once the rule pipeline's filter
+shares the handler, "already installed" can't be judged from the outermost filter alone. A
+check that looked only at the outermost filter re-wrapped both filters on every sweep tick and
+grew the chain without limit. Both `install*` methods now follow
+[`rule-pipeline-foundation.md`](rule-pipeline-foundation.md) "Canonical filter layering":
+they walk the leading run of LogAperture filters and rebuild it as `Rule -> Storm -> base`
+whenever it isn't already in that shape.
+
 ## Reconfiguration and lifecycle
 
 Installed once per context at the same `installContext` point `TopService` / `DoctorService`

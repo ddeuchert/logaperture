@@ -246,6 +246,44 @@ class GuidedCommandsTest {
     }
 
     @Test
+    void setLogger_aTypedTrailingWildcard_picksFromTheSubtree() {
+        // Issue #139: the pattern only builds the pick list; the picked exact name is what gets set.
+        guided(lines("com.acme.*", "2", "DEBUG", "", "", ""), "set", "logger");
+
+        assertTrue(out().contains("2 loggers match 'com.acme.*'"), out());
+        assertFalse(out().contains("trailing '.*'"), out());
+        assertEquals(1, mbean.setLevelCalls.size());
+        assertEquals("com.acme.batch.Worker", mbean.setLevelCalls.get(0)[0]);
+    }
+
+    @Test
+    void setLogger_anIncompleteCommandsTrailingWildcard_picksFromTheSubtree() {
+        guided(lines("1", "DEBUG", "", "", ""), "set", "logger", "*.acme.*");
+
+        assertEquals("com.acme.Worker", mbean.setLevelCalls.get(0)[0]);
+    }
+
+    @Test
+    void setLogger_aPackageWithLoggersUnderIt_isSetWithoutAsking() {
+        // Issue #140: com.acme isn't a logger itself (as org.wildfly often isn't just after a restart).
+        guided(lines("DEBUG", "", "", "n", ""), "set", "logger", "com.acme"); // n: don't force (#142)
+
+        assertTrue(out().contains("com.acme isn't a logger itself yet; 2 loggers under it inherit from it "
+                + "(e.g. com.acme.Worker)."), out());
+        assertFalse(out().contains("exists yet;"), out());
+        assertEquals("com.acme", mbean.setLevelCalls.get(0)[0]);
+    }
+
+    @Test
+    void setLogger_aNameThatIsOnlyAPrefixOfLoggers_stillAsks() {
+        // com.acme.Worker starts with "com.ac" but isn't under it.
+        guided(lines("n", ""), "set", "logger", "com.ac");
+
+        assertTrue(out().contains("No logger named com.ac exists yet; set it anyway? [y/N]"), out());
+        assertTrue(mbean.setLevelCalls.isEmpty());
+    }
+
+    @Test
     void setLogger_declinedOrEndOfInputAppliesNothing() {
         guided(lines("DEBUG", "", "", "n"), "set", "logger", "com.acme.Worker");
         assertTrue(out().contains("Not applied."), out());

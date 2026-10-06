@@ -16,6 +16,7 @@
 package org.logaperture.core;
 
 import org.logaperture.bridge.Diagnostics;
+import org.logaperture.api.DescendantLevel;
 import org.logaperture.api.BackendInfo;
 import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.EnvironmentReport;
@@ -253,7 +254,8 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         }
         auditLog.record(new AuditRecord(Instant.now(), principal, "resume", location, null,
                 "restored " + count(loggers, "logger override") + ", " + count(handlers, "handler override") + ", "
-                        + count(rules, "rule"), null, AuditRecord.Action.MUTATION));
+                        + count(rules, "rule"), null, AuditRecord.Action.MUTATION)
+                .withTarget(AuditRecord.Target.FILE));
     }
 
     private static String count(int n, String noun) {
@@ -884,12 +886,22 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         // ref -- a handler named e.g. CONSOLE in more than one context is
         // still just "CONSOLE" to the operator reading the warning.
         Map<HandlerRef, HandlerFloor> blockingByRef = new LinkedHashMap<>();
+        // doc/specs/set-logger-force.md: each context forces its own descendants; the caller sees
+        // each forced logger, and each one that didn't follow, once by name.
+        Map<String, LevelOverride> forcedByName = new LinkedHashMap<>();
+        Map<String, DescendantLevel> descendantsByName = new LinkedHashMap<>();
         for (ContextControl context : contexts) {
             SetLevelResult result = context.service().setLogger(
                     loggerName, level, opts, resolvedMatchesByContext.get(context.stableKey()));
+            for (DescendantLevel descendant : result.descendants()) {
+                descendantsByName.putIfAbsent(descendant.loggerName(), descendant);
+            }
             if (isPattern) {
                 allOverrides.addAll(result.overrides());
             } else if (!result.overrides().isEmpty()) {
+                for (LevelOverride forced : result.overrides().subList(1, result.overrides().size())) {
+                    forcedByName.putIfAbsent(forced.loggerName(), forced);
+                }
                 LevelOverride override = result.overrides().get(0);
                 fromAny = override;
                 if (ContextHandle.SYSTEM.equals(context.stableKey())) {
@@ -906,10 +918,15 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 blockingByRef.merge(floor.handlerRef(), floor, LevelControlService::stricterFloor);
             }
         }
-        List<LevelOverride> reportedOverrides = isPattern
-                ? allOverrides
-                : List.of(fromSystem != null ? fromSystem : fromAny);
-        return new SetLevelResult(reportedOverrides, List.copyOf(blockingByRef.values()));
+        List<LevelOverride> reportedOverrides = new ArrayList<>();
+        if (isPattern) {
+            reportedOverrides.addAll(allOverrides);
+        } else {
+            reportedOverrides.add(fromSystem != null ? fromSystem : fromAny);
+            reportedOverrides.addAll(forcedByName.values()); // the target first, then what it forced
+        }
+        return new SetLevelResult(reportedOverrides, List.copyOf(blockingByRef.values()),
+                List.copyOf(descendantsByName.values()));
     }
 
     @Override

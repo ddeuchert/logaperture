@@ -24,6 +24,7 @@ import org.logaperture.api.EnvironmentReport;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
+import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LogRule;
 import org.logaperture.api.LoggerByteCount;
 import org.logaperture.api.LoggerInfo;
@@ -31,6 +32,7 @@ import org.logaperture.api.RuleAttachOptions;
 import org.logaperture.api.RuleResetOutcome;
 import org.logaperture.api.SetHandlerLevelOptions;
 import org.logaperture.api.SetLevelOptions;
+import org.logaperture.api.SetLevelResult;
 import org.logaperture.api.Severity;
 import org.logaperture.core.AggregateLevelControl.ContextControl;
 import org.logaperture.core.spi.ContextHandle;
@@ -68,6 +70,17 @@ class AggregateLevelControlTest {
         aggregate = new AggregateLevelControl();
         // The test JVM's own -javaagent entries are not what these tests are about.
         aggregate.useAgentOrderCheck(agentOrderCheck());
+    }
+
+    @Test
+    void recordResume_namesTheStateFileAsAFile() {
+        // Issue #137: printed as file=<path>, not logger=<path>.
+        aggregate.recordResume(auditLog, "alice", "/work/state.yaml", 2, 1, 0);
+
+        assertEquals(1, auditLog.records().size());
+        AuditRecord record = auditLog.records().get(0);
+        assertEquals("/work/state.yaml", record.loggerName());
+        assertEquals(AuditRecord.Target.FILE, record.target());
     }
 
     private static AgentOrderCheck agentOrderCheck(String... arguments) {
@@ -118,6 +131,32 @@ class AggregateLevelControlTest {
                         false, null, () -> "rendered", Instant.now()));
             }
         }
+    }
+
+    // --- set logger --force (doc/specs/set-logger-force.md) -------------------------------------
+
+    @Test
+    void setLogger_force_eachContextForcesItsOwnDescendants_reportedOnceByName() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        system.adapter.setConfiguredLevel("com.acme.other", Level.INFO);
+        app.adapter.setConfiguredLevel("com.acme.other", Level.WARN);
+        app.adapter.setConfiguredLevel("com.acme.appOnly", Level.ERROR);
+        aggregate.addContext(system.control);
+        aggregate.addContext(app.control);
+
+        SetLevelResult result = aggregate.setLogger("com.acme", Level.TRACE,
+                SetLevelOptions.defaults().withForce(true));
+
+        List<String> reported = result.overrides().stream().map(LevelOverride::loggerName).toList();
+        assertEquals("com.acme", reported.get(0), "the target first");
+        assertEquals(java.util.Set.of("com.acme", "com.acme.other", "com.acme.appOnly"), java.util.Set.copyOf(reported));
+        assertEquals(3, reported.size(), "com.acme.other once, though both contexts forced it");
+        assertEquals(Level.TRACE, system.adapter.effectiveLevel("com.acme.other"));
+        assertEquals(Level.TRACE, app.adapter.effectiveLevel("com.acme.appOnly"));
+
+        aggregate.resetLogger("com.acme", false);
+        assertEquals(Level.WARN, app.adapter.effectiveLevel("com.acme.other"), "each context back to its own level");
     }
 
     // --- listLoggers ------------------------------------------------------------------------------

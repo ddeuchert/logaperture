@@ -334,19 +334,19 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      * doc/specs/storm-detection.md "Adapter SPI". Installs a {@link
      * JulStormFilter} on every real handler this adapter can act on right
      * now — the one-Filter-per-Handler attach point every enabled record
-     * reaches regardless of originating logger. Idempotent: a handler whose
-     * filter is already a {@link JulStormFilter} is left alone, so a
-     * re-invocation (context-install retry, or {@code core}'s periodic
-     * re-verification) never double-installs or loses the captured delegate.
+     * reaches regardless of originating logger. Idempotent over the whole
+     * chain, not just its outermost filter ({@link FilterLayering}, issue
+     * #145): a re-invocation (context-install retry, or {@code core}'s
+     * periodic re-verification) leaves an already-canonical handler alone
+     * and re-layers anything else, never wrapping a second time.
      */
     @Override
     public void installStormDetection(StormObserver detector) {
         for (HandlerRef ref : realHandlers()) {
             Handler handler = handlersByRef.get(ref);
-            if (handler == null || handler.getFilter() instanceof JulStormFilter) {
-                continue; // already wrapped, or no longer resolvable
+            if (handler != null) {
+                FilterLayering.ensure(handler, detector, null);
             }
-            handler.setFilter(new JulStormFilter(handler.getFilter(), detector));
         }
     }
 
@@ -354,19 +354,18 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      * doc/specs/rule-pipeline-foundation.md "Relationship to the
      * storm-detection filter", doc/specs/drop-rule.md "Evaluation". A
      * deliberately separate {@link Filter} from {@link
-     * #installStormDetection}'s own — both chain and compose on the same
-     * handler regardless of install order, each independently idempotent by
-     * checking for its own filter type only. The container decides install
-     * order (storm detection first, so this filter ends up outermost).
+     * #installStormDetection}'s own. Both go through {@link FilterLayering},
+     * which keeps this one outermost (drop-rule.md Decision #3) whatever
+     * order the two are installed in, and keeps each idempotent over the
+     * whole chain (issue #145).
      */
     @Override
     public void installRulePipeline(RuleGate gate) {
         for (HandlerRef ref : realHandlers()) {
             Handler handler = handlersByRef.get(ref);
-            if (handler == null || handler.getFilter() instanceof JulRuleFilter) {
-                continue; // already wrapped, or no longer resolvable
+            if (handler != null) {
+                FilterLayering.ensure(handler, null, gate);
             }
-            handler.setFilter(new JulRuleFilter(handler.getFilter(), gate));
         }
     }
 

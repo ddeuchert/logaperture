@@ -48,6 +48,9 @@ import java.time.Instant;
  *                      export-round-trip.md); {@code null} until it has been persisted
  * @param recipe        the id of the recipe that made it (doc/specs/recipes.md #6), or {@code
  *                      null}; a later change made by hand replaces the override and so drops it (#7)
+ * @param forcedBy      the logger whose {@code set logger --force} made it (doc/specs/
+ *                      set-logger-force.md F8), or {@code null}; resetting that logger resets this
+ *                      override too, while a later change replaces it and so drops the tag
  */
 public record LevelOverride(
         String loggerName,
@@ -58,7 +61,8 @@ public record LevelOverride(
         PersistenceTier tier,
         Instant expiresAt,
         String stateId,
-        String recipe) {
+        String recipe,
+        String forcedBy) {
 
     public LevelOverride {
         if (loggerName == null || loggerName.isEmpty()) {
@@ -91,6 +95,12 @@ public record LevelOverride(
         this(loggerName, level, reason, appliedAt, source, tier, expiresAt, null);
     }
 
+    /** Not forced by another logger's {@code set logger --force}. */
+    public LevelOverride(String loggerName, Level level, String reason, Instant appliedAt, String source,
+            PersistenceTier tier, Instant expiresAt, String stateId, String recipe) {
+        this(loggerName, level, reason, appliedAt, source, tier, expiresAt, stateId, recipe, null);
+    }
+
     /** This override with {@code stateId}, as the {@code StateStore} assigns or restores it. */
     /** Not made by a recipe. */
     public LevelOverride(String loggerName, Level level, String reason, Instant appliedAt, String source,
@@ -99,6 +109,7 @@ public record LevelOverride(
     }
 
     public LevelOverride withStateId(String stateId) {
-        return new LevelOverride(loggerName, level, reason, appliedAt, source, tier, expiresAt, stateId, recipe);
+        return new LevelOverride(loggerName, level, reason, appliedAt, source, tier, expiresAt, stateId, recipe,
+                forcedBy);
     }
 }

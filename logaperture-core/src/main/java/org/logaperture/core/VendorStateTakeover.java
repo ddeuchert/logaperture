@@ -107,8 +107,8 @@ public final class VendorStateTakeover {
                 removed.add(persisted.loggerName());
                 String was = persisted.level().name();
                 boolean differs = !entry.name().equals(persisted.loggerName()) || entry.level() != persisted.level();
-                takenOver("logger " + persisted.loggerName(), persisted.loggerName(), was, entry.level().name(),
-                        differs, was);
+                takenOver("logger " + persisted.loggerName(), AuditRecord.Target.LOGGER, persisted.loggerName(), was,
+                        entry.level().name(), differs, was);
             }
             store.removeAll(removed);
         }
@@ -149,8 +149,8 @@ public final class VendorStateTakeover {
                 if (entries.isEmpty()) {
                     fileLevel = "(each member's own entry)";
                 }
-                takenOver("handler " + persisted.handlerRef().value(), persisted.handlerRef().value(), was, fileLevel,
-                        differs, was);
+                takenOver("handler " + persisted.handlerRef().value(), AuditRecord.Target.HANDLER,
+                        persisted.handlerRef().value(), was, fileLevel, differs, was);
             }
             store.removeAllHandlers(removed);
         }
@@ -165,8 +165,8 @@ public final class VendorStateTakeover {
                     .toList();
             boolean differs = !new HashSet<>(members).equals(new HashSet<>(fileMembers));
             store.removeDefaultHandlerMembers();
-            takenOver("default handlers", HandlerRef.DEFAULT_HANDLERS.value(), String.join(", ", members),
-                    String.join(", ", fileMembers), differs, String.join(", ", members));
+            takenOver("default handlers", AuditRecord.Target.HANDLER, HandlerRef.DEFAULT_HANDLERS.value(),
+                    String.join(", ", members), String.join(", ", fileMembers), differs, String.join(", ", members));
         }
 
         void rules(VendorDefaults file, StateStore store) {
@@ -191,15 +191,16 @@ public final class VendorStateTakeover {
                 String what = persisted.id().startsWith(VendorDefaults.RULE_ID_PREFIX)
                         ? "the alteration of rule " + persisted.id()
                         : "rule " + persisted.id() + " (now " + entry.id() + ")";
-                takenOver(what, persisted.loggerName(), persisted.id() + " (" + persisted.action() + ") " + was,
+                takenOver(what, AuditRecord.Target.LOGGER, persisted.loggerName(),
+                        persisted.id() + " (" + persisted.action() + ") " + was,
                         entry.id() + " (" + entry.action() + ") " + fileExpression, differs,
                         persisted.action() + " on " + persisted.loggerName() + " " + was);
             }
             store.removeAllRules(removed);
         }
 
-        private void takenOver(String what, String target, String previousValue, String newValue, boolean differs,
-                String dropped) {
+        private void takenOver(String what, AuditRecord.Target kind, String target, String previousValue,
+                String newValue, boolean differs, String dropped) {
             takenOver.add(what);
             if (differs) {
                 differed.add(what);
@@ -207,7 +208,7 @@ public final class VendorStateTakeover {
                         + "(dropped: " + dropped + ")");
             }
             auditLog.record(new AuditRecord(now, principal, VendorDefaults.AUDIT_SOURCE, target, previousValue,
-                    newValue, REASON, AuditRecord.Action.REVERSION));
+                    newValue, REASON, AuditRecord.Action.REVERSION).withTarget(kind));
         }
 
         void report() {

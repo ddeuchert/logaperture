@@ -15,6 +15,7 @@
  */
 package org.logaperture.cli;
 
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.EnvironmentReportData;
@@ -161,7 +162,9 @@ final class Commands {
                     cells.add(orDash(row.getEffectiveLevel()));
                     cells.add(orDash(row.getTier()));
                     cells.add(revertsCell(row));
-                    cells.add(row.getOverrideReason() == null ? Format.NONE : '"' + row.getOverrideReason() + '"');
+                    cells.add(row.getOverrideReason() != null ? '"' + row.getOverrideReason() + '"'
+                            : row.getOverrideForcedBy() != null ? "forced by " + row.getOverrideForcedBy() // F10
+                            : Format.NONE);
                     table.add(cells);
                 }
                 List<String> headers = new ArrayList<>();
@@ -186,9 +189,25 @@ final class Commands {
                             row.getReason() == null ? Format.NONE : '"' + row.getReason() + '"'));
                 }
                 out.println(Format.table(List.of("HANDLER", "LEVEL", "MODE", "TIER", "REVERTS", "REASON"), table));
+                if (groupOverlapsAnother(handlerOverrides)) {
+                    out.println();
+                    out.println(OVERLAP_NOTE);
+                }
             }
             return CliError.OK;
         };
+    }
+
+    /** {@code status}'s note under the handler table -- doc/specs/handler-floor-control.md "Overlapping overrides" (issue #135). */
+    static final String OVERLAP_NOTE = "Where more than one of these covers a handler, the most specific wins: "
+            + "its own override, then DEFAULT_HANDLERS, then ALL_HANDLERS.";
+
+    /** Whether a group override is listed alongside another override that may cover some of the same handlers. */
+    private static boolean groupOverlapsAnother(List<HandlerLevelOverrideData> handlerOverrides) {
+        boolean group = handlerOverrides.stream().map(HandlerLevelOverrideData::getHandlerRef)
+                .anyMatch(ref -> HandlerRef.ALL_HANDLERS.value().equals(ref)
+                        || HandlerRef.DEFAULT_HANDLERS.value().equals(ref));
+        return group && handlerOverrides.stream().map(HandlerLevelOverrideData::getHandlerRef).distinct().count() > 1;
     }
 
     /** The {@code VENDOR} cell: the vendor setting, marked when it's reset to native (doc/specs/reset-to-native.md "Surfaces"). */
@@ -277,12 +296,24 @@ final class Commands {
      */
     static Command setLogger(String target, String level, String reason, String tierName, long forSeconds,
             boolean yes, boolean json) {
-        return new SetLoggerCommand(target, level, reason, new Parser.TierChoice(tierName, forSeconds), yes, json);
+        return setLogger(target, level, reason, tierName, forSeconds, yes, json, false);
+    }
+
+    /** With {@code force}: doc/specs/set-logger-force.md. */
+    static Command setLogger(String target, String level, String reason, String tierName, long forSeconds,
+            boolean yes, boolean json, boolean force) {
+        return new SetLoggerCommand(target, level, reason, new Parser.TierChoice(tierName, forSeconds), yes, json,
+                force);
     }
 
     /** {@code set logger [<target>]} with the level left out, on a terminal (doc/specs/guided-commands.md #7). */
     static Command setLoggerGuided(String target, String reason) {
-        return new SetLoggerCommand(target, null, reason, null, false, false);
+        return setLoggerGuided(target, reason, false);
+    }
+
+    /** With {@code force} given on the command line, the guided question about descendants isn't asked. */
+    static Command setLoggerGuided(String target, String reason, boolean force) {
+        return new SetLoggerCommand(target, null, reason, null, false, false, force);
     }
 
     /**
@@ -499,11 +530,13 @@ final class Commands {
             }
             LoggerInfoData before = findLogger(mbean.listLoggers(target), target);
             boolean wasOverridden = before != null && before.isOverrideActive();
-            if (toNative) {
-                mbean.resetLogger(target, includeSticky, true);
-            } else {
-                mbean.resetLogger(target, includeSticky);
-            }
+            org.logaperture.control.jmx.ResetOutcomeData outcome = toNative
+                    ? mbean.resetLogger(target, includeSticky, true)
+                    : mbean.resetLogger(target, includeSticky);
+            // doc/specs/set-logger-force.md F8: the loggers a force on target tied to it go back with it.
+            List<String> forcedReverted = outcome == null ? List.of() : outcome.getRevertedLoggerNames().stream()
+                    .filter(name -> !name.equals(target)).toList();
+            List<String> forcedSkipped = outcome == null ? List.of() : outcome.getSkippedStickyLoggerNames();
             LoggerInfoData after = findLogger(mbean.listLoggers(target), target);
             // doc/specs/rule-pipeline-foundation.md "Command surface": resetting a
             // logger also removes every rule attached directly to it, reusing this
@@ -513,16 +546,29 @@ final class Commands {
                     mbean.resetRulesForLogger(target, includeSticky, toNative);
             if (json) {
                 out.println(Json.resetLoggerWithRules(after, target, wasOverridden, rulesOutcome.getRemovedIds(),
-                        rulesOutcome.getSkippedStickyIds(), rulesOutcome.getVendorResetIds()));
+                        rulesOutcome.getSkippedStickyIds(), rulesOutcome.getVendorResetIds(), forcedReverted,
+                        forcedSkipped));
                 return CliError.OK;
             }
-            if (after != null) {
+            if (after != null && (wasOverridden || forcedReverted.isEmpty())) {
                 out.println(target + " → " + after.getEffectiveLevel() + landedOn(after));
             } else if (wasOverridden) {
                 out.println(target + " → baseline (not yet instantiated, so no level to show)");
-            } else {
+            } else if (forcedReverted.isEmpty() && forcedSkipped.isEmpty()) {
                 out.println(target + " — nothing was overridden.");
             }
+            if (!forcedReverted.isEmpty()) {
+                Map<String, LoggerInfoData> rows = new LinkedHashMap<>();
+                for (LoggerInfoData row : mbean.listLoggers(target)) {
+                    rows.putIfAbsent(row.getName(), row);
+                }
+                for (String name : forcedReverted) {
+                    LoggerInfoData row = rows.get(name);
+                    out.println(name + " → " + (row != null ? row.getEffectiveLevel() + landedOn(row) : "baseline")
+                            + "   (forced by " + target + ")");
+                }
+            }
+            printSkippedSticky(out, "sticky forced override(s)", forcedSkipped);
             if (!rulesOutcome.getRemovedIds().isEmpty()) {
                 out.println("Removed " + rulesOutcome.getRemovedIds().size() + " rule(s) attached to " + target + ".");
             }
@@ -1496,6 +1542,8 @@ final class Commands {
         }
         if (row.getOverrideReason() != null) {
             cell.append(" — \"").append(row.getOverrideReason()).append('"');
+        } else if (row.getOverrideForcedBy() != null) {
+            cell.append(" — forced by ").append(row.getOverrideForcedBy()); // set-logger-force.md F10
         }
         return cell.toString();
     }

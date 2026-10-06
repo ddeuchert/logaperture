@@ -9,6 +9,14 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Added
 
+- **`logctl set logger <name> <level> --force`** also sets the loggers under `<name>` that have a
+  level of their own, which the logging framework never lets inherit. After `set logger com.acme
+  TRACE`, `com.acme.other` configured at `INFO` stays at `INFO`. With `--force` it goes to `TRACE`
+  too, and `reset logger com.acme` puts it back to `INFO`. A logger you set yourself is kept, and so
+  is anything changed since the force. Without `--force`, `set logger` now ends with a note naming
+  the loggers that didn't follow and the command that sets them too. Guided `set logger` asks.
+  `list loggers` shows `forced by com.acme` on a forced override. The state file goes to schema 11
+  (issue #142; `doc/specs/set-logger-force.md`).
 - **`logctl list recipes`** — the logging recipes on offer in the running application: named,
   documented sets of logger levels for watching one thing, e.g. `io.undertow:sessions`. They come
   from the libraries it has loaded (`META-INF/logaperture/recipes.yaml` on a class path, including a
@@ -36,6 +44,12 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Changed
 
+- **Audit lines label a handler `handler=`, not `logger=`** (issue #137). A handler change used to
+  print as `logger=FILE`, which read like a logger called FILE. Handler levels and the
+  `DEFAULT_HANDLERS` membership now print `handler=<name>`, and the records naming the vendor
+  defaults file loaded or the state file resumed from print `file=<path>`. Logger and rule records
+  still print `logger=`. If you grep the audit log for `logger=` to find handler changes, grep
+  `handler=` instead.
 - **Much quieter startup and drop summaries** (issue #123; `doc/specs/quieter-output.md`). A start
   prints one line, `[logaperture] LogAperture <version> active (WildFly): vendor defaults <file>
   (…); N sticky settings restored`, in place of several INFO lines. Loading a vendor defaults file
@@ -52,6 +66,33 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Fixed
 
+- **A long-running server no longer ends up throwing `StackOverflowError` from every log call.**
+  On java.util.logging and JBoss LogManager (WildFly), the agent's two filters on each handler, for
+  storm detection and for rules, wrapped each other again on every 30-second check. So every log
+  record went through a longer chain the longer the server ran. Logging got slower and storm counts
+  were inflated. After a few days, any thread that logged ran out of stack, and a timer thread that
+  died that way never came back. The filters now keep a single fixed layering however often the
+  check runs. Affects 0.1.0-alpha.3 (issue #145).
+- **The guided logger prompt accepts a trailing `.*` to pick from a subtree.** Typing
+  `*.hibernate.*` or `org.hibernate.*` at `logctl set logger` or `logctl add rule` used to be refused
+  ("A trailing '.*' isn't needed"), though the prompt's own example was `*.deployment.*`. It now
+  lists the package and every logger under it to pick from, and sets only the names picked. A
+  complete command such as `logctl set logger 'org.hibernate.*' DEBUG` is still refused, since there
+  it would be a standing wildcard (issue #139).
+- **A package name with loggers under it is no longer reported as missing.** Just after a server
+  start, the guided prompt could say `No logger named org.wildfly exists yet; set it anyway? [y/N]`
+  even though `list loggers org.wildfly --show-all` showed dozens of loggers under it: the framework
+  hadn't created the `org.wildfly` logger itself yet. The prompt now uses the name and says what it
+  reaches (`org.wildfly isn't a logger itself yet; 37 loggers under it inherit from it ...`). A name
+  with nothing at or under it is still asked about (issue #140).
+- **A handler set on its own under a group setting no longer flips every 30 seconds.** After
+  `logctl handler ALL_HANDLERS TRACE` then `logctl handler FILE DEBUG`, the verification sweep used
+  to put `FILE` back to `TRACE` and then to `DEBUG` on every tick, auditing both changes each time.
+  Now the most specific setting wins and stays: a handler's own setting, then `DEFAULT_HANDLERS`,
+  then `ALL_HANDLERS`. `logctl handler FILE reset` hands `FILE` back to the group's level rather
+  than its original one, and `logctl status` notes which wins when a group is listed with a more
+  specific setting. The sweep also no longer writes an audit row for a group member that was
+  already at the right level (`previous=TRACE new=TRACE`) (issue #135).
 - **`logaperture-agent.jar` listed twice on `-javaagent`** no longer starts LogAperture twice. The
   second copy used to fail to lock the state file and to register its control surface, logging
   both at startup; now LogAperture starts once, from the first entry, and every later entry writes

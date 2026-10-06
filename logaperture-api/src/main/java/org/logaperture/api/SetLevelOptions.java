@@ -34,13 +34,21 @@ import java.util.Objects;
  *                  "Confirmation and CLI behavior"); ignored for an
  *                  exact-name target, which carries none of a batch
  *                  mutation's risk regardless of tier
+ * @param force     whether each target's descendants that keep a level of their own are set
+ *                  too, tagged with the target (doc/specs/set-logger-force.md)
  */
 public record SetLevelOptions(String reason, Duration expiresIn, PersistenceTier tier, boolean confirmed,
-        RecipeTag recipe) {
+        RecipeTag recipe, boolean force) {
 
     /** Not made by a recipe. */
     public SetLevelOptions(String reason, Duration expiresIn, PersistenceTier tier, boolean confirmed) {
         this(reason, expiresIn, tier, confirmed, null);
+    }
+
+    /** Without {@code --force}. */
+    public SetLevelOptions(String reason, Duration expiresIn, PersistenceTier tier, boolean confirmed,
+            RecipeTag recipe) {
+        this(reason, expiresIn, tier, confirmed, recipe, false);
     }
 
     public SetLevelOptions {
@@ -76,11 +84,16 @@ public record SetLevelOptions(String reason, Duration expiresIn, PersistenceTier
 
     /** A copy of this options value with {@code confirmed} set — the CLI's own preview-then-apply step. */
     public SetLevelOptions withConfirmed(boolean confirmed) {
-        return new SetLevelOptions(reason, expiresIn, tier, confirmed, recipe);
+        return new SetLevelOptions(reason, expiresIn, tier, confirmed, recipe, force);
     }
 
     /** These options for a change made by applying {@code recipe} (doc/specs/recipes.md B4). */
     public SetLevelOptions withRecipe(RecipeTag recipe) {
-        return new SetLevelOptions(reason, expiresIn, tier, confirmed, recipe);
+        return new SetLevelOptions(reason, expiresIn, tier, confirmed, recipe, force);
+    }
+
+    /** These options with {@code force} -- doc/specs/set-logger-force.md. */
+    public SetLevelOptions withForce(boolean force) {
+        return new SetLevelOptions(reason, expiresIn, tier, confirmed, recipe, force);
     }
 }

@@ -38,7 +38,7 @@ class JsonTest {
         assertEquals(
                 "{\"name\":\"com.acme\",\"configuredLevel\":null,\"effectiveLevel\":\"INFO\","
                         + "\"overrideActive\":false,\"overrideSource\":null,\"overrideReason\":null,"
-                        + "\"tier\":null,\"expiresAt\":null,\"vendorDefaultLevel\":null,\"resetToNative\":false,\"recipe\":null}",
+                        + "\"tier\":null,\"expiresAt\":null,\"vendorDefaultLevel\":null,\"resetToNative\":false,\"recipe\":null,\"forcedBy\":null}",
                 Json.logger(row));
     }
 
@@ -49,7 +49,7 @@ class JsonTest {
         assertEquals(
                 "{\"loggerName\":\"com.acme\",\"level\":\"DEBUG\",\"reason\":\"INC-1\","
                         + "\"appliedAt\":\"2026-08-25T00:00:00Z\",\"source\":\"jmx\",\"tier\":\"FOR\","
-                        + "\"expiresAt\":\"2026-08-25T04:00:00Z\"}",
+                        + "\"expiresAt\":\"2026-08-25T04:00:00Z\",\"forcedBy\":null}",
                 Json.override(data));
     }
 

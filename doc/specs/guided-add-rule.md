@@ -136,12 +136,31 @@ r12   org.jboss.as.server.deployment.Deployer → trim   (for 1d, expires 2026-0
 - **No match** says so and asks for another pattern (Enter cancels). An exact name that no logger
   has yet is accepted as today — a rule can be attached ahead of the logger's creation — after a
   `No logger named X exists yet; attach anyway? [y/N]` question.
+- **A package name with loggers under it counts as existing** (issue
+  [#140](https://github.com/ddeuchert/logaperture/issues/140)). A framework lists only loggers
+  something has created, and a package node such as `org.wildfly` often isn't one — especially
+  just after a restart — even though `org.wildfly.extension.undertow` and dozens of others are.
+  Naming the package is the normal way to reach all of them, so the picker uses it without the
+  question above and says what it reaches:
+  `org.wildfly isn't a logger itself yet; 37 loggers under it inherit from it (e.g.
+  org.wildfly.extension.undertow).` The `[y/N]` question stays for a name with no logger at or
+  under it, which is most likely a typo.
 - **Several matches** are numbered in name order. The answer is a comma-separated list of numbers
   and ranges (`1,3-5`), `all`, or Enter to cancel. An invalid answer is explained and asked again.
 - **More than 30 matches** are not listed; the operator is told how many matched and asked for a
   narrower pattern.
-- A trailing `.*` is refused, as today (`drop-rule.md`): a bare name already reaches every
-  descendant.
+- **A trailing `.*` picks from a subtree** (issue
+  [#139](https://github.com/ddeuchert/logaperture/issues/139)). Typed at the prompt, or given as
+  the target of an incomplete command (`set logger org.hibernate.*` with no level), `org.hibernate.*`
+  or `*.hibernate.*` lists the package and every logger under it to pick from. What gets set or
+  attached is the exact names picked, never the pattern. So the reason the command line refuses a
+  trailing `.*` — it would be a standing wildcard (`pattern-selection-semantics.md` Decision #5,
+  `drop-rule.md`) — doesn't apply. It's also the only way to list a subtree: patterns are
+  segment-anchored, so `*.hibernate` matches only names *ending* in `.hibernate`. The prompt's
+  example `*.deployment.*` is this case.
+- The target of a **complete** command is unchanged: `set logger 'org.hibernate.*' DEBUG` and a
+  complete `add rule trim 'org.jboss.*'` are still refused as usage errors (Decision #5), as is a
+  trailing-`.*` target on a command that can't prompt anyway (no terminal, `--yes`, `--json`).
 
 ### The remaining questions (G6)
 
