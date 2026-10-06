@@ -1,0 +1,18 @@
+label:            published
+quick:            false
+date:             2026-10-06T00:57:54-05:00
+computer:         fedora
+cpu:              AMD Ryzen 5 3400G with Radeon Vega Graphics
+cores/threads:    4 / 8
+memory (GB):      60.8
+os:               Fedora Linux 44 (Workstation Edition), kernel 7.2.8-200.fc44.x86_64
+clocksource:      tsc
+governor:         performance
+boost:            0
+git commit:       5ba0d6bcfdd67790817ff0e44c39e32ecf508673
+git branch:       feature/128-overhead-benchmarks
+nanoTime (ns):    24.7
+java:
+    openjdk version "21.0.12" 2026-07-21 LTS
+    OpenJDK Runtime Environment Temurin-21.0.12+8 (build 21.0.12+8-LTS)
+    OpenJDK 64-Bit Server VM Temurin-21.0.12+8 (build 21.0.12+8-LTS, mixed mode, sharing)

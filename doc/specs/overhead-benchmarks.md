@@ -241,9 +241,9 @@ Written down before measuring, so the numbers decide rather than get argued:
 ### Where the numbers go
 
 `doc/overhead.md` (Decision #5), linked from §10. When the `guide/` docs site exists it moves
-there. Raw JMH JSON and the async-profiler flame graphs are committed next to it
-(`doc/overhead/<date>-<jdk>.json`, `doc/overhead/<date>-<scenario>.html`) so a later run can be
-diffed against it.
+there. Each run's raw JMH JSON, `machine.txt`, generated `report.md` and the async-profiler
+flame graphs are committed next to it, one folder per run (`doc/overhead/<date>-<jdk>/`), so a
+later run can be diffed against it.
 
 ### Running it
 
