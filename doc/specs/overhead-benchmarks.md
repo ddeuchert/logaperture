@@ -143,6 +143,15 @@ Each runs with three messages (Decision #12):
 | `trim` | 20 rules, one `trim` (5 frames) matches | §17.1 "a `trim` rule" |
 Since every scenario includes `top` counting, there is no separate `top` scenario.
 
+**The 20 rules.** `drop-miss` puts its 20 `drop` rules on 20 unrelated loggers, so none is an
+effective rule of the logging logger and the gate is skipped. `drop-hit` and `trim` put all 20 on
+the logging logger's category: 19 `drop` rules with a message-contains matcher that never matches
+(each makes the gate read the message, the most a non-matching rule costs), then the matching
+rule last, so every call evaluates all 20. The matching `drop` keeps the default periodic full
+sample; the `trim` matches every record and cuts to 5 frames, which only the `throwable` message
+gives it anything to do. A denied record is never formatted, so `drop-hit` can come in under
+`baseline`; the gate's own cost is `gate-20` below.
+
 **Idle layers.** `idle` is run as cumulative layers, installed in the container's own order, so
 each piece's share is the difference between two adjacent rows of the same run: `baseline`,
 `rule`, `rule+storm`, `rule+storm+trim`, `idle` (the last adds `top`).
@@ -168,7 +177,7 @@ Alongside them, each hot-path piece is benchmarked on its own, with nothing arou
 | Id | Measures |
 |---|---|
 | `gate-empty` | `RuleService.evaluateGate` for a context with no rules |
-| `gate-20` | `RuleService.evaluateGate` with 20 rules, none matching |
+| `gate-20` | `RuleService.evaluateGate` with 20 rules on the logger's parent, none matching (message-contains matchers, as above) |
 | `storm-observe` | `StormDetector.observe`, plain message and a message with digits, hex and a UUID |
 | `storm-normalize` | `StormDetector.normalize` alone |
 | `top-record` | `TopCounters.record` |

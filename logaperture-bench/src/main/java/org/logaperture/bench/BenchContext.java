@@ -17,14 +17,16 @@ package org.logaperture.bench;
 
 import org.jboss.logmanager.formatters.PatternFormatter;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
 
 /**
  * The logger tree every scenario shares — doc/specs/overhead-benchmarks.md
- * "Harness". One category logger, {@value #CATEGORY}, carries the one
- * handler; each benchmark thread logs through its own child of it.
+ * "Harness". Each benchmark thread logs through its own child of one
+ * category logger, {@value #CATEGORY}.
  */
 final class BenchContext {
 
@@ -50,17 +52,74 @@ final class BenchContext {
         }
     }
 
-    static DiscardingFileHandler attachHandler() {
+    /**
+     * The logger tree for {@code threads} benchmark threads: one child logger
+     * of {@value #CATEGORY} per thread, and either one handler on the category
+     * that every child logs through ({@code perWorker} false), or one handler
+     * on each child (the #24 shape: independent handlers JUL never
+     * serialized). The returned loggers hold the tree alive for the trial.
+     */
+    static Tree attachHandlers(int threads, boolean perWorker) {
         Logger category = Logger.getLogger(CATEGORY);
-        for (var existing : category.getHandlers()) {
-            category.removeHandler(existing);
-        }
+        clearHandlers(category);
         category.setLevel(Level.INFO);
         category.setUseParentHandlers(false);
+        List<Logger> workers = new ArrayList<>(threads);
+        List<DiscardingFileHandler> handlers = new ArrayList<>();
+        if (!perWorker) {
+            handlers.add(newHandler());
+            category.addHandler(handlers.get(0));
+        }
+        for (int i = 0; i < threads; i++) {
+            Logger worker = Logger.getLogger(CATEGORY + ".worker" + i);
+            clearHandlers(worker);
+            if (perWorker) {
+                DiscardingFileHandler handler = newHandler();
+                worker.addHandler(handler);
+                worker.setUseParentHandlers(false);
+                handlers.add(handler);
+            } else {
+                worker.setUseParentHandlers(true);
+            }
+            workers.add(worker);
+        }
+        return new Tree(List.copyOf(workers), List.copyOf(handlers));
+    }
+
+    /** What {@link #attachHandlers} built: one logger per benchmark thread, and the handlers they write to. */
+    record Tree(List<Logger> workers, List<DiscardingFileHandler> handlers) {
+
+        /** Throws if any handler wrote nothing: the benchmark would have measured no logging. */
+        void requireWritten() {
+            for (DiscardingFileHandler handler : handlers) {
+                if (handler.bytesWritten() == 0) {
+                    throw new IllegalStateException("a handler wrote nothing; the benchmark measured no logging");
+                }
+            }
+        }
+    }
+
+    private static DiscardingFileHandler newHandler() {
         DiscardingFileHandler handler = new DiscardingFileHandler(new PatternFormatter(PATTERN));
         handler.setLevel(Level.ALL);
-        category.addHandler(handler);
         return handler;
+    }
+
+    private static void clearHandlers(Logger logger) {
+        for (var existing : logger.getHandlers()) {
+            logger.removeHandler(existing);
+        }
+    }
+
+    /**
+     * The message one call logs (Decision #12): the shared template, or a new
+     * {@code String} with {@code sequence} in it. Built in every scenario,
+     * baseline included, so building it subtracts out.
+     */
+    static String message(boolean concatenated, int sequence) {
+        return concatenated
+                ? "Processed order " + sequence + " for customer 7f3a9c21 in 12 ms"
+                : MESSAGE;
     }
 
     /** A fixed-depth exception, so every scenario formats the same trace. */

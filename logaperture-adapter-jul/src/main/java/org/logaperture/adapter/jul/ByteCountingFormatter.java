@@ -78,7 +78,8 @@ final class ByteCountingFormatter extends Formatter {
         return delegate;
     }
 
-    private static long traceBytes(Throwable thrown) {
+    /** Package-private for the {@code trace-bytes} benchmark (doc/specs/overhead-benchmarks.md, #23). */
+    static long traceBytes(Throwable thrown) {
         StringWriter sink = new StringWriter();
         try (PrintWriter writer = new PrintWriter(sink)) {
             thrown.printStackTrace(writer);
