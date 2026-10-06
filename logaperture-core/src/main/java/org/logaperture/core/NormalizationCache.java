@@ -70,7 +70,7 @@ final class NormalizationCache {
             return StormMessageNormalizer.hash(raw);
         }
         int h = raw.hashCode();
-        int index = (h ^ (h >>> 16)) & mask;
+        int index = indexOf(h);
         Pair pair = slots[index];
         if (pair != null && (pair.raw == raw || pair.raw.equals(raw))) {
             return pair.hash;
@@ -89,9 +89,12 @@ final class NormalizationCache {
         if (slots == null || raw == null) {
             return false;
         }
-        int h = raw.hashCode();
-        Pair pair = slots[(h ^ (h >>> 16)) & mask];
+        Pair pair = slots[indexOf(raw.hashCode())];
         return pair != null && pair.raw.equals(raw);
+    }
+
+    private int indexOf(int hashCode) {
+        return (hashCode ^ (hashCode >>> 16)) & mask;
     }
 
     int capacity() {

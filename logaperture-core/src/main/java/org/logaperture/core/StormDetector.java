@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -143,20 +144,36 @@ public final class StormDetector implements StormObserver {
 
     private <S> void observeUnsafe(String loggerName, Level level, String throwableClassName, String rawMessage,
             Instant timestamp, S source, Details<S> details) {
+        // What StormObservation's constructor checks, for the path that skips building one.
+        Objects.requireNonNull(loggerName, "loggerName");
+        Objects.requireNonNull(level, "level");
+        Objects.requireNonNull(rawMessage, "rawMessage");
+        Objects.requireNonNull(timestamp, "timestamp");
         // Issue #147: the per-event key needs only the normalized message's hash, computed in the
         // normalizing scan without building the text. The text itself is built once, for a
         // fingerprint not yet tracked.
         long key = fingerprintKey(loggerName, level, throwableClassName, normalizations.hash(rawMessage));
-        Entry entry = counters.get(key);
-        if (entry == null) {
-            StormFingerprint cheapFingerprint = new StormFingerprint(loggerName, level, throwableClassName,
-                    StormMessageNormalizer.normalize(rawMessage), null);
-            Entry fresh = new Entry(cheapFingerprint);
-            Entry raced = counters.putIfAbsent(key, fresh);
-            entry = raced == null ? fresh : raced;
-            if (raced == null) {
-                evictIfOverCapacity();
+        Entry entry;
+        while (true) {
+            entry = counters.get(key);
+            if (entry == null) {
+                StormFingerprint fingerprint = new StormFingerprint(loggerName, level, throwableClassName,
+                        StormMessageNormalizer.normalize(rawMessage), null);
+                Entry fresh = new Entry(fingerprint);
+                Entry raced = counters.putIfAbsent(key, fresh);
+                if (raced == null) {
+                    entry = fresh;
+                    evictIfOverCapacity();
+                    break;
+                }
+                entry = raced;
             }
+            if (entry.isFor(loggerName, level, throwableClassName)) {
+                break;
+            }
+            // The key's logger, level and throwable parts are 32-bit hashes, which collide in
+            // practice ("Aa" and "BB"); a different fingerprint under this key moves on to the next.
+            key = nextKey(key);
         }
         StormFingerprint cheapFingerprint = entry.cheapFingerprint;
 
@@ -366,9 +383,10 @@ public final class StormDetector implements StormObserver {
 
     /**
      * The counter map's key: the fingerprint's fields, with the message as
-     * its {@link StormMessageNormalizer#hash}. Two fingerprints with the same
-     * key share one tally; with a 64-bit hash of the message that is
-     * vanishingly rare, and costs a merged count, never a lost event.
+     * its 64-bit {@link StormMessageNormalizer#hash}. The logger, level and
+     * throwable class are checked against the entry found under it ({@link
+     * Entry#isFor}), so only two messages with the same 64-bit hash can share
+     * a tally: a merged count, never a lost event.
      */
     static long fingerprintKey(String loggerName, Level level, String throwableClass, long messageHash) {
         long h = messageHash;
@@ -376,6 +394,11 @@ public final class StormDetector implements StormObserver {
         h = 31 * h + level.hashCode();
         h = 31 * h + (throwableClass == null ? 0 : throwableClass.hashCode());
         return h ^ (h >>> 29);
+    }
+
+    /** Where a fingerprint goes when another one already holds its key. */
+    static long nextKey(long key) {
+        return key * 0x9E3779B97F4A7C15L + 1;
     }
 
     /** Unlike {@link #longProperty}, {@code 0} or less is a real setting here: it disables the cache. */
@@ -432,6 +455,14 @@ public final class StormDetector implements StormObserver {
             // never mistaken for the oldest (and therefore most evictable) one by evictIfOverCapacity
             // before its first event has run.
             this.lastTouchedNanos = System.nanoTime();
+        }
+
+        /** Whether this entry tracks that fingerprint, apart from its message (#147). */
+        boolean isFor(String loggerName, Level level, String throwableClass) {
+            StormFingerprint fp = cheapFingerprint;
+            return fp.level() == level
+                    && (fp.loggerName() == loggerName || fp.loggerName().equals(loggerName))
+                    && Objects.equals(fp.throwableClass(), throwableClass);
         }
 
         /**

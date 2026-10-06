@@ -45,6 +45,11 @@ public interface StormObserver {
      * {@code details} only when this event engages a storm, during this call.
      * The default builds a {@link StormObservation}, so a test fake written
      * as a lambda sees every event; {@link StormDetector} overrides it.
+     *
+     * <p>Each method's default, or {@link StormDetector}'s, forwards to the
+     * other. An implementation whose {@code observe(StormObservation)}
+     * forwards to this one must override this one too, or the two call each
+     * other until the stack overflows.
      */
     default <S> void observe(String loggerName, Level level, String throwableClassName, String rawMessage,
             Instant timestamp, S source, Details<S> details) {

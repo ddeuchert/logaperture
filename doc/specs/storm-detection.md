@@ -351,10 +351,15 @@ field, for *every* fingerprint seen, most of which never storm. An unbounded map
 
 - A `ConcurrentHashMap` keyed by a 64-bit hash of the fingerprint, in which the message is
   its normalized-text hash from the scan above
-  ([#147](https://github.com/ddeuchert/logaperture/issues/147)). Two fingerprints with the same
-  key share one tally; with a 64-bit message hash that is vanishingly rare, and costs a
-  merged count, never a lost event. The entry's `StormFingerprint`, with the normalized text,
-  is built only when the key is first inserted. Each entry's per-event update
+  ([#147](https://github.com/ddeuchert/logaperture/issues/147)). The logger, level and
+  throwable class enter the key as 32-bit `hashCode()`s, which do collide (`…Aa` and `…BB`),
+  so the entry found under a key is checked against them, and a different fingerprint moves
+  on to a derived key. Only two messages with the same 64-bit hash can share a tally:
+  vanishingly rare, and a merged count, never a lost event. (Evicting an entry partway along
+  such a chain makes a fingerprint further along it re-insert fresh, as any evicted
+  fingerprint does.) The entry's `StormFingerprint`, with the normalized text, is built only
+  when the key is first inserted. Looking the key up still boxes it as a `Long`, the one
+  allocation left on this path. Each entry's per-event update
   (`count++`, gap check, the state flip) is guarded by `synchronized` on the entry object, so
   contention is **striped per fingerprint**: threads storming one fingerprint self-contend on
   that entry, and unrelated loggers on other threads never touch it.

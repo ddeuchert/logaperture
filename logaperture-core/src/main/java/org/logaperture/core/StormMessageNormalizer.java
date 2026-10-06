@@ -112,11 +112,10 @@ final class StormMessageNormalizer {
      */
     private static long hashScan(String s) {
         int n = s.length();
-        long h = EMPTY_HASH;        // hash of the text produced so far
+        long h = EMPTY_HASH;        // hash of the first MAX_LENGTH chars produced so far
         int length = 0;             // chars produced so far
         long hashAtSignificant = EMPTY_HASH; // h just after the last char above U+0020
         int significantEnd = 0;     // length just after it
-        long hashAtMax = 0;         // h when length reached MAX_LENGTH
         int i = 0;
         while (i < n) {
             if (length >= MAX_LENGTH && significantEnd >= MAX_LENGTH) {
@@ -128,10 +127,7 @@ final class StormMessageNormalizer {
                     i++;
                 } while (i < n && (s.charAt(i) == ' ' || (s.charAt(i) >= '\t' && s.charAt(i) <= '\r')));
                 if (length > 0) {
-                    h = (h ^ ' ') * FNV_PRIME;
-                    if (++length == MAX_LENGTH) {
-                        hashAtMax = h;
-                    }
+                    h = emit(h, length++, ' ');
                 }
                 continue;
             }
@@ -141,10 +137,7 @@ final class StormMessageNormalizer {
                 if (c <= ' ' && length == 0) {
                     continue; // a leading control char is trimmed
                 }
-                h = (h ^ c) * FNV_PRIME;
-                if (++length == MAX_LENGTH) {
-                    hashAtMax = h;
-                }
+                h = emit(h, length++, c);
                 if (c > ' ') {
                     hashAtSignificant = h;
                     significantEnd = length;
@@ -153,10 +146,7 @@ final class StormMessageNormalizer {
             }
             if (isUuidAt(s, i)) {
                 for (char p : UUID) {
-                    h = (h ^ p) * FNV_PRIME;
-                    if (++length == MAX_LENGTH) {
-                        hashAtMax = h;
-                    }
+                    h = emit(h, length++, p);
                 }
                 hashAtSignificant = h;
                 significantEnd = length;
@@ -167,7 +157,6 @@ final class StormMessageNormalizer {
             // word is hex; if it is, roll back to the word's start and hash <hex> instead.
             long markHash = h;
             int markLength = length;
-            long markHashAtMax = hashAtMax;
             boolean headHex = true;
             boolean tailHex = true;
             boolean hexLetter = false;
@@ -182,19 +171,13 @@ final class StormMessageNormalizer {
                 if ((wk & DIGIT) != 0) {
                     if (!inDigits) {
                         for (char p : DIGITS) {
-                            h = (h ^ p) * FNV_PRIME;
-                            if (++length == MAX_LENGTH) {
-                                hashAtMax = h;
-                            }
+                            h = emit(h, length++, p);
                         }
                         inDigits = true;
                     }
                 } else {
                     inDigits = false;
-                    h = (h ^ w) * FNV_PRIME;
-                    if (++length == MAX_LENGTH) {
-                        hashAtMax = h;
-                    }
+                    h = emit(h, length++, w);
                     if ((wk & HEX_LETTER) != 0) {
                         hexLetter = true;
                     } else if (i - start < 2) {
@@ -212,18 +195,15 @@ final class StormMessageNormalizer {
             if (hex) {
                 h = markHash;
                 length = markLength;
-                hashAtMax = markHashAtMax;
                 for (char p : HEX) {
-                    h = (h ^ p) * FNV_PRIME;
-                    if (++length == MAX_LENGTH) {
-                        hashAtMax = h;
-                    }
+                    h = emit(h, length++, p);
                 }
             }
             hashAtSignificant = h; // a word always ends on a significant char or placeholder
             significantEnd = length;
         }
-        return significantEnd <= MAX_LENGTH ? hashAtSignificant : hashAtMax;
+        // Past the cut the result is the first MAX_LENGTH chars, which is where emit stopped h.
+        return significantEnd <= MAX_LENGTH ? hashAtSignificant : h;
     }
 
     /**
@@ -243,6 +223,15 @@ final class StormMessageNormalizer {
 
     private static long mix(long h, char c) {
         return (h ^ c) * FNV_PRIME;
+    }
+
+    /**
+     * {@link #hashScan}'s one step: the hash after producing {@code c} at
+     * output index {@code index}. Chars from {@link #MAX_LENGTH} on are cut
+     * from the result, so they leave the hash as it is.
+     */
+    private static long emit(long h, int index, char c) {
+        return index < MAX_LENGTH ? mix(h, c) : h;
     }
 
     private static void scan(String message, Output out) {
