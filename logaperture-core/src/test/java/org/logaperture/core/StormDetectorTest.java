@@ -69,6 +69,50 @@ class StormDetectorTest {
         assertEquals(THRESHOLD, storms.get(0).eventCount());
     }
 
+    /**
+     * Issue #147 review: the key holds the logger name as a 32-bit {@code hashCode()}, and
+     * {@code "Aa"} and {@code "BB"} share one. Two loggers like that must keep separate tallies.
+     */
+    @Test
+    void loggersWithCollidingHashCodes_keepSeparateTallies() {
+        String first = "com.acme.Aa";
+        String second = "com.acme.BB";
+        assertEquals(first.hashCode(), second.hashCode());
+        StormDetector detector = newDetector();
+        for (int i = 0; i < THRESHOLD - 1; i++) {
+            detector.observe(observation(first, "boom"));
+            detector.observe(observation(second, "boom"));
+        }
+        assertTrue(detector.snapshot().isEmpty(), "neither logger reached the threshold on its own");
+
+        detector.observe(observation(second, "boom"));
+        List<Storm> storms = detector.snapshot();
+        assertEquals(1, storms.size());
+        assertEquals(second, storms.get(0).fingerprint().loggerName());
+        assertEquals(THRESHOLD, storms.get(0).eventCount());
+    }
+
+    /** Issue #147 review: the per-event path checks what {@link StormObservation}'s constructor does. */
+    @Test
+    void nullTimestamp_onTheFieldsPath_isSwallowedAndRecordsNothing() {
+        StormDetector detector = newDetector();
+        StormObserver.Details<Object> unused = new StormObserver.Details<>() {
+            @Override
+            public List<String> topFrames(Object source) {
+                return null;
+            }
+
+            @Override
+            public String firstOccurrence(Object source) {
+                return "rendered";
+            }
+        };
+        for (int i = 0; i < THRESHOLD; i++) {
+            detector.observe("com.acme.Worker", Level.ERROR, null, "boom", null, null, unused);
+        }
+        assertTrue(detector.snapshot().isEmpty());
+    }
+
     @Test
     void gapLongerThanWindow_resetsCountWithoutBecomingAStorm() throws InterruptedException {
         StormDetector detector = newDetector();

@@ -61,6 +61,21 @@ public record StormObservation(
         Supplier<String> firstOccurrenceSupplier,
         Instant timestamp) {
 
+    /** Reads an observation's own suppliers, so {@link StormDetector} handles both entry points one way. */
+    static final StormObserver.Details<StormObservation> DETAILS = new StormObserver.Details<>() {
+        @Override
+        public List<String> topFrames(StormObservation observation) {
+            return observation.hasThrown() && observation.topFramesSampler() != null
+                    ? observation.topFramesSampler().get()
+                    : null;
+        }
+
+        @Override
+        public String firstOccurrence(StormObservation observation) {
+            return observation.firstOccurrenceSupplier().get();
+        }
+    };
+
     public StormObservation {
         Objects.requireNonNull(loggerName, "loggerName");
         Objects.requireNonNull(level, "level");

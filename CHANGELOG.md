@@ -108,6 +108,13 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   as it is; on Java 19 and later it used to become `é<hex>`). The lookup
   keeps up to 1,024 recent messages per context; `-Dlogaperture.storm.normalizationCacheSize`
   changes that, and `0` turns it off (issue #129).
+- **Storm detection is cheaper again, most of all for messages built by string concatenation.**
+  The fingerprint is now a hash of the normalized message, computed in one pass without building
+  the normalized text; the text is built only the first time a message is seen. A message that
+  never repeats no longer takes a slot in the recent-message lookup, so it can't push a template
+  out. On the benchmark machine, storm detection adds about 35 ns to a templated log call (was
+  about 110 ns) and about 290 ns to a concatenated one (was about 760 ns). `logctl storms` shows
+  the same fingerprints and messages as before (issue #147).
 - **The rule check costs nothing when no rule applies.** Every log line that reaches a handler
   went through the `drop`/`trim` rule check, which took a lock shared by every logging thread and
   recorded the line in a table, even with no rules attached. Now a line from a logger no rule can

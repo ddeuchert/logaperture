@@ -26,8 +26,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** doc/specs/storm-detection.md "Normalization cache" (issue #129): a cache can't change a result. */
@@ -38,16 +37,30 @@ class NormalizationCacheTest {
     @Test
     void repeatedTemplate_isServedFromTheCache() {
         NormalizationCache cache = new NormalizationCache(1_024);
-        String first = cache.normalize(TEMPLATE);
-        assertEquals(StormMessageNormalizer.normalize(TEMPLATE), first);
-        assertSame(first, cache.normalize(TEMPLATE));
+        assertEquals(StormMessageNormalizer.hash(TEMPLATE), cache.hash(TEMPLATE));
+        assertFalse(cache.holds(TEMPLATE), "admitted on its second miss, not its first");
+        assertEquals(StormMessageNormalizer.hash(TEMPLATE), cache.hash(TEMPLATE));
+        assertTrue(cache.holds(TEMPLATE));
+        assertEquals(StormMessageNormalizer.hash(TEMPLATE), cache.hash(TEMPLATE));
+    }
+
+    @Test
+    void messagesThatNeverRepeat_doNotEvictACachedTemplate() {
+        NormalizationCache cache = new NormalizationCache(1); // one slot: everything collides
+        cache.hash(TEMPLATE);
+        cache.hash(TEMPLATE);
+        for (int order = 0; order < 100; order++) {
+            cache.hash("Processed order " + order + " for customer 7f3a9c21 in 12 ms");
+        }
+        assertTrue(cache.holds(TEMPLATE));
     }
 
     @Test
     void equalButDistinctString_hitsTheSameSlot() {
         NormalizationCache cache = new NormalizationCache(1_024);
-        String first = cache.normalize(TEMPLATE);
-        assertSame(first, cache.normalize(new String(TEMPLATE.toCharArray())));
+        cache.hash(TEMPLATE);
+        cache.hash(TEMPLATE);
+        assertTrue(cache.holds(new String(TEMPLATE.toCharArray())));
     }
 
     @Test
@@ -56,26 +69,27 @@ class NormalizationCacheTest {
         String a = "order 4821 failed";
         String b = "checksum deadbeef mismatch";
         for (int round = 0; round < 3; round++) {
-            assertEquals("order <n> failed", cache.normalize(a));
-            assertEquals("checksum <hex> mismatch", cache.normalize(b));
+            assertEquals(StormMessageNormalizer.hashOf("order <n> failed"), cache.hash(a));
+            assertEquals(StormMessageNormalizer.hashOf("checksum <hex> mismatch"), cache.hash(b));
         }
     }
 
     @Test
-    void messageOverTheLimit_isNormalizedButNotCached() {
+    void messageOverTheLimit_isHashedButNotCached() {
         NormalizationCache cache = new NormalizationCache(1_024);
         String longMessage = "id 42 ".repeat(NormalizationCache.MAX_CACHED_LENGTH / 6 + 1);
-        String first = cache.normalize(longMessage);
-        assertEquals(StormMessageNormalizer.normalize(longMessage), first);
-        assertNotSame(first, cache.normalize(longMessage));
+        assertEquals(StormMessageNormalizer.hash(longMessage), cache.hash(longMessage));
+        assertEquals(StormMessageNormalizer.hash(longMessage), cache.hash(longMessage));
+        assertFalse(cache.holds(longMessage));
     }
 
     @Test
-    void disabled_stillNormalizes() {
+    void disabled_stillHashes() {
         NormalizationCache cache = new NormalizationCache(0);
         assertEquals(0, cache.capacity());
-        assertEquals("order <n> failed", cache.normalize("order 4821 failed"));
-        assertEquals("", cache.normalize(null));
+        assertEquals(StormMessageNormalizer.hashOf("order <n> failed"), cache.hash("order 4821 failed"));
+        assertEquals(StormMessageNormalizer.hashOf(""), cache.hash(null));
+        assertFalse(cache.holds("order 4821 failed"));
     }
 
     @Test
@@ -120,24 +134,24 @@ class NormalizationCacheTest {
         for (int i = 0; i < 64; i++) {
             messages.add("worker " + i + " retry " + Integer.toHexString(0xabcdef + i) + " after 250ms");
         }
-        List<String> expected = messages.stream().map(StormMessageNormalizer::normalize).toList();
+        List<Long> expected = messages.stream().map(StormMessageNormalizer::hash).toList();
 
         ExecutorService pool = Executors.newFixedThreadPool(8);
         try {
             List<Future<Integer>> results = new ArrayList<>();
             for (int t = 0; t < 8; t++) {
                 int offset = t;
-                Callable<Integer> normalizeEveryMessage = () -> {
+                Callable<Integer> hashEveryMessage = () -> {
                     int wrong = 0;
                     for (int round = 0; round < 2_000; round++) {
                         int i = (round + offset) % messages.size();
-                        if (!expected.get(i).equals(cache.normalize(messages.get(i)))) {
+                        if (expected.get(i) != cache.hash(messages.get(i))) {
                             wrong++;
                         }
                     }
                     return wrong;
                 };
-                results.add(pool.submit(normalizeEveryMessage));
+                results.add(pool.submit(hashEveryMessage));
             }
             for (Future<Integer> result : results) {
                 assertEquals(0, result.get(30, TimeUnit.SECONDS));
