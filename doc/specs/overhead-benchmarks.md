@@ -6,6 +6,9 @@ Decisions #9–#14 (issue #129 follow-up: normalization cache, message variants,
 budgets, published-run machine) signed off 2026-09-30, all on the recommended option.
 Decisions #15–#20 (published run on the development box, percentages, a run-it-yourself suite;
 supersedes #14) signed off 2026-10-05, all on the recommended option.
+Decision #21 (rule budget scales with the logarithm of the effective rule count; amends §10,
+supersedes #8's `drop-hit` / `trim` row) agreed 2026-10-05 after the full run, on #148.
+Decision #22 (scenarios for the curve and for what a match saves) proposed, not yet agreed.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §10 (Performance: "< 200 ns added
 per evaluated event … near-zero for loggers no rule can match … enforced by JMH benchmarks in
 CI"), §17.1 ("What earns 1.0": "published overhead numbers (§10) for an idle agent, a `trim`
@@ -139,7 +142,7 @@ Each runs with three messages (Decision #12):
 | `baseline` | No LogAperture pieces installed | The reference every other row subtracts |
 | `idle` | Everything context install puts on the hot path, no rules: rule filter, storm filter, trim wrap, `top` byte counting | §17.1 "idle agent" and "`top` counting", §10 "near-zero", #23 (throwable variant) |
 | `drop-miss` | 20 `drop` rules on other loggers, none can match this one | §10 "near-zero for loggers no rule can match" |
-| `drop-hit` | 20 rules, one `drop` matches (record denied) | §10 "< 200 ns … ~20 rules" |
+| `drop-hit` | 20 rules, one `drop` matches (record denied) | §10's rule budget at *n* = 20 (204 ns, Decision #21) |
 | `trim` | 20 rules, one `trim` (5 frames) matches | §17.1 "a `trim` rule" |
 Since every scenario includes `top` counting, there is no separate `top` scenario.
 
@@ -260,7 +263,7 @@ published set, defined once in the benchmark jar (`Suite`) so the two can't drif
 A thread count above the machine's hardware threads is skipped, not oversubscribed. A report
 step in the same jar (`Report`) turns the JSON into `report.md`. The rule scenarios' budgets are
 checked against `idle` of the same message, not `baseline`: `idle`'s own layers carry #13's
-budgets already, and what §10's "< 200 ns ... ~20 rules" and "near-zero for loggers no rule can
+budgets already, and what §10's rule budget (204 ns at *n* = 20, Decision #21) and "near-zero for loggers no rule can
 match" describe is what the rules add on top.
 
 The CI smoke pass (Decision #4) is the `bench-smoke` job in `.github/workflows/ci.yml`: every
@@ -313,7 +316,7 @@ idle agent that takes a global lock on every log call contradicts it outright. T
 
 **#8 — The budgets the published numbers are measured against.**
 A. `idle` and `drop-miss`: ≤ 50 ns added, single thread, and no worse than baseline's scaling at 8
-threads. `drop-hit` / `trim`: ≤ 200 ns (§10's number as written). `top`: no budget, report only.
+threads. `drop-hit` / `trim`: ≤ 200 ns (§10's number as written; superseded by #21). `top`: no budget, report only.
 B. §10's wording only ("near-zero", "< 200 ns"), with no number for idle.
 Either way, a budget is checked against the difference plus its combined error, not the bare
 difference (see "Measurement method").
@@ -428,6 +431,36 @@ A. Drop it from the published set. The published numbers describe the code that 
 #129/#130 before/after comparison, if wanted, goes on those issues as a one-off. B. Publish both.
 **Decided: A** (2026-10-05). Two tables invite comparing a version nobody runs. The `bench/128-before`
 branch can be deleted when this merges.
+
+### Revision 2026-10-05: the rule budget scales with the rule count
+
+The full run (#148) put `gate-20` at 779 ± 79 ns and `trim` − `idle` at about 850–900 ns, against
+#8's flat 200 ns. Reviewing that result raised a gap in the budget itself rather than a reason
+to loosen it: a single number at "~20 rules" says nothing about 5 rules or 100, says nothing
+about rules bound to other categories or to a throwable type, and leaves out what a matched
+record saves.
+
+**#21 — The rule budget's shape (amends §10, supersedes #8's `drop-hit` / `trim` row).**
+A. `50 ns + 35 ns × log₂(n + 1)` added per evaluated event, with *n* the rules effective on the
+record's logger: 85 ns at 1, 140 at 5, 204 at 20, 283 at 100, 399 at 1000. B. Keep #8's flat
+≤ 200 ns at ~20 rules. C. A linear per-rule allowance.
+**Decided: A** (2026-10-05, on #148). This is not the after-the-fact loosening #17 warns about:
+at *n* = 20, the only point measured, the curve gives 204 ns, which is §10's 200 ns within
+rounding, so #148 is still over budget and still needs a fix. What A adds is the shape: a
+logarithm can only be met by matching that is indexed rather than iterated (§10, *One pass over
+the message*), which rules out C's linear growth by construction. *n* counts only rules
+effective on the logger, so `drop-miss` keeps #8's near-zero ≤ 50 ns unchanged.
+
+**#22 — Scenarios for the curve and for the savings.**
+Proposed, not yet agreed:
+- `gate-n` at *n* = 1, 5, 20, 100 effective rules (message-contains `drop`s, none matching),
+  reported as a curve against #21's budget, replacing the single `gate-20` point.
+- `trim` bound to a throwable type, on records with and without a throwable: the second should
+  cost no more than `drop-miss`.
+- Matched-record savings: `drop-hit` and a deep-stack `trim` through a **real file handler**,
+  against `baseline` through the same handler, so the result can come out negative (the agent
+  saving more than it costs). These are reported, not budgeted, and run as their own group:
+  Decision #3 keeps the disk out of every other scenario, and it still does.
 
 ## Testing
 
