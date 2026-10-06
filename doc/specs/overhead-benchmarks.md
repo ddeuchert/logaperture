@@ -255,7 +255,7 @@ published set, defined once in the benchmark jar (`Suite`) so the two can't drif
 | `idle-per-thread-t1` | `baseline` and `idle`, `template`, 1 thread, a handler per thread | #24's single-thread reference |
 | `rules-t1` | `RulesBenchmark`, every scenario and message, 1 thread | the rule rows and budgets |
 | `idle-t4`, `idle-t8` | `baseline`, `rule+storm` and `idle`; `template` and `concatenated`; both handler shapes | the concurrency rows, #24 |
-| `flamegraphs` | `idle`, `template` and `throwable`, under async-profiler (only with `--async-profiler`) | the flame graphs; not in the report's numbers |
+| `flamegraphs` | `idle`, every message, under async-profiler (only with `--async-profiler`) | the flame graphs; not in the report's numbers |
 
 A thread count above the machine's hardware threads is skipped, not oversubscribed. A report
 step in the same jar (`Report`) turns the JSON into `report.md`. The rule scenarios' budgets are

@@ -115,7 +115,7 @@ public final class Suite {
             String flamegraphs = out.resolve("flamegraphs").toAbsolutePath().toString();
             String profilerOptions = "libPath=" + asyncProfiler + ";output=flamegraph;dir=" + flamegraphs;
             runs.add(new Run("flamegraphs", false, o -> o.include(IDLE).threads(1).param("handlers", "shared")
-                    .param("layers", "idle").param("message", "template", "throwable")
+                    .param("layers", "idle").param("message", "template", "concatenated", "throwable")
                     .addProfiler("async", profilerOptions)));
         }
         return runs;
