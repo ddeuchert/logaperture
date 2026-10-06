@@ -86,10 +86,167 @@ final class StormMessageNormalizer {
         if (message == null) {
             return "";
         }
+        Output out = new Output(Math.min(message.length(), MAX_LENGTH) + 8);
+        scan(message, out);
+        return out.result();
+    }
+
+    /**
+     * {@link #hashOf}{@code (normalize(message))}, computed in the same scan
+     * without building the normalized text: the storm filter's per-event key
+     * (issue #147). Allocates nothing.
+     */
+    static long hash(String message) {
+        if (message == null) {
+            return EMPTY_HASH;
+        }
+        return hashScan(message);
+    }
+
+    /**
+     * The same rules as {@link #scan}, written out flat in one method with
+     * all state in locals, because this runs on every event and the
+     * text-building scan's calls and field updates cost several times the
+     * arithmetic. {@code StormMessageNormalizerTest} holds the two to {@code
+     * hash(m) == hashOf(normalize(m))}.
+     */
+    private static long hashScan(String s) {
+        int n = s.length();
+        long h = EMPTY_HASH;        // hash of the text produced so far
+        int length = 0;             // chars produced so far
+        long hashAtSignificant = EMPTY_HASH; // h just after the last char above U+0020
+        int significantEnd = 0;     // length just after it
+        long hashAtMax = 0;         // h when length reached MAX_LENGTH
+        int i = 0;
+        while (i < n) {
+            if (length >= MAX_LENGTH && significantEnd >= MAX_LENGTH) {
+                break; // see scan(): nothing later can change the first MAX_LENGTH chars
+            }
+            char c = s.charAt(i);
+            if (c == ' ' || (c >= '\t' && c <= '\r')) {
+                do {
+                    i++;
+                } while (i < n && (s.charAt(i) == ' ' || (s.charAt(i) >= '\t' && s.charAt(i) <= '\r')));
+                if (length > 0) {
+                    h = (h ^ ' ') * FNV_PRIME;
+                    if (++length == MAX_LENGTH) {
+                        hashAtMax = h;
+                    }
+                }
+                continue;
+            }
+            int kind = c < 128 ? KIND[c] : (Character.isLetterOrDigit(c) ? WORD : 0);
+            if ((kind & WORD) == 0) {
+                i++;
+                if (c <= ' ' && length == 0) {
+                    continue; // a leading control char is trimmed
+                }
+                h = (h ^ c) * FNV_PRIME;
+                if (++length == MAX_LENGTH) {
+                    hashAtMax = h;
+                }
+                if (c > ' ') {
+                    hashAtSignificant = h;
+                    significantEnd = length;
+                }
+                continue;
+            }
+            if (isUuidAt(s, i)) {
+                for (char p : UUID) {
+                    h = (h ^ p) * FNV_PRIME;
+                    if (++length == MAX_LENGTH) {
+                        hashAtMax = h;
+                    }
+                }
+                hashAtSignificant = h;
+                significantEnd = length;
+                i += UUID_LENGTH;
+                continue;
+            }
+            // A word run: hash it with digit runs collapsed, deciding on the way whether the whole
+            // word is hex; if it is, roll back to the word's start and hash <hex> instead.
+            long markHash = h;
+            int markLength = length;
+            long markHashAtMax = hashAtMax;
+            boolean headHex = true;
+            boolean tailHex = true;
+            boolean hexLetter = false;
+            boolean inDigits = false;
+            int start = i;
+            while (i < n) {
+                char w = s.charAt(i);
+                int wk = w < 128 ? KIND[w] : (Character.isLetterOrDigit(w) ? WORD : 0);
+                if ((wk & WORD) == 0) {
+                    break;
+                }
+                if ((wk & DIGIT) != 0) {
+                    if (!inDigits) {
+                        for (char p : DIGITS) {
+                            h = (h ^ p) * FNV_PRIME;
+                            if (++length == MAX_LENGTH) {
+                                hashAtMax = h;
+                            }
+                        }
+                        inDigits = true;
+                    }
+                } else {
+                    inDigits = false;
+                    h = (h ^ w) * FNV_PRIME;
+                    if (++length == MAX_LENGTH) {
+                        hashAtMax = h;
+                    }
+                    if ((wk & HEX_LETTER) != 0) {
+                        hexLetter = true;
+                    } else if (i - start < 2) {
+                        headHex = false;
+                    } else {
+                        tailHex = false;
+                    }
+                }
+                i++;
+            }
+            int wordLength = i - start;
+            boolean hex = wordLength >= 3 && s.charAt(start) == '0' && (s.charAt(start + 1) | 0x20) == 'x'
+                    ? tailHex
+                    : wordLength >= 6 && headHex && tailHex && hexLetter;
+            if (hex) {
+                h = markHash;
+                length = markLength;
+                hashAtMax = markHashAtMax;
+                for (char p : HEX) {
+                    h = (h ^ p) * FNV_PRIME;
+                    if (++length == MAX_LENGTH) {
+                        hashAtMax = h;
+                    }
+                }
+            }
+            hashAtSignificant = h; // a word always ends on a significant char or placeholder
+            significantEnd = length;
+        }
+        return significantEnd <= MAX_LENGTH ? hashAtSignificant : hashAtMax;
+    }
+
+    /**
+     * The 64-bit hash {@link #hash} computes, of text that is already
+     * normalized: FNV-1a over its {@code char}s.
+     */
+    static long hashOf(String normalized) {
+        long h = EMPTY_HASH;
+        for (int i = 0; i < normalized.length(); i++) {
+            h = mix(h, normalized.charAt(i));
+        }
+        return h;
+    }
+
+    private static final long EMPTY_HASH = 0xcbf29ce484222325L; // FNV-1a 64-bit offset basis
+    private static final long FNV_PRIME = 0x100000001b3L;
+
+    private static long mix(long h, char c) {
+        return (h ^ c) * FNV_PRIME;
+    }
+
+    private static void scan(String message, Output out) {
         int n = message.length();
-        // Placeholders are at most 6 chars for a 1-char minimum source (a lone digit becomes
-        // "<n>"), so output can outgrow input; the cap bounds it anyway.
-        Output out = new Output(Math.min(n, MAX_LENGTH) + 8);
         int i = 0;
         while (i < n) {
             if (out.length >= MAX_LENGTH && out.lastSignificant >= MAX_LENGTH - 1) {
@@ -124,7 +281,6 @@ final class StormMessageNormalizer {
             }
             i = appendWord(out, message, i);
         }
-        return out.result();
     }
 
     /**
@@ -180,9 +336,9 @@ final class StormMessageNormalizer {
     }
 
     /**
-     * A bare {@code char[]} rather than a {@link StringBuilder}: this runs on
-     * every event, and {@code StringBuilder.append(char)} re-checks capacity
-     * and string encoding on every call.
+     * A bare {@code char[]} rather than a {@link StringBuilder}: {@code
+     * StringBuilder.append(char)} re-checks capacity and string encoding on
+     * every call.
      */
     private static final class Output {
 

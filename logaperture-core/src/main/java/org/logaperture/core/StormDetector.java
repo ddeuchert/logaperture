@@ -16,10 +16,13 @@
 package org.logaperture.core;
 
 import org.logaperture.bridge.Diagnostics;
+import org.logaperture.api.Level;
 import org.logaperture.api.Storm;
 import org.logaperture.api.StormFingerprint;
 import org.logaperture.api.StormStatus;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -124,33 +127,43 @@ public final class StormDetector implements StormObserver {
 
     @Override
     public void observe(StormObservation observation) {
+        observe(observation.loggerName(), observation.level(), observation.throwableClassName(),
+                observation.rawMessage(), observation.timestamp(), observation, StormObservation.DETAILS);
+    }
+
+    @Override
+    public <S> void observe(String loggerName, Level level, String throwableClassName, String rawMessage,
+            Instant timestamp, S source, Details<S> details) {
         try {
-            observeUnsafe(observation);
+            observeUnsafe(loggerName, level, throwableClassName, rawMessage, timestamp, source, details);
         } catch (RuntimeException e) { // doc/specs/storm-detection.md "Failure handling": swallow, never propagate.
             Diagnostics.warnThrottled("storm-observe", "StormDetector.observe failed, event passes through unaffected: " + e, null);
         }
     }
 
-    private void observeUnsafe(StormObservation observation) {
-        String normalizedMessage = normalizations.normalize(observation.rawMessage());
-        StormFingerprint cheapFingerprint = new StormFingerprint(
-                observation.loggerName(), observation.level(), observation.throwableClassName(),
-                normalizedMessage, null);
-        long key = fingerprintHash(cheapFingerprint);
-
-        boolean[] inserted = {false};
-        Entry entry = counters.computeIfAbsent(key, k -> {
-            inserted[0] = true;
-            return new Entry(cheapFingerprint);
-        });
-        if (inserted[0]) {
-            evictIfOverCapacity();
+    private <S> void observeUnsafe(String loggerName, Level level, String throwableClassName, String rawMessage,
+            Instant timestamp, S source, Details<S> details) {
+        // Issue #147: the per-event key needs only the normalized message's hash, computed in the
+        // normalizing scan without building the text. The text itself is built once, for a
+        // fingerprint not yet tracked.
+        long key = fingerprintKey(loggerName, level, throwableClassName, normalizations.hash(rawMessage));
+        Entry entry = counters.get(key);
+        if (entry == null) {
+            StormFingerprint cheapFingerprint = new StormFingerprint(loggerName, level, throwableClassName,
+                    StormMessageNormalizer.normalize(rawMessage), null);
+            Entry fresh = new Entry(cheapFingerprint);
+            Entry raced = counters.putIfAbsent(key, fresh);
+            entry = raced == null ? fresh : raced;
+            if (raced == null) {
+                evictIfOverCapacity();
+            }
         }
+        StormFingerprint cheapFingerprint = entry.cheapFingerprint;
 
         HistoryRecord engaged;
         synchronized (entry) {
             long now = System.nanoTime();
-            entry.lastTouchedNanos = now;
+            entry.touch(now);
             HistoryRecord active = entry.active;
             if (active != null) {
                 long gap = now - entry.lastSeenNanos;
@@ -167,8 +180,7 @@ public final class StormDetector implements StormObserver {
                     entry.count = 0;
                     entry.burstStart = null;
                 } else {
-                    active.eventCount++;
-                    active.lastEventAt = observation.timestamp();
+                    active.countEvent(timestamp);
                 }
             }
             engaged = null;
@@ -176,23 +188,23 @@ public final class StormDetector implements StormObserver {
                 long gap = entry.lastSeenNanos == 0 ? Long.MAX_VALUE : now - entry.lastSeenNanos;
                 if (gap > windowNanos) {
                     entry.count = 1;
-                    entry.burstStart = observation.timestamp();
+                    entry.burstStart = timestamp;
                 } else {
                     entry.count++;
                 }
                 if (entry.count >= thresholdEvents) {
                     HistoryRecord record = new HistoryRecord(cheapFingerprint, StormStatus.ONGOING,
-                            entry.burstStart, observation.timestamp(), entry.count);
+                            entry.burstStart, timestamp, entry.count);
                     entry.active = record;
                     engaged = record;
                 }
             }
             entry.lastSeenNanos = now;
-            entry.lastEventInstant = observation.timestamp();
+            entry.lastEventInstant = timestamp;
         }
 
         if (engaged != null) {
-            publishNewStorm(engaged, observation);
+            publishNewStorm(engaged, source, details);
         }
     }
 
@@ -204,22 +216,20 @@ public final class StormDetector implements StormObserver {
      * full, or dropping it (disclosed via {@link #notRetainedCount}) if every
      * entry is {@code ONGOING} at capacity.
      */
-    private void publishNewStorm(HistoryRecord record, StormObservation observation) {
-        if (observation.hasThrown() && observation.topFramesSampler() != null) {
-            try {
-                List<String> frames = observation.topFramesSampler().get();
-                if (frames != null && !frames.isEmpty()) {
-                    record.fingerprint = new StormFingerprint(
-                            record.fingerprint.loggerName(), record.fingerprint.level(),
-                            record.fingerprint.throwableClass(), record.fingerprint.normalizedMessage(),
-                            frames);
-                }
-            } catch (RuntimeException ignored) {
-                // best-effort escalation only -- never fail the storm over it.
+    private <S> void publishNewStorm(HistoryRecord record, S source, Details<S> details) {
+        try {
+            List<String> frames = details.topFrames(source); // null for an event with no throwable
+            if (frames != null && !frames.isEmpty()) {
+                record.fingerprint = new StormFingerprint(
+                        record.fingerprint.loggerName(), record.fingerprint.level(),
+                        record.fingerprint.throwableClass(), record.fingerprint.normalizedMessage(),
+                        frames);
             }
+        } catch (RuntimeException ignored) {
+            // best-effort escalation only -- never fail the storm over it.
         }
         try {
-            String rendered = observation.firstOccurrenceSupplier().get();
+            String rendered = details.firstOccurrence(source);
             record.firstOccurrenceText.set(cap(rendered));
         } catch (RuntimeException ignored) {
             // first occurrence stays null -- never fail the storm over it.
@@ -319,7 +329,7 @@ public final class StormDetector implements StormObserver {
             if (candidate.getValue().active != null) {
                 continue;
             }
-            if (victim == null || candidate.getValue().lastTouchedNanos < victim.getValue().lastTouchedNanos) {
+            if (victim == null || candidate.getValue().lastTouched() < victim.getValue().lastTouched()) {
                 victim = candidate;
             }
         }
@@ -354,13 +364,18 @@ public final class StormDetector implements StormObserver {
         return StormMessageNormalizer.normalize(message);
     }
 
-    private static long fingerprintHash(StormFingerprint fingerprint) {
-        long h = 1125899906842597L; // FNV-ish odd seed
-        h = 31 * h + fingerprint.loggerName().hashCode();
-        h = 31 * h + fingerprint.level().hashCode();
-        h = 31 * h + (fingerprint.throwableClass() == null ? 0 : fingerprint.throwableClass().hashCode());
-        h = 31 * h + fingerprint.normalizedMessage().hashCode();
-        return h;
+    /**
+     * The counter map's key: the fingerprint's fields, with the message as
+     * its {@link StormMessageNormalizer#hash}. Two fingerprints with the same
+     * key share one tally; with a 64-bit hash of the message that is
+     * vanishingly rare, and costs a merged count, never a lost event.
+     */
+    static long fingerprintKey(String loggerName, Level level, String throwableClass, long messageHash) {
+        long h = messageHash;
+        h = 31 * h + loggerName.hashCode();
+        h = 31 * h + level.hashCode();
+        h = 31 * h + (throwableClass == null ? 0 : throwableClass.hashCode());
+        return h ^ (h >>> 29);
     }
 
     /** Unlike {@link #longProperty}, {@code 0} or less is a real setting here: it disables the cache. */
@@ -393,6 +408,14 @@ public final class StormDetector implements StormObserver {
         }
     }
 
+    private static VarHandle varHandle(Class<?> owner, String field, Class<?> type) {
+        try {
+            return MethodHandles.lookup().findVarHandle(owner, field, type);
+        } catch (ReflectiveOperationException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
     /** One fingerprint's tally + state, guarded by {@code synchronized(this)} for its own updates. */
     private static final class Entry {
         final StormFingerprint cheapFingerprint;
@@ -410,6 +433,21 @@ public final class StormDetector implements StormObserver {
             // before its first event has run.
             this.lastTouchedNanos = System.nanoTime();
         }
+
+        /**
+         * Issue #147: an opaque write, not a volatile one. Only eviction reads it, without the
+         * entry's lock and only to pick an approximately least-recently-touched victim, so it
+         * needs the value whole, not ordered; a volatile write costs a full fence per event.
+         */
+        void touch(long now) {
+            LAST_TOUCHED.setOpaque(this, now);
+        }
+
+        long lastTouched() {
+            return (long) LAST_TOUCHED.getOpaque(this);
+        }
+
+        private static final VarHandle LAST_TOUCHED = varHandle(Entry.class, "lastTouchedNanos", long.class);
     }
 
     /** One storm's mutable record while tracked; converted to an immutable {@link Storm} on read. */
@@ -430,6 +468,19 @@ public final class StormDetector implements StormObserver {
             this.lastEventAt = lastEventAt;
             this.eventCount = eventCount;
         }
+
+        /**
+         * One more event of an engaged storm, under the owning entry's lock (the only writer).
+         * Issue #147: release writes, not volatile ones. A reader ({@link #toStorm}) needs each
+         * value whole and no older than the previous one it saw, not a full fence per event.
+         */
+        void countEvent(Instant at) {
+            EVENT_COUNT.setRelease(this, eventCount + 1);
+            LAST_EVENT_AT.setRelease(this, at);
+        }
+
+        private static final VarHandle EVENT_COUNT = varHandle(HistoryRecord.class, "eventCount", long.class);
+        private static final VarHandle LAST_EVENT_AT = varHandle(HistoryRecord.class, "lastEventAt", Instant.class);
 
         Storm toStorm() {
             // status and endedAt are written together, under synchronized(this), by the ENDED
