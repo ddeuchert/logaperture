@@ -9,6 +9,8 @@ supersedes #14) signed off 2026-10-05, all on the recommended option.
 Decision #21 (rule budget scales with the logarithm of the effective rule count; amends §10,
 supersedes #8's `drop-hit` / `trim` row) agreed 2026-10-05 after the full run, on #148.
 Decision #22 (scenarios for the curve and for what a match saves) agreed 2026-10-05 and implemented.
+Decision #23 (the storm filter's per-character allowance is 4 ns, not 3; amends #13) agreed
+2026-10-06, on #147.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §10 (Performance: "< 200 ns added
 per evaluated event … near-zero for loggers no rule can match … enforced by JMH benchmarks in
 CI"), §17.1 ("What earns 1.0": "published overhead numbers (§10) for an idle agent, a `trim`
@@ -340,13 +342,28 @@ cheap path (a template it has seen) and a length-dependent one (a new string). T
 |---|---|
 | `rule` (rule filter), any message | ≤ 50 ns |
 | `rule+storm` minus `rule` (storm filter), `template` | ≤ 100 ns |
-| `rule+storm` minus `rule` (storm filter), `concatenated` | ≤ 100 ns + 3 ns × message length in chars (length counted up to 500) |
+| `rule+storm` minus `rule` (storm filter), `concatenated` | ≤ 100 ns + 3 ns × message length in chars (length counted up to 500); **4 ns** since Decision #23 |
 
 For the benchmark's 52-character message, the `concatenated` budget is 256 ns. The numbers are
 set now, before the run: 100 ns covers the storm filter's fixed work (one map lookup, one
 short lock, a timestamp, two small objects); 3 ns per character is the one-pass normalizer's
 measured ~8.6 ns per character on the 2012-era smoke-run CPU at 2.6 GHz, scaled to a current
 one.
+
+**Third revision (Decision #23, agreed 2026-10-06, issue
+[#147](https://github.com/ddeuchert/logaperture/issues/147)).** The per-character allowance
+becomes **4 ns**, so the `concatenated` row reads ≤ 100 ns + 4 ns × message length (length
+counted up to 500): 308 ns for the benchmark's 52-character message. The other rows are
+unchanged.
+
+The 3 ns was scaled for a current CPU, but #15 moved the published run to a 2019 one (Ryzen 5
+3400G, run without boost). After #147 the storm filter hashes the normalized message in one
+scan and builds the text only for a new fingerprint. On that machine the scan costs about
+3 ns per character on its own (`storm-hash`, 157 ns for the 52-character message) and about
+4 ns per character inside a real log call, where the formatter around it evicts its data from
+cache. What remains is the scan's floor: one dependent multiply per output character, and a
+mispredicted branch wherever the character class changes. The template path, which most
+WildFly logging takes, is unaffected and well inside its 100 ns (+35 ns on the #147 A/B run).
 
 **The published-run machine (Decision #14, signed off 2026-09-30; superseded by #15
 on 2026-10-05).** Absolute budgets only

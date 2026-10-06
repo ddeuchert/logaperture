@@ -256,7 +256,7 @@ public final class Report {
                 layer("rule+storm", "template"), layer("rule", "template"), 100);
         budgetRow(md, "storm filter: `rule+storm` − `rule`", "concatenated",
                 layer("rule+storm", "concatenated"), layer("rule", "concatenated"),
-                100 + 3 * Math.min(concatenatedLength, 500));
+                100 + 4 * Math.min(concatenatedLength, 500)); // Decision #23: 4 ns per character
         for (String message : MESSAGES) {
             budgetRow(md, "no rule can match: `drop-miss` − `idle`", message,
                     rules("drop-miss", message), layer("idle", message), 50);
