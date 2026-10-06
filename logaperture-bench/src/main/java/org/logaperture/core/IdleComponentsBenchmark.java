@@ -59,6 +59,23 @@ public class IdleComponentsBenchmark {
     private final Supplier<String> message = () -> MESSAGE;
     private int sequence;
 
+    /**
+     * What the JUL filter passes: one renderer, called only when an event engages a storm. The
+     * per-event path (#147) takes the fields, so the benchmark doesn't build a StormObservation
+     * the filter no longer builds either.
+     */
+    private static final StormObserver.Details<Object> NO_DETAILS = new StormObserver.Details<>() {
+        @Override
+        public List<String> topFrames(Object source) {
+            return null;
+        }
+
+        @Override
+        public String firstOccurrence(Object source) {
+            return MESSAGE;
+        }
+    };
+
     @Setup
     public void setUp() {
         gate = newRuleService().gate();
@@ -105,19 +122,23 @@ public class IdleComponentsBenchmark {
     /** {@code storm-observe}: one observation of a message already being tracked. */
     @Benchmark
     public void stormObserve() {
-        detector.observe(new StormObservation(LOGGER, Level.INFO, null, MESSAGE, false, null, message,
-                Instant.EPOCH));
+        detector.observe(LOGGER, Level.INFO, null, MESSAGE, Instant.EPOCH, null, NO_DETAILS);
     }
 
     /** {@code storm-observe}, {@code concatenated}: a new message {@code String} every call (Decision #12). */
     @Benchmark
     public void stormObserveConcatenated() {
         String raw = "Processed order " + (sequence++) + " for customer 7f3a9c21 in 12 ms";
-        detector.observe(new StormObservation(LOGGER, Level.INFO, null, raw, false, null, message,
-                Instant.EPOCH));
+        detector.observe(LOGGER, Level.INFO, null, raw, Instant.EPOCH, null, NO_DETAILS);
     }
 
-    /** {@code storm-normalize}: message normalization alone, uncached. */
+    /** {@code storm-hash}: the normalized message's hash alone, uncached: the storm filter's per-event scan (#147). */
+    @Benchmark
+    public long stormHash() {
+        return StormMessageNormalizer.hash(MESSAGE);
+    }
+
+    /** {@code storm-normalize}: the normalized text alone, built only for a new fingerprint since #147. */
     @Benchmark
     public String stormNormalize() {
         return StormDetector.normalize(MESSAGE);

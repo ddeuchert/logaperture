@@ -184,8 +184,9 @@ Alongside them, each hot-path piece is benchmarked on its own, with nothing arou
 |---|---|
 | `gate-empty` | `RuleService.evaluateGate` for a context with no rules |
 | `gate-n` | `RuleService.evaluateGate` with *n* = 1, 5, 20, 100 rules on the logger's parent, none matching (message-contains matchers, as above); Decision #22 |
-| `storm-observe` | `StormDetector.observe`, plain message and a message with digits, hex and a UUID |
-| `storm-normalize` | `StormDetector.normalize` alone |
+| `storm-observe` | `StormDetector.observe`, through the per-event fields path the JUL filter uses (#147): a template it has seen, and a new `String` per call |
+| `storm-hash` | `StormMessageNormalizer.hash` alone: the per-event normalizing scan, which hashes without building text (#147) |
+| `storm-normalize` | `StormDetector.normalize` alone: the normalized text, built only for a new fingerprint since #147 |
 | `top-record` | `TopCounters.record` |
 | `trace-bytes` | `ByteCountingFormatter`'s second stack-trace render (#23) |
 
