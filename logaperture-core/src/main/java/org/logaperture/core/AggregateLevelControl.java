@@ -1282,16 +1282,17 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * Covers logger and handler overrides alike, and {@code for <duration>} rules (issue #95).
      */
     public void sweepExpiredOverrides(Instant now) {
-        for (ContextControl context : sortedByKey()) {
-            context.service().sweepExpiredOverrides(now);
-            context.handlerService().sweepExpiredOverrides(now);
-            context.ruleService().sweepExpiredRules(now);
-        }
-        // doc/specs/storm-detection-toggle.md T12: one switch for every context, swept once.
+        // doc/specs/storm-detection-toggle.md T12: one switch for every context, swept once -- first,
+        // and on its own guard, so a context whose sweep keeps failing can't hold a 'for' on forever.
         try {
             stormDetectionSwitch.sweepExpired(now);
         } catch (RuntimeException e) {
             Diagnostics.warn("failed to switch over an expired storm-detection setting", e);
+        }
+        for (ContextControl context : sortedByKey()) {
+            context.service().sweepExpiredOverrides(now);
+            context.handlerService().sweepExpiredOverrides(now);
+            context.ruleService().sweepExpiredRules(now);
         }
     }
 

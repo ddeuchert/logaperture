@@ -220,11 +220,6 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     }
 
     @Override
-    public StormDetectionData setStormDetection(boolean enabled, String reason) {
-        return StormDetectionData.from(stormOperations.setStormDetection(enabled, reason));
-    }
-
-    @Override
     public StormDetectionData setStormDetection(boolean enabled, String reason, String tier, long forSeconds) {
         PersistenceTier parsedTier = parseTier(tier);
         Duration forDuration = parsedTier == PersistenceTier.FOR ? Duration.ofSeconds(forSeconds) : null;

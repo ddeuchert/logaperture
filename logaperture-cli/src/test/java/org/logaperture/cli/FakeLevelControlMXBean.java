@@ -386,7 +386,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         return stormReport;
     }
 
-    StormDetectionData stormDetection = new StormDetectionData(true, true, false, null, false);
+    StormDetectionData stormDetection = new StormDetectionData(true, true, false, null, false, "SESSION", null);
     final List<Object[]> setStormDetectionCalls = new ArrayList<>();
     /** When non-null, {@link #stormDetection()} and {@link #setStormDetection} throw it -- an older agent. */
     RuntimeException stormDetectionFailure;
@@ -416,19 +416,6 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         return stormDetection;
     }
 
-    @Override
-    public StormDetectionData setStormDetection(boolean enabled, String reason) {
-        setStormDetectionCalls.add(new Object[] {enabled, reason});
-        if (stormDetectionFailure != null) {
-            throw stormDetectionFailure;
-        }
-        maybeThrow();
-        boolean previous = stormDetection.isEnabled();
-        String changedAt = previous == enabled ? stormDetection.getChangedAt() : "2026-10-07T14:05:00Z";
-        stormDetection = new StormDetectionData(enabled, previous, previous != enabled, changedAt,
-                stormDetection.isStartedEnabled());
-        return stormDetection;
-    }
 
     List<RuleData> rules = new ArrayList<>();
     final List<Object[]> resetRuleCalls = new ArrayList<>();

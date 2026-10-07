@@ -47,13 +47,6 @@ public final class StormDetectionData {
         this.expiresAt = expiresAt;
     }
 
-    /** A {@code SESSION} setting. */
-    @ConstructorProperties({"enabled", "previous", "changed", "changedAt", "startedEnabled"})
-    public StormDetectionData(boolean enabled, boolean previous, boolean changed, String changedAt,
-            boolean startedEnabled) {
-        this(enabled, previous, changed, changedAt, startedEnabled, "SESSION", null);
-    }
-
     public static StormDetectionData from(StormDetectionSwitch.State state) {
         return new StormDetectionData(state.enabled(), state.enabled(), false, text(state.changedAt()),
                 state.startedEnabled(), state.tier().name(), text(state.expiresAt()));

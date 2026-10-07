@@ -149,13 +149,8 @@ final class Commands {
             }
             // doc/specs/storm-detection-toggle.md "How it is reported": under the vendor-defaults line.
             if (stormDetection != null) {
-                String tierNote = "FOR".equals(stormDetection.getTier())
-                        ? " (until " + stormDetection.getExpiresAt() + ", then " + position(!stormDetection.isEnabled())
-                                + ")"
-                        : "STICKY".equals(stormDetection.getTier()) ? " (sticky)"
-                        : stormDetection.getChangedAt() != null ? " (since " + stormDetection.getChangedAt() + ")"
-                        : "";
-                out.println("Storm detection: " + position(stormDetection.isEnabled()) + tierNote);
+                out.println("Storm detection: " + position(stormDetection.isEnabled())
+                        + statusTierNote(stormDetection));
             }
             if (report.getVendorDefaultsPath() != null || stormDetection != null) {
                 out.println();
@@ -1509,6 +1504,19 @@ final class Commands {
             return " until " + detection.getExpiresAt() + ", then " + position(!detection.isEnabled());
         }
         return "STICKY".equals(detection.getTier()) ? " (sticky)" : "";
+    }
+
+    /**
+     * {@code status}'s form of {@link #tierNote}, in parentheses: {@code " (until <time>, then
+     * disabled)"}, {@code " (sticky)"}, or for {@code SESSION} {@code " (since <time>)"} after a
+     * runtime change and nothing before one.
+     */
+    private static String statusTierNote(StormDetectionData detection) {
+        String note = tierNote(detection);
+        if (!note.isEmpty()) {
+            return note.startsWith(" (") ? note : " (" + note.strip() + ")";
+        }
+        return detection.getChangedAt() != null ? " (since " + detection.getChangedAt() + ")" : "";
     }
 
     /**

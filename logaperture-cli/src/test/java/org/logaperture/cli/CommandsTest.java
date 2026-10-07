@@ -206,7 +206,7 @@ class CommandsTest {
 
     @Test
     void status_saysStormDetectionIsDisabled_andSinceWhenAfterARuntimeChange() {
-        mbean.stormDetection = new StormDetectionData(false, false, false, "2026-10-07T16:40:12Z", true);
+        mbean.stormDetection = new StormDetectionData(false, false, false, "2026-10-07T16:40:12Z", true, "SESSION", null);
 
         run(Commands.status(false));
 
@@ -226,7 +226,7 @@ class CommandsTest {
 
     @Test
     void status_json_carriesTheStormDetectionObject() {
-        mbean.stormDetection = new StormDetectionData(false, false, false, null, false);
+        mbean.stormDetection = new StormDetectionData(false, false, false, null, false, "SESSION", null);
 
         run(Commands.status(true));
 
@@ -236,7 +236,7 @@ class CommandsTest {
 
     @Test
     void enableStorms_fromDisabled_reportsTheChange() {
-        mbean.stormDetection = new StormDetectionData(false, false, false, null, false);
+        mbean.stormDetection = new StormDetectionData(false, false, false, null, false, "SESSION", null);
 
         assertEquals(CliError.OK, run(Commands.setStormDetection(true, "INC-4411", SESSION, false)));
 
@@ -262,7 +262,7 @@ class CommandsTest {
 
     @Test
     void enableStorms_json() {
-        mbean.stormDetection = new StormDetectionData(false, false, false, null, false);
+        mbean.stormDetection = new StormDetectionData(false, false, false, null, false, "SESSION", null);
 
         run(Commands.setStormDetection(true, null, SESSION, true));
 
@@ -285,7 +285,7 @@ class CommandsTest {
 
     @Test
     void enableStormsFor30m_saysWhenItSwitchesBack() {
-        mbean.stormDetection = new StormDetectionData(false, false, false, null, false);
+        mbean.stormDetection = new StormDetectionData(false, false, false, null, false, "SESSION", null);
 
         run(Commands.setStormDetection(true, "watch the batch", new Parser.TierChoice("FOR", 1800L), false));
 
@@ -376,7 +376,7 @@ class CommandsTest {
     void doctor_whenStormDetectionIsDisabled_saysSoInsteadOfThePointer() {
         mbean.findings = List.of(new DoctorFindingData("logger.verbosity-left-on", "OK", "ROOT",
                 "no excess verbosity found at root or on a known-chatty logger.", null, null, null));
-        mbean.stormDetection = new StormDetectionData(false, false, false, null, false);
+        mbean.stormDetection = new StormDetectionData(false, false, false, null, false, "SESSION", null);
 
         assertEquals(CliError.OK, run(Commands.doctor(false)));
 

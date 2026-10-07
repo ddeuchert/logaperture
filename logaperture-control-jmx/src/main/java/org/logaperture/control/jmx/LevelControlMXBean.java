@@ -247,19 +247,13 @@ public interface LevelControlMXBean {
 
     /**
      * {@code logctl enable|disable storms}: sets storm detection to {@code enabled} in every
-     * context, whatever its current position; a request for the position it already has changes
-     * nothing (doc/specs/storm-detection-toggle.md T4, T8, T10). Requires the {@code DIAGNOSTICS}
-     * capability.
+     * context, whatever its current position; a request for the position and tier it already has
+     * changes nothing (doc/specs/storm-detection-toggle.md T4, T8, T10). {@code tier} is {@code
+     * "SESSION"}, {@code "FOR"} -- for {@code forSeconds}, after which it switches to the other
+     * position -- or {@code "STICKY"}, kept across restarts. Requires the {@code DIAGNOSTICS}
+     * capability, and {@code PERSIST} too for {@code FOR} and {@code STICKY}.
      *
      * @param reason why, for the audit record; may be {@code null}
-     */
-    StormDetectionData setStormDetection(boolean enabled, String reason);
-
-    /**
-     * {@link #setStormDetection(boolean, String)} with a tier (doc/specs/storm-detection-toggle.md
-     * "Slice 2"): {@code "SESSION"}, {@code "FOR"} -- for {@code forSeconds}, after which it switches
-     * to the other position -- or {@code "STICKY"}, kept across restarts. {@code FOR} and {@code
-     * STICKY} also need the {@code PERSIST} capability.
      */
     StormDetectionData setStormDetection(boolean enabled, String reason, String tier, long forSeconds);
 

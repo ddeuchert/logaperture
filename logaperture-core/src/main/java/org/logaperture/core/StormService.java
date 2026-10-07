@@ -117,6 +117,12 @@ public final class StormService implements StormOperations {
                 detector.notRetainedCount());
     }
 
+    /** This context's view of the agent's one switch -- the same answer as the aggregate's. */
+    @Override
+    public StormDetectionSwitch.State stormDetection() {
+        return detectionSwitch.state();
+    }
+
     Instant measurementStartedAt() {
         return measurementStartedAt;
     }

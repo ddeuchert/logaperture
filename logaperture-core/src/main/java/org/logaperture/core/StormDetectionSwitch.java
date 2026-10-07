@@ -144,14 +144,11 @@ public final class StormDetectionSwitch {
         }
         Instant now = Instant.now();
         boolean previous;
-        boolean switchedOn;
         synchronized (this) {
             previous = enabled;
             if (previous == enable && this.tier == tier && tier != PersistenceTier.FOR) {
                 return new Change(enable, previous, false, changedAt, startedEnabled, tier, expiresAt);
             }
-            switchedOn = enable && !previous;
-            enabled = enable;
             changedAt = now;
             this.tier = tier;
             expiresAt = tier == PersistenceTier.FOR ? now.plus(forDuration) : null;
@@ -160,12 +157,10 @@ public final class StormDetectionSwitch {
             } else {
                 stateStore.saveStormDetection(new StormDetectionSetting(enable, tier, expiresAt, reason, now, "jmx"));
             }
+            moveTo(enable);
         }
         auditLog.record(new AuditRecord(now, principal, "jmx", AUDIT_NAME, position(previous), position(enable),
                 reason, AuditRecord.Action.MUTATION, null, AuditRecord.Target.SWITCH));
-        if (switchedOn) {
-            runEnableListeners();
-        }
         return new Change(enable, previous, true, now, startedEnabled, tier, expiresAt);
     }
 
@@ -181,17 +176,14 @@ public final class StormDetectionSwitch {
                 return;
             }
             previous = enabled;
-            enabled = !previous;
             changedAt = now;
             tier = PersistenceTier.SESSION;
             expiresAt = null;
             stateStore.removeStormDetection();
+            moveTo(!previous);
         }
         auditLog.record(new AuditRecord(now, principal, "expiry-sweep", AUDIT_NAME, position(previous),
                 position(!previous), null, AuditRecord.Action.REVERSION, null, AuditRecord.Target.SWITCH));
-        if (!previous) {
-            runEnableListeners();
-        }
     }
 
     /**
@@ -233,15 +225,28 @@ public final class StormDetectionSwitch {
                 AuditRecord.Target.SWITCH));
     }
 
-    /** Run, on the calling thread, each time the switch turns on (T6). */
+    /** Run, on the calling thread and still disabled, each time the switch is about to turn on (T6). */
     void onEnable(Runnable listener) {
         enableListeners.add(Objects.requireNonNull(listener, "listener"));
     }
 
-    private void runEnableListeners() {
-        for (Runnable listener : enableListeners) {
-            listener.run();
+    /**
+     * Sets the position, under this switch's lock. Turning on, every context starts its new window
+     * (T6) <em>before</em> the volatile write that the storm filter reads, so no event is counted
+     * into a window about to be discarded and no report sweeps the frozen storms as live. Each
+     * listener is isolated: one context's failure doesn't leave the others with stale state.
+     */
+    private void moveTo(boolean enable) {
+        if (enable && !enabled) {
+            for (Runnable listener : enableListeners) {
+                try {
+                    listener.run();
+                } catch (RuntimeException e) {
+                    Diagnostics.warn("failed to start a new storm measurement window for a context", e);
+                }
+            }
         }
+        enabled = enable;
     }
 
     private static String position(boolean enabled) {

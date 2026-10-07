@@ -161,6 +161,35 @@ class StormDetectionToggleTest {
         assertEquals(1, report.ongoingCount());
     }
 
+    // --- code review on PR #152 ------------------------------------------------------------------------
+
+    @Test
+    void enabling_resetsEveryWindow_whileStillDisabled_andOneFailingContextDoesntStopTheOthers() {
+        StormDetectionSwitch detectionSwitch = detectionSwitch(false, CapabilityPolicy.allowAll());
+        List<Boolean> seenEnabled = new ArrayList<>();
+        Runnable failing = () -> {
+            throw new IllegalStateException("boom");
+        };
+        Runnable recording = () -> seenEnabled.add(detectionSwitch.isEnabled());
+        detectionSwitch.onEnable(failing);
+        detectionSwitch.onEnable(recording);
+
+        StormDetectionSwitch.Change change = detectionSwitch.set(true, null);
+
+        assertTrue(change.changed());
+        assertTrue(detectionSwitch.isEnabled());
+        assertEquals(List.of(false), seenEnabled, "the window resets before the filter can see 'enabled'");
+    }
+
+    @Test
+    void aContextsOwnService_reportsTheSwitch_notTheDefault() {
+        StormDetectionSwitch detectionSwitch = detectionSwitch(false, CapabilityPolicy.allowAll());
+        StormService service = new StormService(adapter, CapabilityPolicy.allowAll(),
+                detector(detectionSwitch, Duration.ofSeconds(60)), detectionSwitch);
+
+        assertFalse(service.stormDetection().enabled());
+    }
+
     // --- slice 2: for and sticky (doc/specs/storm-detection-toggle.md "Slice 2") ----------------------
 
     private final InMemoryStateStore store = new InMemoryStateStore();
