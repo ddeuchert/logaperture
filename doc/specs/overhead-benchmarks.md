@@ -11,6 +11,9 @@ supersedes #8's `drop-hit` / `trim` row) agreed 2026-10-05 after the full run, o
 Decision #22 (scenarios for the curve and for what a match saves) agreed 2026-10-05 and implemented.
 Decision #23 (the storm filter's per-character allowance is 4 ns, not 3; amends #13) agreed
 2026-10-06, on #147.
+Decision #24 (storm detection is off by default since #151: `idle` is the shipped default with the
+storm filter installed but disabled; disabled storm costs at most 10 % of the enabled budget,
+checked by a component benchmark) agreed 2026-10-07.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §10 (Performance: "< 200 ns added
 per evaluated event … near-zero for loggers no rule can match … enforced by JMH benchmarks in
 CI"), §17.1 ("What earns 1.0": "published overhead numbers (§10) for an idle agent, a `trim`
@@ -142,7 +145,8 @@ Each runs with three messages (Decision #12):
 | Id | Setup | Answers |
 |---|---|---|
 | `baseline` | No LogAperture pieces installed | The reference every other row subtracts |
-| `idle` | Everything context install puts on the hot path, no rules: rule filter, storm filter, trim wrap, `top` byte counting | §17.1 "idle agent" and "`top` counting", §10 "near-zero", #23 (throwable variant) |
+| `idle` | Everything context install puts on the hot path, no rules, as shipped: rule filter, storm filter installed but disabled (#151), trim wrap, `top` byte counting | §17.1 "idle agent" and "`top` counting", §10 "near-zero" |
+| `idle+storm` | `idle` with storm detection enabled (Decision #24) | The top of the layer chain below; #23 (throwable variant) |
 | `drop-miss` | 20 `drop` rules on other loggers, none can match this one | §10 "near-zero for loggers no rule can match" |
 | `drop-hit` | 20 rules, one `drop` matches (record denied) | §10's rule budget at *n* = 20 (204 ns, Decision #21) |
 | `trim` | 20 rules, one `trim` (5 frames) matches | §17.1 "a `trim` rule" |
@@ -160,7 +164,9 @@ gives it anything to do. A denied record is never formatted, so `drop-hit` can c
 
 **Idle layers.** `idle` is run as cumulative layers, installed in the container's own order, so
 each piece's share is the difference between two adjacent rows of the same run: `baseline`,
-`rule`, `rule+storm`, `rule+storm+trim`, `idle` (the last adds `top`).
+`rule`, `rule+storm`, `rule+storm+trim`, `idle+storm` (the last adds `top`). Storm detection is
+enabled throughout the chain. Two more rows have it installed but disabled, the shipped default
+since #151 (Decision #24): `rule+storm-off`, reported against `rule`, and `idle`.
 
 **Storm state.** A benchmark logs one message shape millions of times a second, so storm
 detection engages a storm for it within the first thousand calls and measures the engaged path
@@ -189,6 +195,7 @@ Alongside them, each hot-path piece is benchmarked on its own, with nothing arou
 | `storm-normalize` | `StormDetector.normalize` alone: the normalized text, built only for a new fingerprint since #147 |
 | `top-record` | `TopCounters.record` |
 | `trace-bytes` | `ByteCountingFormatter`'s second stack-trace render (#23) |
+| `storm-off`, `storm-off-delegate` | The storm filter installed but disabled, and the filter it wraps called directly; the difference is disabled storm's cost (Decision #24) |
 
 These land in the tens of nanoseconds with tight error bars, so they cross-check the
 difference numbers: the pieces `idle` installs should add up to roughly what `idle` costs over
@@ -231,7 +238,7 @@ the fast path, and the results page says so. The 24-hour soak (§17.1) is the re
 
 Written down before measuring, so the numbers decide rather than get argued:
 
-- **#23** goes into 1.0 if, with a throwable, the `top` layer (`idle` minus `rule+storm+trim`)
+- **#23** goes into 1.0 if, with a throwable, the `top` layer (`idle+storm` minus `rule+storm+trim`; `idle` before Decision #24)
   adds more than **25 %** of the `baseline`-with-throwable score. Below that, the second `printStackTrace` is a known cost, not a
   1.0 problem.
 - **#24** goes into 1.0 if `idle` at 8 threads on separate handlers takes more than **1.5×** its
@@ -376,6 +383,26 @@ has no pinned-frequency equivalent of Linux's `performance` governor, so the pla
 with the results). async-profiler doesn't run on Windows, so the published flame graphs come
 from a Linux run of the same commit. The smoke-run machine (Intel i7-3740QM, 2012) doesn't qualify; its numbers
 serve for before/after comparisons only.
+
+**Fourth revision (Decision #24, agreed 2026-10-07, issue
+[#151](https://github.com/ddeuchert/logaperture/issues/151)).** Storm detection is off by default
+in 1.0 ([`storm-detection-toggle.md`](storm-detection-toggle.md)). The storm filter stays
+installed and, disabled, does one volatile read and calls the filter it wraps. So:
+
+- `idle` means the agent as shipped, storm filter disabled; the headline percentages, the
+  concurrency rows (#24) and the rule scenarios measure that. The enabled layer chain ends in
+  `idle+storm`, which #23's rule now uses so that `top` stays the only layer between its two rows.
+- The `rule+storm` rows keep their Decision #13/#23 budgets, measured with storm enabled, but a
+  miss there no longer blocks 1.0 under Decision #7, which covers the idle agent. It is tracked
+  by [#150](https://github.com/ddeuchert/logaperture/issues/150) (1.1.0).
+- Disabled storm may cost at most **10 % of the enabled budget**: 10 ns against `template`'s
+  100 ns, about 31 ns against `concatenated`'s 308 ns. The disabled path never reads the message,
+  so one check against the stricter 10 ns covers both. Whole-pipeline differences carry error bars
+  of about ±10 ns on the published-run machine, too wide for a budget this size, so the check is
+  the component benchmark: `storm-off` minus `storm-off-delegate`, difference plus its error.
+  `rule+storm-off` minus `rule` is still reported, as information, not as a check.
+- 1 % was considered and rejected: 1–3 ns is below the disabled path's own floor (a filter call
+  plus a volatile read) and below what even a component benchmark resolves reliably.
 
 ### Revision 2026-10-05: the development box, percentages, and a suite anyone can run
 

@@ -43,9 +43,13 @@ public final class Report {
     private static final String RULES = "org.logaperture.bench.RulesBenchmark.info";
     private static final String SAVINGS = "org.logaperture.bench.SavingsBenchmark.info";
     private static final String GATE_EMPTY = "org.logaperture.core.IdleComponentsBenchmark.gateEmpty";
+    private static final String STORM_OFF = "org.logaperture.adapter.jul.StormFilterComponentsBenchmark.stormOff";
+    private static final String STORM_OFF_DELEGATE =
+            "org.logaperture.adapter.jul.StormFilterComponentsBenchmark.stormOffDelegate";
     private static final String GATE_CURVE = "org.logaperture.core.GateCurveBenchmark.gate";
     private static final List<String> MESSAGES = List.of("template", "concatenated", "throwable");
-    private static final List<String> SCENARIOS = List.of("rule", "rule+storm", "rule+storm+trim", "idle",
+    private static final List<String> SCENARIOS = List.of("rule", "rule+storm", "rule+storm-off", "rule+storm+trim",
+            "idle+storm", "idle",
             "drop-miss", "drop-hit", "trim", "trim-typed");
     /** The effective rule count of {@code RulesBenchmark}'s scenarios. */
     private static final int RULE_COUNT = 20;
@@ -239,7 +243,10 @@ public final class Report {
         md.append('\n');
     }
 
-    /** Decision #13's table, #8's rule-scenario budget, each checked as difference plus its error. */
+    /**
+     * Decision #13's table, #8's rule-scenario budget, each checked as difference plus its error. A
+     * {@code NaN} budget marks a row that is reported, not checked (Decision #24's pipeline row).
+     */
     private void budgets(StringBuilder md) {
         md.append("## Budgets\n\n");
         md.append("Single thread, one shared handler. A check passes when the difference *plus* its error "
@@ -257,6 +264,14 @@ public final class Report {
         budgetRow(md, "storm filter: `rule+storm` − `rule`", "concatenated",
                 layer("rule+storm", "concatenated"), layer("rule", "concatenated"),
                 100 + 4 * Math.min(concatenatedLength, 500)); // Decision #23: 4 ns per character
+        // Decision #24: disabled storm, the shipped default since #151, at most 10 % of the enabled
+        // budget. Checked on the component benchmark; the pipeline rows' error bars are too wide.
+        budgetRow(md, "storm filter, disabled: `storm-off` − `storm-off-delegate` (component)", "any",
+                component(STORM_OFF), component(STORM_OFF_DELEGATE), 10);
+        for (String message : MESSAGES) {
+            budgetRow(md, "storm filter, disabled: `rule+storm-off` − `rule`", message,
+                    layer("rule+storm-off", message), layer("rule", message), Double.NaN);
+        }
         for (String message : MESSAGES) {
             budgetRow(md, "no rule can match: `drop-miss` − `idle`", message,
                     rules("drop-miss", message), layer("idle", message), 50);
@@ -332,11 +347,16 @@ public final class Report {
     private void budgetRow(StringBuilder md, String check, String message, Optional<Result> scenario,
             Optional<Result> reference, double budget) {
         md.append("| ").append(check).append(" | ").append(message).append(" | ");
+        boolean reportedOnly = Double.isNaN(budget);
         if (scenario.isEmpty() || reference.isEmpty()) {
-            md.append("not run | ").append(format(budget)).append(" | — |\n");
+            md.append("not run | ").append(reportedOnly ? "—" : format(budget)).append(" | — |\n");
             return;
         }
         Measured diff = measured(scenario.get()).minus(measured(reference.get()));
+        if (reportedOnly) {
+            md.append(signedNs(diff)).append(" | — | reported |\n");
+            return;
+        }
         String verdict = diff.upper() <= budget ? "pass" : "**over**";
         if (Double.isNaN(diff.error())) {
             verdict += " (no error bar)";
@@ -348,8 +368,9 @@ public final class Report {
     private void decisionRules(StringBuilder md) {
         md.append("## Decision rules\n\n");
 
-        // #23: the top layer, with a throwable, over 25 % of the baseline with a throwable.
-        Optional<Result> idle = layer("idle", "throwable");
+        // #23: the top layer, with a throwable, over 25 % of the baseline with a throwable. Measured on
+        // the layer chain with storm enabled, so `top` is the only layer between the two.
+        Optional<Result> idle = layer("idle+storm", "throwable");
         Optional<Result> belowTop = layer("rule+storm+trim", "throwable");
         Optional<Result> base = baseline("throwable", 1, "shared");
         md.append("- **#23** (`top` renders a throwable's stack trace a second time): ");
@@ -361,7 +382,7 @@ public final class Report {
                     .append(" of the baseline with a throwable; the threshold is 25 %. ")
                     .append(in ? "**Goes into 1.0.**" : "Stays out of 1.0.").append('\n');
         } else {
-            md.append("not run (needs `baseline`, `rule+storm+trim` and `idle` with the throwable message).\n");
+            md.append("not run (needs `baseline`, `rule+storm+trim` and `idle+storm` with the throwable message).\n");
         }
 
         // #24: idle on separate handlers at the most threads run, against its own single thread.
@@ -418,6 +439,11 @@ public final class Report {
     /** An {@code IdleBenchmark} layer, single thread, shared handler: what the budgets are written for. */
     private Optional<Result> layer(String layers, String message) {
         return find(IDLE, layers, message, 1, "shared");
+    }
+
+    /** A component benchmark's one result, by its full name. */
+    private Optional<Result> component(String benchmark) {
+        return results.stream().filter(r -> r.benchmark().equals(benchmark)).findFirst();
     }
 
     private Optional<Result> rules(String scenario, String message) {

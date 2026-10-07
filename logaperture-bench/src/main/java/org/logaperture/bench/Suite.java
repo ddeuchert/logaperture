@@ -47,7 +47,8 @@ public final class Suite {
     private static final String RULES = "org\\.logaperture\\.bench\\.RulesBenchmark\\.";
     private static final String SAVINGS = "org\\.logaperture\\.bench\\.SavingsBenchmark\\.";
     private static final String COMPONENTS =
-            "org\\.logaperture\\.(core\\.IdleComponents|core\\.GateCurve|adapter\\.jul\\.TopComponents)Benchmark\\.";
+            "org\\.logaperture\\.(core\\.IdleComponents|core\\.GateCurve|adapter\\.jul\\.TopComponents"
+                    + "|adapter\\.jul\\.StormFilterComponents)Benchmark\\.";
 
     /**
      * One JMH invocation: a name for its files, and what it adds to the shared options. A run

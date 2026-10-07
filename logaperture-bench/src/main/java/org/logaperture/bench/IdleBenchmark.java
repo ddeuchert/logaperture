@@ -65,7 +65,12 @@ public class IdleBenchmark {
     @State(Scope.Benchmark)
     public static class Install {
 
-        @Param({"baseline", "rule", "rule+storm", "rule+storm+trim", "idle"})
+        /**
+         * Each layer added in the container's order. Storm detection is enabled in the layer chain
+         * up to {@code idle+storm}; {@code rule+storm-off} and {@code idle} have it installed but
+         * disabled, as shipped since #151 (doc/specs/overhead-benchmarks.md, storm-detection-toggle.md).
+         */
+        @Param({"baseline", "rule", "rule+storm", "rule+storm-off", "rule+storm+trim", "idle+storm", "idle"})
         public String layers;
 
         /**
@@ -98,9 +103,13 @@ public class IdleBenchmark {
             if (layers.equals("baseline")) {
                 return;
             }
-            boolean storm = !layers.equals("rule");
-            boolean trim = layers.equals("rule+storm+trim") || layers.equals("idle");
-            boolean top = layers.equals("idle");
+            Pipeline.Storm storm = switch (layers) {
+                case "rule" -> Pipeline.Storm.NONE;
+                case "rule+storm-off", "idle" -> Pipeline.Storm.DISABLED;
+                default -> Pipeline.Storm.ENABLED;
+            };
+            boolean trim = layers.equals("rule+storm+trim") || layers.startsWith("idle");
+            boolean top = layers.startsWith("idle");
             pipeline = Pipeline.install(storm, trim, top);
             pipeline.requireInstalledOn(tree.handlers());
         }

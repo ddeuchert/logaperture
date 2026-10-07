@@ -19,6 +19,7 @@ import org.logaperture.adapter.jul.JulAdapterFactory;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.InMemoryAuditLog;
 import org.logaperture.core.RuleService;
+import org.logaperture.core.StormDetectionSwitch;
 import org.logaperture.core.StormService;
 import org.logaperture.core.TopService;
 import org.logaperture.core.spi.LoggingAdapter;
@@ -35,13 +36,21 @@ import java.util.logging.Handler;
  */
 final class Pipeline {
 
+    /**
+     * The storm filter's state: not installed, installed and enabled, or installed and disabled --
+     * the shipped default since #151 (doc/specs/storm-detection-toggle.md T1, T5).
+     */
+    enum Storm {
+        NONE, ENABLED, DISABLED
+    }
+
     final LoggingAdapter adapter;
     final RuleService rules;
-    private final boolean storm;
+    private final Storm storm;
     private final boolean trim;
     private final boolean top;
 
-    private Pipeline(LoggingAdapter adapter, RuleService rules, boolean storm, boolean trim, boolean top) {
+    private Pipeline(LoggingAdapter adapter, RuleService rules, Storm storm, boolean trim, boolean top) {
         this.adapter = adapter;
         this.rules = rules;
         this.storm = storm;
@@ -50,7 +59,7 @@ final class Pipeline {
     }
 
     /** The rule filter always; the other three layers as asked. */
-    static Pipeline install(boolean storm, boolean trim, boolean top) {
+    static Pipeline install(Storm storm, boolean trim, boolean top) {
         LoggingAdapter adapter = JulAdapterFactory.forCurrentContext();
         CapabilityPolicy policy = CapabilityPolicy.allowAll();
         RuleService rules = new RuleService(adapter, policy, new InMemoryAuditLog(), StateStore.noOp(),
@@ -64,23 +73,28 @@ final class Pipeline {
         if (top) {
             new TopService(adapter, policy).startMeasuring();
         }
-        if (storm) {
-            new StormService(adapter, policy).startDetection();
+        if (storm != Storm.NONE) {
+            StormDetectionSwitch detectionSwitch = new StormDetectionSwitch(storm == Storm.ENABLED, policy,
+                    new InMemoryAuditLog(), "bench");
+            new StormService(adapter, policy, detectionSwitch).startDetection();
         }
         rules.installPipeline();
         return new Pipeline(adapter, rules, storm, trim, top);
     }
 
-    /** Everything a container installs at context install: the {@code idle} scenario. */
+    /**
+     * Everything a container installs at context install, as shipped: the {@code idle} scenario.
+     * Storm detection is installed but disabled, its default since #151.
+     */
     static Pipeline installIdle() {
-        return install(true, true, true);
+        return install(Storm.DISABLED, true, true);
     }
 
     /** A scenario that quietly installed nothing would publish the baseline twice. */
     void requireInstalledOn(List<? extends Handler> handlers) {
         for (Handler handler : handlers) {
             requireClass("filter", handler.getFilter(), "JulRuleFilter");
-            if (storm) {
+            if (storm != Storm.NONE) {
                 requireClass("inner filter", innerFilter(handler), "JulStormFilter");
             }
             if (top) {
