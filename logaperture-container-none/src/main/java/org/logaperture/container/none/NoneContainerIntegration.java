@@ -64,8 +64,9 @@ public final class NoneContainerIntegration implements ContainerIntegration {
     @Override
     public AggregateLevelControl activate(
             Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog, VendorDefaults vendorDefaults,
-            Consumer<AggregateLevelControl> onFirstContextReady) {
-        NoneContainer root = new NoneContainer(policy, auditLog, sweepInterval, vendorDefaults);
+            boolean stormDetectionEnabled, Consumer<AggregateLevelControl> onFirstContextReady) {
+        NoneContainer root = new NoneContainer(policy, auditLog, sweepInterval, vendorDefaults,
+                stormDetectionEnabled);
 
         // Runs later, on the detector thread. Guard it: install failure must
         // degrade to a Diagnostics line, never an uncaught exception on that

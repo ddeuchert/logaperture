@@ -25,6 +25,7 @@ import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.SetLevelResultData;
 import org.logaperture.control.jmx.SquelchedLoggerData;
 import org.logaperture.control.jmx.StormData;
+import org.logaperture.control.jmx.StormDetectionData;
 import org.logaperture.control.jmx.StormReportData;
 import org.logaperture.control.jmx.TopReportData;
 
@@ -198,7 +199,188 @@ class CommandsTest {
     void statusWithNothingActivePrintsTheEmptyStateLine() {
         mbean.loggers = List.of(new LoggerInfoData("a", "INFO", "INFO", false, null, null, null, null));
         assertEquals(CliError.OK, run(Commands.status(false)));
+        assertEquals("Storm detection: enabled\n\nNo active overrides.", output().strip().replace("\r\n", "\n"));
+    }
+
+    // --- storm detection on and off (doc/specs/storm-detection-toggle.md) ---------------------------
+
+    @Test
+    void status_saysStormDetectionIsDisabled_andSinceWhenAfterARuntimeChange() {
+        mbean.stormDetection = new StormDetectionData(false, false, false, "2026-10-07T16:40:12Z", true, "SESSION", null);
+
+        run(Commands.status(false));
+
+        assertTrue(output().contains("Storm detection: disabled (since 2026-10-07T16:40:12Z)"), output());
+    }
+
+    @Test
+    void status_fromAnAgentWithoutTheSwitch_printsNoStormLine() {
+        mbean.stormDetectionFailure = new java.lang.reflect.UndeclaredThrowableException(
+                new javax.management.ReflectionException(new NoSuchMethodException("stormDetection")));
+        mbean.loggers = List.of(new LoggerInfoData("a", "INFO", "INFO", false, null, null, null, null));
+
+        assertEquals(CliError.OK, run(Commands.status(false)));
+
         assertEquals("No active overrides.", output().strip());
+    }
+
+    @Test
+    void status_json_carriesTheStormDetectionObject() {
+        mbean.stormDetection = new StormDetectionData(false, false, false, null, false, "SESSION", null);
+
+        run(Commands.status(true));
+
+        assertTrue(output().contains("\"stormDetection\":{\"enabled\":false,\"changedAt\":null,\"tier\":\"SESSION\","
+                + "\"expiresAt\":null}"), output());
+    }
+
+    @Test
+    void enableStorms_fromDisabled_reportsTheChange() {
+        mbean.stormDetection = new StormDetectionData(false, false, false, null, false, "SESSION", null);
+
+        assertEquals(CliError.OK, run(Commands.setStormDetection(true, "INC-4411", SESSION, false)));
+
+        assertEquals("Storm detection is now enabled (was disabled). Measuring from 2026-10-07T14:05:00Z.",
+                output().strip());
+        assertArrayEquals(new Object[] {true, "INC-4411", "SESSION", 0L}, mbean.setStormDetectionCalls.get(0));
+    }
+
+    @Test
+    void disableStorms_fromEnabled_saysWhatIsKept() {
+        assertEquals(CliError.OK, run(Commands.setStormDetection(false, null, SESSION, false)));
+
+        assertEquals("Storm detection is now disabled (was enabled). Storms tracked so far are kept as of "
+                + "2026-10-07T14:05:00Z.", output().strip());
+    }
+
+    @Test
+    void enableStorms_whenAlreadyEnabled_changesNothing_andExitsZero() {
+        assertEquals(CliError.OK, run(Commands.setStormDetection(true, null, SESSION, false)));
+
+        assertEquals("Storm detection is already enabled. Nothing changed.", output().strip());
+    }
+
+    @Test
+    void enableStorms_json() {
+        mbean.stormDetection = new StormDetectionData(false, false, false, null, false, "SESSION", null);
+
+        run(Commands.setStormDetection(true, null, SESSION, true));
+
+        assertEquals("{\"enabled\":true,\"previous\":false,\"changedAt\":\"2026-10-07T14:05:00Z\","
+                + "\"tier\":\"SESSION\",\"expiresAt\":null}", output().strip());
+    }
+
+    @Test
+    void enableStorms_againstAnAgentWithoutTheSwitch_saysItIsAlwaysOn() {
+        mbean.stormDetectionFailure = new java.lang.reflect.UndeclaredThrowableException(
+                new javax.management.ReflectionException(new NoSuchMethodException("setStormDetection")));
+
+        CliError error = assertThrows(CliError.class, () -> run(Commands.setStormDetection(true, null, SESSION, false)));
+
+        assertTrue(error.getMessage().contains("does not support enabling or disabling storm detection; it is "
+                + "always on"), error.getMessage());
+    }
+
+    private static final Parser.TierChoice SESSION = new Parser.TierChoice("SESSION", 0L);
+
+    @Test
+    void enableStormsFor30m_saysWhenItSwitchesBack() {
+        mbean.stormDetection = new StormDetectionData(false, false, false, null, false, "SESSION", null);
+
+        run(Commands.setStormDetection(true, "watch the batch", new Parser.TierChoice("FOR", 1800L), false));
+
+        assertEquals("Storm detection is now enabled (was disabled) until 2026-10-07T14:35:00Z, then disabled. "
+                + "Measuring from 2026-10-07T14:05:00Z.", output().strip());
+        assertArrayEquals(new Object[] {true, "watch the batch", "FOR", 1800L}, mbean.setStormDetectionCalls.get(0));
+    }
+
+    @Test
+    void disableStormsSticky_saysItStaysDisabledAcrossRestarts() {
+        run(Commands.setStormDetection(false, null, new Parser.TierChoice("STICKY", 0L), false));
+
+        assertEquals("Storm detection is now disabled (was enabled). Stays disabled across restarts. Storms tracked "
+                + "so far are kept as of 2026-10-07T14:05:00Z.", output().strip());
+    }
+
+    @Test
+    void enableStormsSticky_whenAlreadyStickyEnabled_changesNothing() {
+        mbean.stormDetection = new StormDetectionData(true, true, false, "2026-10-07T14:05:00Z", false, "STICKY",
+                null);
+
+        run(Commands.setStormDetection(true, null, new Parser.TierChoice("STICKY", 0L), false));
+
+        assertEquals("Storm detection is already enabled (sticky). Nothing changed.", output().strip());
+    }
+
+    @Test
+    void status_showsTheTier_forAndSticky() {
+        mbean.stormDetection = new StormDetectionData(true, true, false, "2026-10-07T14:05:00Z", false, "FOR",
+                "2026-10-07T14:35:00Z");
+        run(Commands.status(false));
+        assertTrue(output().contains("Storm detection: enabled (until 2026-10-07T14:35:00Z, then disabled)"),
+                output());
+
+        captured.reset();
+        mbean.stormDetection = new StormDetectionData(false, false, false, "2026-10-07T14:05:00Z", true, "STICKY",
+                null);
+        run(Commands.status(false));
+        assertTrue(output().contains("Storm detection: disabled (sticky)"), output());
+    }
+
+    @Test
+    void storms_enabledForAWhile_saysSoFirst() {
+        mbean.stormDetection = new StormDetectionData(true, true, false, "2026-10-07T14:05:00Z", false, "FOR",
+                "2026-10-07T14:35:00Z");
+        mbean.stormReport = new StormReportData(List.of(), 0, 0, "2026-10-07T14:05:00Z", 0, true,
+                "2026-10-07T14:05:00Z");
+
+        run(Commands.storms(0, false));
+
+        assertTrue(output().startsWith("Storm detection is enabled until 2026-10-07T14:35:00Z, then disabled."),
+                output());
+        assertTrue(output().contains("No log storms detected."), output());
+    }
+
+    @Test
+    void storms_disabledAndNeverEnabled_saysHowToEnableIt() {
+        mbean.stormReport = new StormReportData(List.of(), 0, 0, null, 0, false, null);
+
+        assertEquals(CliError.OK, run(Commands.storms(0, false)));
+
+        assertEquals("Storm detection is disabled. Enable it with `logctl enable storms`, or start the agent "
+                + "with --storm-detection=on.", output().strip());
+    }
+
+    @Test
+    void storms_disabledAfterBeingOn_showsTheFrozenReportUnderAFirstLine() {
+        Instant disabledAt = Instant.now().minus(10, ChronoUnit.MINUTES);
+        Instant firstEventAt = disabledAt.minus(5, ChronoUnit.MINUTES);
+        mbean.stormReport = new StormReportData(List.of(
+                new StormData("com.acme.batch.Worker", "ERROR", null, "no capacity", null, "ONGOING",
+                        firstEventAt.toString(), disabledAt.toString(), null, 3_000L, null, null)),
+                1, 1, firstEventAt.minus(1, ChronoUnit.HOURS).toString(), 0, false, disabledAt.toString());
+
+        run(Commands.storms(0, false));
+
+        String text = output();
+        assertTrue(text.startsWith("Storm detection is disabled since " + disabledAt
+                + ". Figures below are as of then."), text);
+        assertTrue(text.contains("[ONGOING]"), text);
+        // Elapsed and rate run to the moment it was disabled, not to now: 3,000 events over 5 minutes.
+        assertTrue(text.contains("(5m0s ago)") || text.contains("(5m ago)"), text);
+        assertTrue(text.contains("~600/min"), text);
+        assertTrue(text.contains(" measured since " + firstEventAt.minus(1, ChronoUnit.HOURS) + "."), text);
+    }
+
+    @Test
+    void doctor_whenStormDetectionIsDisabled_saysSoInsteadOfThePointer() {
+        mbean.findings = List.of(new DoctorFindingData("logger.verbosity-left-on", "OK", "ROOT",
+                "no excess verbosity found at root or on a known-chatty logger.", null, null, null));
+        mbean.stormDetection = new StormDetectionData(false, false, false, null, false, "SESSION", null);
+
+        assertEquals(CliError.OK, run(Commands.doctor(false)));
+
+        assertTrue(output().contains("Storm detection is disabled — see `logctl enable storms`."), output());
     }
 
     @Test

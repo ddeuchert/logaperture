@@ -19,6 +19,7 @@ import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.PersistedRule;
+import org.logaperture.core.StormDetectionSetting;
 
 import java.nio.file.Path;
 import java.util.Collection;
@@ -130,7 +131,26 @@ public interface StateStore {
         }
     }
 
-    /** Removes every persisted entry — logger overrides, handler overrides, rules, and {@code DEFAULT_HANDLERS} membership alike. */
+    /**
+     * The saved storm-detection setting, if a {@code for} or {@code sticky} one was made --
+     * doc/specs/storm-detection-toggle.md "State file". Default empty, for a store that predates it.
+     */
+    default Optional<StormDetectionSetting> loadStormDetection() {
+        return Optional.empty();
+    }
+
+    /** Replaces the saved storm-detection setting -- there is at most one. Default no-op. */
+    default void saveStormDetection(StormDetectionSetting setting) {
+    }
+
+    /** No-op if none is saved. */
+    default void removeStormDetection() {
+    }
+
+    /**
+     * Removes every persisted entry — logger overrides, handler overrides, rules, {@code
+     * DEFAULT_HANDLERS} membership and the storm-detection setting alike.
+     */
     void clear();
 
     /**

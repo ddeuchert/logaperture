@@ -157,6 +157,9 @@ opinion about *when* it runs, only *what* running it does.
   "within ~30s of the requested duration," which is a fine bound for its stated use case ("quick
   check during a redeploy loop," "support work, triage") and materially simpler than one
   `ScheduledFuture` per override plus the cancellation bookkeeping that implies.
+- The storm-detection switch's `for` setting rides the same sweep (issue #151,
+  [`storm-detection-toggle.md`](storm-detection-toggle.md) T12): at its deadline it switches to
+  the *other* position, not back to a baseline, since a switch has none.
 
 ### Resume on restart
 
@@ -178,6 +181,9 @@ Runs once, inside `NoneContainer.install`, after baseline capture and before the
    silently dropping it — would mean the only evidence a `--for` override ever existed vanishes
    the moment the process that would have reverted it wasn't running to do so, which fails the
    "revert is recorded too" bar §9.7 already sets for the in-process case.
+6. The storm-detection setting (issue #151, [`storm-detection-toggle.md`](storm-detection-toggle.md)
+   "Restart") follows rules 3–5, once per JVM rather than per context, and wins over the agent's
+   `--storm-detection` argument; an expired `for` one leaves the argument in charge.
 
 ### Reconfiguration re-application
 
@@ -313,6 +319,10 @@ Lives in `org.logaperture.core.spi`, alongside `LoggingAdapter` — same rationa
 the module layout's existing "state store" line) is what ships, but a shared/external store for
 containerized or clustered deployments (§18.6) is a later implementation of this same interface,
 not a redesign of anything that calls it.
+
+`loadStormDetection`/`saveStormDetection`/`removeStormDetection` (issue #151, state schema 12)
+hold the one storm-detection setting, a top-level `stormDetection:` mapping written only for a
+`for` or `sticky` setting: [`storm-detection-toggle.md`](storm-detection-toggle.md) "State file".
 
 `saveHandler`/`removeHandler`/`removeAllHandlers` (`doc/specs/handler-floor-control.md`) round
 out the same interface for handler overrides, in their own namespace within one state file — not

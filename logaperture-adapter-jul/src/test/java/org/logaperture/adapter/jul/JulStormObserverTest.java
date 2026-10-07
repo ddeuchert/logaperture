@@ -73,10 +73,16 @@ class JulStormObserverTest {
     /** Records every observation fed to it -- never throws, matching the real contract. */
     private static final class RecordingObserver implements StormObserver {
         final List<StormObservation> observed = new ArrayList<>();
+        volatile boolean active = true;
 
         @Override
         public void observe(StormObservation observation) {
             observed.add(observation);
+        }
+
+        @Override
+        public boolean isActive() {
+            return active;
         }
     }
 
@@ -171,6 +177,36 @@ class JulStormObserverTest {
 
             assertEquals(2, observer.observed.size());
             assertEquals(name("feed"), observer.observed.get(0).loggerName());
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
+    @Test
+    void disabled_theFilterStaysInstalled_feedsNothing_andKeepsTheVerdict() {
+        // doc/specs/storm-detection-toggle.md T5: installed in both positions, inert when disabled.
+        FakePersistentHandler handler = new FakePersistentHandler();
+        Filter denyAll = record -> false;
+        handler.setFilter(denyAll);
+        Logger logger = Logger.getLogger(name("disabled"));
+        logger.addHandler(handler);
+        logger.setUseParentHandlers(false);
+        RecordingObserver observer = new RecordingObserver();
+        observer.active = false;
+        try {
+            adapter.installStormDetection(observer);
+            Filter installed = handler.getFilter();
+
+            LogRecord record = new LogRecord(Level.INFO, "hello");
+            record.setLoggerName(name("disabled"));
+            assertFalse(installed.isLoggable(record), "the pre-existing filter's verdict still applies");
+            logger.info("not observed");
+            assertTrue(observer.observed.isEmpty());
+
+            observer.active = true;
+            logger.info("observed");
+            assertEquals(1, observer.observed.size());
+            assertEquals(installed, handler.getFilter(), "the same filter, enabled or not");
         } finally {
             logger.removeHandler(handler);
         }

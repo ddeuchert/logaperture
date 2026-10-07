@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** doc/specs/vendor-defaults.md "Agent arguments". */
@@ -64,6 +65,46 @@ class AgentArgumentsTest {
 
         assertEquals(Optional.of(Path.of("/opt/v.yaml").toAbsolutePath()), args.vendorDefaults());
         assertEquals(List.of("ignoring unknown agent argument '--future-thing'"), args.warnings());
+    }
+
+    // --- --storm-detection (doc/specs/storm-detection-toggle.md "Starting state") ---------------------
+
+    @Test
+    void stormDetection_isOffWhenAbsent() {
+        assertFalse(AgentArguments.parse(null, CWD).stormDetection());
+        assertFalse(AgentArguments.parse("--vendor-defaults=/opt/v.yaml", CWD).stormDetection());
+    }
+
+    @Test
+    void stormDetection_onOrOff_inAnyCase_alongsideVendorDefaultsInEitherOrder() {
+        AgentArguments on = AgentArguments.parse("--storm-detection=ON,--vendor-defaults=/opt/v.yaml", CWD);
+        AgentArguments off = AgentArguments.parse("--vendor-defaults=/opt/v.yaml,--storm-detection=off", CWD);
+
+        assertTrue(on.stormDetection());
+        assertEquals(Optional.of(Path.of("/opt/v.yaml").toAbsolutePath()), on.vendorDefaults());
+        assertFalse(off.stormDetection());
+        assertEquals(Optional.of(Path.of("/opt/v.yaml").toAbsolutePath()), off.vendorDefaults());
+        assertEquals(List.of(), on.warnings());
+        assertEquals(List.of(), off.warnings());
+    }
+
+    @Test
+    void stormDetection_badOrMissingValue_warnsAndStaysOff() {
+        AgentArguments bad = AgentArguments.parse("--storm-detection=yes", CWD);
+        AgentArguments missing = AgentArguments.parse("--storm-detection=", CWD);
+
+        assertFalse(bad.stormDetection());
+        assertEquals(List.of("ignoring --storm-detection=yes -- expected on or off"), bad.warnings());
+        assertFalse(missing.stormDetection());
+        assertEquals(1, missing.warnings().size());
+    }
+
+    @Test
+    void stormDetection_repeated_keepsTheFirst() {
+        AgentArguments args = AgentArguments.parse("--storm-detection=on,--storm-detection=off", CWD);
+
+        assertTrue(args.stormDetection());
+        assertEquals(List.of("--storm-detection is given more than once -- using the first, on"), args.warnings());
     }
 
     @Test

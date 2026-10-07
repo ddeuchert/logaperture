@@ -273,13 +273,15 @@ final class Parser {
         boolean isAddRuleUntyped = isAddRule && !isAddRuleDrop && !isAddRuleTrim;
         boolean isAlterRule = command.equals("alter") && !rest.isEmpty() && rest.get(0).equals("rule");
         boolean isApply = command.equals("apply");
+        boolean isEnableDisable = command.equals("enable") || command.equals("disable");
 
         if (yes && !isSetLogger && !isAddRule && !isApply) {
             throw usage("--yes applies only to 'set logger', 'add rule' or 'apply recipe'.");
         }
-        if (reason != null && !isSetLogger && !isSetHandler && !isAddRule && !isAlterRule && !isApply) {
-            throw usage("--reason applies only to 'set logger', 'set handler', 'add rule', 'alter rule', or "
-                    + "'apply recipe'.");
+        if (reason != null && !isSetLogger && !isSetHandler && !isAddRule && !isAlterRule && !isApply
+                && !isEnableDisable) {
+            throw usage("--reason applies only to 'set logger', 'set handler', 'add rule', 'alter rule', "
+                    + "'apply recipe', 'enable' or 'disable'.");
         }
         if (toNative && !(command.equals("reset") && (rest.isEmpty() || List.of("logger", "loggers", "handler",
                 "handlers", "default-handler", "rule", "rules").contains(rest.get(0))))) {
@@ -448,9 +450,19 @@ final class Parser {
             }
             case "storms" -> {
                 if (!rest.isEmpty()) {
-                    throw usage("'storms' takes no arguments.");
+                    throw usage("'storms' takes no arguments -- to turn storm detection on or off, use "
+                            + "'logctl enable storms' or 'logctl disable storms'.");
                 }
                 yield Commands.storms(limit == null ? 0 : limit, json);
+            }
+            case "enable", "disable" -> {
+                boolean enable = command.equals("enable");
+                if (rest.isEmpty() || !rest.get(0).equals("storms")) {
+                    throw usage("'" + command + "' needs what to " + command + ": 'logctl " + command
+                            + " storms'.");
+                }
+                TierChoice tier = resolveSwitchTier(rest.subList(1, rest.size()));
+                yield Commands.setStormDetection(enable, reason, tier, json);
             }
             case "env" -> {
                 if (!rest.isEmpty()) {
@@ -710,6 +722,15 @@ final class Parser {
             return new TierChoice("FOR", Durations.parse(tokens.get(1)).toSeconds());
         }
         throw usage("Too many arguments after the level — expected 'session', 'sticky' or 'for <duration>'.");
+    }
+
+    /**
+     * {@code enable|disable storms}' trailing tier token(s) -- doc/specs/storm-detection-toggle.md.
+     * None given means {@code session}, unlike {@link #resolveTier}'s {@code for 4h}: a switch has no
+     * default position to revert to.
+     */
+    static TierChoice resolveSwitchTier(List<String> tokens) {
+        return tokens.isEmpty() ? new TierChoice("SESSION", 0L) : resolveTier(tokens);
     }
 
     /**

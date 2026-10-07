@@ -10,6 +10,12 @@ state" (overhead-benchmarks.md review Decisions #9–#11, all on the recommended
 with the text built only for a new fingerprint ("Message normalization", "Fingerprint
 counters"); the normalization cache holds that hash and admits a message on its second miss
 ("Normalization cache"); an allocation-free observer entry point ("Adapter SPI").
+**Amendment (issue [#151](https://github.com/ddeuchert/logaperture/issues/151)), signed off
+2026-10-06:** storm detection is no longer always on. It starts disabled unless the agent is
+started with `--storm-detection=on`, and `logctl enable|disable storms` sets it at runtime. The
+gate-stage observer below is still installed at context install in both positions and does nothing
+while disabled. What a change does to tracked storms and to `measurementStartedAt`, and how every
+surface reports it: [`storm-detection-toggle.md`](storm-detection-toggle.md).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §7.1 (automatic storm
 collapse — this slice is its report-only half), §4.2 (two-stage pipeline — gate stage),
 §9.3 (capability model — `view`), §9.6 (suppression must never be silent — the reason

@@ -81,11 +81,24 @@ public interface ContainerIntegration {
      * {@link #activate(Instrumentation, CapabilityPolicy, AuditLog, Consumer)}, plus the vendor
      * defaults file the agent parsed at {@code premain} (doc/specs/vendor-defaults.md "The
      * baseline layer") -- applied by every context this integration installs, and reported by
-     * {@code logctl status}/{@code env}/{@code doctor}.
+     * {@code logctl status}/{@code env}/{@code doctor}. Storm detection starts disabled, its
+     * default (doc/specs/storm-detection-toggle.md T1).
+     */
+    default AggregateLevelControl activate(
+            Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog, VendorDefaults vendorDefaults,
+            Consumer<AggregateLevelControl> onFirstContextReady) {
+        return activate(inst, policy, auditLog, vendorDefaults, false, onFirstContextReady);
+    }
+
+    /**
+     * The full form: the vendor defaults file, and whether storm detection starts enabled -- the
+     * agent's {@code --storm-detection=on|off} argument (doc/specs/storm-detection-toggle.md T2).
+     * The integration builds the agent's one storm-detection switch from it and hands it to every
+     * context it installs.
      */
     AggregateLevelControl activate(
             Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog, VendorDefaults vendorDefaults,
-            Consumer<AggregateLevelControl> onFirstContextReady);
+            boolean stormDetectionEnabled, Consumer<AggregateLevelControl> onFirstContextReady);
 
     /** Where the {@code -javaagent} flag goes, for diagnostics and help. Default {@link InstallGuidance#NONE}. */
     default InstallGuidance guidance() {

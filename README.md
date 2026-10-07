@@ -46,7 +46,7 @@ Working today:
 - **`logctl top`** — bytes written per logger, worst-first, with a projected daily total and the stack-trace-byte fraction.
 - **`logctl status`** / **`logctl reset loggers`** / **`logctl reset handlers`** — what LogAperture has changed, and undo all of it.
 - **`logctl add rule drop|trim <logger> …`** — drop a known-noisy message, or keep it but shorten its stack trace, without touching the logger's level. Rules get ids, expire like overrides, and are listed, changed and removed with `list rules`, `alter rule` and `reset rule`.
-- **`logctl storms`** — the log storms the agent has detected (a burst of near-identical events from one logger), first occurrence kept in full. Report-only: nothing is suppressed.
+- **`logctl storms`** — the log storms the agent has detected (a burst of near-identical events from one logger), first occurrence kept in full. Report-only: nothing is suppressed. Storm detection starts disabled: turn it on with `logctl enable storms` (add `for 30m` or `sticky`), or start the agent with `--storm-detection=on`.
 - **Vendor defaults file** (`-javaagent:…=--vendor-defaults=<file>`) — ship baseline levels and rules with a product; `logctl reset` returns to them, and `logctl export vendor-defaults` writes your sticky settings out as one.
 - **Guided commands** — on a terminal, leave out what `set`, `reset`, `list`, `add rule` or `alter rule` needs and `logctl` asks, picking loggers, handlers and rules from numbered lists, then prints the equivalent one-line command.
 

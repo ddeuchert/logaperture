@@ -169,6 +169,13 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     private final VendorDefaults vendorDefaults;
 
     /**
+     * Whether storm detection is enabled, for every context at once (doc/specs/
+     * storm-detection-toggle.md T4). A container hands it to each context's {@link StormService}
+     * through {@link #stormDetectionSwitch()}.
+     */
+    private final StormDetectionSwitch stormDetectionSwitch;
+
+    /**
      * Set once {@link #installHandlerLevel()} has succeeded -- every step, none swallowed -- for at
      * least one context. A context whose steps threw is retried on a later sweep and does not count.
      */
@@ -223,6 +230,17 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     public AggregateLevelControl(String containerName, Supplier<Optional<String>> containerVersion,
             String stateFilePath, BooleanSupplier handlerInstallAllowed, VendorDefaults vendorDefaults) {
+        this(containerName, containerVersion, stateFilePath, handlerInstallAllowed, vendorDefaults,
+                StormDetectionSwitch.alwaysEnabled());
+    }
+
+    /**
+     * @param stormDetectionSwitch the agent's one storm-detection switch; see the field doc
+     */
+    public AggregateLevelControl(String containerName, Supplier<Optional<String>> containerVersion,
+            String stateFilePath, BooleanSupplier handlerInstallAllowed, VendorDefaults vendorDefaults,
+            StormDetectionSwitch stormDetectionSwitch) {
+        this.stormDetectionSwitch = Objects.requireNonNull(stormDetectionSwitch, "stormDetectionSwitch");
         this.vendorDefaults = Objects.requireNonNull(vendorDefaults, "vendorDefaults");
         this.containerName = containerName;
         this.containerVersion = Objects.requireNonNull(containerVersion, "containerVersion");
@@ -510,6 +528,31 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         merged.sort(StormDetector.worstFirst());
         List<Storm> limited = limit > 0 && merged.size() > limit ? merged.subList(0, limit) : merged;
         return new StormReport(List.copyOf(limited), trackedCount, ongoingCount, earliest, notRetainedCount);
+    }
+
+    /** The agent's one storm-detection switch, for each context's {@link StormService}. */
+    public StormDetectionSwitch stormDetectionSwitch() {
+        return stormDetectionSwitch;
+    }
+
+    @Override
+    public StormDetectionSwitch.State stormDetection() {
+        return stormDetectionSwitch.state();
+    }
+
+    /**
+     * One switch covers every context (doc/specs/storm-detection-toggle.md T4), so this sets it
+     * once; enabling clears and restarts every context's window through the switch's listeners.
+     */
+    @Override
+    public StormDetectionSwitch.Change setStormDetection(boolean enabled, String reason) {
+        return stormDetectionSwitch.set(enabled, reason);
+    }
+
+    @Override
+    public StormDetectionSwitch.Change setStormDetection(boolean enabled, String reason, PersistenceTier tier,
+            Duration forDuration) {
+        return stormDetectionSwitch.set(enabled, reason, tier, forDuration);
     }
 
     /**
@@ -809,7 +852,8 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         if (contexts.isEmpty()) {
             throw new IllegalStateException("no logging context is registered yet");
         }
-        return VendorDefaultsExporter.export(contexts.get(0), vendorDefaults, agentVersion(), Instant.now());
+        return VendorDefaultsExporter.export(contexts.get(0), vendorDefaults, agentVersion(), Instant.now(),
+                stormDetectionSwitch.current());
     }
 
     /**
@@ -1238,6 +1282,13 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * Covers logger and handler overrides alike, and {@code for <duration>} rules (issue #95).
      */
     public void sweepExpiredOverrides(Instant now) {
+        // doc/specs/storm-detection-toggle.md T12: one switch for every context, swept once -- first,
+        // and on its own guard, so a context whose sweep keeps failing can't hold a 'for' on forever.
+        try {
+            stormDetectionSwitch.sweepExpired(now);
+        } catch (RuntimeException e) {
+            Diagnostics.warn("failed to switch over an expired storm-detection setting", e);
+        }
         for (ContextControl context : sortedByKey()) {
             context.service().sweepExpiredOverrides(now);
             context.handlerService().sweepExpiredOverrides(now);

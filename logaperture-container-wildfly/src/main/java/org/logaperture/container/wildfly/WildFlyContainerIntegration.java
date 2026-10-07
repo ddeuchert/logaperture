@@ -101,14 +101,15 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
     @Override
     public AggregateLevelControl activate(
             Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog, VendorDefaults vendorDefaults,
-            Consumer<AggregateLevelControl> onFirstContextReady) {
+            boolean stormDetectionEnabled, Consumer<AggregateLevelControl> onFirstContextReady) {
         // this::version, not version().orElse(null) -- see version()'s javadoc.
         // jboss.home.dir is not yet visible to System.getProperty at this
         // (premain) point in every real launch tried, so calling version()
         // here bakes in "no version" permanently. Deferred, it is re-resolved
         // fresh whenever logctl env actually runs, long after WildFly's own
         // bootstrap has set it.
-        WildFlyContainer host = new WildFlyContainer(policy, auditLog, sweepInterval, this::version, vendorDefaults);
+        WildFlyContainer host = new WildFlyContainer(policy, auditLog, sweepInterval, this::version, vendorDefaults,
+                stormDetectionEnabled);
 
         Runnable install = () -> {
             try {

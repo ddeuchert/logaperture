@@ -335,7 +335,7 @@ class FileStateStoreTest {
             assertNotNull(stateId);
         }
         String rewritten = Files.readString(stateFile);
-        assertTrue(rewritten.contains("schemaVersion: 11"), rewritten);
+        assertTrue(rewritten.contains("schemaVersion: 12"), rewritten);
         assertTrue(rewritten.contains(stateId), rewritten);
         try (FileStateStore reopened = FileStateStore.open()) {
             assertEquals(stateId, reopened.loadAll().get(0).stateId());
@@ -365,5 +365,26 @@ class FileStateStoreTest {
 
     private static HandlerLevelOverride sampleHandlerOverride(HandlerRef ref) {
         return HandlerLevelOverride.fixed(ref, Level.WARN, null, Instant.now(), "jmx", PersistenceTier.STICKY, null);
+    }
+
+    @Test
+    void stormDetection_survivesReopening_andRemoveAndClearForgetIt() throws IOException {
+        StormDetectionSetting setting = new StormDetectionSetting(true, PersistenceTier.STICKY, null, "keep watching",
+                Instant.parse("2026-10-08T02:00:00Z"), "jmx");
+        try (FileStateStore store = FileStateStore.open()) {
+            store.saveStormDetection(setting);
+        }
+        try (FileStateStore store = FileStateStore.open()) {
+            assertEquals(java.util.Optional.of(setting), store.loadStormDetection());
+            store.removeStormDetection();
+        }
+        try (FileStateStore store = FileStateStore.open()) {
+            assertTrue(store.loadStormDetection().isEmpty());
+            store.saveStormDetection(setting);
+            store.clear();
+        }
+        try (FileStateStore store = FileStateStore.open()) {
+            assertTrue(store.loadStormDetection().isEmpty());
+        }
     }
 }

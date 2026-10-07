@@ -60,6 +60,24 @@ class AgentBootstrapTest {
                 AgentBootstrap.banner("1.0.0", "none", org.logaperture.core.VendorDefaults.none(), 0));
     }
 
+    @Test
+    void banner_saysStormDetectionOn_onlyWhenItStartsEnabled() {
+        // doc/specs/storm-detection-toggle.md "Starting state": disabled, the default, says nothing.
+        org.logaperture.core.VendorDefaults none = org.logaperture.core.VendorDefaults.none();
+        java.time.Instant at = java.time.Instant.parse("2026-10-08T02:30:00Z");
+        assertEquals("LogAperture 1.0.0 active (JVM): storm detection on", AgentBootstrap.banner("1.0.0", "none",
+                none, 0, new org.logaperture.core.StormDetectionSwitch.State(true, true, null)));
+        assertEquals("LogAperture 1.0.0 active (JVM)", AgentBootstrap.banner("1.0.0", "none", none, 0,
+                new org.logaperture.core.StormDetectionSwitch.State(false, true, at)));
+        // A saved setting, resumed (slice 2).
+        assertEquals("LogAperture 1.0.0 active (JVM): storm detection on (sticky)", AgentBootstrap.banner("1.0.0",
+                "none", none, 0, new org.logaperture.core.StormDetectionSwitch.State(true, false, at,
+                        org.logaperture.api.PersistenceTier.STICKY, null)));
+        assertEquals("LogAperture 1.0.0 active (JVM): storm detection on until 2026-10-08T02:30:00Z",
+                AgentBootstrap.banner("1.0.0", "none", none, 0, new org.logaperture.core.StormDetectionSwitch.State(
+                        true, false, at, org.logaperture.api.PersistenceTier.FOR, at)));
+    }
+
     /** Q1: one audit record per vendor defaults load, naming the file and its hash. */
     @Test
     void auditVendorDefaults_writesOneRecordWithTheHash() throws Exception {

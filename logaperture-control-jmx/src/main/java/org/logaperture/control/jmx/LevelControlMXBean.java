@@ -240,6 +240,24 @@ public interface LevelControlMXBean {
     StormReportData activeStorms(int limit);
 
     /**
+     * Whether storm detection is enabled, and when that last changed at runtime
+     * (doc/specs/storm-detection-toggle.md). Requires only the {@code VIEW} capability.
+     */
+    StormDetectionData stormDetection();
+
+    /**
+     * {@code logctl enable|disable storms}: sets storm detection to {@code enabled} in every
+     * context, whatever its current position; a request for the position and tier it already has
+     * changes nothing (doc/specs/storm-detection-toggle.md T4, T8, T10). {@code tier} is {@code
+     * "SESSION"}, {@code "FOR"} -- for {@code forSeconds}, after which it switches to the other
+     * position -- or {@code "STICKY"}, kept across restarts. Requires the {@code DIAGNOSTICS}
+     * capability, and {@code PERSIST} too for {@code FOR} and {@code STICKY}.
+     *
+     * @param reason why, for the audit record; may be {@code null}
+     */
+    StormDetectionData setStormDetection(boolean enabled, String reason, String tier, long forSeconds);
+
+    /**
      * {@code logctl env} — a read-only environment report for a bug report
      * (doc/specs/environment-report.md). Never mutates anything; requires
      * only the {@code VIEW} capability. A fact this JVM can't resolve is
