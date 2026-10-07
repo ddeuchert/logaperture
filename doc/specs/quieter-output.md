@@ -70,6 +70,10 @@ installed:
 [logaperture] LogAperture 1.0.0-beta.1 active (WildFly): vendor defaults /opt/app/vendor-defaults.yaml (12 loggers, 2 handlers, 10 rules); 3 sticky settings restored
 ```
 
+When storm detection starts enabled (`--storm-detection=on`), the banner ends with `; storm
+detection on`; disabled, the default, it says nothing ([`storm-detection-toggle.md`](
+storm-detection-toggle.md), issue #151).
+
 It is written at every level except `ERROR` (Q7), since it's the one confirmation an operator
 needs that the agent is running. A rejected vendor defaults file is still a `WARN` with every
 error listed, as today; the writable-file warning stays a `WARN`. "handler-level install deferred"

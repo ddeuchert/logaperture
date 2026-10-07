@@ -271,4 +271,50 @@ class StateFileFormatTest {
 
         assertEquals(List.of(), parsed.rules());
     }
+
+    // --- stormDetection: (doc/specs/storm-detection-toggle.md "State file", schema 12) ---------------
+
+    @Test
+    void roundTrips_aForStormDetectionSetting_withAQuotedReason() {
+        StormDetectionSetting setting = new StormDetectionSetting(true, PersistenceTier.FOR,
+                Instant.parse("2026-10-08T02:30:00Z"), "watch the \"02:00\" batch",
+                Instant.parse("2026-10-08T02:00:00Z"), "jmx");
+
+        String written = StateFileFormat.write(List.of(), List.of(), List.of(), null, List.of(), setting);
+
+        assertEquals(setting, StateFileFormat.parse(written).stormDetection());
+    }
+
+    @Test
+    void roundTrips_aStickyStormDetectionSetting_alongsideAnOverride() {
+        LevelOverride override = new LevelOverride("com.acme", Level.DEBUG, null,
+                Instant.parse("2026-10-08T01:00:00Z"), "jmx", PersistenceTier.STICKY, null);
+        StormDetectionSetting setting = new StormDetectionSetting(false, PersistenceTier.STICKY, null, null,
+                Instant.parse("2026-10-08T02:00:00Z"), "jmx");
+
+        StateFileFormat.Parsed parsed = StateFileFormat.parse(
+                StateFileFormat.write(List.of(override), List.of(), List.of(), null, List.of(), setting));
+
+        assertEquals(setting, parsed.stormDetection());
+        assertEquals(1, parsed.overrides().size());
+    }
+
+    @Test
+    void aSchema11File_hasNoStormDetectionSetting() {
+        StateFileFormat.Parsed parsed = StateFileFormat.parse(
+                "schemaVersion: 11\noverrides: []\nhandlerOverrides: []\ndefaultHandlerMembers: []\nrules: []\n");
+
+        assertNull(parsed.stormDetection());
+    }
+
+    @Test
+    void anUnreadableStormDetectionEntry_isDropped_andTheRestOfTheFileStillReads() {
+        StateFileFormat.Parsed parsed = StateFileFormat.parse("schemaVersion: 12\noverrides:\n"
+                + "  - loggerName: \"com.acme\"\n    level: DEBUG\n    reason: null\n"
+                + "    appliedAt: 2026-10-08T01:00:00Z\n    source: \"jmx\"\n    tier: STICKY\n    expiresAt: null\n"
+                + "stormDetection:\n  enabled: true\n  tier: FOR\n  expiresAt: null\n");
+
+        assertNull(parsed.stormDetection());
+        assertEquals(1, parsed.overrides().size());
+    }
 }

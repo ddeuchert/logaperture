@@ -563,6 +563,39 @@ class ParserTest {
                 new String[] {"add", "rule", "trim", "com.acme.Worker", "--no-sample-full"}));
     }
 
+    // --- enable|disable storms (doc/specs/storm-detection-toggle.md) ----------------------------------
+
+    @Test
+    void enableAndDisableStorms_parse_withOrWithoutSessionAndReason() {
+        assertDoesNotThrow(() -> Parser.parse(new String[] {"enable", "storms"}));
+        assertDoesNotThrow(() -> Parser.parse(new String[] {"disable", "storms"}));
+        assertDoesNotThrow(() -> Parser.parse(new String[] {"enable", "storms", "session"}));
+        assertDoesNotThrow(() -> Parser.parse(new String[] {"disable", "storms", "--reason", "INC-4411", "--json"}));
+    }
+
+    @Test
+    void enableAndDisable_needStorms() {
+        assertUsage(() -> Parser.parse(new String[] {"enable"}));
+        assertUsage(() -> Parser.parse(new String[] {"disable", "top"}));
+    }
+
+    @Test
+    void enableStorms_takesTheSameTierWords_butDefaultsToSession() {
+        assertDoesNotThrow(() -> Parser.parse(new String[] {"enable", "storms", "for", "30m"}));
+        assertDoesNotThrow(() -> Parser.parse(new String[] {"disable", "storms", "sticky"}));
+        assertEquals(new TierChoice("SESSION", 0L), Parser.resolveSwitchTier(List.of()));
+        assertEquals(new TierChoice("FOR", 1800L), Parser.resolveSwitchTier(List.of("for", "30m")));
+        assertEquals(new TierChoice("STICKY", 0L), Parser.resolveSwitchTier(List.of("sticky")));
+        assertUsage(() -> Parser.parse(new String[] {"enable", "storms", "forever"}));
+        assertUsage(() -> Parser.parse(new String[] {"enable", "storms", "for"}));
+    }
+
+    @Test
+    void stormsWithAnArgument_pointsAtEnableAndDisable() {
+        CliError error = assertThrows(CliError.class, () -> Parser.parse(new String[] {"storms", "on"}));
+        assertTrue(error.getMessage().contains("logctl enable storms"), error.getMessage());
+    }
+
     private static void assertUsage(Executable call) {
         CliError error = assertThrows(CliError.class, call);
         assertSame(CliError.class, error.getClass());

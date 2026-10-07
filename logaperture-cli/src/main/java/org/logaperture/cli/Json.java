@@ -36,6 +36,7 @@ import org.logaperture.control.jmx.RuleData;
 import org.logaperture.control.jmx.SetLevelResultData;
 import org.logaperture.control.jmx.SquelchedLoggerData;
 import org.logaperture.control.jmx.StormData;
+import org.logaperture.control.jmx.StormDetectionData;
 import org.logaperture.control.jmx.StormReportData;
 import org.logaperture.control.jmx.TopReportData;
 
@@ -179,10 +180,25 @@ final class Json {
     /** {@code status --json} plus doc/specs/vendor-defaults.md's {@code vendorDefaults} object ({@code null} when none configured). */
     static String status(List<LoggerInfoData> loggerOverrides, List<HandlerLevelOverrideData> handlerOverrides,
             EnvironmentReportData report) {
+        return status(loggerOverrides, handlerOverrides, report, null);
+    }
+
+    /**
+     * ... plus doc/specs/storm-detection-toggle.md's {@code stormDetection} object -- {@code enabled}
+     * and {@code changedAt} -- or {@code null} from an agent that predates the switch.
+     */
+    static String status(List<LoggerInfoData> loggerOverrides, List<HandlerLevelOverrideData> handlerOverrides,
+            EnvironmentReportData report, StormDetectionData stormDetection) {
         String vendorDefaults = report.getVendorDefaultsPath() == null ? "null"
                 : new Obj().str("path", report.getVendorDefaultsPath())
                         .str("status", report.getVendorDefaultsStatus()).toString();
-        return statusObj(loggerOverrides, handlerOverrides).raw("vendorDefaults", vendorDefaults).toString();
+        String storms = stormDetection == null ? "null"
+                : new Obj().bool("enabled", stormDetection.isEnabled())
+                        .str("changedAt", stormDetection.getChangedAt())
+                        .str("tier", stormDetection.getTier())
+                        .str("expiresAt", stormDetection.getExpiresAt()).toString();
+        return statusObj(loggerOverrides, handlerOverrides).raw("vendorDefaults", vendorDefaults)
+                .raw("stormDetection", storms).toString();
     }
 
     private static Obj statusObj(List<LoggerInfoData> loggerOverrides, List<HandlerLevelOverrideData> handlerOverrides) {
@@ -300,6 +316,22 @@ final class Json {
                 .raw("ongoingCount", String.valueOf(report.getOngoingCount()))
                 .str("measurementStartedAt", report.getMeasurementStartedAt())
                 .raw("notRetainedCount", String.valueOf(report.getNotRetainedCount()))
+                .bool("detectionEnabled", report.isDetectionEnabled())
+                .str("detectionChangedAt", report.getDetectionChangedAt())
+                .toString();
+    }
+
+    /**
+     * {@code logctl enable|disable storms --json} -- doc/specs/storm-detection-toggle.md "Turning it
+     * on or off at runtime".
+     */
+    static String stormDetectionChange(StormDetectionData change) {
+        return new Obj()
+                .bool("enabled", change.isEnabled())
+                .bool("previous", change.isPrevious())
+                .str("changedAt", change.getChangedAt())
+                .str("tier", change.getTier())
+                .str("expiresAt", change.getExpiresAt())
                 .toString();
     }
 

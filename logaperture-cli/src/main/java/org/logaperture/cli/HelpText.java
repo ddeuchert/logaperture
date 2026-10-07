@@ -34,6 +34,8 @@ final class HelpText {
             "logctl env",
             "logctl top [--limit n]",
             "logctl storms [--limit n]",
+            "logctl enable storms [session | for <duration> | sticky]",
+            "logctl disable storms [session | for <duration> | sticky]",
             "logctl set logger <target> <level> [session | for <duration> | sticky] [--force]",
             "logctl set handler <name> <level> [session | for <duration> | sticky]",
             "logctl set handler <name> AUTO [session | for <duration> | sticky]",
@@ -190,6 +192,14 @@ final class HelpText {
         sb.append("changes one ('for 4h' unless you give a tier), 'reset rule' puts the\n");
         sb.append("vendor's definition back, and 'reset rule ... --to-native' switches it off\n");
         sb.append("until the application restarts.\n");
+        sb.append("\n");
+        sb.append("'storms' lists the log storms storm detection has seen. Storm detection\n");
+        sb.append("starts disabled; 'enable storms' turns it on and 'disable storms' turns it\n");
+        sb.append("off, in every context. With no tier that lasts until the JVM stops (not\n");
+        sb.append("'for 4h' as for 'set'); 'for 30m' switches it back after 30 minutes, and\n");
+        sb.append("'sticky' keeps it across restarts. Start the agent with\n");
+        sb.append("-javaagent:logaperture-agent.jar=--storm-detection=on to have it on from\n");
+        sb.append("the start.\n");
         sb.append("\n");
         sb.append("'export vendor-defaults' writes the next vendor defaults file: the one this\n");
         sb.append("JVM started with, plus every sticky change made on top of it (session and\n");

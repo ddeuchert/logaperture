@@ -1,6 +1,6 @@
 # Storm detection on and off
 
-Status: **signed off 2026-10-06, decisions T1–T15 all agreed.** Nothing is implemented yet.
+Status: **signed off 2026-10-06, decisions T1–T15 all agreed.** Slices 1 and 2 implemented.
 Issue: [#151](https://github.com/ddeuchert/logaperture/issues/151). Must land by `1.0.0-beta.1`
 (Oct 15), the feature freeze (§17.1).
 Parent spec: [`doc/specs/storm-detection.md`](storm-detection.md), which this amends: storm
@@ -104,9 +104,12 @@ Storm detection is already enabled. Nothing changed.
 - The change takes effect at once, in every context (T4). A plain `enable` or `disable` (the
   `session` tier) **never switches back by itself** while the JVM runs; only `for <duration>`
   does (T12). It lasts until the next `enable`/`disable` or until the JVM stops, and a restart
-  starts from the agent argument again (T3), the same rule as `set logger` without a tier. So on
-  a JVM started with `--storm-detection=on`, a plain `disable storms` is enabled again after a
-  restart; `disable storms sticky` keeps it disabled.
+  starts from the agent argument again (T3). So on a JVM started with `--storm-detection=on`, a
+  plain `disable storms` is enabled again after a restart; `disable storms sticky` keeps it
+  disabled.
+- The default tier is `session`, unlike `set logger` and `set handler`, whose default is
+  `for 4h`. A level override has a baseline to go back to; a switch has no default position, so
+  without a tier it stays where it was put.
 - Turning it on requires a new capability, `diagnostics` (T7). Turning it off requires the same.
   `logctl storms` with no argument still needs only `view`.
 - One audit record per change (T8): target `storm-detection`, previous and new value `on`/`off`,
@@ -190,16 +193,23 @@ by the same rules. The `agentmain` (attach) path reads it the same way.
 
 ## Slice 2: timed and sticky toggles
 
-`logctl enable|disable storms` takes the same tier words as `set logger`: `session` (the default),
-`for <duration>`, and `sticky`.
+`logctl enable|disable storms` takes the same tier words as `set logger`: `session`,
+`for <duration>`, and `sticky`. The default stays `session` (see "Turning it on or off at
+runtime"), not `set logger`'s `for 4h`.
 
 ```
 $ logctl enable storms for 30m --reason "watch the 02:00 batch"
 Storm detection is now enabled (was disabled) until 2026-10-08T02:30:00Z, then disabled. Measuring from 2026-10-08T02:00:00Z.
 
 $ logctl enable storms sticky --reason "noisy integration, keep watching"
-Storm detection is now enabled (was enabled, until 02:30). Stays enabled across restarts.
+Storm detection is now enabled (was enabled). Stays enabled across restarts.
+
+$ logctl enable storms sticky
+Storm detection is already enabled (sticky). Nothing changed.
 ```
+
+A `disable` that turns detection off adds "Storms tracked so far are kept as of <time>." after the
+tier part, as in slice 1.
 
 ### Semantics
 
@@ -254,12 +264,17 @@ with no-op defaults like the other entry kinds.
 
 - `status` shows the tier: `Storm detection: enabled (until 02:30, then disabled)` or
   `enabled (sticky)`; the `--json` object gains `tier` and `expiresAt`.
-- The `storms` report's first line shows the same when a tier other than `session` is in effect.
+- The `storms` report's first line shows the same when a tier other than `session` is in effect:
+  `Storm detection is enabled until <time>, then disabled.`, `Storm detection is disabled
+  (sticky). Enable it with ...`.
 - The JMX setter becomes `setStormDetection(boolean enabled, String reason, String tier, long
   forSeconds)`, the same tier parameters `setHandlerAuto` takes. Slice 1 ships the two-argument
   form; slice 2 adds the four-argument one. Both are additions.
 - `export vendor-defaults` does not carry the storm setting (T15): the vendor defaults file has no
-  key for it. The export's header comment says so when a `sticky` storm setting exists.
+  key for it. When a `sticky` storm setting exists the export's header says so: `# Not carried:
+  storm detection is enabled (sticky). A vendor defaults file can't set it -- start the agent with
+  --storm-detection=on instead.` A `for` setting isn't mentioned, the same as any other `for`
+  change the export leaves out.
 
 ### Testing (slice 2)
 
@@ -279,8 +294,9 @@ with no-op defaults like the other entry kinds.
   while storm detection is off; "Reconfiguration and lifecycle" and
   `measurementStartedAt` point here for what a toggle does. A header amendment line links this
   spec.
-- **overhead-benchmarks.md:** `idle` now means the agent's default, with the storm filter
-  installed but off.
+- **overhead-benchmarks.md** (on `feature/128-overhead-benchmarks`, PR #134, not yet on `develop`;
+  this amendment and the storm-off measurement land there once this feature is merged into
+  `develop`): `idle` now means the agent's default, with the storm filter installed but off.
   The `rule+storm` layer keeps its budget and stays reported, but a storm-layer miss is no longer
   a 1.0 blocker under Decision #7, which covers the idle agent; it is tracked by #150 (1.1.0).
   The storm-off layer (`rule+storm` with the switch off, minus `rule`) must be within 10 ns.
@@ -305,8 +321,10 @@ with no-op defaults like the other entry kinds.
   off/on and sweep ticks (#145's test, with the switch in play); off returns the delegate's verdict.
 - CLI: `enable|disable storms` parsing and output; `storms`, `status` and `doctor` in each
   state, text and `--json`; the older-agent message.
-- WildFlyContainerIT: start with `--storm-detection=on` and see a storm reported; start without it
-  and see "disabled"; enable it at runtime and see one.
+- WildFlyContainerIT: start without `--storm-detection` and see "disabled", with a storm loop
+  leaving the report unchanged; enable it at runtime and see the storm. Starting with
+  `--storm-detection=on` is covered by the argument-parser and banner unit tests rather than a
+  second WildFly container, since the IT shares one server across its tests.
 - Bench: the `storm-off` scenario.
 
 ## Decisions (signed off 2026-10-06)

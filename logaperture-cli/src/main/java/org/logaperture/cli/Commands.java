@@ -30,6 +30,7 @@ import org.logaperture.control.jmx.RecipeFileProblemData;
 import org.logaperture.control.jmx.RecipeListData;
 import org.logaperture.control.jmx.SquelchedLoggerData;
 import org.logaperture.control.jmx.StormData;
+import org.logaperture.control.jmx.StormDetectionData;
 import org.logaperture.control.jmx.StormReportData;
 import org.logaperture.control.jmx.TopReportData;
 
@@ -136,14 +137,27 @@ final class Commands {
             active.sort(Comparator.comparing(Commands::revertSortKey).thenComparing(LoggerInfoData::getName));
             List<HandlerLevelOverrideData> handlerOverrides = mbean.listHandlerOverrides();
             EnvironmentReportData report = mbean.environmentReport();
+            StormDetectionData stormDetection = stormDetectionOrNull(mbean);
             if (json) {
-                out.println(Json.status(active, handlerOverrides, report));
+                out.println(Json.status(active, handlerOverrides, report, stormDetection));
                 return CliError.OK;
             }
             // doc/specs/vendor-defaults.md "Surfaces" (Decision M5): one line, only when a file was configured.
             if (report.getVendorDefaultsPath() != null) {
                 out.println("Vendor defaults: " + report.getVendorDefaultsPath() + " — "
                         + vendorDefaultsStatusForStatus(report.getVendorDefaultsStatus()));
+            }
+            // doc/specs/storm-detection-toggle.md "How it is reported": under the vendor-defaults line.
+            if (stormDetection != null) {
+                String tierNote = "FOR".equals(stormDetection.getTier())
+                        ? " (until " + stormDetection.getExpiresAt() + ", then " + position(!stormDetection.isEnabled())
+                                + ")"
+                        : "STICKY".equals(stormDetection.getTier()) ? " (sticky)"
+                        : stormDetection.getChangedAt() != null ? " (since " + stormDetection.getChangedAt() + ")"
+                        : "";
+                out.println("Storm detection: " + position(stormDetection.isEnabled()) + tierNote);
+            }
+            if (report.getVendorDefaultsPath() != null || stormDetection != null) {
                 out.println();
             }
             if (active.isEmpty() && handlerOverrides.isEmpty()) {
@@ -792,6 +806,13 @@ final class Commands {
      * finds" guarantee into a hard failure over a pointer line.
      */
     private static void printStormPointer(org.logaperture.control.jmx.LevelControlMXBean mbean, java.io.PrintStream out) {
+        // doc/specs/storm-detection-toggle.md T9: an informational line, not a finding -- disabled is
+        // the default, not a problem.
+        StormDetectionData stormDetection = stormDetectionOrNull(mbean);
+        if (stormDetection != null && !stormDetection.isEnabled()) {
+            out.println("Storm detection is disabled — see `logctl enable storms`.");
+            return;
+        }
         int ongoingStorms;
         try {
             ongoingStorms = mbean.activeStorms(0).getOngoingCount();
@@ -1430,6 +1451,94 @@ final class Commands {
     }
 
     /**
+     * {@code logctl enable|disable storms} -- doc/specs/storm-detection-toggle.md "Turning it on or off
+     * at runtime". Sets the position named, whatever the current one; exit 0 either way.
+     */
+    static Command setStormDetection(boolean enable, String reason, Parser.TierChoice tier, boolean json) {
+        return (mbean, out, in, interactive) -> {
+            StormDetectionData change;
+            try {
+                change = mbean.setStormDetection(enable, reason, tier.tierName(), tier.forSeconds());
+            } catch (RuntimeException e) {
+                if (isMissingOperation(e)) {
+                    throw new CliError(CliError.UNEXPECTED, "logctl: this agent does not support enabling or "
+                            + "disabling storm detection; it is always on.");
+                }
+                throw e;
+            }
+            if (json) {
+                out.println(Json.stormDetectionChange(change));
+                return CliError.OK;
+            }
+            String now = position(change.isEnabled());
+            if (!change.isChanged()) {
+                out.println("Storm detection is already " + now + tierNote(change) + ". Nothing changed.");
+                return CliError.OK;
+            }
+            StringBuilder line = new StringBuilder("Storm detection is now ").append(now)
+                    .append(" (was ").append(position(change.isPrevious())).append(')');
+            if ("FOR".equals(change.getTier())) {
+                line.append(" until ").append(change.getExpiresAt()).append(", then ")
+                        .append(position(!change.isEnabled())).append('.');
+            } else if ("STICKY".equals(change.getTier())) {
+                line.append(". Stays ").append(now).append(" across restarts.");
+            } else {
+                line.append('.');
+            }
+            if (change.isEnabled() && !change.isPrevious()) {
+                line.append(" Measuring from ").append(change.getChangedAt()).append('.');
+            } else if (!change.isEnabled() && change.isPrevious()) {
+                line.append(" Storms tracked so far are kept as of ").append(change.getChangedAt()).append('.');
+            }
+            out.println(line);
+            return CliError.OK;
+        };
+    }
+
+    private static String position(boolean enabled) {
+        return enabled ? "enabled" : "disabled";
+    }
+
+    /**
+     * What the tier adds after the position (doc/specs/storm-detection-toggle.md "Surfaces"):
+     * {@code " until <time>, then disabled"} for {@code FOR}, {@code " (sticky)"} for {@code
+     * STICKY}, nothing for {@code SESSION}.
+     */
+    private static String tierNote(StormDetectionData detection) {
+        if ("FOR".equals(detection.getTier())) {
+            return " until " + detection.getExpiresAt() + ", then " + position(!detection.isEnabled());
+        }
+        return "STICKY".equals(detection.getTier()) ? " (sticky)" : "";
+    }
+
+    /**
+     * The storm-detection switch, or {@code null} from an agent that predates it (alpha.3 and
+     * earlier, where storm detection was always on) -- or any failure reaching it, since every
+     * caller only adds a line for it.
+     */
+    private static StormDetectionData stormDetectionOrNull(org.logaperture.control.jmx.LevelControlMXBean mbean) {
+        try {
+            return mbean.stormDetection();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Whether {@code e} is the MXBean proxy's report of an operation the agent doesn't have: the
+     * server's {@code ReflectionException} (wrapping {@code NoSuchMethodException}), which the proxy
+     * rethrows wrapped, being checked.
+     */
+    static boolean isMissingOperation(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof javax.management.ReflectionException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * {@code logctl storms} — doc/specs/storm-detection.md "The operation".
      * Read-only, like {@code doctor}/{@code top}: no target, no tier, nothing
      * to confirm, never exits non-zero for what it finds.
@@ -1442,12 +1551,31 @@ final class Commands {
                 return CliError.OK;
             }
             List<StormData> storms = report.getStorms();
+            // doc/specs/storm-detection-toggle.md "How it is reported": disabled says so first, and what
+            // was tracked before is shown as of the moment it was disabled.
+            boolean disabled = !report.isDetectionEnabled();
+            String changedAt = report.getDetectionChangedAt();
+            StormDetectionData detection = changedAt == null ? null : stormDetectionOrNull(mbean);
+            String tierNote = detection == null ? "" : tierNote(detection);
+            if (disabled && (storms.isEmpty() || changedAt == null)) {
+                out.println("Storm detection is disabled" + tierNote + ". Enable it with `logctl enable storms`, "
+                        + "or start the agent with --storm-detection=on.");
+                return CliError.OK;
+            }
+            if (disabled) {
+                out.println("Storm detection is disabled since " + changedAt + tierNote
+                        + ". Figures below are as of then.");
+                out.println();
+            } else if (!tierNote.isEmpty()) {
+                out.println("Storm detection is enabled" + tierNote + ".");
+                out.println();
+            }
             if (storms.isEmpty()) {
                 out.println("No log storms detected.");
                 return CliError.OK;
             }
             boolean showContext = spansMultipleContexts(storms, StormData::getContext);
-            Instant now = Instant.now();
+            Instant now = disabled ? Instant.parse(changedAt) : Instant.now();
             for (int i = 0; i < storms.size(); i++) {
                 StormData storm = storms.get(i);
                 boolean ongoing = "ONGOING".equals(storm.getStatus());
@@ -1492,7 +1620,9 @@ final class Commands {
             out.println(report.getTrackedCount() + (report.getTrackedCount() == 1 ? " storm" : " storms")
                     + " tracked — " + report.getOngoingCount() + " ongoing, "
                     + (report.getTrackedCount() - report.getOngoingCount()) + " ended."
-                    + (startedAt != null ? " measured since agent start, " + startedAt + "." : "")
+                    + (startedAt == null ? ""
+                            : changedAt == null ? " measured since agent start, " + startedAt + "."
+                            : " measured since " + startedAt + ".")
                     + (report.getNotRetainedCount() > 0
                             ? " (" + report.getNotRetainedCount() + " detected, not retained)" : ""));
             return CliError.OK;

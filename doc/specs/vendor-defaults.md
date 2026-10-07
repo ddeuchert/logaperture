@@ -52,7 +52,8 @@ This is LogAperture's first agent argument. `LogApertureAgent.premain`/`agentmai
 
 - Grammar: zero or more `--name=value` options separated by commas. A comma only separates
   options when it is followed by `--`, so a path containing a plain comma works (M8).
-- Names are kebab-case. This slice defines one: `--vendor-defaults`.
+- Names are kebab-case. Two are defined: `--vendor-defaults` (this spec) and `--storm-detection=on|off`
+  ([`storm-detection-toggle.md`](storm-detection-toggle.md), issue #151).
 - An unknown option, a missing `=value`, or a repeated option is a startup warning through
   `Diagnostics`; the rest of the arguments still apply. Arguments never stop the agent or the JVM
   (fail-open, §9).

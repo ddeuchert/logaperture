@@ -9,6 +9,16 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Added
 
+- **`logctl enable storms` and `logctl disable storms`** turn storm detection on and off in a
+  running JVM, in every context. With no tier that lasts until the JVM stops; `for 30m` switches it
+  to the other position after 30 minutes, and `sticky` keeps it across restarts, ahead of the agent
+  argument. Running one twice is the same as running it once.
+  Each change is audited (`switch=storm-detection`) and needs the new `diagnostics` capability.
+  `logctl storms`, `status` and `doctor` say when it is disabled; a report taken after disabling is
+  kept as it was at that moment, and enabling again starts a new measurement window. The agent
+  argument `--storm-detection=on` starts a JVM with it enabled (issue #151;
+  `doc/specs/storm-detection-toggle.md`). The state file goes to schema 12.
+
 - **`logctl set logger <name> <level> --force`** also sets the loggers under `<name>` that have a
   level of their own, which the logging framework never lets inherit. After `set logger com.acme
   TRACE`, `com.acme.other` configured at `INFO` stays at `INFO`. With `--force` it goes to `TRACE`
@@ -44,6 +54,10 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Changed
 
+- **Storm detection is disabled by default.** Through alpha.3 it was always on, and it added a
+  measurable cost to every log call that reached a handler (#150). Start the agent with
+  `-javaagent:logaperture-agent.jar=--storm-detection=on`, or run `logctl enable storms`, to turn it
+  on (issue #151).
 - **Audit lines label a handler `handler=`, not `logger=`** (issue #137). A handler change used to
   print as `logger=FILE`, which read like a logger called FILE. Handler levels and the
   `DEFAULT_HANDLERS` membership now print `handler=<name>`, and the records naming the vendor

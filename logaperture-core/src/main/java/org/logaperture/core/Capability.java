@@ -69,5 +69,11 @@ public enum Capability {
      * "Capability and audit", supersedes rule-pipeline-foundation.md's own
      * deferral of this capability to here).
      */
-    SUPPRESS
+    SUPPRESS,
+    /**
+     * Turning a diagnostic instrument on or off -- {@code logctl enable|disable storms}
+     * (doc/specs/storm-detection-toggle.md T7). Neither direction loses evidence or exposes data
+     * the way {@link #LEVEL_LOWER}/{@link #LEVEL_RAISE} do, so none of the existing grants fits.
+     */
+    DIAGNOSTICS
 }

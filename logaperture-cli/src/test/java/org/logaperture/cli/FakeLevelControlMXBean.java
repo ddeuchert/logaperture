@@ -30,6 +30,7 @@ import org.logaperture.control.jmx.RuleAlterationData;
 import org.logaperture.control.jmx.RuleData;
 import org.logaperture.control.jmx.RuleResetOutcomeData;
 import org.logaperture.control.jmx.SetLevelResultData;
+import org.logaperture.control.jmx.StormDetectionData;
 import org.logaperture.control.jmx.StormReportData;
 import org.logaperture.control.jmx.TopReportData;
 
@@ -383,6 +384,50 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
         activeStormsLimits.add(limit);
         maybeThrow();
         return stormReport;
+    }
+
+    StormDetectionData stormDetection = new StormDetectionData(true, true, false, null, false);
+    final List<Object[]> setStormDetectionCalls = new ArrayList<>();
+    /** When non-null, {@link #stormDetection()} and {@link #setStormDetection} throw it -- an older agent. */
+    RuntimeException stormDetectionFailure;
+
+    @Override
+    public StormDetectionData stormDetection() {
+        if (stormDetectionFailure != null) {
+            throw stormDetectionFailure;
+        }
+        maybeThrow();
+        return stormDetection;
+    }
+
+    @Override
+    public StormDetectionData setStormDetection(boolean enabled, String reason, String tier, long forSeconds) {
+        setStormDetectionCalls.add(new Object[] {enabled, reason, tier, forSeconds});
+        if (stormDetectionFailure != null) {
+            throw stormDetectionFailure;
+        }
+        maybeThrow();
+        boolean previous = stormDetection.isEnabled();
+        boolean changed = previous != enabled || !tier.equals(stormDetection.getTier()) || tier.equals("FOR");
+        String changedAt = changed ? "2026-10-07T14:05:00Z" : stormDetection.getChangedAt();
+        String expiresAt = tier.equals("FOR") ? "2026-10-07T14:35:00Z" : null;
+        stormDetection = new StormDetectionData(enabled, previous, changed, changedAt,
+                stormDetection.isStartedEnabled(), tier, expiresAt);
+        return stormDetection;
+    }
+
+    @Override
+    public StormDetectionData setStormDetection(boolean enabled, String reason) {
+        setStormDetectionCalls.add(new Object[] {enabled, reason});
+        if (stormDetectionFailure != null) {
+            throw stormDetectionFailure;
+        }
+        maybeThrow();
+        boolean previous = stormDetection.isEnabled();
+        String changedAt = previous == enabled ? stormDetection.getChangedAt() : "2026-10-07T14:05:00Z";
+        stormDetection = new StormDetectionData(enabled, previous, previous != enabled, changedAt,
+                stormDetection.isStartedEnabled());
+        return stormDetection;
     }
 
     List<RuleData> rules = new ArrayList<>();

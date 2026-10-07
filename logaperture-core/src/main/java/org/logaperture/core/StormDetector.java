@@ -94,15 +94,24 @@ public final class StormDetector implements StormObserver {
     private final Object historyLock = new Object();
     private final List<HistoryRecord> history = new ArrayList<>();
     private final AtomicInteger notRetainedCount = new AtomicInteger();
+    private final StormDetectionSwitch detectionSwitch;
 
     public StormDetector() {
+        this(StormDetectionSwitch.alwaysEnabled());
+    }
+
+    /**
+     * The production detector, with its thresholds from system properties, enabled or not by
+     * {@code detectionSwitch} (doc/specs/storm-detection-toggle.md).
+     */
+    public StormDetector(StormDetectionSwitch detectionSwitch) {
         this(longProperty(THRESHOLD_PROPERTY, DEFAULT_THRESHOLD),
                 Duration.ofSeconds(longProperty(WINDOW_PROPERTY, DEFAULT_WINDOW_SECONDS)),
                 Duration.ofSeconds(longProperty(QUIET_PROPERTY, DEFAULT_QUIET_SECONDS)),
                 (int) longProperty(MAX_TRACKED_PROPERTY, DEFAULT_MAX_TRACKED_FINGERPRINTS),
                 (int) longProperty(MAX_HISTORY_PROPERTY, DEFAULT_MAX_HISTORY),
                 (int) longProperty(FIRST_OCCURRENCE_BYTES_PROPERTY, DEFAULT_FIRST_OCCURRENCE_BYTES),
-                normalizationCacheSizeProperty());
+                normalizationCacheSizeProperty(), detectionSwitch);
     }
 
     /** Package-visible so a test can use small thresholds/windows instead of the real defaults. */
@@ -114,6 +123,12 @@ public final class StormDetector implements StormObserver {
 
     StormDetector(long thresholdEvents, Duration window, Duration quiet, int maxTrackedFingerprints, int maxHistory,
             int firstOccurrenceBytes, int normalizationCacheSize) {
+        this(thresholdEvents, window, quiet, maxTrackedFingerprints, maxHistory, firstOccurrenceBytes,
+                normalizationCacheSize, StormDetectionSwitch.alwaysEnabled());
+    }
+
+    StormDetector(long thresholdEvents, Duration window, Duration quiet, int maxTrackedFingerprints, int maxHistory,
+            int firstOccurrenceBytes, int normalizationCacheSize, StormDetectionSwitch detectionSwitch) {
         if (thresholdEvents < 1) {
             throw new IllegalArgumentException("thresholdEvents must be at least 1");
         }
@@ -124,6 +139,12 @@ public final class StormDetector implements StormObserver {
         this.maxHistory = maxHistory;
         this.firstOccurrenceBytes = firstOccurrenceBytes;
         this.normalizations = new NormalizationCache(normalizationCacheSize);
+        this.detectionSwitch = Objects.requireNonNull(detectionSwitch, "detectionSwitch");
+    }
+
+    @Override
+    public boolean isActive() {
+        return detectionSwitch.isEnabled();
     }
 
     @Override
@@ -135,6 +156,9 @@ public final class StormDetector implements StormObserver {
     @Override
     public <S> void observe(String loggerName, Level level, String throwableClassName, String rawMessage,
             Instant timestamp, S source, Details<S> details) {
+        if (!detectionSwitch.isEnabled()) {
+            return; // doc/specs/storm-detection-toggle.md T5 -- a caller that didn't ask isActive() first
+        }
         try {
             observeUnsafe(loggerName, level, throwableClassName, rawMessage, timestamp, source, details);
         } catch (RuntimeException e) { // doc/specs/storm-detection.md "Failure handling": swallow, never propagate.
@@ -284,10 +308,15 @@ public final class StormDetector implements StormObserver {
      * Every recorded storm, after sweeping for a quiet-period timeout that no
      * new event has observed yet (doc/specs/storm-detection.md: "a `logctl
      * storms` sweep" transitions a storm to {@code ENDED} same as its own
-     * next event would).
+     * next event would). Not while storm detection is disabled: what was
+     * tracked is frozen as of that moment, an {@code ONGOING} storm included,
+     * since no event can say whether it has stopped (doc/specs/
+     * storm-detection-toggle.md T6).
      */
     List<Storm> snapshot() {
-        sweepEnded();
+        if (detectionSwitch.isEnabled()) {
+            sweepEnded();
+        }
         synchronized (historyLock) {
             List<Storm> result = new ArrayList<>(history.size());
             for (HistoryRecord record : history) {
@@ -300,6 +329,19 @@ public final class StormDetector implements StormObserver {
     /** The count of storms detected but not retained because history was full of {@code ONGOING} entries. */
     int notRetainedCount() {
         return notRetainedCount.get();
+    }
+
+    /**
+     * Forgets every tracked fingerprint and storm, for a new measurement window when storm
+     * detection is enabled again (doc/specs/storm-detection-toggle.md T6). The normalization
+     * cache is kept: it holds no storm state, only how messages normalize.
+     */
+    void clear() {
+        counters.clear();
+        synchronized (historyLock) {
+            history.clear();
+        }
+        notRetainedCount.set(0);
     }
 
     private void sweepEnded() {

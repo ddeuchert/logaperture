@@ -33,6 +33,7 @@ import org.logaperture.core.LevelControlService;
 import org.logaperture.core.LoggerOverrideChangeListener;
 import org.logaperture.core.OverrideRegistry;
 import org.logaperture.core.RuleService;
+import org.logaperture.core.StormDetectionSwitch;
 import org.logaperture.core.StormService;
 import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.TopService;
@@ -94,6 +95,17 @@ public final class NoneContainer implements AutoCloseable {
      */
     public NoneContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
             VendorDefaults vendorDefaults) {
+        this(policy, auditLog, sweepInterval, vendorDefaults, true);
+    }
+
+    /**
+     * @param stormDetectionEnabled storm detection's starting position, from the agent's
+     *                              {@code --storm-detection} argument (doc/specs/
+     *                              storm-detection-toggle.md T1, T2). The shorter constructors start
+     *                              it enabled, as before, for the tests that use them.
+     */
+    public NoneContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+            VendorDefaults vendorDefaults, boolean stormDetectionEnabled) {
         this.policy = policy;
         this.auditLog = auditLog;
         this.vendorDefaults = Objects.requireNonNull(vendorDefaults, "vendorDefaults");
@@ -105,7 +117,11 @@ public final class NoneContainer implements AutoCloseable {
         // No container to name -- the none baseline -- but the state file
         // fact is universal (doc/specs/environment-report.md "State file").
         this.aggregate = new AggregateLevelControl(null, Optional::empty,
-                stateStore.location().map(Path::toString).orElse(null), () -> true, vendorDefaults);
+                stateStore.location().map(Path::toString).orElse(null), () -> true, vendorDefaults,
+                new StormDetectionSwitch(stormDetectionEnabled, policy, auditLog, principal(), stateStore));
+        // doc/specs/storm-detection-toggle.md "Restart": a saved 'for'/'sticky' storm setting wins over
+        // the agent argument (T14), applied once here, before any context installs. Never throws.
+        aggregate.stormDetectionSwitch().resume(Instant.now());
 
         this.sweeper = Executors.newSingleThreadScheduledExecutor(NoneContainer::newDaemonThread);
         long intervalMillis = sweepInterval.toMillis();
@@ -209,7 +225,7 @@ public final class NoneContainer implements AutoCloseable {
 
         DoctorService doctorService = new DoctorService(adapter, policy);
         TopService topService = new TopService(adapter, policy);
-        StormService stormService = new StormService(adapter, policy);
+        StormService stormService = new StormService(adapter, policy, aggregate.stormDetectionSwitch());
         EnvironmentReportService environmentReportService = new EnvironmentReportService(adapter, policy);
 
         // doc/specs/persistence.md "Reconfiguration re-application": Logback's
@@ -246,7 +262,8 @@ public final class NoneContainer implements AutoCloseable {
         // by the time an operator runs `logctl top`, the volume that mattered
         // already happened, so measurement can't start on demand.
         topService.startMeasuring();
-        // doc/specs/storm-detection.md: same "always-on from context-install" discipline. Guarded,
+        // doc/specs/storm-detection.md: same "always-on from context-install" discipline -- installed
+        // whether or not storm detection is enabled, inert while it isn't (storm-detection-toggle.md T5). Guarded,
         // unlike topService.startMeasuring() above: this runs before aggregate.register() below, so
         // an uncaught throw here would drop this entire context's registration -- levels, handlers,
         // doctor and top included, not just storm tracking.

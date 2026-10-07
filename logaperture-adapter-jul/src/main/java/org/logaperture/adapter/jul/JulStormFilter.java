@@ -32,7 +32,9 @@ import java.util.logging.LogRecord;
  * enabled record reaches, regardless of which logger it originated on),
  * capturing whatever {@link Filter} was already there and delegating to it
  * for the actual allow/deny verdict — this filter <b>never denies an
- * event</b>, so the observer is verdict-transparent.
+ * event</b>, so the observer is verdict-transparent. While storm detection
+ * is disabled it stays installed and only passes the verdict through
+ * (doc/specs/storm-detection-toggle.md T5).
  *
  * <p>All fingerprinting, normalization, the tally counter, and the state
  * machine live in {@code core}'s {@link org.logaperture.core.StormDetector};
@@ -66,6 +68,11 @@ final class JulStormFilter implements Filter {
 
     @Override
     public boolean isLoggable(LogRecord record) {
+        // doc/specs/storm-detection-toggle.md T5: installed in both positions, inert when disabled --
+        // one volatile read, then straight to the verdict.
+        if (!observer.isActive()) {
+            return delegate == null || delegate.isLoggable(record);
+        }
         try {
             // Issue #147: the event's fields go to the detector directly; the record itself is the
             // source RECORD_DETAILS renders from if this event engages a storm. Nothing per event.

@@ -155,7 +155,7 @@ class JsonTest {
         StormReportData report = new StormReportData(List.of(), 0, 0, null, 0);
 
         assertEquals("{\"storms\":[],\"trackedCount\":0,\"ongoingCount\":0,\"measurementStartedAt\":null,"
-                + "\"notRetainedCount\":0}", Json.storms(report));
+                + "\"notRetainedCount\":0,\"detectionEnabled\":true,\"detectionChangedAt\":null}", Json.storms(report));
     }
 
     @Test

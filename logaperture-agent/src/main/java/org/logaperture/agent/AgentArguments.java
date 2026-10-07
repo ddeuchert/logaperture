@@ -28,23 +28,32 @@ import java.util.Optional;
  * containing a plain comma needs no quoting.
  *
  * <p>Never throws: an unknown, repeated, or malformed option becomes a warning and is skipped
- * (fail-open, logaperture-spec.md §9).
+ * (fail-open, logaperture-spec.md §9). A repeated option keeps its first value.
  *
- * @param vendorDefaults the {@code --vendor-defaults} path, resolved to absolute against the
- *                       working directory
- * @param warnings       one line per problem, for the caller to report
+ * @param vendorDefaults  the {@code --vendor-defaults} path, resolved to absolute against the
+ *                        working directory
+ * @param stormDetection  {@code --storm-detection=on|off}: whether storm detection starts enabled,
+ *                        {@code false} when absent (doc/specs/storm-detection-toggle.md T1, T2)
+ * @param warnings        one line per problem, for the caller to report
  */
-record AgentArguments(Optional<Path> vendorDefaults, List<String> warnings) {
+record AgentArguments(Optional<Path> vendorDefaults, boolean stormDetection, List<String> warnings) {
 
     static final String VENDOR_DEFAULTS = "--vendor-defaults";
+    static final String STORM_DETECTION = "--storm-detection";
 
     AgentArguments {
         warnings = List.copyOf(warnings);
     }
 
+    /** No {@code --storm-detection}: storm detection starts disabled. */
+    AgentArguments(Optional<Path> vendorDefaults, List<String> warnings) {
+        this(vendorDefaults, false, warnings);
+    }
+
     static AgentArguments parse(String args, Path workingDirectory) {
         List<String> warnings = new ArrayList<>();
         Path vendorDefaults = null;
+        Boolean stormDetection = null;
         if (args == null || args.isBlank()) {
             return new AgentArguments(Optional.empty(), warnings);
         }
@@ -60,24 +69,47 @@ record AgentArguments(Optional<Path> vendorDefaults, List<String> warnings) {
             }
             String name = trimmed.substring(0, equals);
             String value = trimmed.substring(equals + 1).strip();
-            if (!name.equals(VENDOR_DEFAULTS)) {
-                warnings.add("ignoring unknown agent argument '" + name + "'");
-                continue;
-            }
-            if (value.isEmpty()) {
-                warnings.add("ignoring " + VENDOR_DEFAULTS + " -- it needs a file path");
-                continue;
-            }
-            if (vendorDefaults != null) {
-                warnings.add(VENDOR_DEFAULTS + " is given more than once -- using the first, " + vendorDefaults);
-                continue;
-            }
-            try {
-                vendorDefaults = workingDirectory.resolve(value).toAbsolutePath().normalize();
-            } catch (InvalidPathException e) {
-                warnings.add("ignoring " + VENDOR_DEFAULTS + " -- '" + value + "' is not a valid path");
+            switch (name) {
+                case VENDOR_DEFAULTS -> {
+                    if (value.isEmpty()) {
+                        warnings.add("ignoring " + VENDOR_DEFAULTS + " -- it needs a file path");
+                    } else if (vendorDefaults != null) {
+                        warnings.add(VENDOR_DEFAULTS + " is given more than once -- using the first, "
+                                + vendorDefaults);
+                    } else {
+                        try {
+                            vendorDefaults = workingDirectory.resolve(value).toAbsolutePath().normalize();
+                        } catch (InvalidPathException e) {
+                            warnings.add("ignoring " + VENDOR_DEFAULTS + " -- '" + value + "' is not a valid path");
+                        }
+                    }
+                }
+                case STORM_DETECTION -> {
+                    Boolean parsed = onOff(value);
+                    if (parsed == null) {
+                        warnings.add("ignoring " + STORM_DETECTION + "=" + value + " -- expected on or off");
+                    } else if (stormDetection != null) {
+                        warnings.add(STORM_DETECTION + " is given more than once -- using the first, "
+                                + (stormDetection ? "on" : "off"));
+                    } else {
+                        stormDetection = parsed;
+                    }
+                }
+                default -> warnings.add("ignoring unknown agent argument '" + name + "'");
             }
         }
-        return new AgentArguments(Optional.ofNullable(vendorDefaults), warnings);
+        return new AgentArguments(Optional.ofNullable(vendorDefaults), Boolean.TRUE.equals(stormDetection),
+                warnings);
+    }
+
+    /** {@code on} or {@code off}, any case; {@code null} for anything else. */
+    private static Boolean onOff(String value) {
+        if (value.equalsIgnoreCase("on")) {
+            return Boolean.TRUE;
+        }
+        if (value.equalsIgnoreCase("off")) {
+            return Boolean.FALSE;
+        }
+        return null;
     }
 }

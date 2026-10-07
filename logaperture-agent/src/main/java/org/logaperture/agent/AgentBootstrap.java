@@ -28,6 +28,7 @@ import org.logaperture.core.RecipeCatalog;
 import org.logaperture.core.RecipeOperations;
 import org.logaperture.core.RecipeService;
 import org.logaperture.core.StderrAuditLog;
+import org.logaperture.core.StormDetectionSwitch;
 import org.logaperture.core.VendorDefaults;
 import org.logaperture.core.VendorDefaultsFile;
 import org.logaperture.core.spi.ContainerIntegration;
@@ -36,6 +37,7 @@ import java.lang.instrument.Instrumentation;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -112,7 +114,9 @@ final class AgentBootstrap {
         try {
             CapabilityPolicy policy = CapabilityPolicy.allowAll();
             AuditLog auditLog = new StderrAuditLog();
-            VendorDefaults vendorDefaults = loadVendorDefaults(agentArgs);
+            AgentArguments arguments = parseArguments(agentArgs);
+            VendorDefaults vendorDefaults = loadVendorDefaults(arguments);
+            boolean stormDetection = arguments.stormDetection();
 
             ContainerIntegration container = integrations().stream()
                     .filter(ContainerIntegration::detect)
@@ -133,7 +137,7 @@ final class AgentBootstrap {
                 publishControlSurface(container, operations, recipes(inst, policy, vendorDefaults, operations),
                         vendorDefaults);
             };
-            container.activate(inst, policy, auditLog, vendorDefaults, onFirstContextReady);
+            container.activate(inst, policy, auditLog, vendorDefaults, stormDetection, onFirstContextReady);
         } catch (Throwable t) {
             Diagnostics.error("LogAperture agent bootstrap failed to start", t);
         }
@@ -145,17 +149,30 @@ final class AgentBootstrap {
     }
 
     /**
-     * Parses the agent arguments and, if {@code --vendor-defaults=} names a file, reads and
-     * validates it -- on the {@code premain} thread, so neither step may touch {@code
-     * java.util.logging} (logaperture-spec.md §15.6). Never throws: a bad argument or a rejected
-     * file is reported and the agent carries on without vendor defaults.
+     * Parses the agent arguments and reports each warning -- on the {@code premain} thread, so it
+     * may not touch {@code java.util.logging} (logaperture-spec.md §15.6). Never throws: arguments
+     * that can't be read at all leave the agent on its defaults.
      */
-    static VendorDefaults loadVendorDefaults(String agentArgs) {
+    static AgentArguments parseArguments(String agentArgs) {
         try {
             AgentArguments arguments = AgentArguments.parse(agentArgs, Path.of(System.getProperty("user.dir", ".")));
             for (String warning : arguments.warnings()) {
                 Diagnostics.warn(warning);
             }
+            return arguments;
+        } catch (RuntimeException e) {
+            Diagnostics.warn("failed to read the agent arguments, continuing with the defaults", e);
+            return new AgentArguments(Optional.empty(), List.of());
+        }
+    }
+
+    /**
+     * If {@code --vendor-defaults=} names a file, reads and validates it -- on the {@code premain}
+     * thread, like {@link #parseArguments}. Never throws: a rejected file is reported and the agent
+     * carries on without vendor defaults.
+     */
+    static VendorDefaults loadVendorDefaults(AgentArguments arguments) {
+        try {
             if (arguments.vendorDefaults().isEmpty()) {
                 return VendorDefaults.none();
             }
@@ -163,7 +180,7 @@ final class AgentBootstrap {
             reportVendorDefaults(vendorDefaults);
             return vendorDefaults;
         } catch (RuntimeException e) {
-            Diagnostics.warn("failed to read the agent arguments, continuing without vendor defaults", e);
+            Diagnostics.warn("failed to read the vendor defaults file, continuing without it", e);
             return VendorDefaults.none();
         }
     }
@@ -220,11 +237,38 @@ final class AgentBootstrap {
         }
     }
 
+    /** {@link #banner(String, String, VendorDefaults, int, String)} with storm detection disabled. */
+    static String banner(String version, String containerId, VendorDefaults vendorDefaults, int restored) {
+        return banner(version, containerId, vendorDefaults, restored, (String) null);
+    }
+
+    /**
+     * {@link #banner(String, String, VendorDefaults, int, String)} with the storm-detection part
+     * from the switch's position once any saved setting is resumed (doc/specs/
+     * storm-detection-toggle.md "Restart"): {@code storm detection on}, {@code ... on until <time>}
+     * or {@code ... on (sticky)}; nothing when disabled.
+     */
+    static String banner(String version, String containerId, VendorDefaults vendorDefaults, int restored,
+            StormDetectionSwitch.State stormDetection) {
+        String part = null;
+        if (stormDetection.enabled()) {
+            part = switch (stormDetection.tier()) {
+                case FOR -> "storm detection on until " + stormDetection.expiresAt();
+                case STICKY -> "storm detection on (sticky)";
+                case SESSION -> "storm detection on";
+            };
+        }
+        return banner(version, containerId, vendorDefaults, restored, part);
+    }
+
     /**
      * The one startup line -- doc/specs/quieter-output.md Q3: version, container, the vendor defaults
-     * file and what it set, and how many saved settings were restored.
+     * file and what it set, how many saved settings were restored, and {@code storm detection on}
+     * when it starts enabled (doc/specs/storm-detection-toggle.md "Starting state"; disabled, the
+     * default, says nothing).
      */
-    static String banner(String version, String containerId, VendorDefaults vendorDefaults, int restored) {
+    private static String banner(String version, String containerId, VendorDefaults vendorDefaults, int restored,
+            String stormDetection) {
         StringBuilder line = new StringBuilder("LogAperture ").append(version).append(" active (")
                 .append("wildfly".equals(containerId) ? "WildFly" : "JVM").append(')');
         List<String> parts = new java.util.ArrayList<>();
@@ -234,6 +278,9 @@ final class AgentBootstrap {
         }
         if (restored > 0) {
             parts.add(restored + (restored == 1 ? " sticky setting" : " sticky settings") + " restored");
+        }
+        if (stormDetection != null) {
+            parts.add(stormDetection);
         }
         if (!parts.isEmpty()) {
             line.append(": ").append(String.join("; ", parts));
@@ -247,7 +294,8 @@ final class AgentBootstrap {
             JmxRegistrar.register(operations, operations, operations, operations, operations, operations, operations,
                     operations, recipes); // AggregateLevelControl implements all eight operation interfaces
             System.setProperty(VERSION_PROPERTY, agentVersion());
-            Diagnostics.notice(banner(agentVersion(), container.id(), vendorDefaults, operations.restoredSettings()));
+            Diagnostics.notice(banner(agentVersion(), container.id(), vendorDefaults, operations.restoredSettings(),
+                    operations.stormDetectionSwitch().current()));
         } catch (Throwable t) {
             Diagnostics.error("LogAperture failed to register the JMX control surface", t);
         }
