@@ -15,6 +15,8 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.PersistenceTier;
+
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -35,10 +37,26 @@ final class VendorDefaultsExporter {
 
     static String export(AggregateLevelControl.ContextControl context, VendorDefaults startedFrom,
             String agentVersion, Instant now) {
-        List<String> header = List.of(
+        return export(context, startedFrom, agentVersion, now, null);
+    }
+
+    /**
+     * @param stormDetection the storm-detection switch, or {@code null}: a {@code sticky} setting
+     *                       gets a header line saying it isn't carried, since a vendor defaults
+     *                       file has no key for it (doc/specs/storm-detection-toggle.md T15)
+     */
+    static String export(AggregateLevelControl.ContextControl context, VendorDefaults startedFrom,
+            String agentVersion, Instant now, StormDetectionSwitch.State stormDetection) {
+        List<String> header = new ArrayList<>(List.of(
                 "Exported by logctl export vendor-defaults, " + now.truncatedTo(ChronoUnit.SECONDS)
                         + ", agent " + agentVersion,
-                "Started from: " + startedFromText(startedFrom));
+                "Started from: " + startedFromText(startedFrom)));
+        if (stormDetection != null && stormDetection.tier() == PersistenceTier.STICKY) {
+            boolean on = stormDetection.enabled();
+            header.add("Not carried: storm detection is " + (on ? "enabled" : "disabled") + " (sticky). A vendor "
+                    + "defaults file can't set it -- start the agent with --storm-detection=" + (on ? "on" : "off")
+                    + " instead.");
+        }
 
         List<String> skipped = new ArrayList<>();
         List<VendorDefaults.LoggerDefault> loggers = new ArrayList<>();

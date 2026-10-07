@@ -638,6 +638,7 @@ class WildFlyContainerIT {
      */
     @Test
     void storms_tightExceptionLoop_reportedAsOngoingWithPlausibleCountAndFirstOccurrence() throws Exception {
+        enableStorms();
         deployStormProbeWar();
         try {
             assertTrue(pollLogctl(out -> out.contains("[ONGOING]") && out.contains("com.myapp.probe.StormA"),
@@ -652,11 +653,13 @@ class WildFlyContainerIT {
             assertTrue(out.contains("first occurrence:"), out);
         } finally {
             undeployStormProbeWar();
+            disableStorms();
         }
     }
 
     @Test
     void stormsJson_roundTripsWithTheDocumentedShape() throws Exception {
+        enableStorms();
         deployStormProbeWar();
         try {
             assertTrue(pollLogctl(out -> out.contains("\"status\":\"ONGOING\""), "storms", "--json"),
@@ -670,9 +673,58 @@ class WildFlyContainerIT {
             assertTrue(out.contains("\"ongoingCount\":"), out);
             assertTrue(out.contains("\"loggerName\":\"com.myapp.probe.StormA\"")
                     || out.contains("\"loggerName\":\"com.myapp.probe.StormB\""), out);
+            assertTrue(out.contains("\"detectionEnabled\":true"), out);
+        } finally {
+            undeployStormProbeWar();
+            disableStorms();
+        }
+    }
+
+    /**
+     * doc/specs/storm-detection-toggle.md: a bare {@code -javaagent} starts storm detection
+     * disabled, so a storm loop is not tracked until it's enabled. Every storm test here leaves it
+     * disabled again, so this holds whatever order the tests run in; a test that ran first leaves its
+     * storms in the report, frozen (T6).
+     */
+    @Test
+    void storms_disabledByDefault_tracksNothing_untilEnabled() throws Exception {
+        Logctl status = logctl("status");
+        assertTrue(status.stdout().contains("Storm detection: disabled"), status.stdout());
+
+        // The probe fires its loops once, at deploy time. Deployed while disabled, the burst leaves
+        // the report (empty, or frozen from an earlier test that enabled it, T6) unchanged.
+        String before = logctl("storms", "--json").stdout();
+        deployStormProbeWar();
+        try {
+            String after = logctl("storms", "--json").stdout();
+            assertEquals(before, after, "nothing tracked while disabled");
+            assertTrue(after.contains("\"detectionEnabled\":false"), after);
+            Logctl disabled = logctl("storms");
+            assertEquals(0, disabled.exitCode(), disabled.stderr());
+            assertTrue(disabled.stdout().startsWith("Storm detection is disabled"), disabled.stdout());
         } finally {
             undeployStormProbeWar();
         }
+
+        enableStorms();
+        deployStormProbeWar();
+        try {
+            assertTrue(pollLogctl(out -> out.contains("[ONGOING]") && out.contains("com.myapp.probe.StormA"),
+                    "storms"), "expected StormA once enabled: " + logctl("storms").stdout());
+        } finally {
+            undeployStormProbeWar();
+            disableStorms();
+        }
+    }
+
+    private void enableStorms() {
+        Logctl result = logctl("enable", "storms", "--reason", "WildFlyContainerIT");
+        assertEquals(0, result.exitCode(), result.stderr());
+    }
+
+    private void disableStorms() {
+        Logctl result = logctl("disable", "storms");
+        assertEquals(0, result.exitCode(), result.stderr());
     }
 
     private void deployStormProbeWar() throws Exception {

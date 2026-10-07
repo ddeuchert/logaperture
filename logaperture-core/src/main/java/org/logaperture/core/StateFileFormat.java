@@ -119,10 +119,15 @@ import java.util.Map;
  * forcedBy:} line to {@code overrides:} records -- the logger whose {@code set
  * logger --force} made the override, written only when there is one. A
  * version-≤10 record has none and reads as {@code null}.
+ *
+ * <p>Schema version 12 (doc/specs/storm-detection-toggle.md "State file") adds an optional
+ * top-level {@code stormDetection:} entry -- one mapping, not a list, written only when a {@code
+ * for} or {@code sticky} storm-detection setting exists. A version-≤11 file has none and reads as
+ * no saved setting.
  */
 final class StateFileFormat {
 
-    private static final int SCHEMA_VERSION = 11;
+    private static final int SCHEMA_VERSION = 12;
     private static final char PAYLOAD_ENTRY_SEPARATOR = '\u0001';
     private static final char PAYLOAD_KV_SEPARATOR = '\u0002';
     private static final int MIN_SUPPORTED_SCHEMA_VERSION = 1;
@@ -137,6 +142,13 @@ final class StateFileFormat {
 
     static String write(List<LevelOverride> overrides, List<HandlerLevelOverride> handlerOverrides,
             List<String> defaultHandlerMembers, String defaultHandlerMembersStateId, List<PersistedRule> rules) {
+        return write(overrides, handlerOverrides, defaultHandlerMembers, defaultHandlerMembersStateId, rules, null);
+    }
+
+    /** @param stormDetection the saved storm-detection setting, or {@code null} for none */
+    static String write(List<LevelOverride> overrides, List<HandlerLevelOverride> handlerOverrides,
+            List<String> defaultHandlerMembers, String defaultHandlerMembersStateId, List<PersistedRule> rules,
+            StormDetectionSetting stormDetection) {
         StringBuilder out = new StringBuilder();
         out.append("schemaVersion: ").append(SCHEMA_VERSION).append('\n');
 
@@ -218,6 +230,18 @@ final class StateFileFormat {
                 appendRecipe(out, rule.recipe());
             }
         }
+
+        if (stormDetection != null) {
+            out.append("stormDetection:\n");
+            out.append("  enabled: ").append(stormDetection.enabled()).append('\n');
+            out.append("  tier: ").append(stormDetection.tier().name()).append('\n');
+            out.append("  expiresAt: ").append(stormDetection.expiresAt() == null ? "null" : stormDetection.expiresAt())
+                    .append('\n');
+            out.append("  reason: ").append(stormDetection.reason() == null ? "null" : quote(stormDetection.reason()))
+                    .append('\n');
+            out.append("  appliedAt: ").append(stormDetection.appliedAt()).append('\n');
+            out.append("  source: ").append(quote(stormDetection.source())).append('\n');
+        }
         return out.toString();
     }
 
@@ -233,9 +257,19 @@ final class StateFileFormat {
         }
     }
 
-    /** Everything {@link #parse} recovered from one file. */
+    /**
+     * Everything {@link #parse} recovered from one file.
+     *
+     * @param stormDetection the saved storm-detection setting, or {@code null} for none
+     */
     record Parsed(List<LevelOverride> overrides, List<HandlerLevelOverride> handlerOverrides,
-            List<String> defaultHandlerMembers, String defaultHandlerMembersStateId, List<PersistedRule> rules) {
+            List<String> defaultHandlerMembers, String defaultHandlerMembersStateId, List<PersistedRule> rules,
+            StormDetectionSetting stormDetection) {
+
+        Parsed(List<LevelOverride> overrides, List<HandlerLevelOverride> handlerOverrides,
+                List<String> defaultHandlerMembers, String defaultHandlerMembersStateId, List<PersistedRule> rules) {
+            this(overrides, handlerOverrides, defaultHandlerMembers, defaultHandlerMembersStateId, rules, null);
+        }
 
         Parsed(List<LevelOverride> overrides, List<HandlerLevelOverride> handlerOverrides,
                 List<String> defaultHandlerMembers, List<PersistedRule> rules) {
@@ -268,6 +302,7 @@ final class StateFileFormat {
         List<String> defaultHandlerMembers = new ArrayList<>();
         List<PersistedRule> rules = new ArrayList<>();
         String defaultHandlerMembersStateId = null;
+        Map<String, String> stormDetectionFields = null;
         Map<String, String> current = null;
         Section section = Section.OVERRIDES;
 
@@ -306,6 +341,14 @@ final class StateFileFormat {
                 section = Section.RULES;
                 continue; // "rules:" header, or "rules: []" for an empty list
             }
+            if (line.startsWith("stormDetection:")) {
+                // A single mapping, not a list: its "key: value" lines go straight into one record.
+                flush(current, section, overrides, handlerOverrides, rules);
+                section = Section.STORM_DETECTION;
+                stormDetectionFields = new LinkedHashMap<>();
+                current = stormDetectionFields;
+                continue;
+            }
             if (line.startsWith("patternRules:")) {
                 // A schema-4-only section (doc/specs/pattern-level-targeting.md,
                 // now retired). Recognized here only so its records don't leak
@@ -340,11 +383,34 @@ final class StateFileFormat {
         }
         flush(current, section, overrides, handlerOverrides, rules);
         return new Parsed(overrides, handlerOverrides, defaultHandlerMembers,
-                defaultHandlerMembers.isEmpty() ? null : defaultHandlerMembersStateId, rules);
+                defaultHandlerMembers.isEmpty() ? null : defaultHandlerMembersStateId, rules,
+                stormDetectionFields == null ? null : toStormDetection(stormDetectionFields));
+    }
+
+    /**
+     * {@code null} for an entry that can't be read -- a hand edit gone wrong costs the storm setting
+     * only, never the rest of the file, the same tolerance as an unrecognized line.
+     */
+    private static StormDetectionSetting toStormDetection(Map<String, String> fields) {
+        try {
+            return readStormDetection(fields);
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private enum Section {
-        OVERRIDES, HANDLER_OVERRIDES, PATTERN_RULES_LEGACY, DEFAULT_HANDLER_MEMBERS, RULES
+        OVERRIDES, HANDLER_OVERRIDES, PATTERN_RULES_LEGACY, DEFAULT_HANDLER_MEMBERS, RULES, STORM_DETECTION
+    }
+
+    private static StormDetectionSetting readStormDetection(Map<String, String> fields) {
+        return new StormDetectionSetting(
+                Boolean.parseBoolean(fields.get("enabled")),
+                PersistenceTier.valueOf(fields.get("tier")),
+                nullable(fields.get("expiresAt")) == null ? null : Instant.parse(fields.get("expiresAt")),
+                nullable(fields.get("reason")) == null ? null : unquote(fields.get("reason")),
+                Instant.parse(fields.get("appliedAt")),
+                unquote(fields.get("source")));
     }
 
     private static void flush(Map<String, String> current, Section section,
@@ -355,7 +421,9 @@ final class StateFileFormat {
         switch (section) {
             case HANDLER_OVERRIDES -> handlerOverrides.add(toHandlerOverride(current));
             case RULES -> rules.add(toRule(current));
-            case PATTERN_RULES_LEGACY, DEFAULT_HANDLER_MEMBERS -> {
+            case PATTERN_RULES_LEGACY, DEFAULT_HANDLER_MEMBERS, STORM_DETECTION -> {
+                // STORM_DETECTION: its one record is read once, after the loop, from the map
+                // that `current` pointed at -- not accumulated into a list here.
                 // PATTERN_RULES_LEGACY: dropped entirely -- doc/specs/
                 // pattern-selection-semantics.md "Persistence — state file
                 // schema". DEFAULT_HANDLER_MEMBERS: never reaches here --

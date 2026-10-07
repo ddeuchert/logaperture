@@ -40,6 +40,16 @@ public interface StormObserver {
     void observe(StormObservation observation);
 
     /**
+     * Whether storm detection is enabled right now (doc/specs/storm-detection-toggle.md T5). The
+     * adapter's filter asks this first on every event and, when it's {@code false}, skips
+     * extracting the event's fields and calling {@code observe} at all. Must be cheap: {@link
+     * StormDetector} answers with one volatile read. Default {@code true}, for a test fake.
+     */
+    default boolean isActive() {
+        return true;
+    }
+
+    /**
      * The same event as its fields, for the per-event path: nothing has to be
      * allocated to describe it (issue #147). {@code source} is handed back to
      * {@code details} only when this event engages a storm, during this call.

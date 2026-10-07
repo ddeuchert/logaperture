@@ -298,6 +298,35 @@ class WildFlyVendorDefaultsIT {
         assertTrue(row.contains("--message-contains chatter") && row.contains("vendor-defaults, STICKY"), row);
     }
 
+    /**
+     * doc/specs/storm-detection-toggle.md "Slice 2": {@code enable storms sticky} survives a server
+     * restart and wins over the agent's default (disabled); the startup banner says so; the export
+     * says the setting isn't carried. A plain {@code disable storms} afterwards removes the saved
+     * setting, so the next restart starts disabled again. Leaves storm detection disabled, as the
+     * other tests here expect.
+     */
+    @Test
+    void enableStormsSticky_survivesARestart_andAPlainDisableRemovesIt() throws InterruptedException {
+        try {
+            Logctl enabled = logctl("enable", "storms", "sticky", "--reason", "keep watching");
+            assertEquals(0, enabled.exitCode(), enabled.stderr());
+            assertTrue(enabled.stdout().contains("Stays enabled across restarts."), enabled.stdout());
+
+            restartServer();
+            assertTrue(logctl("status").stdout().contains("Storm detection: enabled (sticky)"),
+                    logctl("status").stdout());
+            assertTrue(wildfly.getLogs().contains("storm detection on (sticky)"), "the startup banner says so");
+            String exported = logctl("export", "vendor-defaults").stdout();
+            assertTrue(exported.contains("# Not carried: storm detection is enabled (sticky)."), exported);
+
+            assertEquals(0, logctl("disable", "storms").exitCode());
+            restartServer();
+            assertTrue(logctl("status").stdout().contains("Storm detection: disabled"), logctl("status").stdout());
+        } finally {
+            logctl("disable", "storms");
+        }
+    }
+
     /** {@code :shutdown(restart=true)}: standalone.sh starts a fresh JVM, agent and vendor file included. */
     private void restartServer() throws InterruptedException {
         long bootsBefore = wildfly.getLogs().lines().filter(line -> line.contains("WFLYSRV0025")).count();

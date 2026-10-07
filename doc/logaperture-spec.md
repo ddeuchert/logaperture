@@ -394,6 +394,8 @@ Be honest about the limit: `fillInStackTrace` has already run at construction ti
 
 **Detection is valuable even without suppression.** A storm *detector* that only reports — "logger X emitted 40,000 near-identical exceptions in five minutes starting 03:14, first occurrence below" — is precisely the diagnostic that identifies a tight-loop bug, and it changes no behaviour at all. That puts it in the read-only Layer 1 release, and it is probably the most compelling single thing in that release.
 
+**In 1.0, detection is opt-in** (issue #151, [`doc/specs/storm-detection-toggle.md`](specs/storm-detection-toggle.md)). It costs every log call that reaches a handler, and it is report-only until the collapse above ships in Release 2 (#27), so it starts disabled. `--storm-detection=on` on the agent starts it enabled, and `logctl enable storms` / `disable storms` set it at runtime.
+
 **Defaults.** On, with conservative thresholds. Content-agnostic, so it needs no knowledge of the application. Subject to the suppression floor (§9.5) like everything else.
 
 ### 7.2 Rule model
@@ -609,6 +611,7 @@ Authorization is per-capability, not a single on/off. The split that matters mos
 | `capture` | **Data egress.** Producing a bundle of log content that leaves the machine |
 | `persist` | Making a change outlive the process, rather than expiring |
 | `guard.override` | Disabling or loosening the disk and volume guards |
+| `diagnostics` | Turning a diagnostic instrument on or off — `logctl enable\|disable storms` (#151). Costs CPU when on; loses diagnostic history when off, but no log data |
 
 A typical support workflow needs only `view`, `level.raise`, `rules.apply`, and `capture` — a considerably smaller grant than "administer logging", and one a security reviewer can approve. Design the CLI so that the common path exercises the minimum set.
 
@@ -1233,7 +1236,7 @@ The M0–M6 plan above stays the long-term map. It is too much to build before a
 | `1.1.0` | Dec 2026 – early 2027 | Quarkus JVM mode and plain-JVM JUL (#114), unless it made 1.0. Then Release 2: Spring Boot, Logback depth (rules, `top`, `doctor`, storms), configurable storm suppression (#27), Tomcat with per-webapp Logback. If Quarkus takes 1.1, Release 2 becomes 1.2. |
 | `1.2+` | later | `logctl console` (#33), Log4j 2, the rest of §15.3, in the order feedback suggests. |
 
-**Release 1 scope.** Everything the alpha line built (Layer 0, Layer 1, the handler and vendor-defaults work, and the `drop` / `trim` half of M2) plus guided commands (#116), recipes, #85, #31 and #69. #24 and #23 go in only if the overhead measurement shows they matter, by the rule fixed in [`doc/specs/overhead-benchmarks.md`](specs/overhead-benchmarks.md) (#128); #18 is not on the logging path and stays in 1.x. **Measured 2026-10-06** ([`doc/overhead.md`](overhead.md)): #23 goes in (`top`'s second stack-trace render adds +100 % of a call with an exception; the threshold is 25 %); #24 stays out (at 8 threads `idle` scales 1.73×, the baseline itself 1.61×). Deferred to 1.x: #79, #81, #83, #56, #18. Deferred to Release 2: #27, #77. #63 is closed as obsolete. Milestones: `1.0.0`, `1.1.0`, `1.x`.
+**Release 1 scope.** Everything the alpha line built (Layer 0, Layer 1, the handler and vendor-defaults work, and the `drop` / `trim` half of M2) plus guided commands (#116), recipes, #85, #31 and #69. #24 and #23 go in only if the overhead measurement shows they matter, by the rule fixed in [`doc/specs/overhead-benchmarks.md`](specs/overhead-benchmarks.md) (#128); #18 is not on the logging path and stays in 1.x. **Measured 2026-10-06** ([`doc/overhead.md`](overhead.md)): #23 goes in (`top`'s second stack-trace render adds +100 % of a call with an exception; the threshold is 25 %); #24 stays out (at 8 threads `idle` scales 1.73×, the baseline itself 1.61×). Deferred to 1.x: #79, #81, #83, #56, #18. Deferred to Release 2: #27, #77. #63 is closed as obsolete. Storm detection is opt-in in 1.0 (#151, decided 2026-10-06), so the storm filter's remaining cost (#150) no longer blocks 1.0 and moves to `1.1.0` with the storm-response work. Milestones: `1.0.0`, `1.1.0`, `1.x`.
 
 **Beta 1 is a hard feature freeze.** Between beta 1 and 1.0 the only changes are fixes, contract-review renames, docs and packaging. A new idea in that window becomes a 1.1 issue.
 

@@ -103,7 +103,9 @@ class CliEndToEndIT {
 
         Result statusAfter = run("status");
         assertEquals(0, statusAfter.exitCode, statusAfter.err);
-        assertEquals("No active overrides.", statusAfter.out.strip());
+        // FakeOps has no storm-detection switch of its own: the default answer is "enabled".
+        assertEquals("Storm detection: enabled" + System.lineSeparator() + System.lineSeparator()
+                + "No active overrides.", statusAfter.out.strip());
 
         Result resetAll = run("reset", "loggers");
         assertEquals(0, resetAll.exitCode, resetAll.err);

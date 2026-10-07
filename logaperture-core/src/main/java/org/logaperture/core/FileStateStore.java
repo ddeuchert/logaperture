@@ -38,6 +38,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -68,10 +69,12 @@ public final class FileStateStore implements StateStore, Closeable {
     private final List<String> defaultHandlerMembersCache;
     private String defaultHandlerMembersStateId;
     private final Map<String, PersistedRule> ruleCache;
+    private StormDetectionSetting stormDetection;
 
     private FileStateStore(Path stateFile, FileLock lock, Map<String, LevelOverride> initial,
             Map<HandlerRef, HandlerLevelOverride> initialHandlers, List<String> initialDefaultHandlerMembers,
-            String initialDefaultHandlerMembersStateId, Map<String, PersistedRule> initialRules) {
+            String initialDefaultHandlerMembersStateId, Map<String, PersistedRule> initialRules,
+            StormDetectionSetting initialStormDetection) {
         this.stateFile = stateFile;
         this.lock = lock;
         this.cache = new LinkedHashMap<>(initial);
@@ -79,6 +82,7 @@ public final class FileStateStore implements StateStore, Closeable {
         this.defaultHandlerMembersCache = new ArrayList<>(initialDefaultHandlerMembers);
         this.defaultHandlerMembersStateId = initialDefaultHandlerMembersStateId;
         this.ruleCache = new LinkedHashMap<>(initialRules);
+        this.stormDetection = initialStormDetection;
     }
 
     /**
@@ -133,7 +137,7 @@ public final class FileStateStore implements StateStore, Closeable {
                 membersStateId = newStateId();
             }
             FileStateStore store = new FileStateStore(stateFile, lock, initial, initialHandlers,
-                    existing.defaultHandlerMembers(), membersStateId, initialRules);
+                    existing.defaultHandlerMembers(), membersStateId, initialRules, existing.stormDetection());
             if (assigned) {
                 store.persist();
             }
@@ -293,14 +297,34 @@ public final class FileStateStore implements StateStore, Closeable {
     }
 
     @Override
+    public synchronized Optional<StormDetectionSetting> loadStormDetection() {
+        return Optional.ofNullable(stormDetection);
+    }
+
+    @Override
+    public synchronized void saveStormDetection(StormDetectionSetting setting) {
+        stormDetection = Objects.requireNonNull(setting, "setting");
+        persist();
+    }
+
+    @Override
+    public synchronized void removeStormDetection() {
+        if (stormDetection != null) {
+            stormDetection = null;
+            persist();
+        }
+    }
+
+    @Override
     public synchronized void clear() {
         if (!cache.isEmpty() || !handlerCache.isEmpty() || !defaultHandlerMembersCache.isEmpty()
-                || !ruleCache.isEmpty()) {
+                || !ruleCache.isEmpty() || stormDetection != null) {
             cache.clear();
             handlerCache.clear();
             defaultHandlerMembersCache.clear();
             defaultHandlerMembersStateId = null;
             ruleCache.clear();
+            stormDetection = null;
             persist();
         }
     }
@@ -347,7 +371,7 @@ public final class FileStateStore implements StateStore, Closeable {
         try {
             String content = StateFileFormat.write(List.copyOf(cache.values()), List.copyOf(handlerCache.values()),
                     List.copyOf(defaultHandlerMembersCache), defaultHandlerMembersStateId,
-                    List.copyOf(ruleCache.values()));
+                    List.copyOf(ruleCache.values()), stormDetection);
             Path tmp = Files.createTempFile(stateFile.getParent(), stateFile.getFileName().toString(), ".tmp");
             try {
                 Files.writeString(tmp, content, StandardCharsets.UTF_8);

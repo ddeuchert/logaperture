@@ -25,6 +25,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * A hand-written {@link StateStore} test double — no filesystem, no
@@ -191,5 +192,23 @@ final class InMemoryStateStore implements StateStore {
         savedDefaultHandlerMembers = List.of();
         savedDefaultHandlerMembersStateId = null;
         savedRules.clear();
+        savedStormDetection = null;
+    }
+
+    private StormDetectionSetting savedStormDetection;
+
+    @Override
+    public Optional<StormDetectionSetting> loadStormDetection() {
+        return Optional.ofNullable(savedStormDetection);
+    }
+
+    @Override
+    public void saveStormDetection(StormDetectionSetting setting) {
+        savedStormDetection = setting;
+    }
+
+    @Override
+    public void removeStormDetection() {
+        savedStormDetection = null;
     }
 }

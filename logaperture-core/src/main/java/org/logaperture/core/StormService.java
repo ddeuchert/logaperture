@@ -26,33 +26,53 @@ import java.util.Objects;
 
 /**
  * {@code logctl storms}'s engine — see doc/specs/storm-detection.md. Mirrors
- * {@link TopService}'s shape: {@link #startDetection()} installs an always-on
+ * {@link TopService}'s shape: {@link #startDetection()} installs the
  * gate-stage observer the moment a context comes up, and every {@link
  * #activeStorms} call reads whatever the detector has accumulated since.
+ * The observer is installed whether or not storm detection is enabled, and
+ * does nothing while it's disabled (doc/specs/storm-detection-toggle.md T5).
  */
 public final class StormService implements StormOperations {
 
     private final LoggingAdapter adapter;
     private final CapabilityPolicy policy;
     private final StormDetector detector;
+    private final StormDetectionSwitch detectionSwitch;
 
     /**
-     * Set once, the first time {@link #startDetection()} runs — {@code core}
-     * owns this clock, not the adapter (doc/specs/storm-detection.md
-     * "Reconfiguration and lifecycle"). A later re-arm call (idempotent by
-     * design) never moves it forward.
+     * Set the first time {@link #startDetection()} runs with storm detection
+     * enabled — {@code core} owns this clock, not the adapter (doc/specs/
+     * storm-detection.md "Reconfiguration and lifecycle"). A later re-arm call
+     * (idempotent by design) never moves it forward; enabling storm detection
+     * at runtime does, since that starts a new window (doc/specs/
+     * storm-detection-toggle.md T6). {@code null} while it has never been
+     * enabled for this context.
      */
     private volatile Instant measurementStartedAt;
 
+    /** Storm detection always enabled -- for tests, and any caller without an agent-supplied switch. */
     public StormService(LoggingAdapter adapter, CapabilityPolicy policy) {
-        this(adapter, policy, new StormDetector());
+        this(adapter, policy, StormDetectionSwitch.alwaysEnabled());
+    }
+
+    /** @param detectionSwitch the agent's one storm-detection switch (doc/specs/storm-detection-toggle.md T4) */
+    public StormService(LoggingAdapter adapter, CapabilityPolicy policy, StormDetectionSwitch detectionSwitch) {
+        this(adapter, policy, new StormDetector(detectionSwitch), detectionSwitch);
     }
 
     /** Package-visible so a test can inject a {@link StormDetector} wired with small thresholds. */
     StormService(LoggingAdapter adapter, CapabilityPolicy policy, StormDetector detector) {
+        this(adapter, policy, detector, StormDetectionSwitch.alwaysEnabled());
+    }
+
+    /** Package-visible so a test can pair a small-threshold detector with a switch it flips. */
+    StormService(LoggingAdapter adapter, CapabilityPolicy policy, StormDetector detector,
+            StormDetectionSwitch detectionSwitch) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.policy = Objects.requireNonNull(policy, "policy");
         this.detector = Objects.requireNonNull(detector, "detector");
+        this.detectionSwitch = Objects.requireNonNull(detectionSwitch, "detectionSwitch");
+        detectionSwitch.onEnable(this::startNewWindow);
     }
 
     /**
@@ -64,10 +84,20 @@ public final class StormService implements StormOperations {
      * cleared by a re-arm: it's keyed by fingerprint, not filter identity.
      */
     public void startDetection() {
-        if (measurementStartedAt == null) {
+        if (measurementStartedAt == null && detectionSwitch.isEnabled()) {
             measurementStartedAt = Instant.now();
         }
         adapter.installStormDetection(detector);
+    }
+
+    /**
+     * Storm detection was just enabled: forget what was tracked and measure from now
+     * (doc/specs/storm-detection-toggle.md T6) -- counts from before a gap of unknown length can't
+     * be combined with counts after it.
+     */
+    private void startNewWindow() {
+        detector.clear();
+        measurementStartedAt = Instant.now();
     }
 
     @Override
@@ -85,6 +115,12 @@ public final class StormService implements StormOperations {
         List<Storm> limited = limit > 0 && sorted.size() > limit ? sorted.subList(0, limit) : sorted;
         return new StormReport(List.copyOf(limited), sorted.size(), ongoingCount, measurementStartedAt,
                 detector.notRetainedCount());
+    }
+
+    /** This context's view of the agent's one switch -- the same answer as the aggregate's. */
+    @Override
+    public StormDetectionSwitch.State stormDetection() {
+        return detectionSwitch.state();
     }
 
     Instant measurementStartedAt() {

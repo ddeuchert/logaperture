@@ -80,7 +80,9 @@ public record AuditRecord(
         /** A handler, or the {@code DEFAULT_HANDLERS} membership. */
         HANDLER("handler"),
         /** A file as a whole: the vendor defaults file loaded, the state file resumed from. */
-        FILE("file");
+        FILE("file"),
+        /** An on/off switch: {@code storm-detection} (doc/specs/storm-detection-toggle.md T8). */
+        SWITCH("switch");
 
         private final String label;
 
@@ -88,7 +90,7 @@ public record AuditRecord(
             this.label = label;
         }
 
-        /** The key the audit line prints the target under: {@code logger=}, {@code handler=}, {@code file=}. */
+        /** The key the audit line prints the target under: {@code logger=}, {@code handler=}, {@code file=}, {@code switch=}. */
         public String label() {
             return label;
         }

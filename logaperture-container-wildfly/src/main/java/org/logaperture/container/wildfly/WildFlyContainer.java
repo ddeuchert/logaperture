@@ -35,6 +35,7 @@ import org.logaperture.core.LevelControlService;
 import org.logaperture.core.LoggerOverrideChangeListener;
 import org.logaperture.core.OverrideRegistry;
 import org.logaperture.core.RuleService;
+import org.logaperture.core.StormDetectionSwitch;
 import org.logaperture.core.StormService;
 import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.TopService;
@@ -138,8 +139,20 @@ public final class WildFlyContainer implements AutoCloseable {
      */
     WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
             Supplier<Optional<String>> containerVersion, VendorDefaults vendorDefaults) {
+        this(policy, auditLog, sweepInterval, containerVersion, vendorDefaults, true);
+    }
+
+    /**
+     * @param stormDetectionEnabled storm detection's starting position, from the agent's
+     *                              {@code --storm-detection} argument (doc/specs/
+     *                              storm-detection-toggle.md T1, T2). The shorter constructors start
+     *                              it enabled, as before, for the tests that use them.
+     */
+    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+            Supplier<Optional<String>> containerVersion, VendorDefaults vendorDefaults,
+            boolean stormDetectionEnabled) {
         this(policy, auditLog, sweepInterval, containerVersion, HandlerInstallPolicy.delay(), Clock.systemUTC(),
-                vendorDefaults);
+                vendorDefaults, stormDetectionEnabled);
     }
 
     /**
@@ -156,6 +169,12 @@ public final class WildFlyContainer implements AutoCloseable {
     WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
             Supplier<Optional<String>> containerVersion, Duration handlerInstallDelay, Clock clock,
             VendorDefaults vendorDefaults) {
+        this(policy, auditLog, sweepInterval, containerVersion, handlerInstallDelay, clock, vendorDefaults, true);
+    }
+
+    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+            Supplier<Optional<String>> containerVersion, Duration handlerInstallDelay, Clock clock,
+            VendorDefaults vendorDefaults, boolean stormDetectionEnabled) {
         this.policy = policy;
         this.vendorDefaults = Objects.requireNonNull(vendorDefaults, "vendorDefaults");
         this.auditLog = auditLog;
@@ -167,7 +186,11 @@ public final class WildFlyContainer implements AutoCloseable {
         // every context shares this one state file.
         takeOverExportedState();
         this.aggregate = new AggregateLevelControl(CONTAINER_NAME, containerVersion,
-                stateStore.location().map(Path::toString).orElse(null), this::handlerInstallAllowed, vendorDefaults);
+                stateStore.location().map(Path::toString).orElse(null), this::handlerInstallAllowed, vendorDefaults,
+                new StormDetectionSwitch(stormDetectionEnabled, policy, auditLog, principal(), stateStore));
+        // doc/specs/storm-detection-toggle.md "Restart": a saved 'for'/'sticky' storm setting wins over
+        // the agent argument (T14), applied once here, before any context installs. Never throws.
+        aggregate.stormDetectionSwitch().resume(clock.instant());
         // doc/specs/quieter-output.md Q5: the drop summary goes through the server's own logging, in its
         // format and under a category the operator controls -- written from the sweep thread, never from
         // inside a handler, so it can't loop through LogAperture's own wrappers.
@@ -256,7 +279,7 @@ public final class WildFlyContainer implements AutoCloseable {
         // that on the boot handlers before jboss-modules has started aborted a real launch -- so
         // they run as phase 2 (AggregateLevelControl.installHandlerLevel), after the floor.
         TopService topService = new TopService(adapter, policy);
-        StormService stormService = new StormService(adapter, policy);
+        StormService stormService = new StormService(adapter, policy, aggregate.stormDetectionSwitch());
 
         aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService,
                 stormService, ruleService, environmentReportService));

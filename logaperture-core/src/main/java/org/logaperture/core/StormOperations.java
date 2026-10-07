@@ -15,7 +15,10 @@
  */
 package org.logaperture.core;
 
+import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.StormReport;
+
+import java.time.Duration;
 
 /**
  * {@code logctl storms}'s public contract — the {@link TopOperations}
@@ -34,4 +37,33 @@ public interface StormOperations {
      *              TopOperations#topLoggers}'s convention)
      */
     StormReport activeStorms(int limit);
+
+    /**
+     * Whether storm detection is enabled, and when that last changed at runtime
+     * (doc/specs/storm-detection-toggle.md). Needs only {@code VIEW}. The default answers
+     * "enabled, never changed" -- what a surface without the switch has always meant.
+     */
+    default StormDetectionSwitch.State stormDetection() {
+        return new StormDetectionSwitch.State(true, true, null);
+    }
+
+    /**
+     * {@code logctl enable|disable storms}: sets storm detection to {@code enabled} in every
+     * context, whatever its current position (doc/specs/storm-detection-toggle.md T4, T10).
+     *
+     * @throws CapabilityDeniedException without {@link Capability#DIAGNOSTICS}
+     */
+    default StormDetectionSwitch.Change setStormDetection(boolean enabled, String reason) {
+        return setStormDetection(enabled, reason, PersistenceTier.SESSION, null);
+    }
+
+    /**
+     * ... with a tier: {@code SESSION}, {@code FOR} (then {@code forDuration}, after which it
+     * switches to the other position -- T12) or {@code STICKY} (kept across restarts). {@code FOR}
+     * and {@code STICKY} also need {@link Capability#PERSIST}.
+     */
+    default StormDetectionSwitch.Change setStormDetection(boolean enabled, String reason, PersistenceTier tier,
+            Duration forDuration) {
+        throw new UnsupportedOperationException("storm detection can't be enabled or disabled here");
+    }
 }
