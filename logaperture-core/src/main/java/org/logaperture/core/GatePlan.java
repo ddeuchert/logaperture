@@ -20,55 +20,106 @@ import org.logaperture.api.Drop;
 import org.logaperture.api.LogRule;
 import org.logaperture.api.Trim;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * One logger's effective rules, compiled for the gate -- doc/specs/rule-pipeline-foundation.md
  * "Evaluation cost", R2 and R5. Cached per logger name by {@link RuleService#effectiveRules}'s
  * resolution cache, so the compile step runs once per logger per rule change.
  *
- * <p>R5, the character-pair prefilter: with enough message-contains rules, the gate hashes every
- * adjacent pair of characters in the message into a 1,024-bit set once per event, and a rule whose
- * needle has a pair missing from the set is skipped without its {@code contains} scan. It never
- * changes a result: a missing pair proves the needle isn't in the message, and a present one
- * just falls through to the rule's ordinary matchers.
+ * <p>R5, the character-pair index: with enough message-contains rules, each one is filed under one
+ * adjacent pair of characters from its needle. Per event the gate walks the message's pairs once
+ * and runs the matchers only of rules filed under a pair the message has, so its cost follows the
+ * message's length, not the number of rules. It never changes a result: a needle in the message
+ * brings every one of its pairs with it, so its rule is always reached.
  */
 final class GatePlan {
 
-    /** R5: below this many prefiltered rules, plain {@code contains} scans cost less than the hashing. */
-    static final int PREFILTER_MIN_RULES = 6;
-    /** R5: pairs of a needle checked against the set, spread from its first pair to its last. */
-    static final int PROBES_PER_NEEDLE = 4;
+    /** R5: below this many indexed rules, checking each one costs less than walking the message. */
+    static final int INDEX_MIN_RULES = 6;
 
-    private static final int BITS_LOG2 = 10;
-    private static final int WORDS = (1 << BITS_LOG2) / Long.SIZE;
+    private static final int BUCKETS_LOG2 = 10;
+    private static final int BUCKETS = 1 << BUCKETS_LOG2;
 
     static final GatePlan EMPTY = new GatePlan(List.of());
 
     private final List<LogRule> rules;
-    /** Per rule, its needle's probe bits, or {@code null} when the prefilter can't rule it out. */
-    private final int[][] probes;
-    private final boolean prefilter;
+    /** Per rule, its matchers if it's a {@link Drop} or a {@link Trim}, else {@code null}. */
+    private final CompiledMatchers[] matchers;
+    private final boolean[] trim;
+    /** Rules checked one by one on every event: all of them, unless the index is in use. */
+    private final int[] direct;
+    /** Pair bucket to the rules filed under it; {@code null} when the index is not in use. */
+    private final int[][] index;
 
     GatePlan(List<LogRule> rules) {
         this.rules = rules;
-        this.probes = new int[rules.size()][];
-        int prefiltered = 0;
-        for (int i = 0; i < rules.size(); i++) {
-            probes[i] = probesFor(matchersOf(rules.get(i)));
-            if (probes[i] != null) {
-                prefiltered++;
+        int size = rules.size();
+        this.matchers = new CompiledMatchers[size];
+        this.trim = new boolean[size];
+        int[][] pairsByRule = new int[size][];
+        int indexable = 0;
+        for (int i = 0; i < size; i++) {
+            LogRule rule = rules.get(i);
+            if (rule instanceof Drop drop) {
+                matchers[i] = drop.matchers();
+            } else if (rule instanceof Trim t) {
+                matchers[i] = t.matchers();
+                trim[i] = true;
+            }
+            pairsByRule[i] = needlePairs(matchers[i]);
+            if (pairsByRule[i] != null) {
+                indexable++;
             }
         }
-        this.prefilter = prefiltered >= PREFILTER_MIN_RULES;
+        List<Integer> unindexed = new ArrayList<>();
+        if (indexable >= INDEX_MIN_RULES) {
+            List<List<Integer>> buckets = new ArrayList<>(BUCKETS);
+            for (int b = 0; b < BUCKETS; b++) {
+                buckets.add(new ArrayList<>());
+            }
+            for (int i = 0; i < size; i++) {
+                if (pairsByRule[i] == null) {
+                    if (matchers[i] != null) {
+                        unindexed.add(i);
+                    }
+                    continue;
+                }
+                // File under the least crowded of the needle's pairs, so rules sharing a common
+                // pair don't all land in one bucket and get checked together.
+                int best = pairsByRule[i][0];
+                for (int pair : pairsByRule[i]) {
+                    if (buckets.get(pair).size() < buckets.get(best).size()) {
+                        best = pair;
+                    }
+                }
+                buckets.get(best).add(i);
+            }
+            this.index = new int[BUCKETS][];
+            for (int b = 0; b < BUCKETS; b++) {
+                if (!buckets.get(b).isEmpty()) {
+                    index[b] = buckets.get(b).stream().mapToInt(Integer::intValue).toArray();
+                }
+            }
+        } else {
+            for (int i = 0; i < size; i++) {
+                if (matchers[i] != null) {
+                    unindexed.add(i);
+                }
+            }
+            this.index = null;
+        }
+        this.direct = unindexed.stream().mapToInt(Integer::intValue).toArray();
     }
 
     List<LogRule> rules() {
         return rules;
     }
 
-    boolean usesPrefilter() {
-        return prefilter;
+    boolean usesIndex() {
+        return index != null;
     }
 
     /**
@@ -77,97 +128,68 @@ final class GatePlan {
      * Free of side effects -- R4: only a {@code true} here sends the event to the decision cache.
      */
     boolean anyCandidateMatches(RuleCandidateEvent event) {
-        long[] pairs = null;
-        for (int i = 0; i < rules.size(); i++) {
-            LogRule rule = rules.get(i);
-            CompiledMatchers matchers;
-            if (rule instanceof Drop drop) {
-                matchers = drop.matchers();
-            } else if (rule instanceof Trim trim && event.thrown() != null) {
-                matchers = trim.matchers();
-            } else {
+        for (int i : direct) {
+            if (candidateMatches(i, event)) {
+                return true;
+            }
+        }
+        if (index == null) {
+            return false;
+        }
+        String message = event.formattedMessageSupplier().get();
+        if (message == null || message.length() < 2) {
+            return false; // every indexed rule needs at least two characters of message
+        }
+        long[] visited = new long[BUCKETS / Long.SIZE];
+        char previous = fold(message.charAt(0));
+        for (int c = 1; c < message.length(); c++) {
+            char current = fold(message.charAt(c));
+            int bucket = bucket(previous, current);
+            previous = current;
+            int[] filed = index[bucket];
+            if (filed == null || (visited[bucket >>> 6] & (1L << bucket)) != 0) {
                 continue;
             }
-            if (prefilter && probes[i] != null) {
-                if (pairs == null) {
-                    String message = event.formattedMessageSupplier().get();
-                    if (message == null) {
-                        continue; // RuleMatching rejects a message matcher on a null message too
-                    }
-                    pairs = pairsOf(message);
+            visited[bucket >>> 6] |= 1L << bucket;
+            for (int i : filed) {
+                if (candidateMatches(i, event)) {
+                    return true;
                 }
-                if (!containsAll(pairs, probes[i])) {
-                    continue;
-                }
-            }
-            if (RuleMatching.matches(matchers, event)) {
-                return true;
             }
         }
         return false;
     }
 
-    private static CompiledMatchers matchersOf(LogRule rule) {
-        if (rule instanceof Drop drop) {
-            return drop.matchers();
+    private boolean candidateMatches(int i, RuleCandidateEvent event) {
+        if (trim[i] && event.thrown() == null) {
+            return false; // RuleService.mostRestrictiveTrim never trims an event without a throwable
         }
-        if (rule instanceof Trim trim) {
-            return trim.matchers();
-        }
-        return null;
+        return RuleMatching.matches(matchers[i], event);
     }
 
     /**
-     * {@code null} unless the rule has a needle of at least two characters. An ignore-case needle
-     * must also be ASCII: {@link RuleMatching} lower-cases the whole message as a {@code String},
-     * which for a few characters (final sigma, dotted capital I) isn't the per-character folding
-     * {@link #fold} does, so a non-ASCII pair could be missed. An ASCII pair can't: every
-     * character the {@code String} lower-cases to ASCII folds to the same character here.
+     * The bucket of every adjacent pair in the rule's needle, or {@code null} when the rule can't
+     * be indexed: no needle, a one-character needle, or an ignore-case needle that isn't ASCII.
+     * {@link RuleMatching} lower-cases the whole message as a {@code String}, which for a few
+     * characters (final sigma, dotted capital I) isn't the per-character folding {@link #fold}
+     * does, so a non-ASCII pair could be missed. An ASCII pair can't: every character the {@code
+     * String} lower-cases to ASCII folds to the same character here.
      */
-    static int[] probesFor(CompiledMatchers matchers) {
+    static int[] needlePairs(CompiledMatchers matchers) {
         if (matchers == null || matchers.messageContains() == null) {
             return null;
         }
         String needle = matchers.messageIgnoreCase()
-                ? matchers.messageContains().toLowerCase(java.util.Locale.ROOT)
+                ? matchers.messageContains().toLowerCase(Locale.ROOT)
                 : matchers.messageContains();
-        int pairCount = needle.length() - 1;
-        if (pairCount < 1 || (matchers.messageIgnoreCase() && !isAscii(needle))) {
+        if (needle.length() < 2 || (matchers.messageIgnoreCase() && !isAscii(needle))) {
             return null;
         }
-        int count = Math.min(PROBES_PER_NEEDLE, pairCount);
-        int[] bits = new int[count];
-        for (int p = 0; p < count; p++) {
-            int at = count == 1 ? 0 : (int) ((long) p * (pairCount - 1) / (count - 1));
-            bits[p] = bit(fold(needle.charAt(at)), fold(needle.charAt(at + 1)));
+        int[] buckets = new int[needle.length() - 1];
+        for (int p = 0; p < buckets.length; p++) {
+            buckets[p] = bucket(fold(needle.charAt(p)), fold(needle.charAt(p + 1)));
         }
-        return bits;
-    }
-
-    /** Every adjacent character pair of {@code message}, folded and hashed into the set. */
-    static long[] pairsOf(String message) {
-        long[] pairs = new long[WORDS];
-        int length = message.length();
-        if (length < 2) {
-            return pairs;
-        }
-        char previous = fold(message.charAt(0));
-        for (int i = 1; i < length; i++) {
-            char current = fold(message.charAt(i));
-            int bit = bit(previous, current);
-            pairs[bit >>> 6] |= 1L << bit;
-            previous = current;
-        }
-        return pairs;
-    }
-
-    static boolean containsAll(long[] pairs, int[] bits) {
-        for (int bit : bits) {
-            if ((pairs[bit >>> 6] & (1L << bit)) == 0) {
-                return false;
-            }
-        }
-        return true;
+        return buckets;
     }
 
     /**
@@ -182,8 +204,8 @@ final class GatePlan {
         return Character.toLowerCase(c);
     }
 
-    private static int bit(char first, char second) {
-        return ((first << 16 | second) * 0x9E3779B1) >>> (Integer.SIZE - BITS_LOG2);
+    private static int bucket(char first, char second) {
+        return ((first << 16 | second) * 0x9E3779B1) >>> (Integer.SIZE - BUCKETS_LOG2);
     }
 
     private static boolean isAscii(String text) {

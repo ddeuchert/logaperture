@@ -18,11 +18,15 @@ package org.logaperture.core;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.logaperture.api.CompiledMatchers;
+import org.logaperture.api.Drop;
 import org.logaperture.api.Level;
+import org.logaperture.api.LogRule;
 import org.logaperture.api.RuleAttachOptions;
 import org.logaperture.api.SampleFullPolicy;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Random;
 
@@ -34,8 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * doc/specs/rule-pipeline-foundation.md "Evaluation cost", R4 and R5 (issue #148): the
- * character-pair prefilter only ever skips a rule whose needle can't be in the message, and an
- * event no rule matches is answered without the decision cache.
+ * character-pair index only ever skips a rule whose needle can't be in the message.
  */
 class GatePlanTest {
 
@@ -53,81 +56,111 @@ class GatePlanTest {
         return new CompiledMatchers(null, needle, ignoreCase, null, null, false);
     }
 
-    /** What {@link RuleMatching} decides for a message matcher alone. */
-    private static boolean contains(String message, String needle, boolean ignoreCase) {
-        return ignoreCase
-                ? message.toLowerCase(Locale.ROOT).contains(needle.toLowerCase(Locale.ROOT))
-                : message.contains(needle);
-    }
-
-    private static void assertNeverRulesOut(String message, String needle, boolean ignoreCase) {
-        int[] probes = GatePlan.probesFor(message(needle, ignoreCase));
-        if (probes != null && contains(message, needle, ignoreCase)) {
-            assertTrue(GatePlan.containsAll(GatePlan.pairsOf(message), probes),
-                    "needle '" + needle + "' (ignoreCase=" + ignoreCase + ") ruled out of '" + message + "'");
+    /** What {@link GatePlan#anyCandidateMatches} must answer: every rule checked, no index. */
+    private static boolean bruteForce(List<LogRule> rules, RuleCandidateEvent event) {
+        for (LogRule rule : rules) {
+            if (rule instanceof Drop drop && RuleMatching.matches(drop.matchers(), event)) {
+                return true;
+            }
         }
+        return false;
     }
 
     @Test
-    void prefilter_neverRulesOutANeedleTheMessageContains_randomText() {
+    void index_sameAnswerAsCheckingEveryRule_randomText() {
         Random random = new Random(148);
-        String alphabet = "abcABC xyz()[]0123:-_.KkSsIiİıΣσςΚ";
-        for (int round = 0; round < 50_000; round++) {
-            StringBuilder message = new StringBuilder();
-            int length = random.nextInt(40);
-            for (int i = 0; i < length; i++) {
-                message.append(alphabet.charAt(random.nextInt(alphabet.length())));
+        int indexedRounds = 0;
+        String alphabet = "abcABC xyz()0123:-.KkSsIiİıΣσςΚ\u212A";
+        for (int round = 0; round < 300; round++) {
+            setUp();
+            List<String> corpus = new ArrayList<>();
+            for (int m = 0; m < 40; m++) {
+                corpus.add(randomText(random, alphabet, 30));
             }
-            String text = message.toString();
-            if (text.isEmpty()) {
-                continue;
+            int ruleCount = GatePlan.INDEX_MIN_RULES + random.nextInt(20);
+            for (int r = 0; r < ruleCount; r++) {
+                String source = corpus.get(random.nextInt(corpus.size()));
+                String needle = source.isEmpty() || random.nextInt(4) == 0
+                        ? randomText(random, alphabet, 4)
+                        : substring(random, source);
+                if (needle.isEmpty()) {
+                    needle = "a";
+                }
+                switch (random.nextInt(3)) {
+                    case 0 -> drop(needle, false);
+                    case 1 -> drop(needle.toUpperCase(Locale.ROOT), true);
+                    default -> drop(needle, true);
+                }
             }
-            int from = random.nextInt(text.length());
-            int to = from + 1 + random.nextInt(Math.min(8, text.length() - from));
-            String needle = text.substring(from, to);
-            assertNeverRulesOut(text, needle, false);
-            assertNeverRulesOut(text, needle, true);
-            assertNeverRulesOut(text, needle.toUpperCase(Locale.ROOT), true);
-            assertNeverRulesOut(text, needle.toLowerCase(Locale.ROOT), true);
+            GatePlan plan = plan();
+            if (plan.usesIndex()) {
+                indexedRounds++;
+            }
+            for (String text : corpus) {
+                RuleCandidateEvent event = new RuleCandidateEvent(WORKER, Level.INFO, null, () -> text, Instant.EPOCH);
+                assertEquals(bruteForce(plan.rules(), event), plan.anyCandidateMatches(event),
+                        "message '" + text + "', rules " + plan.rules());
+            }
         }
+        assertTrue(indexedRounds > 100, "most rounds exercise the index: " + indexedRounds);
     }
 
     @Test
-    void prefilter_ignoreCase_characterThatLowerCasesToAscii() {
+    void index_ignoreCase_charactersThatLowerCaseToAscii() {
         // U+212A KELVIN SIGN lower-cases to 'k'; U+0130 to "i" plus a combining dot
-        assertNeverRulesOut("OKK done", "okk", true);
-        assertNeverRulesOut("Xİ", "xi", true);
-        assertNeverRulesOut("ΟΔΟΣ ok", "ος", false);
+        for (int i = 0; i < GatePlan.INDEX_MIN_RULES; i++) {
+            drop("unrelated " + i, false);
+        }
+        drop("okk", true);
+        drop("xi", true);
+        assertTrue(plan().usesIndex());
+        assertTrue(evaluate("OK\u212A done").deny());
+        assertTrue(evaluate("X\u0130").deny());
     }
 
     @Test
-    void prefilter_skipsNeedlesItCantCheck() {
-        assertNull(GatePlan.probesFor(message("x", false)), "one character has no pair");
-        assertNull(GatePlan.probesFor(message("οδος", true)), "non-ASCII ignore-case needle");
-        assertNull(GatePlan.probesFor(CompiledMatchers.matchAll()));
-        assertEquals(GatePlan.PROBES_PER_NEEDLE, GatePlan.probesFor(message("connection pool", false)).length);
+    void index_skipsNeedlesItCantFile() {
+        assertNull(GatePlan.needlePairs(message("x", false)), "one character has no pair");
+        assertNull(GatePlan.needlePairs(message("οδος", true)), "non-ASCII ignore-case needle");
+        assertNull(GatePlan.needlePairs(CompiledMatchers.matchAll()));
+        assertEquals(14, GatePlan.needlePairs(message("connection pool", false)).length);
     }
 
     @Test
-    void prefilter_onlyWithEnoughMessageRules() {
-        for (int i = 0; i < GatePlan.PREFILTER_MIN_RULES - 1; i++) {
+    void index_onlyWithEnoughMessageRules() {
+        for (int i = 0; i < GatePlan.INDEX_MIN_RULES - 1; i++) {
             drop("needle " + i, false);
         }
-        assertFalse(plan().usesPrefilter());
+        assertFalse(plan().usesIndex());
         drop("needle last", false);
-        assertTrue(plan().usesPrefilter());
+        assertTrue(plan().usesIndex());
     }
 
     @Test
-    void gate_withPrefilter_sameVerdictsAsMatching() {
+    void gate_withIndex_sameVerdictsAsMatching() {
         for (int i = 0; i < 20; i++) {
             drop("connection pool exhausted (" + i + ")", i % 2 == 0);
         }
-        assertTrue(plan().usesPrefilter());
+        assertTrue(plan().usesIndex());
         assertSame(GateVerdict.allow(), evaluate("Processed order 48213 for customer 7f3a9c21 in 12 ms"));
         assertTrue(evaluate("warn: Connection Pool Exhausted (12) after 3 s").deny(), "ignore-case rule 12");
         assertFalse(evaluate("warn: Connection Pool Exhausted (13) after 3 s").deny(), "rule 13 is case-sensitive");
         assertTrue(evaluate("warn: connection pool exhausted (13) after 3 s").deny());
+    }
+
+    private static String randomText(Random random, String alphabet, int maxLength) {
+        StringBuilder text = new StringBuilder();
+        int length = random.nextInt(maxLength + 1);
+        for (int i = 0; i < length; i++) {
+            text.append(alphabet.charAt(random.nextInt(alphabet.length())));
+        }
+        return text.toString();
+    }
+
+    private static String substring(Random random, String source) {
+        int from = random.nextInt(source.length());
+        int to = from + 1 + random.nextInt(Math.min(8, source.length() - from));
+        return source.substring(from, to);
     }
 
     private void drop(String needle, boolean ignoreCase) {
