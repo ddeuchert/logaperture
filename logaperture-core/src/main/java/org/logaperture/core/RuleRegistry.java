@@ -49,6 +49,12 @@ final class RuleRegistry {
      * the same lock, so a plan resolved from the old rules can only land in the map being discarded.
      */
     private volatile Map<String, GatePlan> resolved = new ConcurrentHashMap<>();
+    /**
+     * R5: one {@link GatePlan} per distinct effective rule list, so descendants that only inherit
+     * an ancestor's rules share its index instead of each compiling one. Replaced with {@link
+     * #resolved}.
+     */
+    private volatile Map<List<LogRule>, GatePlan> plans = new ConcurrentHashMap<>();
 
     synchronized void attach(LogRule rule) {
         rulesByLogger.computeIfAbsent(rule.loggerName(), name -> new CopyOnWriteArrayList<>()).add(rule);
@@ -64,10 +70,15 @@ final class RuleRegistry {
         return resolved;
     }
 
+    Map<List<LogRule>, GatePlan> planCache() {
+        return plans;
+    }
+
     /** Called last in every mutator, while still holding the lock. */
     private void changed() {
         ruleCount = byId.size();
         resolved = new ConcurrentHashMap<>();
+        plans = new ConcurrentHashMap<>();
     }
 
     Optional<LogRule> findById(String id) {

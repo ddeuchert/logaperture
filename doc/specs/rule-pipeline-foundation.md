@@ -405,15 +405,23 @@ has no side effects to deduplicate; its verdict is always "allow, no trim". So:
   the message brings all of its pairs with it. An ignore-case needle must be ASCII to be filed:
   the matcher lower-cases the message as a whole `String`, which for a few characters (final
   sigma, dotted capital I) isn't per-character folding, and only an ASCII pair is guaranteed to
-  survive both. The plan is compiled when the logger's entry is resolved into R2's cache, so
-  once per logger per rule change. Below 6 rules, checking each one costs less than the walk.
+  survive both. Before the walk, an event that no indexed rule could match on level (more
+  severe than every indexed rule's bound) or on type (no throwable, and every indexed rule a
+  `trim`) is answered without formatting the message. The plan is compiled when a logger's
+  entry is resolved into R2's cache, once per distinct effective rule list per rule change:
+  descendants that only inherit an ancestor's rules share its plan. Below 6 rules, checking each
+  one costs less than the walk.
 
 Expected effect: the idle and `drop-miss` paths cost one `volatile` read, or one map lookup by
 logger name, and allocate nothing; only loggers with rules pay for deduplication, at a sixteenth
 of today's contention. Since #148, a logger with rules pays for matching only, unless a rule
 matches. Measured on the dev box (Ryzen 5 3400G, unpinned) against Decision #21's curve:
 `gate-n` 34 / 77 / 164 / 188 ns at 1 / 5 / 20 / 100 rules, budgets 85 / 140 / 204 / 283 ns
-(before: 588 / 639 / 810 / 1,609 ns). The published numbers are overhead.md's.
+(before: 588 / 639 / 810 / 1,609 ns). The published numbers are overhead.md's. These are per
+gate call. An event no rule matches is no longer shared between handlers, so it is checked once
+per handler filter (and once per trim formatter, for an event with a throwable); with three
+handlers that is about three times the figure above, still below the one cache insert it
+replaces (PR #154 review).
 
 **A rule change and the events in flight at that instant.** An "allow" answered by R1/R2, or
 since #148 by R4's check, is not recorded against the record (recording it would put back the

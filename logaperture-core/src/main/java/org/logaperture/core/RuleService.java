@@ -1076,14 +1076,16 @@ public final class RuleService implements RuleOperations {
         // R2: read the cache reference before resolving. RuleRegistry swaps in a fresh map after
         // each change, so a plan resolved from rules that changed meanwhile lands in a discarded map.
         Map<String, GatePlan> cache = registry.resolvedCache();
+        Map<List<LogRule>, GatePlan> plans = registry.planCache();
         GatePlan cached = cache.get(loggerName);
         if (cached != null) {
             return cached;
         }
         List<LogRule> rules = resolveEffectiveRules(loggerName);
-        GatePlan resolved = rules.isEmpty() ? GatePlan.EMPTY : new GatePlan(rules);
+        GatePlan resolved = rules.isEmpty() ? GatePlan.EMPTY : plans.computeIfAbsent(rules, GatePlan::new);
         if (cache.size() >= MAX_RESOLVED_LOGGERS) {
             cache.clear();
+            plans.clear();
         }
         cache.put(loggerName, resolved);
         return resolved;
@@ -1150,7 +1152,7 @@ public final class RuleService implements RuleOperations {
         }
         Map<Object, GateVerdict> stripe =
                 decisionStripes[System.identityHashCode(recordIdentity) & (DECISION_STRIPES - 1)];
-        return stripe.computeIfAbsent(recordIdentity, identity -> computeVerdict(event));
+        return stripe.computeIfAbsent(recordIdentity, identity -> computeVerdict(plan.rules(), event));
     }
 
     @SuppressWarnings("unchecked")
@@ -1172,8 +1174,7 @@ public final class RuleService implements RuleOperations {
      * LogRule} type reaching this loop is simply not a candidate for a
      * gate-stage verdict.
      */
-    private GateVerdict computeVerdict(RuleCandidateEvent event) {
-        List<LogRule> effective = effectiveRules(event.loggerName());
+    private GateVerdict computeVerdict(List<LogRule> effective, RuleCandidateEvent event) {
         for (LogRule rule : effective) {
             if (!(rule instanceof Drop drop)) {
                 continue;

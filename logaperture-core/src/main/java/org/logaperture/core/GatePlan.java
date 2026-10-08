@@ -17,6 +17,7 @@ package org.logaperture.core;
 
 import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.Drop;
+import org.logaperture.api.Level;
 import org.logaperture.api.LogRule;
 import org.logaperture.api.Trim;
 
@@ -61,6 +62,13 @@ final class GatePlan {
     private final long[] filed;
     /** Per indexed rule, a few of its needle's pairs, spread from its first to its last. */
     private final int[][] probes;
+    /**
+     * The least verbose level bound among indexed rules, or {@code null} if one has none: an event
+     * more severe than this can't match any indexed rule, so it isn't formatted or walked.
+     */
+    private final Level indexLevelAtMost;
+    /** Whether any indexed rule is a {@link Drop}; if not, an event without a throwable skips the walk. */
+    private final boolean indexHasDrop;
 
     GatePlan(List<LogRule> rules) {
         this.rules = rules;
@@ -125,11 +133,23 @@ final class GatePlan {
                 }
             }
             this.probes = new int[size][];
+            Level loosest = null;
+            boolean unbounded = false;
+            boolean hasDrop = false;
             for (int i = 0; i < size; i++) {
                 if (pairsByRule[i] != null) {
                     probes[i] = spread(pairsByRule[i]);
+                    hasDrop |= !trim[i];
+                    Level bound = matchers[i].levelAtMost();
+                    if (bound == null) {
+                        unbounded = true;
+                    } else if (loosest == null || loosest.isMoreVerboseThan(bound)) {
+                        loosest = bound;
+                    }
                 }
             }
+            this.indexLevelAtMost = unbounded ? null : loosest;
+            this.indexHasDrop = hasDrop;
         } else {
             for (int i = 0; i < size; i++) {
                 if (matchers[i] != null) {
@@ -139,6 +159,8 @@ final class GatePlan {
             this.index = null;
             this.filed = null;
             this.probes = null;
+            this.indexLevelAtMost = null;
+            this.indexHasDrop = false;
         }
         this.direct = unindexed.stream().mapToInt(Integer::intValue).toArray();
     }
@@ -162,8 +184,10 @@ final class GatePlan {
                 return true;
             }
         }
-        if (index == null) {
-            return false;
+        if (index == null
+                || (!indexHasDrop && event.thrown() == null)
+                || (indexLevelAtMost != null && indexLevelAtMost.isMoreVerboseThan(event.level()))) {
+            return false; // no indexed rule could match: don't format the message for nothing
         }
         String message = event.formattedMessageSupplier().get();
         if (message == null || message.length() < 2) {
@@ -214,6 +238,7 @@ final class GatePlan {
         return picked;
     }
 
+    /** Mirrors {@link RuleService}'s computeVerdict and mostRestrictiveTrim: keep the two in step. */
     private boolean candidateMatches(int i, RuleCandidateEvent event) {
         if (trim[i] && event.thrown() == null) {
             return false; // RuleService.mostRestrictiveTrim never trims an event without a throwable

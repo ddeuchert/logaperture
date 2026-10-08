@@ -29,6 +29,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -146,6 +148,54 @@ class GatePlanTest {
         assertTrue(evaluate("warn: Connection Pool Exhausted (12) after 3 s").deny(), "ignore-case rule 12");
         assertFalse(evaluate("warn: Connection Pool Exhausted (13) after 3 s").deny(), "rule 13 is case-sensitive");
         assertTrue(evaluate("warn: connection pool exhausted (13) after 3 s").deny());
+    }
+
+    @Test
+    void index_eventNoIndexedRuleCouldMatch_isNotFormatted() {
+        for (int i = 0; i < GatePlan.INDEX_MIN_RULES; i++) {
+            service.attach(WORKER, new CompiledMatchers(Level.DEBUG, "needle " + i, false, null, null, false),
+                    RuleAttachOptions.defaults(), DropFactories.attach(SampleFullPolicy.disabled()), Capability.SUPPRESS);
+        }
+        assertTrue(plan().usesIndex());
+        AtomicInteger formatted = new AtomicInteger();
+        Supplier<String> message = () -> {
+            formatted.incrementAndGet();
+            return "needle 3";
+        };
+        assertSame(GateVerdict.allow(), service.gate().evaluate(new Object(),
+                new RuleCandidateEvent(WORKER, Level.INFO, null, message, Instant.EPOCH)));
+        assertEquals(0, formatted.get(), "every indexed rule is bounded at DEBUG, the event is INFO");
+        assertTrue(service.gate().evaluate(new Object(),
+                new RuleCandidateEvent(WORKER, Level.DEBUG, null, message, Instant.EPOCH)).deny());
+    }
+
+    @Test
+    void index_trimsOnly_eventWithoutThrowable_isNotFormatted() {
+        for (int i = 0; i < GatePlan.INDEX_MIN_RULES; i++) {
+            service.attach(WORKER, message("needle " + i, false), RuleAttachOptions.defaults(),
+                    TrimFactories.attach(5, false), Capability.SUPPRESS);
+        }
+        assertTrue(plan().usesIndex());
+        AtomicInteger formatted = new AtomicInteger();
+        Supplier<String> message = () -> {
+            formatted.incrementAndGet();
+            return "needle 3";
+        };
+        assertSame(GateVerdict.allow(), service.gate().evaluate(new Object(),
+                new RuleCandidateEvent(WORKER, Level.INFO, null, message, Instant.EPOCH)));
+        assertEquals(0, formatted.get());
+        GateVerdict withThrowable = service.gate().evaluate(new Object(),
+                new RuleCandidateEvent(WORKER, Level.INFO, new IllegalStateException(), message, Instant.EPOCH));
+        assertEquals(5, withThrowable.trim().frames());
+    }
+
+    @Test
+    void descendantsInheritingTheSameRules_shareOnePlan() {
+        for (int i = 0; i < GatePlan.INDEX_MIN_RULES; i++) {
+            service.attach("com.acme", message("needle " + i, false), RuleAttachOptions.defaults(),
+                    DropFactories.attach(SampleFullPolicy.disabled()), Capability.SUPPRESS);
+        }
+        assertSame(service.effectiveRules("com.acme.a.One"), service.effectiveRules("com.acme.b.Two"));
     }
 
     private static String randomText(Random random, String alphabet, int maxLength) {
