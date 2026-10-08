@@ -10,7 +10,8 @@ storm-detection filter". The idempotence checks on both handler filters looked a
 outermost filter, so every sweep tick re-wrapped both. A weekend-long WildFly burn-in ended in
 `StackOverflowError`. Decisions F1–F5.
 
-**Amendment (issue [#148](https://github.com/ddeuchert/logaperture/issues/148)), 2026-10-07:**
+**Amendment (issue [#148](https://github.com/ddeuchert/logaperture/issues/148)), signed off
+2026-10-07:**
 "Evaluation cost": R2 caches a compiled plan, R4 deduplicates only events a rule matches, and
 new R5 indexes message-contains rules by character pair, so the gate meets overhead-benchmarks.md
 Decision #21's curve. Option A of three (pair index; the others were a full Aho–Corasick matcher
