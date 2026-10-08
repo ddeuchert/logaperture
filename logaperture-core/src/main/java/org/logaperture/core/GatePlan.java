@@ -43,6 +43,9 @@ final class GatePlan {
 
     private static final int BUCKETS_LOG2 = 10;
     private static final int BUCKETS = 1 << BUCKETS_LOG2;
+    private static final int WORDS = BUCKETS / Long.SIZE;
+    /** R5: pairs of a candidate's needle checked against the message's pairs before its scan. */
+    static final int PROBES_PER_NEEDLE = 4;
 
     static final GatePlan EMPTY = new GatePlan(List.of());
 
@@ -54,6 +57,10 @@ final class GatePlan {
     private final int[] direct;
     /** Pair bucket to the rules filed under it; {@code null} when the index is not in use. */
     private final int[][] index;
+    /** One bit per bucket of {@link #index} with a rule filed under it. */
+    private final long[] filed;
+    /** Per indexed rule, a few of its needle's pairs, spread from its first to its last. */
+    private final int[][] probes;
 
     GatePlan(List<LogRule> rules) {
         this.rules = rules;
@@ -110,9 +117,17 @@ final class GatePlan {
                 buckets.get(best).add(i);
             }
             this.index = new int[BUCKETS][];
+            this.filed = new long[WORDS];
             for (int b = 0; b < BUCKETS; b++) {
                 if (!buckets.get(b).isEmpty()) {
                     index[b] = buckets.get(b).stream().mapToInt(Integer::intValue).toArray();
+                    filed[b >>> 6] |= 1L << b;
+                }
+            }
+            this.probes = new int[size][];
+            for (int i = 0; i < size; i++) {
+                if (pairsByRule[i] != null) {
+                    probes[i] = spread(pairsByRule[i]);
                 }
             }
         } else {
@@ -122,6 +137,8 @@ final class GatePlan {
                 }
             }
             this.index = null;
+            this.filed = null;
+            this.probes = null;
         }
         this.direct = unindexed.stream().mapToInt(Integer::intValue).toArray();
     }
@@ -152,25 +169,49 @@ final class GatePlan {
         if (message == null || message.length() < 2) {
             return false; // every indexed rule needs at least two characters of message
         }
-        long[] visited = new long[BUCKETS / Long.SIZE];
+        // Every pair of the message first: the common case is no match at all, which walks the
+        // whole message anyway, and a loop with nothing else in it is the cheapest walk there is.
+        long[] pairs = new long[WORDS];
         char[] chars = message.toCharArray();
         char previous = fold(chars[0]);
         for (int c = 1; c < chars.length; c++) {
             char current = fold(chars[c]);
             int bucket = bucket(previous, current);
+            pairs[bucket >>> 6] |= 1L << bucket;
             previous = current;
-            int[] filed = index[bucket];
-            if (filed == null || (visited[bucket >>> 6] & (1L << bucket)) != 0) {
-                continue;
-            }
-            visited[bucket >>> 6] |= 1L << bucket;
-            for (int i : filed) {
-                if (candidateMatches(i, event)) {
-                    return true;
+        }
+        for (int word = 0; word < WORDS; word++) {
+            long hits = pairs[word] & filed[word];
+            while (hits != 0) {
+                int bucket = word << 6 | Long.numberOfTrailingZeros(hits);
+                hits &= hits - 1;
+                for (int i : index[bucket]) {
+                    if (containsAll(pairs, probes[i]) && candidateMatches(i, event)) {
+                        return true;
+                    }
                 }
             }
         }
         return false;
+    }
+
+    private static boolean containsAll(long[] pairs, int[] buckets) {
+        for (int bucket : buckets) {
+            if ((pairs[bucket >>> 6] & (1L << bucket)) == 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Up to {@link #PROBES_PER_NEEDLE} of {@code pairs}, evenly spaced, first and last included. */
+    private static int[] spread(int[] pairs) {
+        int count = Math.min(PROBES_PER_NEEDLE, pairs.length);
+        int[] picked = new int[count];
+        for (int p = 0; p < count; p++) {
+            picked[p] = pairs[count == 1 ? 0 : (int) ((long) p * (pairs.length - 1) / (count - 1))];
+        }
+        return picked;
     }
 
     private boolean candidateMatches(int i, RuleCandidateEvent event) {
