@@ -153,9 +153,10 @@ final class GatePlan {
             return false; // every indexed rule needs at least two characters of message
         }
         long[] visited = new long[BUCKETS / Long.SIZE];
-        char previous = fold(message.charAt(0));
-        for (int c = 1; c < message.length(); c++) {
-            char current = fold(message.charAt(c));
+        char[] chars = message.toCharArray();
+        char previous = fold(chars[0]);
+        for (int c = 1; c < chars.length; c++) {
+            char current = fold(chars[c]);
             int bucket = bucket(previous, current);
             previous = current;
             int[] filed = index[bucket];
