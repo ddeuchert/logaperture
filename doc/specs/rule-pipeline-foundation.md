@@ -10,6 +10,12 @@ storm-detection filter". The idempotence checks on both handler filters looked a
 outermost filter, so every sweep tick re-wrapped both. A weekend-long WildFly burn-in ended in
 `StackOverflowError`. Decisions F1–F5.
 
+**Amendment (issue [#148](https://github.com/ddeuchert/logaperture/issues/148)), 2026-10-07:**
+"Evaluation cost": R2 caches a compiled plan, R4 deduplicates only events a rule matches, and
+new R5 indexes message-contains rules by character pair, so the gate meets overhead-benchmarks.md
+Decision #21's curve. Option A of three (pair index; the others were a full Aho–Corasick matcher
+and restating the budget as linear), chosen 2026-10-07.
+
 Status: **signed off 2026-09-22; implemented.** `core` (`RuleRegistry`/`RuleService`/matcher
 library/`useParentRules` resolution/`AggregateLevelControl` multi-context merge), the
 JUL/JBoss LogManager gate `Filter`, the JMX surface, the CLI (`list rules`/`reset rule`/`reset
@@ -364,9 +370,9 @@ has no side effects to deduplicate; its verdict is always "allow, no trim". So:
   existing `synchronized` mutators. With zero rules, the gate answers "allow" before anything
   else: no allocation, no lock, no lookup.
 - **R2, per-logger resolution cache** (top-level §10's "per-logger resolution cache", finally
-  built). The effective rule list per logger name is cached in a `ConcurrentHashMap<String,
-  List<LogRule>>`, bounded at **4,096 logger names** (cleared when full) and replaced with an
-  empty map on every registry change (`attach`, `remove…`, `replace…`, `removeAll`,
+  built). The effective rule list per logger name, compiled for the gate (R5), is cached in a
+  `ConcurrentHashMap<String, GatePlan>`, bounded at **4,096 logger names** (cleared when full)
+  and replaced with an empty map on every registry change (`attach`, `remove…`, `replace…`, `removeAll`,
   `setUseParentRules`), all of which already funnel through `RuleRegistry`. The empty map is
   swapped in *after* the registry change, inside the same `synchronized` block, so a list
   computed from the old rules can only ever land in the map being discarded. A logger whose
@@ -375,19 +381,42 @@ has no side effects to deduplicate; its verdict is always "allow, no trim". So:
 - **R3, ask before building the event.** `RuleGate` gains `boolean appliesTo(String
   loggerName)`, answered by R1 and R2. `JulRuleFilter` and `JulTrimFormatter` call it first and
   only build a `RuleCandidateEvent` and call `evaluate` when it's `true`.
-- **R4, deduplication when a rule can apply.** Only events whose logger has effective rules
-  reach `decisionCache`. It stays keyed by the record with weak keys and an atomic
-  `computeIfAbsent` (so the async-handler race the original code review found stays closed),
+- **R4, deduplication when a rule matches** *(#148)*. The gate first checks the event against
+  the logger's rules with no side effects: does some `drop` match, or, for an event with a
+  throwable, some `trim`? Only then does it go to `decisionCache`, where the verdict is computed
+  once and counted. An event no rule matches (the normal case even on a logger with rules) is
+  answered "allow" without it. Every record that reached the cache used to cost a weak
+  reference that the collector had to process, plus the stripe lock: about 470 ns per record at
+  one rule, most of #148's cost. Matching twice (the check, then the verdict) is paid only by an
+  event that is dropped or trimmed. `decisionCache` stays keyed by the record with weak keys and
+  an atomic `computeIfAbsent` (so the async-handler race the original code review found stays closed),
   but is **striped**: 16 `synchronizedMap(WeakHashMap)` stripes chosen by
   `System.identityHashCode(record)`, so unrelated threads rarely share a lock.
+- **R5, character-pair index** *(#148)*. With **6 or more** rules on a logger whose
+  message-contains needle is at least two characters (and ASCII, for an ignore-case needle),
+  each such rule is filed under one adjacent pair of characters from its needle: the pair fewest
+  of the logger's needles share, so numbered needles (`… (1)`, `… (2)`) don't crowd one pair.
+  Pairs are case-folded and hashed into 1,024 buckets. Per event the gate marks every pair of
+  the message in a 1,024-bit set, then checks only the rules filed under a marked bucket: first
+  up to four of the needle's pairs (spread from first to last) against the set, then the rule's
+  ordinary matchers. Other rules are checked one by one as before. The cost follows the length
+  of the message instead of the number of rules. It never changes a result, because a needle in
+  the message brings all of its pairs with it. An ignore-case needle must be ASCII to be filed:
+  the matcher lower-cases the message as a whole `String`, which for a few characters (final
+  sigma, dotted capital I) isn't per-character folding, and only an ASCII pair is guaranteed to
+  survive both. The plan is compiled when the logger's entry is resolved into R2's cache, so
+  once per logger per rule change. Below 6 rules, checking each one costs less than the walk.
 
 Expected effect: the idle and `drop-miss` paths cost one `volatile` read, or one map lookup by
 logger name, and allocate nothing; only loggers with rules pay for deduplication, at a sixteenth
-of today's contention.
+of today's contention. Since #148, a logger with rules pays for matching only, unless a rule
+matches. Measured on the dev box (Ryzen 5 3400G, unpinned) against Decision #21's curve:
+`gate-n` 34 / 77 / 164 / 188 ns at 1 / 5 / 20 / 100 rules, budgets 85 / 140 / 204 / 283 ns
+(before: 588 / 639 / 810 / 1,609 ns). The published numbers are overhead.md's.
 
-**A rule change and the events in flight at that instant.** An "allow" answered by R1/R2 is
-not recorded against the record (recording it would put back the per-record cost this section
-removes). So while a rule is being attached or removed, the handlers of a single event that is
+**A rule change and the events in flight at that instant.** An "allow" answered by R1/R2, or
+since #148 by R4's check, is not recorded against the record (recording it would put back the
+per-record cost this section removes). So while a rule is being attached or removed, the handlers of a single event that is
 being written at that moment can disagree: with a `drop` attached mid-event, a handler that ran
 before the change lets the event through and one that runs after denies it (and counts the
 hit); with a rule reset mid-event, a handler that runs after the change lets through an event

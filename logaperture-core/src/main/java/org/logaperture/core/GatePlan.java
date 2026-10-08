@@ -31,10 +31,10 @@ import java.util.Locale;
  * resolution cache, so the compile step runs once per logger per rule change.
  *
  * <p>R5, the character-pair index: with enough message-contains rules, each one is filed under one
- * adjacent pair of characters from its needle. Per event the gate walks the message's pairs once
- * and runs the matchers only of rules filed under a pair the message has, so its cost follows the
- * message's length, not the number of rules. It never changes a result: a needle in the message
- * brings every one of its pairs with it, so its rule is always reached.
+ * adjacent pair of characters from its needle. Per event the gate marks the message's pairs in a
+ * bitset once, then runs the matchers only of rules filed under a pair the message has (and whose
+ * probe pairs it has too), so its cost follows the message's length, not the number of rules. It
+ * never changes a result: a needle in the message brings every one of its pairs with it.
  */
 final class GatePlan {
 
