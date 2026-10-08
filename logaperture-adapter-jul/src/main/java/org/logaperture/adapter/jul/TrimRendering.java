@@ -35,6 +35,10 @@ import java.util.Set;
  */
 final class TrimRendering {
 
+    /** The trim marker around the omitted-frame count, appended to each level's {@code toString()}; {@link ByteCountingFormatter} skips it to find a trimmed trace (doc/specs/top.md T5). */
+    static final String MARKER_OPEN = " [stack trace trimmed: ";
+    static final String MARKER_CLOSE = " frames omitted]";
+
     private TrimRendering() {
     }
 
@@ -57,7 +61,7 @@ final class TrimRendering {
         int omitted = originalFrames.length - kept;
         // Decision #1 (doc/specs/trim-rule.md "Open decisions for sign-off"): the marker always
         // prints, reading "0 frames omitted" when frames is at or above the trace's actual depth.
-        String rendered = original + " [stack trace trimmed: " + omitted + " frames omitted]";
+        String rendered = original + MARKER_OPEN + omitted + MARKER_CLOSE;
         // getStackTrace() already handed back a fresh defensive copy -- no need for a second one
         // when every frame is kept (a code-review finding against the first cut, which copied
         // unconditionally).
