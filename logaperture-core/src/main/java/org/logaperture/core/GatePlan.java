@@ -21,6 +21,7 @@ import org.logaperture.api.LogRule;
 import org.logaperture.api.Trim;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
@@ -80,6 +81,14 @@ final class GatePlan {
             for (int b = 0; b < BUCKETS; b++) {
                 buckets.add(new ArrayList<>());
             }
+            int[] needlesWithPair = new int[BUCKETS];
+            for (int[] pairs : pairsByRule) {
+                if (pairs != null) {
+                    for (int pair : Arrays.stream(pairs).distinct().toArray()) {
+                        needlesWithPair[pair]++;
+                    }
+                }
+            }
             for (int i = 0; i < size; i++) {
                 if (pairsByRule[i] == null) {
                     if (matchers[i] != null) {
@@ -87,11 +96,14 @@ final class GatePlan {
                     }
                     continue;
                 }
-                // File under the least crowded of the needle's pairs, so rules sharing a common
-                // pair don't all land in one bucket and get checked together.
+                // File under the needle's rarest pair among this plan's needles, then the least
+                // crowded bucket: rules sharing a common pair ("connection pool exhausted (1)",
+                // "(2)", ...) would otherwise all be checked whenever a message has that pair.
                 int best = pairsByRule[i][0];
                 for (int pair : pairsByRule[i]) {
-                    if (buckets.get(pair).size() < buckets.get(best).size()) {
+                    if (needlesWithPair[pair] < needlesWithPair[best]
+                            || (needlesWithPair[pair] == needlesWithPair[best]
+                                    && buckets.get(pair).size() < buckets.get(best).size())) {
                         best = pair;
                     }
                 }
