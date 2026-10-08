@@ -1137,12 +1137,31 @@ public final class RuleService implements RuleOperations {
      * mapping function, making this atomic.
      */
     private GateVerdict evaluateGate(Object recordIdentity, RuleCandidateEvent event) {
-        if (effectiveRules(event.loggerName()).isEmpty()) {
-            return GateVerdict.allow(); // nothing can apply, so nothing to count once: skip the stripe
+        List<LogRule> effective = effectiveRules(event.loggerName());
+        if (effective.isEmpty() || !anyCandidateMatches(effective, event)) {
+            return GateVerdict.allow(); // nothing matches, so nothing to count once: skip the stripe
         }
         Map<Object, GateVerdict> stripe =
                 decisionStripes[System.identityHashCode(recordIdentity) & (DECISION_STRIPES - 1)];
         return stripe.computeIfAbsent(recordIdentity, identity -> computeVerdict(event));
+    }
+
+    /**
+     * Whether {@link #computeVerdict} could return anything but {@link GateVerdict#allow()}: some
+     * {@link Drop} matches, or the event has a throwable and some {@link Trim} matches. Free of
+     * side effects, so the common case on a logger with rules -- none of them matches -- is
+     * answered without the per-record decision cache, which is what made #148's gate cost.
+     */
+    private static boolean anyCandidateMatches(List<LogRule> effective, RuleCandidateEvent event) {
+        for (LogRule rule : effective) {
+            if (rule instanceof Drop drop && RuleMatching.matches(drop.matchers(), event)) {
+                return true;
+            }
+            if (rule instanceof Trim trim && event.thrown() != null && RuleMatching.matches(trim.matchers(), event)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @SuppressWarnings("unchecked")
