@@ -194,7 +194,8 @@ Alongside them, each hot-path piece is benchmarked on its own, with nothing arou
 | `storm-hash` | `StormMessageNormalizer.hash` alone: the per-event normalizing scan, which hashes without building text (#147) |
 | `storm-normalize` | `StormDetector.normalize` alone: the normalized text, built only for a new fingerprint since #147 |
 | `top-record` | `TopCounters.record` |
-| `trace-bytes` | `ByteCountingFormatter`'s second stack-trace render (#23) |
+| `trace-share` | `ByteCountingFormatter` finding the stack-trace share in the formatted record (#23's fix, top.md T1–T4) |
+| `trace-bytes` | `ByteCountingFormatter`'s separate stack-trace render: before #23 every throwable's second render, now only top.md T2's fallback |
 | `storm-off`, `storm-off-delegate` | The storm filter installed but disabled, and the filter it wraps called directly; the difference is disabled storm's cost (Decision #24) |
 
 These land in the tens of nanoseconds with tight error bars, so they cross-check the

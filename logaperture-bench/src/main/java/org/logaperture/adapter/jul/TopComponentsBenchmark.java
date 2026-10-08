@@ -26,7 +26,10 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.Warmup;
 
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.LogRecord;
+import java.util.logging.SimpleFormatter;
 
 /**
  * doc/specs/overhead-benchmarks.md "Component benchmarks": the two pieces of
@@ -49,6 +52,8 @@ public class TopComponentsBenchmark {
 
     private TopCounters counters;
     private Throwable thrown;
+    private String formatted;
+    private long formattedBytes;
 
     @Setup
     public void setUp() {
@@ -62,6 +67,14 @@ public class TopComponentsBenchmark {
         }
         e.setStackTrace(frames);
         thrown = e;
+        LogRecord record = new LogRecord(java.util.logging.Level.SEVERE, "Processed order 48213 for customer 7f3a9c21 in 12 ms");
+        record.setLoggerName(LOGGER);
+        record.setThrown(e);
+        formatted = new SimpleFormatter().format(record);
+        formattedBytes = formatted.getBytes(StandardCharsets.UTF_8).length;
+        if (ByteCountingFormatter.traceStart(formatted, thrown) < 0) {
+            throw new IllegalStateException("trace-share would measure the fallback render, not the lookup");
+        }
     }
 
     /** {@code top-record}: one record's bytes added to its logger's tally (#24's lock, uncontended). */
@@ -70,7 +83,19 @@ public class TopComponentsBenchmark {
         counters.record(LOGGER, 80, 0);
     }
 
-    /** {@code trace-bytes}: the second stack-trace render a record with a throwable costs (#23). */
+    /**
+     * {@code trace-share}: finding a record's stack-trace share in what its formatter wrote, as
+     * every text formatter's record with a throwable does since #23 (doc/specs/top.md T1-T4).
+     */
+    @Benchmark
+    public long traceShare() {
+        return ByteCountingFormatter.stackTraceBytes(formatted, formattedBytes, thrown);
+    }
+
+    /**
+     * {@code trace-bytes}: the separate stack-trace render; since #23 only the fallback for a
+     * formatter that doesn't write the trace as text (top.md T2).
+     */
     @Benchmark
     public long traceBytes() {
         return ByteCountingFormatter.traceBytes(thrown);
