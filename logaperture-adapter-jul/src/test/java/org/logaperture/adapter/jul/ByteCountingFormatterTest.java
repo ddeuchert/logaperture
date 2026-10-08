@@ -66,6 +66,71 @@ class ByteCountingFormatterTest {
     }
 
     @Test
+    void stackTraceShare_isTheFormattedTextFromTheTraceOn() {
+        RuntimeException thrown = new RuntimeException("simulated failure");
+        String formatted = "Oct 07 SEVERE com.acme.Worker: boom\n" + render(thrown);
+
+        assertEquals(formatted.indexOf("java.lang.RuntimeException"), ByteCountingFormatter.traceStart(formatted, thrown));
+        assertEquals(utf8(render(thrown)), ByteCountingFormatter.stackTraceBytes(formatted, utf8(formatted), thrown));
+    }
+
+    @Test
+    void stackTraceShare_skipsTheHeaderWhenTheMessageRepeatsIt() {
+        RuntimeException thrown = new RuntimeException("simulated failure");
+        String formatted = "SEVERE: failed: " + thrown + "\n" + render(thrown) + "\n";
+
+        assertEquals(utf8(render(thrown) + "\n"), ByteCountingFormatter.stackTraceBytes(formatted, utf8(formatted), thrown),
+                "T1: the trace, not the copy in the message; T3: the trailing line break counts");
+    }
+
+    @Test
+    void stackTraceShare_crlfLineBreaks() {
+        RuntimeException thrown = new RuntimeException("x");
+        String formatted = "SEVERE: x\r\n" + thrown + "\r\n\tat a.B.c(B.java:1)\r\n";
+
+        assertEquals("SEVERE: x\r\n".length(), ByteCountingFormatter.traceStart(formatted, thrown));
+    }
+
+    @Test
+    void stackTraceShare_throwableWithoutFrames_headerAloneIsEnough() {
+        RuntimeException thrown = new RuntimeException("stackless", null, false, false) {
+        };
+        String formatted = "SEVERE: msg\n" + thrown + "\n";
+
+        assertEquals("SEVERE: msg\n".length(), ByteCountingFormatter.traceStart(formatted, thrown));
+    }
+
+    @Test
+    void stackTraceShare_notInTheOutput_fallsBackToASeparateRender() {
+        RuntimeException thrown = new RuntimeException("simulated failure");
+        String json = "{\"message\":\"boom\",\"exception\":\"" + render(thrown).replace("\n", "\\n").replace("\t", "\\t")
+                + "\"}";
+
+        assertEquals(-1, ByteCountingFormatter.traceStart(json, thrown));
+        assertEquals(Math.min(utf8(json), utf8(render(thrown))),
+                ByteCountingFormatter.stackTraceBytes(json, utf8(json), thrown), "T2: today's measurement");
+        assertEquals(2, ByteCountingFormatter.stackTraceBytes("{}", 2, thrown), "clamped to the record's total");
+    }
+
+    @Test
+    void utf8Length_matchesTheEncoder() {
+        for (String text : List.of("", "plain ascii", "caf\u00e9", "\u20ac 5", "\ud83d\ude00 emoji",
+                "lone \ud83d high", "lone \ude00 low", "end \ud83d")) {
+            assertEquals(utf8(text), ByteCountingFormatter.utf8Length(text, 0, text.length()), text);
+        }
+    }
+
+    private static String render(Throwable thrown) {
+        java.io.StringWriter sink = new java.io.StringWriter();
+        thrown.printStackTrace(new java.io.PrintWriter(sink, true));
+        return sink.toString();
+    }
+
+    private static long utf8(String text) {
+        return text.getBytes(StandardCharsets.UTF_8).length;
+    }
+
+    @Test
     void format_recordWithNoLoggerName_isNotAttributedToAnything() {
         TopCounters counters = new TopCounters(10);
         ByteCountingFormatter formatter = new ByteCountingFormatter(new SimpleFormatter(), counters);
