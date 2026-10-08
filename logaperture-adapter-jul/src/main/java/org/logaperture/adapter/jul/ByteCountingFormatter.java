@@ -90,10 +90,11 @@ final class ByteCountingFormatter extends Formatter {
 
     /**
      * T1: where the standard rendering of {@code thrown} starts in {@code formatted} -- its {@code
-     * toString()} at the start of a line, followed by a line break and a tab-indented line -- or
-     * {@code -1}. A throwable with no frames has no tab-indented line, so for it the header on its
-     * own line (or ending the output) is enough. A {@code null} or empty header is never searched
-     * for: T2's render measures it.
+     * toString()} followed by a line break and a tab-indented line -- or {@code -1}. Not
+     * necessarily at the start of a line: JBoss LogManager's {@code %e} writes it right after the
+     * message. A throwable with no frames has no tab-indented line, so for it the last header
+     * followed by a line break (or ending the output) is taken, as the trace follows the message.
+     * A {@code null} or empty header is never searched for: T2's render measures it.
      */
     static int traceStart(String formatted, Throwable thrown) {
         String header = thrown.toString();
@@ -102,15 +103,12 @@ final class ByteCountingFormatter extends Formatter {
         }
         int bare = -1;
         for (int at = formatted.indexOf(header); at >= 0; at = formatted.indexOf(header, at + 1)) {
-            if (at > 0 && formatted.charAt(at - 1) != '\n') {
-                continue; // not on its own line: a copy inside the message
-            }
             int end = at + header.length();
             int next = afterLineBreak(formatted, end);
             if (next >= 0 && next < formatted.length() && formatted.charAt(next) == '\t') {
                 return at;
             }
-            if (bare < 0 && (next >= 0 || end == formatted.length())) {
+            if (next >= 0 || end == formatted.length()) {
                 bare = at;
             }
         }

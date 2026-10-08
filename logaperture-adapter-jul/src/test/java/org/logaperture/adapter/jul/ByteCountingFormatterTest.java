@@ -122,11 +122,12 @@ class ByteCountingFormatterTest {
     }
 
     @Test
-    void stackTraceShare_headerMidLineFollowedByATab_isNotTheTrace() {
-        RuntimeException thrown = new RuntimeException("x");
-        String formatted = "SEVERE: retry of " + thrown + "\n\tdetails\n" + render(thrown);
+    void stackTraceShare_jbossStyle_traceRightAfterTheMessageOnTheSameLine() {
+        RuntimeException thrown = new RuntimeException("outer");
+        String formatted = "ERROR [c] failed: " + thrown + ": " + render(thrown);
 
-        assertEquals(formatted.indexOf("\n" + thrown + "\n\tat") + 1, ByteCountingFormatter.traceStart(formatted, thrown));
+        assertEquals(formatted.lastIndexOf(thrown + "\n\tat"), ByteCountingFormatter.traceStart(formatted, thrown),
+                "%e follows the message with ': '; the copy in the message isn't followed by a line break");
     }
 
     @Test
