@@ -44,11 +44,11 @@ final class RuleRegistry {
      */
     private volatile int ruleCount;
     /**
-     * R2: {@link RuleService}'s per-logger effective-rule cache. Replaced with an empty map by
-     * {@link #changed()} after every mutation, inside the same lock, so a list resolved from the
-     * old rules can only land in the map being discarded.
+     * R2: {@link RuleService}'s per-logger effective-rule cache, each list compiled into a {@link
+     * GatePlan} (R5). Replaced with an empty map by {@link #changed()} after every mutation, inside
+     * the same lock, so a plan resolved from the old rules can only land in the map being discarded.
      */
-    private volatile Map<String, List<LogRule>> resolved = new ConcurrentHashMap<>();
+    private volatile Map<String, GatePlan> resolved = new ConcurrentHashMap<>();
 
     synchronized void attach(LogRule rule) {
         rulesByLogger.computeIfAbsent(rule.loggerName(), name -> new CopyOnWriteArrayList<>()).add(rule);
@@ -60,7 +60,7 @@ final class RuleRegistry {
         return ruleCount;
     }
 
-    Map<String, List<LogRule>> resolvedCache() {
+    Map<String, GatePlan> resolvedCache() {
         return resolved;
     }
 

@@ -1064,18 +1064,24 @@ public final class RuleService implements RuleOperations {
      * read.
      */
     public List<LogRule> effectiveRules(String loggerName) {
+        return gatePlan(loggerName).rules();
+    }
+
+    /** {@link #effectiveRules}, compiled for the gate -- "Evaluation cost", R2 and R5. */
+    private GatePlan gatePlan(String loggerName) {
         Objects.requireNonNull(loggerName, "loggerName");
         if (registry.ruleCount() == 0) {
-            return List.of(); // "Evaluation cost", R1: the normal state, answered with one volatile read
+            return GatePlan.EMPTY; // "Evaluation cost", R1: the normal state, answered with one volatile read
         }
         // R2: read the cache reference before resolving. RuleRegistry swaps in a fresh map after
-        // each change, so a list resolved from rules that changed meanwhile lands in a discarded map.
-        Map<String, List<LogRule>> cache = registry.resolvedCache();
-        List<LogRule> cached = cache.get(loggerName);
+        // each change, so a plan resolved from rules that changed meanwhile lands in a discarded map.
+        Map<String, GatePlan> cache = registry.resolvedCache();
+        GatePlan cached = cache.get(loggerName);
         if (cached != null) {
             return cached;
         }
-        List<LogRule> resolved = resolveEffectiveRules(loggerName);
+        List<LogRule> rules = resolveEffectiveRules(loggerName);
+        GatePlan resolved = rules.isEmpty() ? GatePlan.EMPTY : new GatePlan(rules);
         if (cache.size() >= MAX_RESOLVED_LOGGERS) {
             cache.clear();
         }
@@ -1137,31 +1143,14 @@ public final class RuleService implements RuleOperations {
      * mapping function, making this atomic.
      */
     private GateVerdict evaluateGate(Object recordIdentity, RuleCandidateEvent event) {
-        List<LogRule> effective = effectiveRules(event.loggerName());
-        if (effective.isEmpty() || !anyCandidateMatches(effective, event)) {
-            return GateVerdict.allow(); // nothing matches, so nothing to count once: skip the stripe
+        GatePlan plan = gatePlan(event.loggerName());
+        // R4: an event no rule matches has nothing to count once, so it skips the stripe
+        if (plan.rules().isEmpty() || !plan.anyCandidateMatches(event)) {
+            return GateVerdict.allow();
         }
         Map<Object, GateVerdict> stripe =
                 decisionStripes[System.identityHashCode(recordIdentity) & (DECISION_STRIPES - 1)];
         return stripe.computeIfAbsent(recordIdentity, identity -> computeVerdict(event));
-    }
-
-    /**
-     * Whether {@link #computeVerdict} could return anything but {@link GateVerdict#allow()}: some
-     * {@link Drop} matches, or the event has a throwable and some {@link Trim} matches. Free of
-     * side effects, so the common case on a logger with rules -- none of them matches -- is
-     * answered without the per-record decision cache, which is what made #148's gate cost.
-     */
-    private static boolean anyCandidateMatches(List<LogRule> effective, RuleCandidateEvent event) {
-        for (LogRule rule : effective) {
-            if (rule instanceof Drop drop && RuleMatching.matches(drop.matchers(), event)) {
-                return true;
-            }
-            if (rule instanceof Trim trim && event.thrown() != null && RuleMatching.matches(trim.matchers(), event)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     @SuppressWarnings("unchecked")
