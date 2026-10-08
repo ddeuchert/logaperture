@@ -16,6 +16,7 @@
 package org.logaperture.bench;
 
 import org.jboss.logmanager.ExtLogRecord;
+import org.logaperture.adapter.jul.TraceLookup;
 import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.RuleAttachOptions;
 import org.logaperture.api.SampleFullPolicy;
@@ -129,6 +130,9 @@ public class RulesBenchmark {
             long frames = formatted.lines().filter(line -> line.startsWith("\tat ")).count();
             if (frames != TRIM_FRAMES) {
                 throw new IllegalStateException("the trim rule left " + frames + " frames, expected " + TRIM_FRAMES);
+            }
+            if (!TraceLookup.found(formatted, thrown)) {
+                throw new IllegalStateException("top did not find the trimmed trace (top.md T5); it renders it a second time");
             }
         }
     }
