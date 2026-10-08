@@ -17,6 +17,7 @@ package org.logaperture.adapter.jul;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.logging.Formatter;
 import java.util.logging.Handler;
 import java.util.logging.LogRecord;
@@ -49,7 +50,7 @@ final class ByteCountingFormatter extends Formatter {
     @Override
     public String format(LogRecord record) {
         String formatted = delegate.format(record);
-        long totalBytes = utf8Length(formatted, 0, formatted.length());
+        long totalBytes = formatted.getBytes(StandardCharsets.UTF_8).length; // T4: faster than counting chars
         Throwable thrown = record.getThrown();
         long stackTraceBytes = thrown == null ? 0L : stackTraceBytes(formatted, totalBytes, thrown);
         String loggerName = record.getLoggerName();
@@ -121,13 +122,13 @@ final class ByteCountingFormatter extends Formatter {
         try (PrintWriter writer = new PrintWriter(sink)) {
             thrown.printStackTrace(writer);
         }
-        String trace = sink.toString();
-        return utf8Length(trace, 0, trace.length());
+        return sink.toString().getBytes(StandardCharsets.UTF_8).length;
     }
 
     /**
-     * T4: what {@code text.substring(from, to).getBytes(UTF_8).length} would be, without the copy.
-     * A lone surrogate counts one byte, as the encoder replaces it with {@code '?'}.
+     * T4: what {@code text.substring(from, to).getBytes(UTF_8).length} would be, without the copy;
+     * for the short text before a trace only (the encoder is faster over a whole record). A lone
+     * surrogate counts one byte, as the encoder replaces it with {@code '?'}.
      */
     static long utf8Length(String text, int from, int to) {
         long bytes = 0;

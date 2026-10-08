@@ -207,8 +207,10 @@ again:
 - **T3, the trace runs to the end of the record.** Stack-trace bytes are the record's bytes from
   the header onward, so whatever the pattern prints after the trace (normally a line break) counts
   as trace, as the separate render's own trailing line break did. Never more than the total.
-- **T4, count without copying.** UTF-8 byte lengths are counted over the string's characters
-  instead of encoding it into a byte array, the total and the part before the header alike.
+- **T4, count the part before the trace without copying it.** The record's total is encoded as
+  before (`getBytes(UTF_8)`: on a 20-frame record it measured about 5× faster than counting
+  characters, 217 vs 1,203 ns). The text before the header is short, so its UTF-8 length is
+  counted over its characters instead of copied out as a substring.
 
 For a text formatter the number is now what the handler actually wrote, including its own
 additions to a trace (JBoss LogManager's `%E` jar suffixes), where the separate render could only
