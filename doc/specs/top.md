@@ -9,7 +9,8 @@ to generate volume.
 2026-10-07:** "Adapter SPI": the stack-trace share is found in the real formatter's output
 instead of rendering the trace a second time (Decisions T1–T4). The second render was the whole
 of `top`'s cost on a record with a throwable (+99 % of a 20-frame exception's logging call,
-overhead-benchmarks.md Decision #6).
+overhead-benchmarks.md Decision #6). **T5** (a trimmed trace), approach agreed 2026-10-08 after the
+pinned overhead run found every trimmed record still rendered twice; text pending sign-off on its PR.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §16.1 (`top`), §9.3 (capability
 model — `view`'s table already names "logger names and metrics" as its risk surface), §17
@@ -190,7 +191,7 @@ The JBoss LogManager / JUL implementation wraps each persistent handler's instal
 formatting work — "nearly free" per §16.1), measure the returned string's UTF-8 byte length,
 and add it to a counter keyed by `record.getLoggerName()`.
 
-**The stack-trace share** *(issue #23, Decisions T1–T4)*. A record's `Throwable` (if any) is
+**The stack-trace share** *(issue #23, Decisions T1–T5)*. A record's `Throwable` (if any) is
 rendered once, by the real formatter, and the trace is found in that output rather than rendered
 again:
 
@@ -217,6 +218,15 @@ again:
   before (`getBytes(UTF_8)`: on a 20-frame record it measured about 5× faster than counting
   characters, 217 vs 1,203 ns). The text before the header is short, so its UTF-8 length is
   counted over its characters instead of copied out as a substring.
+- **T5, a trimmed trace.** A `trim` rule's rendering (trim-rule.md) prints each level's header
+  with its marker appended: `X: boom [stack trace trimmed: 15 frames omitted]`. The decorator sees
+  the original record, so the header it searches for is the original's `toString()`; when the
+  marker (`[stack trace trimmed: `, digits, ` frames omitted]`) follows it, the marker is skipped
+  before the line-break-and-tab check. A trim that keeps no frames leaves no tab line, so a
+  header followed by its marker and then a line break, or the end of the output, is taken as a
+  frameless throwable's is (T1). The share is then the trimmed trace actually written, where the
+  fallback measured the untrimmed one. Without T5, every trimmed record fell back to T2: the
+  2026-10-07 overhead run measured `trim` on a 20-frame exception at +4,675 ns over the idle agent.
 
 For a text formatter the number is now what the handler actually wrote, including its own
 additions to a trace (JBoss LogManager's `%E` jar suffixes), where the separate render could only

@@ -17,6 +17,7 @@ package org.logaperture.adapter.jul;
 
 import org.junit.jupiter.api.Test;
 import org.logaperture.api.LoggerByteCount;
+import org.logaperture.core.TrimDecision;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -128,6 +129,36 @@ class ByteCountingFormatterTest {
 
         assertEquals(formatted.lastIndexOf(thrown + "\n\tat"), ByteCountingFormatter.traceStart(formatted, thrown),
                 "%e follows the message with ': '; the copy in the message isn't followed by a line break");
+    }
+
+    @Test
+    void stackTraceShare_trimmedTrace_skipsTheTrimMarker() {
+        RuntimeException thrown = new RuntimeException("outer", new IllegalStateException("inner"));
+        Throwable trimmed = TrimRendering.buildTrimmed(thrown, new TrimDecision("r1", 2, false));
+        String formatted = "SEVERE: boom\n" + render(trimmed);
+
+        assertEquals("SEVERE: boom\n".length(), ByteCountingFormatter.traceStart(formatted, thrown),
+                "T5: the original's header, then the marker, then the kept frames");
+        assertEquals(utf8(render(trimmed)), ByteCountingFormatter.stackTraceBytes(formatted, utf8(formatted), thrown),
+                "the trimmed trace's bytes, not the untrimmed render's");
+    }
+
+    @Test
+    void stackTraceShare_trimmedToNoFrames_headerAndMarkerAreEnough() {
+        RuntimeException thrown = new RuntimeException("outer");
+        Throwable trimmed = TrimRendering.buildTrimmed(thrown, new TrimDecision("r1", 0, true));
+        String formatted = "SEVERE: failed: " + thrown + "\n" + render(trimmed);
+
+        assertEquals(formatted.lastIndexOf(String.valueOf(thrown)), ByteCountingFormatter.traceStart(formatted, thrown),
+                "T5: a trimmed header needs no tab line, and the copy in the message has no marker");
+    }
+
+    @Test
+    void stackTraceShare_markerTextInTheMessage_withoutATrace_isNotTaken() {
+        RuntimeException thrown = new RuntimeException("outer");
+        String formatted = "SEVERE: " + thrown + TrimRendering.MARKER_OPEN + "x" + TrimRendering.MARKER_CLOSE + "\n";
+
+        assertEquals(-1, ByteCountingFormatter.traceStart(formatted, thrown), "no digits: not a marker, and the throwable has frames");
     }
 
     @Test
