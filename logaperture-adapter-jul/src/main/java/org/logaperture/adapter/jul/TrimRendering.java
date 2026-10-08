@@ -83,14 +83,23 @@ final class TrimRendering {
 
         SyntheticThrowable(String rendered, StackTraceElement[] frames, Throwable cause) {
             // enableSuppression=false (never thrown/caught, nothing suppresses into it).
-            // writableStackTrace=true, even though the real fillInStackTrace() capture it
-            // triggers here is immediately discarded by the explicit setStackTrace() below --
-            // empirically, java.lang.Throwable's own getStackTrace() keeps returning empty for a
-            // writableStackTrace=false instance even after setStackTrace() is called with a
-            // non-empty array, so false is not the free optimization it looks like.
+            // writableStackTrace=true: java.lang.Throwable's own getStackTrace() keeps returning
+            // empty for a writableStackTrace=false instance even after setStackTrace() is called
+            // with a non-empty array. The capture a writable throwable's constructor triggers is
+            // skipped by overriding fillInStackTrace() below instead.
             super(null, cause, false, true);
             this.rendered = rendered;
             setStackTrace(frames);
+        }
+
+        /**
+         * No capture: the frames are set from the original right after construction, and walking
+         * the logging thread's own stack cost about a fifth of a trimmed record (2026-10-07
+         * overhead profile).
+         */
+        @Override
+        public synchronized Throwable fillInStackTrace() {
+            return this;
         }
 
         @Override
