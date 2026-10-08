@@ -5,6 +5,12 @@ WildFly (`WildFlyContainerIT`) — `logctl top` reported real boot-time log volu
 (dozens of subsystem-startup lines through the real `PeriodicRotatingFileHandler`)
 measured from before WildFly's own `main()` ran, with no probe deployment needed
 to generate volume.
+**Amendment (issue [#23](https://github.com/ddeuchert/logaperture/issues/23)), signed off
+2026-10-07:** "Adapter SPI": the stack-trace share is found in the real formatter's output
+instead of rendering the trace a second time (Decisions T1–T4). The second render was the whole
+of `top`'s cost on a record with a throwable (+99 % of a 20-frame exception's logging call,
+overhead-benchmarks.md Decision #6).
+
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §16.1 (`top`), §9.3 (capability
 model — `view`'s table already names "logger names and metrics" as its risk surface), §17
 (roadmap — M1, Layer 1: "a read-only diagnostic release").
@@ -182,17 +188,39 @@ default List<LoggerByteCount> byteCounts() {
 The JBoss LogManager / JUL implementation wraps each persistent handler's installed `Formatter`
 (`Handler.setFormatter`) with a counting decorator: call the real formatter once (no extra
 formatting work — "nearly free" per §16.1), measure the returned string's UTF-8 byte length,
-and add it to a counter keyed by `record.getLoggerName()`. A record's `Throwable` (if any) is
-formatted once by the real formatter already; the stack-trace share is measured by formatting
-just `record.getThrown()`'s trace separately with a throwaway `PrintWriter`/`StringWriter` and
-diffing lengths — cheap relative to the I/O the record is about to cause regardless, and never
-double-invokes the handler's actual formatter.
+and add it to a counter keyed by `record.getLoggerName()`.
 
-**Known limitation (issue [#23](https://github.com/ddeuchert/logaperture/issues/23)):** when the
-delegate formatter already renders the same trace internally (e.g. `SimpleFormatter`), this still
-formats it a second time to measure it — doubling the cost of exactly the pathological case (a
-huge trace) the metric exists to surface. Left as-is for this slice; revisit if it shows up in a
-real workload.
+**The stack-trace share** *(issue #23, Decisions T1–T4)*. A record's `Throwable` (if any) is
+rendered once, by the real formatter, and the trace is found in that output rather than rendered
+again:
+
+- **T1, find the trace in the output.** A trace printed the standard way starts with
+  `thrown.toString()` on its own line, and its next line starts with a tab (`\tat …`, `\t... n
+  more`, `\tSuppressed: …`). The decorator looks for the first occurrence of that header followed
+  by a line break (`\n` or `\r\n`) and a tab, wherever the line starts: JBoss LogManager's `%e`
+  writes it right after the message (`… failed: X: boom: X: boom⏎\tat …`). Requiring the line
+  break and tab skips a copy of the header inside the message (`log.error("failed: " + e, e)`);
+  a message that itself contains the header followed by a line break and a tab would be
+  miscounted, which is accepted. A throwable with no frames at all has no tab line; for it the
+  last header followed by a line break, or at the very end of the output, is taken, since the
+  trace follows the message. A `toString()` that returns `null` or `""` isn't searched for (T2 measures
+  it), and a measurement that fails counts 0 trace bytes rather than costing the record (PR #156
+  review).
+- **T2, not found: render it as before.** A formatter that writes the trace another way (JSON
+  escapes the line breaks), or doesn't write it, gets today's measurement: the trace rendered
+  separately with a throwaway `PrintWriter`/`StringWriter`, clamped to the record's total. Only
+  those formatters keep the second render's cost.
+- **T3, the trace runs to the end of the record.** Stack-trace bytes are the record's bytes from
+  the header onward, so whatever the pattern prints after the trace (normally a line break) counts
+  as trace, as the separate render's own trailing line break did. Never more than the total.
+- **T4, count the part before the trace without copying it.** The record's total is encoded as
+  before (`getBytes(UTF_8)`: on a 20-frame record it measured about 5× faster than counting
+  characters, 217 vs 1,203 ns). The text before the header is short, so its UTF-8 length is
+  counted over its characters instead of copied out as a substring.
+
+For a text formatter the number is now what the handler actually wrote, including its own
+additions to a trace (JBoss LogManager's `%E` jar suffixes), where the separate render could only
+approximate it.
 
 Persistent-handler selection reuses `handlerDiagnostics(ref).isPersistent()`, the same signal
 `doctor`'s duplicate-output check already keys on — no new SPI surface needed for "which

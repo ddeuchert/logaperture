@@ -29,17 +29,13 @@ import java.util.logging.LogRecord;
  * §16.1) and measures the UTF-8 byte length of what it returns, attributed to
  * {@link LogRecord#getLoggerName()}.
  *
- * <p>A record carrying a {@link Throwable} additionally has its trace
- * measured on its own, via a throwaway {@link PrintWriter}/{@link
- * StringWriter} — a second, cheap format of just the trace, not a second
- * call into the handler's real formatter. Clamped to never exceed the
- * record's total measured bytes: the real formatter may render the
- * throwable differently (or not at all), so the two measurements are only
- * ever combined defensively, never assumed consistent.
- *
- * <p>Known limitation (issue #23): when {@code delegate} already renders the
- * same trace internally (e.g. {@link java.util.logging.SimpleFormatter}),
- * this still formats it a second time to measure it.
+ * <p>A record carrying a {@link Throwable} has its stack-trace share found in
+ * what the real formatter returned (doc/specs/top.md "The stack-trace share",
+ * T1–T4, issue #23): the bytes from the trace's first line to the end. Only
+ * when that line can't be found is the trace rendered separately, via a
+ * throwaway {@link PrintWriter}/{@link StringWriter}, and clamped to the
+ * record's total, since the real formatter may render the throwable
+ * differently or not at all.
  */
 final class ByteCountingFormatter extends Formatter {
 
@@ -54,8 +50,9 @@ final class ByteCountingFormatter extends Formatter {
     @Override
     public String format(LogRecord record) {
         String formatted = delegate.format(record);
-        long totalBytes = utf8Length(formatted);
-        long stackTraceBytes = record.getThrown() == null ? 0L : Math.min(totalBytes, traceBytes(record.getThrown()));
+        long totalBytes = formatted.getBytes(StandardCharsets.UTF_8).length; // T4: faster than counting chars
+        Throwable thrown = record.getThrown();
+        long stackTraceBytes = thrown == null ? 0L : stackTraceBytes(formatted, totalBytes, thrown);
         String loggerName = record.getLoggerName();
         if (loggerName != null) {
             counters.record(loggerName, totalBytes, stackTraceBytes);
@@ -78,15 +75,87 @@ final class ByteCountingFormatter extends Formatter {
         return delegate;
     }
 
-    private static long traceBytes(Throwable thrown) {
+    /** T1–T3: the formatted record's bytes from the trace's first line on, else T2's separate render. */
+    static long stackTraceBytes(String formatted, long totalBytes, Throwable thrown) {
+        try {
+            int start = traceStart(formatted, thrown);
+            if (start >= 0) {
+                return Math.max(0L, Math.min(totalBytes, totalBytes - utf8Length(formatted, 0, start)));
+            }
+            return Math.min(totalBytes, traceBytes(thrown));
+        } catch (RuntimeException e) {
+            return 0L; // a throwable whose toString or printStackTrace fails must not cost the record itself
+        }
+    }
+
+    /**
+     * T1: where the standard rendering of {@code thrown} starts in {@code formatted} -- its {@code
+     * toString()} followed by a line break and a tab-indented line -- or {@code -1}. Not
+     * necessarily at the start of a line: JBoss LogManager's {@code %e} writes it right after the
+     * message. A throwable with no frames has no tab-indented line, so for it the last header
+     * followed by a line break (or ending the output) is taken, as the trace follows the message.
+     * A {@code null} or empty header is never searched for: T2's render measures it.
+     */
+    static int traceStart(String formatted, Throwable thrown) {
+        String header = thrown.toString();
+        if (header == null || header.isEmpty()) {
+            return -1;
+        }
+        int bare = -1;
+        for (int at = formatted.indexOf(header); at >= 0; at = formatted.indexOf(header, at + 1)) {
+            int end = at + header.length();
+            int next = afterLineBreak(formatted, end);
+            if (next >= 0 && next < formatted.length() && formatted.charAt(next) == '\t') {
+                return at;
+            }
+            if (next >= 0 || end == formatted.length()) {
+                bare = at;
+            }
+        }
+        return bare >= 0 && thrown.getStackTrace().length == 0 ? bare : -1;
+    }
+
+    /** The index just past a {@code \n} or {@code \r\n} at {@code at}, or {@code -1} if there is none. */
+    private static int afterLineBreak(String text, int at) {
+        if (at < text.length() && text.charAt(at) == '\n') {
+            return at + 1;
+        }
+        if (at + 1 < text.length() && text.charAt(at) == '\r' && text.charAt(at + 1) == '\n') {
+            return at + 2;
+        }
+        return -1;
+    }
+
+    static long traceBytes(Throwable thrown) {
         StringWriter sink = new StringWriter();
         try (PrintWriter writer = new PrintWriter(sink)) {
             thrown.printStackTrace(writer);
         }
-        return utf8Length(sink.toString());
+        return sink.toString().getBytes(StandardCharsets.UTF_8).length;
     }
 
-    private static long utf8Length(String text) {
-        return text.getBytes(StandardCharsets.UTF_8).length;
+    /**
+     * T4: what {@code text.substring(from, to).getBytes(UTF_8).length} would be, without the copy;
+     * for the short text before a trace only (the encoder is faster over a whole record). A lone
+     * surrogate counts one byte, as the encoder replaces it with {@code '?'}.
+     */
+    static long utf8Length(String text, int from, int to) {
+        long bytes = 0;
+        for (int i = from; i < to; i++) {
+            char c = text.charAt(i);
+            if (c < 0x80) {
+                bytes++;
+            } else if (c < 0x800) {
+                bytes += 2;
+            } else if (Character.isHighSurrogate(c) && i + 1 < to && Character.isLowSurrogate(text.charAt(i + 1))) {
+                bytes += 4;
+                i++;
+            } else if (Character.isSurrogate(c)) {
+                bytes++;
+            } else {
+                bytes += 3;
+            }
+        }
+        return bytes;
     }
 }
