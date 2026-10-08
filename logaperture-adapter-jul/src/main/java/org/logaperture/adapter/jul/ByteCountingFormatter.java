@@ -77,23 +77,34 @@ final class ByteCountingFormatter extends Formatter {
 
     /** T1–T3: the formatted record's bytes from the trace's first line on, else T2's separate render. */
     static long stackTraceBytes(String formatted, long totalBytes, Throwable thrown) {
-        int start = traceStart(formatted, thrown);
-        if (start >= 0) {
-            return totalBytes - utf8Length(formatted, 0, start);
+        try {
+            int start = traceStart(formatted, thrown);
+            if (start >= 0) {
+                return Math.max(0L, Math.min(totalBytes, totalBytes - utf8Length(formatted, 0, start)));
+            }
+            return Math.min(totalBytes, traceBytes(thrown));
+        } catch (RuntimeException e) {
+            return 0L; // a throwable whose toString or printStackTrace fails must not cost the record itself
         }
-        return Math.min(totalBytes, traceBytes(thrown));
     }
 
     /**
      * T1: where the standard rendering of {@code thrown} starts in {@code formatted} -- its {@code
-     * toString()} followed by a line break and a tab-indented line -- or {@code -1}. A throwable
-     * with no frames has no tab-indented line, so for it the header followed by a line break (or
-     * ending the output) is enough.
+     * toString()} at the start of a line, followed by a line break and a tab-indented line -- or
+     * {@code -1}. A throwable with no frames has no tab-indented line, so for it the header on its
+     * own line (or ending the output) is enough. A {@code null} or empty header is never searched
+     * for: T2's render measures it.
      */
     static int traceStart(String formatted, Throwable thrown) {
-        String header = String.valueOf(thrown);
+        String header = thrown.toString();
+        if (header == null || header.isEmpty()) {
+            return -1;
+        }
         int bare = -1;
         for (int at = formatted.indexOf(header); at >= 0; at = formatted.indexOf(header, at + 1)) {
+            if (at > 0 && formatted.charAt(at - 1) != '\n') {
+                continue; // not on its own line: a copy inside the message
+            }
             int end = at + header.length();
             int next = afterLineBreak(formatted, end);
             if (next >= 0 && next < formatted.length() && formatted.charAt(next) == '\t') {

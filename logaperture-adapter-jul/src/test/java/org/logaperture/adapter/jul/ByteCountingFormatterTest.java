@@ -113,6 +113,49 @@ class ByteCountingFormatterTest {
     }
 
     @Test
+    void stackTraceShare_frameless_skipsACopyOfTheHeaderInsideTheMessage() {
+        RuntimeException thrown = new RuntimeException("stackless", null, false, false) {
+        };
+        String formatted = "SEVERE: failed: " + thrown + "\ncontext\n" + thrown + "\n";
+
+        assertEquals(formatted.lastIndexOf(String.valueOf(thrown)), ByteCountingFormatter.traceStart(formatted, thrown));
+    }
+
+    @Test
+    void stackTraceShare_headerMidLineFollowedByATab_isNotTheTrace() {
+        RuntimeException thrown = new RuntimeException("x");
+        String formatted = "SEVERE: retry of " + thrown + "\n\tdetails\n" + render(thrown);
+
+        assertEquals(formatted.indexOf("\n" + thrown + "\n\tat") + 1, ByteCountingFormatter.traceStart(formatted, thrown));
+    }
+
+    @Test
+    void stackTraceShare_emptyOrNullToString_neverHangsOrThrows() {
+        RuntimeException empty = new RuntimeException("x") {
+            @Override
+            public String toString() {
+                return "";
+            }
+        };
+        RuntimeException nullHeader = new RuntimeException() {
+            @Override
+            public String toString() {
+                return null;
+            }
+        };
+        assertEquals(-1, ByteCountingFormatter.traceStart("SEVERE: msg\n", empty));
+        assertEquals(-1, ByteCountingFormatter.traceStart("SEVERE: msg\n", nullHeader));
+        assertTrue(ByteCountingFormatter.stackTraceBytes("SEVERE: msg\n", 12, nullHeader) <= 12);
+
+        TopCounters counters = new TopCounters(10);
+        LogRecord record = new LogRecord(Level.SEVERE, "boom");
+        record.setLoggerName("com.acme.Worker");
+        record.setThrown(nullHeader);
+        new ByteCountingFormatter(new SimpleFormatter(), counters).format(record);
+        assertEquals(1, counters.snapshot().size(), "the record is still formatted and counted");
+    }
+
+    @Test
     void utf8Length_matchesTheEncoder() {
         for (String text : List.of("", "plain ascii", "caf\u00e9", "\u20ac 5", "\ud83d\ude00 emoji",
                 "lone \ud83d high", "lone \ude00 low", "end \ud83d")) {

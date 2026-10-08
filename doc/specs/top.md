@@ -196,10 +196,13 @@ again:
 
 - **T1, find the trace in the output.** A trace printed the standard way starts with
   `thrown.toString()` on its own line, and its next line starts with a tab (`\tat …`, `\t... n
-  more`, `\tSuppressed: …`). The decorator looks for the first occurrence of that header followed
-  by a line break (`\n` or `\r\n`) and a tab. Requiring the tab skips the header when the message
-  repeats it (`log.error("failed: " + e, e)`). A throwable with no frames at all has no tab line;
-  for it, the header followed by a line break, or at the very end of the output, is enough.
+  more`, `\tSuppressed: …`). The decorator looks for the first occurrence of that header at the
+  start of a line, followed by a line break (`\n` or `\r\n`) and a tab. Both requirements skip a
+  copy of the header inside the message (`log.error("failed: " + e, e)`). A throwable with no
+  frames at all has no tab line; for it, the header on its own line, or at the very end of the
+  output, is enough. A `toString()` that returns `null` or `""` isn't searched for (T2 measures
+  it), and a measurement that fails counts 0 trace bytes rather than costing the record (PR #156
+  review).
 - **T2, not found: render it as before.** A formatter that writes the trace another way (JSON
   escapes the line breaks), or doesn't write it, gets today's measurement: the trace rendered
   separately with a throwaway `PrintWriter`/`StringWriter`, clamped to the record's total. Only
