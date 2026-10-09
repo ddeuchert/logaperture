@@ -480,6 +480,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="." class="md-nav__link md-nav__link--active">
         
   
@@ -496,6 +514,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-will-never-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it will never do
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-10-supports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What 1.0 supports
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-to-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where to start
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1657,6 +1738,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-will-never-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it will never do
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-10-supports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What 1.0 supports
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-to-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where to start
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1677,14 +1810,117 @@
 
 <h1 id="logaperture">LogAperture<a class="headerlink" href="#logaperture" title="Permanent link">&para;</a></h1>
 <p><strong>Runtime logging control for the JVM.</strong> See, tune, and bound what your application logs, without
-restarting it or editing its configuration.</p>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This guide is being written for LogAperture 1.0. Until it is complete, the
-<a href="https://github.com/ddeuchert/logaperture#readme">README</a> and the
-<a href="https://github.com/ddeuchert/logaperture/blob/main/doc/wildfly-test-drive.md">WildFly test drive</a>
-cover the current feature set.</p>
+restarting it, editing its configuration, or knowing in advance what will go wrong.</p>
+<p>LogAperture is a Java agent plus a command-line tool, <code>logctl</code>. The agent goes on the JVM's
+<code>-javaagent</code> line; <code>logctl</code> talks to it on the same machine.</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>org.hibernate.SQL<span class="w"> </span>DEBUG<span class="w"> </span><span class="k">for</span><span class="w"> </span>30m<span class="w">   </span><span class="c1"># more detail for half an hour, then back</span>
+logctl<span class="w"> </span>top<span class="w">                                           </span><span class="c1"># which loggers write the most</span>
+logctl<span class="w"> </span>add<span class="w"> </span>rule<span class="w"> </span>drop<span class="w"> </span>com.acme.batch.Worker<span class="w"> </span>--message-contains<span class="w"> </span><span class="s2">"This happens a lot"</span>
+</code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Pre-release</p>
+<p>LogAperture 1.0 is in beta. Try it on a server you can afford to restart, and
+<a href="https://github.com/ddeuchert/logaperture/issues">tell us</a> what breaks. It is not for
+production use before 1.0.0.</p>
 </div>
+<h2 id="what-it-does">What it does<a class="headerlink" href="#what-it-does" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Change log levels on a running JVM</strong>, and have the change undo itself on a timer, last until
+  restart, or survive restarts: your choice, per change. See <a href="how-to/raise-a-level/">Raise a log level</a>.</li>
+<li><strong>Undo everything it did</strong> with one command, back to how the application was configured. See
+  <a href="how-to/undo-changes/">Undo changes</a>.</li>
+<li><strong>Show where log volume comes from</strong> (<code>top</code>) and <strong>flag logging configuration that will hurt you</strong>
+  (<code>doctor</code>). See <a href="how-to/find-disk-usage/">Find where the disk goes</a>.</li>
+<li><strong>Silence a known-noisy message</strong>, or keep it and shorten its stack trace, without changing the
+  logger's level. See <a href="how-to/silence-noise/">Silence noise</a>.</li>
+<li><strong>Spot log storms</strong>: bursts of near-identical messages from one logger. See <a href="how-to/storms/">Log storms</a>.</li>
+<li><strong>Ship sane logging defaults with a product</strong>, so customers don't start with noisy logs. See
+  <a href="vendors/vendor-defaults/">Vendor defaults</a>.</li>
+</ul>
+<h2 id="what-it-will-never-do">What it will never do<a class="headerlink" href="#what-it-will-never-do" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Edit configuration the application or server owns.</strong> <code>standalone.xml</code>, <code>logback.xml</code> and
+  <code>logging.properties</code> are read, never written. LogAperture keeps its changes in its own state file.</li>
+<li><strong>Open a network connection.</strong> The agent listens on no port and connects nowhere. <code>logctl</code> reaches
+  it through the JVM's local attach mechanism, which the operating system restricts to the user
+  running the JVM.</li>
+<li><strong>Hide a log line without saying so.</strong> Every dropped event is counted and reported in the log.</li>
+</ul>
+<h2 id="what-10-supports">What 1.0 supports<a class="headerlink" href="#what-10-supports" title="Permanent link">&para;</a></h2>
+<p>JDK 17, 21 and 25.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>WildFly, standalone, 26.1 and later</th>
+<th>Plain <code>java -jar</code> with Logback</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Change and reset logger levels</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Change and reset handler levels</td>
+<td>✓</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Vendor defaults file: levels</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Vendor defaults file: rules</td>
+<td>✓</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Recipes</td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+<tr>
+<td><code>drop</code> and <code>trim</code> rules</td>
+<td>✓</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>top</code></td>
+<td>✓</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>doctor</code></td>
+<td>✓</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Storm detection</td>
+<td>✓</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>status</code>, <code>env</code></td>
+<td>✓</td>
+<td>✓</td>
+</tr>
+</tbody>
+</table>
+<p>Not supported in 1.0: WildFly domain mode, a plain JVM that logs through <code>java.util.logging</code>
+alone, Log4j 2, Spring Boot, Tomcat, Jetty, Quarkus. Quarkus native images can never be supported:
+they have no JVM to attach an agent to.</p>
+<h2 id="where-to-start">Where to start<a class="headerlink" href="#where-to-start" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Install the agent: <a href="get-started/install-wildfly/">on WildFly</a> or
+   <a href="get-started/install-plain-jvm/">on a plain JVM</a>.</li>
+<li>Try it for ten minutes: <a href="get-started/quick-start/">Quick start</a>.</li>
+<li>Learn what <code>reset</code> goes back to: <a href="concepts/configuration-layers/">Configuration layers</a>.</li>
+</ol>
+<p>Every <code>logctl</code> command is in the <a href="reference/logctl/">command reference</a>, and on the command line
+with <code>logctl help &lt;command&gt;</code>.</p>
 
 
 

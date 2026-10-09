@@ -602,6 +602,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on a plain JVM
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -618,6 +636,80 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-need" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you need
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#check-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check it works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#several-applications-on-one-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Several applications on one machine
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uninstall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uninstall
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1756,69 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-need" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you need
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#check-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check it works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#several-applications-on-one-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Several applications on one machine
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uninstall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uninstall
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1838,69 @@
 
 
 <h1 id="install-on-a-plain-jvm">Install on a plain JVM<a class="headerlink" href="#install-on-a-plain-jvm" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover adding the agent to an application started with <code>java -jar</code>, and what works there in 1.0.</p>
+<p>For an application started with <code>java -jar</code> that logs through <strong>Logback</strong>. You add the agent to the
+<code>java</code> command and restart once.</p>
+<div class="admonition info">
+<p class="admonition-title">Level control only in 1.0</p>
+<p>On a plain JVM with Logback, 1.0 changes and resets logger levels, and applies the level
+settings of vendor defaults files and recipes. Handler levels, <code>drop</code> and <code>trim</code> rules, <code>top</code>,
+<code>doctor</code> and storm detection need <code>java.util.logging</code> or JBoss LogManager, so today they work
+on WildFly only. A plain JVM that logs through <code>java.util.logging</code> alone isn't picked up yet.
+See the <a href="../../#what-10-supports">support table</a>.</p>
 </div>
+<h2 id="what-you-need">What you need<a class="headerlink" href="#what-you-need" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>JDK 17, 21 or 25</strong> running the application, which logs through Logback (directly or through
+  SLF4J).</li>
+<li>A <strong>JDK</strong>, not just a JRE, wherever you run <code>logctl</code>.</li>
+<li><code>logctl</code> runs <strong>on the same machine and as the same operating-system user</strong> as the application.</li>
+</ul>
+<h2 id="install">Install<a class="headerlink" href="#install" title="Permanent link">&para;</a></h2>
+<ol>
+<li>
+<p><strong>Download</strong> <code>logaperture-&lt;version&gt;.zip</code> from the
+   <a href="https://github.com/ddeuchert/logaperture/releases">releases page</a> and unzip it, for example
+   to <code>/opt/logaperture</code>.</p>
+</li>
+<li>
+<p><strong>Put <code>bin/</code> on your <code>PATH</code></strong>, so you can type plain <code>logctl</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">PATH</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PATH</span><span class="s2">:/opt/logaperture/bin"</span>
+</code></pre></div>
+</li>
+<li>
+<p><strong>Add the agent</strong> to the <code>java</code> command, before <code>-jar</code>:</p>
+<div class="highlight"><pre><span></span><code>java<span class="w"> </span>-javaagent:/opt/logaperture/lib/logaperture-agent.jar<span class="w"> </span>-jar<span class="w"> </span>myapp.jar
+</code></pre></div>
+<p>If the application is started by a script you can't edit, the <code>JAVA_TOOL_OPTIONS</code>
+environment variable works too:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">JAVA_TOOL_OPTIONS</span><span class="o">=</span><span class="s2">"-javaagent:/opt/logaperture/lib/logaperture-agent.jar"</span>
+</code></pre></div>
+</li>
+</ol>
+<h2 id="check-it-works">Check it works<a class="headerlink" href="#check-it-works" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>env
+logctl<span class="w"> </span>list<span class="w"> </span>loggers<span class="w"> </span>--show-all
+</code></pre></div>
+<p><code>env</code> shows the agent's version and where it keeps its state file. The application's own log
+also has one line from LogAperture at startup, <code>LogAperture &lt;version&gt; active (JVM)</code>.
+<code>list loggers --show-all</code> lists the application's loggers and their levels.</p>
+<p>Then change one for a few minutes and watch the log:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>com.example<span class="w"> </span>DEBUG<span class="w"> </span><span class="k">for</span><span class="w"> </span>5m
+logctl<span class="w"> </span>status
+</code></pre></div>
+<p>The <a href="../quick-start/">Quick start</a> is written for WildFly, but its level, tier and <code>reset</code> steps
+work the same here.</p>
+<h2 id="several-applications-on-one-machine">Several applications on one machine<a class="headerlink" href="#several-applications-on-one-machine" title="Permanent link">&para;</a></h2>
+<p><code>logctl</code> picks the JVM by itself when exactly one is running with the agent. With several, on a
+terminal it lists them to pick from; in a script, pass <code>--pid &lt;n&gt;</code>. See
+<a href="../../how-to/several-jvms/">Work with several JVMs</a>.</p>
+<p>Each JVM keeps its <code>sticky</code> changes in its own state file under <code>~/.logaperture/instances/</code>,
+named after the directory the JVM was started from. Two applications started from the <strong>same</strong>
+directory can't share one: the second one to start can't keep <code>sticky</code> changes, and says so in its
+log. Give each its own state file with <code>-Dlogaperture.instanceId=&lt;name&gt;</code>.</p>
+<h2 id="uninstall">Uninstall<a class="headerlink" href="#uninstall" title="Permanent link">&para;</a></h2>
+<p>Remove the <code>-javaagent</code> option and restart the application. Optionally delete its state file,
+whose path <code>logctl env</code> shows.</p>
 
 
 

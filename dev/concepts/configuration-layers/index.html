@@ -1060,6 +1060,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration layers
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1076,6 +1094,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#terms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-reset-goes-back-to" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What reset goes back to
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rules-follow-the-same-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rules follow the same layers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#for-vendors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For vendors
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1745,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#terms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-reset-goes-back-to" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What reset goes back to
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rules-follow-the-same-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rules follow the same layers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#for-vendors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        For vendors
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1816,121 @@
 
 
 <h1 id="configuration-layers">Configuration layers<a class="headerlink" href="#configuration-layers" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover native configuration, vendor defaults and overrides, and what <code>reset</code> goes back to.</p>
-</div>
+<p>A logger's level can come from three places. Knowing which one wins, and which one <code>reset</code> goes
+back to, explains most of what <code>logctl</code> does.</p>
+<pre class="mermaid"><code>flowchart LR
+    N["Native configuration&lt;br/&gt;logback.xml, logging.properties,&lt;br/&gt;standalone.xml"]
+    V["Vendor defaults&lt;br/&gt;--vendor-defaults=file"]
+    B(["Baseline&lt;br/&gt;what reset returns to"])
+    O["Override&lt;br/&gt;session · for &amp;lt;duration&amp;gt; · sticky"]
+    E(["Effective level&lt;br/&gt;what the application runs at"])
+    S[("State file")]
+    N -- "changed by" --&gt; V --&gt; B
+    B -- "changed by" --&gt; O --&gt; E
+    S -. "sticky overrides restored at startup" .-&gt; O</code></pre>
+<p>From the bottom up:</p>
+<ol>
+<li><strong>Native configuration</strong> is the application's own logging configuration: <code>logback.xml</code>,
+   <code>logging.properties</code>, WildFly's <code>standalone.xml</code>. LogAperture reads it and never writes it.</li>
+<li><strong>Vendor defaults</strong> are an optional file given to the agent at startup
+   (<code>--vendor-defaults=&lt;file&gt;</code>), usually shipped with a product. For every setting it names, it
+   replaces the native value. Native configuration with the vendor defaults on top is the
+   <strong>baseline</strong>.</li>
+<li>An <strong>override</strong> is a change you make with <code>logctl set</code>. A logger or handler has at most one
+   override at a time; a new <code>set</code> replaces it. Its tier says how long it lasts:
+   <code>session</code>, <code>for &lt;duration&gt;</code>, or <code>sticky</code>. The baseline with the override on top is the
+   <strong>effective level</strong>: the <code>EFFECTIVE</code> column of <code>logctl list loggers</code>.</li>
+</ol>
+<p><code>sticky</code> overrides, and <code>for</code> overrides that haven't run out, are saved in LogAperture's <strong>state
+file</strong> and restored when the JVM starts again.</p>
+<h2 id="terms">Terms<a class="headerlink" href="#terms" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Native configuration</strong></td>
+<td>The application's own logging configuration. Read, never written.</td>
+</tr>
+<tr>
+<td><strong>Vendor defaults</strong></td>
+<td>The file named by <code>--vendor-defaults=</code> at agent start.</td>
+</tr>
+<tr>
+<td><strong>Baseline</strong></td>
+<td>Native configuration changed by the vendor defaults. What <code>reset</code> returns to.</td>
+</tr>
+<tr>
+<td><strong>Override</strong></td>
+<td>A change made with <code>logctl set</code>, with a tier.</td>
+</tr>
+<tr>
+<td><strong>State file</strong></td>
+<td>Where <code>sticky</code> and unexpired <code>for</code> overrides are kept between restarts. <code>logctl env</code> shows its path.</td>
+</tr>
+<tr>
+<td><strong>Effective level</strong></td>
+<td>The baseline changed by the override, if there is one. What the application runs at.</td>
+</tr>
+<tr>
+<td><strong>Native default</strong></td>
+<td>The native configuration's value alone, ignoring the vendor defaults. What <code>reset --to-native</code> returns to.</td>
+</tr>
+</tbody>
+</table>
+<p>Without a vendor defaults file, the baseline and the native default are the same thing, and you
+can ignore the difference.</p>
+<h2 id="what-reset-goes-back-to">What <code>reset</code> goes back to<a class="headerlink" href="#what-reset-goes-back-to" title="Permanent link">&para;</a></h2>
+<p><code>reset</code> removes the override and returns the logger or handler to its <strong>baseline</strong>, not
+necessarily to the native configuration. If the vendor defaults set <code>org.perfmon4j</code> to <code>DEBUG</code> and
+<code>standalone.xml</code> says <code>INFO</code>, then after any <code>set</code>, <code>reset logger org.perfmon4j</code> lands on <code>DEBUG</code>.</p>
+<p><code>reset … --to-native</code> returns it to the <strong>native default</strong> instead, ignoring the vendor defaults
+for that logger until the JVM restarts. While it lasts, the logger follows the native
+configuration: if that changes (a WildFly management change, a Logback reload), the logger moves
+with it. A later plain <code>reset</code> returns it to the baseline.</p>
+<p>Both kinds skip a <code>sticky</code> override unless you add <code>--include-sticky</code>. See <a href="../../how-to/undo-changes/">Undo changes</a>
+for every form of <code>reset</code>.</p>
+<h2 id="rules-follow-the-same-layers">Rules follow the same layers<a class="headerlink" href="#rules-follow-the-same-layers" title="Permanent link">&para;</a></h2>
+<p><code>drop</code> and <code>trim</code> rules from the vendor defaults file have <code>vendor:</code> ids. <code>alter rule</code> on one of
+them is an override: <code>reset rule</code> puts the vendor's definition back, and <code>reset rule … --to-native</code>
+switches the rule off until the JVM restarts.</p>
+<h2 id="for-vendors">For vendors<a class="headerlink" href="#for-vendors" title="Permanent link">&para;</a></h2>
+<p>If you ship a vendor defaults file, you make the next version of it by tuning a running system
+with <code>sticky</code> changes and exporting them with <code>logctl export vendor-defaults</code>. What each kind of
+change does to the exported file, for a logger the current file sets to <code>DEBUG</code> and the native
+configuration sets to <code>INFO</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Before exporting, you run</th>
+<th>The next file says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>nothing</td>
+<td><code>DEBUG</code>, unchanged</td>
+</tr>
+<tr>
+<td><code>set logger org.perfmon4j WARN sticky</code></td>
+<td><code>WARN</code></td>
+</tr>
+<tr>
+<td><code>set logger org.perfmon4j INFO sticky</code></td>
+<td><code>INFO</code>, fixed even if the native configuration changes later</td>
+</tr>
+<tr>
+<td><code>reset logger org.perfmon4j --to-native</code></td>
+<td>nothing: the native configuration decides from now on</td>
+</tr>
+</tbody>
+</table>
+<p>A <code>session</code> or <code>for</code> override never reaches the exported file. See
+<a href="../../vendors/vendor-defaults/">Vendor defaults</a>.</p>
 
 
 

@@ -574,6 +574,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on WildFly
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -590,6 +608,91 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-need" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you need
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#check-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check it works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agent-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uninstall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uninstall
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#if-the-server-wont-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If the server won't start
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1767,80 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-need" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you need
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#check-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check it works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agent-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uninstall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uninstall
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#if-the-server-wont-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If the server won't start
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1860,120 @@
 
 
 <h1 id="install-on-wildfly">Install on WildFly<a class="headerlink" href="#install-on-wildfly" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover adding the agent to a standalone WildFly server, checking it started, and removing it again.</p>
+<p>You add one line to WildFly's startup configuration and restart once. After that, <code>logctl</code> changes
+logging on the running server. LogAperture never edits <code>standalone.xml</code>.</p>
+<h2 id="what-you-need">What you need<a class="headerlink" href="#what-you-need" title="Permanent link">&para;</a></h2>
+<ul>
+<li>A <strong>standalone</strong> WildFly, 26.1 or later. Domain mode is not supported.</li>
+<li><strong>JDK 17, 21 or 25</strong> running the server.</li>
+<li>A <strong>JDK</strong>, not just a JRE, wherever you run <code>logctl</code>. It uses the JVM attach mechanism, which
+  only a JDK has.</li>
+<li><code>logctl</code> runs <strong>on the same machine and as the same operating-system user</strong> as the server.</li>
+</ul>
+<h2 id="install">Install<a class="headerlink" href="#install" title="Permanent link">&para;</a></h2>
+<ol>
+<li>
+<p><strong>Download</strong> <code>logaperture-&lt;version&gt;.zip</code> from the
+   <a href="https://github.com/ddeuchert/logaperture/releases">releases page</a> and unzip it on the server,
+   for example to <code>/opt/logaperture</code>. It contains:</p>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bin/logctl</code>, <code>bin/logctl.cmd</code></td>
+<td>the command-line tool</td>
+</tr>
+<tr>
+<td><code>lib/logaperture-agent.jar</code></td>
+<td>the agent</td>
+</tr>
+<tr>
+<td><code>docs/index.html</code></td>
+<td>this guide, for reading without a network</td>
+</tr>
+</tbody>
+</table>
+</li>
+<li>
+<p><strong>Put <code>bin/</code> on your <code>PATH</code></strong>, so you can type plain <code>logctl</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">PATH</span><span class="o">=</span><span class="s2">"</span><span class="nv">$PATH</span><span class="s2">:/opt/logaperture/bin"</span>
+</code></pre></div>
+<p>Add the line to <code>~/.bashrc</code> or your shell's profile to keep it. On Windows, add
+<code>C:\opt\logaperture\bin</code> to <code>PATH</code>.</p>
+</li>
+<li>
+<p><strong>Add the agent</strong> to the server's JVM options, as one appended line.</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Linux and macOS</label><label for="__tabbed_1_2">Windows</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p>In <code>$JBOSS_HOME/bin/standalone.conf</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">JAVA_OPTS</span><span class="o">=</span><span class="s2">"</span><span class="nv">$JAVA_OPTS</span><span class="s2"> -javaagent:/opt/logaperture/lib/logaperture-agent.jar"</span>
+</code></pre></div>
 </div>
+<div class="tabbed-block">
+<p>In <code>%JBOSS_HOME%\bin\standalone.conf.bat</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="k">set</span> <span class="s2">"JAVA_OPTS=</span><span class="nv">%JAVA_OPTS%</span><span class="s2"> -javaagent:C:\opt\logaperture\lib\logaperture-agent.jar"</span>
+</code></pre></div>
+</div>
+</div>
+</div>
+<p>If the server already has other <code>-javaagent</code> entries, put LogAperture's first. An agent listed
+before it can log during startup before LogAperture is ready. See
+<a href="../../concepts/agent-order/">Agent order</a>.</p>
+<p>In a container, the server's user often has no writable home directory, and LogAperture can't
+save its state there. Point it somewhere writable as well:
+<code>-Dlogaperture.home=$JBOSS_HOME/standalone/data/logaperture</code>.</p>
+</li>
+<li>
+<p><strong>Restart WildFly.</strong></p>
+</li>
+</ol>
+<h2 id="check-it-works">Check it works<a class="headerlink" href="#check-it-works" title="Permanent link">&para;</a></h2>
+<p>The server log has one line from LogAperture at startup and no
+<code>The LogManager was not properly installed</code> error. Then run:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>env
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>LogAperture agent    1.0.0-beta.1-SNAPSHOT  (logctl 1.0.0-beta.1-SNAPSHOT)
+Java                 17.0.5  Eclipse Adoptium
+OS                   Linux 7.2.8-200.fc44.x86_64  amd64
+Logging backend      JBoss LogManager 2.1.18.Final
+Framework/container  WildFly 26.1.3.Final
+Diagnostics level    —
+State file           /opt/jboss/wildfly/standalone/tmp/logaperture/instances/af001a751ad6462d-jboss.state.yaml
+Vendor defaults      not configured
+</code></pre></div>
+<p>Your versions and paths will differ. This output is from a WildFly in a container, started with
+<code>-Dlogaperture.home</code> pointing into the server's <code>tmp</code> directory.</p>
+<p><code>Framework/container</code> must name WildFly. If it doesn't, LogAperture didn't recognize the server:
+check the server log before going further. If <code>logctl</code> says it can't find a JVM, see
+<a href="../../how-to/several-jvms/">Work with several JVMs</a>.</p>
+<p>Next: the <a href="../quick-start/">Quick start</a>.</p>
+<h2 id="agent-options">Agent options<a class="headerlink" href="#agent-options" title="Permanent link">&para;</a></h2>
+<p>Agent options go after the jar, separated by <code>=</code>:</p>
+<div class="highlight"><pre><span></span><code>-javaagent:/opt/logaperture/lib/logaperture-agent.jar<span class="o">=</span>--vendor-defaults<span class="o">=</span>/etc/myproduct/logging.yaml
+</code></pre></div>
+<ul>
+<li><code>--vendor-defaults=&lt;file&gt;</code> starts with a vendor defaults file. See
+  <a href="../../vendors/vendor-defaults/">Vendor defaults</a>.</li>
+<li><code>--storm-detection=on</code> starts with storm detection on. See <a href="../../how-to/storms/">Log storms</a>.</li>
+</ul>
+<p>All options and <code>-Dlogaperture.*</code> system properties are listed in
+<a href="../../reference/agent-options/">Agent options and properties</a>.</p>
+<h2 id="uninstall">Uninstall<a class="headerlink" href="#uninstall" title="Permanent link">&para;</a></h2>
+<p>Remove the <code>-javaagent</code> line and restart WildFly. Nothing else was changed.</p>
+<p>LogAperture's state file, which holds <code>sticky</code> changes, is under <code>~/.logaperture/</code> of the user
+running the server, unless <code>-Dlogaperture.home</code> moved it. <code>logctl env</code> shows the exact path.
+Delete it if you don't plan to reinstall.</p>
+<h2 id="if-the-server-wont-start">If the server won't start<a class="headerlink" href="#if-the-server-wont-start" title="Permanent link">&para;</a></h2>
+<p>Add <code>-Dlogaperture.disabled=true</code> to <code>JAVA_OPTS</code> and restart. The agent then does nothing at all.
+If the server starts that way, LogAperture is involved: please
+<a href="https://github.com/ddeuchert/logaperture/issues">open an issue</a> with the server log and the
+output of <code>java -version</code>.</p>
 
 
 
