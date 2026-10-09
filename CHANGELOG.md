@@ -15,8 +15,10 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   from the same text (issue #159; `doc/specs/user-documentation.md` slice 2).
 
 - **The user guide**, at https://logaperture.org/ and in the release zip's `docs/` folder (open
-  `docs/index.html`; it works with no network access). This release has its layout, with pages
-  being filled in for 1.0 (issue #159; `doc/specs/user-documentation.md`).
+  `docs/index.html`; it works with no network access). Written so far: Home with what 1.0
+  supports, installing on WildFly and on a plain JVM, a Quick start, Configuration layers, and the
+  `logctl` command reference. The other pages are being written for 1.0 (issue #159;
+  `doc/specs/user-documentation.md`).
 
 - **`logctl enable storms` and `logctl disable storms`** turn storm detection on and off in a
   running JVM, in every context. With no tier that lasts until the JVM stops; `for 30m` switches it
@@ -62,6 +64,10 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   `key: |` block text (issue #92). `logctl export vendor-defaults` carries both sections over.
 
 ### Changed
+
+- **The release zip's `docs/INSTALL-wildfly.md` is replaced by the user guide** in `docs/`
+  (`docs/get-started/install-wildfly.html`). `doc/wildfly-test-drive.md` became the guide's
+  Quick start (issue #159).
 
 - **`logctl --help` is a one-screen overview**: every command form, the options every command
   takes, and how tiers work. The per-command options and explanations moved to `logctl help

@@ -94,6 +94,12 @@ module; it lets the same committed launchers work in both layouts.
 
 ## The install guide — `INSTALL-wildfly.md`
 
+> **Superseded (2026-10-09, issue #159).** The bundle no longer carries `INSTALL-wildfly.md`. It
+> ships the rendered user guide in `docs/` instead, whose
+> [WildFly install page](../../guide/get-started/install-wildfly.md) replaces it. See
+> [`user-documentation.md`](user-documentation.md) U7 and U9. The section below is kept as the
+> record of what the alpha bundles contained.
+
 Content (see the file for the full text): a **pre-production only** banner;
 prerequisites (standalone WildFly 26.1.3.Final tested, JDK 17, same host + OS
 user for `logctl`); the one-line `standalone.conf` / `standalone.conf.bat` edit

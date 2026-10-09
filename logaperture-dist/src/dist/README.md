@@ -21,15 +21,17 @@ bin/logctl            control CLI (POSIX shell launcher)
 bin/logctl.cmd        control CLI (Windows launcher)
 lib/logaperture-agent.jar   the Java agent — goes on -javaagent
 lib/logaperture-cli.jar     the CLI's jar (invoked by the launchers)
-docs/INSTALL-wildfly.md     install, verify, use, uninstall, limits
 docs/index.html             the user guide; opens from disk, no network needed
 LICENSE               Apache License 2.0
 ```
 
 ## Start here
 
-**[docs/INSTALL-wildfly.md](docs/INSTALL-wildfly.md)** — the WildFly install and
-usage guide.
+Open **`docs/index.html`** in a browser: the user guide, which works without a
+network. Installing on WildFly is `docs/get-started/install-wildfly.html`; on a
+plain JVM, `docs/get-started/install-plain-jvm.html`.
+
+The same guide is online at https://logaperture.org/.
 
 ## Feedback
 
