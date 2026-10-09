@@ -74,6 +74,30 @@ class ParserTest {
     }
 
     @Test
+    void helpCarriesTheCommandWordsToExplain() {
+        assertEquals(List.of(), Parser.parse(new String[] {"--help"}).helpWords());
+        assertEquals(List.of(), Parser.parse(new String[] {"help"}).helpWords());
+        assertEquals(List.of("add", "rule"), Parser.parse(new String[] {"help", "add", "rule"}).helpWords());
+        Invocation afterCommand = Parser.parse(new String[] {"set", "logger", "com.acme", "--help"}, true);
+        assertTrue(afterCommand.help());
+        assertNull(afterCommand.command());
+        assertEquals(List.of("set", "logger", "com.acme"), afterCommand.helpWords());
+    }
+
+    @Test
+    void helpOnAGuidedPrefixExplainsInsteadOfAsking() {
+        Invocation invocation = Parser.parse(new String[] {"set", "--help"}, true);
+        assertTrue(invocation.help());
+        assertEquals(List.of("set"), invocation.helpWords());
+    }
+
+    @Test
+    void commandWordsSkipOptionsAndTheirValues() {
+        assertEquals(List.of("set", "logger", "com.acme", "DEBUG"), Parser.commandWords(new String[] {
+                "--pid", "123", "set", "logger", "--reason", "INC-42", "com.acme", "--json", "DEBUG"}));
+    }
+
+    @Test
     void noArgumentsIsAUsageError() {
         assertUsage(() -> Parser.parse(new String[] {}));
     }

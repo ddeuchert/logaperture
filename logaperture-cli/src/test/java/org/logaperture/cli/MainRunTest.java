@@ -77,6 +77,35 @@ class MainRunTest {
     }
 
     @Test
+    void helpForACommandIsThatTopicOnStdout() {
+        assertEquals(0, run(new String[] {"help", "add", "rule"}, unusableConnector()));
+        assertTrue(out().startsWith("logctl add rule — "));
+        assertTrue(err().isEmpty());
+    }
+
+    @Test
+    void helpAfterACommandNeverContactsAJvm() {
+        assertEquals(0, run(new String[] {"set", "logger", "com.acme", "--help"}, unusableConnector()));
+        assertTrue(out().startsWith("logctl set logger — "));
+    }
+
+    @Test
+    void helpForAnUnknownCommandIsUsageExitTwo() {
+        assertEquals(2, run(new String[] {"help", "frobnicate"}, unusableConnector()));
+        assertTrue(err().startsWith("No command 'frobnicate'."));
+        assertTrue(out().isEmpty());
+    }
+
+    @Test
+    void usageErrorShowsOnlyThatCommandsForms() {
+        assertEquals(2, run(new String[] {"set", "logger", "com.acme", "LOUD"}, unusableConnector()));
+        assertTrue(err().contains("Unknown level 'LOUD'"));
+        assertTrue(err().contains("logctl set logger <target>"));
+        assertTrue(err().contains("Run 'logctl help set logger' for more."));
+        assertFalse(err().contains("Usage:"));
+    }
+
+    @Test
     void versionIsExitZero() {
         assertEquals(0, run(new String[] {"--version"}, unusableConnector()));
         assertTrue(out().startsWith("logctl "));

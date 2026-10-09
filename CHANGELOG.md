@@ -9,6 +9,11 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Added
 
+- **`logctl help <command>`**, and `--help` after any command (`logctl set logger --help`), explain
+  one command: its forms, what it does, its options, and examples. `logctl help set` lists the
+  `set` commands to pick from. The guide's command reference (`reference/logctl.md`) is generated
+  from the same text (issue #159; `doc/specs/user-documentation.md` slice 2).
+
 - **The user guide**, at https://logaperture.org/ and in the release zip's `docs/` folder (open
   `docs/index.html`; it works with no network access). This release has its layout, with pages
   being filled in for 1.0 (issue #159; `doc/specs/user-documentation.md`).
@@ -57,6 +62,11 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   `key: |` block text (issue #92). `logctl export vendor-defaults` carries both sections over.
 
 ### Changed
+
+- **`logctl --help` is a one-screen overview**: every command form, the options every command
+  takes, and how tiers work. The per-command options and explanations moved to `logctl help
+  <command>`. A usage error now shows only the forms of the command you typed, not the whole help
+  (issue #159).
 
 - **Storm detection is disabled by default.** Through alpha.3 it was always on, and it added a
   measurable cost to every log call that reached a handler (#150). Start the agent with
