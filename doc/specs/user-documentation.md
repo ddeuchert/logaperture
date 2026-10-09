@@ -2,7 +2,8 @@
 
 Status: **signed off 2026-10-08, decisions U1–U12 all agreed as recommended.** Slice 1 (pipeline)
 implemented. Slice 2 (`logctl help`, decisions H1–H7) signed off and implemented 2026-10-08. Slice 3
-(beta-1 pages) implemented 2026-10-09.
+(beta-1 pages) implemented 2026-10-09. Slice 4a (reference pages, drift test, `CLAUDE.md` rule)
+implemented 2026-10-09.
 Issue: [#159](https://github.com/ddeuchert/logaperture/issues/159).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §17.1, "User documentation"
 (the tool, layout and hosting decisions this spec builds on) and the release table (`1.0.0-beta.1`:
@@ -249,7 +250,13 @@ Examples show real `logctl` output, which changes.
 3. **Beta-1 pages.** Home with support matrix, both installs, Quick start, Configuration layers.
    README and bundle README point at the site.
 4. **Everything else (by rc.1).** How-to, concepts, vendor, remaining reference with drift
-   tests; `USER_GUIDE_NOTES.md` deleted; `CLAUDE.md` rule and PR template.
+   tests; `USER_GUIDE_NOTES.md` deleted; `CLAUDE.md` rule and PR template. Split into three PRs:
+   - **4a. Reference and process.** Agent options, doctor checks, JSON output, file formats and
+     audit log pages; `GuideReferenceDriftTest` (U6); the same-PR rule in `CLAUDE.md` and a PR
+     template (U10).
+   - **4b. Concepts and vendors.** Tiers and expiry, rules, security, agent order, vendor
+     defaults, recipes for library authors; absorbs and deletes `USER_GUIDE_NOTES.md`.
+   - **4c. How-to, troubleshooting and overhead.**
 
 ## Slice 1: the pipeline
 
@@ -463,7 +470,7 @@ All twelve agreed as recommended. Numbering is stable and matches the review art
 | U3 | Hosting paths | **`mike` owns the whole site**; `/` redirects to `/latest/`. |
 | U4 | Command reference | **One help entry per command group**, feeding `--help`, `logctl help <command>` and the generated reference page. |
 | U5 | `logctl help` and the freeze | **Lands before beta 1.** |
-| U6 | Other references | **Hand-written, each with a drift test**; internal tuning properties in their own "may change" table. |
+| U6 | Other references | **Hand-written, each with a drift test**; internal tuning properties in their own "may change" table. As built (4a), one `GuideReferenceDriftTest` in `logaperture-cli` scans every module's main sources rather than a test per owning module: the properties are read in five modules, and one scan catches a name added anywhere. |
 | U7 | Build and zip | **The release workflow builds the site**; Maven only copies it when present. Offline build for the zip. |
 | U8 | Versions | **`dev` from `develop`, `<major>.<minor>` from tags; `1.0` with a pre-release banner and `latest` from beta 1.** |
 | U9 | Existing documents | **As in the table.** |
