@@ -118,18 +118,14 @@ no restart, nothing written to any config file.
 
 ```sh
 mvn -q -pl logaperture-cli -am package -DskipTests     # build the CLI jar
-
-logaperture-cli/bin/logctl list loggers [filter] [--show-all]  # list loggers + effective levels
-logaperture-cli/bin/logctl status                      # active overrides
-logaperture-cli/bin/logctl set logger <logger> <level> [tier]
-logaperture-cli/bin/logctl set handler <name> <level>  # also: set handler <name> AUTO
-logaperture-cli/bin/logctl reset logger <logger>       # also: reset loggers | reset handler <name> | reset handlers
+logaperture-cli/bin/logctl --help                      # every command, one screen
+logaperture-cli/bin/logctl help set logger             # one command in full
 ```
 
-`tier` is `session` (until the JVM exits), `for <n>s|m|h|d` (auto-reverts), or
-`sticky` (survives a restart). Omit it and you get `for 4h`. Options:
-`--pid <n>` (when discovery is ambiguous), `--reason "<text>"`,
-`--include-children`, `--json`.
+Using `logctl` is covered in the [user guide](https://logaperture.org/): installing on a
+[plain JVM](guide/get-started/install-plain-jvm.md), the
+[quick start](guide/get-started/quick-start.md), and the generated
+[command reference](guide/reference/logctl.md).
 
 `logctl` finds the target JVM on its own when exactly one is running with the
 agent attached — it filters on the `logaperture.version` system property the

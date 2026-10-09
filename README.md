@@ -8,7 +8,7 @@
 >
 > Bug reports from an alpha run, prior-art pointers, and war stories about log volume in constrained environments are all useful — [open an issue](../../issues).
 
-**Have a WildFly server handy?** [Test-drive the current feature set](doc/wildfly-test-drive.md) in about 15 minutes — attach, toggle trace logging on and off, compare `for`/`session`/`sticky`, look at `doctor` and `top`. Feedback from that run is exactly what this alpha needs.
+**Have a WildFly server handy?** [Install it](https://logaperture.org/latest/get-started/install-wildfly/) and run the [Quick start](https://logaperture.org/latest/get-started/quick-start/) in about 10 minutes — raise a level and watch it revert, make the console show it, compare `for`/`session`/`sticky`, look at `doctor` and `top`. Feedback from that run is exactly what this alpha needs.
 
 ---
 
@@ -54,7 +54,7 @@ Working today:
 
 **Not in this build:** automatic storm collapse, `drop`/`trim` on Logback, the Log4j 2 adapter, and any Spring Boot / Tomcat / Quarkus-JVM integration (a Spring Boot fat-jar attaches as a plain JVM, so level control *may* work against its Logback, but it is untested).
 
-**Getting it:** download [`logaperture-0.1.0-alpha.3.zip`](https://github.com/ddeuchert/logaperture/releases/download/v0.1.0-alpha.3/logaperture-0.1.0-alpha.3.zip) (or browse [all releases](../../releases)), unzip, and follow the bundled `INSTALL-wildfly.md`. [DEVELOPMENT.md](DEVELOPMENT.md) covers a plain-JVM setup and running `logctl`.
+**Getting it:** download [`logaperture-0.1.0-alpha.3.zip`](https://github.com/ddeuchert/logaperture/releases/download/v0.1.0-alpha.3/logaperture-0.1.0-alpha.3.zip) (or browse [all releases](../../releases)), unzip, and follow the user guide: [on WildFly](https://logaperture.org/latest/get-started/install-wildfly/) or [on a plain JVM](https://logaperture.org/latest/get-started/install-plain-jvm/). The guide is also in the zip, under `docs/`.
 
 ## Design principles
 
@@ -81,7 +81,7 @@ If you know of something that does, please say so. Finding out early is worth mo
 ## Documentation
 
 - [Design document](doc/logaperture-spec.md) — architecture, feature specification, security model, and roadmap.
-- [Test-driving LogAperture on WildFly](doc/wildfly-test-drive.md) — a hands-on, ~15-minute walkthrough of the current feature set against a real WildFly server.
+- [User guide](https://logaperture.org/) — installing, a quick start, how-to pages and the `logctl` command reference.
 - [DEVELOPMENT.md](DEVELOPMENT.md) — building, testing, running `logctl`, and the WildFly dev environment.
 
 ## Contributing
