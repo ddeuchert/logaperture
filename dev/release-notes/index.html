@@ -2173,6 +2173,12 @@ reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>.</p>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li>
+<p><strong><code>logctl help &lt;command&gt;</code></strong>, and <code>--help</code> after any command (<code>logctl set logger --help</code>), explain
+  one command: its forms, what it does, its options, and examples. <code>logctl help set</code> lists the
+  <code>set</code> commands to pick from. The guide's command reference (<code>reference/logctl.md</code>) is generated
+  from the same text (issue #159; <code>doc/specs/user-documentation.md</code> slice 2).</p>
+</li>
+<li>
 <p><strong>The user guide</strong>, at https://logaperture.org/ and in the release zip's <code>docs/</code> folder (open
   <code>docs/index.html</code>; it works with no network access). This release has its layout, with pages
   being filled in for 1.0 (issue #159; <code>doc/specs/user-documentation.md</code>).</p>
@@ -2225,10 +2231,18 @@ reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>.</p>
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Storm detection is disabled by default.</strong> Through alpha.3 it was always on, and it added a
+<li>
+<p><strong><code>logctl --help</code> is a one-screen overview</strong>: every command form, the options every command
+  takes, and how tiers work. The per-command options and explanations moved to <code>logctl help
+  &lt;command&gt;</code>. A usage error now shows only the forms of the command you typed, not the whole help
+  (issue #159).</p>
+</li>
+<li>
+<p><strong>Storm detection is disabled by default.</strong> Through alpha.3 it was always on, and it added a
   measurable cost to every log call that reached a handler (#150). Start the agent with
   <code>-javaagent:logaperture-agent.jar=--storm-detection=on</code>, or run <code>logctl enable storms</code>, to turn it
-  on (issue #151).</li>
+  on (issue #151).</p>
+</li>
 <li><strong>Audit lines label a handler <code>handler=</code>, not <code>logger=</code></strong> (issue #137). A handler change used to
   print as <code>logger=FILE</code>, which read like a logger called FILE. Handler levels and the
   <code>DEFAULT_HANDLERS</code> membership now print <code>handler=&lt;name&gt;</code>, and the records naming the vendor
