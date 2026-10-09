@@ -15,23 +15,31 @@
  */
 package org.logaperture.cli;
 
+import java.util.List;
+
 /**
  * A fully parsed command line. {@code help} and {@code version} short-
  * circuit before any JVM is contacted, so {@code command} is {@code null}
  * for those; every other invocation carries a resolved {@link Command}.
  *
+ * @param helpWords for a help invocation, the command words to look up; otherwise empty
  * @param pid an explicit {@code --pid} target, or {@code null} to discover one
  * @param debug the hidden {@code --debug} flag — print stack traces for the CLI's own development
  * @param neverAsk {@code --json} or {@code --yes} was given: nothing may be asked, not even which
  *                 JVM (doc/specs/pick-jvm.md J1)
  */
-record Invocation(boolean help, boolean version, boolean debug, Long pid, boolean neverAsk, Command command) {
+record Invocation(boolean help, boolean version, boolean debug, Long pid, boolean neverAsk, Command command,
+        List<String> helpWords) {
 
-    static Invocation forHelp() {
-        return new Invocation(true, false, false, null, true, null);
+    /**
+     * @param words the command words to explain ({@code logctl help set logger}, {@code logctl set
+     *              logger --help}); empty for the overview (doc/specs/user-documentation.md H3)
+     */
+    static Invocation forHelp(List<String> words) {
+        return new Invocation(true, false, false, null, true, null, List.copyOf(words));
     }
 
     static Invocation forVersion() {
-        return new Invocation(false, true, false, null, true, null);
+        return new Invocation(false, true, false, null, true, null, List.of());
     }
 }

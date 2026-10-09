@@ -83,6 +83,14 @@ Run `OFFLINE=true .venv-docs/bin/mkdocs build` before `mvn package` to get the c
 zip ships: the next `logaperture-dist` build puts `site/` into the zip's `docs/` folder. Without
 `site/`, the zip still builds, with a `docs/README.md` pointing at the website.
 
+The command reference, `guide/reference/logctl.md`, is generated from `logctl`'s help text in
+`HelpTopics.java` and committed. After changing the help, regenerate it, or `HelpReferenceTest`
+fails the build:
+
+```sh
+mvn -pl logaperture-cli test -Dtest=HelpReferenceTest -Dlogaperture.help.regenerate=true
+```
+
 `.github/workflows/docs.yml` publishes the guide: `dev` on every push to `develop` that touches it,
 and `<major>.<minor>` (aliased `latest`) on a release tag.
 

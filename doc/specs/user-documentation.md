@@ -1,6 +1,7 @@
 # User documentation
 
-Status: **signed off 2026-10-08, decisions U1–U12 all agreed as recommended.** Slice 1 (pipeline) implemented.
+Status: **signed off 2026-10-08, decisions U1–U12 all agreed as recommended.** Slice 1 (pipeline)
+implemented. Slice 2 (`logctl help`, decisions H1–H7) signed off and implemented 2026-10-08.
 Issue: [#159](https://github.com/ddeuchert/logaperture/issues/159).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §17.1, "User documentation"
 (the tool, layout and hosting decisions this spec builds on) and the release table (`1.0.0-beta.1`:
@@ -21,8 +22,10 @@ After this feature, the user will be able to:
   path out, with search still working.
 - Look up any `logctl` command, agent option or `-Dlogaperture.*` property on one reference
   page, and trust that it matches the `logctl --help` of that version.
-- Run `logctl help <command>` (e.g. `logctl help add rule`) to get the same text the reference
-  page shows for that command. *(Only if U4 option (a) is agreed.)*
+- Run `logctl help <command>` (e.g. `logctl help add rule`), or add `--help` to any command
+  (`logctl set logger --help`), to get the same text the reference page shows for that command.
+- Get a short `logctl --help` that fits on a screen, and, after a mistyped command, see just that
+  command's forms instead of the whole help.
 
 ## Why
 
@@ -190,7 +193,8 @@ bundled, not pulled from a CDN.
 
 ### U8 — Publishing and versions
 
-- `dev` is deployed by CI on every push to `develop` that touches `guide/` or `HelpText`.
+- `dev` is deployed by CI on every push to `develop` that touches `guide/`. (The generated
+  command reference is committed under `guide/`, slice 2 H6, so a help change counts.)
 - A release tag deploys `<major>.<minor>` (`1.0`).
 - **Recommended for the beta period:** deploy `1.0` from the beta and rc tags with a banner
   ("pre-release — 1.0.0-beta.1"), and point `latest` at it from beta 1. Before GA there is no
@@ -308,6 +312,145 @@ package` with a built `site/` produces a zip whose `docs/index.html` opens from 
 search and no network requests; without `site/`, the zip still builds and contains
 `docs/README.md`.
 
+## Slice 2: `logctl help` and the generated reference
+
+Today `HelpText.usage()` is one 200-line block: the synopses, every option, then paragraphs that
+each cover a few commands. Slice 2 splits it into **topics**, one per command or small command
+group, each holding its own synopses, description, options and examples. Three things are printed
+from the topics: `logctl --help`, `logctl help <command>`, and `guide/reference/logctl.md`.
+
+### H1 — The topics
+
+| Topic | Synopses it owns |
+|---|---|
+| `list loggers` | `list loggers` |
+| `list handlers` | `list handlers` |
+| `list rules` | `list rules` |
+| `status` | `status` |
+| `doctor` | `doctor` |
+| `env` | `env` |
+| `top` | `top` |
+| `storms` | `storms`, `enable storms`, `disable storms` |
+| `set logger` | `set logger` |
+| `set handler` | both `set handler` forms (level and `AUTO`); also explains `ALL_HANDLERS` |
+| `default-handler` | `set default-handler`, `reset default-handler`; explains `DEFAULT_HANDLERS` |
+| `reset` | `reset logger`, `reset loggers`, `reset handler`, `reset handlers`, `reset rule`, `reset rules` |
+| `add rule` | `add rule drop`, `add rule trim` |
+| `alter rule` | `alter rule` |
+| `recipes` | `list recipes`, `show recipe`, `apply recipe`, `reset recipe` |
+| `export vendor-defaults` | `export vendor-defaults` |
+
+Every synopsis belongs to exactly one topic. `reset` stays one topic because its forms share the
+same rules (sticky is skipped, `--include-sticky`, `--to-native`, baseline vs native); splitting
+it would repeat them six times. The vendor-defaults file and the configuration layers get one
+paragraph in `reset` and a link to the guide's concepts pages, not a topic of their own.
+
+### H2 — `logctl --help` and `logctl help`
+
+`logctl --help` and `logctl help` with no command print the same short overview, about 50 lines:
+
+```
+logctl — runtime logging control for a running JVM
+
+Usage:
+  logctl list loggers [filter] [--show-all]
+  … every synopsis, as today, grouped by topic …
+
+Options for every command:
+  --pid <n>         target this JVM instead of discovering one
+  --reason <text>   why — shown in status, kept in the audit trail
+  --json            machine-readable output
+  --yes             never ask
+  --version, -h, --help
+
+A tier says how long a change lasts: session, for <duration> (30s, 30m, 4h, 2d) or sticky.
+'set' without one means 'for 4h'.
+On a terminal, list, set, reset, add rule and alter rule ask for anything left out.
+
+'logctl help <command>' explains one command, for example 'logctl help add rule'.
+Full guide: https://logaperture.org/
+```
+
+The per-command options and all the explanatory paragraphs move into the topics. The synopsis
+list stays complete, so the phone test (`cli-transport.md` §6.2) still checks every form in the
+overview.
+
+### H3 — Finding a topic
+
+`logctl help <words…>` and `logctl <words…> --help` both look up a topic from the command words:
+
+1. The words name a topic exactly (`help reset`, `help add rule`): that topic.
+2. Otherwise, the topics owning a synopsis that starts with those words. One: that topic
+   (`help reset recipe` → `recipes`, `help set default-handler` → `default-handler`,
+   `help enable storms` → `storms`, `help export` → `export vendor-defaults`).
+3. Several (`help list`, `help set`): a short list of them, one line each, with the command to
+   see each one.
+4. None: "No command 'xyz'.", then the overview, exit code 2 (usage).
+
+`--help` wins over everything else on the line, as today: `logctl set logger --help` shows the
+topic and never starts a guided command or contacts a JVM. Non-command words after `--help`
+(a logger name, a level) are ignored when looking up the topic.
+
+### H4 — Usage errors
+
+Today a usage error prints the message and then the whole 200-line help. After this slice it
+prints the message, then the synopses of the topic the command words point to (H3), then
+`Run 'logctl help <topic>' for more.` When no topic matches (`logctl` alone off a terminal,
+an unknown command), it prints the overview instead. The exit code is unchanged (2).
+
+### H5 — Where the text lives
+
+A `HelpTopic` record per topic (name, one-line summary, synopses, description paragraphs,
+options, examples) in a `HelpTopics` class, with the global options and the overview footer
+beside it. Paragraphs are written unwrapped with Markdown code spans: `` `set logger` ``.
+
+- On the terminal: paragraphs wrapped to 80 columns; a code span prints as `'set logger'`, which
+  is how the help quotes commands today.
+- In the reference page: paragraphs as written, code spans kept.
+
+Options shared by two topics (the rule matchers in `add rule` and `alter rule`,
+`--include-sticky` in `reset` and `recipes`) are defined once and referenced by both.
+
+### H6 — Generating the reference page
+
+`guide/reference/logctl.md` is **generated and committed**. A test in `logaperture-cli`
+(`HelpReferenceTest`) renders the page from the topics and compares it with the committed file;
+a difference fails the build with the command that regenerates it:
+
+```
+mvn -pl logaperture-cli test -Dtest=HelpReferenceTest -Dlogaperture.help.regenerate=true
+```
+
+So a help change and its reference change land in the same PR and show up in the same diff, CI
+catches a forgotten regeneration, and the docs workflow needs no Java. The generated file starts
+with a comment saying it is generated and from where.
+
+### H7 — The reference page
+
+One page, `reference/logctl.md`:
+
+- An introduction: the options for every command, tiers and durations, guided commands. This is the
+  overview from H2 without the synopsis list.
+- A table of every topic with its one-line summary, linking to its section.
+- One section per topic, anchored by its name (`#set-logger`, `#add-rule`): synopses in a code
+  block, the description, an options table, examples.
+
+How-to pages link to these anchors instead of re-explaining options.
+
+### Tests
+
+- Every synopsis in exactly one topic; every topic has at least one synopsis.
+- Every `--option` in a topic's synopses is documented in that topic's options or the global ones.
+- The phone test over every synopsis, as today. Examples are exempt: they hold real recipe ids
+  (`io.undertow:sessions`) and quoted message text, which the phone test's characters forbid.
+- Every example leads back to its own topic by lookup, so an example can't drift to another
+  command's syntax unnoticed.
+- No line of a topic is wider than 80 columns, except synopses and examples, which print as written.
+- Lookup (H3): exact, unique prefix, ambiguous, unknown; `--help` after a command, after a
+  guided-command prefix (`logctl set --help`), with extra words.
+- Usage error output (H4) for a known and an unknown command.
+- `HelpReferenceTest` (H6).
+
 ## Decisions (signed off 2026-10-08)
 
 All twelve agreed as recommended. Numbering is stable and matches the review artifact.
@@ -326,6 +469,11 @@ All twelve agreed as recommended. Numbering is stable and matches the review art
 | U10 | Keeping current | **`CLAUDE.md` rule and PR template checkbox**; no CI enforcement beyond the drift tests. |
 | U11 | Platform coverage | **One support matrix on Home, admonitions on pages**; no per-platform forks. |
 | U12 | Examples | **Hand-captured for 1.0**, re-captured for rc.1; IT-captured snippets are a 1.x issue. |
+
+Slice 2, H1–H7, agreed as written on 2026-10-08: the topics in H1, the one-screen overview (H2),
+topic lookup from command words (H3), usage errors showing only the command's forms (H4), topic
+records with Markdown code spans (H5), the reference page generated, committed and checked by
+`HelpReferenceTest` (H6), and the page layout in H7.
 
 ## Not in scope
 
