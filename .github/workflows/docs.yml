@@ -1,0 +1,146 @@
+# Copyright 2026 David Deuchert
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Docs
+
+# Publishes the user guide (mkdocs.yml, guide/) to the gh-pages branch with mike; GitHub Pages
+# serves that branch on logaperture.org. doc/specs/user-documentation.md, U3 and U8.
+#
+#   push to develop  -> version "dev"
+#   tag v1.0.0[-x]   -> version "1.0", aliased "latest", which / redirects to;
+#                       a pre-release tag (-beta.1, -rc.1) shows a pre-release banner
+#   run by hand      -> any ref, as any version name (an out-of-band doc fix)
+on:
+  push:
+    branches: [develop]
+    # Path filters only apply to the branch push; tag pushes always run.
+    paths:
+      - 'guide/**'
+      - 'guide-overrides/**'
+      - 'mkdocs.yml'
+      - 'requirements-docs.txt'
+      - 'CHANGELOG.md'
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - 'guide/**'
+      - 'guide-overrides/**'
+      - 'mkdocs.yml'
+      - 'requirements-docs.txt'
+      - 'CHANGELOG.md'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to (re)deploy, e.g. 1.0 or dev'
+        required: true
+      prerelease:
+        description: 'Pre-release name for the banner, e.g. 1.0.0-rc.1 (blank for none)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write   # mike pushes to gh-pages
+
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: false
+
+env:
+  NO_MKDOCS_2_WARNING: 'true'
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # mike commits onto the existing gh-pages history
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+
+      - name: Install MkDocs
+        run: pip install -r requirements-docs.txt
+
+      - name: Build (strict)
+        # Broken links and nav entries pointing at missing pages fail here, on PRs too.
+        run: mkdocs build --strict
+
+      - name: Work out the version to deploy
+        if: github.event_name != 'pull_request'
+        id: v
+        run: |
+          case "${GITHUB_REF}" in
+            refs/tags/v*)
+              full="${GITHUB_REF_NAME#v}"
+              minor="$(echo "$full" | cut -d. -f1,2)"
+              case "$full" in
+                *-*) pre="$full" ;;
+                *)   pre="" ;;
+              esac
+              echo "version=$minor" >> "$GITHUB_OUTPUT"
+              echo "label=$full" >> "$GITHUB_OUTPUT"
+              echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
+              echo "release=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+                v="${{ inputs.version }}"
+                echo "prerelease=${{ inputs.prerelease }}" >> "$GITHUB_OUTPUT"
+              else
+                v="dev"
+                echo "prerelease=" >> "$GITHUB_OUTPUT"
+              fi
+              echo "version=$v" >> "$GITHUB_OUTPUT"
+              echo "label=$v" >> "$GITHUB_OUTPUT"
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Deploy with mike
+        if: github.event_name != 'pull_request'
+        env:
+          DOCS_VERSION: ${{ steps.v.outputs.label }}
+          DOCS_PRERELEASE: ${{ steps.v.outputs.prerelease }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages:gh-pages || true
+          if [ "${{ steps.v.outputs.release }}" = "true" ]; then
+            mike deploy --push --update-aliases "${{ steps.v.outputs.version }}" latest
+            mike set-default --push latest
+          else
+            mike deploy --push "${{ steps.v.outputs.version }}"
+            # Until the first release there is no "latest"; / goes to dev meanwhile.
+            if ! mike list --json | grep -q '"latest"'; then
+              mike set-default --push dev
+            fi
+          fi
+
+      - name: Keep the custom domain on gh-pages
+        # mike manages only its version folders and the root redirect; the CNAME file that
+        # tells Pages to serve logaperture.org is written here once and then left alone.
+        if: github.event_name != 'pull_request'
+        run: |
+          if ! git cat-file -e gh-pages:CNAME 2>/dev/null; then
+            git worktree add "$RUNNER_TEMP/gh-pages" gh-pages
+            echo "logaperture.org" > "$RUNNER_TEMP/gh-pages/CNAME"
+            git -C "$RUNNER_TEMP/gh-pages" add CNAME
+            git -C "$RUNNER_TEMP/gh-pages" commit -m "Serve the guide on logaperture.org"
+            git -C "$RUNNER_TEMP/gh-pages" push origin gh-pages
+          fi

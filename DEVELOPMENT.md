@@ -48,7 +48,7 @@ the same build are a supported pair.
 | **JDK 17** | the whole build (`maven.compiler.release` is pinned to 17); `logctl` needs a JDK, not a JRE (`com.sun.tools.attach`) |
 | **Maven 3.9+** | `mvn` on your `PATH` (no wrapper is committed) |
 | **Docker** | the real-WildFly integration test, and the `dev/wildfly` environment |
-| **Python 3** | `dev/wildfly/wildflyctl.py` (standard library only — no venv) |
+| **Python 3** | `dev/wildfly/wildflyctl.py` (standard library only — no venv); previewing the user guide (a venv, below) |
 
 ## Build and test
 
@@ -64,6 +64,27 @@ mvn verify        # full reactor: compile, unit tests, integration tests
   without Docker; CI runs it on an ubuntu runner.
 - Work on one module: `mvn -pl <module> -am test` (`-am` also builds its
   dependencies).
+
+## User guide
+
+The user guide published at [logaperture.org](https://logaperture.org/) is Markdown in `guide/`,
+built with MkDocs Material from `mkdocs.yml` ([spec](doc/specs/user-documentation.md)). The
+design docs in `doc/` are not part of it. The Maven build doesn't need Python; previewing the
+guide does:
+
+```sh
+python3 -m venv .venv-docs
+.venv-docs/bin/pip install -r requirements-docs.txt
+.venv-docs/bin/mkdocs serve          # http://127.0.0.1:8000, reloads on save
+.venv-docs/bin/mkdocs build --strict # what CI runs: fails on broken links
+```
+
+Run `OFFLINE=true .venv-docs/bin/mkdocs build` before `mvn package` to get the copy the release
+zip ships: the next `logaperture-dist` build puts `site/` into the zip's `docs/` folder. Without
+`site/`, the zip still builds, with a `docs/README.md` pointing at the website.
+
+`.github/workflows/docs.yml` publishes the guide: `dev` on every push to `develop` that touches it,
+and `<major>.<minor>` (aliased `latest`) on a release tag.
 
 ## Repository layout
 
