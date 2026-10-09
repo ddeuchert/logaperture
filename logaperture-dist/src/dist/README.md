@@ -22,6 +22,7 @@ bin/logctl.cmd        control CLI (Windows launcher)
 lib/logaperture-agent.jar   the Java agent — goes on -javaagent
 lib/logaperture-cli.jar     the CLI's jar (invoked by the launchers)
 docs/INSTALL-wildfly.md     install, verify, use, uninstall, limits
+docs/index.html             the user guide; opens from disk, no network needed
 LICENSE               Apache License 2.0
 ```
 

@@ -9,6 +9,10 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Added
 
+- **The user guide**, at https://logaperture.org/ and in the release zip's `docs/` folder (open
+  `docs/index.html`; it works with no network access). This release has its layout, with pages
+  being filled in for 1.0 (issue #159; `doc/specs/user-documentation.md`).
+
 - **`logctl enable storms` and `logctl disable storms`** turn storm detection on and off in a
   running JVM, in every context. With no tier that lasts until the JVM stops; `for 30m` switches it
   to the other position after 30 minutes, and `sticky` keeps it across restarts, ahead of the agent
