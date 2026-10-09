@@ -1,0 +1,2641 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Runtime logging control for the JVM">
+      
+      
+      
+        <link rel="canonical" href="https://logaperture.org/dev/release-notes/">
+      
+      
+        <link rel="prev" href="../overhead/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Release notes - LogAperture</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="deep-orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#changelog" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+        <aside class="md-banner">
+          <div class="md-banner__inner md-grid md-typeset">
+            
+            
+  
+
+          </div>
+          
+        </aside>
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="LogAperture" class="md-header__button md-logo" aria-label="LogAperture" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            LogAperture
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Release notes
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="deep-orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="blue-grey" data-md-color-accent="deep-orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/ddeuchert/logaperture" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ddeuchert/logaperture
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../get-started/install-wildfly/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Get started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../how-to/raise-a-level/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  How-to
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../concepts/configuration-layers/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../vendors/vendor-defaults/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Vendors
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/logctl/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../troubleshooting/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Troubleshooting
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../overhead/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Overhead
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Release notes
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="LogAperture" class="md-nav__button md-logo" aria-label="LogAperture" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    LogAperture
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/ddeuchert/logaperture" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ddeuchert/logaperture
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Get started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get-started/install-wildfly/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on WildFly
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get-started/install-plain-jvm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on a plain JVM
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get-started/quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How-to
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    How-to
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/raise-a-level/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Raise a log level
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/find-a-logger/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Find a logger
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/silence-noise/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Silence noise
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/find-disk-usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Find where the disk goes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/storms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Log storms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/undo-changes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Undo changes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use recipes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/several-jvms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work with several JVMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/scripting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Script logctl
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/configuration-layers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration layers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/tiers-and-expiry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tiers and expiry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/rules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rules
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/agent-order/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent order
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vendors
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Vendors
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vendors/vendor-defaults/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vendor defaults
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vendors/library-recipes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes for library authors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/logctl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    logctl
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/agent-options/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent options and properties
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/json-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JSON output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/file-formats/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    File formats
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/doctor-checks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Doctor checks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/audit-log/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audit log
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../overhead/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overhead
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release notes
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#unreleased" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unreleased
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Unreleased">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#010-alpha3-2026-09-28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.1.0-alpha.3 — 2026-09-28
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.1.0-alpha.3 — 2026-09-28">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#known-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#010-alpha2-2026-09-20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.1.0-alpha.2 — 2026-09-20
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.1.0-alpha.2 — 2026-09-20">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changed_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#added_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#known-limitations_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#010-alpha1-2026-09-07" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.1.0-alpha.1 — 2026-09-07
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.1.0-alpha.1 — 2026-09-07">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#not-yet-in-this-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not yet in this build
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#known-limitations_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#unreleased" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unreleased
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Unreleased">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#010-alpha3-2026-09-28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.1.0-alpha.3 — 2026-09-28
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.1.0-alpha.3 — 2026-09-28">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#known-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#010-alpha2-2026-09-20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.1.0-alpha.2 — 2026-09-20
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.1.0-alpha.2 — 2026-09-20">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changed_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#added_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#known-limitations_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#010-alpha1-2026-09-07" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0.1.0-alpha.1 — 2026-09-07
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0.1.0-alpha.1 — 2026-09-07">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#not-yet-in-this-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Not yet in this build
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#known-limitations_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="changelog">Changelog<a class="headerlink" href="#changelog" title="Permanent link">&para;</a></h1>
+<p>All notable changes to LogAperture are recorded here. The format is based on
+<a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>, and this project aims
+to follow <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a> once it
+reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>.</p>
+<h2 id="unreleased"><a href="https://github.com/ddeuchert/logaperture/compare/v0.1.0-alpha.3...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
+<ul>
+<li>
+<p><strong>The user guide</strong>, at https://logaperture.org/ and in the release zip's <code>docs/</code> folder (open
+  <code>docs/index.html</code>; it works with no network access). This release has its layout, with pages
+  being filled in for 1.0 (issue #159; <code>doc/specs/user-documentation.md</code>).</p>
+</li>
+<li>
+<p><strong><code>logctl enable storms</code> and <code>logctl disable storms</code></strong> turn storm detection on and off in a
+  running JVM, in every context. With no tier that lasts until the JVM stops; <code>for 30m</code> switches it
+  to the other position after 30 minutes, and <code>sticky</code> keeps it across restarts, ahead of the agent
+  argument. Running one twice is the same as running it once.
+  Each change is audited (<code>switch=storm-detection</code>) and needs the new <code>diagnostics</code> capability.
+  <code>logctl storms</code>, <code>status</code> and <code>doctor</code> say when it is disabled; a report taken after disabling is
+  kept as it was at that moment, and enabling again starts a new measurement window. The agent
+  argument <code>--storm-detection=on</code> starts a JVM with it enabled (issue #151;
+  <code>doc/specs/storm-detection-toggle.md</code>). The state file goes to schema 12.</p>
+</li>
+<li>
+<p><strong><code>logctl set logger &lt;name&gt; &lt;level&gt; --force</code></strong> also sets the loggers under <code>&lt;name&gt;</code> that have a
+  level of their own, which the logging framework never lets inherit. After <code>set logger com.acme
+  TRACE</code>, <code>com.acme.other</code> configured at <code>INFO</code> stays at <code>INFO</code>. With <code>--force</code> it goes to <code>TRACE</code>
+  too, and <code>reset logger com.acme</code> puts it back to <code>INFO</code>. A logger you set yourself is kept, and so
+  is anything changed since the force. Without <code>--force</code>, <code>set logger</code> now ends with a note naming
+  the loggers that didn't follow and the command that sets them too. Guided <code>set logger</code> asks.
+  <code>list loggers</code> shows <code>forced by com.acme</code> on a forced override. The state file goes to schema 11
+  (issue #142; <code>doc/specs/set-logger-force.md</code>).</p>
+</li>
+<li><strong><code>logctl list recipes</code></strong> — the logging recipes on offer in the running application: named,
+  documented sets of logger levels for watching one thing, e.g. <code>io.undertow:sessions</code>. They come
+  from the libraries it has loaded (<code>META-INF/logaperture/recipes.yaml</code> on a class path, including a
+  war's <code>WEB-INF/classes</code> and <code>WEB-INF/lib</code> jars), from the vendor defaults file's new <code>recipes:</code>
+  section, and from a recipes folder (<code>~/.logaperture/recipes</code>, or <code>-Dlogaperture.recipes=&lt;dir&gt;</code>),
+  read afresh each time. A folder or vendor recipe with a library's id takes its place; <code>--verbose</code>
+  shows full sources and any recipe file that couldn't be read, which <code>logctl doctor</code> also reports
+  (issue #92; <code>doc/specs/recipes.md</code>).</li>
+<li><strong><code>logctl show recipe &lt;id&gt;</code></strong> — what a recipe is for, where it came from, and each change it would
+  make against the live level (<code>INFO -&gt; DEBUG</code>). A library's recipe may only raise levels: an entry
+  that would lower one is shown as skipped. <code>--from &lt;source&gt;</code> picks among recipes sharing an id
+  (issue #92).</li>
+<li><strong><code>logctl apply recipe &lt;id&gt; [session | for &lt;duration&gt; | sticky]</code></strong> — switch a recipe on: shows the
+  changes, asks, then makes them (<code>--yes</code> to skip asking; <code>for 4h</code> unless a tier is given). Every
+  change is checked first, and if any would be refused nothing changes. Each change remembers the
+  recipe: <code>list loggers</code>, <code>list handlers</code> and <code>list rules</code> show a <code>RECIPE</code> column, <code>list recipes</code>
+  an <code>APPLIED</code> column (<code>for, 22m left (2 of 3)</code>), and the audit log names the recipe and where it
+  came from. Applying it again replaces its rules rather than adding them twice (issue #92).</li>
+<li><strong><code>logctl reset recipe &lt;id&gt;</code></strong> — switch it off: puts back every change that still carries the
+  recipe, leaving anything changed by hand since alone; sticky ones need <code>--include-sticky</code>. Works
+  for a recipe whose library has since been undeployed. On a terminal, <code>logctl apply</code> and <code>logctl
+  reset recipe</code> alone pick from a list (issue #92).</li>
+<li><strong>Vendor defaults file: <code>namespace:</code> and <code>recipes:</code></strong>, and multi-line text written as YAML's
+  <code>key: |</code> block text (issue #92). <code>logctl export vendor-defaults</code> carries both sections over.</li>
+</ul>
+<h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Storm detection is disabled by default.</strong> Through alpha.3 it was always on, and it added a
+  measurable cost to every log call that reached a handler (#150). Start the agent with
+  <code>-javaagent:logaperture-agent.jar=--storm-detection=on</code>, or run <code>logctl enable storms</code>, to turn it
+  on (issue #151).</li>
+<li><strong>Audit lines label a handler <code>handler=</code>, not <code>logger=</code></strong> (issue #137). A handler change used to
+  print as <code>logger=FILE</code>, which read like a logger called FILE. Handler levels and the
+  <code>DEFAULT_HANDLERS</code> membership now print <code>handler=&lt;name&gt;</code>, and the records naming the vendor
+  defaults file loaded or the state file resumed from print <code>file=&lt;path&gt;</code>. Logger and rule records
+  still print <code>logger=</code>. If you grep the audit log for <code>logger=</code> to find handler changes, grep
+  <code>handler=</code> instead.</li>
+<li><strong>Much quieter startup and drop summaries</strong> (issue #123; <code>doc/specs/quieter-output.md</code>). A start
+  prints one line, <code>[logaperture] LogAperture &lt;version&gt; active (WildFly): vendor defaults &lt;file&gt;
+  (…); N sticky settings restored</code>, in place of several INFO lines. Loading a vendor defaults file
+  is audited once, with the file's SHA-256, and a restart's resume once, with counts -- no longer
+  one record per entry. Drop summaries are one line for every rule, every 10 minutes
+  (<code>-Dlogaperture.drop.summaryInterval</code>), none during the first interval; on WildFly they go
+  through the server's own logging at INFO under <code>org.logaperture.drop</code> instead of appearing as
+  <code>ERROR [stderr]</code>. No rule can match or be attached to <code>org.logaperture.drop</code>. Every
+  LogAperture message now honours <code>-Dlogaperture.diagnostics.level</code>, whose default is now <code>WARN</code>,
+  in one format (<code>[logaperture] LEVEL message</code>); a failure repeated on every log event is written
+  at most once a minute.</li>
+<li><strong>Guided <code>logctl list</code></strong> also offers <code>recipes</code>. A one-letter answer to a guided question now
+  counts only when no other choice starts with that letter, so <code>r</code> asks again (rules or recipes).</li>
+</ul>
+<h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>A long-running server no longer ends up throwing <code>StackOverflowError</code> from every log call.</strong>
+  On java.util.logging and JBoss LogManager (WildFly), the agent's two filters on each handler, for
+  storm detection and for rules, wrapped each other again on every 30-second check. So every log
+  record went through a longer chain the longer the server ran. Logging got slower and storm counts
+  were inflated. After a few days, any thread that logged ran out of stack, and a timer thread that
+  died that way never came back. The filters now keep a single fixed layering however often the
+  check runs. Affects 0.1.0-alpha.3 (issue #145).</li>
+<li><strong>The guided logger prompt accepts a trailing <code>.*</code> to pick from a subtree.</strong> Typing
+  <code>*.hibernate.*</code> or <code>org.hibernate.*</code> at <code>logctl set logger</code> or <code>logctl add rule</code> used to be refused
+  ("A trailing '.*' isn't needed"), though the prompt's own example was <code>*.deployment.*</code>. It now
+  lists the package and every logger under it to pick from, and sets only the names picked. A
+  complete command such as <code>logctl set logger 'org.hibernate.*' DEBUG</code> is still refused, since there
+  it would be a standing wildcard (issue #139).</li>
+<li><strong>A package name with loggers under it is no longer reported as missing.</strong> Just after a server
+  start, the guided prompt could say <code>No logger named org.wildfly exists yet; set it anyway? [y/N]</code>
+  even though <code>list loggers org.wildfly --show-all</code> showed dozens of loggers under it: the framework
+  hadn't created the <code>org.wildfly</code> logger itself yet. The prompt now uses the name and says what it
+  reaches (<code>org.wildfly isn't a logger itself yet; 37 loggers under it inherit from it ...</code>). A name
+  with nothing at or under it is still asked about (issue #140).</li>
+<li><strong>A handler set on its own under a group setting no longer flips every 30 seconds.</strong> After
+  <code>logctl handler ALL_HANDLERS TRACE</code> then <code>logctl handler FILE DEBUG</code>, the verification sweep used
+  to put <code>FILE</code> back to <code>TRACE</code> and then to <code>DEBUG</code> on every tick, auditing both changes each time.
+  Now the most specific setting wins and stays: a handler's own setting, then <code>DEFAULT_HANDLERS</code>,
+  then <code>ALL_HANDLERS</code>. <code>logctl handler FILE reset</code> hands <code>FILE</code> back to the group's level rather
+  than its original one, and <code>logctl status</code> notes which wins when a group is listed with a more
+  specific setting. The sweep also no longer writes an audit row for a group member that was
+  already at the right level (<code>previous=TRACE new=TRACE</code>) (issue #135).</li>
+<li><strong><code>logaperture-agent.jar</code> listed twice on <code>-javaagent</code></strong> no longer starts LogAperture twice. The
+  second copy used to fail to lock the state file and to register its control surface, logging
+  both at startup; now LogAperture starts once, from the first entry, and every later entry writes
+  one line, <code>LogAperture is already started in this JVM; ignoring the duplicate -javaagent entry.</code>
+  Attaching the agent to a JVM that already runs it is ignored the same way. <code>logctl doctor</code> still
+  flags the duplicate entry (issue #120).</li>
+<li><strong>Storm detection is much cheaper per log line.</strong> Every message that reaches a handler is
+  normalized for storm fingerprinting (<code>order 4821</code> and <code>order 9134</code> count as one message). That
+  was four regular-expression passes; it's now one pass over the text with the same result, and
+  a message seen recently, such as a log statement's template, is looked up rather than
+  normalized again. <code>logctl storms</code> shows the same normalized messages as before, except that a
+  non-ASCII letter touching a hex run now always counts as part of the word (<code>édeadbeef</code> stays
+  as it is; on Java 19 and later it used to become <code>é&lt;hex&gt;</code>). The lookup
+  keeps up to 1,024 recent messages per context; <code>-Dlogaperture.storm.normalizationCacheSize</code>
+  changes that, and <code>0</code> turns it off (issue #129).</li>
+<li><strong>Storm detection is cheaper again, most of all for messages built by string concatenation.</strong>
+  The fingerprint is now a hash of the normalized message, computed in one pass without building
+  the normalized text; the text is built only the first time a message is seen. A message that
+  never repeats no longer takes a slot in the recent-message lookup, so it can't push a template
+  out. On the benchmark machine, storm detection adds about 35 ns to a templated log call (was
+  about 110 ns) and about 290 ns to a concatenated one (was about 760 ns). <code>logctl storms</code> shows
+  the same fingerprints and messages as before (issue #147).</li>
+<li><strong>The rule check costs nothing when no rule applies.</strong> Every log line that reaches a handler
+  went through the <code>drop</code>/<code>trim</code> rule check, which took a lock shared by every logging thread and
+  recorded the line in a table, even with no rules attached. Now a line from a logger no rule can
+  reach is passed straight through, and lines that a rule does apply to share the remaining
+  bookkeeping across 16 locks instead of one (issue #130).</li>
+</ul>
+<h2 id="010-alpha3-2026-09-28"><a href="https://github.com/ddeuchert/logaperture/releases/tag/v0.1.0-alpha.3">0.1.0-alpha.3</a> — 2026-09-28<a class="headerlink" href="#010-alpha3-2026-09-28" title="Permanent link">&para;</a></h2>
+<p>The first suppression features: <code>drop</code> and <code>trim</code> rules, report-only storm detection, a vendor
+defaults file, and guided (ask-for-what's-missing) <code>logctl</code> commands.
+<strong>Evaluation only — not for production.</strong> The override store's and vendor defaults file's on-disk
+formats may still change between builds without a migration path.</p>
+<h3 id="added_1">Added<a class="headerlink" href="#added_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>logctl storms</code></strong> — lists the log storms the agent has detected: a burst of near-identical
+  events from one logger (1,000 within 10 s by default, <code>-Dlogaperture.storm.*</code> to tune). For each:
+  the logger, exception type and normalized message, when it started, how many events, the current
+  rate, and whether it is still going. The first occurrence is kept in full, stack trace included.
+  <code>--limit N</code> shows the worst N; <code>--json</code> for scripts. Report-only: nothing is suppressed or
+  delayed. <code>logctl doctor</code> adds a one-line pointer while a storm is ongoing (issue #26;
+  <code>doc/specs/storm-detection.md</code>).</li>
+<li><strong><code>logctl add rule drop &lt;logger&gt; …</code></strong> — stop a known-noisy message from being logged without
+  touching its logger's level, e.g. <code>add rule drop com.acme.batch.Worker --message-contains "This
+  happens a lot"</code>. Match on the log message (<code>--message-contains</code>, <code>--message-contains-ignore-case</code>),
+  the exception (<code>--throwable</code>, <code>--throwable-message-contains</code>, <code>--any-cause</code>), or both; at least one
+  is required. Only events below <code>--below</code> (default <code>ERROR</code>) are dropped, and FATAL never is. One
+  full event is let through every 5 minutes (<code>--sample-full &lt;duration&gt;</code>, or <code>--no-sample-full</code>),
+  and a periodic summary line on the JVM's stderr counts what was dropped (issue #72;
+  <code>doc/specs/drop-rule.md</code>).</li>
+<li><strong><code>logctl add rule trim &lt;logger&gt; …</code></strong> — keep logging a noisy exception but shorten its stack
+  trace: a matching event below <code>--below</code> is written with a one-line trace and a marker, or the top
+  <code>--frames N</code> frames; <code>--collapse-causes</code> also folds the <code>Caused by:</code> chain. Same matchers as
+  <code>drop</code>, none required. Text formatters only; JSON/XML handlers are left untouched (issue #34;
+  <code>doc/specs/trim-rule.md</code>).</li>
+<li><strong>Rules are managed like overrides</strong> — each gets a short id (<code>r1</code>, <code>r2</code>, …) and the same
+  <code>session</code> / <code>for &lt;duration&gt;</code> / <code>sticky</code> tiers as <code>set logger</code> (default <code>for 4h</code>). A rule reaches
+  the logger's descendants, including ones created later. <code>logctl list rules</code> shows each rule with
+  its tier, expiry and hit count; <code>logctl reset rule &lt;id&gt;</code> and <code>logctl reset rules</code> remove them, and
+  <code>logctl reset logger X</code> also removes the rules attached directly to <code>X</code>. Rules and storm
+  detection need the JUL / JBoss LogManager adapter (WildFly); Logback is not yet supported (issue
+  #71; <code>doc/specs/rule-pipeline-foundation.md</code>).</li>
+<li><strong>Vendor defaults file</strong> — start the agent with
+  <code>-javaagent:logaperture-agent.jar=--vendor-defaults=/path/vendor-defaults.yaml</code> to ship baseline
+  logger levels, handler levels, a default-handler list and <code>drop</code>/<code>trim</code> rules with a product.
+  The file's settings apply from startup and become the baseline: <code>logctl reset</code> returns to them,
+  not to the application's own logging configuration. <code>logctl list</code> shows them in a <code>VENDOR</code>
+  column; <code>logctl status</code>, <code>env</code> and <code>doctor</code> report whether the file loaded. A file with errors
+  is rejected as a whole, with every problem listed, and never stops the application from
+  starting; <code>doctor</code> warns if the JVM's account can write the file. Vendor rules have <code>vendor:</code>
+  ids and reset the way loggers do (see <code>logctl alter rule</code> below) (issues #60, #61;
+  <code>doc/specs/vendor-defaults.md</code>).</li>
+<li><strong><code>logctl reset … --to-native</code></strong> — on <code>reset logger</code>, <code>loggers</code>, <code>handler</code>, <code>handlers</code>,
+  <code>default-handler</code>, <code>rule</code> and <code>rules</code>: return to the application's own logging configuration, ignoring the vendor
+  defaults until restart; a plain <code>reset</code> puts the vendor default back (issue #94;
+  <code>doc/specs/reset-to-native.md</code>). The layers and terms (native configuration, vendor defaults,
+  baseline, override, effective level) are now defined in one place, spec §6.6.</li>
+<li><strong><code>logctl alter rule &lt;id&gt;</code></strong> — change a rule in place, giving only what changes: <code>alter rule r3
+  --below WARN</code>, <code>alter rule r3 --message-contains green</code>. It keeps its id; the <code>--no-</code> options
+  (<code>--no-throwable</code>, <code>--no-message-contains</code>, …) remove an optional part, and a tier (<code>alter rule
+  r3 sticky</code>) changes how long it lasts. The hit count starts over when what the rule matches
+  changes. A vendor rule can be altered too: <code>reset rule vendor:&lt;id&gt;</code> puts the vendor's definition
+  back, and <code>reset rule vendor:&lt;id&gt; --to-native</code> switches it off until restart (issue #96;
+  <code>doc/specs/alter-rule.md</code>).</li>
+<li><strong><code>logctl export vendor-defaults [--out &lt;file&gt;] [--force]</code></strong> — write the next vendor defaults
+  file from a running application: the file it started with plus every <code>sticky</code> change made on top
+  of it (<code>set … sticky</code>, <code>alter rule … sticky</code>, <code>add rule … sticky</code>). Anything reset with
+  <code>--to-native</code> is left out, and <code>session</code>/<code>for</code> changes never reach the file. The agent checks the
+  file loads before handing it over; <code>--out</code> never overwrites an existing file without <code>--force</code>
+  (issue #62; <code>doc/specs/vendor-defaults-export.md</code>). Restarting the same application with the
+  exported file hands those sticky settings over to it: each is active once, from the file (no
+  <code>r7</code> running next to its exported copy), later edits to the file take effect, and the startup
+  log lists what was handed over. Exported entries carry a <code>stateId:</code> line for this (issue #107;
+  <code>doc/specs/export-round-trip.md</code>).</li>
+<li><strong><code>logctl list rules --verbose</code></strong> — adds an <code>EXPRESSION</code> column: each rule's defining options,
+  written as <code>add rule drop|trim</code> takes them (e.g. <code>--message-contains "Can't connect"
+  --throwable java.net.ConnectException --below WARN --sample-full 5m</code>), with every default spelled
+  out and shell-safe quoting. <code>list rules --json</code> always includes it as <code>expression</code> (issue #98;
+  <code>doc/specs/list-rules-verbose.md</code>).</li>
+<li><strong>Guided <code>logctl add rule</code></strong> — on a terminal, leave out anything <code>add rule</code> needs and it asks.
+  <code>logctl add rule '*.Deployer'</code> lists the matching loggers to pick from (<code>1,3-5</code>, <code>all</code>), then
+  asks drop or trim, what to match, below which level, and how long the rule lasts, with the
+  default shown for each. A bare name typed at the prompt, like <code>Deployer</code>, finds <code>*.Deployer</code>,
+  the way a log line prints it. Before applying, it prints the equivalent one-line command to copy
+  into a script. Complete commands, scripts without a terminal, and <code>--yes</code> never prompt (issue
+  #104; <code>doc/specs/guided-add-rule.md</code>).</li>
+<li><strong>Pick the JVM from a list</strong> — with several LogAperture JVMs running, any <code>logctl</code> command on a
+  terminal lists them numbered and asks which one, then prints the <code>--pid</code> to skip the question
+  next time. The list, and the "several candidates" table scripts still get (exit 4, unchanged),
+  now show when each JVM started and its working directory, so two WildFly servers can be told
+  apart (issue #106; <code>doc/specs/pick-jvm.md</code>).</li>
+<li><strong>Pattern targets for <code>add rule drop|trim</code></strong> — <code>add rule trim '*.Deployer' …</code> picks from the
+  matching loggers on a terminal, or adds one rule to each with <code>--yes</code>; <code>--json</code> then prints an
+  array (issue #104).</li>
+<li><strong>Guided <code>logctl list</code> and <code>logctl set</code></strong> — on a terminal, <code>logctl list</code> alone asks whether to
+  list loggers, handlers or rules; for loggers, typing a name such as <code>Deployer</code> finds every
+  matching logger, not only overridden ones. <code>logctl set</code> alone, <code>set logger Deployer</code>, <code>set
+  handler</code> and <code>set default-handler</code> ask for whatever is missing. Loggers and handlers are picked
+  from a numbered list that shows each one's current level, and the equivalent one-line command is
+  printed before anything changes. Scripts, <code>--yes</code> and <code>--json</code> never prompt (issue #116;
+  <code>doc/specs/guided-commands.md</code>).</li>
+<li><strong>Guided <code>logctl reset</code></strong> — on a terminal, <code>logctl reset</code> alone lists everything currently changed
+  (overridden loggers and handlers, rules, an assigned default-handler membership) to pick from;
+  <code>reset logger</code>, <code>reset handler</code> or <code>reset rule</code> with no name lists only that kind. Picking a
+  sticky item asks once whether to reset it too, and with a vendor defaults file it asks whether
+  to go back to the vendor defaults or the application's own configuration, so neither
+  <code>--include-sticky</code> nor <code>--to-native</code> has to be remembered. One <code>logctl reset …</code> line per item is
+  printed before anything changes (issue #116).</li>
+<li><strong>Guided <code>logctl alter rule</code></strong> — on a terminal, <code>logctl alter rule</code> alone lists the rules to pick
+  one, and <code>logctl alter rule r3</code> with no changes lists the rule's parts with their current values
+  (message, exception, level, sampling or stack frames, lifetime, reason); pick the ones to change,
+  answer only those, and the <code>alter rule</code> command naming just those changes is printed before it's
+  applied. <code>-</code> removes an optional part; answers that change nothing apply nothing (issue #116).</li>
+</ul>
+<h3 id="changed_1">Changed<a class="headerlink" href="#changed_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>logctl set logger '&lt;pattern&gt;' &lt;level&gt;</code> on a terminal lists the matches to pick from</strong> (<code>1,3-5</code>,
+  <code>all</code>, Enter to cancel) rather than asking once to apply to all of them, the same as <code>add rule</code>. A
+  pattern matching a single logger is applied without asking. More than 30 matches still get the
+  all-or-nothing <code>[y/N]</code>. Without a terminal, and with <code>--yes</code>, nothing changes (issue #116).</li>
+</ul>
+<h3 id="fixed_1">Fixed<a class="headerlink" href="#fixed_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>
+<p><strong>Piped or scripted <code>logctl</code> could be treated as interactive on JDK 22–24</strong>, whose
+  <code>System.console()</code> returns a console even when input is redirected: <code>set logger</code>'s pattern
+  confirmation could read its answer from the pipe, and an incomplete <code>add rule</code> asked questions
+  instead of failing. <code>logctl</code> now also checks <code>Console.isTerminal()</code> where the JDK has it
+  (issue #106).</p>
+</li>
+<li>
+<p><strong>WildFly could abort at startup</strong> (<code>ModuleNotFoundException: org.jboss.as.standalone</code>) on
+  launches where the JBoss LogManager is on the system class path
+  (<code>jboss.modules.system.pkgs</code> naming <code>org.jboss.logmanager</code>) and the agent installs during
+  <code>premain</code>. Cause: resolving WildFly's handler names asked JBoss Modules for its boot module
+  loader before <code>org.jboss.modules.Main</code> had set <code>module.path</code>, which fixed that loader with no
+  module roots. The resolver now waits for <code>module.path</code> (issues #86, #87). <code>drop</code>/<code>trim</code> rules
+  keep applying from the moment the agent installs, including to other agents' startup logging
+  that reaches the server's handlers. A new <code>-Dlogaperture.handlerInstallDelaySeconds=&lt;n&gt;</code>
+  (default <code>0</code>) can hold back the handler-level installs (trim rendering, <code>top</code>'s byte counting,
+  storm detection, the rule pipeline) if a launch ever needs it. See
+  <code>doc/spikes/early-handler-install.md</code> and <code>doc/specs/wildfly-deferred-handler-install.md</code>.</p>
+</li>
+</ul>
+<h3 id="known-limitations">Known limitations<a class="headerlink" href="#known-limitations" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>add rule drop|trim</code> attaches in the first logging context; multi-context attachment is
+  <a href="https://github.com/ddeuchert/logaperture/issues/79">#79</a>.</li>
+<li><code>trim</code> doesn't apply to structured (JSON/XML) formatters
+  (<a href="https://github.com/ddeuchert/logaperture/issues/83">#83</a>).</li>
+<li>Storm detection can merge two concurrent throw sites that share a fingerprint
+  (<a href="https://github.com/ddeuchert/logaperture/issues/77">#77</a>).</li>
+</ul>
+<h2 id="010-alpha2-2026-09-20"><a href="https://github.com/ddeuchert/logaperture/releases/tag/v0.1.0-alpha.2">0.1.0-alpha.2</a> — 2026-09-20<a class="headerlink" href="#010-alpha2-2026-09-20" title="Permanent link">&para;</a></h2>
+<p>Developer handler workflow, a reworked command surface, and WildFly fixes.
+<strong>Evaluation only — not for production.</strong> The override store's on-disk format may
+still change between builds without a migration path.</p>
+<h3 id="changed_2">Changed<a class="headerlink" href="#changed_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>logctl</code> command surface refactor.</strong> <code>set</code>, <code>reset</code> and <code>list</code> are now
+  namespaced by target: <code>logctl set logger &lt;logger&gt; &lt;level&gt;</code>,
+  <code>logctl set handler &lt;name&gt; &lt;level&gt;</code>, <code>logctl reset logger|loggers|handler|handlers</code>,
+  <code>logctl list loggers|handlers</code>. The level-named verbs (<code>debug</code>, <code>trace</code>, ...) are
+  retired. <code>list loggers</code> shows overrides only by default (<code>--show-all</code> for
+  everything); <code>reset loggers --include-sticky</code> also clears sticky overrides.
+  <strong>Breaking:</strong> commands and scripts written for alpha.1 (e.g. <code>logctl debug &lt;logger&gt;</code>)
+  will stop working and must be updated to the new forms.</li>
+<li><strong>Pattern targeting is pure selection.</strong> Glob patterns select the loggers a
+  command applies to; standing rules are retired.</li>
+</ul>
+<h3 id="added_2">Added<a class="headerlink" href="#added_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>AUTO</code> handler level</strong> — <code>logctl set handler CONSOLE AUTO</code> makes a handler
+  track the lowest active logger override.</li>
+<li><strong><code>DEFAULT_HANDLERS</code></strong> — a deterministic default handler group for handler
+  targeting.</li>
+<li><strong>Squelch warning</strong> — warns when raising a handler's level would silence an
+  active logger override.</li>
+<li><strong><code>logctl env</code></strong> — read-only environment report for bug reports, including the
+  fully-qualified state file path.</li>
+<li><strong>WildFly test-drive walkthrough</strong> (<code>doc/wildfly-test-drive.md</code>).</li>
+</ul>
+<h3 id="fixed_2">Fixed<a class="headerlink" href="#fixed_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li>WildFly handler-name resolution on newer WildFly (#39) and the readiness gate
+  that never passed (#64); boot-time resolver noise (#66); an intermittent
+  JBoss LogManager install race.</li>
+<li>Handler override resume resilience across restarts: pending overrides and
+  baseline-key migration (#29).</li>
+<li><code>StateStore</code> batches removals in reset and expiry sweeps (#17).</li>
+<li>The adapter's handler-ref maps are pruned when a handler is detached, so repeated
+  <code>/subsystem=logging</code> reconfiguration no longer grows them without bound
+  (<a href="https://github.com/ddeuchert/logaperture/issues/31">#31</a>).</li>
+<li><code>WildFlyContainerIT</code> runs against any WildFly image (#65).</li>
+</ul>
+<h3 id="known-limitations_1">Known limitations<a class="headerlink" href="#known-limitations_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Still no log suppression; see the alpha.1 "Not yet in this build" list.</li>
+</ul>
+<h2 id="010-alpha1-2026-09-07"><a href="https://github.com/ddeuchert/logaperture/releases/tag/v0.1.0-alpha.1">0.1.0-alpha.1</a> — 2026-09-07<a class="headerlink" href="#010-alpha1-2026-09-07" title="Permanent link">&para;</a></h2>
+<p>First tagged build. <strong>Evaluation only — not for production.</strong> The override
+store's on-disk format may still change between builds without a migration path.</p>
+<h3 id="added_3">Added<a class="headerlink" href="#added_3" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Runtime log-level control.</strong> <code>logctl set &lt;logger&gt; &lt;level&gt;</code> and the named
+  forms (<code>debug</code> / <code>trace</code> / <code>info</code> / <code>warn</code> / <code>error</code>), across
+  <code>java.util.logging</code> (incl. JBoss LogManager) and Logback, on plain
+  <code>java -jar</code> and standalone WildFly. <code>--include-children</code> fans a change out
+  over a subtree.</li>
+<li><strong>Enforced expiry and persistence tiers.</strong> A change reverts on its own timer
+  (<code>for 30m</code>), lasts the JVM's lifetime (<code>session</code>), or survives a restart and
+  a WildFly redeploy (<code>sticky</code>). The agent re-applies persisted overrides on
+  startup and re-asserts them after a <code>/subsystem=logging</code> change.</li>
+<li><strong><code>logctl handler &lt;name&gt; &lt;level&gt;</code></strong> — set a handler's own level, up or down,
+  with the same lifetime tokens; the fix when a raised logger still shows
+  nothing because a handler is pinned stricter. A blocking handler on a level
+  raise is named in a warning with the exact command to clear it.</li>
+<li><strong><code>ALL_HANDLERS</code></strong> — a stable, restart-safe target that fans a handler-level
+  change out over every real handler in a context.</li>
+<li><strong>Real WildFly handler names.</strong> <code>CONSOLE</code>, <code>FILE</code>, and any dedicated handler
+  resolve to their configured names, read in-VM from the running server's own
+  <code>/subsystem=logging</code> model — no socket, no credentials. Degrades to
+  <code>ALL_HANDLERS</code>-only where the model can't be read.</li>
+<li><strong><code>logctl handlers</code></strong> — the addressable handler catalogue: name, level, sink,
+  target file, and any active override.</li>
+<li><strong><code>logctl doctor</code></strong> — read-only diagnosis of common logging-config problems:
+  unbounded file-handler growth, verbosity left on, duplicate output to two
+  persistent handlers, autoflush, and disk headroom vs. current write rate.</li>
+<li><strong><code>logctl top</code></strong> — bytes written per logger over the agent's lifetime,
+  worst-first, with a projected daily total and the stack-trace-byte fraction.</li>
+<li><strong><code>logctl status</code></strong> and <strong><code>logctl reset</code> / <code>reset --all</code></strong> — inspect and undo
+  what LogAperture has changed.</li>
+<li><strong>Governance.</strong> Every mutation is capability-checked and written to a
+  hash-chained, tamper-evident audit trail. The agent opens no network
+  connections; <code>logctl</code> reaches it over the local attach API, UID-gated by the
+  operating system.</li>
+<li><strong><code>--json</code></strong> on every read command, for scripting and monitoring checks.</li>
+<li><strong>Evaluation bundle.</strong> <code>logaperture-&lt;version&gt;.zip</code> — the agent jar, <code>logctl</code>,
+  and a WildFly install guide, all marked pre-production.</li>
+</ul>
+<h3 id="not-yet-in-this-build">Not yet in this build<a class="headerlink" href="#not-yet-in-this-build" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Automatic storm collapse or any log suppression, per-rule squelching, budgets,
+  the disk guard, capture profiles.</li>
+<li>The Log4j 2 adapter; Spring Boot, Tomcat, and Quarkus JVM mode at depth.</li>
+<li>Branch protection, Maven Central publishing, a signed release.</li>
+</ul>
+<h3 id="known-limitations_2">Known limitations<a class="headerlink" href="#known-limitations_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li>A persisted per-handler <code>sticky</code> override, and a <code>sticky ALL_HANDLERS</code>
+  override, can be lost or mis-reverted across a WildFly restart if handler-name
+  resolution loses the race with override resume
+  (<a href="https://github.com/ddeuchert/logaperture/issues/29">#29</a>).</li>
+<li>The adapter's handler-ref maps are not pruned across repeated
+  <code>/subsystem=logging</code> reconfiguration
+  (<a href="https://github.com/ddeuchert/logaperture/issues/31">#31</a>).</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../overhead/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Overhead">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Overhead
+              </div>
+            </div>
+          </a>
+        
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  <div class="md-copyright__highlight">
+    Copyright 2026 David Deuchert · Apache License 2.0
+  </div>
+  Guide for LogAperture dev
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.indexes", "navigation.footer", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
