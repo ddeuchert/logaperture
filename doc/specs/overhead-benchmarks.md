@@ -527,4 +527,6 @@ effective on the logger, so `drop-miss` keeps #8's near-zero ≤ 50 ns unchanged
   `JulRuleFilter`, the formatter is a `ByteCountingFormatter`, the rule count). A benchmark that
   quietly measures the baseline twice is the failure mode to rule out.
 - `drop-hit` asserts after the run that the rule's suppressed count is non-zero; `trim` asserts
-  one formatted record has the trimmed frame count.
+  one formatted record has the trimmed frame count. Its `@Setup` logs one matching record first:
+  the rule always lets its first match through as a full sample, and a one-iteration smoke run
+  can end after a single cold call, which would then have suppressed nothing (#183).
