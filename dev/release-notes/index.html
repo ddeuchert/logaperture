@@ -2286,6 +2286,11 @@ reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>.</p>
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
+<li><strong><code>DEFAULT_HANDLERS</code> picks WildFly's console handler again.</strong> WildFly's console handlers were
+  never recognized as consoles, so when the root logger had both <code>CONSOLE</code> and <code>FILE</code>, the
+  automatic pick could land on <code>FILE</code>, depending on attachment order and whether handler names had
+  resolved yet. A handler now counts as a console when its class, or a superclass, is named
+  <code>ConsoleHandler</code>, which covers both the JDK's and JBoss LogManager's (issue #188).</li>
 <li><strong>The audit trail is no longer called tamper-evident.</strong> The README and the 0.1.0-alpha.1 notes
   described it as hash-chained and tamper-evident, but its lines carry no digest, and anyone who
   can write the file can edit them. The claim is withdrawn; hash-chaining is planned for after 1.0
