@@ -1898,6 +1898,16 @@ logging on the running server. LogAperture never edits <code>standalone.xml</cod
 </tr>
 </tbody>
 </table>
+<div class="admonition tip">
+<p class="admonition-title">Or get it from Maven Central</p>
+<p>From 1.0.0-beta.1 the same files are on Maven Central, group <code>org.logaperture</code>: the zip as
+<code>logaperture</code> (type <code>zip</code>), the agent as <code>logaperture-agent</code> and <code>logctl</code> as
+<code>logaperture-cli</code>. To fetch the agent in a build script or a container image:</p>
+<div class="highlight"><pre><span></span><code>mvn<span class="w"> </span>dependency:copy<span class="w"> </span>-Dartifact<span class="o">=</span>org.logaperture:logaperture-agent:&lt;version&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-DoutputDirectory<span class="o">=</span>/opt/logaperture/lib<span class="w"> </span>-Dmdep.stripVersion<span class="o">=</span><span class="nb">true</span>
+</code></pre></div>
+<p><code>-Dmdep.stripVersion=true</code> names it <code>logaperture-agent.jar</code>, as in the zip.</p>
+</div>
 </li>
 <li>
 <p><strong>Put <code>bin/</code> on your <code>PATH</code></strong>, so you can type plain <code>logctl</code>:</p>

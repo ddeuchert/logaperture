@@ -2173,6 +2173,12 @@ reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>.</p>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li>
+<p><strong>Maven Central.</strong> Releases are published to Maven Central under <code>org.logaperture</code>: the agent as
+  <code>logaperture-agent</code>, <code>logctl</code> as <code>logaperture-cli</code> and the release zip as <code>logaperture</code>
+  (type <code>zip</code>), so a build or a container image can fetch them by coordinates (issue #186;
+  <code>doc/specs/maven-central-publishing.md</code>).</p>
+</li>
+<li>
 <p><strong><code>logctl help &lt;command&gt;</code></strong>, and <code>--help</code> after any command (<code>logctl set logger --help</code>), explain
   one command: its forms, what it does, its options, and examples. <code>logctl help set</code> lists the
   <code>set</code> commands to pick from. The guide's command reference (<code>reference/logctl.md</code>) is generated
