@@ -2277,6 +2277,9 @@ reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>.</p>
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
+<li><strong><code>logctl doctor</code> and <code>logctl storms</code> quote commands in single quotes</strong>, like the rest of
+  <code>logctl</code>'s output: <code>see 'logctl enable storms'</code> and <code>see 'logctl storms'</code> instead of literal
+  backticks (issue #166).</li>
 <li><strong><code>logctl status</code> shows rules</strong>, in a table after the logger and handler overrides (<code>ID</code>,
   <code>LOGGER</code>, <code>ACTION</code>, <code>TIER</code>, <code>EXPIRES</code>, <code>HITS</code>), and <code>status --json</code> adds a <code>rules</code> array with the
   same objects as <code>list rules --json</code>. A vendor defaults rule appears only once it has been altered
