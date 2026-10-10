@@ -5,7 +5,9 @@ implemented. Slice 2 (`logctl help`, decisions H1–H7) signed off and implement
 (beta-1 pages) implemented 2026-10-09. Slice 4a (reference pages, drift test, `CLAUDE.md` rule)
 implemented 2026-10-09. Slice 4b (concepts, vendors, `how-to/recipes.md`) implemented
 2026-10-10; it also wrote `how-to/recipes.md` from 4c, since `USER_GUIDE_NOTES.md` held its
-material.
+material. Slice 4c (the other how-to pages, troubleshooting) implemented 2026-10-10.
+`overhead.md` stays a stub until the overhead measurement (#128, draft PR #134) lands, which
+fills it in its own PR under the same-PR guide rule.
 Issue: [#159](https://github.com/ddeuchert/logaperture/issues/159).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §17.1, "User documentation"
 (the tool, layout and hosting decisions this spec builds on) and the release table (`1.0.0-beta.1`:
