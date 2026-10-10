@@ -130,6 +130,13 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     private enum Resolution { PENDING, DONE }
 
     private volatile Resolution resolution = Resolution.PENDING;
+    /**
+     * The handlers the last resolution attempt was asked about, by identity. A handler first
+     * seen after that, which therefore has no name yet, sends resolution back to pending
+     * (issue #188); one that was asked about and still has no name doesn't, so an unnameable
+     * handler can't cause a resolution on every call.
+     */
+    private volatile Set<Handler> offeredToResolver = Set.of();
     /** Serialises the resolution attempt + {@link #upgradeTokenRefs()} so concurrent first-callers don't race. */
     private final Object resolutionLock = new Object();
 
@@ -614,6 +621,14 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         HandlerRef ref = resolved != null ? new HandlerRef(resolved) : HandlerRef.anonymous(handler);
         if (resolved == null) {
             tokenRefs.add(ref);
+            if (resolution == Resolution.DONE && nameResolver != HandlerNameResolver.NONE
+                    && !offeredToResolver.contains(handler)) {
+                // New since names were resolved, and the configuration-change callback that
+                // normally re-runs resolution didn't (attaching an existing handler to a logger
+                // doesn't always fire it). The next call resolves again and upgradeTokenRefs()
+                // promotes this token to its name (issue #188).
+                resolution = Resolution.PENDING;
+            }
         }
         handlersByRef.putIfAbsent(ref, handler);
         return ref;
@@ -669,6 +684,9 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             } catch (RuntimeException unexpected) { // the contract says it won't throw; never trust that
                 names = Map.of();
             }
+            Set<Handler> offered = Collections.newSetFromMap(new IdentityHashMap<>());
+            offered.addAll(handlers);
+            offeredToResolver = offered;
             if (names.isEmpty()) {
                 return; // model not queryable yet -- the next call retries
             }

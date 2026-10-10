@@ -782,6 +782,16 @@ by resolved name where available and identity token otherwise.
   configured name) keeps its existing ref — ref stability wins, and the old
   name still resolves to the live handler; chasing the rename would orphan any
   baseline/override keyed on the old ref (the same hazard as #29).
+- **A handler first seen after resolution (issue
+  [#188](https://github.com/ddeuchert/logaperture/issues/188)).** The
+  configuration-change listener doesn't fire for every change: an existing
+  handler attached to a logger at runtime can appear with the cache still
+  `DONE`. So when the adapter mints a token for a handler the last resolution
+  attempt was never asked about, resolution goes back to pending. The next
+  call resolves again and promotes the token to its name, as on a late
+  first resolution. A handler that *was* asked about and still has no name
+  (an ambiguous console, a handler inside an `async-handler`) doesn't trigger
+  this, so it can't cause a model read on every call.
 
 ### Ref stability across a late resolution
 
