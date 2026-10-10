@@ -8,10 +8,10 @@ promise these numbers are held to is [`doc/logaperture-spec.md`](logaperture-spe
 benchmark module, at commit `39a80d4`, with storm detection off as shipped (Decision #24).
 Everything an idle agent or a logger with message rules does is within budget. Three checks are
 over, each with an open issue: a record a `drop` rule matches
-([#158](https://github.com/ddeuchert/logaperture/issues/158)), type-bound `trim` rules on a
-record with an exception ([#177](https://github.com/ddeuchert/logaperture/issues/177)), and
-storm detection when it's turned on
-([#150](https://github.com/ddeuchert/logaperture/issues/150), 1.1.0). The published numbers
+([#158](https://github.com/ddeuchert/logaperture/issues/158)) and type-bound `trim` rules on a
+record with an exception ([#177](https://github.com/ddeuchert/logaperture/issues/177)), both
+accepted for 1.0 as measured and scheduled for 1.x (decided 2026-10-09), and storm detection
+when it's turned on ([#150](https://github.com/ddeuchert/logaperture/issues/150), 1.1.0). The published numbers
 describe the code that ships (Decision #20); this page is replaced by a rerun when any of those
 land.
 
