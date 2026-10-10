@@ -16,12 +16,14 @@
 package org.logaperture.adapter.jul;
 
 import org.jboss.logmanager.ExtLogRecord;
+import org.jboss.logmanager.ExtLogRecordSubclasses;
 import org.junit.jupiter.api.Test;
 
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * doc/specs/drop-rule.md "Divergence from prior specs" #3 (issue #173). The JBoss LogManager
@@ -61,15 +63,20 @@ class FormattedMessagesTest {
         assertEquals("path /health", FormattedMessages.of(record));
     }
 
+    /** Code review on #174: an override in a class this package can't access is still called. */
+    @Test
+    void nonPublicJbossLogManagerRecordSubclass_overridingTheFormat_isCalled() {
+        ExtLogRecord record = ExtLogRecordSubclasses.overridingFormat(Level.INFO, "path %s", "/health");
+
+        assertEquals("overridden path /health", FormattedMessages.of(record));
+    }
+
     @Test
     void jbossLogManagerRecordThatFailsToFormat_fallsBackToJulsSubstitution() {
-        ExtLogRecord record = new ExtLogRecord(Level.INFO, "path {0}", "/health") {
-            @Override
-            public String getFormattedMessage() {
-                throw new IllegalStateException("simulated");
-            }
-        };
+        boolean[] called = {false};
+        ExtLogRecord record = ExtLogRecordSubclasses.failingFormat(called, Level.INFO, "path {0}", "/health");
 
         assertEquals("path /health", FormattedMessages.of(record));
+        assertTrue(called[0], "the fallback follows a failed format, not a failed lookup");
     }
 }

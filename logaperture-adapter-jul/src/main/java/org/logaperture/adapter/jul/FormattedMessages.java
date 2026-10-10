@@ -39,15 +39,21 @@ final class FormattedMessages {
     /** Stateless: JUL's own substitution, for a record that can't format itself. */
     private static final Formatter MESSAGE_FORMATTER = new SimpleFormatter();
 
-    /** {@code getFormattedMessage()} for an {@code ExtLogRecord} class, {@code null} for any other. */
+    /**
+     * {@code getFormattedMessage()} for an {@code ExtLogRecord} class, {@code null} for any other.
+     * Looked up on {@code ExtLogRecord} itself, not the record's own class: invoking it still
+     * dispatches to a subclass's override, and access is checked against the public declaring
+     * class, so a non-public subclass that overrides it doesn't fail every call.
+     */
     private static final ClassValue<Method> FORMATTED_MESSAGE_METHOD = new ClassValue<>() {
         @Override
         protected Method computeValue(Class<?> recordClass) {
-            if (!isExtLogRecord(recordClass)) {
+            Class<?> extLogRecord = extLogRecordClass(recordClass);
+            if (extLogRecord == null) {
                 return null;
             }
             try {
-                Method method = recordClass.getMethod("getFormattedMessage");
+                Method method = extLogRecord.getMethod("getFormattedMessage");
                 return method.getReturnType() == String.class ? method : null;
             } catch (ReflectiveOperationException | RuntimeException e) {
                 return null;
@@ -75,12 +81,13 @@ final class FormattedMessages {
         return formatted != null ? formatted : "";
     }
 
-    private static boolean isExtLogRecord(Class<?> recordClass) {
+    /** {@code ExtLogRecord} among {@code recordClass} and its superclasses, or {@code null}. */
+    private static Class<?> extLogRecordClass(Class<?> recordClass) {
         for (Class<?> c = recordClass; c != null; c = c.getSuperclass()) {
             if (EXT_LOG_RECORD_CLASS_NAME.equals(c.getName())) {
-                return true;
+                return c;
             }
         }
-        return false;
+        return null;
     }
 }
