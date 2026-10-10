@@ -74,6 +74,13 @@ On a plain JVM with Logback they aren't available in 1.0. On WildFly:
 Run `logctl doctor`. If the file has an error, none of it applies, and `vendor-defaults.file` lists
 every error with its line number. See [Doctor checks](reference/doctor-checks.md).
 
+## `logctl` output shows `-` where the guide shows `—`
+
+`logctl` prints `—` for "no value", and `→` and `…` in some messages. A console that can't show
+them, such as Windows `cmd` with its default code page, gets `-`, `->` and `...` instead. Nothing
+is missing; it's the same output. To see the originals in `cmd` with JDK 18 or later, switch the console to UTF-8 with
+`chcp 65001` before running `logctl`.
+
 ## Seeing more of what LogAperture does
 
 LogAperture writes one line at startup, then only warnings and errors. For more, start the JVM with

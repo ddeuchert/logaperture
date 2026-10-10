@@ -37,8 +37,14 @@ final class Format {
     private Format() {
     }
 
-    /** Left-aligned, two-space gutter, trailing padding trimmed. {@code rows} cells must be non-null. */
+    /**
+     * Left-aligned, two-space gutter, trailing padding trimmed. {@code rows} cells must be non-null.
+     * Cells get their ASCII stand-ins (issue #190) before widths are measured, so columns stay
+     * aligned when a stand-in is wider than the character it replaces.
+     */
     static String table(List<String> headers, List<List<String>> rows) {
+        headers = forOutput(List.of(headers)).get(0);
+        rows = forOutput(rows);
         int[] width = columnWidths(headers.size(), rows, headers);
         StringBuilder out = new StringBuilder();
         appendRow(out, headers, width);
@@ -54,12 +60,20 @@ final class Format {
      * {@code rows} must be non-empty and every row the same width.
      */
     static String table(List<List<String>> rows) {
+        rows = forOutput(rows);
         int[] width = columnWidths(rows.get(0).size(), rows, null);
         StringBuilder out = new StringBuilder();
         for (List<String> row : rows) {
             appendRow(out, row, width);
         }
         return out.toString().stripTrailing();
+    }
+
+    private static List<List<String>> forOutput(List<List<String>> rows) {
+        if (!Glyphs.ascii()) {
+            return rows;
+        }
+        return rows.stream().map(row -> row.stream().map(Glyphs::plain).toList()).toList();
     }
 
     private static int[] columnWidths(int columns, List<List<String>> rows, List<String> headers) {

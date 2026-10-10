@@ -34,7 +34,8 @@ public final class Main {
     }
 
     public static void main(String[] args) {
-        System.exit(run(args, System.out, System.err));
+        // Stand-ins for the characters a Windows console can't show (issue #190).
+        System.exit(run(args, Glyphs.forStdout(System.out), Glyphs.forStderr(System.err)));
     }
 
     /**
