@@ -2238,6 +2238,9 @@ reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>.</p>
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
+<li><strong><code>logctl list loggers --json</code> prints an object, <code>{"loggers": [...]}</code></strong>, like every other
+  command, instead of a bare array. A script reading it with <code>jq '.[]'</code> now needs
+  <code>jq '.loggers[]'</code> (issue #165).</li>
 <li>
 <p><strong>The release zip's <code>docs/INSTALL-wildfly.md</code> is replaced by the user guide</strong> in <code>docs/</code>
   (<code>docs/get-started/install-wildfly.html</code>). <code>doc/wildfly-test-drive.md</code> became the guide's

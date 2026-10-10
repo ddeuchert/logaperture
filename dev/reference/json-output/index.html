@@ -2283,25 +2283,27 @@ that would need an answer fails instead, as it does off a terminal.</p>
 </table>
 <h2 id="loggers">Loggers<a class="headerlink" href="#loggers" title="Permanent link">&para;</a></h2>
 <h3 id="list-loggers">list loggers<a class="headerlink" href="#list-loggers" title="Permanent link">&para;</a></h3>
-<p>An <strong>array</strong>, one object per logger. (Every other command prints an object.)</p>
+<p>The loggers shown, one object per logger, under <code>loggers</code>.</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>list<span class="w"> </span>loggers<span class="w"> </span>io.undertow<span class="w"> </span>--json
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><span class="p">[</span>
-<span class="w">  </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"io.undertow.request"</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"configuredLevel"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"effectiveLevel"</span><span class="p">:</span><span class="w"> </span><span class="s2">"DEBUG"</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"overrideActive"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"overrideSource"</span><span class="p">:</span><span class="w"> </span><span class="s2">"jmx"</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"overrideReason"</span><span class="p">:</span><span class="w"> </span><span class="s2">"demo"</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"FOR"</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"expiresAt"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-10-09T05:42:12.441226621Z"</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"vendorDefaultLevel"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"resetToNative"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"recipe"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"forcedBy"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="p">]</span>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"loggers"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"io.undertow.request"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"configuredLevel"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"effectiveLevel"</span><span class="p">:</span><span class="w"> </span><span class="s2">"DEBUG"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"overrideActive"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"overrideSource"</span><span class="p">:</span><span class="w"> </span><span class="s2">"jmx"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"overrideReason"</span><span class="p">:</span><span class="w"> </span><span class="s2">"demo"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"FOR"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"expiresAt"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-10-10T04:32:09.361891539Z"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"vendorDefaultLevel"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"resetToNative"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"recipe"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"forcedBy"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
 </code></pre></div>
 <h3 id="status">status<a class="headerlink" href="#status" title="Permanent link">&para;</a></h3>
 <p>The loggers with an override (same fields as <code>list loggers</code>), the handlers with one, the rules
