@@ -71,7 +71,8 @@ final class HelpTopics {
                     "Match events whose exception message contains the text."),
             new Option("--any-cause", "Let the exception matchers match any cause in the chain, not just the "
                     + "top exception."),
-            new Option("--below <level>", "Only act on events strictly below this level. Default `ERROR`."));
+            new Option("--below <level>", "Only act on events strictly below this level. Default `ERROR`; "
+                    + "`FATAL` means every level."));
     private static final List<Option> RULE_ACTION_OPTIONS = List.of(
             new Option("--sample-full <duration>", "For `drop`: let one full event through every so often, so the "
                     + "log never goes completely dark."),

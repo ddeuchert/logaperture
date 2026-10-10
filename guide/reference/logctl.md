@@ -278,7 +278,7 @@ On a terminal, `logctl add rule` alone walks through every part, starting from a
 :   Let the exception matchers match any cause in the chain, not just the top exception.
 
 `--below <level>`
-:   Only act on events strictly below this level. Default `ERROR`.
+:   Only act on events strictly below this level. Default `ERROR`; `FATAL` means every level.
 
 `--sample-full <duration>`
 :   For `drop`: let one full event through every so often, so the log never goes completely dark.
@@ -337,7 +337,7 @@ On a terminal, `logctl alter rule r3` alone shows the rule's parts to pick what 
 :   Let the exception matchers match any cause in the chain, not just the top exception.
 
 `--below <level>`
-:   Only act on events strictly below this level. Default `ERROR`.
+:   Only act on events strictly below this level. Default `ERROR`; `FATAL` means every level.
 
 `--sample-full <duration>`
 :   For `drop`: let one full event through every so often, so the log never goes completely dark.

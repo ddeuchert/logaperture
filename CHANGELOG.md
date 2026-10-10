@@ -17,7 +17,9 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 - **The user guide**, at https://logaperture.org/ and in the release zip's `docs/` folder (open
   `docs/index.html`; it works with no network access). Written so far: Home with what 1.0
   supports, installing on WildFly and on a plain JVM, a Quick start, Configuration layers, and the
-  `logctl` command reference. The other pages are being written for 1.0 (issue #159;
+  `logctl` command reference, and reference pages for agent options and `-Dlogaperture.*`
+  properties, `doctor` checks, `--json` output, the vendor defaults and recipe file formats, and
+  the audit log. The other pages are being written for 1.0 (issue #159;
   `doc/specs/user-documentation.md`).
 
 - **`logctl enable storms` and `logctl disable storms`** turn storm detection on and off in a
