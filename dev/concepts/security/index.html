@@ -1144,6 +1144,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1160,6 +1178,80 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#no-network" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No network
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#who-can-use-logctl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who can use logctl
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-gets-recorded" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What gets recorded
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-logaperture-wont-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What LogAperture won't do
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#things-to-know" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Things to know
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1756,69 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#no-network" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No network
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#who-can-use-logctl" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who can use logctl
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-gets-recorded" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What gets recorded
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-logaperture-wont-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What LogAperture won't do
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#things-to-know" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Things to know
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1838,52 @@
 
 
 <h1 id="security">Security<a class="headerlink" href="#security" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover who can use <code>logctl</code>, the audit trail, and why the agent opens no network connections.</p>
-</div>
+<p>Changing what an application logs is a security-relevant act. Raising a level can write
+passwords, tokens or personal data to disk. Silencing a logger can hide what an attacker is doing.
+This page says who can do either with LogAperture, and what it records.</p>
+<h2 id="no-network">No network<a class="headerlink" href="#no-network" title="Permanent link">&para;</a></h2>
+<p>The agent opens no network connection, inbound or outbound. It adds no port to the JVM, and
+nothing in it calls out. A JVM with LogAperture is reachable over the network exactly as it was
+without it.</p>
+<h2 id="who-can-use-logctl">Who can use <code>logctl</code><a class="headerlink" href="#who-can-use-logctl" title="Permanent link">&para;</a></h2>
+<p><code>logctl</code> reaches the agent through the JVM's <strong>attach mechanism</strong>, the same one <code>jcmd</code> and
+debuggers use. It works only on the same machine, and only for the operating-system user the JVM
+runs as. LogAperture adds no accounts or passwords of its own: whoever can run commands as the
+JVM's user can use <code>logctl</code>, and nobody else can.</p>
+<p>If you can already attach a debugger to the JVM, LogAperture gives you no access you didn't have.</p>
+<h2 id="what-gets-recorded">What gets recorded<a class="headerlink" href="#what-gets-recorded" title="Permanent link">&para;</a></h2>
+<p>Every change is written to the <a href="../../reference/audit-log/">audit trail</a>: what changed, from what to
+what, who (the JVM's user), why (<code>--reason</code>), and what made the change, whether <code>logctl</code>, a timer
+running out, or a restart restoring <code>sticky</code> changes. Reverts are recorded as well as changes.</p>
+<p>The audit trail goes to standard error, or to a file with <code>-Dlogaperture.audit.file</code>. In 1.0 it
+is plain lines that anyone who can write the file can edit. Treat it as a record, not as evidence.
+If you need a record the JVM's user can't change, ship the JVM's standard error off the machine
+as it is written.</p>
+<h2 id="what-logaperture-wont-do">What LogAperture won't do<a class="headerlink" href="#what-logaperture-wont-do" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Edit configuration the application owns.</strong> <code>standalone.xml</code>, <code>logback.xml</code> and
+  <code>logging.properties</code> are read, never written. Every change lives in LogAperture's own state
+  file and can be undone with <code>reset</code>.</li>
+<li><strong>Hide events without saying so.</strong> A <code>drop</code> rule lets a sample through, every dropped event is
+  counted, and a summary is logged every 10 minutes. <code>trim</code> marks every trace it shortens. See
+  <a href="../rules/">Rules</a>.</li>
+<li><strong>Let a library hide output.</strong> A library's <a href="../../vendors/library-recipes/">recipe</a> can only raise
+  levels. A recipe that would lower one is skipped.</li>
+<li><strong>Break the application when it fails.</strong> If a rule can't be evaluated, the event is logged as if
+  the rule weren't there.</li>
+</ul>
+<h2 id="things-to-know">Things to know<a class="headerlink" href="#things-to-know" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Raising a level can expose data.</strong> Prefer a timed change (<code>for 30m</code>) for anything that might
+  log sensitive data, so it can't be forgotten. The default for <code>set</code> is <code>for 4h</code> for this reason.</li>
+<li><strong>The vendor defaults file is configuration.</strong> If the account the JVM runs as can write the
+  file, or its directory, anyone who can run code as that account can change the baseline. <code>doctor</code>
+  warns about it (<code>vendor-defaults.writable</code>).</li>
+<li><strong>Permissions inside LogAperture are not configurable in 1.0.</strong> The agent checks a permission
+  for each kind of operation (viewing, raising, lowering, making a change <code>sticky</code>, adding rules),
+  but in 1.0 every permission is granted to whoever can attach. A refused operation exits with
+  code 6. Restricting them, and lists of loggers no rule may touch, are planned.</li>
+</ul>
 
 
 

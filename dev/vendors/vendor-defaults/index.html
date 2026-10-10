@@ -1265,6 +1265,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Vendor defaults
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1281,6 +1299,75 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-file-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the file does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#making-the-file-tune-then-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Making the file: tune, then export
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Making the file: tune, then export">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#taking-an-entry-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Taking an entry out
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shipping-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shipping it
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1751,64 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-file-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the file does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#making-the-file-tune-then-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Making the file: tune, then export
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Making the file: tune, then export">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#taking-an-entry-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Taking an entry out
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shipping-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shipping it
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1828,103 @@
 
 
 <h1 id="vendor-defaults">Vendor defaults<a class="headerlink" href="#vendor-defaults" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover shipping a product with its own logging defaults, and <code>export vendor-defaults</code>.</p>
-</div>
+<p>If you ship a product that runs on a JVM, its customers inherit its logging. A <strong>vendor defaults
+file</strong> lets you ship sensible logging settings with the product, so customers don't start with
+noisy logs or have to run <code>logctl</code> commands after every install.</p>
+<p>The file is given to the agent at startup:</p>
+<div class="highlight"><pre><span></span><code>-javaagent:/opt/logaperture/lib/logaperture-agent.jar<span class="o">=</span>--vendor-defaults<span class="o">=</span>/opt/myproduct/logging.yaml
+</code></pre></div>
+<p>It can set logger levels, handler levels, <code>DEFAULT_HANDLERS</code>, and <code>drop</code> and <code>trim</code> rules. It can
+also offer <a href="../library-recipes/">recipes</a> for customers to switch on when they need them.</p>
+<h2 id="what-the-file-does">What the file does<a class="headerlink" href="#what-the-file-does" title="Permanent link">&para;</a></h2>
+<p>For every setting it names, the file replaces the application's own logging configuration. Your
+customers' operators then work on top of it:</p>
+<ul>
+<li><code>logctl list loggers</code> shows the file's level in a <code>VENDOR</code> column.</li>
+<li><code>reset</code> goes back to the file's settings, not to the application's configuration. That's what
+  makes the file a <strong>baseline</strong>; see <a href="../../concepts/configuration-layers/">Configuration layers</a>.</li>
+<li><code>reset … --to-native</code> goes back to the application's own configuration until restart, for a
+  customer who needs to see what the product would log without your settings.</li>
+<li>The file's rules have <code>vendor:</code> ids. A customer can change one with <code>alter rule</code>, and
+  <code>reset rule</code> puts yours back.</li>
+</ul>
+<p>The file is never written by LogAperture. If it has an error, <strong>none of it applies</strong>, the agent
+starts anyway, and <code>logctl doctor</code> lists every error with its line number. Check a new file
+before you ship it.</p>
+<h2 id="making-the-file-tune-then-export">Making the file: tune, then export<a class="headerlink" href="#making-the-file-tune-then-export" title="Permanent link">&para;</a></h2>
+<p>You don't need to write the file by hand. Run the product in a test environment, tune its logging
+live with <code>sticky</code> changes until it is right, then export:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>org.jboss.as.server.deployment<span class="w"> </span>WARN<span class="w"> </span>sticky
+logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>handler<span class="w"> </span>CONSOLE<span class="w"> </span>INFO<span class="w"> </span>sticky
+logctl<span class="w"> </span>add<span class="w"> </span>rule<span class="w"> </span>drop<span class="w"> </span>io.undertow.request<span class="w"> </span>--message-contains<span class="w"> </span><span class="s2">"Matched default"</span><span class="w"> </span>--below<span class="w"> </span>WARN<span class="w"> </span>sticky
+logctl<span class="w"> </span><span class="nb">export</span><span class="w"> </span>vendor-defaults<span class="w"> </span>--out<span class="w"> </span>logging.yaml
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="c1"># Exported by logctl export vendor-defaults, 2026-10-10T00:41:26Z, agent 1.0.0-beta.1-SNAPSHOT</span>
+<span class="c1"># Started from: no vendor defaults file</span>
+<span class="nt">schemaVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="nt">loggers</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">org.jboss.as.server.deployment</span>
+<span class="w">    </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">WARN</span>
+<span class="w">    </span><span class="nt">stateId</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">d4d6917d-4dd9-4792-9403-5a8faaf6ecba</span>
+<span class="nt">handlers</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CONSOLE</span>
+<span class="w">    </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">INFO</span>
+<span class="w">    </span><span class="nt">stateId</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">6b5c206a-60ff-4b05-82f0-23d8ea90a237</span>
+<span class="nt">rules</span><span class="p">:</span>
+<span class="w">  </span><span class="c1"># was r2</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">drop-request</span>
+<span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">drop</span>
+<span class="w">    </span><span class="nt">logger</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">io.undertow.request</span>
+<span class="w">    </span><span class="nt">messageContains</span><span class="p">:</span><span class="w"> </span><span class="s">"Matched</span><span class="nv"> </span><span class="s">default"</span>
+<span class="w">    </span><span class="nt">below</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">WARN</span>
+<span class="w">    </span><span class="nt">sampleFull</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5m</span>
+<span class="w">    </span><span class="nt">stateId</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5a8faccc-5470-404b-9ebe-a0769215b780</span>
+</code></pre></div>
+<p>The export is the file the JVM started with, plus every <code>sticky</code> change on top of it. <code>session</code> and
+<code>for</code> changes are left out: only what you meant to keep is exported.</p>
+<p>The <code>stateId</code> lines connect each entry to the <code>sticky</code> change it came from. When you restart with
+the new file, the file takes those changes over, so each setting is active once, from the file.
+Later edits to the file then take effect on the next restart.</p>
+<h3 id="taking-an-entry-out">Taking an entry out<a class="headerlink" href="#taking-an-entry-out" title="Permanent link">&para;</a></h3>
+<p>To remove a setting from the next version of the file, return it to the application's own
+configuration before exporting. For a logger the current file sets to <code>DEBUG</code>, whose native
+configuration says <code>INFO</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Before exporting, you run</th>
+<th>The next file says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>nothing</td>
+<td><code>DEBUG</code>, unchanged</td>
+</tr>
+<tr>
+<td><code>set logger org.perfmon4j WARN sticky</code></td>
+<td><code>WARN</code></td>
+</tr>
+<tr>
+<td><code>set logger org.perfmon4j INFO sticky</code></td>
+<td><code>INFO</code>, fixed even if the native configuration changes later</td>
+</tr>
+<tr>
+<td><code>reset logger org.perfmon4j --to-native</code></td>
+<td>nothing: the native configuration decides from now on</td>
+</tr>
+</tbody>
+</table>
+<h2 id="shipping-it">Shipping it<a class="headerlink" href="#shipping-it" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Put the file where the JVM's account can't write it.</strong> Otherwise anyone who can run code as
+  that account can change your baseline. <code>doctor</code> warns when it can (<code>vendor-defaults.writable</code>).</li>
+<li><strong>Use exact logger names.</strong> The file doesn't accept <code>*</code> patterns.</li>
+<li><strong>Handlers may not exist yet at startup.</strong> A handler the file names is applied as soon as it
+  appears. On WildFly some appear after startup; <code>doctor</code> reports one that never does.</li>
+<li><strong>Storm detection isn't set in the file.</strong> Use the <code>--storm-detection=on</code> agent argument.</li>
+</ul>
+<p>The full format is in <a href="../../reference/file-formats/#vendor-defaults-file">File formats</a>.</p>
 
 
 

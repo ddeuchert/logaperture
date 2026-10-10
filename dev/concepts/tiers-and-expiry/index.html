@@ -1088,6 +1088,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tiers and expiry
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1104,6 +1122,80 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-default-is-for-4h" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The default is for 4h
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-a-timed-change-ends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a timed change ends
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-survives-a-restart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What survives a restart
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-the-application-changes-a-level-itself" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When the application changes a level itself
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#seeing-tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seeing tiers
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1756,69 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-default-is-for-4h" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The default is for 4h
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-a-timed-change-ends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a timed change ends
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-survives-a-restart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What survives a restart
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-the-application-changes-a-level-itself" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When the application changes a level itself
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#seeing-tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seeing tiers
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1838,75 @@
 
 
 <h1 id="tiers-and-expiry">Tiers and expiry<a class="headerlink" href="#tiers-and-expiry" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover <code>session</code>, <code>for &lt;duration&gt;</code> and <code>sticky</code>, and the state file that keeps sticky changes.</p>
-</div>
+<p>Every change <code>logctl</code> makes has a <strong>tier</strong>, which says how long it lasts. You give it at the end of
+the command:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>com.acme<span class="w"> </span>DEBUG<span class="w"> </span><span class="k">for</span><span class="w"> </span>30m
+logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>com.acme<span class="w"> </span>DEBUG<span class="w"> </span>session
+logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>com.acme<span class="w"> </span>DEBUG<span class="w"> </span>sticky
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Lasts until</th>
+<th>Survives a restart</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>for &lt;duration&gt;</code></td>
+<td>the time is up</td>
+<td>yes, and keeps counting down</td>
+</tr>
+<tr>
+<td><code>session</code></td>
+<td>the JVM stops</td>
+<td>no</td>
+</tr>
+<tr>
+<td><code>sticky</code></td>
+<td>you <code>reset</code> it</td>
+<td>yes</td>
+</tr>
+</tbody>
+</table>
+<p>A duration is a number and a unit: <code>30s</code>, <code>30m</code>, <code>4h</code>, <code>2d</code>.</p>
+<h2 id="the-default-is-for-4h">The default is <code>for 4h</code><a class="headerlink" href="#the-default-is-for-4h" title="Permanent link">&para;</a></h2>
+<p><code>set</code>, <code>add rule</code> and <code>apply recipe</code> without a tier mean <code>for 4h</code>: a working session, gone by
+morning. A change you forget about doesn't outlive the day you made it.</p>
+<p>Two commands differ:</p>
+<ul>
+<li><code>enable storms</code> and <code>disable storms</code> without a tier last until the JVM stops (<code>session</code>): they
+  switch a diagnostic on or off rather than change what is logged.</li>
+<li><code>alter rule</code> without a tier keeps the rule's current lifetime.</li>
+</ul>
+<h2 id="how-a-timed-change-ends">How a timed change ends<a class="headerlink" href="#how-a-timed-change-ends" title="Permanent link">&para;</a></h2>
+<p>LogAperture checks for changes that have run out every 30 seconds, so a <code>for 5m</code> change reverts
+between 5 minutes and 5 minutes 30 seconds after you made it. The revert is written to the
+<a href="../../reference/audit-log/">audit log</a> with <code>source=expiry-sweep</code>.</p>
+<h2 id="what-survives-a-restart">What survives a restart<a class="headerlink" href="#what-survives-a-restart" title="Permanent link">&para;</a></h2>
+<p><code>sticky</code> changes, and <code>for</code> changes that haven't run out, are saved in LogAperture's <strong>state
+file</strong> and put back when the JVM starts again. A <code>for</code> change keeps counting from where it was: one
+that ran out while the JVM was down is not put back, and its end is still audited. <code>session</code>
+changes are never saved.</p>
+<p>The state file is under <code>~/.logaperture/instances/</code> of the user running the JVM.
+<code>logctl env</code> shows its exact path, and <a href="../../reference/agent-options/">Agent options</a> says how to
+move it. It belongs to LogAperture: don't edit it.</p>
+<h2 id="when-the-application-changes-a-level-itself">When the application changes a level itself<a class="headerlink" href="#when-the-application-changes-a-level-itself" title="Permanent link">&para;</a></h2>
+<p>Applications and servers change their own logging configuration too: a WildFly management
+command, a Logback configuration reload. When that happens to a logger or handler that has an
+override, LogAperture puts the override back within 30 seconds and audits it with
+<code>source=verification-sweep</code>. The override wins until it ends. Then the logger goes back to the
+application's configuration as it is at that moment, including the change.</p>
+<h2 id="seeing-tiers">Seeing tiers<a class="headerlink" href="#seeing-tiers" title="Permanent link">&para;</a></h2>
+<p><code>logctl status</code> shows every active change with its tier and, for <code>for</code>, when it reverts:</p>
+<div class="highlight"><pre><span></span><code>LOGGER               LEVEL  TIER     REVERTS           REASON
+io.undertow.request  DEBUG  FOR      05:01:22 (in 4m)  —
+com.example.demo     DEBUG  SESSION  until restart     —
+com.example.other    DEBUG  STICKY   until reset       —
+</code></pre></div>
+<p><code>reset</code> skips <code>sticky</code> changes unless you add <code>--include-sticky</code>: you made them to last, so a bulk
+reset doesn't remove them by accident. See <a href="../../how-to/undo-changes/">Undo changes</a>.</p>
 
 
 

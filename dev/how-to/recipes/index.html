@@ -905,6 +905,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use recipes
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -921,6 +939,80 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#find-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Find one
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#read-what-it-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read what it changes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#switch-it-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Switch it on
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#switch-it-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Switch it off
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#write-your-own" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Write your own
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1756,69 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#find-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Find one
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#read-what-it-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read what it changes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#switch-it-on" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Switch it on
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#switch-it-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Switch it off
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#write-your-own" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Write your own
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1838,77 @@
 
 
 <h1 id="use-recipes">Use recipes<a class="headerlink" href="#use-recipes" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover <code>list recipes</code>, <code>show recipe</code>, <code>apply recipe</code> and <code>reset recipe</code>.</p>
-</div>
+<p>A <strong>recipe</strong> is a ready-made set of logging changes for watching one thing, written by someone who
+knows which loggers matter: a library's authors, the product's vendor, or your own team. You find
+one, read what it changes, switch it on for a while, and switch it off again.</p>
+<p>The output on this page is from WildFly 26.1.3, with one recipe in the recipes folder.</p>
+<h2 id="find-one">Find one<a class="headerlink" href="#find-one" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>list<span class="w"> </span>recipes
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>ID                    SUMMARY                                      SOURCE                 APPLIED
+io.undertow:requests  Log each HTTP request as Undertow routes it  recipes/undertow.yaml  -
+</code></pre></div>
+<p>Recipes come from three places, shown in <code>SOURCE</code>:</p>
+<ul>
+<li><strong>Libraries</strong> the application uses, which ship a recipe file in their jar. A library's recipes
+  are listed only once the application has loaded it.</li>
+<li><strong>The vendor defaults file</strong>, if the product has one.</li>
+<li><strong>The recipes folder</strong>: any <code>*.yaml</code> file in <code>~/.logaperture/recipes</code>, or the folder named by
+  <code>-Dlogaperture.recipes</code>. A file you drop there is listed at once, with no restart.</li>
+</ul>
+<p><code>--verbose</code> shows each source's full path, recipes hidden by another with the same id, and files
+that couldn't be read.</p>
+<h2 id="read-what-it-changes">Read what it changes<a class="headerlink" href="#read-what-it-changes" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>show<span class="w"> </span>recipe<span class="w"> </span>io.undertow:requests
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>io.undertow:requests — Log each HTTP request as Undertow routes it
+Source: /opt/jboss/wildfly/standalone/tmp/logaperture/recipes/undertow.yaml
+
+  Turns on Undertow request routing at DEBUG. One line per request;
+  noisy under load, so use it for minutes, not hours.
+
+Changes:
+  logger io.undertow.request           INFO -&gt; DEBUG  request routing
+  logger io.undertow.request.security  INFO -&gt; DEBUG
+</code></pre></div>
+<p>Each change shows the level now and the level the recipe sets. Nothing changes yet.</p>
+<h2 id="switch-it-on">Switch it on<a class="headerlink" href="#switch-it-on" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>apply<span class="w"> </span>recipe<span class="w"> </span>io.undertow:requests<span class="w"> </span><span class="k">for</span><span class="w"> </span>30m
+</code></pre></div>
+<p><code>apply</code> shows the same changes and asks before making them; <code>--yes</code> skips the question, and is
+needed in a script. Without a tier, the changes last <code>for 4h</code>.</p>
+<div class="highlight"><pre><span></span><code>logger  io.undertow.request           → DEBUG
+logger  io.undertow.request.security  → DEBUG
+Applied recipe io.undertow:requests (2 changes, FOR, reverts 01:11:13 local — in 29m).
+</code></pre></div>
+<p>The changes are ordinary overrides and rules that remember which recipe made them. They show in
+<code>status</code> like any other, with the reason from the recipe:</p>
+<div class="highlight"><pre><span></span><code>LOGGER                        LEVEL  TIER  REVERTS            REASON
+io.undertow.request           DEBUG  FOR   01:11:13 (in 29m)  "request routing"
+io.undertow.request.security  DEBUG  FOR   01:11:13 (in 29m)  "recipe io.undertow:requests"
+</code></pre></div>
+<p>and <code>list recipes</code> shows the recipe as applied:</p>
+<div class="highlight"><pre><span></span><code>ID                    SUMMARY                                      SOURCE                 APPLIED
+io.undertow:requests  Log each HTTP request as Undertow routes it  recipes/undertow.yaml  for, 29m left (2 of 2)
+</code></pre></div>
+<p>Applying a recipe again sets its changes again, with the new tier; rules it adds get new ids.</p>
+<h2 id="switch-it-off">Switch it off<a class="headerlink" href="#switch-it-off" title="Permanent link">&para;</a></h2>
+<p>The changes revert by themselves when their tier ends. To undo them sooner:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>reset<span class="w"> </span>recipe<span class="w"> </span>io.undertow:requests
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>logger io.undertow.request reset.
+logger io.undertow.request.security reset.
+Reset recipe io.undertow:requests (2 changes).
+</code></pre></div>
+<p><code>reset recipe</code> only undoes changes that still belong to the recipe. If you changed one of its
+loggers by hand since (<code>set logger</code>, <code>alter rule</code>), that change is yours now and stays. Like other
+resets, it skips <code>sticky</code> changes unless you add <code>--include-sticky</code>.</p>
+<p>A recipe's changes stay after its library is undeployed. <code>list recipes</code> then still shows the
+recipe, marked as no longer offered, so you can reset it.</p>
+<h2 id="write-your-own">Write your own<a class="headerlink" href="#write-your-own" title="Permanent link">&para;</a></h2>
+<p>A recipe file in the recipes folder can set logger levels, handler levels and <code>drop</code> and <code>trim</code>
+rules. Its format is in <a href="../../reference/file-formats/#recipe-files">File formats</a>. To ship one with
+a library, see <a href="../../vendors/library-recipes/">Recipes for library authors</a>.</p>
 
 
 

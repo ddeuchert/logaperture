@@ -1293,6 +1293,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recipes for library authors
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1309,6 +1327,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The file
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-file-goes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the file goes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rules-for-library-recipes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rules for library recipes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-your-recipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing your recipe
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1745,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The file
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-file-goes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the file goes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rules-for-library-recipes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rules for library recipes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-your-recipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing your recipe
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1816,90 @@
 
 
 <h1 id="recipes-for-library-authors">Recipes for library authors<a class="headerlink" href="#recipes-for-library-authors" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover shipping a <code>recipes.yaml</code> with a library so operators can switch on the right loggers.</p>
-</div>
+<p>You know which of your library's loggers to turn up when something goes wrong, and your users
+usually don't. A <strong>recipe</strong> writes that knowledge down: a named set of logger levels, with a
+description, that an operator can find and switch on with one command:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>list<span class="w"> </span>recipes
+logctl<span class="w"> </span>apply<span class="w"> </span>recipe<span class="w"> </span>io.undertow:sessions<span class="w"> </span><span class="k">for</span><span class="w"> </span>30m
+</code></pre></div>
+<p>Ship a recipe file inside your jar and every application that uses your library offers it, with
+no setup on the operator's side.</p>
+<h2 id="the-file">The file<a class="headerlink" href="#the-file" title="Permanent link">&para;</a></h2>
+<p>Put it at <code>META-INF/logaperture/recipes.yaml</code> on your library's class path:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">schemaVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">io.undertow</span>
+<span class="nt">recipes</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sessions</span>
+<span class="w">    </span><span class="nt">summary</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Watch HTTP session creation, expiry and invalidation</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">      </span><span class="no">Logs each session create/expire/invalidate with its id. Moderate volume</span>
+<span class="w">      </span><span class="no">under load. Session ids are sensitive; don't leave this on.</span>
+<span class="w">    </span><span class="nt">loggers</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">io.undertow.server.session</span>
+<span class="w">        </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DEBUG</span>
+<span class="w">        </span><span class="nt">reason</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">session lifecycle events</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">io.undertow.request</span>
+<span class="w">        </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DEBUG</span>
+</code></pre></div>
+<ul>
+<li><strong><code>namespace</code></strong>: use a reverse domain you control, normally your Maven group id. The recipe's
+  id is <code>&lt;namespace&gt;:&lt;name&gt;</code>, here <code>io.undertow:sessions</code>. Nothing checks that the namespace is
+  yours, but a reverse domain keeps it from colliding with anyone else's. <code>vendor</code>, <code>logaperture</code>
+  and <code>org.logaperture</code> are reserved.</li>
+<li><strong><code>summary</code></strong>: one line. <code>list recipes</code> shows it.</li>
+<li><strong><code>description</code></strong>: what the recipe turns on, how much it logs, and anything sensitive it might
+  write. <code>show recipe</code> prints it. Write it after <code>description: |</code>, indented on the following
+  lines; a <code>#</code> inside it is just text.</li>
+<li><strong><code>loggers</code></strong>: exact logger names and the level for each, with an optional <code>reason</code> that shows
+  in <code>logctl status</code>.</li>
+</ul>
+<p>The full format is in <a href="../../reference/file-formats/#recipe-files">File formats</a>.</p>
+<h2 id="where-the-file-goes">Where the file goes<a class="headerlink" href="#where-the-file-goes" title="Permanent link">&para;</a></h2>
+<p>The file must be on the <strong>class path</strong>, so where it goes depends on how your code is packaged:</p>
+<table>
+<thead>
+<tr>
+<th>Packaging</th>
+<th>Path</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A jar</td>
+<td><code>META-INF/logaperture/recipes.yaml</code> at the root of the jar</td>
+</tr>
+<tr>
+<td>A war</td>
+<td><code>WEB-INF/classes/META-INF/logaperture/recipes.yaml</code>, or inside any jar in <code>WEB-INF/lib</code></td>
+</tr>
+<tr>
+<td>An ear</td>
+<td>inside any jar in the ear's <code>lib/</code></td>
+</tr>
+</tbody>
+</table>
+<p>A war's own <code>META-INF/</code> folder is not on its class path, and neither is an ear's, so a file there is
+never found.</p>
+<h2 id="rules-for-library-recipes">Rules for library recipes<a class="headerlink" href="#rules-for-library-recipes" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Only raising levels.</strong> A library may suggest more visibility, never less. A recipe entry that
+  would make a logger less verbose than it currently is gets skipped when the recipe is applied.</li>
+<li><strong>Loggers only.</strong> Handler levels and <code>drop</code> and <code>trim</code> rules aren't allowed in a library's file,
+  and make it fail. Those belong to the people running the application, in the vendor defaults file
+  or the recipes folder.</li>
+<li><strong>Found once your library has loaded.</strong> <code>list recipes</code> looks at what the JVM has loaded. Before
+  your library's classes are used, its recipes aren't listed.</li>
+<li><strong>One bad file doesn't hide others.</strong> A file with an error offers none of its recipes, and
+  <code>logctl list recipes --verbose</code> and <code>doctor</code> show the error. Other files are unaffected.</li>
+</ul>
+<h2 id="testing-your-recipe">Testing your recipe<a class="headerlink" href="#testing-your-recipe" title="Permanent link">&para;</a></h2>
+<p>Run an application that uses your library with the agent attached, make it load your library, then:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>list<span class="w"> </span>recipes
+logctl<span class="w"> </span>show<span class="w"> </span>recipe<span class="w"> </span>io.undertow:sessions
+logctl<span class="w"> </span>apply<span class="w"> </span>recipe<span class="w"> </span>io.undertow:sessions<span class="w"> </span><span class="k">for</span><span class="w"> </span>5m
+logctl<span class="w"> </span>reset<span class="w"> </span>recipe<span class="w"> </span>io.undertow:sessions
+</code></pre></div>
+<p><a href="../../how-to/recipes/">Use recipes</a> shows what each one prints.</p>
 
 
 

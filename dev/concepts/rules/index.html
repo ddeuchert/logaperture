@@ -1116,6 +1116,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rules
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1132,6 +1150,80 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-rule-matches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a rule matches
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        trim
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ids-and-lifetimes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ids and lifetimes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rules-and-other-agents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rules and other agents
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1756,69 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-rule-matches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a rule matches
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drop
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        trim
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ids-and-lifetimes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ids and lifetimes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rules-and-other-agents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rules and other agents
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1838,96 @@
 
 
 <h1 id="rules">Rules<a class="headerlink" href="#rules" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover how <code>drop</code> and <code>trim</code> rules attach to loggers, reach their descendants, and expire.</p>
+<p>A level decides how much a logger says. A <strong>rule</strong> acts on what it says: it looks at each event
+from a logger and either discards it (<code>drop</code>) or keeps it with a shorter stack trace (<code>trim</code>). The
+logger's level doesn't change, and every other event from it is logged as before.</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>add<span class="w"> </span>rule<span class="w"> </span>drop<span class="w"> </span>com.acme.batch.Worker<span class="w"> </span>--message-contains<span class="w"> </span><span class="s2">"This happens a lot"</span><span class="w"> </span>--below<span class="w"> </span>ERROR
+logctl<span class="w"> </span>add<span class="w"> </span>rule<span class="w"> </span>trim<span class="w"> </span><span class="s1">'*.AutoUpdateHelper'</span><span class="w"> </span>--throwable<span class="w"> </span>java.net.ConnectException<span class="w"> </span>--frames<span class="w"> </span><span class="m">3</span>
+</code></pre></div>
+<div class="admonition info">
+<p class="admonition-title">WildFly only in 1.0</p>
+<p>Rules need <code>java.util.logging</code> or JBoss LogManager. On a plain JVM with Logback they aren't
+available yet.</p>
 </div>
+<h2 id="what-a-rule-matches">What a rule matches<a class="headerlink" href="#what-a-rule-matches" title="Permanent link">&para;</a></h2>
+<p>A rule is attached to one logger and applies to that logger's events and its descendants'
+events, including descendants created later, the same way a level is inherited. Within those, it
+matches an event when <strong>all</strong> of its matchers match:</p>
+<table>
+<thead>
+<tr>
+<th>Matcher</th>
+<th>Matches when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--message-contains &lt;text&gt;</code></td>
+<td>the message contains the text</td>
+</tr>
+<tr>
+<td><code>--message-contains-ignore-case &lt;text&gt;</code></td>
+<td>the same, ignoring case</td>
+</tr>
+<tr>
+<td><code>--throwable &lt;class&gt;</code></td>
+<td>the event carries an exception of exactly this class</td>
+</tr>
+<tr>
+<td><code>--throwable-message-contains &lt;text&gt;</code></td>
+<td>the exception's message contains the text</td>
+</tr>
+<tr>
+<td><code>--any-cause</code></td>
+<td>(with the two above) any exception in the cause chain may match, not just the top one</td>
+</tr>
+<tr>
+<td><code>--below &lt;level&gt;</code></td>
+<td>the event's level is below this one. Default <code>ERROR</code>; <code>FATAL</code> means every level</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>--below</code> default means a rule leaves <code>ERROR</code> events alone unless you say otherwise. A <code>drop</code>
+rule needs at least one matcher besides <code>--below</code>, so it can't silence a logger by accident. A
+<code>trim</code> rule doesn't: trimming every <code>WARN</code> trace from a logger is a normal thing to want.</p>
+<h2 id="drop"><code>drop</code><a class="headerlink" href="#drop" title="Permanent link">&para;</a></h2>
+<p>A matching event is discarded before any handler writes it. So the log never goes completely
+dark, a <code>drop</code> rule lets the first matching event through, and then one every 5 minutes. Change the
+interval with <code>--sample-full 30m</code>, or turn it off with <code>--no-sample-full</code>.</p>
+<p>Every dropped event is counted. <code>logctl list rules</code> shows each rule's hit count, and every
+10 minutes the log gets a summary line naming the busiest rules. On WildFly:</p>
+<div class="highlight"><pre><span></span><code>2026-10-10 00:52:16,630 INFO  [org.logaperture.drop] (logaperture-wildfly-sweep) drop summary: 59 events suppressed by 1 rule in the last 10m (r1 59); 1 sampled through
+</code></pre></div>
+<p>The summary can't be turned off; its interval can be changed with
+<a href="../../reference/agent-options/"><code>-Dlogaperture.drop.summaryInterval</code></a>.</p>
+<h2 id="trim"><code>trim</code><a class="headerlink" href="#trim" title="Permanent link">&para;</a></h2>
+<p>A matching event is logged, but its stack trace is cut down:</p>
+<ul>
+<li>By default (<code>--frames 0</code>) the exception prints as one line, with each <code>Caused by:</code> as its own
+  line.</li>
+<li><code>--frames 3</code> keeps the top three frames.</li>
+<li><code>--collapse-causes</code> folds the whole cause chain into the summary line.</li>
+</ul>
+<p>Every trimmed trace ends with a marker saying how much was cut, such as
+<code>[stack trace trimmed: 26 frames omitted]</code>, so a reader always knows something is missing. The
+application's exception object is never changed: only what is written.</p>
+<p>If several <code>trim</code> rules match one event, the one that keeps fewest frames wins. A dropped event is
+never trimmed.</p>
+<p>In 1.0, <code>trim</code> works with text log formats. JSON and XML formatters write the full trace.</p>
+<h2 id="ids-and-lifetimes">Ids and lifetimes<a class="headerlink" href="#ids-and-lifetimes" title="Permanent link">&para;</a></h2>
+<p>Rules you add get ids <code>r1</code>, <code>r2</code>, …; rules from a vendor defaults file have <code>vendor:&lt;id&gt;</code>. A rule
+has a tier like any other change and lasts <code>for 4h</code> unless you give one. See
+<a href="../tiers-and-expiry/">Tiers and expiry</a>.</p>
+<ul>
+<li><code>logctl list rules</code> lists them; <code>--verbose</code> adds each rule's options.</li>
+<li><code>logctl alter rule r3 --below WARN</code> changes one in place.</li>
+<li><code>logctl reset rule r3</code> removes one; <code>reset rules</code> removes all of them; <code>reset logger &lt;name&gt;</code>
+  also removes the rules attached directly to that logger.</li>
+</ul>
+<h2 id="rules-and-other-agents">Rules and other agents<a class="headerlink" href="#rules-and-other-agents" title="Permanent link">&para;</a></h2>
+<p>A rule only sees events that go through the logging framework after LogAperture has started. An
+agent listed before LogAperture on the <code>-javaagent</code> line can log before that. See
+<a href="../agent-order/">Agent order</a>.</p>
 
 
 
