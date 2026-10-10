@@ -833,7 +833,7 @@ final class Commands {
         // the default, not a problem.
         StormDetectionData stormDetection = stormDetectionOrNull(mbean);
         if (stormDetection != null && !stormDetection.isEnabled()) {
-            out.println("Storm detection is disabled — see `logctl enable storms`.");
+            out.println("Storm detection is disabled — see 'logctl enable storms'.");
             return;
         }
         int ongoingStorms;
@@ -844,7 +844,7 @@ final class Commands {
         }
         if (ongoingStorms > 0) {
             out.println(ongoingStorms + (ongoingStorms == 1 ? " log storm is" : " log storms are")
-                    + " currently ongoing — see `logctl storms`.");
+                    + " currently ongoing — see 'logctl storms'.");
         }
     }
 
@@ -1607,7 +1607,7 @@ final class Commands {
             StormDetectionData detection = changedAt == null ? null : stormDetectionOrNull(mbean);
             String tierNote = detection == null ? "" : tierNote(detection);
             if (disabled && (storms.isEmpty() || changedAt == null)) {
-                out.println("Storm detection is disabled" + tierNote + ". Enable it with `logctl enable storms`, "
+                out.println("Storm detection is disabled" + tierNote + ". Enable it with 'logctl enable storms', "
                         + "or start the agent with --storm-detection=on.");
                 return CliError.OK;
             }

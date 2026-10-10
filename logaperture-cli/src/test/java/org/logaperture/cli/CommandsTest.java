@@ -347,7 +347,7 @@ class CommandsTest {
 
         assertEquals(CliError.OK, run(Commands.storms(0, false)));
 
-        assertEquals("Storm detection is disabled. Enable it with `logctl enable storms`, or start the agent "
+        assertEquals("Storm detection is disabled. Enable it with 'logctl enable storms', or start the agent "
                 + "with --storm-detection=on.", output().strip());
     }
 
@@ -373,6 +373,17 @@ class CommandsTest {
     }
 
     @Test
+    void doctor_withOngoingStorms_pointsAtLogctlStorms_inSingleQuotes() {
+        mbean.findings = List.of(new DoctorFindingData("logger.verbosity-left-on", "OK", "ROOT",
+                "no excess verbosity found at root or on a known-chatty logger.", null, null, null));
+        mbean.stormReport = new StormReportData(List.of(), 2, 2, Instant.now().toString(), 0);
+
+        assertEquals(CliError.OK, run(Commands.doctor(false)));
+
+        assertTrue(output().contains("2 log storms are currently ongoing — see 'logctl storms'."), output());
+    }
+
+    @Test
     void doctor_whenStormDetectionIsDisabled_saysSoInsteadOfThePointer() {
         mbean.findings = List.of(new DoctorFindingData("logger.verbosity-left-on", "OK", "ROOT",
                 "no excess verbosity found at root or on a known-chatty logger.", null, null, null));
@@ -380,7 +391,7 @@ class CommandsTest {
 
         assertEquals(CliError.OK, run(Commands.doctor(false)));
 
-        assertTrue(output().contains("Storm detection is disabled — see `logctl enable storms`."), output());
+        assertTrue(output().contains("Storm detection is disabled — see 'logctl enable storms'."), output());
     }
 
     @Test
