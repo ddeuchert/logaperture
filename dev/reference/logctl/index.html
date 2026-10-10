@@ -2281,7 +2281,7 @@ logctl<span class="w"> </span>list<span class="w"> </span>loggers<span class="w"
 <p>Show what LogAperture has changed.</p>
 <div class="highlight"><pre><span></span><code>logctl status
 </code></pre></div>
-<p>Shows the active overrides, plus a line naming the vendor defaults file when there is one. Read-only.</p>
+<p>Shows the loggers and handlers with an override, and the rules, plus a line naming the vendor defaults file when there is one. A vendor rule is shown only once it is altered or switched off. Read-only.</p>
 <p><strong>Examples</strong></p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>status
 logctl<span class="w"> </span>status<span class="w"> </span>--json

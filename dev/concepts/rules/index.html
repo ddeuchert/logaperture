@@ -1919,7 +1919,8 @@ never trimmed.</p>
 has a tier like any other change and lasts <code>for 4h</code> unless you give one. See
 <a href="../tiers-and-expiry/">Tiers and expiry</a>.</p>
 <ul>
-<li><code>logctl list rules</code> lists them; <code>--verbose</code> adds each rule's options.</li>
+<li><code>logctl list rules</code> lists them; <code>--verbose</code> adds each rule's options. <code>logctl status</code> shows
+  them too, alongside the other changes, leaving out vendor rules you haven't changed.</li>
 <li><code>logctl alter rule r3 --below WARN</code> changes one in place.</li>
 <li><code>logctl reset rule r3</code> removes one; <code>reset rules</code> removes all of them; <code>reset logger &lt;name&gt;</code>
   also removes the rules attached directly to that logger.</li>

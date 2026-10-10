@@ -1848,9 +1848,13 @@ undoing them sooner.</p>
 
 LOGGER            LEVEL  TIER    REVERTS      REASON
 com.example.kept  DEBUG  STICKY  until reset  —
+
+ID  LOGGER               ACTION  TIER  EXPIRES               HITS
+r1  io.undertow.request  drop    FOR   07:33:38 (in 3h 59m)  0
 </code></pre></div>
-<p><code>status</code> lists every logger and handler with a change on it, plus the vendor defaults file if there
-is one. <code>logctl list rules</code> lists the rules.</p>
+<p><code>status</code> lists every logger and handler with a change on it and every rule, plus the vendor
+defaults file if there is one. A rule from the vendor defaults file appears only once you have
+altered it or switched it off. <code>logctl list rules --verbose</code> adds what each rule matches.</p>
 <h2 id="reset">Reset<a class="headerlink" href="#reset" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
