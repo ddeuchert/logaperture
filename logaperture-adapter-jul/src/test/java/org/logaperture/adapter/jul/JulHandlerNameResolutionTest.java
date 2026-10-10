@@ -225,6 +225,92 @@ class JulHandlerNameResolutionTest {
     }
 
     @Test
+    void aHandlerAttachedAfterNamesResolved_isNamedWithoutAConfigurationCallback() {
+        // Issue #188: on WildFly, attaching a handler to a logger at runtime doesn't always fire the
+        // configuration listener that invalidates the name cache.
+        ConsoleHandler first = consoleAtInfo();
+        Logger firstLogger = isolatedLoggerWith(first);
+        ConsoleHandler late = consoleAtInfo();
+        Logger lateLogger = null;
+        try {
+            FakeResolver resolver = new FakeResolver();
+            resolver.names.put(first, "CONSOLE");
+            resolver.names.put(late, "CONSOLE-API");
+            JulLoggingAdapter adapter = new JulLoggingAdapter(resolver);
+            assertEquals(new HandlerRef("CONSOLE"), soleFloorRef(adapter, firstLogger));
+
+            lateLogger = isolatedLoggerWith(late);
+            adapter.realHandlers(); // first sight: a token, and resolution goes back to pending
+
+            assertTrue(adapter.realHandlers().contains(new HandlerRef("CONSOLE-API")),
+                    "the next call resolves again and names it");
+            assertEquals(new HandlerRef("CONSOLE"), soleFloorRef(adapter, firstLogger), "the first keeps its name");
+        } finally {
+            firstLogger.removeHandler(first);
+            if (lateLogger != null) {
+                lateLogger.removeHandler(late);
+            }
+        }
+    }
+
+    @Test
+    void aHandlerTheResolverCannotName_doesNotTriggerResolutionOnEveryCall() {
+        ConsoleHandler named = consoleAtInfo();
+        ConsoleHandler unnamed = consoleAtInfo();
+        Logger namedLogger = isolatedLoggerWith(named);
+        Logger unnamedLogger = isolatedLoggerWith(unnamed);
+        try {
+            FakeResolver resolver = new FakeResolver();
+            resolver.names.put(named, "CONSOLE"); // nothing for the other one
+            JulLoggingAdapter adapter = new JulLoggingAdapter(resolver);
+            adapter.realHandlers();
+            int afterFirst = resolver.calls.get();
+
+            for (int i = 0; i < 10; i++) {
+                adapter.realHandlers();
+            }
+
+            assertEquals(afterFirst, resolver.calls.get(), "asked about once, so never asked again");
+        } finally {
+            namedLogger.removeHandler(named);
+            unnamedLogger.removeHandler(unnamed);
+        }
+    }
+
+    @Test
+    void aLateHandlerTheResolverCannotName_costsOneMoreAttempt_notOneEveryCall() {
+        // Code review of #191: a re-resolution that names nothing must still finish. Before, it
+        // stayed pending and read the model again on every call.
+        ConsoleHandler named = consoleAtInfo();
+        Logger namedLogger = isolatedLoggerWith(named);
+        ConsoleHandler late = consoleAtInfo();
+        Logger lateLogger = null;
+        try {
+            FakeResolver resolver = new FakeResolver();
+            resolver.names.put(named, "CONSOLE"); // never anything for the late one
+            JulLoggingAdapter adapter = new JulLoggingAdapter(resolver);
+            adapter.realHandlers();
+            int afterFirst = resolver.calls.get();
+            // As on WildFly when a second console joins CONSOLE on root: the next pass can tell
+            // neither apart, so it names nothing at all.
+            resolver.names.clear();
+
+            lateLogger = isolatedLoggerWith(late);
+            for (int i = 0; i < 10; i++) {
+                adapter.realHandlers();
+            }
+
+            assertEquals(afterFirst + 1, resolver.calls.get(), "one attempt for the late handler, then done");
+            assertEquals(new HandlerRef("CONSOLE"), soleFloorRef(adapter, namedLogger));
+        } finally {
+            namedLogger.removeHandler(named);
+            if (lateLogger != null) {
+                lateLogger.removeHandler(late);
+            }
+        }
+    }
+
+    @Test
     void aLateResolution_upgradesAnAlreadyMintedTokenRef() {
         ConsoleHandler console = consoleAtInfo();
         Logger logger = isolatedLoggerWith(console);

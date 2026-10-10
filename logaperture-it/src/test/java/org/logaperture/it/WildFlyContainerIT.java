@@ -428,6 +428,31 @@ class WildFlyContainerIT {
                 json.stdout());
     }
 
+    /**
+     * Issue #188: with a second console handler, on an application logger, there is no longer
+     * one console in the model and one live, and a console has no file to match on. Each is
+     * named by the loggers it is attached to, and {@code DEFAULT_HANDLERS} shows {@code CONSOLE}
+     * by name.
+     */
+    @Test
+    void handlers_severalConsoles_eachResolvedByTheLoggerItIsAttachedTo() {
+        cli("/subsystem=logging/console-handler=LA_APP_CONSOLE:add(level=INFO)");
+        try {
+            cli("/subsystem=logging/logger=com.myapp.api:add(handlers=[LA_APP_CONSOLE])");
+            java.util.function.Predicate<String> bothNamed = out -> out.lines().anyMatch(l -> l.startsWith("CONSOLE "))
+                    && out.lines().anyMatch(l -> l.startsWith("LA_APP_CONSOLE "));
+            assertTrue(pollUntil(() -> bothNamed.test(logctl("list", "handlers", "--show-all").stdout())),
+                    "both consoles listed by name:\n" + logctl("list", "handlers", "--show-all").stdout());
+            String out = logctl("list", "handlers", "--show-all").stdout();
+            assertFalse(out.matches("(?s).*ConsoleHandler@[0-9a-f]+.*"), "no console left on a token:\n" + out);
+            assertTrue(out.lines().anyMatch(l -> l.startsWith("DEFAULT_HANDLERS") && l.contains("CONSOLE")
+                    && !l.contains("LA_APP_CONSOLE")), "DEFAULT_HANDLERS is the root's CONSOLE:\n" + out);
+        } finally {
+            exec(JBOSS_CLI, "--connect", "--command=/subsystem=logging/logger=com.myapp.api:remove");
+            exec(JBOSS_CLI, "--connect", "--command=/subsystem=logging/console-handler=LA_APP_CONSOLE:remove");
+        }
+    }
+
     @Test
     void handlerLower_makesATraceLineReachTheConsole_thenResetStopsIt() throws Exception {
         String traceMarker = "probe trace marker";

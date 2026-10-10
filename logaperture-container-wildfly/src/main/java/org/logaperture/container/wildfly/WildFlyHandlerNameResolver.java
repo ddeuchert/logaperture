@@ -20,13 +20,18 @@ import org.logaperture.bridge.Diagnostics;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.Handler;
+import java.util.logging.LogManager;
+import java.util.logging.Logger;
 
 /**
  * Resolves WildFly's configured handler names ({@code CONSOLE}, {@code FILE},
@@ -56,7 +61,11 @@ import java.util.logging.Handler;
  * to one of the live {@link Handler} instances the adapter asked about — a
  * {@code console-handler} to the sole console instance, a file-type handler to
  * the sole file instance, or by matching the model's configured file name
- * against {@code FileHandler.getFile()} when there is more than one.
+ * against {@code FileHandler.getFile()} when there is more than one. A name
+ * still unbound after that is bound by where it is attached: the loggers the
+ * model attaches it to (the root logger, and each {@code logger=<category>}),
+ * against the loggers each live handler is attached to. That is what tells
+ * apart several console handlers, which have no file to match on (issue #188).
  *
  * <p><b>Best-effort.</b> Every failure path — the model not reachable yet, an
  * unexpected server version, a handler the model doesn't describe — returns
@@ -157,6 +166,13 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
         dbg("model handler names=" + nameToType);
         Map<String, String> fileNameByHandlerName = readFileNames(loader, executor, nameToType);
         Map<Handler, String> bound = bind(handlers, nameToType, fileNameByHandlerName);
+        if (bound.size() < handlers.size()) {
+            // Only when type and file name left something unnamed: two more model reads.
+            Map<String, Set<String>> attachmentsByName = readAttachmentsOrNone(loader, executor);
+            dbg("model handler attachments=" + attachmentsByName);
+            bound = bind(handlers, nameToType, fileNameByHandlerName,
+                    attachmentsByName, WildFlyHandlerNameResolver::handlersAttachedTo);
+        }
         dbg("bound " + bound.size() + " of " + handlers.size());
         if (!bound.isEmpty()) {
             Diagnostics.debug("resolved " + bound.size() + " of " + handlers.size()
@@ -297,11 +313,96 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
         return out;
     }
 
+    /**
+     * {@link #readAttachments}, or nothing if it fails: a failure here must not lose the names
+     * type and file name already bound.
+     */
+    private static Map<String, Set<String>> readAttachmentsOrNone(ClassLoader loader, ModelExecutor executor) {
+        try {
+            return readAttachments(loader, executor);
+        } catch (Exception | LinkageError failure) {
+            dbg("readAttachments failed: " + failure);
+            Diagnostics.debug("WildFly handler attachments not read this pass (" + failure + ")");
+            return Map.of();
+        }
+    }
+
+    /**
+     * Which loggers each handler name is attached to in the model: handler name -> logger
+     * categories, the root logger as {@code ""}. From {@code root-logger=ROOT}'s and each
+     * {@code logger=<category>}'s {@code handlers} attribute.
+     */
+    private static Map<String, Set<String>> readAttachments(ClassLoader loader, ModelExecutor executor)
+            throws Exception {
+        Class<?> modelNode = Class.forName("org.jboss.dmr.ModelNode", false, loader);
+        Method mnGet = modelNode.getMethod("get", String.class);
+        Method mnSetString = modelNode.getMethod("set", String.class);
+        Method mnAdd2 = modelNode.getMethod("add", String.class, String.class);
+        Method mnAsString = modelNode.getMethod("asString");
+        Method mnAsList = modelNode.getMethod("asList");
+        Method mnKeys = modelNode.getMethod("keys");
+        Method mnHasDefined = modelNode.getMethod("hasDefined", String.class);
+
+        Map<String, Set<String>> out = new LinkedHashMap<>();
+
+        Object rootOp = modelNode.getConstructor().newInstance();
+        mnSetString.invoke(mnGet.invoke(rootOp, "operation"), "read-attribute");
+        mnSetString.invoke(mnGet.invoke(rootOp, "name"), "handlers");
+        Object rootAddress = mnGet.invoke(rootOp, "address");
+        mnAdd2.invoke(rootAddress, "subsystem", "logging");
+        mnAdd2.invoke(rootAddress, "root-logger", "ROOT");
+        Object rootResult = executor.execute(rootOp);
+        if ((boolean) mnHasDefined.invoke(rootResult, "result")) {
+            for (Object name : (List<?>) mnAsList.invoke(mnGet.invoke(rootResult, "result"))) {
+                out.computeIfAbsent((String) mnAsString.invoke(name), n -> new HashSet<>()).add("");
+            }
+        }
+
+        Object loggersOp = modelNode.getConstructor().newInstance();
+        mnSetString.invoke(mnGet.invoke(loggersOp, "operation"), "read-children-resources");
+        mnSetString.invoke(mnGet.invoke(loggersOp, "child-type"), "logger");
+        mnAdd2.invoke(mnGet.invoke(loggersOp, "address"), "subsystem", "logging");
+        Object loggersResult = executor.execute(loggersOp);
+        if ((boolean) mnHasDefined.invoke(loggersResult, "result")) {
+            Object loggers = mnGet.invoke(loggersResult, "result");
+            for (Object key : (Set<?>) mnKeys.invoke(loggers)) {
+                String category = (String) key;
+                Object logger = mnGet.invoke(loggers, category);
+                if (!(boolean) mnHasDefined.invoke(logger, "handlers")) {
+                    continue;
+                }
+                for (Object name : (List<?>) mnAsList.invoke(mnGet.invoke(logger, "handlers"))) {
+                    out.computeIfAbsent((String) mnAsString.invoke(name), n -> new HashSet<>()).add(category);
+                }
+            }
+        }
+        return out;
+    }
+
+    /** The handlers attached directly to an existing logger right now; none if there is no such logger. */
+    private static List<Handler> handlersAttachedTo(String category) {
+        Logger logger = LogManager.getLogManager().getLogger(category);
+        return logger == null ? List.of() : List.of(logger.getHandlers());
+    }
+
     // --- binding ------------------------------------------------------------------------------------
 
-    /** Package-visible for {@code WildFlyHandlerNameResolverTest}. */
+    /** {@link #bind(List, Map, Map, Map, Function)} with no attachments to match on. */
     static Map<Handler, String> bind(
             List<Handler> handlers, Map<String, String> nameToType, Map<String, String> fileNameByHandlerName) {
+        return bind(handlers, nameToType, fileNameByHandlerName, Map.of(), category -> List.of());
+    }
+
+    /**
+     * Package-visible for {@code WildFlyHandlerNameResolverTest}.
+     *
+     * @param attachmentsByName handler name -> the logger categories the model attaches it to
+     *                          ({@code ""} for the root logger)
+     * @param liveAttached      logger category -> the handlers attached to it right now
+     */
+    static Map<Handler, String> bind(
+            List<Handler> handlers, Map<String, String> nameToType, Map<String, String> fileNameByHandlerName,
+            Map<String, Set<String>> attachmentsByName, Function<String, List<Handler>> liveAttached) {
         List<Handler> consoles = new ArrayList<>();
         List<Handler> files = new ArrayList<>();
         for (Handler h : handlers) {
@@ -339,7 +440,66 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
                 }
             }
         }
+
+        Map<Handler, Set<String>> liveAttachments = liveAttachments(attachmentsByName, liveAttached);
+        // A name of a type outside HANDLER_RESOURCE_TYPES (async-handler, socket-handler) is never
+        // bound itself, but its live handler is a non-console candidate, so it competes with the
+        // file-type names for the loggers it is attached to.
+        List<String> otherTypeNames = attachmentsByName.keySet().stream()
+                .filter(name -> !nameToType.containsKey(name))
+                .toList();
+        bindByAttachment(consoles, consoleNames, List.of(), attachmentsByName, liveAttachments, out);
+        bindByAttachment(files, fileNames, otherTypeNames, attachmentsByName, liveAttachments, out);
         return out;
+    }
+
+    /** Live handler -> the model's logger categories it is attached to right now. */
+    private static Map<Handler, Set<String>> liveAttachments(
+            Map<String, Set<String>> attachmentsByName, Function<String, List<Handler>> liveAttached) {
+        Set<String> categories = new HashSet<>();
+        attachmentsByName.values().forEach(categories::addAll);
+        Map<Handler, Set<String>> out = new IdentityHashMap<>();
+        for (String category : categories) {
+            for (Handler h : liveAttached.apply(category)) {
+                out.computeIfAbsent(h, k -> new HashSet<>()).add(category);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Binds each still-unbound name to the one still-unbound live handler of its kind attached to
+     * exactly the loggers the model attaches the name to (issue #188). Skipped when another
+     * still-unbound name of the kind, or one of {@code otherNames}, has the same attachments, or
+     * when no live handler or more than one matches: an ambiguous handler keeps its token rather
+     * than risk the wrong name. A name already bound by type or file name doesn't compete: its
+     * handler is taken.
+     */
+    private static void bindByAttachment(List<Handler> live, List<String> names, List<String> otherNames,
+            Map<String, Set<String>> attachmentsByName, Map<Handler, Set<String>> liveAttachments,
+            Map<Handler, String> out) {
+        for (String name : names) {
+            Set<String> want = attachmentsByName.getOrDefault(name, Set.of());
+            if (want.isEmpty() || out.containsValue(name)) {
+                continue;
+            }
+            boolean shared = names.stream()
+                    .filter(other -> !other.equals(name) && !out.containsValue(other))
+                    .anyMatch(other -> want.equals(attachmentsByName.get(other)))
+                    || otherNames.stream().anyMatch(other -> want.equals(attachmentsByName.get(other)));
+            if (shared) {
+                continue;
+            }
+            List<Handler> matches = new ArrayList<>();
+            for (Handler h : live) {
+                if (!out.containsKey(h) && want.equals(liveAttachments.get(h))) {
+                    matches.add(h);
+                }
+            }
+            if (matches.size() == 1) {
+                out.put(matches.get(0), name);
+            }
+        }
     }
 
     private static boolean isConsole(Handler handler) {

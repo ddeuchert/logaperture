@@ -21,7 +21,9 @@ import java.io.File;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Handler;
@@ -124,6 +126,123 @@ class WildFlyHandlerNameResolverTest {
         assertTrue(bound.isEmpty());
     }
 
+    // --- binding by attachment (issue #188) -------------------------------------------------------
+
+    @Test
+    void bind_severalConsoles_bindByTheLoggersTheyAreAttachedTo() {
+        // The reported layout: CONSOLE on root, and a console of its own on each of two
+        // application loggers. No file to match on, and more than one console, so only
+        // attachment can tell them apart.
+        Handler console = new ConsoleHandler();
+        Handler apiConsole = new ConsoleHandler();
+        Handler agentConsole = new ConsoleHandler();
+        Map<String, String> model = new LinkedHashMap<>();
+        model.put("CONSOLE", "console-handler");
+        model.put("CONSOLE-API", "console-handler");
+        model.put("CONSOLE-AGENT", "console-handler");
+        Map<String, Set<String>> attachments = Map.of(
+                "CONSOLE", Set.of(""),
+                "CONSOLE-API", Set.of("app.api"),
+                "CONSOLE-AGENT", Set.of("app.agent"));
+        Function<String, List<Handler>> live = attached(Map.of(
+                "", List.of(console),
+                "app.api", List.of(apiConsole),
+                "app.agent", List.of(agentConsole)));
+
+        Map<Handler, String> bound = WildFlyHandlerNameResolver.bind(
+                List.of(console, apiConsole, agentConsole), model, Map.of(), attachments, live);
+
+        assertEquals("CONSOLE", bound.get(console));
+        assertEquals("CONSOLE-API", bound.get(apiConsole));
+        assertEquals("CONSOLE-AGENT", bound.get(agentConsole));
+    }
+
+    @Test
+    void bind_twoConsoleNamesOnTheSameLoggers_bindsNeither() {
+        Handler first = new ConsoleHandler();
+        Handler second = new ConsoleHandler();
+        Map<String, String> model = new LinkedHashMap<>();
+        model.put("CONSOLE", "console-handler");
+        model.put("CONSOLE-2", "console-handler");
+        Map<String, Set<String>> attachments = Map.of("CONSOLE", Set.of(""), "CONSOLE-2", Set.of(""));
+
+        Map<Handler, String> bound = WildFlyHandlerNameResolver.bind(List.of(first, second), model, Map.of(),
+                attachments, attached(Map.of("", List.of(first, second))));
+
+        assertTrue(bound.isEmpty(), "same attachments -> ambiguous -> keep the tokens");
+    }
+
+    @Test
+    void bind_liveAttachmentsDifferFromTheModel_leavesTheConsoleUnresolved() {
+        Handler console = new ConsoleHandler();
+        Handler other = new ConsoleHandler();
+        Map<String, String> model = new LinkedHashMap<>();
+        model.put("CONSOLE", "console-handler");
+        model.put("CONSOLE-API", "console-handler");
+        Map<String, Set<String>> attachments = Map.of("CONSOLE", Set.of(""), "CONSOLE-API", Set.of("app.api"));
+        // Both live consoles are on root: neither is attached only to app.api.
+        Map<Handler, String> bound = WildFlyHandlerNameResolver.bind(List.of(console, other), model, Map.of(),
+                attachments, attached(Map.of("", List.of(console, other))));
+
+        assertNull(bound.get(console));
+        assertNull(bound.get(other));
+    }
+
+    @Test
+    void bind_aFileHandlerWithNoPathToMatch_bindsByAttachment() {
+        Handler serverFile = new FakeFileHandler("/var/log/server.log");
+        Handler apiFile = new FakeFileHandler("/var/log/api.log");
+        Map<String, String> model = new LinkedHashMap<>();
+        model.put("FILE", "periodic-rotating-file-handler");
+        model.put("API", "periodic-rotating-file-handler");
+        Map<String, Set<String>> attachments = Map.of("FILE", Set.of(""), "API", Set.of("app.api"));
+
+        Map<Handler, String> bound = WildFlyHandlerNameResolver.bind(List.of(serverFile, apiFile), model,
+                Map.of(), attachments, attached(Map.of("", List.of(serverFile), "app.api", List.of(apiFile))));
+
+        assertEquals("FILE", bound.get(serverFile));
+        assertEquals("API", bound.get(apiFile));
+    }
+
+    @Test
+    void bind_aNameBoundByItsFile_doesNotBlockAnotherOnTheSameLoggers() {
+        // FILE is bound by its path; API, a custom handler with no path, is the only other
+        // handler on root, so it is unambiguous.
+        Handler serverFile = new FakeFileHandler("/var/log/server.log");
+        Handler api = new PlainHandler();
+        Map<String, String> model = new LinkedHashMap<>();
+        model.put("FILE", "periodic-rotating-file-handler");
+        model.put("API", "custom-handler");
+        Map<String, Set<String>> attachments = Map.of("FILE", Set.of(""), "API", Set.of(""));
+
+        Map<Handler, String> bound = WildFlyHandlerNameResolver.bind(List.of(serverFile, api), model,
+                Map.of("FILE", "server.log"), attachments, attached(Map.of("", List.of(serverFile, api))));
+
+        assertEquals("FILE", bound.get(serverFile));
+        assertEquals("API", bound.get(api));
+    }
+
+    @Test
+    void bind_anAsyncHandlerOnTheSameLoggers_keepsAFileNameUnbound() {
+        // ASYNC (an async-handler, not a type this resolver names) and FILE are both on root, and
+        // only the async handler's instance is live: it must not be labelled FILE.
+        Handler async = new PlainHandler();
+        Map<String, String> model = new LinkedHashMap<>();
+        model.put("FILE", "custom-handler");
+        model.put("OTHER", "custom-handler"); // so the one-file shortcut doesn't apply
+        Map<String, Set<String>> attachments = Map.of(
+                "FILE", Set.of(""), "ASYNC", Set.of(""), "OTHER", Set.of("app.other"));
+
+        Map<Handler, String> bound = WildFlyHandlerNameResolver.bind(List.of(async), model, Map.of(),
+                attachments, attached(Map.of("", List.of(async))));
+
+        assertTrue(bound.isEmpty(), "ASYNC competes for root, so FILE stays unbound: " + bound);
+    }
+
+    private static Function<String, List<Handler>> attached(Map<String, List<Handler>> byCategory) {
+        return category -> byCategory.getOrDefault(category, List.of());
+    }
+
     private static void withModulePath(String value, Runnable body) {
         String saved = System.getProperty(WildFlyHandlerNameResolver.MODULE_PATH_PROPERTY);
         try {
@@ -140,6 +259,13 @@ class WildFlyHandlerNameResolverTest {
                 System.setProperty(WildFlyHandlerNameResolver.MODULE_PATH_PROPERTY, saved);
             }
         }
+    }
+
+    /** A non-console handler with no file. */
+    private static final class PlainHandler extends Handler {
+        @Override public void publish(LogRecord record) { }
+        @Override public void flush() { }
+        @Override public void close() { }
     }
 
     private static final class FakeFileHandler extends Handler {

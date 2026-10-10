@@ -667,10 +667,32 @@ real WildFly 26.1.3.Final (`WildFlyContainerIT`):
   `size-rotating-file-handler`, `periodic-size-rotating-file-handler`,
   `syslog-handler`, `custom-handler`). The model is the sole source of the
   configured name.
-- **Instance binding — by handler shape, then configured file name.** A
-  `console-handler` name binds to the sole console `Handler` instance; a
-  file-type name binds to the sole file instance, or — with more than one — by
-  matching the model's `file.path` leaf against `FileHandler.getFile()`.
+- **Instance binding — by handler shape, then configured file name, then
+  attachment.** A `console-handler` name binds to the sole console `Handler`
+  instance; a file-type name binds to the sole file instance, or — with more
+  than one — by matching the model's `file.path` leaf against
+  `FileHandler.getFile()`. Each "sole" shortcut applies only when the model
+  also defines exactly one handler of that kind.
+- **Attachment, for whatever is still unbound (issue
+  [#188](https://github.com/ddeuchert/logaperture/issues/188)).** Several
+  console handlers have no file to match on, so a server with `CONSOLE` on root
+  and a console of its own on an application logger left every console on its
+  token: hidden from `list handlers`, not addressable by name, and shown as a
+  token in `DEFAULT_HANDLERS`. The resolver also reads where each handler is
+  attached in the model: `root-logger=ROOT`'s `handlers`, and each
+  `logger=<category>`'s via `read-children-resources`. It binds a still-unbound
+  name to the one still-unbound live handler of the same kind (console or not)
+  whose live attachments, among those loggers, are exactly the name's. Nothing
+  is bound when another name of that kind has the same attachments, or when no
+  live handler or more than one matches: an ambiguous handler keeps its token
+  rather than risk a wrong name. Only names still unbound compete: one already
+  bound by type or file name has its handler. A name of a type the resolver
+  doesn't bind (`async-handler`, `socket-handler`) always competes with the
+  non-console names, since its live handler is a candidate too. A handler
+  nested inside an `async-handler` isn't attached to any logger itself, so it
+  isn't bound this way. The two attachment reads run only when type and file
+  name left a handler unnamed, and a failure in them leaves the names those
+  steps found in place.
 
 **The MSC service-name walk that Decision #1's "hybrid" first proposed for
 instance binding was dropped: real WildFly 26.1.3 registers no
@@ -766,6 +788,28 @@ by resolved name where available and identity token otherwise.
   configured name) keeps its existing ref — ref stability wins, and the old
   name still resolves to the live handler; chasing the rename would orphan any
   baseline/override keyed on the old ref (the same hazard as #29).
+- **A handler first seen after resolution (issue
+  [#188](https://github.com/ddeuchert/logaperture/issues/188)).** The
+  configuration-change listener doesn't fire for every change: an existing
+  handler attached to a logger at runtime can appear with the cache still
+  `DONE`. So when the adapter mints a token for a handler the last resolution
+  attempt was never asked about, resolution goes back to pending. The next
+  call resolves again and promotes the token to its name, as on a late
+  first resolution. A handler that *was* asked about and still has no name
+  (an ambiguous console, a handler inside an `async-handler`) doesn't trigger
+  this, so it can't cause a model read on every call. The details that keep
+  that true:
+  - Once any attempt has named something, the model is known to answer, so an
+    attempt that names nothing still finishes (`DONE`). Before that, an empty
+    result means the model isn't queryable yet, and resolution retries.
+  - Each attempt also asks about any token holder never offered before, such as
+    a handler on an ancestor logger that only `handlerFloorsBelow` reaches, so
+    it can't send resolution back to pending again.
+  - A handler minted by another thread while an attempt was running, from a
+    snapshot without it, sends resolution back to pending when that attempt
+    finishes.
+  - The set of handlers offered is weak: a removed handler, and its
+    application's classloader, isn't kept alive by it.
 
 ### Ref stability across a late resolution
 
