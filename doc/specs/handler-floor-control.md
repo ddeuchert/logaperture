@@ -667,10 +667,26 @@ real WildFly 26.1.3.Final (`WildFlyContainerIT`):
   `size-rotating-file-handler`, `periodic-size-rotating-file-handler`,
   `syslog-handler`, `custom-handler`). The model is the sole source of the
   configured name.
-- **Instance binding — by handler shape, then configured file name.** A
-  `console-handler` name binds to the sole console `Handler` instance; a
-  file-type name binds to the sole file instance, or — with more than one — by
-  matching the model's `file.path` leaf against `FileHandler.getFile()`.
+- **Instance binding — by handler shape, then configured file name, then
+  attachment.** A `console-handler` name binds to the sole console `Handler`
+  instance; a file-type name binds to the sole file instance, or — with more
+  than one — by matching the model's `file.path` leaf against
+  `FileHandler.getFile()`. Each "sole" shortcut applies only when the model
+  also defines exactly one handler of that kind.
+- **Attachment, for whatever is still unbound (issue
+  [#188](https://github.com/ddeuchert/logaperture/issues/188)).** Several
+  console handlers have no file to match on, so a server with `CONSOLE` on root
+  and a console of its own on an application logger left every console on its
+  token: hidden from `list handlers`, not addressable by name, and shown as a
+  token in `DEFAULT_HANDLERS`. The resolver also reads where each handler is
+  attached in the model: `root-logger=ROOT`'s `handlers`, and each
+  `logger=<category>`'s via `read-children-resources`. It binds a still-unbound
+  name to the one still-unbound live handler of the same kind (console or not)
+  whose live attachments, among those loggers, are exactly the name's. Nothing
+  is bound when another name of that kind has the same attachments, or when no
+  live handler or more than one matches: an ambiguous handler keeps its token
+  rather than risk a wrong name. A handler nested inside an `async-handler`
+  isn't attached to any logger itself, so it isn't bound this way.
 
 **The MSC service-name walk that Decision #1's "hybrid" first proposed for
 instance binding was dropped: real WildFly 26.1.3 registers no

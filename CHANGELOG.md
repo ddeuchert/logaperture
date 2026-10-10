@@ -118,6 +118,11 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   automatic pick could land on `FILE`, depending on attachment order and whether handler names had
   resolved yet. A handler now counts as a console when its class, or a superclass, is named
   `ConsoleHandler`, which covers both the JDK's and JBoss LogManager's (issue #188).
+- **WildFly handlers are named when there are several consoles.** A server with more than one
+  console handler, such as `CONSOLE` on the root logger and another on an application logger,
+  left every console unnamed: missing from `logctl list handlers`, not usable by name, and shown
+  as `ConsoleHandler@…` under `DEFAULT_HANDLERS`. Handlers that can't be told apart by type or
+  file are now named by the loggers they are attached to (issue #188).
 - **The audit trail is no longer called tamper-evident.** The README and the 0.1.0-alpha.1 notes
   described it as hash-chained and tamper-evident, but its lines carry no digest, and anyone who
   can write the file can edit them. The claim is withdrawn; hash-chaining is planned for after 1.0

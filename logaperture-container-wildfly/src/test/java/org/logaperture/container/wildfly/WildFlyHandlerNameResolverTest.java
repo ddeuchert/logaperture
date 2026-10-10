@@ -21,7 +21,9 @@ import java.io.File;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Handler;
@@ -122,6 +124,88 @@ class WildFlyHandlerNameResolverTest {
 
         assertNull(bound.get(file), "no configured path -> keep the token, don't guess");
         assertTrue(bound.isEmpty());
+    }
+
+    // --- binding by attachment (issue #188) -------------------------------------------------------
+
+    @Test
+    void bind_severalConsoles_bindByTheLoggersTheyAreAttachedTo() {
+        // The reported layout: CONSOLE on root, and a console of its own on each of two
+        // application loggers. No file to match on, and more than one console, so only
+        // attachment can tell them apart.
+        Handler console = new ConsoleHandler();
+        Handler apiConsole = new ConsoleHandler();
+        Handler agentConsole = new ConsoleHandler();
+        Map<String, String> model = new LinkedHashMap<>();
+        model.put("CONSOLE", "console-handler");
+        model.put("CONSOLE-API", "console-handler");
+        model.put("CONSOLE-AGENT", "console-handler");
+        Map<String, Set<String>> attachments = Map.of(
+                "CONSOLE", Set.of(""),
+                "CONSOLE-API", Set.of("app.api"),
+                "CONSOLE-AGENT", Set.of("app.agent"));
+        Function<String, List<Handler>> live = attached(Map.of(
+                "", List.of(console),
+                "app.api", List.of(apiConsole),
+                "app.agent", List.of(agentConsole)));
+
+        Map<Handler, String> bound = WildFlyHandlerNameResolver.bind(
+                List.of(console, apiConsole, agentConsole), model, Map.of(), attachments, live);
+
+        assertEquals("CONSOLE", bound.get(console));
+        assertEquals("CONSOLE-API", bound.get(apiConsole));
+        assertEquals("CONSOLE-AGENT", bound.get(agentConsole));
+    }
+
+    @Test
+    void bind_twoConsoleNamesOnTheSameLoggers_bindsNeither() {
+        Handler first = new ConsoleHandler();
+        Handler second = new ConsoleHandler();
+        Map<String, String> model = new LinkedHashMap<>();
+        model.put("CONSOLE", "console-handler");
+        model.put("CONSOLE-2", "console-handler");
+        Map<String, Set<String>> attachments = Map.of("CONSOLE", Set.of(""), "CONSOLE-2", Set.of(""));
+
+        Map<Handler, String> bound = WildFlyHandlerNameResolver.bind(List.of(first, second), model, Map.of(),
+                attachments, attached(Map.of("", List.of(first, second))));
+
+        assertTrue(bound.isEmpty(), "same attachments -> ambiguous -> keep the tokens");
+    }
+
+    @Test
+    void bind_liveAttachmentsDifferFromTheModel_leavesTheConsoleUnresolved() {
+        Handler console = new ConsoleHandler();
+        Handler other = new ConsoleHandler();
+        Map<String, String> model = new LinkedHashMap<>();
+        model.put("CONSOLE", "console-handler");
+        model.put("CONSOLE-API", "console-handler");
+        Map<String, Set<String>> attachments = Map.of("CONSOLE", Set.of(""), "CONSOLE-API", Set.of("app.api"));
+        // Both live consoles are on root: neither is attached only to app.api.
+        Map<Handler, String> bound = WildFlyHandlerNameResolver.bind(List.of(console, other), model, Map.of(),
+                attachments, attached(Map.of("", List.of(console, other))));
+
+        assertNull(bound.get(console));
+        assertNull(bound.get(other));
+    }
+
+    @Test
+    void bind_aFileHandlerWithNoPathToMatch_bindsByAttachment() {
+        Handler serverFile = new FakeFileHandler("/var/log/server.log");
+        Handler apiFile = new FakeFileHandler("/var/log/api.log");
+        Map<String, String> model = new LinkedHashMap<>();
+        model.put("FILE", "periodic-rotating-file-handler");
+        model.put("API", "periodic-rotating-file-handler");
+        Map<String, Set<String>> attachments = Map.of("FILE", Set.of(""), "API", Set.of("app.api"));
+
+        Map<Handler, String> bound = WildFlyHandlerNameResolver.bind(List.of(serverFile, apiFile), model,
+                Map.of(), attachments, attached(Map.of("", List.of(serverFile), "app.api", List.of(apiFile))));
+
+        assertEquals("FILE", bound.get(serverFile));
+        assertEquals("API", bound.get(apiFile));
+    }
+
+    private static Function<String, List<Handler>> attached(Map<String, List<Handler>> byCategory) {
+        return category -> byCategory.getOrDefault(category, List.of());
     }
 
     private static void withModulePath(String value, Runnable body) {
