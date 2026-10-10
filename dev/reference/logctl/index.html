@@ -2519,7 +2519,7 @@ logctl<span class="w"> </span>top<span class="w"> </span>--limit<span class="w">
 logctl enable storms [session | for &lt;duration&gt; | sticky]
 logctl disable storms [session | for &lt;duration&gt; | sticky]
 </code></pre></div>
-<p>A log storm is a burst of near-identical events from one logger. <code>storms</code> lists the ones storm detection has seen, with the first occurrence kept in full. It only reports: nothing is suppressed.</p>
+<p>A log storm is a burst of near-identical events from one logger. <code>storms</code> lists the ones storm detection has seen, each with a sample: the event that made it a storm, kept in full. It only reports: nothing is suppressed.</p>
 <p>Storm detection starts disabled. <code>enable storms</code> turns it on and <code>disable storms</code> turns it off, in every context. With no tier that lasts until the JVM stops, not <code>for 4h</code> as for <code>set</code>. <code>for 30m</code> switches it back after 30 minutes, and <code>sticky</code> keeps it across restarts.</p>
 <p>To have it on from the start, start the agent with <code>-javaagent:logaperture-agent.jar=--storm-detection=on</code>.</p>
 <p><strong>Options</strong></p>

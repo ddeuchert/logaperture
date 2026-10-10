@@ -2277,6 +2277,12 @@ reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>.</p>
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
+<li><strong><code>logctl storms</code> shows each storm's sample with its message as logged, and says which event it
+  is.</strong> The event shown under a storm had its message as a template (<code>Matched default handler path
+  %s</code> rather than <code>… path /x997</code>) for JBoss Logging's printf-style messages on WildFly, and was
+  labelled the first occurrence although it is the event that crossed the storm threshold, timed
+  after the storm's start. It is now labelled <code>sample (event #1,000, when the storm was detected)</code>,
+  and <code>--json</code> adds <code>sampleEventNumber</code> beside <code>firstOccurrence</code> (issue #169).</li>
 <li><strong>A long-running server no longer ends up throwing <code>StackOverflowError</code> from every log call.</strong>
   On java.util.logging and JBoss LogManager (WildFly), the agent's two filters on each handler, for
   storm detection and for rules, wrapped each other again on every 30-second check. So every log

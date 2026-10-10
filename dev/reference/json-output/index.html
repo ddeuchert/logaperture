@@ -2554,15 +2554,34 @@ projections are worked out from these.</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>storms<span class="w"> </span>--json
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">"storms"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
-<span class="w">  </span><span class="nt">"trackedCount"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"ongoingCount"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"measurementStartedAt"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"storms"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"loggerName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"io.undertow.request"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"level"</span><span class="p">:</span><span class="w"> </span><span class="s2">"DEBUG"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"throwableClass"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"normalizedMessage"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Matched default handler path %s"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"topFrames"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"ONGOING"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"firstEventAt"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-10-10T02:41:22.667701316Z"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"lastEventAt"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-10-10T02:41:26.038228375Z"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"endedAt"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"eventCount"</span><span class="p">:</span><span class="w"> </span><span class="mi">1500</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"firstOccurrence"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-10-10T02:41:24.990134470Z DEBUG [io.undertow.request] Matched default handler path /x997"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"sampleEventNumber"</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"context"</span><span class="p">:</span><span class="w"> </span><span class="s2">"system"</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">"trackedCount"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"ongoingCount"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"measurementStartedAt"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-10-10T02:41:21.497247862Z"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"notRetainedCount"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"detectionEnabled"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"detectionChangedAt"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">  </span><span class="nt">"detectionEnabled"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"detectionChangedAt"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-10-10T02:41:21.486477057Z"</span>
 <span class="p">}</span>
 </code></pre></div>
+<p><code>firstOccurrence</code> is the storm's sample: the event that took it over the threshold, with its
+message as logged and its stack trace, if any. <code>sampleEventNumber</code> says which event of the storm
+that was, counted from <code>firstEventAt</code>; it is <code>0</code> from an older agent that doesn't report it.</p>
 <h3 id="enable-storms-disable-storms">enable storms, disable storms<a class="headerlink" href="#enable-storms-disable-storms" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>storms<span class="w"> </span>--json
 </code></pre></div>

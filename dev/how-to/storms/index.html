@@ -1795,8 +1795,8 @@
 
 <h1 id="log-storms">Log storms<a class="headerlink" href="#log-storms" title="Permanent link">&para;</a></h1>
 <p>A log storm is a burst of near-identical events from one logger: an error path stuck in a loop, a
-retry that never stops. Storm detection notices them, groups them, and keeps the first one for you
-to read. In 1.0 it only reports: nothing is suppressed.</p>
+retry that never stops. Storm detection notices them, groups them, and keeps one of the events in
+full for you to read. In 1.0 it only reports: nothing is suppressed.</p>
 <div class="admonition info">
 <p class="admonition-title">WildFly only in 1.0</p>
 <p>Storm detection needs <code>java.util.logging</code> or JBoss LogManager.</p>
@@ -1806,7 +1806,7 @@ to read. In 1.0 it only reports: nothing is suppressed.</p>
 <p>Storm detection starts off, because it costs a little on every log call. Turn it on for a while:</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>storms<span class="w"> </span><span class="k">for</span><span class="w"> </span>30m
 </code></pre></div>
-<div class="highlight"><pre><span></span><code>Storm detection is now enabled (was disabled) until 2026-10-10T01:57:29.218035696Z, then disabled. Measuring from 2026-10-10T01:27:29.218035696Z.
+<div class="highlight"><pre><span></span><code>Storm detection is now enabled (was disabled) until 2026-10-10T03:11:21.486477057Z, then disabled. Measuring from 2026-10-10T02:41:21.486477057Z.
 </code></pre></div>
 <p>Without a tier it stays on until the JVM stops; <code>sticky</code> keeps it on across restarts. To have it on
 from startup, start the agent with <code>--storm-detection=on</code> (see
@@ -1815,27 +1815,29 @@ from startup, start the agent with <code>--storm-detection=on</code> (see
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>storms
 </code></pre></div>
 <p>During a storm:</p>
-<div class="highlight"><pre><span></span><code>Storm detection is enabled until 2026-10-10T01:57:29.218035696Z, then disabled.
+<div class="highlight"><pre><span></span><code>Storm detection is enabled until 2026-10-10T03:11:21.486477057Z, then disabled.
 
 [ONGOING]  io.undertow.request  (no exception)  "Matched default handler path %s"
-           started 2026-10-10T01:27:29.993963682Z (6s ago) — 1,500 events — ~13,028/min
-           first occurrence:
-             2026-10-10T01:27:33.014192045Z DEBUG [io.undertow.request] Matched default handler path %s
+           started 2026-10-10T02:41:22.667701316Z (4s ago) — 1,500 events — ~21,598/min
+           sample (event #1,000, when the storm was detected):
+             2026-10-10T02:41:24.990134470Z DEBUG [io.undertow.request] Matched default handler path /x997
 
-1 storm tracked — 1 ongoing, 0 ended. measured since 2026-10-10T01:27:29.226069794Z.
+1 storm tracked — 1 ongoing, 0 ended. measured since 2026-10-10T02:41:21.497247862Z.
 </code></pre></div>
 <p>and after it, once a minute has passed quietly:</p>
 <div class="highlight"><pre><span></span><code>[ENDED]    io.undertow.request  (no exception)  "Matched default handler path %s"
-           2026-10-10T01:27:29.993963682Z–2026-10-10T01:27:34.316925254Z (4s) — 1,500 events — ended 1m1s ago
+           2026-10-10T02:41:22.667701316Z–2026-10-10T02:41:26.038228375Z (3s) — 1,500 events — ended 1m9s ago
 </code></pre></div>
 <p>Each storm shows its logger, its exception type if there is one, and the message with the parts
 that vary replaced by <code>%s</code>, so 1,500 requests for different paths count as one storm. While it is
-going on, you also see its rate and its first event.</p>
+going on, you also see its rate and a sample: the event that made it a storm, in full, with its
+message as logged and its stack trace if it has one. The sample is not the storm's first event; the
+event number says how far into the storm it came (the 1,000th here, the threshold).</p>
 <p>By default a storm is 1,000 near-identical events within 10 seconds. <code>--limit</code> shows only the worst
 few.</p>
 <h2 id="then">Then<a class="headerlink" href="#then" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Find the cause with the first occurrence, and fix it.</li>
+<li>Find the cause with the sample, and fix it.</li>
 <li>Meanwhile, keep the storm out of the log with a <code>drop</code> rule matching its message, or shorten its
   traces with a <code>trim</code> rule. See <a href="../silence-noise/">Silence noise</a>.</li>
 <li><code>logctl top</code> shows how much the storm wrote. See <a href="../find-disk-usage/">Find where the disk goes</a>.</li>
