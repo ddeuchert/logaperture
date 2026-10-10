@@ -25,7 +25,7 @@ logging on the running server. LogAperture never edits `standalone.xml`.
 
     !!! tip "Or get it from Maven Central"
         From 1.0.0-beta.1 the same files are on Maven Central, group `org.logaperture`: the zip as
-        `logaperture-dist` (type `zip`), the agent as `logaperture-agent` and `logctl` as
+        `logaperture` (type `zip`), the agent as `logaperture-agent` and `logctl` as
         `logaperture-cli`. To fetch the agent in a build script or a container image:
 
         ```sh

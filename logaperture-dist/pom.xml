@@ -25,7 +25,12 @@
     <version>1.0.0-beta.1-SNAPSHOT</version>
   </parent>
 
-  <artifactId>logaperture-dist</artifactId>
+  <!--
+    Published as org.logaperture:logaperture:<version>:zip, so the file Maven Central serves has
+    the same name as the GitHub Release asset, logaperture-<version>.zip. The module directory
+    keeps the -dist name (decision M2, doc/specs/maven-central-publishing.md).
+  -->
+  <artifactId>logaperture</artifactId>
   <packaging>pom</packaging>
 
   <description>
@@ -75,7 +80,7 @@
                 out, not a Maven artifact: attach=false keeps `mvn install` from
                 installing it into the local repo alongside this module's .pom.
                 The release profile attaches it, so it is published to Maven
-                Central as org.logaperture:logaperture-dist:<version>:zip
+                Central as org.logaperture:logaperture:<version>:zip
                 (doc/specs/maven-central-publishing.md).
               -->
               <attach>${logaperture.dist.attach}</attach>

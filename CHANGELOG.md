@@ -10,7 +10,7 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 ### Added
 
 - **Maven Central.** Releases are published to Maven Central under `org.logaperture`: the agent as
-  `logaperture-agent`, `logctl` as `logaperture-cli` and the release zip as `logaperture-dist`
+  `logaperture-agent`, `logctl` as `logaperture-cli` and the release zip as `logaperture`
   (type `zip`), so a build or a container image can fetch them by coordinates (issue #186;
   `doc/specs/maven-central-publishing.md`).
 

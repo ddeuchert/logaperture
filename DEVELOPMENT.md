@@ -24,7 +24,7 @@ apply to everyone.
   to the release commit on `develop`, push `main`, and push a tag
   (`v1.0.0-beta.1`, …). `.github/workflows/release.yml` builds, tests and signs
   the release, publishes it to Maven Central (`org.logaperture`: the parent POM,
-  `logaperture-agent`, `logaperture-cli` and the `logaperture-dist` zip), then
+  `logaperture-agent`, `logaperture-cli` and the `logaperture` zip), then
   publishes a GitHub Release with the zip attached. Publishing to Central is
   permanent; everything before it can be fixed and the tag pushed again.
   Afterwards, bump `develop` to the next `-SNAPSHOT`. How it works:

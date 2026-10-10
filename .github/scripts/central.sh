@@ -50,8 +50,8 @@ expected_files() {
         echo "$a/$v/$a-$v-sources.jar"
         echo "$a/$v/$a-$v-javadoc.jar"
     done
-    echo "logaperture-dist/$v/logaperture-dist-$v.pom"
-    echo "logaperture-dist/$v/logaperture-dist-$v.zip"
+    echo "logaperture/$v/logaperture-$v.pom"
+    echo "logaperture/$v/logaperture-$v.zip"
 }
 
 # Checked before any API call, not inside auth_header: a die in $(auth_header) would only end

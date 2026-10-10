@@ -1,7 +1,7 @@
 # Maven Central publishing
 
-Status: **draft, 2026-10-10. Decisions M1–M12 open for sign-off.** Prototype on
-`feature/186-maven-central`, checked locally end to end except the upload itself.
+Status: **signed off, 2026-10-10** (M1–M12 below). Built on `feature/186-maven-central`, checked
+locally end to end except the upload itself.
 Issue: [#186](https://github.com/ddeuchert/logaperture/issues/186). Needed for `1.0.0-beta.1`
 (Oct 15), the first Maven Central publish (§17.1 "Distribution").
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §17.1, which this amends: the
@@ -14,7 +14,7 @@ Maven artifact).
 After this feature, the user will be able to:
 
 - Fetch the agent, `logctl` or the release zip from Maven Central under `org.logaperture`
-  (`logaperture-agent`, `logaperture-cli`, `logaperture-dist` as a `zip`), for example in a build
+  (`logaperture-agent`, `logaperture-cli`, and `logaperture` as a `zip`), for example in a build
   script or a container image, instead of downloading the zip from GitHub.
 - Check a release's files against GPG signatures published next to them on Maven Central.
 
@@ -33,7 +33,7 @@ Group `org.logaperture`, for each release version (never a `-SNAPSHOT`, M11):
 | `logaperture-parent` | `.pom` | the agent's and `logctl`'s POMs name it as their parent (M1) |
 | `logaperture-agent` | `.jar` (shaded), `-sources.jar`, `-javadoc.jar`, `.pom` | the `-javaagent` jar |
 | `logaperture-cli` | `.jar` (shaded), `-sources.jar`, `-javadoc.jar`, `.pom` | `logctl` |
-| `logaperture-dist` | `.zip`, `.pom` | the release zip, byte-identical to the GitHub Release asset (M2) |
+| `logaperture` | `.zip`, `.pom` | the release zip, byte-identical to the GitHub Release asset and with the same file name (M2) |
 
 Every file has a `.asc` signature and `.md5`/`.sha1` checksums. The agent's and `logctl`'s POMs
 are the shade plugin's dependency-reduced POMs: everything first-party is inside the jar, so they
@@ -45,7 +45,7 @@ fixtures.
 ## How it works
 
 1. **The `release` Maven profile** (parent POM) adds sources and javadoc jars, attaches the
-   release zip to `logaperture-dist`, and signs every artifact with the GPG key in
+   release zip to the `logaperture-dist` module's artifact (`logaperture`, M2), and signs every artifact with the GPG key in
    `MAVEN_GPG_KEY` (BouncyCastle signer: no `gpg` keyring needed).
 2. **`mvn -Prelease deploy -DaltDeploymentRepository=staging::file:target/staging`** writes the
    signed release into a local staging repository, never to Central. Modules that are never
@@ -92,6 +92,8 @@ jar too.
 
 ## Decisions
 
+All signed off 2026-10-10. M2, M8 and M10 were David's calls; the rest are as recommended.
+
 **M1 — Publish the parent POM.** The agent's and `logctl`'s POMs name `logaperture-parent` as
 their parent, and Maven resolves a POM's parent even when it needs nothing from it, so the parent
 must be on Central. §17.1 lists only the agent, `logctl` and the zip. *Alternative:* the flatten
@@ -99,11 +101,17 @@ plugin, to strip the parent from the published POMs. That's one more plugin to i
 shade plugin's dependency-reduced POM, to save publishing one small file. *Recommended:* publish
 it.
 
-**M2 — The zip's coordinates: `org.logaperture:logaperture-dist:<version>:zip`.** It's the
-module that builds the zip, and `-dist` is the usual Maven name for a distribution archive.
-*Alternative:* rename the artifactId to `logaperture`, so the coordinates match the file name
-`logaperture-<version>.zip`. Coordinates are permanent once published, so this is the decision to
-get right before beta.1. *Recommended:* `logaperture-dist`.
+**M2 — The zip's coordinates: `org.logaperture:logaperture:<version>:zip`.** The file Central
+serves is then `logaperture-<version>.zip`, the same name as the GitHub Release asset. Only the
+published `artifactId` is `logaperture`. The module directory stays `logaperture-dist`, so the
+repo layout and `-pl logaperture-dist` don't change. There is no single convention for this:
+WildFly publishes `wildfly-dist` and Keycloak `keycloak-quarkus-dist`, but Apache Maven publishes
+`apache-maven` (classifier `bin`) and Jetty `jetty-home`. Nothing else is expected to want the
+plain name: a BOM or a Spring Boot starter would have its own suffix. The cost is that a
+`<dependency>` on `org.logaperture:logaperture` without `<type>zip</type>` fails, looking for a
+jar. That's a loud failure, and the guide gives the type. No classifier: there is only one
+archive. *Rejected:* `logaperture-dist`. Coordinates are permanent once published. **Decided
+(David).**
 
 **M3 — Upload through the Publisher API with a script, not Sonatype's
 `central-publishing-maven-plugin`.** Tried first. Its `skipPublishing` (0.9.0+) skips each module
@@ -135,17 +143,18 @@ fixed and the tag pushed again, since nothing permanent has happened. *Recommend
 **M8 — No manual approval before the Central publish.** Pushing a release tag is already the
 deliberate act, and the dry run comes before it. *Alternative:* a GitHub environment with a
 required reviewer on the publish step: one more click per release, but a last look at a validated
-deployment before it becomes permanent. *Recommended:* no gate. Revisit if a second maintainer
-joins.
+deployment before it becomes permanent. **Decided (David): no gate.** Revisit the first time
+a `x.y.0` has to be followed quickly by an `x.y.1`, or if a second maintainer joins.
 
 **M9 — The dry run is manual and drops only what validated.** A `FAILED` deployment is left on the
 Portal's Deployments page with its errors, and also printed in the workflow log, because Central's
 guidance is to keep failed deployments if support is needed. Drop it there by hand.
 *Recommended:* as built.
 
-**M10 — No separate developer email in the POM.** `developers` names David Deuchert with the
-GitHub profile URL. Central requires a name; an email published there is scraped. *Alternative:*
-add one. *Recommended:* none.
+**M10 — No developer email in the POM.** `developers` names David Deuchert with the GitHub
+profile URL, and the POM's `url` is logaperture.org, which leads to the GitHub project. Anyone who
+needs to reach the project can open an issue there. Central requires a name, and an email
+published there gets scraped. **Decided (David): no email.**
 
 **M11 — No snapshots on Central.** The Portal can host snapshots, but nothing consumes them, and
 they would need the namespace's snapshot switch turned on. *Recommended:* none.
