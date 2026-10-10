@@ -42,6 +42,8 @@
   </description>
 
   <properties>
+    <!-- A test fixture, never published (doc/specs/maven-central-publishing.md). -->
+    <maven.deploy.skip>true</maven.deploy.skip>
     <!-- Servlet 4.0 API — WildFly 26.1.3 is javax.servlet, not jakarta. -->
     <javax.servlet-api.version>4.0.1</javax.servlet-api.version>
     <!--

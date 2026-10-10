@@ -33,6 +33,11 @@
     configuration-change hook. See doc/specs/wildfly-support.md Slice 3.
   </description>
 
+  <properties>
+    <!-- Built into the agent or logctl jar, never published on its own (doc/specs/maven-central-publishing.md). -->
+    <maven.deploy.skip>true</maven.deploy.skip>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>org.logaperture</groupId>

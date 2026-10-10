@@ -29,7 +29,8 @@
   <packaging>pom</packaging>
 
   <description>
-    The hand-off evaluation bundle — NOT a product artifact. `mvn package`
+    The release zip: published to Maven Central as this module's zip
+    artifact by the release profile (doc/specs/maven-central-publishing.md). `mvn package`
     assembles target/logaperture-${project.version}.zip containing the agent
     jar, the logctl CLI (jar + launchers), a WildFly install doc, and the
     licence, for someone to try LogAperture in a PRE-PRODUCTION WildFly.
@@ -70,14 +71,14 @@
             <configuration>
               <appendAssemblyId>false</appendAssemblyId>
               <!--
-                The zip is a build output to hand out, not a Maven artifact.
-                attach=false keeps `mvn install` from installing it into the
-                local repo alongside this module's .pom (and, on older
-                assembly-plugin versions, from replacing the .pom file itself
-                because appendAssemblyId is false). Maven Central / deploy is
-                deferred anyway.
+                Outside the release profile the zip is a build output to hand
+                out, not a Maven artifact: attach=false keeps `mvn install` from
+                installing it into the local repo alongside this module's .pom.
+                The release profile attaches it, so it is published to Maven
+                Central as org.logaperture:logaperture-dist:<version>:zip
+                (doc/specs/maven-central-publishing.md).
               -->
-              <attach>false</attach>
+              <attach>${logaperture.dist.attach}</attach>
               <descriptors>
                 <descriptor>src/assembly/dist.xml</descriptor>
               </descriptors>

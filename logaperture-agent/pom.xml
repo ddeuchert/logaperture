@@ -82,6 +82,12 @@
   </dependencies>
 
   <build>
+    <!--
+      Here, not in the shade plugin's own finalName: a shade finalName that differs from the
+      build's leaves the thin jar as the module's artifact, and that is what Maven Central
+      would get (doc/specs/maven-central-publishing.md).
+    -->
+    <finalName>logaperture-agent</finalName>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -93,7 +99,6 @@
               <goal>shade</goal>
             </goals>
             <configuration>
-              <finalName>logaperture-agent</finalName>
               <!--
                 Belt-and-suspenders. logback-classic/slf4j-api are test-scope
                 here and jboss-logmanager (+ its jboss-modules / smallrye

@@ -37,6 +37,11 @@
     doc/specs/wildfly-support.md Slice 3.
   </description>
 
+  <properties>
+    <!-- A test fixture, never published (doc/specs/maven-central-publishing.md). -->
+    <maven.deploy.skip>true</maven.deploy.skip>
+  </properties>
+
   <dependencies>
     <!--
       Not used by the test code (it drives the pre-built agent + logctl jars

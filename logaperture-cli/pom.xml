@@ -56,6 +56,12 @@
   </dependencies>
 
   <build>
+    <!--
+      Here, not in the shade plugin's own finalName: a shade finalName that differs from the
+      build's leaves the thin jar as the module's artifact, and that is what Maven Central
+      would get (doc/specs/maven-central-publishing.md).
+    -->
+    <finalName>logaperture-cli</finalName>
     <plugins>
       <!--
         The CLI is a client of a running agent, never a peer of it
@@ -106,7 +112,6 @@
               <goal>shade</goal>
             </goals>
             <configuration>
-              <finalName>logaperture-cli</finalName>
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <manifestEntries>

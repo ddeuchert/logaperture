@@ -16,11 +16,19 @@ apply to everyone.
   `develop` to the commit that gets tagged. Between releases it does not move,
   so a clone, the landing page, and tooling always show the last shipped state
   (not in-progress work on `develop`). It is the default branch.
-- **Cutting a release:** fast-forward `main` to the release commit on `develop`,
-  push `main`, then push a tag (`v0.1.0-alpha.1`, `v0.1.0-alpha.2`, …).
-  `.github/workflows/release.yml` builds the evaluation bundle and publishes a
-  GitHub prerelease with the zip attached. Afterwards, bump `develop` to the
-  next `-SNAPSHOT`.
+- **Cutting a release:** first run the **Maven Central dry run** (Actions →
+  *Maven Central dry run* → Run workflow, on `develop`; or add the label
+  `central dry run` to a pull request): it builds and signs the
+  release version, uploads it to the Central Portal, waits for Central to
+  validate it, then drops it, so nothing is published. Then fast-forward `main`
+  to the release commit on `develop`, push `main`, and push a tag
+  (`v1.0.0-beta.1`, …). `.github/workflows/release.yml` builds, tests and signs
+  the release, publishes it to Maven Central (`org.logaperture`: the parent POM,
+  `logaperture-agent`, `logaperture-cli` and the `logaperture-dist` zip), then
+  publishes a GitHub Release with the zip attached. Publishing to Central is
+  permanent; everything before it can be fixed and the tag pushed again.
+  Afterwards, bump `develop` to the next `-SNAPSHOT`. How it works:
+  [doc/specs/maven-central-publishing.md](doc/specs/maven-central-publishing.md).
 
 ### Versioning ([SemVer](https://semver.org)) and what forces a major bump
 

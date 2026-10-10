@@ -9,6 +9,11 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Added
 
+- **Maven Central.** Releases are published to Maven Central under `org.logaperture`: the agent as
+  `logaperture-agent`, `logctl` as `logaperture-cli` and the release zip as `logaperture-dist`
+  (type `zip`), so a build or a container image can fetch them by coordinates (issue #186;
+  `doc/specs/maven-central-publishing.md`).
+
 - **`logctl help <command>`**, and `--help` after any command (`logctl set logger --help`), explain
   one command: its forms, what it does, its options, and examples. `logctl help set` lists the
   `set` commands to pick from. The guide's command reference (`reference/logctl.md`) is generated
