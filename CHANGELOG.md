@@ -9,6 +9,22 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Added
 
+- **`logctl help <command>`**, and `--help` after any command (`logctl set logger --help`), explain
+  one command: its forms, what it does, its options, and examples. `logctl help set` lists the
+  `set` commands to pick from. The guide's command reference (`reference/logctl.md`) is generated
+  from the same text (issue #159; `doc/specs/user-documentation.md` slice 2).
+
+- **The user guide**, at https://logaperture.org/ and in the release zip's `docs/` folder (open
+  `docs/index.html`; it works with no network access). Written so far: Home with what 1.0
+  supports, installing on WildFly and on a plain JVM, a Quick start, Configuration layers, and the
+  `logctl` command reference, and reference pages for agent options and `-Dlogaperture.*`
+  properties, `doctor` checks, `--json` output, the vendor defaults and recipe file formats, and
+  the audit log; concept pages on tiers and expiry, rules, security and agent order; vendor
+  defaults and recipes for library authors; how-to pages for raising a level, finding a logger,
+  silencing noise, finding disk usage, log storms, undoing changes, several JVMs, scripting and
+  recipes; and troubleshooting. The overhead page follows with the published measurements (issue #159;
+  `doc/specs/user-documentation.md`).
+
 - **`logctl enable storms` and `logctl disable storms`** turn storm detection on and off in a
   running JVM, in every context. With no tier that lasts until the JVM stops; `for 30m` switches it
   to the other position after 30 minutes, and `sticky` keeps it across restarts, ahead of the agent
@@ -53,6 +69,15 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   `key: |` block text (issue #92). `logctl export vendor-defaults` carries both sections over.
 
 ### Changed
+
+- **The release zip's `docs/INSTALL-wildfly.md` is replaced by the user guide** in `docs/`
+  (`docs/get-started/install-wildfly.html`). `doc/wildfly-test-drive.md` became the guide's
+  Quick start (issue #159).
+
+- **`logctl --help` is a one-screen overview**: every command form, the options every command
+  takes, and how tiers work. The per-command options and explanations moved to `logctl help
+  <command>`. A usage error now shows only the forms of the command you typed, not the whole help
+  (issue #159).
 
 - **Storm detection is disabled by default.** Through alpha.3 it was always on, and it added a
   measurable cost to every log call that reached a handler (#150). Start the agent with

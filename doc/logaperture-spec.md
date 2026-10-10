@@ -1251,7 +1251,7 @@ The M0–M6 plan above stays the long-term map. It is too much to build before a
 
 **Distribution.** Maven Central under `org.logaperture` from beta 1 (namespace verification by DNS on `logaperture.org` started 2026-09-27), publishing only `logaperture-agent`, `logaperture-cli` and the release zip. For 1.0: GitHub Releases with checksums, GPG signatures, a CycloneDX SBOM, build-provenance attestation, a `SECURITY.md`, and a small container image holding the agent jar and `logctl` for Kubernetes init containers. SDKMAN and a Homebrew tap follow in a 1.0.x. JBang is not used: it delivers only `logctl`, which needs the agent already on `-javaagent`. It becomes worthwhile only if `logctl` gains dynamic attach, which JEP 451 restricts. A WildFly Galleon feature pack is later, on request.
 
-**User documentation** is a separate tree from the design docs: Markdown in `guide/`, built with MkDocs Material and versioned with `mike` (one version per minor, plus `dev` from `develop`, with `latest` aliased), published on GitHub Pages at `logaperture.org`. The rendered HTML also ships inside the release zip for sites with no network path out. The command reference is generated from `logctl`'s own help. `USER_GUIDE_NOTES.md` is absorbed into it. Once `guide/` exists, a PR that changes user-visible behaviour updates it in the same PR.
+**User documentation** is a separate tree from the design docs: Markdown in `guide/`, built with MkDocs Material and versioned with `mike` (one version per minor, plus `dev` from `develop`, with `latest` aliased), published on GitHub Pages at `logaperture.org`. The rendered HTML also ships inside the release zip for sites with no network path out. The command reference is generated from `logctl`'s own help. `USER_GUIDE_NOTES.md` is absorbed into it. Once `guide/` exists, a PR that changes user-visible behaviour updates it in the same PR. Spec: [`doc/specs/user-documentation.md`](specs/user-documentation.md), signed off 2026-10-08; tracked as [#159](https://github.com/ddeuchert/logaperture/issues/159).
 
 **Launch.** At beta 1, a quiet call for testers in the WildFly community (Zulip `#wildfly-users`, the Google Group) and among the pilot's peers. At 1.0, a public announcement: a foojay.io article, Show HN, r/java, and suggestions to the InfoQ Java News Roundup and JetBrains' Java Annotated Monthly.
 
@@ -1585,8 +1585,8 @@ Separately, **document the `-javaagent` ordering constraints**: agents listed
 before LogAperture run their `premain` first and are out of reach, and ordering
 LogAperture first helps (before #87's fix, it turned a rare startup failure into a
 certain one on the spike's launch, through the resolver's early lookup, not the
-ordering itself). The doc home is `USER_GUIDE_NOTES.md` for now (moving into the
-user guide once one exists) and `logctl doctor` output, which could flag agents
+ordering itself). The doc home is the user guide's
+[Agent order](../guide/concepts/agent-order.md) page and `logctl doctor` output, which could flag agents
 listed ahead of ours ([#85](https://github.com/ddeuchert/logaperture/issues/85)) —
 not this section.
 

@@ -94,13 +94,18 @@ public final class Main {
             err.println(e.getMessage());
             if (e.exitCode() == CliError.USAGE) {
                 err.println();
-                err.print(HelpText.usage());
+                err.print(HelpText.afterUsageError(Parser.commandWords(args)));
             }
             return e.exitCode();
         }
 
         if (invocation.help()) {
-            out.print(HelpText.usage());
+            HelpText.Answer answer = HelpText.help(invocation.helpWords());
+            if (!answer.known()) {
+                err.print(answer.text());
+                return CliError.USAGE;
+            }
+            out.print(answer.text());
             return CliError.OK;
         }
         if (invocation.version()) {

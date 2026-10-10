@@ -1,0 +1,133 @@
+# Copyright 2026 David Deuchert
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# The LogAperture user guide (doc/specs/user-documentation.md). Pages live in guide/; the
+# design docs in doc/ are not part of the site.
+#
+#   Preview:   mkdocs serve
+#   Zip copy:  OFFLINE=true mkdocs build     (opens from disk, no network requests)
+#
+# DOCS_VERSION names the version in the page footer; DOCS_PRERELEASE, when set, shows a
+# pre-release banner naming it (e.g. 1.0.0-beta.1). The docs and release workflows set both.
+
+site_name: LogAperture
+site_description: Runtime logging control for the JVM
+site_url: https://logaperture.org/
+repo_url: https://github.com/ddeuchert/logaperture
+repo_name: ddeuchert/logaperture
+edit_uri: edit/develop/guide/
+copyright: Copyright 2026 David Deuchert · Apache License 2.0
+
+docs_dir: guide
+site_dir: site
+
+theme:
+  name: material
+  custom_dir: guide-overrides
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue grey
+      accent: deep orange
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue grey
+      accent: deep orange
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - navigation.footer
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search
+  - privacy:
+      enabled: !ENV [OFFLINE, false]
+  - offline:
+      enabled: !ENV [OFFLINE, false]
+
+extra:
+  version:
+    provider: mike
+  docs_version: !ENV [DOCS_VERSION, dev]
+  prerelease: !ENV [DOCS_PRERELEASE, ""]
+  generator: false
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+
+nav:
+  - Home: index.md
+  - Get started:
+      - Install on WildFly: get-started/install-wildfly.md
+      - Install on a plain JVM: get-started/install-plain-jvm.md
+      - Quick start: get-started/quick-start.md
+  - How-to:
+      - Raise a log level: how-to/raise-a-level.md
+      - Find a logger: how-to/find-a-logger.md
+      - Silence noise: how-to/silence-noise.md
+      - Find where the disk goes: how-to/find-disk-usage.md
+      - Log storms: how-to/storms.md
+      - Undo changes: how-to/undo-changes.md
+      - Use recipes: how-to/recipes.md
+      - Work with several JVMs: how-to/several-jvms.md
+      - Script logctl: how-to/scripting.md
+  - Concepts:
+      - Configuration layers: concepts/configuration-layers.md
+      - Tiers and expiry: concepts/tiers-and-expiry.md
+      - Rules: concepts/rules.md
+      - Security: concepts/security.md
+      - Agent order: concepts/agent-order.md
+  - Vendors:
+      - Vendor defaults: vendors/vendor-defaults.md
+      - Recipes for library authors: vendors/library-recipes.md
+  - Reference:
+      - logctl: reference/logctl.md
+      - Agent options and properties: reference/agent-options.md
+      - JSON output: reference/json-output.md
+      - File formats: reference/file-formats.md
+      - Doctor checks: reference/doctor-checks.md
+      - Audit log: reference/audit-log.md
+  - Troubleshooting: troubleshooting.md
+  - Overhead: overhead.md
+  - Release notes: release-notes.md

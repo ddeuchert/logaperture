@@ -34,6 +34,27 @@ If a feature's behavior diverges from its spec during implementation,
 update the spec before or alongside the code change that caused the
 divergence — don't let them drift apart.
 
+### User-visible changes update the guide in the same PR
+
+The user guide lives in `guide/` and is published at logaperture.org
+([`doc/specs/user-documentation.md`](doc/specs/user-documentation.md)). A PR that changes
+anything a user can see — a command, an option, output, a default, an agent argument or
+`-Dlogaperture.*` property, a file format — updates the guide pages it affects **in the same
+PR**, the same way the spec lands with the code. A feature spec's Functional summary names the
+guide pages the feature changes, so the reviewer knows what to expect in the diff.
+
+Three pages are checked by tests, so these fail the build rather than drifting:
+
+- `guide/reference/logctl.md` is generated from `logctl`'s help (`HelpTopics.java`). After
+  changing the help, regenerate it:
+  `mvn -pl logaperture-cli test -Dtest=HelpReferenceTest -Dlogaperture.help.regenerate=true`.
+- `guide/reference/agent-options.md` and `guide/reference/doctor-checks.md` are hand-written;
+  `GuideReferenceDriftTest` fails when a property, agent argument or `doctor` check id in the
+  code is missing from them, or one on the page no longer exists.
+
+Example output in the guide is captured from a real run (the WildFly dev environment, or a plain
+JVM), not written from memory.
+
 ### Label the tracking issue when the feature lands on develop
 
 A feature branch is named for the issue it implements (`feature/<issue>-<slug>`) and its PR

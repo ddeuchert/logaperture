@@ -232,7 +232,8 @@ final class Parser {
         }
 
         if (help) {
-            return Invocation.forHelp();
+            // --help wins over everything else on the line: 'set logger --help' explains, never runs or asks.
+            return Invocation.forHelp(positionals);
         }
         if (version) {
             return Invocation.forVersion();
@@ -243,6 +244,10 @@ final class Parser {
 
         String command = positionals.get(0);
         List<String> rest = positionals.subList(1, positionals.size());
+
+        if (command.equals("help")) {
+            return Invocation.forHelp(rest);
+        }
 
         if (RETIRED_LEVEL_VERBS.contains(command)) {
             String target = rest.isEmpty() ? "<target>" : rest.get(0);
@@ -682,7 +687,7 @@ final class Parser {
             default -> throw usage("Unknown command '" + command + "'.");
         };
 
-        return new Invocation(false, false, debug, pid, json || yes, resolved);
+        return new Invocation(false, false, debug, pid, json || yes, resolved, List.of());
     }
 
     static final String PROMPT_HINT = "Run this in a terminal to be prompted for the missing parts.";
@@ -770,6 +775,28 @@ final class Parser {
             throw usage("'--below " + token + "' leaves nothing more verbose to drop.");
         }
         return Level.values()[level.ordinal() - 1].name();
+    }
+
+    /** The options that take a value: the word after one is its value, not a command word. */
+    static final Set<String> VALUE_OPTIONS = Set.of("--out", "--frames", "--message-contains",
+            "--message-contains-ignore-case", "--throwable", "--throwable-message-contains", "--below",
+            "--sample-full", "--pid", "--reason", "--from", "--limit");
+
+    /**
+     * The command words of a command line: everything that isn't an option or an option's value.
+     * Used to point a usage error at the right help topic (doc/specs/user-documentation.md H4).
+     */
+    static List<String> commandWords(String[] argv) {
+        List<String> words = new ArrayList<>();
+        for (int i = 0; i < argv.length; i++) {
+            String arg = argv[i];
+            if (VALUE_OPTIONS.contains(arg)) {
+                i++;
+            } else if (!arg.startsWith("-")) {
+                words.add(arg);
+            }
+        }
+        return words;
     }
 
     private static CliError usage(String message) {

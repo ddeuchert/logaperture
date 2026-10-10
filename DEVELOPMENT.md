@@ -48,7 +48,7 @@ the same build are a supported pair.
 | **JDK 17** | the whole build (`maven.compiler.release` is pinned to 17); `logctl` needs a JDK, not a JRE (`com.sun.tools.attach`) |
 | **Maven 3.9+** | `mvn` on your `PATH` (no wrapper is committed) |
 | **Docker** | the real-WildFly integration test, and the `dev/wildfly` environment |
-| **Python 3** | `dev/wildfly/wildflyctl.py` (standard library only — no venv) |
+| **Python 3** | `dev/wildfly/wildflyctl.py` (standard library only — no venv); previewing the user guide (a venv, below) |
 
 ## Build and test
 
@@ -64,6 +64,35 @@ mvn verify        # full reactor: compile, unit tests, integration tests
   without Docker; CI runs it on an ubuntu runner.
 - Work on one module: `mvn -pl <module> -am test` (`-am` also builds its
   dependencies).
+
+## User guide
+
+The user guide published at [logaperture.org](https://logaperture.org/) is Markdown in `guide/`,
+built with MkDocs Material from `mkdocs.yml` ([spec](doc/specs/user-documentation.md)). The
+design docs in `doc/` are not part of it. The Maven build doesn't need Python; previewing the
+guide does:
+
+```sh
+python3 -m venv .venv-docs
+.venv-docs/bin/pip install -r requirements-docs.txt
+.venv-docs/bin/mkdocs serve          # http://127.0.0.1:8000, reloads on save
+.venv-docs/bin/mkdocs build --strict # what CI runs: fails on broken links
+```
+
+Run `OFFLINE=true .venv-docs/bin/mkdocs build` before `mvn package` to get the copy the release
+zip ships: the next `logaperture-dist` build puts `site/` into the zip's `docs/` folder. Without
+`site/`, the zip still builds, with a `docs/README.md` pointing at the website.
+
+The command reference, `guide/reference/logctl.md`, is generated from `logctl`'s help text in
+`HelpTopics.java` and committed. After changing the help, regenerate it, or `HelpReferenceTest`
+fails the build:
+
+```sh
+mvn -pl logaperture-cli test -Dtest=HelpReferenceTest -Dlogaperture.help.regenerate=true
+```
+
+`.github/workflows/docs.yml` publishes the guide: `dev` on every push to `develop` that touches it,
+and `<major>.<minor>` (aliased `latest`) on a release tag.
 
 ## Repository layout
 
@@ -89,18 +118,14 @@ no restart, nothing written to any config file.
 
 ```sh
 mvn -q -pl logaperture-cli -am package -DskipTests     # build the CLI jar
-
-logaperture-cli/bin/logctl list loggers [filter] [--show-all]  # list loggers + effective levels
-logaperture-cli/bin/logctl status                      # active overrides
-logaperture-cli/bin/logctl set logger <logger> <level> [tier]
-logaperture-cli/bin/logctl set handler <name> <level>  # also: set handler <name> AUTO
-logaperture-cli/bin/logctl reset logger <logger>       # also: reset loggers | reset handler <name> | reset handlers
+logaperture-cli/bin/logctl --help                      # every command, one screen
+logaperture-cli/bin/logctl help set logger             # one command in full
 ```
 
-`tier` is `session` (until the JVM exits), `for <n>s|m|h|d` (auto-reverts), or
-`sticky` (survives a restart). Omit it and you get `for 4h`. Options:
-`--pid <n>` (when discovery is ambiguous), `--reason "<text>"`,
-`--include-children`, `--json`.
+Using `logctl` is covered in the [user guide](https://logaperture.org/): installing on a
+[plain JVM](guide/get-started/install-plain-jvm.md), the
+[quick start](guide/get-started/quick-start.md), and the generated
+[command reference](guide/reference/logctl.md).
 
 `logctl` finds the target JVM on its own when exactly one is running with the
 agent attached — it filters on the `logaperture.version` system property the

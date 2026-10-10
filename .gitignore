@@ -54,3 +54,8 @@ logctl-wildfly
 
 # git-side's own bookkeeping file (lists tracked paths) - not part of this repo
 .side-tracked
+
+# User guide build output (mkdocs build), its offline-asset cache, and a local virtualenv for it
+site/
+.venv-docs/
+.cache/
