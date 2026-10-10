@@ -2286,6 +2286,9 @@ reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>.</p>
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
+<li><strong><code>logctl</code> on Windows <code>cmd</code> no longer prints <code>?</code> for "no value".</strong> A console whose code page
+  can't show <code>—</code>, <code>→</code> or <code>…</code> now gets <code>-</code>, <code>-&gt;</code> and <code>...</code>, with table columns still aligned
+  (issue #190).</li>
 <li><strong><code>DEFAULT_HANDLERS</code> picks WildFly's console handler again.</strong> WildFly's console handlers were
   never recognized as consoles, so when the root logger had both <code>CONSOLE</code> and <code>FILE</code>, the
   automatic pick could land on <code>FILE</code>, depending on attachment order and whether handler names had

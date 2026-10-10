@@ -1703,6 +1703,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#logctl-output-shows-where-the-guide-shows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        logctl output shows - where the guide shows —
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#seeing-more-of-what-logaperture-does" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1901,6 +1912,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#logctl-output-shows-where-the-guide-shows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        logctl output shows - where the guide shows —
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#seeing-more-of-what-logaperture-does" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2005,6 +2027,11 @@ command that fixes it. See <a href="../how-to/raise-a-level/#when-raising-a-logg
 <h2 id="the-vendor-defaults-file-isnt-applied">The vendor defaults file isn't applied<a class="headerlink" href="#the-vendor-defaults-file-isnt-applied" title="Permanent link">&para;</a></h2>
 <p>Run <code>logctl doctor</code>. If the file has an error, none of it applies, and <code>vendor-defaults.file</code> lists
 every error with its line number. See <a href="../reference/doctor-checks/">Doctor checks</a>.</p>
+<h2 id="logctl-output-shows-where-the-guide-shows"><code>logctl</code> output shows <code>-</code> where the guide shows <code>—</code><a class="headerlink" href="#logctl-output-shows-where-the-guide-shows" title="Permanent link">&para;</a></h2>
+<p><code>logctl</code> prints <code>—</code> for "no value", and <code>→</code> and <code>…</code> in some messages. A console that can't show
+them, such as Windows <code>cmd</code> with its default code page, gets <code>-</code>, <code>-&gt;</code> and <code>...</code> instead. Nothing
+is missing; it's the same output. To see the originals in <code>cmd</code> with JDK 18 or later, switch the console to UTF-8 with
+<code>chcp 65001</code> before running <code>logctl</code>.</p>
 <h2 id="seeing-more-of-what-logaperture-does">Seeing more of what LogAperture does<a class="headerlink" href="#seeing-more-of-what-logaperture-does" title="Permanent link">&para;</a></h2>
 <p>LogAperture writes one line at startup, then only warnings and errors. For more, start the JVM with
 <code>-Dlogaperture.diagnostics.level=INFO</code>, or <code>DEBUG</code>. LogAperture's lines start with <code>[logaperture]</code>.</p>
