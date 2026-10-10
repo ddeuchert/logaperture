@@ -42,13 +42,15 @@ public final class StormData {
     private final String endedAt;
     private final long eventCount;
     private final String firstOccurrence;
+    private final long sampleEventNumber;
     private final String context;
 
     @ConstructorProperties({"loggerName", "level", "throwableClass", "normalizedMessage", "topFrames", "status",
-            "firstEventAt", "lastEventAt", "endedAt", "eventCount", "firstOccurrence", "context"})
+            "firstEventAt", "lastEventAt", "endedAt", "eventCount", "firstOccurrence", "sampleEventNumber",
+            "context"})
     public StormData(String loggerName, String level, String throwableClass, String normalizedMessage,
             List<String> topFrames, String status, String firstEventAt, String lastEventAt, String endedAt,
-            long eventCount, String firstOccurrence, String context) {
+            long eventCount, String firstOccurrence, long sampleEventNumber, String context) {
         this.loggerName = loggerName;
         this.level = level;
         this.throwableClass = throwableClass;
@@ -60,7 +62,18 @@ public final class StormData {
         this.endedAt = endedAt;
         this.eventCount = eventCount;
         this.firstOccurrence = firstOccurrence;
+        this.sampleEventNumber = sampleEventNumber;
         this.context = context;
+    }
+
+    /** The shape before issue #169: the sample's event number isn't known ({@code 0}). */
+    @ConstructorProperties({"loggerName", "level", "throwableClass", "normalizedMessage", "topFrames", "status",
+            "firstEventAt", "lastEventAt", "endedAt", "eventCount", "firstOccurrence", "context"})
+    public StormData(String loggerName, String level, String throwableClass, String normalizedMessage,
+            List<String> topFrames, String status, String firstEventAt, String lastEventAt, String endedAt,
+            long eventCount, String firstOccurrence, String context) {
+        this(loggerName, level, throwableClass, normalizedMessage, topFrames, status, firstEventAt, lastEventAt,
+                endedAt, eventCount, firstOccurrence, 0, context);
     }
 
     public static StormData from(Storm storm) {
@@ -76,6 +89,7 @@ public final class StormData {
                 storm.endedAt() == null ? null : storm.endedAt().toString(),
                 storm.eventCount(),
                 storm.firstOccurrence(),
+                storm.sampleEventNumber(),
                 storm.context());
     }
 
@@ -121,6 +135,11 @@ public final class StormData {
 
     public String getFirstOccurrence() {
         return firstOccurrence;
+    }
+
+    /** Which event of the storm {@link #getFirstOccurrence()} is; {@code 0} when not known. */
+    public long getSampleEventNumber() {
+        return sampleEventNumber;
     }
 
     public String getContext() {

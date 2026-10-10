@@ -295,8 +295,8 @@ final class HelpTopics {
                             "logctl enable storms [session | for <duration> | sticky]",
                             "logctl disable storms [session | for <duration> | sticky]"),
                     List.of("A log storm is a burst of near-identical events from one logger. `storms` lists the "
-                                    + "ones storm detection has seen, with the first occurrence kept in full. It "
-                                    + "only reports: nothing is suppressed.",
+                                    + "ones storm detection has seen, each with a sample: the event that made it a "
+                                    + "storm, kept in full. It only reports: nothing is suppressed.",
                             "Storm detection starts disabled. `enable storms` turns it on and `disable storms` "
                                     + "turns it off, in every context. With no tier that lasts until the JVM stops, "
                                     + "not `for 4h` as for `set`. `for 30m` switches it back after 30 minutes, and "

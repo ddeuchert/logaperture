@@ -16,6 +16,16 @@ started with `--storm-detection=on`, and `logctl enable|disable storms` sets it 
 gate-stage observer below is still installed at context install in both positions and does nothing
 while disabled. What a change does to tracked storms and to `measurementStartedAt`, and how every
 surface reports it: [`storm-detection-toggle.md`](storm-detection-toggle.md).
+**Amendment (issue [#169](https://github.com/ddeuchert/logaperture/issues/169)), signed off
+2026-10-09:** what this spec called the "first occurrence" is the event that *triggered*
+detection — the threshold-crossing one — not the first event of the burst (Decision #6 always
+captured it there; the label promised more than that). `logctl storms` now calls it the
+**sample** and says which event of the storm it is (`sampleEventNumber`); keeping the burst's
+true first event would cost a render, or a retained record, on every burst start, which for a
+rarely logged message is every event. The sample's message is rendered with its parameters
+filled in (`/x1000`, not the template's `%s`). The `firstOccurrence` field, JMX attribute and
+`-Dlogaperture.storm.firstOccurrenceBytes` keep their names, so `--json` consumers and
+existing configuration are unaffected.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §7.1 (automatic storm
 collapse — this slice is its report-only half), §4.2 (two-stage pipeline — gate stage),
 §9.3 (capability model — `view`), §9.6 (suppression must never be silent — the reason
@@ -38,8 +48,9 @@ After this feature, the user will be able to:
   short window — with, for each: which logger, the exception type (if any) and a normalized
   form of the message, when it started, how many events it has produced, its current rate,
   and whether it is still going or has ended (and when).
-- See the **first occurrence** of each storm in full — the original message and stack trace —
-  so the diagnostically useful event is in front of them without opening the log file.
+- See a **sample** of each storm in full — the event that triggered detection, with its
+  message as logged (values filled in) and its stack trace, and which event of the storm it
+  was — so the diagnostically useful event is in front of them without opening the log file.
 - Limit the listing to the worst N storms (`--limit`), and get the same data as `--json` for
   scripting or a monitoring check.
 - Trust that running it changed nothing: no event was suppressed, dropped, trimmed, or
@@ -85,8 +96,10 @@ modifies behaviour.**
 - A per-fingerprint **tally counter and two-state machine** (`ONGOING` / `ENDED`): a plain
   count that resets on a gap, crosses a threshold to declare a storm, and goes quiet to end
   it — see "Detection algorithm". No per-event timestamp history; no background timer.
-- **First-occurrence retention** — the rendered message and stack trace of the first event
-  of each tracked storm, size-capped, captured lazily on first reaching storm state.
+- **Sample retention** — the rendered message (parameters filled in) and stack trace of the
+  event that took each tracked storm into storm state, and its event number within the storm,
+  size-capped, captured lazily at that moment (#169: not the burst's first event — see the
+  amendment above). Kept under the `firstOccurrence` name on the wire.
 - `--limit N` worst-first truncation; `--json`; `context` stamping when the result spans more
   than one context (mirrors `doctor`/`top`).
 - Bounded memory (§16.7): a lock-striped `ConcurrentHashMap` of tracked fingerprints
@@ -133,8 +146,8 @@ are the only ones that apply.
 $ logctl storms
 [ONGOING]  com.acme.batch.Worker  org.acme.SlotException  "no capacity"
            started 2026-09-05T03:14:02Z (27m ago) — 3,104,772 events — ~114,000/min
-           first occurrence:
-             03:14:02 ERROR [com.acme.batch.Worker] Unable to reserve slot
+           sample (event #1,000, when the storm was detected):
+             03:14:02 ERROR [com.acme.batch.Worker] Unable to reserve slot 7731
                  org.acme.SlotException: no capacity
                      at com.acme.batch.Worker.reserve(Worker.java:88)
                      ... 41 more
@@ -179,7 +192,10 @@ Storm {
     lastEventAt: Instant
     endedAt: Instant?                // set iff status == ENDED
     eventCount: long                 // total matching events since firstEventAt
-    firstOccurrence: String?         // rendered first message + trace, size-capped (Decision #6)
+    firstOccurrence: String?         // the sample: rendered message + trace of the event that
+                                     //   engaged the storm, size-capped (Decision #6, #169)
+    sampleEventNumber: long          // which event of the storm the sample is (the threshold);
+                                     //   0 from an agent older than #169
     context: String?                 // owning context's stable key, or null
 }
 
@@ -218,7 +234,7 @@ On each matching event:
 2. **Otherwise** `count++`. If `count` reaches the threshold (default 1,000) and this
    fingerprint is not already a storm, the state flips to `ONGOING` and `firstEventAt` is
    recorded *inside* the per-entry critical section; the one sampled `getStackTrace()` and
-   the first-occurrence render happen *after* the lock is released and are published back with
+   the render of this event as the storm's sample happen *after* the lock is released and are published back with
    a short second write (see "Bounded state"), so the locked section stays arithmetic-only.
 3. Set `lastSeenNanos = now`; advance `lastEventAt` and the lifetime `eventCount` (kept for
    the report, separate from `count`).
@@ -228,7 +244,7 @@ A storm becomes `ENDED` when a fingerprint is next examined — its own next eve
 `endedAt` is `lastEventAt`. No background timer, no sweeper thread.
 
 A fingerprint that reaches the threshold again *after* its storm has `ENDED` becomes a **new**
-storm, with its own `firstEventAt` and first occurrence; the ended entry stays in history
+storm, with its own `firstEventAt` and sample; the ended entry stays in history
 until evicted (see "Bounded state").
 
 **The rate shown in the report is not `count`.** It is the lifetime average
@@ -311,7 +327,13 @@ interface Details<S> {
 The adapter holds one `Details` instance, never one per event. The detector calls it only
 when this event engages a storm, during the same `observe` call, so `source` is still the live
 record; that keeps the "at most once per fingerprint, outside the entry lock" contract above.
-The JUL filter uses this method. `observe(StormObservation)` stays, and the new method's
+The JUL filter uses this method. Its `firstOccurrence` renders the message with its
+parameters filled in (#169): `ExtLogRecord.getFormattedMessage()` for a JBoss LogManager record,
+reached by reflection (this adapter has no compile-time JBoss LogManager dependency, the same
+reason as `ExtLogRecordCopier`), since JBoss Logging's `debugf`/`infof` templates are printf
+style and JUL's own `Formatter.formatMessage` only substitutes `{0}`; `formatMessage` for any
+other record. Once per storm, so the reflection is never on the per-event path.
+`observe(StormObservation)` stays, and the new method's
 default implementation builds one, so a test fake written as a lambda still sees every event.
 
 **JUL / JBoss LogManager attach point.** `java.util.logging` and JBoss LogManager both allow
@@ -506,14 +528,16 @@ that per context.
   verdict a pre-existing filter would have (allow *and* deny cases), feeds every candidate
   event to the detector, and a second `installStormDetection` call doesn't double-install or
   double-count; the rendered first-occurrence supplier is invoked at most once per
-  fingerprint.
+  fingerprint; the rendered sample carries the message with its parameters filled in, for a
+  `{0}`-style JUL record and a printf-style JBoss LogManager `ExtLogRecord` alike (#169).
 - Unit — CLI (`CommandsTest`, `JsonTest`): text renderer's counts and `--json`'s
   `trackedCount`/`ongoingCount` use the true counts, not `storms.size()`, when a test wires a
   report whose numbers deliberately differ; an empty report renders "No log storms detected."
-  rather than throwing; `[context]` prefix appears only for a multi-context report.
+  rather than throwing; `[context]` prefix appears only for a multi-context report; the sample
+  is labelled with its event number, and without one for an agent that predates #169.
 - Cross-process (`logaperture-it`'s `WildFlyContainerIT`): a probe deployment driven into a
   tight exception-throwing loop produces a storm that `logctl storms` reports with a
-  plausible count/rate and a non-empty first occurrence, and `logctl storms --json`
+  plausible count/rate and a non-empty sample, and `logctl storms --json`
   round-trips with the documented shape; a second, distinct loop is reported as a separate
   storm.
 
@@ -535,7 +559,9 @@ scope by design (was #4, resolved to the simplest option — err toward missing 
 storm rather than add hot-path arithmetic). The agent **announces storms nowhere** at
 detection time — `logctl storms` / JMX / `--json` are the only surfaces (was #5, Option A).
 The **first occurrence is retained** as rendered message + trace, size-capped, captured
-lazily on first reaching storm state (was #6, Option A). The **detector logic lives in
+lazily on first reaching storm state (was #6, Option A) — amended by #169: that event is the
+threshold-crossing one, so it is reported as the storm's **sample**, with its event number,
+and its message rendered with parameters filled in. The **detector logic lives in
 `core`** (`StormDetector`), fed by a dumb adapter `Filter` that only extracts a
 framework-independent `StormObservation` — a deliberate divergence from where `top` put
 `TopCounters`, for a genuinely hotter path (was #7, Option A). This slice implements the **JUL
@@ -560,7 +586,7 @@ Against a plain `java -jar` + JUL process and a standalone WildFly (Logback per 
 
 - A logger driven into a tight loop emitting a repeated exception is reported by `logctl
   storms` as one `ONGOING` storm with a plausible count and rate, the correct logger and
-  exception class, a normalized message, and a non-empty first occurrence — confirmed by a
+  exception class, a normalized message, and a non-empty sample — confirmed by a
   `core` unit test and by `WildFlyContainerIT` against a real probe deployment.
 - When the loop stops, a later `logctl storms` shows that storm `ENDED` with an `endedAt`
   and the final count.

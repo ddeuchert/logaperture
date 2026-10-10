@@ -531,6 +531,8 @@ public final class StormDetector implements StormObserver {
         volatile Instant lastEventAt;
         volatile Instant endedAt;
         volatile long eventCount;
+        /** The engaging event's place in the storm: {@link #firstOccurrenceText} renders that event (#169). */
+        final long sampleEventNumber;
         final AtomicReference<String> firstOccurrenceText = new AtomicReference<>();
 
         HistoryRecord(StormFingerprint fingerprint, StormStatus status, Instant firstEventAt, Instant lastEventAt,
@@ -540,6 +542,7 @@ public final class StormDetector implements StormObserver {
             this.firstEventAt = firstEventAt;
             this.lastEventAt = lastEventAt;
             this.eventCount = eventCount;
+            this.sampleEventNumber = eventCount;
         }
 
         /**
@@ -566,7 +569,7 @@ public final class StormDetector implements StormObserver {
                 endedAtSnapshot = endedAt;
             }
             return new Storm(fingerprint, statusSnapshot, firstEventAt, lastEventAt, endedAtSnapshot, eventCount,
-                    firstOccurrenceText.get());
+                    firstOccurrenceText.get(), sampleEventNumber);
         }
     }
 

@@ -37,8 +37,13 @@ import java.util.Objects;
  * @param eventCount      total matching events since {@code firstEventAt}
  *                        (the lifetime count, distinct from the internal
  *                        burst tally that declared the storm)
- * @param firstOccurrence the rendered first message + stack trace, size-capped,
+ * @param firstOccurrence the storm's sample: the rendered message + stack trace
+ *                        of the event that engaged it (the threshold-crossing
+ *                        one, not the burst's first -- issue #169), size-capped,
  *                        or {@code null} if it could not be captured
+ * @param sampleEventNumber which event of the storm {@code firstOccurrence} is,
+ *                        counted from {@code firstEventAt}; {@code 0} when not
+ *                        known (a row from an agent older than issue #169)
  * @param context         the owning logging context's stable key, or {@code
  *                        null} on a row produced by a single-context service
  *                        directly; {@code AggregateLevelControl} stamps the
@@ -53,6 +58,7 @@ public record Storm(
         Instant endedAt,
         long eventCount,
         String firstOccurrence,
+        long sampleEventNumber,
         String context) {
 
     public Storm {
@@ -69,6 +75,9 @@ public record Storm(
         if (eventCount < 1) {
             throw new IllegalArgumentException("eventCount must be at least 1");
         }
+        if (sampleEventNumber < 0) {
+            throw new IllegalArgumentException("sampleEventNumber must not be negative");
+        }
     }
 
     /**
@@ -77,13 +86,14 @@ public record Storm(
      * {@code new Storm(...)} call site unchanged.
      */
     public Storm(StormFingerprint fingerprint, StormStatus status, Instant firstEventAt, Instant lastEventAt,
-            Instant endedAt, long eventCount, String firstOccurrence) {
-        this(fingerprint, status, firstEventAt, lastEventAt, endedAt, eventCount, firstOccurrence, null);
+            Instant endedAt, long eventCount, String firstOccurrence, long sampleEventNumber) {
+        this(fingerprint, status, firstEventAt, lastEventAt, endedAt, eventCount, firstOccurrence,
+                sampleEventNumber, null);
     }
 
     /** This same storm, tagged with its owning context's stable key. */
     public Storm withContext(String context) {
         return new Storm(fingerprint, status, firstEventAt, lastEventAt, endedAt, eventCount, firstOccurrence,
-                context);
+                sampleEventNumber, context);
     }
 }

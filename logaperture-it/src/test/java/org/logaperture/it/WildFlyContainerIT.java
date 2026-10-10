@@ -629,7 +629,8 @@ class WildFlyContainerIT {
      * The exit criterion: a probe deployment driven into two independent
      * tight exception-throwing loops is reported as two separate {@code
      * ONGOING} storms with a plausible count/rate, the right logger and
-     * exception class, and a non-empty first occurrence; {@code logctl
+     * exception class, and a non-empty sample (issue #169: labelled with its
+     * event number); {@code logctl
      * storms --json} round-trips with the documented shape.
      *
      * <p>NOTE: unverified in this environment (no Docker available to run
@@ -637,7 +638,7 @@ class WildFlyContainerIT {
      * in this class and intended to run in CI, where Docker is present.
      */
     @Test
-    void storms_tightExceptionLoop_reportedAsOngoingWithPlausibleCountAndFirstOccurrence() throws Exception {
+    void storms_tightExceptionLoop_reportedAsOngoingWithPlausibleCountAndSample() throws Exception {
         enableStorms();
         deployStormProbeWar();
         try {
@@ -650,7 +651,7 @@ class WildFlyContainerIT {
             assertTrue(out.contains("com.myapp.probe.StormB"), out);
             assertTrue(out.contains("java.lang.RuntimeException"), out);
             assertTrue(out.contains("events"), out);
-            assertTrue(out.contains("first occurrence:"), out);
+            assertTrue(out.contains("sample (event #"), out);
         } finally {
             undeployStormProbeWar();
             disableStorms();
@@ -674,6 +675,7 @@ class WildFlyContainerIT {
             assertTrue(out.contains("\"loggerName\":\"com.myapp.probe.StormA\"")
                     || out.contains("\"loggerName\":\"com.myapp.probe.StormB\""), out);
             assertTrue(out.contains("\"detectionEnabled\":true"), out);
+            assertTrue(out.contains("\"sampleEventNumber\":"), out);
         } finally {
             undeployStormProbeWar();
             disableStorms();
