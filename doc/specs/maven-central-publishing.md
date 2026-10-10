@@ -68,6 +68,12 @@ Two workflows use it:
   version (the POM version without `-SNAPSHOT`, set in the checkout only, never committed),
   steps 1–4, then drops the deployment. Tests are skipped: CI has already run them, and the
   packaging is what is under test. The bundle is kept as a workflow artifact.
+
+  To add the label, open the pull request on GitHub. In the right-hand sidebar, click the gear
+  next to **Labels** and tick **central dry run**. From a terminal, run
+  `gh pr edit <number> --add-label "central dry run"`. The run shows on the pull request's
+  Checks tab and under Actions. Only adding the label starts a run, so to run it again, remove
+  the label and add it back.
 - **`release.yml`** (on a `v*` tag): the existing build becomes steps 1–3 with tests, then upload,
   validate, publish, wait until published, and only then the GitHub Release. Publishing to Central
   is the one step that can't be undone, so everything that can fail goes before it.
