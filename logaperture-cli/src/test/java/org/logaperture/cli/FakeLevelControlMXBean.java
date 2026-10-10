@@ -418,6 +418,7 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
 
 
     List<RuleData> rules = new ArrayList<>();
+    RuntimeException listRulesFailure;
     final List<Object[]> resetRuleCalls = new ArrayList<>();
     RuleData resetRuleResult;
     int resetAllRulesCalls;
@@ -428,6 +429,9 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     @Override
     public List<RuleData> listRules() {
         maybeThrow();
+        if (listRulesFailure != null) {
+            throw listRulesFailure;
+        }
         return rules;
     }
 

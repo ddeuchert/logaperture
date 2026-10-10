@@ -105,8 +105,9 @@ final class HelpTopics {
 
             new HelpTopic("status", "Show what LogAperture has changed.",
                     List.of("logctl status"),
-                    List.of("Shows the active overrides, plus a line naming the vendor defaults file when there "
-                            + "is one. Read-only."),
+                    List.of("Shows the loggers and handlers with an override, and the rules, plus a line naming "
+                            + "the vendor defaults file when there is one. A vendor rule is shown only once it is "
+                            + "altered or switched off. Read-only."),
                     List.of(),
                     List.of("logctl status", "logctl status --json")),
 

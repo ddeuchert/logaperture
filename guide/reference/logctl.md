@@ -113,7 +113,7 @@ Show what LogAperture has changed.
 logctl status
 ```
 
-Shows the active overrides, plus a line naming the vendor defaults file when there is one. Read-only.
+Shows the loggers and handlers with an override, and the rules, plus a line naming the vendor defaults file when there is one. A vendor rule is shown only once it is altered or switched off. Read-only.
 
 **Examples**
 

@@ -179,8 +179,10 @@ the tree-inheritance mechanism above does that, and only from the loggers it was
   `add rule` producing several attachments produces several ids (see "Targeting by pattern is
   shorthand"); there is no group object spanning them afterward, same as a pattern-target `set logger`
   leaves nothing standing to manage as a batch.
-- `logctl status` and `logctl list rules` show every rule with the logger it's attached to, action,
-  matchers, `useParentRules`, tier, expiry and hit count.
+- `logctl list rules` shows every rule with the logger it's attached to, action, tier, expiry and
+  hit count, and `--verbose` adds its matchers; `logctl status` shows the same table without the
+  matchers, leaving out vendor rules nobody has changed ([`rule-pipeline-foundation.md`](rule-pipeline-foundation.md)
+  "`logctl status`", issue #170).
 - `logctl reset rule <id>` and `logctl reset rules` remove attachments.
 - `logctl reset logger X` also removes every rule attached directly to `X` (not its descendants' own
   attachments, which are separate objects).

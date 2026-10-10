@@ -72,7 +72,8 @@ Rules you add get ids `r1`, `r2`, …; rules from a vendor defaults file have `v
 has a tier like any other change and lasts `for 4h` unless you give one. See
 [Tiers and expiry](tiers-and-expiry.md).
 
-- `logctl list rules` lists them; `--verbose` adds each rule's options.
+- `logctl list rules` lists them; `--verbose` adds each rule's options. `logctl status` shows
+  them too, alongside the other changes, leaving out vendor rules you haven't changed.
 - `logctl alter rule r3 --below WARN` changes one in place.
 - `logctl reset rule r3` removes one; `reset rules` removes all of them; `reset logger <name>`
   also removes the rules attached directly to that logger.
