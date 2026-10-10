@@ -1334,9 +1334,10 @@ assigned. Each step only runs if the previous one didn't produce an answer:
    dedicated per-logger handler, say — not a default in any useful sense).
 3. **Two or more real handlers are attached to the root logger** → rank
    them by tier, most to least specific, and take the first match:
-   1. A `ConsoleHandler` instance whose resolved name is `CONSOLE`.
-   2. A `ConsoleHandler` instance, any name (including an unresolved
-      identity token).
+   1. A console handler (see `isConsole()` below) whose resolved name is
+      `CONSOLE`.
+   2. A console handler, any name (including an unresolved identity
+      token).
    3. Any handler — regardless of actual class — whose resolved name is
       `CONSOLE`.
 
@@ -1359,10 +1360,19 @@ the same root-handler layout at all.
 (default empty, mirroring `realHandlers()`'s own default) returning the
 subset of `realHandlers()` directly attached to the root logger, and an
 `isConsole()` flag added to `HandlerDiagnostics` (alongside `isPersistent()`
-et al.) answering the structural "is this actually a
-`java.util.logging.ConsoleHandler` instance" question independently of
-whether its name has resolved — steps 1/2/4 above are pure `core` logic over
-facts the adapter already exposes; only the tier-2/3 "is a `ConsoleHandler`"
+et al.) answering the structural "is this a console handler" question
+independently of whether its name has resolved. The JUL adapter's answer:
+the handler's class, or one of its superclasses, has the simple name
+`ConsoleHandler`. That covers `java.util.logging.ConsoleHandler` and JBoss
+LogManager's `org.jboss.logmanager.handlers.ConsoleHandler`, which WildFly's
+`<console-handler>` creates and which does **not** extend JUL's: an
+`instanceof java.util.logging.ConsoleHandler` check, as first built, is false
+for every WildFly console, so on WildFly tiers 1 and 2 never matched and an
+unresolved root fell through to attachment order, often `FILE` (issue
+[#188](https://github.com/ddeuchert/logaperture/issues/188)). Matched by name,
+not `instanceof`, because JBoss LogManager's class isn't visible to the
+adapter's classloader — steps 1/2/4 above are pure `core` logic over
+facts the adapter already exposes; only tiers 1 and 2's "is a console handler"
 check needs this one new fact, since `core` has no visibility into the real
 `Handler` class.
 

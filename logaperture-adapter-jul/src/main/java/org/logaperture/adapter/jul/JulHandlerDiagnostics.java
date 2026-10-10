@@ -21,7 +21,6 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
-import java.util.logging.ConsoleHandler;
 import java.util.logging.Handler;
 
 /**
@@ -64,7 +63,23 @@ final class JulHandlerDiagnostics {
         Boolean autoFlush = autoFlushOf(handler);
         Long maxFileSizeBytes = (Long) fieldOf(handler, "rotateSize");
         Integer backupCount = (Integer) fieldOf(handler, "maxBackupIndex");
-        return new HandlerDiagnostics(maxFileSizeBytes, backupCount, autoFlush, targetPath, handler instanceof ConsoleHandler);
+        return new HandlerDiagnostics(maxFileSizeBytes, backupCount, autoFlush, targetPath, isConsole(handler));
+    }
+
+    /**
+     * Whether {@code handler}'s class, or one of its superclasses, is named {@code ConsoleHandler}:
+     * JUL's own {@code java.util.logging.ConsoleHandler}, and JBoss LogManager's {@code
+     * org.jboss.logmanager.handlers.ConsoleHandler}, which WildFly's {@code <console-handler>}
+     * creates and which does not extend JUL's (issue #188). Matched by name, not {@code
+     * instanceof}, for the same classloader reason as everything else in this class.
+     */
+    static boolean isConsole(Handler handler) {
+        for (Class<?> type = handler.getClass(); type != null; type = type.getSuperclass()) {
+            if (type.getSimpleName().equals("ConsoleHandler")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Path targetPathOf(Handler handler) {
