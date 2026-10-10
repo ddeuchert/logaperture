@@ -138,8 +138,7 @@ final class Commands {
             List<HandlerLevelOverrideData> handlerOverrides = mbean.listHandlerOverrides();
             EnvironmentReportData report = mbean.environmentReport();
             StormDetectionData stormDetection = stormDetectionOrNull(mbean);
-            List<org.logaperture.control.jmx.RuleData> rules = mbean.listRules().stream()
-                    .filter(Commands::isChangeForStatus).toList();
+            List<org.logaperture.control.jmx.RuleData> rules = rulesForStatus(mbean);
             if (json) {
                 out.println(Json.status(active, handlerOverrides, rules, report, stormDetection));
                 return CliError.OK;
@@ -213,6 +212,19 @@ final class Commands {
             }
             return CliError.OK;
         };
+    }
+
+    /** {@code status}'s rules; none from an agent older than 0.1.0-alpha.3, which has no {@code listRules}. */
+    private static List<org.logaperture.control.jmx.RuleData> rulesForStatus(
+            org.logaperture.control.jmx.LevelControlMXBean mbean) {
+        try {
+            return mbean.listRules().stream().filter(Commands::isChangeForStatus).toList();
+        } catch (RuntimeException e) {
+            if (isMissingOperation(e)) {
+                return List.of();
+            }
+            throw e;
+        }
     }
 
     /**

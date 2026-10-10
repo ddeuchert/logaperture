@@ -481,6 +481,18 @@ class CommandsTest {
     }
 
     @Test
+    void status_fromAnAgentWithoutListRules_showsTheRestWithoutFailing() {
+        mbean.listRulesFailure = new java.lang.reflect.UndeclaredThrowableException(
+                new javax.management.ReflectionException(new NoSuchMethodException("listRules")));
+        mbean.loggers = List.of(
+                new LoggerInfoData("com.acme.Loud", "INFO", "DEBUG", true, "jmx", null, "STICKY", null));
+
+        assertEquals(CliError.OK, run(Commands.status(false)));
+
+        assertTrue(output().contains("com.acme.Loud"), output());
+    }
+
+    @Test
     void status_json_carriesTheRulesItShows() {
         mbean.rules = List.of(rule("r1", null, false, false), rule("v1", "vendor-defaults", false, false));
 
