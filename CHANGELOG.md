@@ -19,7 +19,9 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   supports, installing on WildFly and on a plain JVM, a Quick start, Configuration layers, and the
   `logctl` command reference, and reference pages for agent options and `-Dlogaperture.*`
   properties, `doctor` checks, `--json` output, the vendor defaults and recipe file formats, and
-  the audit log. The other pages are being written for 1.0 (issue #159;
+  the audit log; concept pages on tiers and expiry, rules, security and agent order; vendor
+  defaults and recipes for library authors; and how to use recipes. The other pages are being
+  written for 1.0 (issue #159;
   `doc/specs/user-documentation.md`).
 
 - **`logctl enable storms` and `logctl disable storms`** turn storm detection on and off in a

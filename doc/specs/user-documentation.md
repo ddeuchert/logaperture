@@ -3,7 +3,9 @@
 Status: **signed off 2026-10-08, decisions U1–U12 all agreed as recommended.** Slice 1 (pipeline)
 implemented. Slice 2 (`logctl help`, decisions H1–H7) signed off and implemented 2026-10-08. Slice 3
 (beta-1 pages) implemented 2026-10-09. Slice 4a (reference pages, drift test, `CLAUDE.md` rule)
-implemented 2026-10-09.
+implemented 2026-10-09. Slice 4b (concepts, vendors, `how-to/recipes.md`) implemented
+2026-10-10; it also wrote `how-to/recipes.md` from 4c, since `USER_GUIDE_NOTES.md` held its
+material.
 Issue: [#159](https://github.com/ddeuchert/logaperture/issues/159).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §17.1, "User documentation"
 (the tool, layout and hosting decisions this spec builds on) and the release table (`1.0.0-beta.1`:
