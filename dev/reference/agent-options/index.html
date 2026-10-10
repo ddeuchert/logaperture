@@ -1422,6 +1422,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agent options and properties
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1438,6 +1456,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#agent-arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent arguments
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#system-properties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System properties
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#internal-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Internal settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1734,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#agent-arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent arguments
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#system-properties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System properties
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#internal-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Internal settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1794,122 @@
 
 
 <h1 id="agent-options-and-properties">Agent options and properties<a class="headerlink" href="#agent-options-and-properties" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover the agent's arguments and every <code>-Dlogaperture.*</code> system property.</p>
-</div>
+<p>The agent takes two kinds of settings: <strong>agent arguments</strong>, written after the jar on the
+<code>-javaagent</code> line, and <strong>system properties</strong>, given as <code>-D</code> options to the same JVM.</p>
+<h2 id="agent-arguments">Agent arguments<a class="headerlink" href="#agent-arguments" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>-javaagent:/opt/logaperture/lib/logaperture-agent.jar<span class="o">=</span>--vendor-defaults<span class="o">=</span>/etc/myproduct/logging.yaml,--storm-detection<span class="o">=</span>on
+</code></pre></div>
+<p>Arguments are <code>--name=value</code>, separated by commas. A comma only separates arguments when the next
+one starts with <code>--</code>, so a path containing a comma needs no quoting. An unknown or malformed
+argument is skipped with a warning in the log; the agent still starts.</p>
+<dl>
+<dt><code>--vendor-defaults=&lt;file&gt;</code></dt>
+<dd>A vendor defaults file: logging settings that replace the application's own for every logger,
+handler and rule it names. A relative path is resolved against the JVM's working directory. If
+the file has an error, none of it applies, and <code>doctor</code> says why. See
+<a href="../../vendors/vendor-defaults/">Vendor defaults</a> and the <a href="../file-formats/#vendor-defaults-file">file format</a>.</dd>
+<dt><code>--storm-detection=on|off</code></dt>
+<dd>Whether storm detection starts on. Default <code>off</code>. A <code>sticky</code> <code>logctl enable storms</code> or
+<code>disable storms</code> from an earlier run wins over this. See <a href="../../how-to/storms/">Log storms</a>.</dd>
+</dl>
+<h2 id="system-properties">System properties<a class="headerlink" href="#system-properties" title="Permanent link">&para;</a></h2>
+<dl>
+<dt><code>-Dlogaperture.disabled=true</code></dt>
+<dd>Turn the agent off completely: it starts nothing and changes nothing. Use it to check whether
+LogAperture is involved in a startup problem, without removing the <code>-javaagent</code> line.</dd>
+<dt><code>-Dlogaperture.home=&lt;dir&gt;</code></dt>
+<dd>Where LogAperture keeps its state files, and where it looks for the recipes folder. Default
+<code>~/.logaperture</code> of the user running the JVM. Set it when that user has no writable home
+directory, as is common in containers.</dd>
+<dt><code>-Dlogaperture.instanceId=&lt;name&gt;</code></dt>
+<dd>Names this JVM's state file. By default the state file is named after the directory the JVM was
+started from; two JVMs started from the same directory need different names, or the second
+can't keep <code>sticky</code> changes.</dd>
+<dt><code>-Dlogaperture.recipes=&lt;dir&gt;</code></dt>
+<dd>The recipes folder. Default <code>&lt;logaperture.home&gt;/recipes</code>. See <a href="../../how-to/recipes/">Use recipes</a>.</dd>
+<dt><code>-Dlogaperture.audit.file=&lt;path&gt;</code></dt>
+<dd>Append the <a href="../audit-log/">audit trail</a> to this file instead of standard error.</dd>
+<dt><code>-Dlogaperture.diagnostics.level=ERROR|WARN|INFO|DEBUG</code></dt>
+<dd>How much LogAperture says about itself in the log. Default <code>WARN</code>: the startup line, then only
+warnings and errors. <code>ERROR</code> hides the startup line too; <code>INFO</code> and <code>DEBUG</code> say more.</dd>
+<dt><code>-Dlogaperture.drop.summaryInterval=&lt;duration&gt;</code></dt>
+<dd>How often a log line reports what <code>drop</code> rules discarded, such as <code>30m</code>. Default <code>10m</code>, at
+least <code>1m</code>. It can't be turned off: dropped events are never hidden. On WildFly the line is
+logged under the <code>org.logaperture.drop</code> category, so it can be raised, lowered or sent to its
+own file like any other category.</dd>
+<dt><code>-Dlogaperture.handlerInstallDelaySeconds=&lt;n&gt;</code></dt>
+<dd>On WildFly, hold back the parts of LogAperture that wrap the server's handlers (<code>drop</code> and
+<code>trim</code> rules, <code>top</code>, storm detection) for <code>n</code> seconds after startup. Default <code>0</code>, at most <code>600</code>.
+The log says when they are installed. Level changes always apply at once. Only for a launch
+that needs it.</dd>
+</dl>
+<h2 id="internal-settings">Internal settings<a class="headerlink" href="#internal-settings" title="Permanent link">&para;</a></h2>
+<p>These tune LogAperture's own bookkeeping. They are listed so you can recognize them in a bug report
+or an <code>env</code> output, but they <strong>may change or disappear in any release</strong>, and the defaults are the
+supported configuration.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Default</th>
+<th>What it sets</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>logaperture.sweep.seconds</code></td>
+<td><code>30</code></td>
+<td>How often, in seconds (1–3600), LogAperture expires timed changes and re-applies changes the server undid. A <code>for</code> change can revert up to this much late.</td>
+</tr>
+<tr>
+<td><code>logaperture.top.maxTrackedLoggers</code></td>
+<td><code>1000</code></td>
+<td>How many loggers <code>top</code> counts.</td>
+</tr>
+<tr>
+<td><code>logaperture.storm.thresholdEvents</code></td>
+<td><code>1000</code></td>
+<td>Near-identical events within the window that make a storm.</td>
+</tr>
+<tr>
+<td><code>logaperture.storm.windowSeconds</code></td>
+<td><code>10</code></td>
+<td>The window for the threshold.</td>
+</tr>
+<tr>
+<td><code>logaperture.storm.quietSeconds</code></td>
+<td><code>60</code></td>
+<td>Quiet time after which a storm counts as over.</td>
+</tr>
+<tr>
+<td><code>logaperture.storm.maxTrackedFingerprints</code></td>
+<td><code>4000</code></td>
+<td>How many distinct messages storm detection watches at once.</td>
+</tr>
+<tr>
+<td><code>logaperture.storm.maxHistory</code></td>
+<td><code>100</code></td>
+<td>How many storms <code>logctl storms</code> remembers.</td>
+</tr>
+<tr>
+<td><code>logaperture.storm.firstOccurrenceBytes</code></td>
+<td><code>8192</code></td>
+<td>How much of a storm's first event is kept.</td>
+</tr>
+<tr>
+<td><code>logaperture.storm.normalizationCacheSize</code></td>
+<td><code>1024</code></td>
+<td>A cache for storm detection's message matching; <code>0</code> turns it off.</td>
+</tr>
+<tr>
+<td><code>logaperture.wildfly.handlerNames.debug</code></td>
+<td><code>false</code></td>
+<td>Log how WildFly handler names were resolved.</td>
+</tr>
+</tbody>
+</table>
+<p><code>logaperture.version</code> is set by the agent itself once it is running; <code>logctl</code> uses it to find JVMs
+with the agent. Don't set it.</p>
 
 
 

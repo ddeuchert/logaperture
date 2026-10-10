@@ -1478,6 +1478,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    File formats
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1494,6 +1512,86 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-yaml-subset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The YAML subset
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vendor-defaults-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vendor defaults file
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Vendor defaults file">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#files-written-by-export-vendor-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files written by export vendor-defaults
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recipe-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recipe files
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1762,75 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-yaml-subset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The YAML subset
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vendor-defaults-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vendor defaults file
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Vendor defaults file">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#files-written-by-export-vendor-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files written by export vendor-defaults
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recipe-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recipe files
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1850,280 @@
 
 
 <h1 id="file-formats">File formats<a class="headerlink" href="#file-formats" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover the vendor defaults file and <code>recipes.yaml</code>.</p>
-</div>
+<p>LogAperture reads two kinds of file you write: the <strong>vendor defaults file</strong> and <strong>recipe files</strong>.
+Both are YAML, in a deliberately small subset.</p>
+<h2 id="the-yaml-subset">The YAML subset<a class="headerlink" href="#the-yaml-subset" title="Permanent link">&para;</a></h2>
+<p>Supported: maps, lists of maps, one-line lists (<code>[CONSOLE, FILE]</code>), plain and double-quoted values,
+<code>#</code> comments, and multi-line text written as <code>key: |</code> followed by indented lines.</p>
+<p>Not supported: tabs for indentation, anchors and aliases (<code>&amp;</code>, <code>*</code>), several documents in one file,
+and the other multi-line forms (<code>&gt;</code>, <code>|-</code>, <code>|+</code>). A file that uses them is rejected.</p>
+<p>A file is checked as a whole before any of it is used, and every error is reported with its line
+number, not just the first. Unknown keys are errors, so a typo like <code>levle:</code> is caught.</p>
+<h2 id="vendor-defaults-file">Vendor defaults file<a class="headerlink" href="#vendor-defaults-file" title="Permanent link">&para;</a></h2>
+<p>Given to the agent with <code>--vendor-defaults=&lt;file&gt;</code>. Every setting it names replaces the
+application's own; see <a href="../../vendors/vendor-defaults/">Vendor defaults</a>. If the file has any error,
+none of it applies: <code>logctl doctor</code> lists the errors.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">schemaVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+
+<span class="nt">loggers</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">org.hibernate.SQL</span>
+<span class="w">    </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">WARN</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">com.acme.support</span>
+<span class="w">    </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DEBUG</span>
+<span class="w">    </span><span class="nt">reason</span><span class="p">:</span><span class="w"> </span><span class="s">"support</span><span class="nv"> </span><span class="s">asked</span><span class="nv"> </span><span class="s">for</span><span class="nv"> </span><span class="s">this</span><span class="nv"> </span><span class="s">by</span><span class="nv"> </span><span class="s">default"</span>
+
+<span class="nt">handlers</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">FILE</span>
+<span class="w">    </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">INFO</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CONSOLE</span>
+<span class="w">    </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">AUTO</span>
+
+<span class="nt">defaultHandlers</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">CONSOLE</span><span class="p p-Indicator">]</span>
+
+<span class="nt">rules</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">healthcheck-noise</span>
+<span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">drop</span>
+<span class="w">    </span><span class="nt">logger</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">com.acme.health</span>
+<span class="w">    </span><span class="nt">messageContains</span><span class="p">:</span><span class="w"> </span><span class="s">"ping</span><span class="nv"> </span><span class="s">ok"</span>
+<span class="w">    </span><span class="nt">below</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">WARN</span>
+<span class="w">    </span><span class="nt">reason</span><span class="p">:</span><span class="w"> </span><span class="s">"load</span><span class="nv"> </span><span class="s">balancer</span><span class="nv"> </span><span class="s">health</span><span class="nv"> </span><span class="s">probes"</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">autoupdate-trace</span>
+<span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">trim</span>
+<span class="w">    </span><span class="nt">logger</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">com.acme.AutoUpdateHelper</span>
+<span class="w">    </span><span class="nt">throwable</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">java.net.ConnectException</span>
+<span class="w">    </span><span class="nt">frames</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Required</th>
+<th>Contains</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>schemaVersion</code></td>
+<td>yes</td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td><code>loggers</code></td>
+<td>no</td>
+<td><code>name</code> (an exact logger name, no <code>*</code>), <code>level</code>, <code>reason</code></td>
+</tr>
+<tr>
+<td><code>handlers</code></td>
+<td>no</td>
+<td><code>name</code> (as <code>logctl list handlers</code> shows it), <code>level</code> (a level or <code>AUTO</code>), <code>reason</code></td>
+</tr>
+<tr>
+<td><code>defaultHandlers</code></td>
+<td>no</td>
+<td>the handlers <code>DEFAULT_HANDLERS</code> means</td>
+</tr>
+<tr>
+<td><code>rules</code></td>
+<td>no</td>
+<td><code>drop</code> and <code>trim</code> rules, below</td>
+</tr>
+<tr>
+<td><code>namespace</code></td>
+<td>with <code>recipes</code></td>
+<td>the namespace of the file's recipe ids</td>
+</tr>
+<tr>
+<td><code>recipes</code></td>
+<td>no</td>
+<td>recipes the file offers, as in a <a href="#recipe-files">recipe file</a>; loading the file doesn't apply them</td>
+</tr>
+</tbody>
+</table>
+<p>A handler named in the file that doesn't exist yet is not an error: it is applied when the handler
+appears, and <code>doctor</code> reports it until then.</p>
+<h3 id="rules">Rules<a class="headerlink" href="#rules" title="Permanent link">&para;</a></h3>
+<p>Each rule's fields are named after the <code>logctl add rule</code> options. Fields left out take the
+<code>add rule</code> defaults. Vendor rules have no tier: they last as long as the file is in use.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>For</th>
+<th><code>logctl add rule</code> option</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code> (required)</td>
+<td>both</td>
+<td>none. Lowercase letters, digits and <code>-</code>, up to 40. The rule's id becomes <code>vendor:&lt;id&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>action</code> (required)</td>
+<td>both</td>
+<td><code>drop</code> or <code>trim</code></td>
+</tr>
+<tr>
+<td><code>logger</code> (required)</td>
+<td>both</td>
+<td>the target; an exact logger name</td>
+</tr>
+<tr>
+<td><code>below</code></td>
+<td>both</td>
+<td><code>--below</code>; a level, or <code>FATAL</code> for every level</td>
+</tr>
+<tr>
+<td><code>messageContains</code>, <code>messageContainsIgnoreCase</code></td>
+<td>both</td>
+<td><code>--message-contains</code>, <code>--message-contains-ignore-case</code></td>
+</tr>
+<tr>
+<td><code>throwable</code></td>
+<td>both</td>
+<td><code>--throwable</code></td>
+</tr>
+<tr>
+<td><code>throwableMessageContains</code></td>
+<td>both</td>
+<td><code>--throwable-message-contains</code></td>
+</tr>
+<tr>
+<td><code>anyCause</code></td>
+<td>both</td>
+<td><code>--any-cause</code> (<code>true</code> or <code>false</code>)</td>
+</tr>
+<tr>
+<td><code>sampleFull</code></td>
+<td><code>drop</code></td>
+<td><code>--sample-full</code>, a duration; or <code>false</code> for <code>--no-sample-full</code></td>
+</tr>
+<tr>
+<td><code>frames</code></td>
+<td><code>trim</code></td>
+<td><code>--frames</code></td>
+</tr>
+<tr>
+<td><code>collapseCauses</code></td>
+<td><code>trim</code></td>
+<td><code>--collapse-causes</code> (<code>true</code> or <code>false</code>)</td>
+</tr>
+<tr>
+<td><code>reason</code></td>
+<td>both</td>
+<td><code>--reason</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="files-written-by-export-vendor-defaults">Files written by <code>export vendor-defaults</code><a class="headerlink" href="#files-written-by-export-vendor-defaults" title="Permanent link">&para;</a></h3>
+<p><code>logctl export vendor-defaults</code> writes this format. Entries that came from a <code>sticky</code> change carry an
+extra <code>stateId</code> field (and the file may have <code>handlerGroupStateIds</code> and <code>defaultHandlersStateId</code>).
+They let a restart with the new file take over those changes instead of applying them twice. A
+file you write by hand never needs them.</p>
+<h2 id="recipe-files">Recipe files<a class="headerlink" href="#recipe-files" title="Permanent link">&para;</a></h2>
+<p>A recipe is a named set of settings for watching one thing. Recipe files come from three places:</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Where</th>
+<th>May contain</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A library</td>
+<td><code>META-INF/logaperture/recipes.yaml</code> on its class path</td>
+<td>logger levels that raise verbosity</td>
+</tr>
+<tr>
+<td>The vendor defaults file</td>
+<td>its <code>recipes:</code> key</td>
+<td>logger levels, handler levels, rules</td>
+</tr>
+<tr>
+<td>The recipes folder</td>
+<td>any <code>*.yaml</code> in <code>~/.logaperture/recipes</code>, or the folder named by <code>-Dlogaperture.recipes</code></td>
+<td>logger levels, handler levels, rules</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><span class="nt">schemaVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">io.undertow</span>
+<span class="nt">recipes</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sessions</span>
+<span class="w">    </span><span class="nt">summary</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Watch HTTP session creation, expiry and invalidation</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">      </span><span class="no">Logs each session create/expire/invalidate with its id. Moderate volume</span>
+<span class="w">      </span><span class="no">under load. Session ids are sensitive; don't leave this on.</span>
+<span class="w">    </span><span class="nt">loggers</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">io.undertow.server.session</span>
+<span class="w">        </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DEBUG</span>
+<span class="w">        </span><span class="nt">reason</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">session lifecycle events</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">io.undertow.request</span>
+<span class="w">        </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DEBUG</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Required</th>
+<th>Contains</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>schemaVersion</code></td>
+<td>yes</td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td><code>namespace</code></td>
+<td>yes</td>
+<td>lowercase letters, digits, <code>.</code> and <code>-</code>, up to 64. A reverse domain you control, such as a library's Maven group id. <code>vendor</code>, <code>logaperture</code> and <code>org.logaperture</code> are reserved.</td>
+</tr>
+<tr>
+<td><code>recipes</code></td>
+<td>yes</td>
+<td>the recipes</td>
+</tr>
+<tr>
+<td><code>recipes[].name</code></td>
+<td>yes</td>
+<td>lowercase letters, digits and <code>-</code>, up to 40. The recipe's id is <code>&lt;namespace&gt;:&lt;name&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>recipes[].summary</code></td>
+<td>yes</td>
+<td>one line, shown by <code>list recipes</code></td>
+</tr>
+<tr>
+<td><code>recipes[].description</code></td>
+<td>no</td>
+<td>longer text, shown by <code>show recipe</code></td>
+</tr>
+<tr>
+<td><code>recipes[].loggers</code></td>
+<td></td>
+<td><code>name</code>, <code>level</code>, <code>reason</code>, as in the vendor defaults file</td>
+</tr>
+<tr>
+<td><code>recipes[].handlers</code></td>
+<td></td>
+<td>as in the vendor defaults file; not in a library's file</td>
+</tr>
+<tr>
+<td><code>recipes[].rules</code></td>
+<td></td>
+<td>as in the vendor defaults file, with <code>id</code> optional; not in a library's file</td>
+</tr>
+</tbody>
+</table>
+<p>A recipe must change at least one thing. A file with an error offers none of its recipes;
+<code>logctl list recipes --verbose</code> and <code>doctor</code> report it. A library's recipe that would lower a level
+is skipped, since a library can only offer more visibility, never less.</p>
+<p>Where a library's file goes in a war or an ear is covered in
+<a href="../../vendors/library-recipes/">Recipes for library authors</a>.</p>
 
 
 

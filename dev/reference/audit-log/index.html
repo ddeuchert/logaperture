@@ -1534,6 +1534,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audit log
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1550,6 +1568,47 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1723,36 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1772,73 @@
 
 
 <h1 id="audit-log">Audit log<a class="headerlink" href="#audit-log" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover the format of the audit trail.</p>
-</div>
+<p>Every change LogAperture makes is written to the audit trail: the changes you make with <code>logctl</code>,
+and the ones LogAperture makes by itself, such as a timed change running out. A revert is recorded
+as well as the change, so the trail shows when a change ended, not just when it started.</p>
+<p>The audit trail goes to the JVM's standard error, so on WildFly it appears on the console. Send it
+to a file of its own with <code>-Dlogaperture.audit.file=&lt;path&gt;</code>; LogAperture appends to the file.
+Rules can't drop audit lines: they don't go through the application's logging.</p>
+<h2 id="format">Format<a class="headerlink" href="#format" title="Permanent link">&para;</a></h2>
+<p>One line per change:</p>
+<div class="highlight"><pre><span></span><code>[logaperture-audit] 2026-10-09T05:12:26.576398427Z action=MUTATION principal=jboss source=jmx handler=CONSOLE previous=INFO new=DEBUG reason=
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Contains</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>timestamp</td>
+<td>When, in UTC.</td>
+</tr>
+<tr>
+<td><code>action</code></td>
+<td><code>MUTATION</code> for a change, <code>REVERSION</code> for undoing one.</td>
+</tr>
+<tr>
+<td><code>principal</code></td>
+<td>The operating-system user the JVM runs as, which is also the user <code>logctl</code> has to run as.</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td>What made the change: <code>jmx</code> for <code>logctl</code>; <code>expiry-sweep</code> for a timed change running out; <code>verification-sweep</code> for re-applying a change the server undid; <code>resume</code> for <code>sticky</code> changes restored at startup; <code>vendor-defaults</code> for the vendor defaults file; <code>recipe</code> for a recipe.</td>
+</tr>
+<tr>
+<td>target</td>
+<td>What changed, labelled by kind: <code>logger=&lt;name&gt;</code> for a logger's level or a rule on it; <code>handler=&lt;name&gt;</code> for a handler's level or <code>DEFAULT_HANDLERS</code>; <code>file=&lt;path&gt;</code> for a whole file, such as the vendor defaults file loaded at startup; <code>switch=storm-detection</code> for turning storm detection on or off.</td>
+</tr>
+<tr>
+<td><code>previous</code>, <code>new</code></td>
+<td>The value before and after. For a rule, its id, action and options. <code>&lt;inherited&gt;</code> means the logger has no level of its own.</td>
+</tr>
+<tr>
+<td><code>reason</code></td>
+<td>The <code>--reason</code> given, or empty.</td>
+</tr>
+<tr>
+<td><code>origin</code></td>
+<td>Only on a change made by a recipe: which one.</td>
+</tr>
+</tbody>
+</table>
+<p>The target labels let you search for one kind of change: <code>grep 'handler='</code> finds every handler
+change without matching a logger that happens to share a name.</p>
+<h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
+<p>A level change, and its reset:</p>
+<div class="highlight"><pre><span></span><code>[logaperture-audit] 2026-10-09T04:56:22.540201163Z action=MUTATION principal=jboss source=jmx logger=io.undertow.request previous=INFO new=DEBUG reason=
+[logaperture-audit] 2026-10-09T05:12:29.297118383Z action=REVERSION principal=jboss source=jmx logger=io.undertow.request previous=DEBUG new=&lt;inherited&gt; reason=
+</code></pre></div>
+<p>A rule added, changed and removed:</p>
+<div class="highlight"><pre><span></span><code>[logaperture-audit] 2026-10-09T05:12:24.572167230Z action=MUTATION principal=jboss source=jmx logger=io.undertow.request previous=null new=r1 (drop) reason=
+[logaperture-audit] 2026-10-09T05:12:25.905395437Z action=MUTATION principal=jboss source=jmx logger=io.undertow.request previous=r1 (drop) --message-contains "Matched default" --below ERROR --sample-full 5m [FOR until 2026-10-09T09:12:24.572167230Z, 0 hits] new=r1 (drop) --message-contains "Matched default" --below WARN --sample-full 5m [FOR until 2026-10-09T09:12:24.572167230Z] reason=
+[logaperture-audit] 2026-10-09T05:12:28.630269369Z action=REVERSION principal=jboss source=jmx logger=io.undertow.request previous=r1 (drop) new=null reason=
+</code></pre></div>
+<p>Storm detection switched on:</p>
+<div class="highlight"><pre><span></span><code>[logaperture-audit] 2026-10-09T05:12:31.219692216Z action=MUTATION principal=jboss source=jmx switch=storm-detection previous=off new=on reason=
+</code></pre></div>
 
 
 

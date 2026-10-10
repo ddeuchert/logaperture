@@ -2386,7 +2386,7 @@ logctl add rule trim &lt;target&gt; [matchers] [--below level] [--frames n] [--c
 <dt><code>--any-cause</code></dt>
 <dd>Let the exception matchers match any cause in the chain, not just the top exception.</dd>
 <dt><code>--below &lt;level&gt;</code></dt>
-<dd>Only act on events strictly below this level. Default <code>ERROR</code>.</dd>
+<dd>Only act on events strictly below this level. Default <code>ERROR</code>; <code>FATAL</code> means every level.</dd>
 <dt><code>--sample-full &lt;duration&gt;</code></dt>
 <dd>For <code>drop</code>: let one full event through every so often, so the log never goes completely dark.</dd>
 <dt><code>--no-sample-full</code></dt>
@@ -2424,7 +2424,7 @@ logctl<span class="w"> </span>add<span class="w"> </span>rule<span class="w"> </
 <dt><code>--any-cause</code></dt>
 <dd>Let the exception matchers match any cause in the chain, not just the top exception.</dd>
 <dt><code>--below &lt;level&gt;</code></dt>
-<dd>Only act on events strictly below this level. Default <code>ERROR</code>.</dd>
+<dd>Only act on events strictly below this level. Default <code>ERROR</code>; <code>FATAL</code> means every level.</dd>
 <dt><code>--sample-full &lt;duration&gt;</code></dt>
 <dd>For <code>drop</code>: let one full event through every so often, so the log never goes completely dark.</dd>
 <dt><code>--no-sample-full</code></dt>
