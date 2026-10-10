@@ -1090,10 +1090,6 @@ final class Commands {
         };
     }
 
-    /**
-     * doc/specs/alter-rule.md A10: a vendor rule shows its origin instead of a tier -- plus the
-     * alteration's tier when altered, or {@code (off)} when switched off until restart.
-     */
     /** A deadline as {@code status} shows one, local time and time remaining (issue #171); {@code --json} keeps the instant. */
     private static String ruleExpiresCell(org.logaperture.control.jmx.RuleData row) {
         if (row.getExpiresAt() == null) {
@@ -1102,6 +1098,10 @@ final class Commands {
         return Format.clock(row.getExpiresAt()) + " (" + Format.relative(row.getExpiresAt()) + ")";
     }
 
+    /**
+     * doc/specs/alter-rule.md A10: a vendor rule shows its origin instead of a tier -- plus the
+     * alteration's tier when altered, or {@code (off)} when switched off until restart.
+     */
     private static String ruleTierCell(org.logaperture.control.jmx.RuleData row) {
         if (row.getOrigin() == null) {
             return row.getTier();
