@@ -154,11 +154,23 @@ class ByteCountingFormatterTest {
     }
 
     @Test
-    void stackTraceShare_markerTextInTheMessage_withoutATrace_isNotTaken() {
+    void stackTraceShare_markerWithoutDigits_isNotAMarker() {
         RuntimeException thrown = new RuntimeException("outer");
         String formatted = "SEVERE: " + thrown + TrimRendering.MARKER_OPEN + "x" + TrimRendering.MARKER_CLOSE + "\n";
 
-        assertEquals(-1, ByteCountingFormatter.traceStart(formatted, thrown), "no digits: not a marker, and the throwable has frames");
+        assertEquals(-1, ByteCountingFormatter.traceStart(formatted, thrown),
+                "no digits: not a marker, so the header alone isn't taken for a throwable with frames");
+    }
+
+    @Test
+    void stackTraceShare_messageRepeatsATrimmedHeader_theTraceAfterItIsTaken() {
+        RuntimeException thrown = new RuntimeException("outer");
+        Throwable trimmed = TrimRendering.buildTrimmed(thrown, new TrimDecision("r1", 2, false));
+        String message = "SEVERE: last time: " + trimmed + "\n";
+        String formatted = message + render(trimmed);
+
+        assertEquals(message.length(), ByteCountingFormatter.traceStart(formatted, thrown),
+                "T1/T5: the copy in the message isn't followed by a tab line; the trace is");
     }
 
     @Test
