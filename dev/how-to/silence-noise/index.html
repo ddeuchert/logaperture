@@ -1905,9 +1905,9 @@ them to pick from; <code>--yes</code> takes all of them.</p>
 <h2 id="see-and-change-rules">See and change rules<a class="headerlink" href="#see-and-change-rules" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>list<span class="w"> </span>rules<span class="w"> </span>--verbose
 </code></pre></div>
-<div class="highlight"><pre><span></span><code>ID  LOGGER                              EXPRESSION                                                          ACTION  TIER  EXPIRES                         HITS
-r2  io.undertow.request                 --message-contains "Matched default" --below WARN --sample-full 5m  drop    FOR   2026-10-10T05:27:09.163795880Z  0
-r3  org.logaperture.sample.work.Worker  --throwable java.io.IOException --below ERROR --frames 3            trim    FOR   2026-10-10T05:27:09.972330060Z  0
+<div class="highlight"><pre><span></span><code>ID  LOGGER                              EXPRESSION                                                          ACTION  TIER  EXPIRES               HITS
+r2  io.undertow.request                 --message-contains "Matched default" --below WARN --sample-full 5m  drop    FOR   07:19:12 (in 3h 59m)  0
+r3  org.logaperture.sample.work.Worker  --throwable java.io.IOException --below ERROR --frames 3            trim    FOR   07:19:13 (in 3h 59m)  0
 </code></pre></div>
 <p><code>HITS</code> counts the events each rule has acted on. <code>EXPRESSION</code> is the rule's options, in the form
 <code>alter rule</code> takes. To change a rule without removing it, give only what changes:</p>
