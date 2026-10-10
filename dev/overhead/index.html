@@ -1680,8 +1680,12 @@
 <h1 id="overhead">Overhead<a class="headerlink" href="#overhead" title="Permanent link">&para;</a></h1>
 <div class="admonition note">
 <p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover what the agent costs per log call, measured.</p>
+<p>The measured cost of the agent per log call, idle and with a <code>trim</code> rule, <code>top</code> counting and
+storm detection, will be published here with 1.0. The measurement work is tracked in
+<a href="https://github.com/ddeuchert/logaperture/issues/128">#128</a>.</p>
 </div>
+<p>In short, for now: with nothing configured the agent adds a small cost to every log call, and
+storm detection is off by default because it was the largest single part of that cost.</p>
 
 
 

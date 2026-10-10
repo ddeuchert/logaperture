@@ -821,6 +821,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Find where the disk goes
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -837,6 +855,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#which-loggers-write-the-most" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which loggers write the most
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-in-the-configuration-will-hurt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What in the configuration will hurt
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#then" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Then
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1734,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#which-loggers-write-the-most" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Which loggers write the most
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-in-the-configuration-will-hurt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What in the configuration will hurt
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#then" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Then
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1794,63 @@
 
 
 <h1 id="find-where-the-disk-goes">Find where the disk goes<a class="headerlink" href="#find-where-the-disk-goes" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover <code>top</code> and <code>doctor</code>: which loggers write the most, and common configuration problems.</p>
+<p>When logs are filling a disk, or you want to know before they do. Two read-only commands help:
+<code>top</code> measures, and <code>doctor</code> checks the configuration. Neither changes anything.</p>
+<div class="admonition info">
+<p class="admonition-title">WildFly only in 1.0</p>
+<p><code>top</code> and <code>doctor</code> need <code>java.util.logging</code> or JBoss LogManager. On a plain JVM with Logback
+they report nothing yet.</p>
 </div>
+<p>The output on this page is from WildFly 26.1.3.</p>
+<h2 id="which-loggers-write-the-most">Which loggers write the most<a class="headerlink" href="#which-loggers-write-the-most" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>top<span class="w"> </span>--limit<span class="w"> </span><span class="m">5</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>io.undertow.request                 0 MB/h  (5 MB/day)  0% stack traces
+org.wildfly.extension.undertow      0 MB/h  (0 MB/day)  0% stack traces
+org.logaperture.sample.work.Worker  0 MB/h  (0 MB/day)  0% stack traces
+org.jboss.as.ejb3                   0 MB/h  (0 MB/day)  0% stack traces
+org.jboss.as                        0 MB/h  (0 MB/day)  0% stack traces
+
+measured over 46m (since agent start, 2026-10-10T00:42:20.290034554Z) — 35 loggers tracked.
+</code></pre></div>
+<p>Loggers are listed worst first, by bytes written since the agent started, with:</p>
+<ul>
+<li>the rate per hour, and the same rate projected over a day;</li>
+<li>the share of those bytes that is stack traces. A high share means a <code>trim</code> rule would save most
+  of it without losing the events. See <a href="../silence-noise/">Silence noise</a>.</li>
+</ul>
+<p><code>--limit</code> sets how many to show (default 10; <code>0</code> for all). The projection is only as good as the
+time measured: a few minutes after startup, it mostly reflects startup.</p>
+<h2 id="what-in-the-configuration-will-hurt">What in the configuration will hurt<a class="headerlink" href="#what-in-the-configuration-will-hurt" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>doctor
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>[OK]    logaperture-agent.jar is the first -javaagent.
+[WARN]  FILE has no size cap — writes are unbounded.
+        no size-based rotation is configured
+        suggested: configure a size-based rotation policy on FILE.
+[OK]    no excess verbosity found at root or on a known-chatty logger.
+[WARN]  FILE has autoflush enabled — every record forces a flush.
+[WARN]  CONSOLE has autoflush enabled — every record forces a flush.
+[OK]    /opt/jboss/wildfly/standalone/log/server.log is stable — no writes observed during the sample window.
+
+5 checks run — 0 critical, 3 warning, 0 info, 3 clean.
+</code></pre></div>
+<p>For disk space, the findings that matter most are:</p>
+<ul>
+<li><strong>No size cap</strong> on a file handler: the file grows until the disk is full.</li>
+<li><strong>Disk headroom</strong>: how long until each log disk is full at the current rate. Under 24 hours is a
+  warning; under 4 hours is critical, and an uncapped handler on that disk becomes critical too.</li>
+<li><strong>Verbosity left on</strong>: the root logger, or a known-chatty framework logger, at <code>DEBUG</code> or finer.</li>
+</ul>
+<p>Every check, and what to do about it, is in <a href="../../reference/doctor-checks/">Doctor checks</a>.</p>
+<h2 id="then">Then<a class="headerlink" href="#then" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Turn a logger down: <code>logctl set logger &lt;name&gt; WARN sticky</code>. See <a href="../raise-a-level/">Raise a log level</a>,
+  which works in both directions.</li>
+<li>Keep the events but not their traces, or drop a repeating message: <a href="../silence-noise/">Silence noise</a>.</li>
+<li>Fix the handler's rotation in the application's own configuration. LogAperture doesn't change
+  handler settings other than the level.</li>
+</ul>
 
 
 

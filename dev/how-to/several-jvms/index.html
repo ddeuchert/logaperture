@@ -933,6 +933,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Work with several JVMs
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -949,6 +967,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-logctl-finds-the-jvm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How logctl finds the JVM
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#choosing-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing one
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-attaching-is-refused" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When attaching is refused
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-applications-from-one-directory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two applications from one directory
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1745,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-logctl-finds-the-jvm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How logctl finds the JVM
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#choosing-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing one
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-attaching-is-refused" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When attaching is refused
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-applications-from-one-directory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two applications from one directory
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1816,43 @@
 
 
 <h1 id="work-with-several-jvms">Work with several JVMs<a class="headerlink" href="#work-with-several-jvms" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover how <code>logctl</code> finds the JVM to talk to, <code>--pid</code>, and picking from a list.</p>
-</div>
+<p><code>logctl</code> controls one JVM per command. This page covers how it picks that JVM.</p>
+<h2 id="how-logctl-finds-the-jvm">How <code>logctl</code> finds the JVM<a class="headerlink" href="#how-logctl-finds-the-jvm" title="Permanent link">&para;</a></h2>
+<p><code>logctl</code> looks for running JVMs that have the agent started, among those it is allowed to attach to:
+on the same machine, run by the same operating-system user.</p>
+<ul>
+<li><strong>Exactly one</strong>: it uses that one. Nothing to do.</li>
+<li>
+<p><strong>None</strong>: it says so and exits with code 3:</p>
+<div class="highlight"><pre><span></span><code>No LogAperture-enabled JVM found. Start the application with -javaagent:logaperture-agent.jar.
+</code></pre></div>
+<p>Check that the JVM was started with the agent, and that you are the user it runs as.</p>
+</li>
+<li>
+<p><strong>Several</strong>: on a terminal, it lists them as a numbered list to pick from. In a script, or with
+  <code>--json</code> or <code>--yes</code>, it can't ask. It prints the same list and exits with code 4:</p>
+<div class="highlight"><pre><span></span><code>PID     VERSION                STARTED           DIRECTORY        COMMAND
+320862  1.0.0-beta.1-SNAPSHOT  2026-10-09 20:28  /srv/app-a       org.logaperture.agent.it.FixtureApp
+320867  1.0.0-beta.1-SNAPSHOT  2026-10-09 20:28  /srv/app-b       org.logaperture.agent.it.FixtureApp
+Several candidates — pass --pid &lt;n&gt;.
+</code></pre></div>
+</li>
+</ul>
+<h2 id="choosing-one">Choosing one<a class="headerlink" href="#choosing-one" title="Permanent link">&para;</a></h2>
+<p>Pass the process id:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>--pid<span class="w"> </span><span class="m">320862</span><span class="w"> </span>status
+</code></pre></div>
+<p>The list shows each JVM's directory and main class to tell them apart. <code>jps -l</code> lists Java
+processes too.</p>
+<h2 id="when-attaching-is-refused">When attaching is refused<a class="headerlink" href="#when-attaching-is-refused" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>Can't attach to PID 1 — run as the user that owns that process, or as root.
+</code></pre></div>
+<p>Exit code 5. Run <code>logctl</code> as the user the JVM runs as, for example with <code>sudo -u jboss logctl …</code>.</p>
+<h2 id="two-applications-from-one-directory">Two applications from one directory<a class="headerlink" href="#two-applications-from-one-directory" title="Permanent link">&para;</a></h2>
+<p>Each JVM keeps its <code>sticky</code> changes in its own state file, named after the directory it was started
+from. Two JVMs started from the same directory can't share one: the second to start can't keep
+<code>sticky</code> changes, and says so in its log. Give each its own name with
+<code>-Dlogaperture.instanceId=&lt;name&gt;</code>. See <a href="../../reference/agent-options/">Agent options</a>.</p>
 
 
 

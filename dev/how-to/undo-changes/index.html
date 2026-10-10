@@ -877,6 +877,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Undo changes
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -893,6 +911,80 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#see-what-is-changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See what is changed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reset
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sticky-changes-are-skipped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sticky changes are skipped
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-reset-goes-back-to" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a reset goes back to
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#undo-everything" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Undo everything
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1756,69 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#see-what-is-changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See what is changed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reset
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sticky-changes-are-skipped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sticky changes are skipped
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-reset-goes-back-to" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a reset goes back to
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#undo-everything" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Undo everything
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1838,92 @@
 
 
 <h1 id="undo-changes">Undo changes<a class="headerlink" href="#undo-changes" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover <code>status</code>, the <code>reset</code> commands, <code>--include-sticky</code> and <code>--to-native</code>.</p>
-</div>
+<p>Everything <code>logctl</code> changes can be undone, and timed changes undo themselves. This page covers
+undoing them sooner.</p>
+<p>The output on this page is from WildFly 26.1.3.</p>
+<h2 id="see-what-is-changed">See what is changed<a class="headerlink" href="#see-what-is-changed" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>status
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>Storm detection: disabled
+
+LOGGER            LEVEL  TIER    REVERTS      REASON
+com.example.kept  DEBUG  STICKY  until reset  —
+</code></pre></div>
+<p><code>status</code> lists every logger and handler with a change on it, plus the vendor defaults file if there
+is one. <code>logctl list rules</code> lists the rules.</p>
+<h2 id="reset">Reset<a class="headerlink" href="#reset" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Undoes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>reset logger &lt;name&gt;</code></td>
+<td>the change on that logger, on loggers <code>--force</code> set with it, and the rules attached to it</td>
+</tr>
+<tr>
+<td><code>reset logger '&lt;pattern&gt;'</code></td>
+<td>the changes on every logger matching the pattern, such as <code>'com.example.*'</code> or <code>'*.Worker'</code></td>
+</tr>
+<tr>
+<td><code>reset loggers</code></td>
+<td>every logger change</td>
+</tr>
+<tr>
+<td><code>reset handler &lt;name&gt;</code>, <code>reset handlers</code></td>
+<td>the change on one handler, or all of them</td>
+</tr>
+<tr>
+<td><code>reset rule &lt;id&gt;</code>, <code>reset rules</code></td>
+<td>one rule, or all of them</td>
+</tr>
+<tr>
+<td><code>reset recipe &lt;id&gt;</code></td>
+<td>the changes a recipe made that you haven't changed since (<a href="../recipes/">Use recipes</a>)</td>
+</tr>
+<tr>
+<td><code>reset default-handler</code></td>
+<td>the <code>DEFAULT_HANDLERS</code> membership (<a href="../../reference/logctl/#default-handler">command reference</a>)</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>reset<span class="w"> </span>logger<span class="w"> </span><span class="s1">'com.example.*'</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>com.example.temp → INFO (baseline)
+Left 1 sticky override(s) in place (pass --include-sticky to include them): com.example.kept
+</code></pre></div>
+<p>On a terminal, <code>logctl reset</code> alone lists everything currently changed, to pick from.</p>
+<h2 id="sticky-changes-are-skipped"><code>sticky</code> changes are skipped<a class="headerlink" href="#sticky-changes-are-skipped" title="Permanent link">&para;</a></h2>
+<p>A <code>sticky</code> change was made to last, so a reset leaves it alone unless you add <code>--include-sticky</code>.
+A pattern or bulk reset leaves it and says so, as above. Naming one by its exact name is refused,
+so it can't look as if it worked:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>reset<span class="w"> </span>logger<span class="w"> </span>com.example.kept
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>logctl: 'com.example.kept' is STICKY -- reset refused without --include-sticky.
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>reset<span class="w"> </span>loggers<span class="w"> </span>--include-sticky
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>Reverted 1 override(s).
+</code></pre></div>
+<h2 id="what-a-reset-goes-back-to">What a reset goes back to<a class="headerlink" href="#what-a-reset-goes-back-to" title="Permanent link">&para;</a></h2>
+<p>The <strong>baseline</strong>: the application's own logging configuration, with the vendor defaults file on
+top when the product ships one. <code>(baseline)</code> in the output means that.</p>
+<p>With a vendor defaults file, <code>--to-native</code> goes back to the application's own configuration
+instead, ignoring the vendor defaults for that logger, handler or rule until the JVM restarts. A
+later plain <code>reset</code> returns it to the baseline. Without a vendor defaults file, the two are the
+same. See <a href="../../concepts/configuration-layers/">Configuration layers</a>.</p>
+<h2 id="undo-everything">Undo everything<a class="headerlink" href="#undo-everything" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>reset<span class="w"> </span>loggers<span class="w"> </span>--include-sticky
+logctl<span class="w"> </span>reset<span class="w"> </span>handlers<span class="w"> </span>--include-sticky
+logctl<span class="w"> </span>reset<span class="w"> </span>rules<span class="w"> </span>--include-sticky
+logctl<span class="w"> </span>disable<span class="w"> </span>storms
+logctl<span class="w"> </span>status
+</code></pre></div>
+<p><code>status</code> then shows <code>No active overrides.</code> The application's own configuration was never changed,
+so there is nothing else to put back.</p>
 
 
 

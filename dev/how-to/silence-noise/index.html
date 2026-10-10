@@ -793,6 +793,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Silence noise
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -809,6 +827,80 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#drop-a-message" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drop a message
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shorten-a-stack-trace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shorten a stack trace
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#matching-on-the-exception" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Matching on the exception
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-and-change-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See and change rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#let-logctl-ask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Let logctl ask
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1756,69 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#drop-a-message" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drop a message
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shorten-a-stack-trace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shorten a stack trace
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#matching-on-the-exception" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Matching on the exception
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-and-change-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See and change rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#let-logctl-ask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Let logctl ask
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1838,92 @@
 
 
 <h1 id="silence-noise">Silence noise<a class="headerlink" href="#silence-noise" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover <code>add rule drop</code> and <code>add rule trim</code>, changing and removing rules, and what can never be silenced.</p>
+<p>For a message you know is noise: one that repeats, or a stack trace you've seen a hundred times.
+Lowering the logger's level would hide everything else it says too. A <strong>rule</strong> removes just that
+message, or keeps it and shortens its stack trace. See <a href="../../concepts/rules/">Rules</a> for how rules
+work.</p>
+<div class="admonition info">
+<p class="admonition-title">WildFly only in 1.0</p>
+<p>Rules need <code>java.util.logging</code> or JBoss LogManager. On a plain JVM with Logback they aren't
+available yet.</p>
 </div>
+<p>The output on this page is from WildFly 26.1.3.</p>
+<h2 id="drop-a-message">Drop a message<a class="headerlink" href="#drop-a-message" title="Permanent link">&para;</a></h2>
+<p>Name the logger and something in the message:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>add<span class="w"> </span>rule<span class="w"> </span>drop<span class="w"> </span>io.undertow.request<span class="w"> </span>--message-contains<span class="w"> </span><span class="s2">"Matched default"</span><span class="w"> </span>--below<span class="w"> </span>WARN<span class="w"> </span>--reason<span class="w"> </span><span class="s2">"health checks"</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>r2   io.undertow.request → drop   (FOR, reverts 05:27:09 local — in 3h 59m)
+</code></pre></div>
+<p><code>--below WARN</code> limits the rule to events below <code>WARN</code>. Without it, the rule covers everything below
+<code>ERROR</code>. A <code>drop</code> rule needs something to match besides the level; to quiet a whole logger, use
+<code>set logger</code> with a higher level instead.</p>
+<p>The rule lets the first matching event through, then one every 5 minutes, so the full message is
+never far away in the log. Every dropped event is counted.</p>
+<h2 id="shorten-a-stack-trace">Shorten a stack trace<a class="headerlink" href="#shorten-a-stack-trace" title="Permanent link">&para;</a></h2>
+<p>To keep an event but not its trace:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>add<span class="w"> </span>rule<span class="w"> </span>trim<span class="w"> </span><span class="s1">'*.Worker'</span><span class="w"> </span>--throwable<span class="w"> </span>java.io.IOException<span class="w"> </span>--frames<span class="w"> </span><span class="m">3</span><span class="w"> </span>--yes
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>r3   org.logaperture.sample.work.Worker → trim   (FOR, reverts 05:27:09 local — in 3h 59m)
+</code></pre></div>
+<p>Each matching <code>IOException</code> is still logged, with its top three frames and a marker saying how many
+were cut. Without <code>--frames</code>, the exception is one line. A <code>trim</code> rule needs no matcher: <code>logctl add
+rule trim com.acme.Worker --below WARN</code> shortens every trace from that logger below <code>WARN</code>.</p>
+<p>The <code>'*.Worker'</code> pattern adds one rule to every logger now matching it. On a terminal, <code>logctl</code> lists
+them to pick from; <code>--yes</code> takes all of them.</p>
+<h2 id="matching-on-the-exception">Matching on the exception<a class="headerlink" href="#matching-on-the-exception" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Matches</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--message-contains &lt;text&gt;</code></td>
+<td>the log message contains the text</td>
+</tr>
+<tr>
+<td><code>--message-contains-ignore-case &lt;text&gt;</code></td>
+<td>the same, ignoring case</td>
+</tr>
+<tr>
+<td><code>--throwable &lt;class&gt;</code></td>
+<td>the exception is exactly this class</td>
+</tr>
+<tr>
+<td><code>--throwable-message-contains &lt;text&gt;</code></td>
+<td>the exception's message contains the text</td>
+</tr>
+<tr>
+<td><code>--any-cause</code></td>
+<td>let the two above match any exception in the cause chain</td>
+</tr>
+</tbody>
+</table>
+<p>Give several and all must match.</p>
+<h2 id="see-and-change-rules">See and change rules<a class="headerlink" href="#see-and-change-rules" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>list<span class="w"> </span>rules<span class="w"> </span>--verbose
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>ID  LOGGER                              EXPRESSION                                                          ACTION  TIER  EXPIRES                         HITS
+r2  io.undertow.request                 --message-contains "Matched default" --below WARN --sample-full 5m  drop    FOR   2026-10-10T05:27:09.163795880Z  0
+r3  org.logaperture.sample.work.Worker  --throwable java.io.IOException --below ERROR --frames 3            trim    FOR   2026-10-10T05:27:09.972330060Z  0
+</code></pre></div>
+<p><code>HITS</code> counts the events each rule has acted on. <code>EXPRESSION</code> is the rule's options, in the form
+<code>alter rule</code> takes. To change a rule without removing it, give only what changes:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>alter<span class="w"> </span>rule<span class="w"> </span>r2<span class="w"> </span>--below<span class="w"> </span>ERROR
+logctl<span class="w"> </span>alter<span class="w"> </span>rule<span class="w"> </span>r2<span class="w"> </span>sticky
+</code></pre></div>
+<p>To remove one:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>reset<span class="w"> </span>rule<span class="w"> </span>r2
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>rule r2 → removed.
+</code></pre></div>
+<p><code>reset rules</code> removes all of them, except <code>sticky</code> ones unless you add <code>--include-sticky</code>.</p>
+<h2 id="let-logctl-ask">Let <code>logctl</code> ask<a class="headerlink" href="#let-logctl-ask" title="Permanent link">&para;</a></h2>
+<p>On a terminal, <code>logctl add rule</code> alone walks through every part: which logger (starting from part of
+its name, such as <code>Deployer</code>), drop or trim, what to match, and how long. It shows the full command
+before adding the rule. <code>logctl alter rule r2</code> alone shows the rule's parts to pick what to change.</p>
 
 
 

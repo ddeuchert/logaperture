@@ -961,6 +961,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Script logctl
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -977,6 +995,80 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#it-never-asks-off-a-terminal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        It never asks off a terminal
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pick-the-jvm-explicitly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pick the JVM explicitly
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JSON
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exit-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exit codes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1756,69 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#it-never-asks-off-a-terminal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        It never asks off a terminal
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pick-the-jvm-explicitly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pick the JVM explicitly
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        JSON
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exit-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exit codes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1838,82 @@
 
 
 <h1 id="script-logctl">Script logctl<a class="headerlink" href="#script-logctl" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover <code>--json</code>, <code>--yes</code>, exit codes, and how <code>logctl</code> behaves when it isn't on a terminal.</p>
-</div>
+<p><code>logctl</code> works the same in a script, a cron job or a monitoring check as on a terminal, with two
+differences: it never asks a question, and you can ask it for JSON.</p>
+<h2 id="it-never-asks-off-a-terminal">It never asks off a terminal<a class="headerlink" href="#it-never-asks-off-a-terminal" title="Permanent link">&para;</a></h2>
+<p>On a terminal, <code>logctl</code> asks for anything a command leaves out and lists matches to pick from. Off a
+terminal it can't, so an incomplete command fails with exit code 2 and says what's missing:</p>
+<div class="highlight"><pre><span></span><code>'set' needs 'logger &lt;target&gt; &lt;level&gt;', 'handler &lt;name&gt; &lt;level&gt;', or 'default-handler &lt;name&gt; ...'.
+Run this in a terminal to be prompted for the missing parts.
+</code></pre></div>
+<p>Give the whole command. Where a command would ask for confirmation, add <code>--yes</code>:</p>
+<ul>
+<li>a pattern target (<code>set logger '*.Worker' DEBUG --yes</code>, <code>add rule … '*.Worker' … --yes</code>) takes
+  every match;</li>
+<li><code>apply recipe … --yes</code> applies without showing the changes first.</li>
+</ul>
+<p><code>--json</code> never asks either.</p>
+<h2 id="pick-the-jvm-explicitly">Pick the JVM explicitly<a class="headerlink" href="#pick-the-jvm-explicitly" title="Permanent link">&para;</a></h2>
+<p>With several JVMs running the agent, <code>logctl</code> can't ask which one, and exits with code 4. In a
+script, always pass <code>--pid</code>. See <a href="../several-jvms/">Work with several JVMs</a>.</p>
+<h2 id="json">JSON<a class="headerlink" href="#json" title="Permanent link">&para;</a></h2>
+<p>Add <code>--json</code> to any command except <code>export vendor-defaults</code> for one line of JSON on standard output:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>status<span class="w"> </span>--json<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">'.loggers[] | select(.tier == "STICKY") | .name'</span>
+</code></pre></div>
+<p>The fields of each command are in <a href="../../reference/json-output/">JSON output</a>. From 1.0.0, fields
+are only ever added within a major version, so ignore fields you don't know.</p>
+<h2 id="exit-codes">Exit codes<a class="headerlink" href="#exit-codes" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>Done.</td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td>Unexpected error.</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td>The command line is wrong, or incomplete off a terminal.</td>
+</tr>
+<tr>
+<td><code>3</code></td>
+<td>No JVM with the agent was found.</td>
+</tr>
+<tr>
+<td><code>4</code></td>
+<td>Several JVMs with the agent were found: pass <code>--pid</code>.</td>
+</tr>
+<tr>
+<td><code>5</code></td>
+<td><code>logctl</code> couldn't attach to the JVM: run it as the user running the JVM.</td>
+</tr>
+<tr>
+<td><code>6</code></td>
+<td>The agent's policy doesn't allow this operation.</td>
+</tr>
+</tbody>
+</table>
+<p><code>doctor</code> exits <code>0</code> whatever it finds; read its findings from <code>--json</code> to act on them.</p>
+<h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
+<p>Raise a level for the length of a support call, with the ticket number in the audit trail:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>--pid<span class="w"> </span><span class="s2">"</span><span class="nv">$PID</span><span class="s2">"</span><span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>com.acme.billing<span class="w"> </span>DEBUG<span class="w"> </span><span class="k">for</span><span class="w"> </span>45m<span class="w"> </span>--reason<span class="w"> </span><span class="s2">"</span><span class="nv">$TICKET</span><span class="s2">"</span>
+</code></pre></div>
+<p>Fail a health check when <code>doctor</code> finds anything critical:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>--pid<span class="w"> </span><span class="s2">"</span><span class="nv">$PID</span><span class="s2">"</span><span class="w"> </span>doctor<span class="w"> </span>--json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-e<span class="w"> </span><span class="s1">'[.findings[] | select(.severity == "CRITICAL")] | length == 0'</span><span class="w"> </span>&gt;<span class="w"> </span>/dev/null
+</code></pre></div>
+<p>Undo everything a script set, keeping <code>sticky</code> changes made by people:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>--pid<span class="w"> </span><span class="s2">"</span><span class="nv">$PID</span><span class="s2">"</span><span class="w"> </span>reset<span class="w"> </span>loggers
+logctl<span class="w"> </span>--pid<span class="w"> </span><span class="s2">"</span><span class="nv">$PID</span><span class="s2">"</span><span class="w"> </span>reset<span class="w"> </span>rules
+</code></pre></div>
 
 
 

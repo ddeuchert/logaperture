@@ -765,6 +765,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Find a logger
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -781,6 +799,80 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#from-the-end-of-the-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From the end of the name
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#from-the-start-of-the-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From the start of the name
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-the-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the columns
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#loggers-that-dont-exist-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loggers that don't exist yet
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#let-logctl-pick" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Let logctl pick
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1664,6 +1756,69 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#from-the-end-of-the-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From the end of the name
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#from-the-start-of-the-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From the start of the name
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-the-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading the columns
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#loggers-that-dont-exist-yet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loggers that don't exist yet
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#let-logctl-pick" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Let logctl pick
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1683,10 +1838,66 @@
 
 
 <h1 id="find-a-logger">Find a logger<a class="headerlink" href="#find-a-logger" title="Permanent link">&para;</a></h1>
-<div class="admonition note">
-<p class="admonition-title">Being written</p>
-<p>This page is being written for LogAperture 1.0. It will cover <code>list loggers</code>, patterns, and finding the full logger name from the short category a log line prints.</p>
-</div>
+<p>To change a logger you need its full name, but a log line often shows only part of it. WildFly's
+default console format prints the last segment of the category, so a line reads <code>infinispan</code>, not
+<code>org.jboss.as.clustering.infinispan</code>.</p>
+<p>The output on this page is from WildFly 26.1.3.</p>
+<h2 id="from-the-end-of-the-name">From the end of the name<a class="headerlink" href="#from-the-end-of-the-name" title="Permanent link">&para;</a></h2>
+<p>Start the pattern with <code>*.</code>:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>list<span class="w"> </span>loggers<span class="w"> </span><span class="s1">'*.infinispan'</span><span class="w"> </span>--show-all
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>LOGGER                              CONFIGURED  EFFECTIVE  OVERRIDE
+org.jboss.as.clustering.infinispan  —           INFO       —
+</code></pre></div>
+<p><code>--show-all</code> matters here: without it, <code>list loggers</code> shows only loggers you have changed.</p>
+<h2 id="from-the-start-of-the-name">From the start of the name<a class="headerlink" href="#from-the-start-of-the-name" title="Permanent link">&para;</a></h2>
+<p>A plain name lists that logger and everything under it:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>list<span class="w"> </span>loggers<span class="w"> </span>org.jboss.as.server<span class="w"> </span>--show-all
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>LOGGER                                                 CONFIGURED  EFFECTIVE  OVERRIDE
+org.jboss.as.server                                    —           INFO       —
+org.jboss.as.server.RuntimeExpressionResolver          —           INFO       —
+org.jboss.as.server.deployment                         —           INFO       —
+org.jboss.as.server.deployment.module.extension-index  —           INFO       —
+org.jboss.as.server.deployment.scanner                 —           INFO       —
+org.jboss.as.server.moduleservice                      —           INFO       —
+org.jboss.as.server.net                                —           INFO       —
+</code></pre></div>
+<p>A pattern may start and end with <code>*</code>. Quote patterns so the shell doesn't expand them.</p>
+<h2 id="reading-the-columns">Reading the columns<a class="headerlink" href="#reading-the-columns" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CONFIGURED</code></td>
+<td>the level the application's own configuration gives this logger, or <code>—</code> if it inherits</td>
+</tr>
+<tr>
+<td><code>VENDOR</code></td>
+<td>the level the vendor defaults file sets (only when there is one)</td>
+</tr>
+<tr>
+<td><code>EFFECTIVE</code></td>
+<td>the level it runs at now</td>
+</tr>
+<tr>
+<td><code>OVERRIDE</code></td>
+<td>a change made with <code>logctl</code>: its tier, when it reverts, and why</td>
+</tr>
+</tbody>
+</table>
+<h2 id="loggers-that-dont-exist-yet">Loggers that don't exist yet<a class="headerlink" href="#loggers-that-dont-exist-yet" title="Permanent link">&para;</a></h2>
+<p>A logger appears once the application has used it. If a class hasn't logged anything yet, its
+logger may not be listed. You can still set it by its exact name: the setting applies when the
+logger is created.</p>
+<h2 id="let-logctl-pick">Let <code>logctl</code> pick<a class="headerlink" href="#let-logctl-pick" title="Permanent link">&para;</a></h2>
+<p>On a terminal, <code>logctl set</code> and <code>logctl add rule</code> accept part of a name, such as <code>Worker</code>, and list
+the matching loggers to choose from. See <a href="../raise-a-level/#let-logctl-ask">Raise a log level</a>.</p>
 
 
 
