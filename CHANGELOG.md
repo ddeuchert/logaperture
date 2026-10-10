@@ -105,6 +105,9 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Fixed
 
+- **`logctl doctor` and `logctl storms` quote commands in single quotes**, like the rest of
+  `logctl`'s output: `see 'logctl enable storms'` and `see 'logctl storms'` instead of literal
+  backticks (issue #166).
 - **`logctl status` shows rules**, in a table after the logger and handler overrides (`ID`,
   `LOGGER`, `ACTION`, `TIER`, `EXPIRES`, `HITS`), and `status --json` adds a `rules` array with the
   same objects as `list rules --json`. A vendor defaults rule appears only once it has been altered

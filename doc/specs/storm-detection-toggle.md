@@ -131,7 +131,7 @@ Storm detection is already enabled. Nothing changed.
 
 ```
 $ logctl storms
-Storm detection is disabled. Enable it with `logctl enable storms`, or start the agent with --storm-detection=on.
+Storm detection is disabled. Enable it with 'logctl enable storms', or start the agent with --storm-detection=on.
 ```
 
 Off after being on, with storms tracked: the same report as today, with a first line instead of
@@ -155,7 +155,8 @@ runtime change, or `null` if it is still in its starting state).
 
 **`logctl doctor`**: the existing "N log storms are currently ongoing" pointer is printed only
 when detection is on. When it is off, doctor prints "Storm detection is disabled — see
-`logctl enable storms`." instead. This is an informational line, not a finding: off is the
+'logctl enable storms'." instead (single quotes, as `logctl` quotes a command everywhere else on
+the terminal — issue #166). This is an informational line, not a finding: off is the
 default, not a problem.
 
 **Older agents** (alpha.3 and earlier): `logctl enable|disable storms` fails with "this agent
