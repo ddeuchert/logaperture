@@ -33,6 +33,9 @@ Evidence: [`doc/spikes/rule-pipeline.md`](../spikes/rule-pipeline.md) — valida
 JBoss LogManager and on WildFly 26.1.3 and 33.0.0.
 Tracks: [issue #72](https://github.com/ddeuchert/logaperture/issues/72). Depends on
 [#71](https://github.com/ddeuchert/logaperture/issues/71) (rule pipeline foundation, merged).
+**Fix (issue [#173](https://github.com/ddeuchert/logaperture/issues/173)), 2026-10-09:** message
+matchers now see the formatted message on WildFly too, as "Matchers" always specified — see
+"Divergence from prior specs" #3.
 
 ## Functional summary
 
@@ -191,13 +194,21 @@ Three real gaps surfaced during implementation, each resolved here rather than l
    `logaperture-bridge` (by design), so this isn't routed through `Diagnostics` either, just the
    same convention repeated locally. An operator watching the agent's own stderr/diagnostic
    stream sees the summary; it does not appear interleaved in `server.log`.
-3. **No `ExtLogRecord.getFormattedMessage()` caching.** The spike measured real cost savings
-   from JBoss LogManager's own per-record formatted-message cache; this adapter has no
-   compile-time JBoss LogManager dependency (by design) and doesn't reach for it via reflection
-   in this pass. `JulRuleFilter` recomputes the formatted message once per candidate event via a
-   shared stateless `Formatter.formatMessage(record)` call instead — still only paid by a
-   logger with an active message matcher, just not memoized on the record the way the spike's
-   prototype was. A fast-follow if profiling ever shows this matters in practice.
+3. **No `ExtLogRecord.getFormattedMessage()` caching** — *resolved by
+   [#173](https://github.com/ddeuchert/logaperture/issues/173).* The spike measured real cost
+   savings from JBoss LogManager's own per-record formatted-message cache; this adapter has no
+   compile-time JBoss LogManager dependency (by design), and the first implementation didn't
+   reach for it via reflection, calling JUL's stateless `Formatter.formatMessage(record)`
+   instead. That turned out to be wrong, not just slower: `formatMessage` substitutes only
+   `{0}`-style parameters, and JBoss Logging's `debugf`/`infof` and message loggers produce
+   printf-style records (`Matched default handler path %s`), which it returns unchanged. On
+   WildFly a `--message-contains` matcher therefore saw the template, so `/health` never matched
+   and `path %s` matched every path. The message is now the record's own formatted text, as
+   "Matchers" specifies: `ExtLogRecord.getFormattedMessage()` reached by reflection, with the
+   `Method` looked up once per record class, falling back to `formatMessage` for any other
+   record or if the call fails. That is also the record's own cache, so a kept event's handler
+   doesn't format it a second time. The same helper renders a storm's sample
+   (`storm-detection.md`, #169) and feeds `trim`'s matchers (`trim-rule.md`).
 
 Also: `AggregateLevelControl.addRuleDrop`'s first-registered-context-only scope and the
 deferred `WildFlyContainerIT` (see "Implementation status") are scope reductions, not

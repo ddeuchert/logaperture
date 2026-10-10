@@ -105,6 +105,11 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Fixed
 
+- **`--message-contains` matches the message as logged on WildFly.** For JBoss Logging's
+  printf-style messages (`debugf`, `infof`, message loggers), `drop` and `trim` rules matched the
+  message template instead: `--message-contains "/health"` never matched `Matched default handler
+  path /health`, and `--message-contains "path %s"` matched every path. Plain `java.util.logging`
+  messages were unaffected (issue #173).
 - **`logctl storms` shows each storm's sample with its message as logged, and says which event it
   is.** The event shown under a storm had its message as a template (`Matched default handler path
   %s` rather than `… path /x997`) for JBoss Logging's printf-style messages on WildFly, and was

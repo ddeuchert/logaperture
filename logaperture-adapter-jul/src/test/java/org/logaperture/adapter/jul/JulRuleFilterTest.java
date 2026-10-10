@@ -15,6 +15,7 @@
  */
 package org.logaperture.adapter.jul;
 
+import org.jboss.logmanager.ExtLogRecord;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -197,6 +198,32 @@ class JulRuleFilterTest {
             LogRecord record = new LogRecord(Level.INFO, "hello");
             record.setLoggerName(name("denygate"));
             assertFalse(handler.getFilter().isLoggable(record));
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
+    /**
+     * Issue #173: a message matcher sees the message as logged. JBoss Logging's printf-style
+     * records ({@code debugf}) used to reach it as their template, {@code path %s}.
+     */
+    @Test
+    void gate_seesAPrintfRecordsMessageAsLogged_notItsTemplate() {
+        FakePersistentHandler handler = new FakePersistentHandler();
+        Logger logger = Logger.getLogger(name("printf"));
+        logger.addHandler(handler);
+        RuleGate dropHealth = (recordIdentity, event) -> event.formattedMessageSupplier().get().contains("/health")
+                ? GateVerdict.deny("r1")
+                : GateVerdict.allow();
+        try {
+            adapter.installRulePipeline(dropHealth);
+            ExtLogRecord health = new ExtLogRecord(Level.INFO, "Matched default handler path %s", "/health");
+            health.setLoggerName(name("printf"));
+            ExtLogRecord other = new ExtLogRecord(Level.INFO, "Matched default handler path %s", "/other");
+            other.setLoggerName(name("printf"));
+
+            assertFalse(handler.getFilter().isLoggable(health), "/health is in the message as logged");
+            assertTrue(handler.getFilter().isLoggable(other));
         } finally {
             logger.removeHandler(handler);
         }
