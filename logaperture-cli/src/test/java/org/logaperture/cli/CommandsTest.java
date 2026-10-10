@@ -421,6 +421,76 @@ class CommandsTest {
         assertTrue(text.contains("\"handlerOverrides\":[{"), text);
     }
 
+    // --- status: rules (doc/specs/rule-pipeline-foundation.md "logctl status", issue #170) ---------
+
+    private static org.logaperture.control.jmx.RuleData rule(String id, String origin, boolean toNative,
+            boolean altered) {
+        return new org.logaperture.control.jmx.RuleData(
+                id, "com.acme.Worker", "drop", "WARN", null, false, null, null, false, null,
+                altered || origin == null ? "STICKY" : null, null, Instant.now().toString(), null, 3L, null, null,
+                origin, toNative, null, null, altered);
+    }
+
+    @Test
+    void status_rulesOnly_showsARulesTable_notNoActiveOverrides() {
+        mbean.rules = List.of(rule("r1", null, false, false));
+
+        assertEquals(CliError.OK, run(Commands.status(false)));
+
+        String text = output();
+        assertFalse(text.contains("No active overrides."), text);
+        assertTrue(text.contains("ID") && text.contains("ACTION") && text.contains("HITS"), text);
+        assertTrue(text.contains("r1") && text.contains("com.acme.Worker") && text.contains("drop"), text);
+        assertFalse(text.contains("EXPRESSION"), text);
+    }
+
+    @Test
+    void status_rulesTableFollowsTheLoggerTable() {
+        mbean.loggers = List.of(
+                new LoggerInfoData("com.acme.Loud", "INFO", "DEBUG", true, "jmx", null, "STICKY", null));
+        mbean.rules = List.of(rule("r1", null, false, false));
+
+        assertEquals(CliError.OK, run(Commands.status(false)));
+
+        String text = output();
+        assertTrue(text.indexOf("com.acme.Loud") < text.indexOf("r1"), text);
+    }
+
+    @Test
+    void status_leavesOutAnUnalteredVendorRule_butShowsAlteredAndSwitchedOffOnes() {
+        mbean.rules = List.of(rule("v1", "vendor-defaults", false, false),
+                rule("v2", "vendor-defaults", false, true), rule("v3", "vendor-defaults", true, false));
+
+        assertEquals(CliError.OK, run(Commands.status(false)));
+
+        String text = output();
+        assertFalse(text.contains("v1"), text);
+        assertTrue(text.contains("v2") && text.contains("vendor-defaults, STICKY"), text);
+        assertTrue(text.contains("v3") && text.contains("vendor-defaults (off)"), text);
+    }
+
+    @Test
+    void status_onlyUnalteredVendorRules_stillSaysNoActiveOverrides() {
+        mbean.rules = List.of(rule("v1", "vendor-defaults", false, false));
+
+        assertEquals(CliError.OK, run(Commands.status(false)));
+
+        String text = output();
+        assertTrue(text.strip().endsWith("No active overrides."), text);
+        assertFalse(text.contains("v1"), text);
+    }
+
+    @Test
+    void status_json_carriesTheRulesItShows() {
+        mbean.rules = List.of(rule("r1", null, false, false), rule("v1", "vendor-defaults", false, false));
+
+        run(Commands.status(true));
+
+        String text = output().strip();
+        assertTrue(text.contains("\"handlerOverrides\":[],\"rules\":[{\"id\":\"r1\""), text);
+        assertFalse(text.contains("\"v1\""), text);
+    }
+
     // --- doctor (doc/specs/doctor.md) ------------------------------------------------------------
 
     @Test

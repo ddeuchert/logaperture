@@ -105,6 +105,10 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Fixed
 
+- **`logctl status` shows rules**, in a table after the logger and handler overrides (`ID`,
+  `LOGGER`, `ACTION`, `TIER`, `EXPIRES`, `HITS`), and `status --json` adds a `rules` array with the
+  same objects as `list rules --json`. A vendor defaults rule appears only once it has been altered
+  or switched off. The filtering spec always said `status` showed rules (issue #170).
 - **`logctl list rules` shows a rule's expiry the way `status` shows a level's**: local time and
   time remaining (`07:19:12 (in 3h 59m)`), instead of a raw UTC timestamp. `--json` still gives
   the timestamp (issue #171).

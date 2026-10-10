@@ -138,8 +138,10 @@ final class Commands {
             List<HandlerLevelOverrideData> handlerOverrides = mbean.listHandlerOverrides();
             EnvironmentReportData report = mbean.environmentReport();
             StormDetectionData stormDetection = stormDetectionOrNull(mbean);
+            List<org.logaperture.control.jmx.RuleData> rules = mbean.listRules().stream()
+                    .filter(Commands::isChangeForStatus).toList();
             if (json) {
-                out.println(Json.status(active, handlerOverrides, report, stormDetection));
+                out.println(Json.status(active, handlerOverrides, rules, report, stormDetection));
                 return CliError.OK;
             }
             // doc/specs/vendor-defaults.md "Surfaces" (Decision M5): one line, only when a file was configured.
@@ -155,7 +157,7 @@ final class Commands {
             if (report.getVendorDefaultsPath() != null || stormDetection != null) {
                 out.println();
             }
-            if (active.isEmpty() && handlerOverrides.isEmpty()) {
+            if (active.isEmpty() && handlerOverrides.isEmpty() && rules.isEmpty()) {
                 out.println("No active overrides.");
                 return CliError.OK;
             }
@@ -203,8 +205,22 @@ final class Commands {
                     out.println(OVERLAP_NOTE);
                 }
             }
+            if (!rules.isEmpty()) {
+                if (!active.isEmpty() || !handlerOverrides.isEmpty()) {
+                    out.println();
+                }
+                out.println(rulesTable(rules, false));
+            }
             return CliError.OK;
         };
+    }
+
+    /**
+     * Whether {@code status} lists a rule (doc/specs/rule-pipeline-foundation.md "{@code logctl status}",
+     * issue #170): every operator rule, but a vendor rule only once altered or switched off.
+     */
+    private static boolean isChangeForStatus(org.logaperture.control.jmx.RuleData row) {
+        return row.getOrigin() == null || row.isAltered() || row.isToNative();
     }
 
     /** {@code status}'s note under the handler table -- doc/specs/handler-floor-control.md "Overlapping overrides" (issue #135). */
@@ -957,41 +973,7 @@ final class Commands {
                 out.println("No rules attached.");
                 return CliError.OK;
             }
-            boolean showContext = spansMultipleContexts(rows, org.logaperture.control.jmx.RuleData::getContext);
-            boolean showRecipe = rows.stream().anyMatch(row -> row.getRecipe() != null);
-            List<List<String>> table = new ArrayList<>();
-            for (org.logaperture.control.jmx.RuleData row : rows) {
-                List<String> cells = new ArrayList<>();
-                if (showContext) {
-                    cells.add(orDash(row.getContext()));
-                }
-                cells.add(row.getId());
-                cells.add(row.getLoggerName());
-                if (verbose) {
-                    cells.add(RuleExpression.of(row));
-                }
-                cells.add(row.getAction());
-                cells.add(ruleTierCell(row));
-                cells.add(ruleExpiresCell(row));
-                cells.add(String.valueOf(row.getHitCount()));
-                if (showRecipe) {
-                    cells.add(orDash(row.getRecipe()));
-                }
-                table.add(cells);
-            }
-            List<String> headers = new ArrayList<>();
-            if (showContext) {
-                headers.add("CONTEXT");
-            }
-            headers.addAll(List.of("ID", "LOGGER"));
-            if (verbose) {
-                headers.add("EXPRESSION");
-            }
-            headers.addAll(List.of("ACTION", "TIER", "EXPIRES", "HITS"));
-            if (showRecipe) {
-                headers.add("RECIPE");
-            }
-            out.println(Format.table(headers, table));
+            out.println(rulesTable(rows, verbose));
             return CliError.OK;
         };
     }
@@ -1088,6 +1070,45 @@ final class Commands {
             RecipeCommands.printRecipe(out, detail);
             return CliError.OK;
         };
+    }
+
+    /** {@code list rules}' table, also {@code status}'s rules table (issue #170) without {@code verbose}. */
+    private static String rulesTable(List<org.logaperture.control.jmx.RuleData> rows, boolean verbose) {
+        boolean showContext = spansMultipleContexts(rows, org.logaperture.control.jmx.RuleData::getContext);
+        boolean showRecipe = rows.stream().anyMatch(row -> row.getRecipe() != null);
+        List<List<String>> table = new ArrayList<>();
+        for (org.logaperture.control.jmx.RuleData row : rows) {
+            List<String> cells = new ArrayList<>();
+            if (showContext) {
+                cells.add(orDash(row.getContext()));
+            }
+            cells.add(row.getId());
+            cells.add(row.getLoggerName());
+            if (verbose) {
+                cells.add(RuleExpression.of(row));
+            }
+            cells.add(row.getAction());
+            cells.add(ruleTierCell(row));
+            cells.add(ruleExpiresCell(row));
+            cells.add(String.valueOf(row.getHitCount()));
+            if (showRecipe) {
+                cells.add(orDash(row.getRecipe()));
+            }
+            table.add(cells);
+        }
+        List<String> headers = new ArrayList<>();
+        if (showContext) {
+            headers.add("CONTEXT");
+        }
+        headers.addAll(List.of("ID", "LOGGER"));
+        if (verbose) {
+            headers.add("EXPRESSION");
+        }
+        headers.addAll(List.of("ACTION", "TIER", "EXPIRES", "HITS"));
+        if (showRecipe) {
+            headers.add("RECIPE");
+        }
+        return Format.table(headers, table);
     }
 
     /** A deadline as {@code status} shows one, local time and time remaining (issue #171); {@code --json} keeps the instant. */

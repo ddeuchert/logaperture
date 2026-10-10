@@ -73,8 +73,9 @@ logctl list loggers io.undertow --json
 
 ### status
 
-The loggers with an override (same fields as `list loggers`), the handlers with one, the vendor
-defaults file if any, and storm detection's state.
+The loggers with an override (same fields as `list loggers`), the handlers with one, the rules
+(same object per rule as [`add rule`](#add-rule), leaving out vendor rules nobody has changed), the
+vendor defaults file if any, and storm detection's state.
 
 ```sh
 logctl status --json
@@ -84,14 +85,14 @@ logctl status --json
 {
   "loggers": [
     {
-      "name": "io.undertow.request",
+      "name": "com.example.kept",
       "configuredLevel": null,
       "effectiveLevel": "DEBUG",
       "overrideActive": true,
       "overrideSource": "jmx",
-      "overrideReason": "demo",
-      "tier": "FOR",
-      "expiresAt": "2026-10-09T05:42:12.441226621Z",
+      "overrideReason": null,
+      "tier": "STICKY",
+      "expiresAt": null,
       "vendorDefaultLevel": null,
       "resetToNative": false,
       "recipe": null,
@@ -99,6 +100,34 @@ logctl status --json
     }
   ],
   "handlerOverrides": [],
+  "rules": [
+    {
+      "id": "r1",
+      "loggerName": "io.undertow.request",
+      "action": "drop",
+      "levelAtMost": "INFO",
+      "messageContains": "Matched default",
+      "messageIgnoreCase": false,
+      "throwableType": null,
+      "throwableMessageContains": null,
+      "anyCause": false,
+      "reason": "health checks",
+      "tier": "FOR",
+      "expiresAt": "2026-10-10T07:33:38.543016798Z",
+      "createdAt": "2026-10-10T03:33:38.543016798Z",
+      "context": "system",
+      "hitCount": 0,
+      "frames": null,
+      "collapseCauses": null,
+      "origin": null,
+      "toNative": false,
+      "altered": false,
+      "recipe": null,
+      "sampleFullEnabled": true,
+      "sampleFullEveryMillis": 300000,
+      "expression": "--message-contains \"Matched default\" --below WARN --sample-full 5m"
+    }
+  ],
   "vendorDefaults": null,
   "stormDetection": {
     "enabled": false,

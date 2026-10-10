@@ -16,10 +16,14 @@ Storm detection: disabled
 
 LOGGER            LEVEL  TIER    REVERTS      REASON
 com.example.kept  DEBUG  STICKY  until reset  —
+
+ID  LOGGER               ACTION  TIER  EXPIRES               HITS
+r1  io.undertow.request  drop    FOR   07:33:38 (in 3h 59m)  0
 ```
 
-`status` lists every logger and handler with a change on it, plus the vendor defaults file if there
-is one. `logctl list rules` lists the rules.
+`status` lists every logger and handler with a change on it and every rule, plus the vendor
+defaults file if there is one. A rule from the vendor defaults file appears only once you have
+altered it or switched it off. `logctl list rules --verbose` adds what each rule matches.
 
 ## Reset
 

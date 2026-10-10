@@ -189,6 +189,12 @@ final class Json {
      */
     static String status(List<LoggerInfoData> loggerOverrides, List<HandlerLevelOverrideData> handlerOverrides,
             EnvironmentReportData report, StormDetectionData stormDetection) {
+        return status(loggerOverrides, handlerOverrides, List.of(), report, stormDetection);
+    }
+
+    /** ... plus doc/specs/rule-pipeline-foundation.md's {@code rules}, as {@code list rules --json} gives them (issue #170). */
+    static String status(List<LoggerInfoData> loggerOverrides, List<HandlerLevelOverrideData> handlerOverrides,
+            List<RuleData> rules, EnvironmentReportData report, StormDetectionData stormDetection) {
         String vendorDefaults = report.getVendorDefaultsPath() == null ? "null"
                 : new Obj().str("path", report.getVendorDefaultsPath())
                         .str("status", report.getVendorDefaultsStatus()).toString();
@@ -197,7 +203,8 @@ final class Json {
                         .str("changedAt", stormDetection.getChangedAt())
                         .str("tier", stormDetection.getTier())
                         .str("expiresAt", stormDetection.getExpiresAt()).toString();
-        return statusObj(loggerOverrides, handlerOverrides).raw("vendorDefaults", vendorDefaults)
+        return statusObj(loggerOverrides, handlerOverrides).raw("rules", rulesArray(rules))
+                .raw("vendorDefaults", vendorDefaults)
                 .raw("stormDetection", storms).toString();
     }
 
@@ -567,11 +574,15 @@ final class Json {
     }
 
     static String rules(List<RuleData> rows) {
+        return new Obj().raw("rules", rulesArray(rows)).toString();
+    }
+
+    private static String rulesArray(List<RuleData> rows) {
         StringJoiner array = new StringJoiner(",", "[", "]");
         for (RuleData row : rows) {
             array.add(rule(row));
         }
-        return new Obj().raw("rules", array.toString()).toString();
+        return array.toString();
     }
 
     static String rule(RuleData row) {

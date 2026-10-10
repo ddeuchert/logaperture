@@ -66,8 +66,9 @@ operator actually reaches for. What lands here, visible once either of those exi
   to inherit it (`useParentRules false`).
 - `logctl reset rule <id>` removes one rule by id; `logctl reset rules` removes every rule;
   `logctl reset logger X` removes every rule attached directly to `X` as part of resetting it.
-- Nothing about this slice changes what any existing command does — `set`, `reset logger/handler`,
-  `list loggers/handlers`, `status`, `top`, `doctor`, `storms` are all untouched.
+- Nothing else about this slice changes what an existing command does — `set`, `reset
+  logger/handler`, `list loggers/handlers`, `top`, `doctor`, `storms` are untouched; `status` only
+  gains its rules table (issue #170).
 
 ## Scope of this slice
 
@@ -657,6 +658,24 @@ count (expiry, under `EXPIRES`, in `status`'s `REVERTS` form — local time and 
 `07:19:12 (in 3h 59m)` — or `—` for a rule with no deadline; `--json` keeps the ISO instant,
 issue #171), and, if a rule is attached above a point where `useParentRules=false` cuts inheritance
 off between it and the row being shown, a note saying so (epic "Rules as managed objects").
+
+### `logctl status` — a rules table (issue #170)
+
+`status` shows everything LogAperture is changing right now, so it lists rules as well as logger
+and handler overrides: a third table, after the handler table, with `list rules`' columns minus
+`--verbose`'s `EXPRESSION` — `ID`, `LOGGER`, `ACTION`, `TIER`, `EXPIRES`, `HITS` (plus `CONTEXT`
+and `RECIPE` under the same conditions as in `list rules`). Rows are in `list rules`' order. The
+matchers stay in `list rules --verbose`.
+
+- **Which rules.** Every rule an operator attached, by `add rule` or by applying a recipe. A vendor
+  rule ([`alter-rule.md`](alter-rule.md)) only when it has been changed: altered, or switched off
+  with `--to-native`. An unaltered vendor rule is the file's configuration, not a change, the same
+  way a logger at its vendor default isn't listed; the `Vendor defaults:` line already reports the
+  file.
+- **`No active overrides.`** prints only when there are no logger overrides, no handler overrides
+  and no rules to show.
+- **`--json`** gains a `rules` array, after `handlerOverrides`: the same objects as `list rules
+  --json`, filtered the same way. Additive; existing fields are unchanged.
 
 ### `logctl reset rule <id> [--include-sticky] [--to-native]`
 
