@@ -105,6 +105,9 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Fixed
 
+- **`logctl list rules` shows a rule's expiry the way `status` shows a level's**: local time and
+  time remaining (`07:19:12 (in 3h 59m)`), instead of a raw UTC timestamp. `--json` still gives
+  the timestamp (issue #171).
 - **`--message-contains` matches the message as logged on WildFly.** For JBoss Logging's
   printf-style messages (`debugf`, `infof`, message loggers), `drop` and `trim` rules matched the
   message template instead: `--message-contains "/health"` never matched `Matched default handler
