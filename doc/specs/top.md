@@ -9,8 +9,8 @@ to generate volume.
 2026-10-07:** "Adapter SPI": the stack-trace share is found in the real formatter's output
 instead of rendering the trace a second time (Decisions T1–T4). The second render was the whole
 of `top`'s cost on a record with a throwable (+99 % of a 20-frame exception's logging call,
-overhead-benchmarks.md Decision #6). **T5** (a trimmed trace), approach agreed 2026-10-08 after the
-pinned overhead run found every trimmed record still rendered twice; text pending sign-off on its PR.
+overhead-benchmarks.md Decision #6). **T5** (a trimmed trace), signed off 2026-10-09 after the
+pinned overhead run found every trimmed record still rendered twice (PR #157).
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §16.1 (`top`), §9.3 (capability
 model — `view`'s table already names "logger names and metrics" as its risk surface), §17
