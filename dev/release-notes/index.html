@@ -2280,6 +2280,10 @@ reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>.</p>
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
+<li><strong>The audit trail is no longer called tamper-evident.</strong> The README and the 0.1.0-alpha.1 notes
+  described it as hash-chained and tamper-evident, but its lines carry no digest, and anyone who
+  can write the file can edit them. The claim is withdrawn; hash-chaining is planned for after 1.0
+  (issue #164; tracked in #181).</li>
 <li><strong><code>logctl doctor</code> and <code>logctl storms</code> quote commands in single quotes</strong>, like the rest of
   <code>logctl</code>'s output: <code>see 'logctl enable storms'</code> and <code>see 'logctl storms'</code> instead of literal
   backticks (issue #166).</li>
