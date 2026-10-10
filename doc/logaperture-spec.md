@@ -1576,8 +1576,8 @@ Separately, **document the `-javaagent` ordering constraints**: agents listed
 before LogAperture run their `premain` first and are out of reach, and ordering
 LogAperture first helps (before #87's fix, it turned a rare startup failure into a
 certain one on the spike's launch, through the resolver's early lookup, not the
-ordering itself). The doc home is `USER_GUIDE_NOTES.md` for now (moving into the
-user guide once one exists) and `logctl doctor` output, which could flag agents
+ordering itself). The doc home is the user guide's
+[Agent order](../guide/concepts/agent-order.md) page and `logctl doctor` output, which could flag agents
 listed ahead of ours ([#85](https://github.com/ddeuchert/logaperture/issues/85)) —
 not this section.
 
