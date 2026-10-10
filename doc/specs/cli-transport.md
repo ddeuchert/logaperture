@@ -358,6 +358,16 @@ not, and the test would catch it.
   data objects — no third-party JSON library (the shapes are tiny and fully controlled,
   same reasoning as `persistence.md`'s hand-written state-file reader).
 
+**ASCII stand-ins (issue [#190](https://github.com/ddeuchert/logaperture/issues/190)).**
+Plain-text output uses a few non-ASCII characters: `—` for "no value" (`Format.NONE`), `→`, `…`
+and `–`. When stdout's charset can't encode them (Windows `cmd` encodes with the console code
+page, cp437 or cp850 by default, which would print `?`), `logctl` prints `-`, `->`, `...` and `-`
+instead. Decided once at startup from each stream's charset (`PrintStream.charset()`, or the JDK's
+`stdout.encoding` property), by `Glyphs`. Tables swap before measuring column widths, so they stay
+aligned; every other line is swapped by a wrapper around `System.out`/`System.err`. A console that
+can encode them is untouched, and `--json` is swapped the same way only on such a console, where
+it would otherwise have carried `?`.
+
 **Multi-context CONTEXT column (added by wildfly-support).** `list loggers` and `status` prepend
 a `CONTEXT` column to their plain-text table **only when the result spans more than one
 distinct logging context** — a plain `java -jar` app, and a stock standalone WildFly (one

@@ -113,6 +113,9 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Fixed
 
+- **`logctl` on Windows `cmd` no longer prints `?` for "no value".** A console whose code page
+  can't show `—`, `→` or `…` now gets `-`, `->` and `...`, with table columns still aligned
+  (issue #190).
 - **`DEFAULT_HANDLERS` picks WildFly's console handler again.** WildFly's console handlers were
   never recognized as consoles, so when the root logger had both `CONSOLE` and `FILE`, the
   automatic pick could land on `FILE`, depending on attachment order and whether handler names had
