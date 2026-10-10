@@ -109,7 +109,7 @@ Four, in descending order of confidence:
 1. **Persistence with expiry.** Nothing found offers "set this level, have it survive a restart, and revert itself in thirty minutes". Every tool is either ephemeral or permanent, which is the §3 problem restated.
 2. **Zero-configuration storm collapse.** The building blocks exist inside the frameworks but require editing configuration in advance for a problem that is unknown by definition. Nothing applies it agent-side, cross-framework, without prior knowledge.
 3. **The on-premises, no-egress deployment model.** The entire observability industry assumes a pipeline and a backend. A constrained single box owned by a customer, with a support engineer on the phone and no network path out, is not a scenario anyone is building for.
-4. **Governance.** No comparable tool ships a capability model, a suppression floor, a verbosity ceiling, or a tamper-evident audit trail (§9).
+4. **Governance.** No comparable tool ships a capability model, a suppression floor, a verbosity ceiling, or an audit trail (§9).
 
 **Caveat: absence of evidence.** A search cannot prove nothing exists, and this space is full of badly-named single-maintainer repositories and capabilities buried inside commercial APM products. Before committing, do the specific due diligence: browse GitHub by topic (`javaagent`, `logging`, `log4j`), check the Awesome Java lists, and ask directly on the Logback and Log4j 2 mailing lists — the maintainers will know immediately whether this has been tried.
 
@@ -652,7 +652,7 @@ Detectability is a stronger and cheaper guarantee than prevention, and it degrad
 - Records the **revert** as well as the change — an override that expired unnoticed is exactly what an audit needs to show.
 - Fields: principal, source (CLI / JMX / HTTP / file), what changed, previous value, expiry, `reason`.
 - **What changed is labelled by kind** (issue [#137](https://github.com/ddeuchert/logaperture/issues/137)): `logger=<name>` for a logger level or a rule (named by the logger it applies to), `handler=<name>` for a handler level or the `DEFAULT_HANDLERS` membership, `file=<path>` for a record about a whole file — the vendor defaults file loaded, the state file a resume restored from. A reader can grep `handler=` for every handler change without matching a logger that happens to share the name.
-- **Hash-chained entries** — each record includes a digest of its predecessor. Cheap to implement, makes deletion or alteration detectable, and is the sort of thing that turns a security review from an argument into a checkbox.
+- **Hash-chained entries** — each record includes a digest of its predecessor. Cheap to implement, makes deletion or alteration detectable, and is the sort of thing that turns a security review from an argument into a checkbox. **Not built in 1.0** (issue [#164](https://github.com/ddeuchert/logaperture/issues/164)): the trail is plain lines, and nothing calls it tamper-evident until this lands. An unkeyed chain only catches an editor who doesn't recompute it, so it needs a key or an off-machine anchor to mean anything; tracked in issue [#181](https://github.com/ddeuchert/logaperture/issues/181).
 - Optionally mirrored to syslog or the Windows Event Log so the record leaves the process entirely.
 
 ### 9.8 Authentication comes from the operating system
