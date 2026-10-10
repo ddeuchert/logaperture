@@ -23,9 +23,7 @@ import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Filter;
-import java.util.logging.Formatter;
 import java.util.logging.LogRecord;
-import java.util.logging.SimpleFormatter;
 
 /**
  * The gate-stage observer wearing a {@link Filter}'s clothes — doc/specs/
@@ -49,11 +47,6 @@ final class JulStormFilter implements Filter {
 
     /** Sampled once per storm engagement, never per event -- doc/specs/storm-detection.md "Detection algorithm". */
     private static final int MAX_TOP_FRAMES = 5;
-
-    private static final String EXT_LOG_RECORD_CLASS_NAME = "org.jboss.logmanager.ExtLogRecord";
-
-    /** Substitutes a plain JUL record's {@code {0}}-style parameters; stateless, as in {@link RuleCandidateEvents}. */
-    private static final Formatter MESSAGE_FORMATTER = new SimpleFormatter();
 
     private final Filter delegate;
     private final StormObserver observer;
@@ -128,7 +121,7 @@ final class JulStormFilter implements Filter {
         StringBuilder sb = new StringBuilder();
         sb.append(record.getInstant()).append(' ').append(record.getLevel()).append(" [")
                 .append(record.getLoggerName()).append("] ")
-                .append(formattedMessage(record));
+                .append(FormattedMessages.of(record));
         if (thrown != null) {
             StringWriter sink = new StringWriter();
             try (PrintWriter writer = new PrintWriter(sink)) {
@@ -137,36 +130,5 @@ final class JulStormFilter implements Filter {
             sb.append('\n').append(sink);
         }
         return sb.toString();
-    }
-
-    /**
-     * The message with its parameters filled in (issue #169). JBoss Logging's {@code debugf}/{@code
-     * infof} templates are printf style, which JUL's {@link Formatter#formatMessage} leaves alone, so
-     * a JBoss LogManager record formats itself -- {@code ExtLogRecord.getFormattedMessage()}, reached
-     * by reflection since this adapter has no compile-time JBoss LogManager dependency (as in {@link
-     * ExtLogRecordCopier}). Runs once per storm, never per event.
-     */
-    static String formattedMessage(LogRecord record) {
-        if (isExtLogRecord(record.getClass())) {
-            try {
-                Object formatted = record.getClass().getMethod("getFormattedMessage").invoke(record);
-                if (formatted instanceof String text) {
-                    return text;
-                }
-            } catch (ReflectiveOperationException | RuntimeException e) {
-                // fall back to JUL's own substitution below
-            }
-        }
-        String formatted = MESSAGE_FORMATTER.formatMessage(record);
-        return formatted != null ? formatted : "";
-    }
-
-    private static boolean isExtLogRecord(Class<?> recordClass) {
-        for (Class<?> c = recordClass; c != null; c = c.getSuperclass()) {
-            if (EXT_LOG_RECORD_CLASS_NAME.equals(c.getName())) {
-                return true;
-            }
-        }
-        return false;
     }
 }

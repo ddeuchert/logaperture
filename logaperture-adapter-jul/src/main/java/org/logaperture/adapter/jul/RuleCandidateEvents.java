@@ -17,9 +17,7 @@ package org.logaperture.adapter.jul;
 
 import org.logaperture.core.RuleCandidateEvent;
 
-import java.util.logging.Formatter;
 import java.util.logging.LogRecord;
-import java.util.logging.SimpleFormatter;
 
 /**
  * Builds a {@link RuleCandidateEvent} off a JUL {@link LogRecord} -- shared
@@ -28,15 +26,6 @@ import java.util.logging.SimpleFormatter;
  * {@code RuleGate} against the same record shape.
  */
 final class RuleCandidateEvents {
-
-    /**
-     * A plain, stateless message-substitution helper -- see {@link
-     * JulRuleFilter}'s former field doc for why this recomputes per
-     * candidate event rather than reusing JBoss LogManager's own
-     * per-record cache (doc/specs/drop-rule.md "Divergence from prior
-     * specs").
-     */
-    private static final Formatter MESSAGE_FORMATTER = new SimpleFormatter();
 
     private RuleCandidateEvents() {
     }
@@ -51,6 +40,6 @@ final class RuleCandidateEvents {
         org.logaperture.api.Level level = LevelMapper.toApi(record.getLevel());
         Throwable thrown = record.getThrown();
         return new RuleCandidateEvent(loggerName, level, thrown,
-                () -> MESSAGE_FORMATTER.formatMessage(record), record.getInstant());
+                () -> FormattedMessages.of(record), record.getInstant());
     }
 }
