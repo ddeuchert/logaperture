@@ -83,11 +83,15 @@ class GuideReferenceDriftTest {
                 "doctor check ids in the code vs. the sections of guide/reference/doctor-checks.md");
     }
 
-    /** Every module's main Java sources, concatenated. Tests and generated code are left out. */
+    /** Built only under {@code -Pbench} and never shipped: its own properties aren't agent options. */
+    private static final String BENCH_MODULE = "logaperture-bench";
+
+    /** Every shipped module's main Java sources, concatenated. Tests, generated code and the benchmarks are left out. */
     private static String mainSources() {
         StringBuilder all = new StringBuilder();
         try (Stream<Path> modules = Files.list(REPO)) {
-            for (Path module : modules.filter(p -> p.getFileName().toString().startsWith("logaperture-")).toList()) {
+            for (Path module : modules.filter(p -> p.getFileName().toString().startsWith("logaperture-")
+                    && !p.getFileName().toString().equals(BENCH_MODULE)).toList()) {
                 Path main = module.resolve("src/main/java");
                 if (!Files.isDirectory(main)) {
                     continue;

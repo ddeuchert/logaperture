@@ -474,7 +474,7 @@ All twelve agreed as recommended. Numbering is stable and matches the review art
 | U3 | Hosting paths | **`mike` owns the whole site**; `/` redirects to `/latest/`. |
 | U4 | Command reference | **One help entry per command group**, feeding `--help`, `logctl help <command>` and the generated reference page. |
 | U5 | `logctl help` and the freeze | **Lands before beta 1.** |
-| U6 | Other references | **Hand-written, each with a drift test**; internal tuning properties in their own "may change" table. As built (4a), one `GuideReferenceDriftTest` in `logaperture-cli` scans every module's main sources rather than a test per owning module: the properties are read in five modules, and one scan catches a name added anywhere. |
+| U6 | Other references | **Hand-written, each with a drift test**; internal tuning properties in their own "may change" table. As built (4a), one `GuideReferenceDriftTest` in `logaperture-cli` scans every module's main sources rather than a test per owning module: the properties are read in five modules, and one scan catches a name added anywhere. The benchmark module (`logaperture-bench`, never shipped) is left out: its properties configure a benchmark run, not the agent (#128). |
 | U7 | Build and zip | **The release workflow builds the site**; Maven only copies it when present. Offline build for the zip. |
 | U8 | Versions | **`dev` from `develop`, `<major>.<minor>` from tags; `1.0` with a pre-release banner and `latest` from beta 1.** |
 | U9 | Existing documents | **As in the table.** |
