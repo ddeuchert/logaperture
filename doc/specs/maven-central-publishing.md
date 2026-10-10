@@ -200,4 +200,6 @@ With the real secrets, the dry run on this feature's pull request:
   inherited. Fixed by giving the three modules a `<name>`. `central.sh bundle` now checks each
   POM for `name` and `description`, and for `url`, `licenses`, `developers` and `scm` in the POM
   or its parent. It fails on the first run's POMs with the same three errors Central gave.
-- Second run: to do.
+- **Second run, 2026-10-10: validated**, then dropped. Central accepted all four artifacts
+  (`logaperture-parent`, `logaperture-agent`, `logaperture-cli`, `logaperture`) at
+  `1.0.0-beta.1`.
