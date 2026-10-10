@@ -108,6 +108,10 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Fixed
 
+- **The audit trail is no longer called tamper-evident.** The README and the 0.1.0-alpha.1 notes
+  described it as hash-chained and tamper-evident, but its lines carry no digest, and anyone who
+  can write the file can edit them. The claim is withdrawn; hash-chaining is planned for after 1.0
+  (issue #164; tracked in #181).
 - **`logctl doctor` and `logctl storms` quote commands in single quotes**, like the rest of
   `logctl`'s output: `see 'logctl enable storms'` and `see 'logctl storms'` instead of literal
   backticks (issue #166).

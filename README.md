@@ -50,7 +50,7 @@ Working today:
 - **Vendor defaults file** (`-javaagent:…=--vendor-defaults=<file>`) — ship baseline levels and rules with a product; `logctl reset` returns to them, and `logctl export vendor-defaults` writes your sticky settings out as one.
 - **Guided commands** — on a terminal, leave out what `set`, `reset`, `list`, `add rule` or `alter rule` needs and `logctl` asks, picking loggers, handlers and rules from numbered lists, then prints the equivalent one-line command.
 
-`doctor`, `top`, `logctl list handlers`, rules and storm detection currently work with `java.util.logging` / JBoss LogManager only — on a Logback application they report nothing yet (a Logback pass is on the roadmap). Every change is capability-checked and written to a tamper-evident audit trail. The agent opens no sockets; `logctl` reaches it over the local attach API, UID-gated by the OS.
+`doctor`, `top`, `logctl list handlers`, rules and storm detection currently work with `java.util.logging` / JBoss LogManager only — on a Logback application they report nothing yet (a Logback pass is on the roadmap). Every change is capability-checked and written to an audit trail. The agent opens no sockets; `logctl` reaches it over the local attach API, UID-gated by the OS.
 
 **Not in this build:** automatic storm collapse, `drop`/`trim` on Logback, the Log4j 2 adapter, and any Spring Boot / Tomcat / Quarkus-JVM integration (a Spring Boot fat-jar attaches as a plain JVM, so level control *may* work against its Logback, but it is untested).
 
