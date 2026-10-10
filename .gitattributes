@@ -1,0 +1,6 @@
+# Windows scripts must check out with CRLF whatever the clone's core.autocrlf: cmd.exe
+# mis-reads batch labels in LF files (mvnw.cmd), and the benchmark runner is run on Windows.
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+# The Unix wrapper must keep LF or /bin/sh fails on the first line.
+mvnw text eol=lf

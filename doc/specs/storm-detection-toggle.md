@@ -300,7 +300,9 @@ with no-op defaults like the other entry kinds.
   `develop`): `idle` now means the agent's default, with the storm filter installed but off.
   The `rule+storm` layer keeps its budget and stays reported, but a storm-layer miss is no longer
   a 1.0 blocker under Decision #7, which covers the idle agent; it is tracked by #150 (1.1.0).
-  The storm-off layer (`rule+storm` with the switch off, minus `rule`) must be within 10 ns.
+  Disabled storm may cost at most 10 % of the enabled budget (10 ns for `template`), checked by a
+  component benchmark since the pipeline's error bars are too wide for it (overhead-benchmarks.md
+  Decision #24, agreed 2026-10-07).
 - **vendor-defaults.md "Agent arguments":** "This slice defines one" becomes a list of two.
 - **quieter-output.md Q3:** the banner's `storm detection on` part.
 - **logaperture-spec.md:** §7.1 notes that detection is opt-in in 1.0; §9.3 gains the
@@ -326,7 +328,8 @@ with no-op defaults like the other entry kinds.
   leaving the report unchanged; enable it at runtime and see the storm. Starting with
   `--storm-detection=on` is covered by the argument-parser and banner unit tests rather than a
   second WildFly container, since the IT shares one server across its tests.
-- Bench: the `storm-off` scenario.
+- Bench: the `rule+storm-off` scenario (reported) and the `storm-off` component benchmark
+  (checked), overhead-benchmarks.md Decision #24.
 
 ## Decisions (signed off 2026-10-06)
 

@@ -213,4 +213,18 @@
       </plugins>
     </pluginManagement>
   </build>
+
+  <profiles>
+    <!--
+      JMH overhead benchmarks (doc/specs/overhead-benchmarks.md Decision #1). Kept out of the
+      default reactor so a normal `mvn verify` never builds them; never deployed.
+      Build: mvn -Pbench -pl logaperture-bench -am package
+    -->
+    <profile>
+      <id>bench</id>
+      <modules>
+        <module>logaperture-bench</module>
+      </modules>
+    </profile>
+  </profiles>
 </project>
