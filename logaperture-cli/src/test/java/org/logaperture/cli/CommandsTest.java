@@ -1621,6 +1621,20 @@ class CommandsTest {
     }
 
     @Test
+    void listRules_forRule_showsExpiryAsLocalTimeAndTimeRemaining() {
+        String expiresAt = Instant.now().plusSeconds(2 * 3600 + 30).toString();
+        mbean.rules = List.of(new org.logaperture.control.jmx.RuleData(
+                "r1", "com.acme.Worker", "TestRule", null, null, false, null, null, false, null, "FOR", expiresAt,
+                Instant.now().toString(), null, 0L, null, null));
+
+        assertEquals(CliError.OK, run(Commands.listRules(false)));
+
+        String text = output();
+        assertTrue(text.contains(Format.clock(expiresAt) + " (in 2h)"), text);
+        assertFalse(text.contains(expiresAt), text);
+    }
+
+    @Test
     void listRules_empty_printsANote() {
         assertEquals(CliError.OK, run(Commands.listRules(false)));
         assertEquals("No rules attached.", output().strip());

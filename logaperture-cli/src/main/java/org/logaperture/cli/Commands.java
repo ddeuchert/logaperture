@@ -972,7 +972,7 @@ final class Commands {
                 }
                 cells.add(row.getAction());
                 cells.add(ruleTierCell(row));
-                cells.add(orDash(row.getExpiresAt()));
+                cells.add(ruleExpiresCell(row));
                 cells.add(String.valueOf(row.getHitCount()));
                 if (showRecipe) {
                     cells.add(orDash(row.getRecipe()));
@@ -1088,6 +1088,14 @@ final class Commands {
             RecipeCommands.printRecipe(out, detail);
             return CliError.OK;
         };
+    }
+
+    /** A deadline as {@code status} shows one, local time and time remaining (issue #171); {@code --json} keeps the instant. */
+    private static String ruleExpiresCell(org.logaperture.control.jmx.RuleData row) {
+        if (row.getExpiresAt() == null) {
+            return Format.NONE;
+        }
+        return Format.clock(row.getExpiresAt()) + " (" + Format.relative(row.getExpiresAt()) + ")";
     }
 
     /**

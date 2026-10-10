@@ -653,7 +653,9 @@ its configured level with no override — every attached rule *is* an override i
 `--show-all` has no distinct meaning yet and is not added as a flag until a rule type exists to
 give it one). Columns: id, logger, action (blank/`?` until #72/#34 exist — this slice's own test
 double supplies a placeholder action name for test purposes only), matchers, tier, expiry, hit
-count, and, if a rule is attached above a point where `useParentRules=false` cuts inheritance
+count (expiry, under `EXPIRES`, in `status`'s `REVERTS` form — local time and time remaining,
+`07:19:12 (in 3h 59m)` — or `—` for a rule with no deadline; `--json` keeps the ISO instant,
+issue #171), and, if a rule is attached above a point where `useParentRules=false` cuts inheritance
 off between it and the row being shown, a note saying so (epic "Rules as managed objects").
 
 ### `logctl reset rule <id> [--include-sticky] [--to-native]`

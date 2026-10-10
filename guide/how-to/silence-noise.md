@@ -68,9 +68,9 @@ logctl list rules --verbose
 ```
 
 ```
-ID  LOGGER                              EXPRESSION                                                          ACTION  TIER  EXPIRES                         HITS
-r2  io.undertow.request                 --message-contains "Matched default" --below WARN --sample-full 5m  drop    FOR   2026-10-10T05:27:09.163795880Z  0
-r3  org.logaperture.sample.work.Worker  --throwable java.io.IOException --below ERROR --frames 3            trim    FOR   2026-10-10T05:27:09.972330060Z  0
+ID  LOGGER                              EXPRESSION                                                          ACTION  TIER  EXPIRES               HITS
+r2  io.undertow.request                 --message-contains "Matched default" --below WARN --sample-full 5m  drop    FOR   07:19:12 (in 3h 59m)  0
+r3  org.logaperture.sample.work.Worker  --throwable java.io.IOException --below ERROR --frames 3            trim    FOR   07:19:13 (in 3h 59m)  0
 ```
 
 `HITS` counts the events each rule has acted on. `EXPRESSION` is the rule's options, in the form
