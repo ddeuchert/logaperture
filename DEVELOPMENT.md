@@ -20,7 +20,12 @@ apply to everyone.
   *Maven Central dry run* → Run workflow, on `develop`; or add the label
   `central dry run` to a pull request): it builds and signs the
   release version, uploads it to the Central Portal, waits for Central to
-  validate it, then drops it, so nothing is published. Then fast-forward `main`
+  validate it, then drops it, so nothing is published. To add the label, open
+  the pull request on GitHub, click the gear next to **Labels** in the
+  right-hand sidebar and tick **central dry run** (or run
+  `gh pr edit <number> --add-label "central dry run"`). The run shows on the
+  pull request's Checks tab and under Actions. To run it again, remove the
+  label and add it back. Then fast-forward `main`
   to the release commit on `develop`, push `main`, and push a tag
   (`v1.0.0-beta.1`, …). `.github/workflows/release.yml` builds, tests and signs
   the release, publishes it to Maven Central (`org.logaperture`: the parent POM,
