@@ -226,6 +226,8 @@ Extends `drop-rule.md` "Evaluation" rather than reopening it:
   frames omitted]`, rather than being suppressed — consistent behavior regardless of how a
   rule's `--frames` value happens to relate to a given trace's depth, and one fewer conditional
   in the render path.
+- **The marker's text is read back** by `top`'s byte counting, which skips it to find the trimmed
+  trace in the output (top.md T5); changing the wording means changing both.
 - **Structured formatters** (JSON, XML — detected by formatter class, same detection point
   `top.md`'s byte-counting wrap already needs): **not trimmed in this slice.** The copy is
   formatted with its throwable untouched, identical to what an unmatched record would produce.

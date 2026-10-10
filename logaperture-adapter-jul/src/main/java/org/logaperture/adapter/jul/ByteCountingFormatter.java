@@ -95,6 +95,10 @@ final class ByteCountingFormatter extends Formatter {
      * message. A throwable with no frames has no tab-indented line, so for it the last header
      * followed by a line break (or ending the output) is taken, as the trace follows the message.
      * A {@code null} or empty header is never searched for: T2's render measures it.
+     *
+     * <p>T5: a {@code trim} rule's rendering follows the header with its marker ({@code [stack trace
+     * trimmed: n frames omitted]}), which is skipped; a trimmed header may have no frames left, so
+     * one followed by a line break or ending the output is taken as for a frameless throwable.
      */
     static int traceStart(String formatted, Throwable thrown) {
         String header = thrown.toString();
@@ -102,17 +106,42 @@ final class ByteCountingFormatter extends Formatter {
             return -1;
         }
         int bare = -1;
+        boolean frameless = false;
         for (int at = formatted.indexOf(header); at >= 0; at = formatted.indexOf(header, at + 1)) {
             int end = at + header.length();
+            int marked = afterTrimMarker(formatted, end);
+            if (marked >= 0) {
+                end = marked;
+            }
             int next = afterLineBreak(formatted, end);
             if (next >= 0 && next < formatted.length() && formatted.charAt(next) == '\t') {
                 return at;
             }
             if (next >= 0 || end == formatted.length()) {
                 bare = at;
+                frameless = marked >= 0;
             }
         }
-        return bare >= 0 && thrown.getStackTrace().length == 0 ? bare : -1;
+        if (bare >= 0 && (frameless || thrown.getStackTrace().length == 0)) {
+            return bare;
+        }
+        return -1;
+    }
+
+    /** The index just past a trim marker ({@link TrimRendering#MARKER_OPEN} digits {@link TrimRendering#MARKER_CLOSE}) at {@code at}, or {@code -1}. */
+    private static int afterTrimMarker(String text, int at) {
+        if (!text.startsWith(TrimRendering.MARKER_OPEN, at)) {
+            return -1;
+        }
+        int digits = at + TrimRendering.MARKER_OPEN.length();
+        int end = digits;
+        while (end < text.length() && text.charAt(end) >= '0' && text.charAt(end) <= '9') {
+            end++;
+        }
+        if (end == digits || !text.startsWith(TrimRendering.MARKER_CLOSE, end)) {
+            return -1;
+        }
+        return end + TrimRendering.MARKER_CLOSE.length();
     }
 
     /** The index just past a {@code \n} or {@code \r\n} at {@code at}, or {@code -1} if there is none. */
