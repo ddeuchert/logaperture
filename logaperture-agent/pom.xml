@@ -26,6 +26,8 @@
   </parent>
 
   <artifactId>logaperture-agent</artifactId>
+  <!-- Maven Central requires a name in every published POM; it isn't inherited. -->
+  <name>LogAperture agent</name>
 
   <description>
     premain/agentmain entry points, classloader plumbing, framework

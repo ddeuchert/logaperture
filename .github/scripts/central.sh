@@ -82,6 +82,27 @@ cmd_bundle() {
     done < <(expected_files "$version")
     [[ $missing -eq 0 ]] || die "the staging repository is incomplete"
 
+    # Central rejects a POM without these. <name> must be in each POM: Maven doesn't inherit it.
+    # The others may come from the parent POM, which Central resolves.
+    local bad_pom=0
+    while read -r f; do
+        [[ "$f" == *.pom ]] || continue
+        python3 - "$group/$f" "$group/logaperture-parent/$version/logaperture-parent-$version.pom" <<'PY' || bad_pom=1
+import sys, xml.etree.ElementTree as ET
+ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+pom, parent = (ET.parse(path).getroot() for path in sys.argv[1:3])
+def has(root, e):
+    return bool(root.findtext(f"m:{e}", default="", namespaces=ns).strip()
+                or root.find(f"m:{e}/*", ns) is not None)
+missing = [e for e in ("name", "description", "url", "licenses", "developers", "scm")
+           if not (has(pom, e) or (e != "name" and has(parent, e)))]
+if missing:
+    print(f"{sys.argv[1]}: missing {', '.join(missing)}", file=sys.stderr)
+    sys.exit(1)
+PY
+    done < <(expected_files "$version")
+    [[ $bad_pom -eq 0 ]] || die "a POM lacks metadata Maven Central requires"
+
     # Nothing else may go out: a module that lost its maven.deploy.skip would otherwise be
     # published for good. Checksums of the signatures are allowed but not required.
     local allowed unexpected

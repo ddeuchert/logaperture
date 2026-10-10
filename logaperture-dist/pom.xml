@@ -31,6 +31,8 @@
     keeps the -dist name (decision M2, doc/specs/maven-central-publishing.md).
   -->
   <artifactId>logaperture</artifactId>
+  <!-- Maven Central requires a name in every published POM; it isn't inherited. -->
+  <name>LogAperture release zip</name>
   <packaging>pom</packaging>
 
   <description>

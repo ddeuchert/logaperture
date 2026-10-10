@@ -26,6 +26,8 @@
   </parent>
 
   <artifactId>logaperture-cli</artifactId>
+  <!-- Maven Central requires a name in every published POM; it isn't inherited. -->
+  <name>LogAperture logctl</name>
 
   <description>
     logctl, the attach-API and local-JMX client for the level-control

@@ -96,6 +96,8 @@ zip was never affected, because it copies `target/logaperture-agent.jar` by path
 module's artifact. `logaperture-it`, which depends on the agent at test scope, now gets the shaded
 jar too.
 
+**Each published POM needs its own `<name>`.** Found by the first dry run: see Testing.
+
 ## Decisions
 
 All signed off 2026-10-10. M2, M8 and M10 were David's calls; the rest are as recommended.
@@ -189,6 +191,13 @@ Done locally on the prototype, with a throwaway GPG key:
 - All unit tests pass with the shade change (`mvn verify -DskipITs`, 1,555 tests). CI runs the
   integration tests, including `logaperture-it` against the shaded agent.
 
-Still to do, and possible only with the real secrets: **run the dry run**. Add the label
-`central dry run` to this feature's pull request. It is the test of the namespace, the token, the key and Central's own
-validation of the bundle.
+With the real secrets, the dry run on this feature's pull request:
+
+- **First run, 2026-10-10: failed validation.** The upload was accepted, so the token, the
+  namespace and the signing key all worked. Central rejected the agent's, `logctl`'s and the zip's
+  POMs with "Project name is missing". Maven inherits `url`, `licenses`, `developers` and `scm`
+  from the parent, and Central reads them from the published parent POM, but `<name>` is never
+  inherited. Fixed by giving the three modules a `<name>`. `central.sh bundle` now checks each
+  POM for `name` and `description`, and for `url`, `licenses`, `developers` and `scm` in the POM
+  or its parent. It fails on the first run's POMs with the same three errors Central gave.
+- Second run: to do.
