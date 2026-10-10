@@ -112,10 +112,12 @@ class CommandsTest {
     }
 
     @Test
-    void listLoggersJsonEmitsAnArray() {
+    void listLoggersJsonWrapsTheRowsInAnObject() {
         mbean.loggers = List.of(new LoggerInfoData("a", "INFO", "INFO", false, null, null, null, null));
         run(Commands.listLoggers(null, true, true));
-        assertTrue(output().strip().startsWith("[{"));
+        String text = output().strip();
+        assertTrue(text.startsWith("{\"loggers\":[{\"name\":\"a\""), text);
+        assertTrue(text.endsWith("}]}"), text);
     }
 
     @Test

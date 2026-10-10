@@ -58,6 +58,11 @@ final class Json {
     private Json() {
     }
 
+    /** {@code list loggers --json}: {@code {"loggers": [...]}}, an object like every other command's (issue #165). */
+    static String listLoggers(List<LoggerInfoData> rows) {
+        return new Obj().raw("loggers", loggers(rows)).toString();
+    }
+
     static String loggers(List<LoggerInfoData> rows) {
         StringJoiner array = new StringJoiner(",", "[", "]");
         for (LoggerInfoData row : rows) {
