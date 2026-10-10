@@ -165,10 +165,14 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
         Map<String, String> nameToType = readLoggingHandlerNames(loader, executor);
         dbg("model handler names=" + nameToType);
         Map<String, String> fileNameByHandlerName = readFileNames(loader, executor, nameToType);
-        Map<String, Set<String>> attachmentsByName = readAttachments(loader, executor);
-        dbg("model handler attachments=" + attachmentsByName);
-        Map<Handler, String> bound = bind(handlers, nameToType, fileNameByHandlerName,
-                attachmentsByName, WildFlyHandlerNameResolver::handlersAttachedTo);
+        Map<Handler, String> bound = bind(handlers, nameToType, fileNameByHandlerName);
+        if (bound.size() < handlers.size()) {
+            // Only when type and file name left something unnamed: two more model reads.
+            Map<String, Set<String>> attachmentsByName = readAttachmentsOrNone(loader, executor);
+            dbg("model handler attachments=" + attachmentsByName);
+            bound = bind(handlers, nameToType, fileNameByHandlerName,
+                    attachmentsByName, WildFlyHandlerNameResolver::handlersAttachedTo);
+        }
         dbg("bound " + bound.size() + " of " + handlers.size());
         if (!bound.isEmpty()) {
             Diagnostics.debug("resolved " + bound.size() + " of " + handlers.size()
@@ -310,6 +314,20 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
     }
 
     /**
+     * {@link #readAttachments}, or nothing if it fails: a failure here must not lose the names
+     * type and file name already bound.
+     */
+    private static Map<String, Set<String>> readAttachmentsOrNone(ClassLoader loader, ModelExecutor executor) {
+        try {
+            return readAttachments(loader, executor);
+        } catch (Exception | LinkageError failure) {
+            dbg("readAttachments failed: " + failure);
+            Diagnostics.debug("WildFly handler attachments not read this pass (" + failure + ")");
+            return Map.of();
+        }
+    }
+
+    /**
      * Which loggers each handler name is attached to in the model: handler name -> logger
      * categories, the root logger as {@code ""}. From {@code root-logger=ROOT}'s and each
      * {@code logger=<category>}'s {@code handlers} attribute.
@@ -424,8 +442,14 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
         }
 
         Map<Handler, Set<String>> liveAttachments = liveAttachments(attachmentsByName, liveAttached);
-        bindByAttachment(consoles, consoleNames, attachmentsByName, liveAttachments, out);
-        bindByAttachment(files, fileNames, attachmentsByName, liveAttachments, out);
+        // A name of a type outside HANDLER_RESOURCE_TYPES (async-handler, socket-handler) is never
+        // bound itself, but its live handler is a non-console candidate, so it competes with the
+        // file-type names for the loggers it is attached to.
+        List<String> otherTypeNames = attachmentsByName.keySet().stream()
+                .filter(name -> !nameToType.containsKey(name))
+                .toList();
+        bindByAttachment(consoles, consoleNames, List.of(), attachmentsByName, liveAttachments, out);
+        bindByAttachment(files, fileNames, otherTypeNames, attachmentsByName, liveAttachments, out);
         return out;
     }
 
@@ -445,11 +469,13 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
 
     /**
      * Binds each still-unbound name to the one still-unbound live handler of its kind attached to
-     * exactly the loggers the model attaches the name to (issue #188). Skipped when another name
-     * of the kind has the same attachments, or when no live handler or more than one matches:
-     * an ambiguous handler keeps its token rather than risk the wrong name.
+     * exactly the loggers the model attaches the name to (issue #188). Skipped when another
+     * still-unbound name of the kind, or one of {@code otherNames}, has the same attachments, or
+     * when no live handler or more than one matches: an ambiguous handler keeps its token rather
+     * than risk the wrong name. A name already bound by type or file name doesn't compete: its
+     * handler is taken.
      */
-    private static void bindByAttachment(List<Handler> live, List<String> names,
+    private static void bindByAttachment(List<Handler> live, List<String> names, List<String> otherNames,
             Map<String, Set<String>> attachmentsByName, Map<Handler, Set<String>> liveAttachments,
             Map<Handler, String> out) {
         for (String name : names) {
@@ -458,7 +484,9 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
                 continue;
             }
             boolean shared = names.stream()
-                    .anyMatch(other -> !other.equals(name) && want.equals(attachmentsByName.get(other)));
+                    .filter(other -> !other.equals(name) && !out.containsValue(other))
+                    .anyMatch(other -> want.equals(attachmentsByName.get(other)))
+                    || otherNames.stream().anyMatch(other -> want.equals(attachmentsByName.get(other)));
             if (shared) {
                 continue;
             }

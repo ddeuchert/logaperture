@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.logging.Formatter;
@@ -131,12 +132,21 @@ public final class JulLoggingAdapter implements LoggingAdapter {
 
     private volatile Resolution resolution = Resolution.PENDING;
     /**
-     * The handlers the last resolution attempt was asked about, by identity. A handler first
-     * seen after that, which therefore has no name yet, sends resolution back to pending
-     * (issue #188); one that was asked about and still has no name doesn't, so an unnameable
-     * handler can't cause a resolution on every call.
+     * Every handler a resolution attempt has been asked about. A handler first seen after
+     * resolution, which therefore has no name yet, sends resolution back to pending (issue
+     * #188). One that was asked about and still has no name doesn't, so an unnameable handler
+     * can't cause a resolution on every call. Weak, so a removed handler, and its
+     * application's classloader, isn't kept alive here; {@code Handler} doesn't override
+     * {@code equals}, so this is by identity.
      */
-    private volatile Set<Handler> offeredToResolver = Set.of();
+    private final Set<Handler> offeredToResolver =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    /**
+     * Whether a resolution attempt has ever named anything. Before that, an empty result means
+     * the model isn't queryable yet, so resolution stays pending and retries. After it, the model
+     * is known to answer, and an empty result means there was nothing new to name.
+     */
+    private volatile boolean resolvedOnce;
     /** Serialises the resolution attempt + {@link #upgradeTokenRefs()} so concurrent first-callers don't race. */
     private final Object resolutionLock = new Object();
 
@@ -674,7 +684,17 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             if (resolution == Resolution.DONE) {
                 return;
             }
-            List<Handler> handlers = liveHandlers();
+            List<Handler> handlers = new ArrayList<>(liveHandlers());
+            // A token holder the walk doesn't reach (one on an ancestor logger that
+            // handlerFloorsBelow found) is asked about too, so that it's offered, and so can't
+            // send resolution back to pending again.
+            for (Map.Entry<Handler, HandlerRef> entry : refByHandler.entrySet()) {
+                Handler handler = entry.getKey();
+                if (tokenRefs.contains(entry.getValue()) && !offeredToResolver.contains(handler)
+                        && !handlers.contains(handler)) {
+                    handlers.add(handler);
+                }
+            }
             if (handlers.isEmpty()) {
                 return; // no handlers to resolve yet -- try again on the next call
             }
@@ -684,16 +704,30 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             } catch (RuntimeException unexpected) { // the contract says it won't throw; never trust that
                 names = Map.of();
             }
-            Set<Handler> offered = Collections.newSetFromMap(new IdentityHashMap<>());
-            offered.addAll(handlers);
-            offeredToResolver = offered;
-            if (names.isEmpty()) {
+            offeredToResolver.addAll(handlers);
+            if (names.isEmpty() && !resolvedOnce) {
                 return; // model not queryable yet -- the next call retries
             }
+            resolvedOnce = true;
             resolvedNames.putAll(names);
             resolution = Resolution.DONE;
             upgradeTokenRefs();
+            if (hasUnofferedToken()) {
+                // Minted by another thread while this attempt ran, from a snapshot taken before
+                // that handler was attached: it saw PENDING, so it didn't ask for a new attempt.
+                resolution = Resolution.PENDING;
+            }
         }
+    }
+
+    /** Whether some handler holds a token without ever having been offered to the resolver. */
+    private boolean hasUnofferedToken() {
+        for (Map.Entry<Handler, HandlerRef> entry : refByHandler.entrySet()) {
+            if (tokenRefs.contains(entry.getValue()) && !offeredToResolver.contains(entry.getKey())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

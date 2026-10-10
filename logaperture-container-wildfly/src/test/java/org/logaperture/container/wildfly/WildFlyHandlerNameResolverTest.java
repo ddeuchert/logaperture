@@ -204,6 +204,41 @@ class WildFlyHandlerNameResolverTest {
         assertEquals("API", bound.get(apiFile));
     }
 
+    @Test
+    void bind_aNameBoundByItsFile_doesNotBlockAnotherOnTheSameLoggers() {
+        // FILE is bound by its path; API, a custom handler with no path, is the only other
+        // handler on root, so it is unambiguous.
+        Handler serverFile = new FakeFileHandler("/var/log/server.log");
+        Handler api = new PlainHandler();
+        Map<String, String> model = new LinkedHashMap<>();
+        model.put("FILE", "periodic-rotating-file-handler");
+        model.put("API", "custom-handler");
+        Map<String, Set<String>> attachments = Map.of("FILE", Set.of(""), "API", Set.of(""));
+
+        Map<Handler, String> bound = WildFlyHandlerNameResolver.bind(List.of(serverFile, api), model,
+                Map.of("FILE", "server.log"), attachments, attached(Map.of("", List.of(serverFile, api))));
+
+        assertEquals("FILE", bound.get(serverFile));
+        assertEquals("API", bound.get(api));
+    }
+
+    @Test
+    void bind_anAsyncHandlerOnTheSameLoggers_keepsAFileNameUnbound() {
+        // ASYNC (an async-handler, not a type this resolver names) and FILE are both on root, and
+        // only the async handler's instance is live: it must not be labelled FILE.
+        Handler async = new PlainHandler();
+        Map<String, String> model = new LinkedHashMap<>();
+        model.put("FILE", "custom-handler");
+        model.put("OTHER", "custom-handler"); // so the one-file shortcut doesn't apply
+        Map<String, Set<String>> attachments = Map.of(
+                "FILE", Set.of(""), "ASYNC", Set.of(""), "OTHER", Set.of("app.other"));
+
+        Map<Handler, String> bound = WildFlyHandlerNameResolver.bind(List.of(async), model, Map.of(),
+                attachments, attached(Map.of("", List.of(async))));
+
+        assertTrue(bound.isEmpty(), "ASYNC competes for root, so FILE stays unbound: " + bound);
+    }
+
     private static Function<String, List<Handler>> attached(Map<String, List<Handler>> byCategory) {
         return category -> byCategory.getOrDefault(category, List.of());
     }
@@ -224,6 +259,13 @@ class WildFlyHandlerNameResolverTest {
                 System.setProperty(WildFlyHandlerNameResolver.MODULE_PATH_PROPERTY, saved);
             }
         }
+    }
+
+    /** A non-console handler with no file. */
+    private static final class PlainHandler extends Handler {
+        @Override public void publish(LogRecord record) { }
+        @Override public void flush() { }
+        @Override public void close() { }
     }
 
     private static final class FakeFileHandler extends Handler {

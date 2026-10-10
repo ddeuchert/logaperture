@@ -278,6 +278,39 @@ class JulHandlerNameResolutionTest {
     }
 
     @Test
+    void aLateHandlerTheResolverCannotName_costsOneMoreAttempt_notOneEveryCall() {
+        // Code review of #191: a re-resolution that names nothing must still finish. Before, it
+        // stayed pending and read the model again on every call.
+        ConsoleHandler named = consoleAtInfo();
+        Logger namedLogger = isolatedLoggerWith(named);
+        ConsoleHandler late = consoleAtInfo();
+        Logger lateLogger = null;
+        try {
+            FakeResolver resolver = new FakeResolver();
+            resolver.names.put(named, "CONSOLE"); // never anything for the late one
+            JulLoggingAdapter adapter = new JulLoggingAdapter(resolver);
+            adapter.realHandlers();
+            int afterFirst = resolver.calls.get();
+            // As on WildFly when a second console joins CONSOLE on root: the next pass can tell
+            // neither apart, so it names nothing at all.
+            resolver.names.clear();
+
+            lateLogger = isolatedLoggerWith(late);
+            for (int i = 0; i < 10; i++) {
+                adapter.realHandlers();
+            }
+
+            assertEquals(afterFirst + 1, resolver.calls.get(), "one attempt for the late handler, then done");
+            assertEquals(new HandlerRef("CONSOLE"), soleFloorRef(adapter, namedLogger));
+        } finally {
+            namedLogger.removeHandler(named);
+            if (lateLogger != null) {
+                lateLogger.removeHandler(late);
+            }
+        }
+    }
+
+    @Test
     void aLateResolution_upgradesAnAlreadyMintedTokenRef() {
         ConsoleHandler console = consoleAtInfo();
         Logger logger = isolatedLoggerWith(console);
