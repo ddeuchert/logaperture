@@ -2277,6 +2277,11 @@ reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>.</p>
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
+<li><strong><code>--message-contains</code> matches the message as logged on WildFly.</strong> For JBoss Logging's
+  printf-style messages (<code>debugf</code>, <code>infof</code>, message loggers), <code>drop</code> and <code>trim</code> rules matched the
+  message template instead: <code>--message-contains "/health"</code> never matched <code>Matched default handler
+  path /health</code>, and <code>--message-contains "path %s"</code> matched every path. Plain <code>java.util.logging</code>
+  messages were unaffected (issue #173).</li>
 <li><strong><code>logctl storms</code> shows each storm's sample with its message as logged, and says which event it
   is.</strong> The event shown under a storm had its message as a template (<code>Matched default handler path
   %s</code> rather than <code>… path /x997</code>) for JBoss Logging's printf-style messages on WildFly, and was
