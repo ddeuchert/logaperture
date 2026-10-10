@@ -235,7 +235,9 @@ rationale: [`list-command-surface.md`](list-command-surface.md) Decision #2.
 beyond Live/Known (§8.5's Inferred / Referenced-but-never-seen) don't exist in this
 slice's data and aren't shown.
 
-`--json` emits an array of objects with the `LoggerInfoData` fields verbatim, using that
+`--json` emits `{"loggers": [...]}` — an object, like every other `list` command's, so it can gain
+a sibling field later without breaking the §11.1 contract (issue #165; it was a bare array
+before 1.0) — each element an object with the `LoggerInfoData` fields verbatim, using that
 type's own getter names: `name`, `configuredLevel`, `effectiveLevel`, `overrideActive`,
 `overrideSource`, `overrideReason`, `tier`, `expiresAt` (the last two are `null` unless an
 override is active, and `expiresAt` is `null` for a non-`FOR` override).
@@ -351,7 +353,7 @@ not, and the test would catch it.
 
 - **Default:** aligned plain-text tables / confirmation lines to stdout; diagnostics to
   stderr.
-- **`--json`:** a single JSON value to stdout (array for `list loggers`/`status`, object for a
+- **`--json`:** a single JSON value to stdout (an object for `list loggers`/`status`, for a
   `set`, `{"reverted": N}` for `reset`), nothing else on stdout. Hand-written from the
   data objects — no third-party JSON library (the shapes are tiny and fully controlled,
   same reasoning as `persistence.md`'s hand-written state-file reader).

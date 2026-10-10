@@ -73,7 +73,7 @@ final class Commands {
                     : matched.stream().filter(row -> row.isOverrideActive() || row.getVendorDefaultLevel() != null)
                             .toList();
             if (json) {
-                out.println(Json.loggers(rows));
+                out.println(Json.listLoggers(rows));
                 return CliError.OK;
             }
             if (rows.isEmpty()) {

@@ -72,6 +72,11 @@ class JsonTest {
     }
 
     @Test
+    void listLoggersWithNoRowsStillEmitsTheObject() {
+        assertEquals("{\"loggers\":[]}", Json.listLoggers(List.of()));
+    }
+
+    @Test
     void resetAllLoggersReportsRevertedAndSkippedSticky() {
         assertEquals("{\"revertedLoggerNames\":[\"a\",\"b\"],\"skippedStickyLoggerNames\":[\"c\"]}",
                 Json.resetAllLoggers(List.of("a", "b"), List.of("c")));

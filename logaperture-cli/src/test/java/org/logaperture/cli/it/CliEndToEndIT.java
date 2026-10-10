@@ -149,7 +149,7 @@ class CliEndToEndIT {
 
         Result levels = run("list", "loggers", "--show-all", "--json");
         assertEquals(0, levels.exitCode, levels.err);
-        assertTrue(levels.out.strip().startsWith("[{"), levels.out);
+        assertTrue(levels.out.strip().startsWith("{\"loggers\":[{"), levels.out);
         assertTrue(levels.out.contains("\"effectiveLevel\":\"INFO\""), levels.out);
     }
 

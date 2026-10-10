@@ -70,6 +70,9 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Changed
 
+- **`logctl list loggers --json` prints an object, `{"loggers": [...]}`**, like every other
+  command, instead of a bare array. A script reading it with `jq '.[]'` now needs
+  `jq '.loggers[]'` (issue #165).
 - **The release zip's `docs/INSTALL-wildfly.md` is replaced by the user guide** in `docs/`
   (`docs/get-started/install-wildfly.html`). `doc/wildfly-test-drive.md` became the guide's
   Quick start (issue #159).

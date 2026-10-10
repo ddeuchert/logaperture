@@ -46,29 +46,31 @@ The same promise covers the agent's management interface; see the
 
 ### list loggers
 
-An **array**, one object per logger. (Every other command prints an object.)
+The loggers shown, one object per logger, under `loggers`.
 
 ```sh
 logctl list loggers io.undertow --json
 ```
 
 ```json
-[
-  {
-    "name": "io.undertow.request",
-    "configuredLevel": null,
-    "effectiveLevel": "DEBUG",
-    "overrideActive": true,
-    "overrideSource": "jmx",
-    "overrideReason": "demo",
-    "tier": "FOR",
-    "expiresAt": "2026-10-09T05:42:12.441226621Z",
-    "vendorDefaultLevel": null,
-    "resetToNative": false,
-    "recipe": null,
-    "forcedBy": null
-  }
-]
+{
+  "loggers": [
+    {
+      "name": "io.undertow.request",
+      "configuredLevel": null,
+      "effectiveLevel": "DEBUG",
+      "overrideActive": true,
+      "overrideSource": "jmx",
+      "overrideReason": "demo",
+      "tier": "FOR",
+      "expiresAt": "2026-10-10T04:32:09.361891539Z",
+      "vendorDefaultLevel": null,
+      "resetToNative": false,
+      "recipe": null,
+      "forcedBy": null
+    }
+  ]
+}
 ```
 
 ### status
