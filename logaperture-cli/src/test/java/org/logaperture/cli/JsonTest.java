@@ -138,7 +138,7 @@ class JsonTest {
     void stormsEmitsRawCountsAndTrueTrackedAndOngoingCounts() {
         StormReportData report = new StormReportData(List.of(
                 new StormData("com.acme.Worker", "ERROR", "org.acme.SlotException", "no capacity", null, "ONGOING",
-                        "2026-09-05T03:14:02Z", "2026-09-05T03:15:02Z", null, 1_000L, "boom", null)),
+                        "2026-09-05T03:14:02Z", "2026-09-05T03:15:02Z", null, 1_000L, "boom", 1_000L, null)),
                 5, 3, "2026-09-05T14:02:11Z", 0);
 
         String json = Json.storms(report);
@@ -148,6 +148,7 @@ class JsonTest {
         assertTrue(json.contains("\"ongoingCount\":3"), json);
         assertTrue(json.contains("\"measurementStartedAt\":\"2026-09-05T14:02:11Z\""), json);
         assertTrue(json.contains("\"notRetainedCount\":0"), json);
+        assertTrue(json.contains("\"firstOccurrence\":\"boom\",\"sampleEventNumber\":1000"), json);
     }
 
     @Test

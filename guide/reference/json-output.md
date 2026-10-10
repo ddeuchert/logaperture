@@ -389,15 +389,35 @@ logctl storms --json
 
 ```json
 {
-  "storms": [],
-  "trackedCount": 0,
-  "ongoingCount": 0,
-  "measurementStartedAt": null,
+  "storms": [
+    {
+      "loggerName": "io.undertow.request",
+      "level": "DEBUG",
+      "throwableClass": null,
+      "normalizedMessage": "Matched default handler path %s",
+      "topFrames": null,
+      "status": "ONGOING",
+      "firstEventAt": "2026-10-10T02:41:22.667701316Z",
+      "lastEventAt": "2026-10-10T02:41:26.038228375Z",
+      "endedAt": null,
+      "eventCount": 1500,
+      "firstOccurrence": "2026-10-10T02:41:24.990134470Z DEBUG [io.undertow.request] Matched default handler path /x997",
+      "sampleEventNumber": 1000,
+      "context": "system"
+    }
+  ],
+  "trackedCount": 1,
+  "ongoingCount": 1,
+  "measurementStartedAt": "2026-10-10T02:41:21.497247862Z",
   "notRetainedCount": 0,
-  "detectionEnabled": false,
-  "detectionChangedAt": null
+  "detectionEnabled": true,
+  "detectionChangedAt": "2026-10-10T02:41:21.486477057Z"
 }
 ```
+
+`firstOccurrence` is the storm's sample: the event that took it over the threshold, with its
+message as logged and its stack trace, if any. `sampleEventNumber` says which event of the storm
+that was, counted from `firstEventAt`; it is `0` from an older agent that doesn't report it.
 
 ### enable storms, disable storms
 

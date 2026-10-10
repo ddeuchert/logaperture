@@ -15,6 +15,7 @@
  */
 package org.logaperture.adapter.jul;
 
+import org.jboss.logmanager.ExtLogRecord;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -177,6 +178,52 @@ class JulStormObserverTest {
 
             assertEquals(2, observer.observed.size());
             assertEquals(name("feed"), observer.observed.get(0).loggerName());
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
+    /** Issue #169: the sample's message is rendered as logged, not as the template the fingerprint uses. */
+    @Test
+    void sample_fillsInAJulRecordsParameters() {
+        FakePersistentHandler handler = new FakePersistentHandler();
+        Logger logger = Logger.getLogger(name("julParams"));
+        logger.addHandler(handler);
+        logger.setUseParentHandlers(false);
+        RecordingObserver observer = new RecordingObserver();
+        try {
+            adapter.installStormDetection(observer);
+
+            logger.log(Level.WARNING, "Matched default handler path {0}", "/x1");
+
+            StormObservation observation = observer.observed.get(0);
+            assertEquals("Matched default handler path {0}", observation.rawMessage());
+            String sample = observation.firstOccurrenceSupplier().get();
+            assertTrue(sample.endsWith("[" + name("julParams") + "] Matched default handler path /x1"), sample);
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
+    /** Issue #169: JBoss Logging's {@code debugf} templates are printf style, which only the record itself formats. */
+    @Test
+    void sample_fillsInAJBossLogManagerRecordsPrintfParameters() {
+        FakePersistentHandler handler = new FakePersistentHandler();
+        Logger logger = Logger.getLogger(name("extParams"));
+        logger.addHandler(handler);
+        logger.setUseParentHandlers(false);
+        RecordingObserver observer = new RecordingObserver();
+        try {
+            adapter.installStormDetection(observer);
+            ExtLogRecord record = new ExtLogRecord(Level.INFO, "Matched default handler path %s", "/x1");
+            record.setLoggerName(name("extParams"));
+
+            handler.getFilter().isLoggable(record);
+
+            StormObservation observation = observer.observed.get(0);
+            assertEquals("Matched default handler path %s", observation.rawMessage());
+            String sample = observation.firstOccurrenceSupplier().get();
+            assertTrue(sample.endsWith("Matched default handler path /x1"), sample);
         } finally {
             logger.removeHandler(handler);
         }

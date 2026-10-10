@@ -76,7 +76,7 @@ supported configuration.
 | `logaperture.storm.quietSeconds` | `60` | Quiet time after which a storm counts as over. |
 | `logaperture.storm.maxTrackedFingerprints` | `4000` | How many distinct messages storm detection watches at once. |
 | `logaperture.storm.maxHistory` | `100` | How many storms `logctl storms` remembers. |
-| `logaperture.storm.firstOccurrenceBytes` | `8192` | How much of a storm's first event is kept. |
+| `logaperture.storm.firstOccurrenceBytes` | `8192` | How much of a storm's sample event is kept. |
 | `logaperture.storm.normalizationCacheSize` | `1024` | A cache for storm detection's message matching; `0` turns it off. |
 | `logaperture.wildfly.handlerNames.debug` | `false` | Log how WildFly handler names were resolved. |
 

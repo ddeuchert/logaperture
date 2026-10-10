@@ -1607,7 +1607,10 @@ final class Commands {
                     out.println("           started " + firstEventAt + " (" + agoCoarse(elapsed) + " ago) — "
                             + eventsFormatted + " events — ~" + String.format(Locale.ROOT, "%,d", perMinute) + "/min");
                     if (storm.getFirstOccurrence() != null && !storm.getFirstOccurrence().isEmpty()) {
-                        out.println("           first occurrence:");
+                        out.println(storm.getSampleEventNumber() > 0
+                                ? "           sample (event #" + String.format(Locale.ROOT, "%,d", storm.getSampleEventNumber())
+                                        + ", when the storm was detected):"
+                                : "           sample (when the storm was detected):");
                         for (String line : storm.getFirstOccurrence().split("\n", -1)) {
                             out.println("             " + line);
                         }

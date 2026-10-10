@@ -299,6 +299,24 @@ class StormDetectorTest {
         assertEquals("addr <hex>", StormDetector.normalize("addr 0x1a2b3c"));
     }
 
+    /**
+     * Issue #169: the sample is the event that crossed the threshold -- not the burst's first --
+     * and the storm says which event that was, unchanged by the events after it.
+     */
+    @Test
+    void sample_isTheThresholdCrossingEvent_numberedByItsPlaceInTheStorm() {
+        StormDetector detector = newDetector();
+        for (int i = 1; i <= THRESHOLD + 2; i++) {
+            detector.observe(observation("com.acme.Worker", "failed for order " + i));
+        }
+
+        Storm storm = detector.snapshot().get(0);
+
+        assertEquals("rendered: failed for order " + THRESHOLD, storm.firstOccurrence());
+        assertEquals(THRESHOLD, storm.sampleEventNumber());
+        assertEquals(THRESHOLD + 2, storm.eventCount());
+    }
+
     @Test
     void firstOccurrence_capsAt8KB_withTruncationMarker() {
         StormDetector detector = new StormDetector(1, WINDOW, QUIET, 4_000, 100, 16); // tiny cap for the test

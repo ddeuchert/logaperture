@@ -307,6 +307,7 @@ final class Json {
                     .str("endedAt", storm.getEndedAt())
                     .raw("eventCount", String.valueOf(storm.getEventCount()))
                     .str("firstOccurrence", storm.getFirstOccurrence())
+                    .raw("sampleEventNumber", String.valueOf(storm.getSampleEventNumber()))
                     .str("context", storm.getContext())
                     .toString());
         }

@@ -517,7 +517,7 @@ class CommandsTest {
         mbean.stormReport = new StormReportData(List.of(
                 new StormData("com.acme.batch.Worker", "ERROR", "org.acme.SlotException", "no capacity", null,
                         "ONGOING", firstEventAt.toString(), Instant.now().toString(), null, 3_104_772L,
-                        "03:14:02 ERROR [com.acme.batch.Worker] Unable to reserve slot", null),
+                        "03:14:02 ERROR [com.acme.batch.Worker] Unable to reserve slot", 1_000L, null),
                 new StormData("org.apache.http.impl.conn", "ERROR", null, "connection reset by peer", null,
                         "ENDED", endedFirst.toString(), endedAt.toString(), endedAt.toString(), 812_004L, null,
                         null)),
@@ -530,11 +530,27 @@ class CommandsTest {
         assertTrue(text.contains("com.acme.batch.Worker"), text);
         assertTrue(text.contains("org.acme.SlotException"), text);
         assertTrue(text.contains("3,104,772 events"), text);
-        assertTrue(text.contains("first occurrence:"), text);
+        assertTrue(text.contains("sample (event #1,000, when the storm was detected):"), text);
+        assertTrue(text.contains("Unable to reserve slot"), text);
         assertTrue(text.contains("[ENDED]"), text);
         assertTrue(text.contains("(no exception)"), text);
         assertTrue(text.contains("812,004 events"), text);
         assertTrue(text.contains("2 storms tracked — 1 ongoing, 1 ended."), text);
+    }
+
+    @Test
+    void storms_sampleFromAnAgentOlderThan169_isLabelledWithoutAnEventNumber() {
+        mbean.stormReport = new StormReportData(List.of(
+                new StormData("com.acme.batch.Worker", "ERROR", null, "no capacity", null, "ONGOING",
+                        Instant.now().minus(1, ChronoUnit.MINUTES).toString(), Instant.now().toString(), null,
+                        1_500L, "03:14:02 ERROR [com.acme.batch.Worker] Unable to reserve slot", null)),
+                1, 1, Instant.now().toString(), 0);
+
+        assertEquals(CliError.OK, run(Commands.storms(0, false)));
+
+        String text = output();
+        assertTrue(text.contains("sample (when the storm was detected):"), text);
+        assertFalse(text.contains("event #"), text);
     }
 
     @Test
