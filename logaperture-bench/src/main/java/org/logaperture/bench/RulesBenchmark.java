@@ -36,6 +36,7 @@ import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.infra.BenchmarkParams;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
@@ -97,6 +98,13 @@ public class RulesBenchmark {
             pipeline = Pipeline.installIdle();
             pipeline.requireInstalledOn(tree.handlers());
             matchingRule = attachRules(pipeline.rules, scenario);
+            if (scenario.equals("drop-hit")) {
+                // The rule lets its first match through in full (drop-rule.md "The keep-one-in-N
+                // escape hatch"). Spend that sample here, so every measured call is a deny and even
+                // a one-call smoke iteration has something to suppress (issue #183).
+                tree.workers().get(0).log(java.util.logging.Level.INFO, BenchContext.message(concatenated, 0),
+                        thrown);
+            }
         }
 
         @TearDown(Level.Trial)
@@ -107,11 +115,14 @@ public class RulesBenchmark {
                 pipeline.requireCounted();
             }
             if (scenario.equals("drop-hit")) {
-                long suppressed = pipeline.rules.takeDropCounts().stream()
+                List<RuleService.DropCount> counts = pipeline.rules.takeDropCounts().stream()
                         .filter(count -> count.ruleId().equals(matchingRule))
-                        .mapToLong(RuleService.DropCount::suppressed).sum();
+                        .toList();
+                long suppressed = counts.stream().mapToLong(RuleService.DropCount::suppressed).sum();
                 if (suppressed == 0) {
-                    throw new IllegalStateException("the drop-hit rule suppressed nothing");
+                    long sampled = counts.stream().mapToLong(RuleService.DropCount::sampled).sum();
+                    throw new IllegalStateException("the drop-hit rule suppressed nothing (sampled " + sampled
+                            + ", hits " + pipeline.rules.hitCount(matchingRule) + ")");
                 }
             }
             if (scenario.startsWith("trim") && thrown != null) {
