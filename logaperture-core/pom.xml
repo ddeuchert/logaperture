@@ -32,6 +32,11 @@
     framework- and agent-agnostic. See doc/logaperture-spec.md §4.6.
   </description>
 
+  <properties>
+    <!-- Built into the agent or logctl jar, never published on its own (doc/specs/maven-central-publishing.md). -->
+    <maven.deploy.skip>true</maven.deploy.skip>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>org.logaperture</groupId>

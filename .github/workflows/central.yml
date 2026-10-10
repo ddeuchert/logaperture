@@ -1,0 +1,108 @@
+# Copyright 2026 David Deuchert
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Maven Central dry run - doc/specs/maven-central-publishing.md. Builds, signs and uploads the
+# release to the Central Portal exactly as release.yml does, waits for Central to validate it,
+# then drops the deployment: nothing is published. Run it before tagging a release:
+#   - Actions -> Maven Central dry run -> Run workflow (once this file is on main, the default
+#     branch: GitHub offers manual runs only for workflows there), or
+#   - add the label `central dry run` to a pull request, which runs it on that PR's code.
+name: Maven Central dry run
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build as (default: the pom version without -SNAPSHOT)'
+        required: false
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: central
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'central dry run'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Set the release version
+        id: v
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="$INPUT_VERSION"
+          if [ -z "$version" ]; then
+            version="$(mvn -B -q --no-transfer-progress help:evaluate \
+              -Dexpression=project.version -DforceStdout | tail -1 | tr -d '[:space:]')"
+            version="${version%-SNAPSHOT}"
+          fi
+          case "$version" in
+            *-SNAPSHOT) echo "::error::$version is a snapshot"; exit 1 ;;
+          esac
+          # In this checkout only; never committed.
+          mvn -B -q --no-transfer-progress versions:set -DnewVersion="$version" \
+            -DgenerateBackupFiles=false -DprocessAllModules=true
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build and sign
+        env:
+          MAVEN_GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        # The packaging is under test here, not the code: CI has already run the tests.
+        run: |
+          mvn -B --no-transfer-progress -Prelease -pl logaperture-dist -am -DskipTests deploy \
+            -DaltDeploymentRepository=staging::file:target/staging
+
+      - name: Bundle and check
+        run: .github/scripts/central.sh bundle target/staging "${{ steps.v.outputs.version }}" target/central-bundle.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: central-bundle-${{ steps.v.outputs.version }}
+          path: target/central-bundle.zip
+
+      - name: Upload to the Central Portal and wait for validation
+        id: upload
+        env:
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+        run: |
+          id="$(.github/scripts/central.sh upload target/central-bundle.zip \
+            "logaperture ${{ steps.v.outputs.version }} (dry run ${{ github.run_id }})")"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "Uploaded deployment $id"
+          .github/scripts/central.sh wait "$id"
+
+      # Only a validated deployment is dropped. A failed one stays on the Portal's Deployments
+      # page with its errors (they are also in the log above); drop it there once it's read.
+      - name: Drop the deployment
+        if: success()
+        env:
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+        run: .github/scripts/central.sh drop "${{ steps.upload.outputs.id }}"

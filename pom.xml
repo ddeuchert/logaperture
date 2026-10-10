@@ -26,6 +26,37 @@
 
   <name>LogAperture</name>
   <description>Runtime logging control for the JVM.</description>
+  <!-- Maven Central requires url, licenses, developers and scm (doc/specs/maven-central-publishing.md). -->
+  <url>https://logaperture.org</url>
+  <inceptionYear>2026</inceptionYear>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>ddeuchert</id>
+      <name>David Deuchert</name>
+      <url>https://github.com/ddeuchert</url>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/ddeuchert/logaperture.git</connection>
+    <developerConnection>scm:git:git@github.com:ddeuchert/logaperture.git</developerConnection>
+    <url>https://github.com/ddeuchert/logaperture</url>
+    <tag>HEAD</tag>
+  </scm>
+
+  <issueManagement>
+    <system>GitHub Issues</system>
+    <url>https://github.com/ddeuchert/logaperture/issues</url>
+  </issueManagement>
 
   <!--
     Module list, in dependency order for readability. Actual build order is
@@ -81,6 +112,12 @@
     <maven-enforcer-plugin.version>3.5.0</maven-enforcer-plugin.version>
     <maven-shade-plugin.version>3.6.0</maven-shade-plugin.version>
     <maven-assembly-plugin.version>3.7.1</maven-assembly-plugin.version>
+    <!-- logaperture-dist's zip is a Maven artifact only in the release profile. -->
+    <logaperture.dist.attach>false</logaperture.dist.attach>
+    <!-- The release profile (doc/specs/maven-central-publishing.md). -->
+    <maven-source-plugin.version>3.3.1</maven-source-plugin.version>
+    <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
+    <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
   </properties>
 
   <dependencyManagement>
@@ -225,6 +262,77 @@
       <modules>
         <module>logaperture-bench</module>
       </modules>
+    </profile>
+
+    <!--
+      Maven Central (doc/specs/maven-central-publishing.md). Adds sources and javadoc jars and
+      signs every artifact. `deploy` goes to a staging directory, never to Central:
+        mvn -Prelease -DskipTests deploy -DaltDeploymentRepository=staging::file:target/staging
+      then .github/scripts/central.sh bundles, checks and uploads it. Only the modules without
+      maven.deploy.skip reach the staging directory: this parent, the agent, logctl and the
+      release zip. Signing reads the key and passphrase from MAVEN_GPG_KEY and
+      MAVEN_GPG_PASSPHRASE.
+    -->
+    <profile>
+      <id>release</id>
+      <properties>
+        <!-- logaperture-dist attaches the release zip, so it goes into the bundle. -->
+        <logaperture.dist.attach>true</logaperture.dist.attach>
+      </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>${maven-source-plugin.version}</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>${maven-javadoc-plugin.version}</version>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <!-- The javadoc is internal documentation, not a published API: don't fail on its style. -->
+              <doclint>none</doclint>
+              <quiet>true</quiet>
+            </configuration>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>${maven-gpg-plugin.version}</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <!-- BouncyCastle: the key comes from MAVEN_GPG_KEY, so CI needs no gpg keyring. -->
+              <signer>bc</signer>
+              <bestPractices>true</bestPractices>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
     </profile>
   </profiles>
 </project>

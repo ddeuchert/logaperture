@@ -23,6 +23,18 @@ logging on the running server. LogAperture never edits `standalone.xml`.
     | `lib/logaperture-agent.jar` | the agent |
     | `docs/index.html` | this guide, for reading without a network |
 
+    !!! tip "Or get it from Maven Central"
+        From 1.0.0-beta.1 the same files are on Maven Central, group `org.logaperture`: the zip as
+        `logaperture` (type `zip`), the agent as `logaperture-agent` and `logctl` as
+        `logaperture-cli`. To fetch the agent in a build script or a container image:
+
+        ```sh
+        mvn dependency:copy -Dartifact=org.logaperture:logaperture-agent:<version> \
+            -DoutputDirectory=/opt/logaperture/lib -Dmdep.stripVersion=true
+        ```
+
+        `-Dmdep.stripVersion=true` names it `logaperture-agent.jar`, as in the zip.
+
 2. **Put `bin/` on your `PATH`**, so you can type plain `logctl`:
 
     ```sh

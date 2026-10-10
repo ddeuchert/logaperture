@@ -15,8 +15,9 @@
 name: Release
 
 # Cut a release by pushing a tag: `git tag -a v0.1.0-alpha.1 -m ... && git push origin v0.1.0-alpha.1`
-# (from `main`). This builds the evaluation bundle and publishes a GitHub Release
-# with the zip attached. See issue #25.
+# (from `main`). This builds and signs the release, publishes it to Maven Central
+# (issue #186), then publishes a GitHub Release with the zip attached (issue #25).
+# Run the Maven Central dry run (central.yml) first.
 on:
   push:
     tags:
@@ -74,11 +75,42 @@ jobs:
           pip install -r requirements-docs.txt
           mkdocs build --strict
 
-      - name: Build the evaluation bundle
+      - name: Build, test and sign
         # -am pulls in the agent/cli and their deps; it does NOT pull in
         # logaperture-it, so the WildFly Testcontainers IT (already run on the
-        # develop merge) doesn't re-run here.
-        run: mvn -B --no-transfer-progress -pl logaperture-dist -am verify
+        # develop merge) doesn't re-run here. The release profile signs everything
+        # and deploys to target/staging, never to Maven Central directly
+        # (doc/specs/maven-central-publishing.md).
+        env:
+          MAVEN_GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          mvn -B --no-transfer-progress -Prelease -pl logaperture-dist -am deploy \
+            -DaltDeploymentRepository=staging::file:target/staging
+
+      - name: Bundle and check for Maven Central
+        run: .github/scripts/central.sh bundle target/staging "${{ steps.v.outputs.version }}" target/central-bundle.zip
+
+      - name: Upload to the Central Portal and wait for validation
+        id: central
+        env:
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+        run: |
+          id="$(.github/scripts/central.sh upload target/central-bundle.zip "logaperture ${{ steps.v.outputs.version }}")"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "Uploaded deployment $id"
+          .github/scripts/central.sh wait "$id"
+
+      # The one step that can't be undone: a published version stays on Maven Central for good.
+      # Everything before it can be fixed and the tag pushed again.
+      - name: Publish to Maven Central
+        env:
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+        run: |
+          .github/scripts/central.sh publish "${{ steps.central.outputs.id }}"
+          .github/scripts/central.sh wait "${{ steps.central.outputs.id }}" published
 
       - name: Extract the changelog section
         run: |
