@@ -16,7 +16,11 @@ apply to everyone.
   `develop` to the commit that gets tagged. Between releases it does not move,
   so a clone, the landing page, and tooling always show the last shipped state
   (not in-progress work on `develop`). It is the default branch.
-- **Cutting a release:** first run the **Maven Central dry run** (Actions →
+- **Cutting a release:** first re-record the demo recordings with the release
+  version's agent in the dev WildFly (`dev/demos/record.sh all`), watch each one,
+  and commit the new `.cast` files; a recording whose output changed may mean the
+  guide's example output needs the same update ([dev/demos/README.md](dev/demos/README.md)).
+  Then run the **Maven Central dry run** (Actions →
   *Maven Central dry run* → Run workflow, on `develop`; or add the label
   `central dry run` to a pull request): it builds and signs the
   release version, uploads it to the Central Portal, waits for Central to
@@ -103,6 +107,10 @@ fails the build:
 ```sh
 mvn -pl logaperture-cli test -Dtest=HelpReferenceTest -Dlogaperture.help.regenerate=true
 ```
+
+The terminal recordings on the guide and the README GIF come from `dev/demos/`
+([README](dev/demos/README.md)). `DEMO_GIFS=1 mkdocs build` renders the GIFs, which needs
+[agg](https://github.com/asciinema/agg).
 
 `.github/workflows/docs.yml` publishes the guide: `dev` on every push to `develop` that touches it,
 and `<major>.<minor>` (aliased `latest`) on a release tag.

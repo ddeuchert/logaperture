@@ -10,6 +10,8 @@
 
 **Have a WildFly server handy?** [Install it](https://logaperture.org/latest/get-started/install-wildfly/) and run the [Quick start](https://logaperture.org/latest/get-started/quick-start/) in about 10 minutes — raise a level and watch it revert, make the console show it, compare `for`/`session`/`sticky`, look at `doctor` and `top`. Feedback from that run is exactly what this alpha needs.
 
+[![A logger raised to TRACE shows nothing on the console until logctl puts the console handler in AUTO](https://logaperture.org/latest/assets/demos/why-no-trace.gif)](https://logaperture.org/latest/#see-it-work)
+
 ---
 
 ## The problem

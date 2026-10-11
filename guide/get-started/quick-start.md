@@ -124,6 +124,11 @@ DEFAULT_HANDLERS  —      —         (auto: CONSOLE)                          
 Run the `curl` again: this time the `DEBUG` line is on the console as well. `AUTO` itself lasts
 `for 4h`, like any `set` without a tier.
 
+The same fix on a busier server, recorded: an application's payment logger raised to `TRACE`,
+with the console above.
+
+<div class="la-cast" data-cast="why-no-trace"></div>
+
 ## 5. Compare how long changes last
 
 Every change has a tier:

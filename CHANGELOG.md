@@ -9,6 +9,13 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Added
 
+- **Demo recordings.** Short terminal recordings of LogAperture at work, on a WildFly server
+  with its console in view: a logger raised to `TRACE` that shows nothing until the console's
+  handler follows it (home page, Quick start, README), a `for 30s` override that reverts on its
+  own (Raise a log level), and a flood of stack traces found with `top` and silenced with a
+  `drop` rule (Silence noise). They play in the guide in the release zip too, with no network
+  access (issue #196; `doc/specs/demo-recordings.md`).
+
 - **Maven Central.** Releases are published to Maven Central under `org.logaperture`: the agent as
   `logaperture-agent`, `logctl` as `logaperture-cli` and the release zip as `logaperture`
   (type `zip`), so a build or a container image can fetch them by coordinates (issue #186;
