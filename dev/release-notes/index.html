@@ -260,7 +260,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../get-started/install-wildfly/" class="md-tabs__link">
+        <a href="../get-started/download/" class="md-tabs__link">
           
   
   
@@ -508,6 +508,8 @@
       
         
       
+        
+      
     
     
     
@@ -552,6 +554,34 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get-started/download/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Download
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -2174,6 +2204,14 @@ reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>.</p>
 <h2 id="unreleased"><a href="https://github.com/ddeuchert/logaperture/compare/v0.1.0-alpha.3...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li>
+<p><strong>A Download page in the guide</strong> (Get started → Download): the release zip by version, the
+  Maven Central coordinates, and Maven, Gradle and command-line snippets that copy the agent jar
+  into a build, for example a container image. The home page and the README say up front that
+  LogAperture is open source under the Apache License 2.0, and the configuration layers diagram
+  is laid out to be readable at page width (issue #201; <code>doc/specs/user-documentation.md</code>
+  slice 5).</p>
+</li>
 <li>
 <p><strong>Demo recordings.</strong> Short terminal recordings of LogAperture at work, on a WildFly server
   with its console in view: a logger raised to <code>TRACE</code> that shows nothing until the console's

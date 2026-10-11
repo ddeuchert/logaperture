@@ -262,7 +262,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../get-started/install-wildfly/" class="md-tabs__link">
+        <a href="../../get-started/download/" class="md-tabs__link">
           
   
   
@@ -510,6 +510,8 @@
       
         
       
+        
+      
     
     
     
@@ -554,6 +556,34 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/download/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Download
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -1820,8 +1850,8 @@
 <h1 id="configuration-layers">Configuration layers<a class="headerlink" href="#configuration-layers" title="Permanent link">&para;</a></h1>
 <p>A logger's level can come from three places. Knowing which one wins, and which one <code>reset</code> goes
 back to, explains most of what <code>logctl</code> does.</p>
-<pre class="mermaid"><code>flowchart LR
-    N["Native configuration&lt;br/&gt;logback.xml, logging.properties,&lt;br/&gt;standalone.xml"]
+<pre class="mermaid"><code>flowchart BT
+    N["Native configuration&lt;br/&gt;logback.xml, logging.properties, standalone.xml"]
     V["Vendor defaults&lt;br/&gt;--vendor-defaults=file"]
     B(["Baseline&lt;br/&gt;what reset returns to"])
     O["Override&lt;br/&gt;session · for &amp;lt;duration&amp;gt; · sticky"]
@@ -1829,7 +1859,7 @@ back to, explains most of what <code>logctl</code> does.</p>
     S[("State file")]
     N -- "changed by" --&gt; V --&gt; B
     B -- "changed by" --&gt; O --&gt; E
-    S -. "sticky overrides restored at startup" .-&gt; O</code></pre>
+    S -. "sticky overrides&lt;br/&gt;restored at startup" .-&gt; O</code></pre>
 <p>From the bottom up:</p>
 <ol>
 <li><strong>Native configuration</strong> is the application's own logging configuration: <code>logback.xml</code>,

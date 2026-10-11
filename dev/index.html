@@ -14,7 +14,7 @@
       
       
       
-        <link rel="next" href="get-started/install-wildfly/">
+        <link rel="next" href="get-started/download/">
       
       
         
@@ -262,7 +262,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="get-started/install-wildfly/" class="md-tabs__link">
+        <a href="get-started/download/" class="md-tabs__link">
           
   
   
@@ -610,6 +610,8 @@
       
         
       
+        
+      
     
     
     
@@ -654,6 +656,34 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="get-started/download/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Download
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -1835,6 +1865,7 @@
 <h1 id="logaperture">LogAperture<a class="headerlink" href="#logaperture" title="Permanent link">&para;</a></h1>
 <p><strong>Runtime logging control for the JVM.</strong> See, tune, and bound what your application logs, without
 restarting it, editing its configuration, or knowing in advance what will go wrong.</p>
+<p>Open source under the <a href="https://github.com/ddeuchert/logaperture/blob/main/LICENSE">Apache License 2.0</a>.</p>
 <p>LogAperture is a Java agent plus a command-line tool, <code>logctl</code>. The agent goes on the JVM's
 <code>-javaagent</code> line; <code>logctl</code> talks to it on the same machine.</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>org.hibernate.SQL<span class="w"> </span>DEBUG<span class="w"> </span><span class="k">for</span><span class="w"> </span>30m<span class="w">   </span><span class="c1"># more detail for half an hour, then back</span>
@@ -1944,6 +1975,7 @@ alone, Log4j 2, Spring Boot, Tomcat, Jetty, Quarkus. Quarkus native images can n
 they have no JVM to attach an agent to.</p>
 <h2 id="where-to-start">Where to start<a class="headerlink" href="#where-to-start" title="Permanent link">&para;</a></h2>
 <ol>
+<li>Get it: the release zip, or Maven Central for a build: <a href="get-started/download/">Download</a>.</li>
 <li>Install the agent: <a href="get-started/install-wildfly/">on WildFly</a> or
    <a href="get-started/install-plain-jvm/">on a plain JVM</a>.</li>
 <li>Try it for ten minutes: <a href="get-started/quick-start/">Quick start</a>.</li>
@@ -1988,13 +2020,13 @@ with <code>logctl help &lt;command&gt;</code>.</p>
         
         
           
-          <a href="get-started/install-wildfly/" class="md-footer__link md-footer__link--next" aria-label="Next: Install on WildFly">
+          <a href="get-started/download/" class="md-footer__link md-footer__link--next" aria-label="Next: Download">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Install on WildFly
+                Download
               </div>
             </div>
             <div class="md-footer__button md-icon">
