@@ -246,12 +246,27 @@ Written down before measuring, so the numbers decide rather than get argued:
   single-thread per-call figure, when `baseline` at 8 threads on separate handlers does not.
 - **#18** moves to `1.x` without a benchmark (it's not on the logging path; see Findings).
 
+How the rule came out, on the published runs:
+
+- **#23 went into 1.0 and is fixed.** The 2026-10-06 run measured `top`'s second stack-trace
+  render at +100 % of the baseline with an exception, over the 25 % threshold. `top` now finds
+  the trace in the formatter's output (PR #156, and #157 for trimmed traces); on 2026-10-09 its
+  layer costs +356 ± 70 ns, +8.8 % ± 1.7 %.
+- **#24 stays out of 1.0.** On 2026-10-09, at 8 threads on separate handlers, `idle` takes
+  1.87 ± 0.04× its single-thread time and the baseline 1.59 ± 0.03×: `idle` is over 1.5×, but
+  so is the baseline.
+- **#18 moved to 1.x.**
+
 ### Where the numbers go
 
-`doc/overhead.md` (Decision #5), linked from §10. When the `guide/` docs site exists it moves
-there. Each run's raw JMH JSON, `machine.txt`, generated `report.md` and the async-profiler
-flame graphs are committed next to it, one folder per run (`doc/overhead/<date>-<jdk>/`), so a
-later run can be diffed against it.
+The user guide's [Overhead page](../../guide/overhead.md), at logaperture.org (Decision #5:
+first `doc/overhead.md`, moved into the guide once the docs site existed; moved for 1.0.0-beta.1,
+issue [#199](https://github.com/ddeuchert/logaperture/issues/199)). The guide is versioned per
+minor release, so each version's guide carries the numbers for the code it describes.
+`doc/overhead.md` is now a pointer to it. Each run's raw JMH JSON, `machine.txt`, generated
+`report.md` (every row, the component benchmarks) and the async-profiler flame graphs are
+committed one folder per run (`doc/overhead/<date>-<jdk>/`), so a later run can be diffed
+against it; the guide page links to the run it publishes.
 
 ### Running it
 

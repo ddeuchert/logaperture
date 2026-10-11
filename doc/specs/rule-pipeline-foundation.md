@@ -418,8 +418,8 @@ logger name, and allocate nothing; only loggers with rules pay for deduplication
 of today's contention. Since #148, a logger with rules pays for matching only, unless a rule
 matches. Measured on the dev box (Ryzen 5 3400G, unpinned) against Decision #21's curve:
 `gate-n` 34 / 77 / 164 / 188 ns at 1 / 5 / 20 / 100 rules, budgets 85 / 140 / 204 / 283 ns
-(before: 588 / 639 / 810 / 1,609 ns). The published numbers are overhead.md's. These are per
-gate call. An event no rule matches is no longer shared between handlers, so it is checked once
+(before: 588 / 639 / 810 / 1,609 ns). The published numbers are on the user guide's Overhead
+page (`guide/overhead.md`). These are per gate call. An event no rule matches is no longer shared between handlers, so it is checked once
 per handler filter (and once per trim formatter, for an event with a throwable); with three
 handlers that is about three times the figure above, still below the one cache insert it
 replaces (PR #154 review).
