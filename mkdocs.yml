@@ -82,6 +82,8 @@ extra:
 # packages the .cast files. DEMO_GIFS=1 also renders them to GIFs with agg (the docs workflow).
 hooks:
   - guide-hooks/demo_casts.py
+  # Fills the release version into pages (doc/specs/user-documentation.md, slice 5, R5).
+  - guide-hooks/release_version.py
 
 extra_css:
   - assets/asciinema-player/asciinema-player.css
@@ -115,6 +117,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Get started:
+      - Download: get-started/download.md
       - Install on WildFly: get-started/install-wildfly.md
       - Install on a plain JVM: get-started/install-plain-jvm.md
       - Quick start: get-started/quick-start.md

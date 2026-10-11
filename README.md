@@ -2,6 +2,8 @@
 
 **Runtime logging control for the JVM.** See, tune, and bound what your application logs — without restarting it, editing its configuration, or knowing in advance what will go wrong.
 
+Open source under the [Apache License 2.0](LICENSE).
+
 > ### Status: 0.1.0-alpha.3 — early, evaluation only
 >
 > **Not for production.** It does real work on a running JVM — see [Try the alpha](#try-the-alpha) — but the feature set is partial, the override store's on-disk format may still change between builds with no migration, and there is no support commitment.

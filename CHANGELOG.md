@@ -9,6 +9,13 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
 
 ### Added
 
+- **A Download page in the guide** (Get started → Download): the release zip by version, the
+  Maven Central coordinates, and Maven, Gradle and command-line snippets that copy the agent jar
+  into a build, for example a container image. The home page and the README say up front that
+  LogAperture is open source under the Apache License 2.0, and the configuration layers diagram
+  is laid out to be readable at page width (issue #201; `doc/specs/user-documentation.md`
+  slice 5).
+
 - **Demo recordings.** Short terminal recordings of LogAperture at work, on a WildFly server
   with its console in view: a logger raised to `TRACE` that shows nothing until the console's
   handler follows it (home page, Quick start, README), a `for 30s` override that reverts on its

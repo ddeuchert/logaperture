@@ -3,6 +3,8 @@
 **Runtime logging control for the JVM.** See, tune, and bound what your application logs, without
 restarting it, editing its configuration, or knowing in advance what will go wrong.
 
+Open source under the [Apache License 2.0](https://github.com/ddeuchert/logaperture/blob/main/LICENSE).
+
 LogAperture is a Java agent plus a command-line tool, `logctl`. The agent goes on the JVM's
 `-javaagent` line; `logctl` talks to it on the same machine.
 
@@ -71,11 +73,12 @@ they have no JVM to attach an agent to.
 
 ## Where to start
 
-1. Install the agent: [on WildFly](get-started/install-wildfly.md) or
+1. Get it: the release zip, or Maven Central for a build: [Download](get-started/download.md).
+2. Install the agent: [on WildFly](get-started/install-wildfly.md) or
    [on a plain JVM](get-started/install-plain-jvm.md).
-2. Try it for ten minutes: [Quick start](get-started/quick-start.md).
-3. Learn what `reset` goes back to: [Configuration layers](concepts/configuration-layers.md).
-4. See what it costs per log call: [Overhead](overhead.md).
+3. Try it for ten minutes: [Quick start](get-started/quick-start.md).
+4. Learn what `reset` goes back to: [Configuration layers](concepts/configuration-layers.md).
+5. See what it costs per log call: [Overhead](overhead.md).
 
 Every `logctl` command is in the [command reference](reference/logctl.md), and on the command line
 with `logctl help <command>`.
