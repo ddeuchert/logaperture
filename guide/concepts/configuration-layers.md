@@ -4,8 +4,8 @@ A logger's level can come from three places. Knowing which one wins, and which o
 back to, explains most of what `logctl` does.
 
 ```mermaid
-flowchart LR
-    N["Native configuration<br/>logback.xml, logging.properties,<br/>standalone.xml"]
+flowchart BT
+    N["Native configuration<br/>logback.xml, logging.properties, standalone.xml"]
     V["Vendor defaults<br/>--vendor-defaults=file"]
     B(["Baseline<br/>what reset returns to"])
     O["Override<br/>session · for &lt;duration&gt; · sticky"]
@@ -13,7 +13,7 @@ flowchart LR
     S[("State file")]
     N -- "changed by" --> V --> B
     B -- "changed by" --> O --> E
-    S -. "sticky overrides restored at startup" .-> O
+    S -. "sticky overrides<br/>restored at startup" .-> O
 ```
 
 From the bottom up:

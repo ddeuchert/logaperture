@@ -9,7 +9,9 @@ material. Slice 4c (the other how-to pages, troubleshooting) implemented 2026-10
 `overhead.md` stayed a stub after the overhead measurement (#128, PR #134) landed, which
 updated only `doc/overhead.md`; it was filled in for beta 1 by
 [#199](https://github.com/ddeuchert/logaperture/issues/199), moving the published numbers into
-the guide.
+the guide. Slice 5 (review notes: the layers diagram, the license on Home, a Download page,
+decisions R1–R7) signed off 2026-10-11, all as recommended, issue
+[#201](https://github.com/ddeuchert/logaperture/issues/201).
 Issue: [#159](https://github.com/ddeuchert/logaperture/issues/159).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §17.1, "User documentation"
 (the tool, layout and hosting decisions this spec builds on) and the release table (`1.0.0-beta.1`:
@@ -77,6 +79,7 @@ so the operator path doesn't have to step around it.
 guide/
   index.md                     Home: what it is, what it will never do, support matrix
   get-started/
+    download.md                the zip, Maven Central, Maven/Gradle snippets (slice 5, R3)
     install-wildfly.md         from INSTALL-wildfly.md
     install-plain-jvm.md       from DEVELOPMENT.md "Controlling a running JVM"
     quick-start.md             from wildfly-test-drive.md, trimmed to ~10 minutes
@@ -488,6 +491,91 @@ Slice 2, H1–H7, agreed as written on 2026-10-08: the topics in H1, the one-scr
 topic lookup from command words (H3), usage errors showing only the command's forms (H4), topic
 records with Markdown code spans (H5), the reference page generated, committed and checked by
 `HelpReferenceTest` (H6), and the page layout in H7.
+
+## Slice 5: review notes (issue #201)
+
+Three notes from reading the published guide (2026-10-11), for beta 1.
+
+### Functional summary
+
+After this slice, the user will be able to:
+
+- Read the configuration layers diagram on Concepts → Configuration layers without zooming.
+- See on the home page, without looking further, that LogAperture is open source under the
+  Apache License 2.0.
+- Go to **Get started → Download** to get the release zip for a version, or the agent and
+  `logctl` from Maven Central, with Maven and Gradle snippets that copy the agent into a build's
+  output, for example a container image.
+
+Guide pages changed: `index.md`, `concepts/configuration-layers.md`, a new
+`get-started/download.md`, and `get-started/install-wildfly.md` / `install-plain-jvm.md` (their
+"Or get it from Maven Central" tips become a link to Download). README: one license line near
+the top.
+
+### The diagram
+
+The diagram is a left-to-right flowchart of seven shapes in one row. Scaled down to the content
+column, its text renders at about 6 pt. The prose under it reads "From the bottom up", so it was
+meant to be vertical. Laid out bottom to top (`flowchart BT`), it renders at full size with
+readable text, about 700 px tall, and reads in the same order as the prose.
+
+A zoom control is harder than it looks: Material renders Mermaid inside a *closed* shadow root,
+so a pan/zoom library can't reach the SVG. The whole diagram can still be scaled from outside
+(click to open it fullscreen, scaled to the window), for a diagram too large for the column.
+
+### The license
+
+Home says it under the tagline: open source, Apache License 2.0, linked to `LICENSE` on GitHub.
+The footer of every page already carries "Apache License 2.0"; this puts it where a first-time
+visitor looks.
+
+### The Download page
+
+The agent is a `-javaagent` jar, not a library: no application code compiles against it, and it
+must never be on the application's class path. So the build snippets don't declare a
+dependency. They copy the jar into the build's output, where the `-javaagent:` line points at
+it. The page says so before the snippets.
+
+Contents:
+
+1. **The release zip**, by version, from GitHub Releases: everything, including `logctl`'s
+   scripts and the offline guide. Links name the version, because every release so far is a
+   pre-release, and GitHub's "latest release" link skips pre-releases.
+2. **Maven Central coordinates**, from 1.0.0-beta.1: `org.logaperture:logaperture-agent`,
+   `logaperture-cli`, and the zip as `org.logaperture:logaperture` (type `zip`). Signatures
+   (`.asc`) and checksums sit next to each file.
+3. **Snippets**, each copying `logaperture-agent.jar` into the build output:
+   - command line: `mvn dependency:copy …` (the tip that is on the install pages today);
+   - Maven: `maven-dependency-plugin`'s `copy` goal in the POM, with `stripVersion`;
+   - Gradle: a `logapertureAgent` configuration and a `Copy` task (R6).
+4. Then: "Next: install on WildFly / on a plain JVM".
+
+### Decisions (signed off 2026-10-11)
+
+All seven agreed as recommended.
+
+| # | Decision | Agreed |
+|---|---|---|
+| R1 | The layers diagram | **Lay it out bottom to top** (`flowchart BT`). No zoom control now; a click-to-expand for oversized diagrams if one is ever needed. Alternatives: click-to-expand only, or both. |
+| R2 | Where the license goes | **A line under Home's tagline**, linked to `LICENSE`, plus the same line near the top of the README. |
+| R3 | Name and place of the new page | **"Download", first under Get started** (`get-started/download.md`). Alternatives: "Get LogAperture"; "Download and install"; a top-level tab. |
+| R4 | What the page holds | **Zip by version, Central coordinates, three snippets that copy the jar, and the "not a dependency" warning**; the install pages' Central tips become a link to it. |
+| R5 | Version numbers in links and snippets | **Filled in at build time** by the guide hook from the release tag, so the `1.0` guide shows `1.0.0-beta.1`, then `1.0.0`, without editing the page. The `dev` guide shows `<version>` with a note to pick a released one. Alternative: write the version in by hand at each release. |
+| R6 | Gradle flavours | **Kotlin and Groovy DSL, as tabs.** Alternative: Kotlin only. |
+| R7 | Checksums on GitHub Releases | **Not in this slice.** Today the GitHub release has only the zip; the page points at Central's signatures and checksums for verifying. Adding a `.sha256` next to the zip is a `release.yml` change, filed as its own issue ([#202](https://github.com/ddeuchert/logaperture/issues/202)) rather than touched days before beta 1. |
+
+### As built
+
+- The release version is filled in by `guide-hooks/release_version.py` (R5): a full version in
+  `DOCS_VERSION` (the docs workflow on a tag, the release workflow's zip copy) makes a release
+  build; anything else (`dev`, a hand-run `1.0`) shows `<version>` and keeps the page's
+  `<!-- unreleased -->` note. A misspelt `{{ logaperture.… }}` token fails the build.
+- The four snippets were run before publishing: `mvn dependency:copy` and the POM against Maven
+  3.9, the Kotlin and Groovy DSL against Gradle 8.10, each producing `logaperture-agent.jar`.
+- The page ends with a container example (`COPY` plus `JAVA_TOOL_OPTIONS`), with
+  `-Dlogaperture.home` set, since a container's user often has no writable home directory.
+- Home's "Where to start" gains Download as its first step, and the install pages' step 1 links
+  to it.
 
 ## Not in scope
 
