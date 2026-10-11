@@ -29,12 +29,12 @@ After this feature, the user will be able to:
 
 ## Why
 
-Storm detection is report-only in 1.0; the active response it exists to support (collapse,
-§7.1, [#27](https://github.com/ddeuchert/logaperture/issues/27)) is Release 2. Yet it is
-installed on every real handler and runs on every record, and the published overhead run
-(`doc/overhead.md`, 2026-10-06) measures it at +374 ± 14 ns on a concatenated message against a
-308 ns budget, the largest part of the idle agent's +54 %. The remaining fix (#150) needs more
-design work than fits before beta.1. An optional diagnostic should not be a cost every JVM pays
+Storm detection is report-only in 1.0; the active response it exists to support (collapse, §7.1,
+[#27](https://github.com/ddeuchert/logaperture/issues/27)) is Release 2. Yet it is installed on
+every real handler and runs on every record, and the published overhead run of 2026-10-06
+(`doc/overhead/2026-10-06-jdk21/report.md`) measures it at +374 ± 14 ns on a concatenated message
+against a 308 ns budget, the largest part of the idle agent's +54 %. The remaining fix (#150) needs
+more design work than fits before beta.1. An optional diagnostic should not be a cost every JVM pays
 by default.
 
 ## Scope

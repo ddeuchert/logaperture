@@ -75,6 +75,7 @@ they have no JVM to attach an agent to.
    [on a plain JVM](get-started/install-plain-jvm.md).
 2. Try it for ten minutes: [Quick start](get-started/quick-start.md).
 3. Learn what `reset` goes back to: [Configuration layers](concepts/configuration-layers.md).
+4. See what it costs per log call: [Overhead](overhead.md).
 
 Every `logctl` command is in the [command reference](reference/logctl.md), and on the command line
 with `logctl help <command>`.

@@ -11,7 +11,7 @@ The output on this page is from WildFly 26.1.3.
 
 ## Turn it on
 
-Storm detection starts off, because it costs a little on every log call. Turn it on for a while:
+Storm detection starts off, because it [costs a little](../overhead.md) on every log call. Turn it on for a while:
 
 ```sh
 logctl enable storms for 30m

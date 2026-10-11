@@ -34,8 +34,9 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   the audit log; concept pages on tiers and expiry, rules, security and agent order; vendor
   defaults and recipes for library authors; how-to pages for raising a level, finding a logger,
   silencing noise, finding disk usage, log storms, undoing changes, several JVMs, scripting and
-  recipes; and troubleshooting. The overhead page follows with the published measurements (issue #159;
-  `doc/specs/user-documentation.md`).
+  recipes; troubleshooting; and the Overhead page, with the measured cost of the agent per log
+  call, the budgets each part is held to, and how to run the benchmarks yourself (issues #159 and
+  #199; `doc/specs/user-documentation.md`, `doc/specs/overhead-benchmarks.md`).
 
 - **`logctl enable storms` and `logctl disable storms`** turn storm detection on and off in a
   running JVM, in every context. With no tier that lasts until the JVM stops; `for 30m` switches it
