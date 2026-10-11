@@ -17,6 +17,7 @@
 #
 #   Preview:   mkdocs serve
 #   Zip copy:  OFFLINE=true mkdocs build     (opens from disk, no network requests)
+#   With GIFs: DEMO_GIFS=1 mkdocs build      (needs agg; what the docs workflow publishes)
 #
 # DOCS_VERSION names the version in the page footer; DOCS_PRERELEASE, when set, shows a
 # pre-release banner naming it (e.g. 1.0.0-beta.1). The docs and release workflows set both.
@@ -73,6 +74,21 @@ extra:
   docs_version: !ENV [DOCS_VERSION, dev]
   prerelease: !ENV [DOCS_PRERELEASE, ""]
   generator: false
+  # Recordings rendered to a GIF with DEMO_GIFS=1, for the README (doc/specs/demo-recordings.md).
+  readme_gifs: [why-no-trace]
+
+# The demo recordings (doc/specs/demo-recordings.md): a bundled asciinema-player, pinned, so
+# the guide in the release zip plays them with no network access, and a hook that checks and
+# packages the .cast files. DEMO_GIFS=1 also renders them to GIFs with agg (the docs workflow).
+hooks:
+  - guide-hooks/demo_casts.py
+
+extra_css:
+  - assets/asciinema-player/asciinema-player.css
+
+extra_javascript:
+  - assets/asciinema-player/asciinema-player.min.js
+  - assets/javascripts/casts.js
 
 markdown_extensions:
   - admonition

@@ -9,6 +9,11 @@ work.
     Rules need `java.util.logging` or JBoss LogManager. On a plain JVM with Logback they aren't
     available yet.
 
+<div class="la-cast" data-cast="flood"></div>
+
+Above: an exception flooding a WildFly console. `top` finds the logger, and a `drop` rule silences
+that exception while the rest of the application keeps logging.
+
 The output on this page is from WildFly 26.1.3.
 
 ## Drop a message

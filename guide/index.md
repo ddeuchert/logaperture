@@ -17,6 +17,14 @@ logctl add rule drop com.acme.batch.Worker --message-contains "This happens a lo
     [tell us](https://github.com/ddeuchert/logaperture/issues) what breaks. It is not for
     production use before 1.0.0.
 
+## See it work
+
+A logger raised to `TRACE` still shows nothing on the console, because the console's own handler
+is at `INFO`. One more command fixes it, and both changes revert on their own. The top pane is the
+WildFly console; `logctl` runs below.
+
+<div class="la-cast" data-cast="why-no-trace"></div>
+
 ## What it does
 
 - **Change log levels on a running JVM**, and have the change undo itself on a timer, last until

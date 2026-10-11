@@ -22,6 +22,7 @@ import javax.servlet.annotation.WebListener;
 /**
  * Logs a line on deploy — so {@code org.logaperture.sample.work.Worker} shows
  * up in {@code logctl list loggers} straight away — and shuts the background timer
+ * (and the {@link DemoShop})
  * down on undeploy, so a redeploy does not leak its thread (and so the
  * adapter is exercised keeping the logger node, and any override on it, alive
  * across the deployment going away).
@@ -37,5 +38,6 @@ public class SampleContextListener implements ServletContextListener {
     @Override
     public void contextDestroyed(ServletContextEvent event) {
         SampleTimer.INSTANCE.shutdown();
+        DemoShop.INSTANCE.shutdown();
     }
 }

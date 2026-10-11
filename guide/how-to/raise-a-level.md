@@ -2,6 +2,11 @@
 
 For more detail from part of an application for a while, then back to normal.
 
+<div class="la-cast" data-cast="debug-for-a-while"></div>
+
+Above: an application's checkout logger at `DEBUG` for 30 seconds on WildFly, with the console in
+the top pane. The change reverts on its own, and the console's `AUTO` level goes back with it.
+
 The output on this page is from WildFly 26.1.3.
 
 ## One logger
