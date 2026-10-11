@@ -51,6 +51,8 @@
       
     
     
+      <link rel="stylesheet" href="../assets/asciinema-player/asciinema-player.css">
+    
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
@@ -2173,6 +2175,14 @@ reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>.</p>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li>
+<p><strong>Demo recordings.</strong> Short terminal recordings of LogAperture at work, on a WildFly server
+  with its console in view: a logger raised to <code>TRACE</code> that shows nothing until the console's
+  handler follows it (home page, Quick start, README), a <code>for 30s</code> override that reverts on its
+  own (Raise a log level), and a flood of stack traces found with <code>top</code> and silenced with a
+  <code>drop</code> rule (Silence noise). They play in the guide in the release zip too, with no network
+  access (issue #196; <code>doc/specs/demo-recordings.md</code>).</p>
+</li>
+<li>
 <p><strong>Maven Central.</strong> Releases are published to Maven Central under <code>org.logaperture</code>: the agent as
   <code>logaperture-agent</code>, <code>logctl</code> as <code>logaperture-cli</code> and the release zip as <code>logaperture</code>
   (type <code>zip</code>), so a build or a container image can fetch them by coordinates (issue #186;
@@ -2708,6 +2718,10 @@ store's on-disk format may still change between builds without a migration path.
     
     
       <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../assets/asciinema-player/asciinema-player.min.js"></script>
+      
+        <script src="../assets/javascripts/casts.js"></script>
       
     
   </body>
