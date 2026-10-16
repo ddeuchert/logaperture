@@ -17,9 +17,12 @@ After this feature, the user will be able to:
   (`logaperture-agent`, `logaperture-cli`, and `logaperture` as a `zip`), for example in a build
   script or a container image, instead of downloading the zip from GitHub.
 - Check a release's files against GPG signatures published next to them on Maven Central.
+- Check the zip downloaded from GitHub against a SHA-256 checksum and a GPG signature published
+  next to it on the release page (issue #202, M13).
 
 Guide pages changed: `get-started/install-wildfly.md` and `get-started/install-plain-jvm.md`
-(an "Or get it from Maven Central" tip).
+(an "Or get it from Maven Central" tip); `get-started/download.md` (a "Check the download"
+section, M13).
 
 For the maintainer: run the **Maven Central dry run** workflow before tagging a release. Pushing a
 release tag then publishes to Maven Central as well as to GitHub Releases.
@@ -171,6 +174,19 @@ they would need the namespace's snapshot switch turned on. *Recommended:* none.
 problems before the tag exists. It runs the version the next tag will have, so Central validates
 the same coordinates the release will publish. A dropped deployment doesn't reserve or burn the
 version. *Recommended:* as built.
+
+**M13 — The GitHub Release carries the zip's `.sha256` and `.asc` too** (issue
+[#202](https://github.com/ddeuchert/logaperture/issues/202), signed off 2026-10-15; deferred from
+[`user-documentation.md`](user-documentation.md) R7). Until then a GitHub Release had only
+`logaperture-<version>.zip`, and someone downloading it there had nothing beside it to check it
+against. `release.yml` now attaches `logaperture-<version>.zip.sha256`, in `sha256sum` format
+so `sha256sum -c` checks it, and `logaperture-<version>.zip.asc`, the signature already made for
+Central rather than a second one. Both are made right after `central.sh bundle`, before anything
+is published, so a failure there still leaves nothing permanent (M7); the step `cmp`s the zip it
+attaches against the staged one, so the `.asc` is known to sign those bytes. The final step only
+uploads them. *Alternative:* a `SHA256SUMS` file for the whole release. There is one file to
+check, and a per-file `.sha256` is what Central's own `.md5`/`.sha1` look like. *Not here:* a
+CycloneDX SBOM and build-provenance attestation, which §17.1 lists for 1.0 separately.
 
 ## Testing
 

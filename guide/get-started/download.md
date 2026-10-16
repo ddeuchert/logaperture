@@ -25,6 +25,41 @@ It is everything you need on one machine, and what the install pages start from:
 | `docs/index.html` | this guide, for reading without a network |
 | `LICENSE` | the Apache License 2.0 |
 
+### Check the download
+
+Next to the zip on the release page are `logaperture-{{ logaperture.version }}.zip.sha256`, its
+SHA-256 checksum, and `logaperture-{{ logaperture.version }}.zip.asc`, its GPG signature. Download
+them into the same directory as the zip.
+
+To check that the zip arrived intact:
+
+```sh
+sha256sum -c logaperture-{{ logaperture.version }}.zip.sha256
+```
+
+On macOS, use `shasum -a 256 -c` instead. It prints `logaperture-{{ logaperture.version }}.zip: OK`.
+
+To check that the zip is the one the project released, verify the signature. Releases are
+signed with the key `7405 3993 02DB FD10 0BB7  C2C6 70F9 EFA2 295F D26E`, which is on
+`keyserver.ubuntu.com`:
+
+```sh
+gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys 7405399302DBFD100BB7C2C670F9EFA2295FD26E
+gpg --verify logaperture-{{ logaperture.version }}.zip.asc logaperture-{{ logaperture.version }}.zip
+```
+
+```
+gpg:                using RSA key 7405399302DBFD100BB7C2C670F9EFA2295FD26E
+gpg: Good signature from "Logaperture Release (org.logaperture release artifact signing key) <releases@logaperture.org>" [unknown]
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: 7405 3993 02DB FD10 0BB7  C2C6 70F9 EFA2 295F D26E
+```
+
+What matters is `Good signature` and a primary key fingerprint that matches the one above. The
+warning only means you haven't certified the key yourself. The files on Maven Central are signed
+with the same key.
+
 Next: install it [on WildFly](install-wildfly.md) or [on a plain JVM](install-plain-jvm.md).
 
 ## Maven Central

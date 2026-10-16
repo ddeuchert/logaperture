@@ -562,7 +562,7 @@ All seven agreed as recommended.
 | R4 | What the page holds | **Zip by version, Central coordinates, three snippets that copy the jar, and the "not a dependency" warning**; the install pages' Central tips become a link to it. |
 | R5 | Version numbers in links and snippets | **Filled in at build time** by the guide hook from the release tag, so the `1.0` guide shows `1.0.0-beta.1`, then `1.0.0`, without editing the page. The `dev` guide shows `<version>` with a note to pick a released one. Alternative: write the version in by hand at each release. |
 | R6 | Gradle flavours | **Kotlin and Groovy DSL, as tabs.** Alternative: Kotlin only. |
-| R7 | Checksums on GitHub Releases | **Not in this slice.** Today the GitHub release has only the zip; the page points at Central's signatures and checksums for verifying. Adding a `.sha256` next to the zip is a `release.yml` change, filed as its own issue ([#202](https://github.com/ddeuchert/logaperture/issues/202)) rather than touched days before beta 1. |
+| R7 | Checksums on GitHub Releases | **Not in this slice.** Today the GitHub release has only the zip; the page points at Central's signatures and checksums for verifying. Adding a `.sha256` next to the zip is a `release.yml` change, filed as its own issue ([#202](https://github.com/ddeuchert/logaperture/issues/202)) rather than touched days before beta 1. *Since done:* [`maven-central-publishing.md`](maven-central-publishing.md) M13 attaches a `.sha256` and the `.asc`, and the page says how to check them. |
 
 ### As built
 

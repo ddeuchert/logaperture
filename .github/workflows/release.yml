@@ -16,7 +16,8 @@ name: Release
 
 # Cut a release by pushing a tag: `git tag -a v0.1.0-alpha.1 -m ... && git push origin v0.1.0-alpha.1`
 # (from `main`). This builds and signs the release, publishes it to Maven Central
-# (issue #186), then publishes a GitHub Release with the zip attached (issue #25).
+# (issue #186), then publishes a GitHub Release with the zip attached (issue #25), and its
+# .sha256 and .asc next to it (issue #202).
 # Run the Maven Central dry run (central.yml) first.
 on:
   push:
@@ -91,6 +92,20 @@ jobs:
       - name: Bundle and check for Maven Central
         run: .github/scripts/central.sh bundle target/staging "${{ steps.v.outputs.version }}" target/central-bundle.zip
 
+      - name: Checksum and signature for the GitHub Release
+        # Made here, before anything is published, so a failure still leaves nothing permanent
+        # (issue #202). The .asc is the signature just bundled for Central; cmp makes sure it
+        # signs the same bytes the GitHub Release attaches.
+        working-directory: logaperture-dist/target
+        run: |
+          version="${{ steps.v.outputs.version }}"
+          zip="logaperture-$version.zip"
+          staged="$GITHUB_WORKSPACE/target/staging/org/logaperture/logaperture/$version"
+          cmp "$zip" "$staged/$zip"
+          cp "$staged/$zip.asc" .
+          sha256sum "$zip" > "$zip.sha256"
+          sha256sum -c "$zip.sha256"
+
       - name: Upload to the Central Portal and wait for validation
         id: central
         env:
@@ -127,8 +142,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          zip="logaperture-dist/target/logaperture-${{ steps.v.outputs.version }}.zip"
           gh release create "${GITHUB_REF_NAME}" \
             --title "${{ steps.v.outputs.version }}" \
             --notes-file release-notes.md \
             --prerelease="${{ steps.v.outputs.prerelease }}" \
-            "logaperture-dist/target/logaperture-${{ steps.v.outputs.version }}.zip"
+            "$zip" "$zip.sha256" "$zip.asc"
