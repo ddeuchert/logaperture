@@ -220,7 +220,7 @@ bundled, not pulled from a CDN.
 | `USER_GUIDE_NOTES.md` | Absorbed into the pages named in the layout, then deleted. |
 | `doc/wildfly-test-drive.md` | Becomes `get-started/quick-start.md`; the old file becomes a one-line pointer for anyone holding an old link. |
 | `logaperture-dist/src/dist/INSTALL-wildfly.md` | Becomes `get-started/install-wildfly.md`; the zip ships the rendered guide instead. |
-| `README.md` | Keeps the pitch, the status box and the design principles; the feature list and "Try the alpha" shrink to a few lines and link to the guide. |
+| `README.md` | Keeps the pitch, the status box and the design principles; the feature list and "Try the alpha" shrink to a few lines and link to the guide. *Added at beta 1 (David, 2026-10-15):* a badge row under the title (CI on `develop`, the latest release including pre-releases, Maven Central, the license, the guide) and a line under the tagline sending readers to logaperture.org. |
 | `DEVELOPMENT.md` | Stays, for contributors. Its "Controlling a running JVM" section moves to the plain-JVM install page and is replaced by a link. |
 | `doc/` design docs | Stay. The guide links to the spec only for the threat model and overhead method, never for how to use a command. |
 | `CHANGELOG.md` | Stays the source; the site includes it. |

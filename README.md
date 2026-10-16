@@ -1,16 +1,22 @@
 # LogAperture
 
+[![CI](https://github.com/ddeuchert/logaperture/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/ddeuchert/logaperture/actions/workflows/ci.yml?query=branch%3Adevelop)
+[![Release](https://img.shields.io/github/v/release/ddeuchert/logaperture?include_prereleases&sort=semver)](https://github.com/ddeuchert/logaperture/releases)
+[![Maven Central](https://img.shields.io/maven-central/v/org.logaperture/logaperture-agent)](https://central.sonatype.com/artifact/org.logaperture/logaperture-agent)
+[![License](https://img.shields.io/github/license/ddeuchert/logaperture)](LICENSE)
+[![User guide](https://img.shields.io/badge/guide-logaperture.org-blue)](https://logaperture.org/)
+
 **Runtime logging control for the JVM.** See, tune, and bound what your application logs — without restarting it, editing its configuration, or knowing in advance what will go wrong.
 
-Open source under the [Apache License 2.0](LICENSE).
+**Install it, learn it, and look up every command at [logaperture.org](https://logaperture.org/).** Open source under the [Apache License 2.0](LICENSE).
 
-> ### Status: 0.1.0-alpha.3 — early, evaluation only
+> ### Status: 1.0.0-beta.1 — feature-complete for 1.0, testers wanted
 >
-> **Not for production.** It does real work on a running JVM — see [Try the alpha](#try-the-alpha) — but the feature set is partial, the override store's on-disk format may still change between builds with no migration, and there is no support commitment.
+> **Not for production yet.** Everything 1.0 will do is in this build — see [Try the beta](#try-the-beta). Until 1.0.0 only fixes, documentation and packaging change, plus any renames from the 1.0 review of commands and output, so a script written against this beta may need a small change at 1.0.0.
 >
-> Bug reports from an alpha run, prior-art pointers, and war stories about log volume in constrained environments are all useful — [open an issue](../../issues).
+> Bug reports from a beta run, prior-art pointers, and war stories about log volume in constrained environments are all useful — [open an issue](../../issues).
 
-**Have a WildFly server handy?** [Install it](https://logaperture.org/latest/get-started/install-wildfly/) and run the [Quick start](https://logaperture.org/latest/get-started/quick-start/) in about 10 minutes — raise a level and watch it revert, make the console show it, compare `for`/`session`/`sticky`, look at `doctor` and `top`. Feedback from that run is exactly what this alpha needs.
+**Have a WildFly server handy?** [Install it](https://logaperture.org/latest/get-started/install-wildfly/) and run the [Quick start](https://logaperture.org/latest/get-started/quick-start/) in about 10 minutes — raise a level and watch it revert, make the console show it, compare `for`/`session`/`sticky`, look at `doctor` and `top`. Feedback from that run is exactly what this beta needs.
 
 [![A logger raised to TRACE shows nothing on the console until logctl puts the console handler in AUTO](https://logaperture.org/latest/assets/demos/why-no-trace.gif)](https://logaperture.org/latest/#see-it-work)
 
@@ -32,33 +38,16 @@ Open source under the [Apache License 2.0](LICENSE).
 - **Suppress precisely when you do know the shape of the noise** — by category, keyword, exception type, or cause chain, including trimming a stack trace without losing the line it came from.
 - **Stay governable.** Suppressing logs means hiding activity, and raising verbosity means writing secrets to disk. Both need a capability model, an audit trail, and categories that can never be silenced or made more verbose.
 
-## Try the alpha
+## Try the beta
 
-`0.1.0-alpha.3` reads what your app logs, changes log levels, and — new in this build — suppresses noise you name: `drop` and `trim` rules, plus report-only storm detection.
+`1.0.0-beta.1` runs on **standalone WildFly** (26.1 and later) and on **plain `java -jar` with Logback**, on JDK 17, 21 and 25. Not every feature works on both yet: the guide's [support table](https://logaperture.org/latest/#what-10-supports) says which.
 
-**Tested on:**
+- **Change a log level on the running JVM**, and have it revert on a timer, last until restart, or survive restarts. One command undoes everything.
+- **`top` and `doctor`**: which loggers fill the disk, and logging configuration that will hurt you.
+- **`drop` and `trim` rules** for noise you can name, and **storm detection** for bursts you didn't see coming.
+- **Vendor defaults and recipes**, for shipping sane logging settings with a product.
 
-- **Standalone WildFly** (26.x, JBoss LogManager) — the full command set, end to end in a real server.
-- **Plain `java -jar`** with **Logback** — runtime level changes, enforced expiry, and persistence (a `sticky` override survives a real restart), verified cross-process. A plain JVM that logs through `java.util.logging` alone (no Logback) is not picked up yet.
-
-Working today:
-
-- **`logctl list loggers [glob] [--show-all]`** — every overridden logger and its effective level by default; the glob finds a logger from the abbreviated name a log line actually printed; `--show-all` shows the full catalog, overridden or not.
-- **`logctl set logger <logger> DEBUG for 30m`** / `sticky` — change a level at runtime. It reverts on its own timer, survives a restart if you ask (`sticky`), and never touches `standalone.xml`, `logback-spring.xml`, or anything your application owns.
-- **`logctl set handler <name> <level>`** / **`logctl list handlers [--show-all]`** — set a handler's own level (the fix when a raised logger still shows nothing because a handler is pinned stricter) and list the handler catalogue. On WildFly the handlers resolve to their real configured names (`CONSOLE`, `FILE`, …), read in-VM from the server's own model.
-- **`logctl doctor`** — flag common logging-config problems: unbounded file-handler growth, verbosity left on, the same content written twice, autoflush on a busy handler, disk headroom vs. write rate.
-- **`logctl top`** — bytes written per logger, worst-first, with a projected daily total and the stack-trace-byte fraction.
-- **`logctl status`** / **`logctl reset loggers`** / **`logctl reset handlers`** — what LogAperture has changed, and undo all of it.
-- **`logctl add rule drop|trim <logger> …`** — drop a known-noisy message, or keep it but shorten its stack trace, without touching the logger's level. Rules get ids, expire like overrides, and are listed, changed and removed with `list rules`, `alter rule` and `reset rule`.
-- **`logctl storms`** — the log storms the agent has detected (a burst of near-identical events from one logger), with the event that made each one a storm kept in full. Report-only: nothing is suppressed. Storm detection starts disabled: turn it on with `logctl enable storms` (add `for 30m` or `sticky`), or start the agent with `--storm-detection=on`.
-- **Vendor defaults file** (`-javaagent:…=--vendor-defaults=<file>`) — ship baseline levels and rules with a product; `logctl reset` returns to them, and `logctl export vendor-defaults` writes your sticky settings out as one.
-- **Guided commands** — on a terminal, leave out what `set`, `reset`, `list`, `add rule` or `alter rule` needs and `logctl` asks, picking loggers, handlers and rules from numbered lists, then prints the equivalent one-line command.
-
-`doctor`, `top`, `logctl list handlers`, rules and storm detection currently work with `java.util.logging` / JBoss LogManager only — on a Logback application they report nothing yet (a Logback pass is on the roadmap). Every change is capability-checked and written to an audit trail. The agent opens no sockets; `logctl` reaches it over the local attach API, UID-gated by the OS.
-
-**Not in this build:** automatic storm collapse, `drop`/`trim` on Logback, the Log4j 2 adapter, and any Spring Boot / Tomcat / Quarkus-JVM integration (a Spring Boot fat-jar attaches as a plain JVM, so level control *may* work against its Logback, but it is untested).
-
-**Getting it:** download [`logaperture-0.1.0-alpha.3.zip`](https://github.com/ddeuchert/logaperture/releases/download/v0.1.0-alpha.3/logaperture-0.1.0-alpha.3.zip) (or browse [all releases](../../releases)), unzip, and follow the user guide: [on WildFly](https://logaperture.org/latest/get-started/install-wildfly/) or [on a plain JVM](https://logaperture.org/latest/get-started/install-plain-jvm/). The guide is also in the zip, under `docs/`.
+**Get it** from the [Download page](https://logaperture.org/latest/get-started/download/) — the zip from GitHub Releases, or `org.logaperture` on Maven Central — and install it [on WildFly](https://logaperture.org/latest/get-started/install-wildfly/) or [on a plain JVM](https://logaperture.org/latest/get-started/install-plain-jvm/). Every command is in the [`logctl` reference](https://logaperture.org/latest/reference/logctl/). The guide is also in the zip, under `docs/`.
 
 ## Design principles
 
@@ -84,13 +73,13 @@ If you know of something that does, please say so. Finding out early is worth mo
 
 ## Documentation
 
+- [User guide at logaperture.org](https://logaperture.org/) — installing, a quick start, how-to pages and the `logctl` command reference.
 - [Design document](doc/logaperture-spec.md) — architecture, feature specification, security model, and roadmap.
-- [User guide](https://logaperture.org/) — installing, a quick start, how-to pages and the `logctl` command reference.
 - [DEVELOPMENT.md](DEVELOPMENT.md) — building, testing, running `logctl`, and the WildFly dev environment.
 
 ## Contributing
 
-Code contributions are welcome once the alpha stabilises — the internals are still moving. For now the most useful things are bug reports from an actual alpha run, design feedback on [the spec](doc/logaperture-spec.md), prior-art pointers, and war stories about log volume in constrained environments, all in [issues](../../issues).
+Code contributions are welcome after 1.0 — until then the code is frozen to fixes. For now the most useful things are bug reports from an actual beta run, design feedback on [the spec](doc/logaperture-spec.md), prior-art pointers, and war stories about log volume in constrained environments, all in [issues](../../issues).
 
 ## License
 
