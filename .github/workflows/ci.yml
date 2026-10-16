@@ -37,7 +37,7 @@ jobs:
           cache: maven
 
       - name: Build and verify
-        run: mvn -B --no-transfer-progress verify
+        run: ./mvnw -B --no-transfer-progress verify
 
       - name: Upload failure surefire/failsafe reports
         if: failure()
@@ -63,7 +63,7 @@ jobs:
           cache: maven
 
       - name: Build the benchmarks
-        run: mvn -B --no-transfer-progress -Pbench -pl logaperture-bench -am package -DskipTests
+        run: ./mvnw -B --no-transfer-progress -Pbench -pl logaperture-bench -am package -DskipTests
 
       - name: Run every benchmark once
         run: |
