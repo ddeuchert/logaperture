@@ -1891,26 +1891,26 @@ logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span
 logctl<span class="w"> </span>add<span class="w"> </span>rule<span class="w"> </span>drop<span class="w"> </span>io.undertow.request<span class="w"> </span>--message-contains<span class="w"> </span><span class="s2">"Matched default"</span><span class="w"> </span>--below<span class="w"> </span>WARN<span class="w"> </span>sticky
 logctl<span class="w"> </span><span class="nb">export</span><span class="w"> </span>vendor-defaults<span class="w"> </span>--out<span class="w"> </span>logging.yaml
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><span class="c1"># Exported by logctl export vendor-defaults, 2026-10-10T00:41:26Z, agent 1.0.0-beta.1-SNAPSHOT</span>
+<div class="highlight"><pre><span></span><code><span class="c1"># Exported by logctl export vendor-defaults, 2026-10-16T01:45:07Z, agent 1.0.0-beta.1</span>
 <span class="c1"># Started from: no vendor defaults file</span>
 <span class="nt">schemaVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
 <span class="nt">loggers</span><span class="p">:</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">org.jboss.as.server.deployment</span>
 <span class="w">    </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">WARN</span>
-<span class="w">    </span><span class="nt">stateId</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">d4d6917d-4dd9-4792-9403-5a8faaf6ecba</span>
+<span class="w">    </span><span class="nt">stateId</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">937f83b2-c403-4735-8999-47cc17dd5c3e</span>
 <span class="nt">handlers</span><span class="p">:</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CONSOLE</span>
 <span class="w">    </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">INFO</span>
-<span class="w">    </span><span class="nt">stateId</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">6b5c206a-60ff-4b05-82f0-23d8ea90a237</span>
+<span class="w">    </span><span class="nt">stateId</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">51eca665-4862-47c7-a4ba-41b0c8187919</span>
 <span class="nt">rules</span><span class="p">:</span>
-<span class="w">  </span><span class="c1"># was r2</span>
+<span class="w">  </span><span class="c1"># was r1</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">drop-request</span>
 <span class="w">    </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">drop</span>
 <span class="w">    </span><span class="nt">logger</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">io.undertow.request</span>
 <span class="w">    </span><span class="nt">messageContains</span><span class="p">:</span><span class="w"> </span><span class="s">"Matched</span><span class="nv"> </span><span class="s">default"</span>
 <span class="w">    </span><span class="nt">below</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">WARN</span>
 <span class="w">    </span><span class="nt">sampleFull</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5m</span>
-<span class="w">    </span><span class="nt">stateId</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5a8faccc-5470-404b-9ebe-a0769215b780</span>
+<span class="w">    </span><span class="nt">stateId</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0d5498e8-4026-4da9-ab36-c3b104e7dfb0</span>
 </code></pre></div>
 <p>The export is the file the JVM started with, plus every <code>sticky</code> change on top of it. <code>session</code> and
 <code>for</code> changes are left out: only what you meant to keep is exported.</p>

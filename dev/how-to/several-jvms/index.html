@@ -1863,16 +1863,16 @@ on the same machine, run by the same operating-system user.</p>
 <li>
 <p><strong>Several</strong>: on a terminal, it lists them as a numbered list to pick from. In a script, or with
   <code>--json</code> or <code>--yes</code>, it can't ask. It prints the same list and exits with code 4:</p>
-<div class="highlight"><pre><span></span><code>PID     VERSION                STARTED           DIRECTORY        COMMAND
-320862  1.0.0-beta.1-SNAPSHOT  2026-10-09 20:28  /srv/app-a       org.logaperture.agent.it.FixtureApp
-320867  1.0.0-beta.1-SNAPSHOT  2026-10-09 20:28  /srv/app-b       org.logaperture.agent.it.FixtureApp
+<div class="highlight"><pre><span></span><code>PID    VERSION       STARTED           DIRECTORY   COMMAND
+28337  1.0.0-beta.1  2026-10-15 20:45  /srv/app-a  org.logaperture.agent.it.FixtureApp
+28342  1.0.0-beta.1  2026-10-15 20:45  /srv/app-b  org.logaperture.agent.it.FixtureApp
 Several candidates — pass --pid &lt;n&gt;.
 </code></pre></div>
 </li>
 </ul>
 <h2 id="choosing-one">Choosing one<a class="headerlink" href="#choosing-one" title="Permanent link">&para;</a></h2>
 <p>Pass the process id:</p>
-<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>--pid<span class="w"> </span><span class="m">320862</span><span class="w"> </span>status
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>--pid<span class="w"> </span><span class="m">28337</span><span class="w"> </span>status
 </code></pre></div>
 <p>The list shows each JVM's directory and main class to tell them apart. <code>jps -l</code> lists Java
 processes too.</p>
