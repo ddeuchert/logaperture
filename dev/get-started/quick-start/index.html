@@ -2077,6 +2077,7 @@ there; <code>com.example.demo</code> is gone with the JVM it belonged to.</p>
 [OK]    /opt/jboss/wildfly/standalone/log/server.log is stable — no writes observed during the sample window.
 
 5 checks run — 0 critical, 3 warning, 0 info, 3 clean.
+Storm detection is disabled — see 'logctl enable storms'.
 </code></pre></div>
 <p><code>top</code> shows which loggers have written the most since the agent started:</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>top<span class="w"> </span>--limit<span class="w"> </span><span class="m">5</span>
