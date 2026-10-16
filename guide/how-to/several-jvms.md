@@ -20,9 +20,9 @@ on the same machine, run by the same operating-system user.
   `--json` or `--yes`, it can't ask. It prints the same list and exits with code 4:
 
     ```
-    PID     VERSION                STARTED           DIRECTORY        COMMAND
-    320862  1.0.0-beta.1-SNAPSHOT  2026-10-09 20:28  /srv/app-a       org.logaperture.agent.it.FixtureApp
-    320867  1.0.0-beta.1-SNAPSHOT  2026-10-09 20:28  /srv/app-b       org.logaperture.agent.it.FixtureApp
+    PID    VERSION       STARTED           DIRECTORY   COMMAND
+    28337  1.0.0-beta.1  2026-10-15 20:45  /srv/app-a  org.logaperture.agent.it.FixtureApp
+    28342  1.0.0-beta.1  2026-10-15 20:45  /srv/app-b  org.logaperture.agent.it.FixtureApp
     Several candidates — pass --pid <n>.
     ```
 
@@ -31,7 +31,7 @@ on the same machine, run by the same operating-system user.
 Pass the process id:
 
 ```sh
-logctl --pid 320862 status
+logctl --pid 28337 status
 ```
 
 The list shows each JVM's directory and main class to tell them apart. `jps -l` lists Java

@@ -3,9 +3,18 @@
 All notable changes to LogAperture are recorded here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims
 to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it
-reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
+reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`; the betas and release
+candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ## [Unreleased]
+
+## [1.0.0-beta.1] — 2026-10-15
+
+The 1.0 feature freeze: everything 1.0.0 will do is in this build. New since alpha.3: logging
+recipes, `logctl help`, switching storm detection on and off at runtime, a user guide at
+https://logaperture.org/ and in the zip, and the first release on Maven Central.
+**Not for production yet.** Until 1.0.0 only fixes, documentation and packaging change, plus any
+renames from the 1.0 review of commands and `--json` output.
 
 ### Added
 
@@ -477,7 +486,8 @@ store's on-disk format may still change between builds without a migration path.
   `/subsystem=logging` reconfiguration
   ([#31](https://github.com/ddeuchert/logaperture/issues/31)).
 
-[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v0.1.0-alpha.3...HEAD
+[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.1...HEAD
+[1.0.0-beta.1]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.1
 [0.1.0-alpha.3]: https://github.com/ddeuchert/logaperture/releases/tag/v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/ddeuchert/logaperture/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/ddeuchert/logaperture/releases/tag/v0.1.0-alpha.1

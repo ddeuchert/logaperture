@@ -43,26 +43,26 @@ logctl export vendor-defaults --out logging.yaml
 ```
 
 ```yaml
-# Exported by logctl export vendor-defaults, 2026-10-10T00:41:26Z, agent 1.0.0-beta.1-SNAPSHOT
+# Exported by logctl export vendor-defaults, 2026-10-16T01:45:07Z, agent 1.0.0-beta.1
 # Started from: no vendor defaults file
 schemaVersion: 1
 loggers:
   - name: org.jboss.as.server.deployment
     level: WARN
-    stateId: d4d6917d-4dd9-4792-9403-5a8faaf6ecba
+    stateId: 937f83b2-c403-4735-8999-47cc17dd5c3e
 handlers:
   - name: CONSOLE
     level: INFO
-    stateId: 6b5c206a-60ff-4b05-82f0-23d8ea90a237
+    stateId: 51eca665-4862-47c7-a4ba-41b0c8187919
 rules:
-  # was r2
+  # was r1
   - id: drop-request
     action: drop
     logger: io.undertow.request
     messageContains: "Matched default"
     below: WARN
     sampleFull: 5m
-    stateId: 5a8faccc-5470-404b-9ebe-a0769215b780
+    stateId: 0d5498e8-4026-4da9-ab36-c3b104e7dfb0
 ```
 
 The export is the file the JVM started with, plus every `sticky` change on top of it. `session` and

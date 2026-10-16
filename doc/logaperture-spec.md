@@ -1230,7 +1230,7 @@ The M0–M6 plan above stays the long-term map. It is too much to build before a
 | Version | Target | Content |
 |---|---|---|
 | `0.1.0-alpha.3` | ~Oct 1 | Everything on `develop` today, plus guided `list`, `set`, `reset` and `alter rule` (#116), which finished early and was pulled forward from beta 1 (2026-09-28). Last GitHub-only release. |
-| `1.0.0-beta.1` | Oct 15 | **Feature freeze.** Adds library recipes (#92) if its spec is signed off by Oct 4, otherwise recipes move to 1.1. First Maven Central publish; docs site live. |
+| `1.0.0-beta.1` | Oct 15 | **Feature freeze.** Adds library recipes (#92), whose spec was signed off in time. First Maven Central publish; docs site live. Released 2026-10-15. |
 | `1.0.0-beta.N`, `-rc.1` | rc by Nov 9 | Fixes only, plus renames from the contract review. |
 | `1.0.0` | Nov 16 | The §11.1 compatibility promise starts; the "not for production" warning comes off within the §11 1.0 matrix. |
 | `1.1.0` | Dec 2026 – early 2027 | Quarkus JVM mode and plain-JVM JUL (#114), unless it made 1.0. Then Release 2: Spring Boot, Logback depth (rules, `top`, `doctor`, storms), configurable storm suppression (#27), Tomcat with per-webapp Logback. If Quarkus takes 1.1, Release 2 becomes 1.2. |

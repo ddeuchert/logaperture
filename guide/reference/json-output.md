@@ -474,12 +474,12 @@ logctl env --json
 
 ```json
 {
-  "agentVersion": "1.0.0-beta.1-SNAPSHOT",
-  "cliVersion": "1.0.0-beta.1-SNAPSHOT",
+  "agentVersion": "1.0.0-beta.1",
+  "cliVersion": "1.0.0-beta.1",
   "javaVersion": "17.0.5",
   "javaVendor": "Eclipse Adoptium",
   "osName": "Linux",
-  "osVersion": "7.2.8-200.fc44.x86_64",
+  "osVersion": "7.2.10-200.fc44.x86_64",
   "osArch": "amd64",
   "backendName": "JBoss LogManager",
   "backendVersion": "2.1.18.Final",
