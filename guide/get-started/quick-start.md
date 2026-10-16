@@ -182,6 +182,7 @@ logctl doctor
 [OK]    /opt/jboss/wildfly/standalone/log/server.log is stable — no writes observed during the sample window.
 
 5 checks run — 0 critical, 3 warning, 0 info, 3 clean.
+Storm detection is disabled — see 'logctl enable storms'.
 ```
 
 `top` shows which loggers have written the most since the agent started:
