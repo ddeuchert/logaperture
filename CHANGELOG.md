@@ -28,6 +28,10 @@ reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`.
   (type `zip`), so a build or a container image can fetch them by coordinates (issue #186;
   `doc/specs/maven-central-publishing.md`).
 
+- **Checksum and signature on GitHub Releases.** Each release's zip has a `.sha256` and a `.asc`
+  GPG signature next to it on the release page, and the guide's Download page says how to check
+  them (issue #202; `doc/specs/maven-central-publishing.md` M13).
+
 - **`logctl help <command>`**, and `--help` after any command (`logctl set logger --help`), explain
   one command: its forms, what it does, its options, and examples. `logctl help set` lists the
   `set` commands to pick from. The guide's command reference (`reference/logctl.md`) is generated
