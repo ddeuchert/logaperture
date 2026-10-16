@@ -637,6 +637,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="The release zip">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#check-the-download" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check the download
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1820,6 +1837,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="The release zip">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#check-the-download" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Check the download
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1946,6 +1980,29 @@ It is everything you need on one machine, and what the install pages start from:
 </tr>
 </tbody>
 </table>
+<h3 id="check-the-download">Check the download<a class="headerlink" href="#check-the-download" title="Permanent link">&para;</a></h3>
+<p>Next to the zip on the release page are <code>logaperture-&lt;version&gt;.zip.sha256</code>, its
+SHA-256 checksum, and <code>logaperture-&lt;version&gt;.zip.asc</code>, its GPG signature. Download
+them into the same directory as the zip.</p>
+<p>To check that the zip arrived intact:</p>
+<div class="highlight"><pre><span></span><code>sha256sum<span class="w"> </span>-c<span class="w"> </span>logaperture-&lt;version&gt;.zip.sha256
+</code></pre></div>
+<p>On macOS, use <code>shasum -a 256 -c</code> instead. It prints <code>logaperture-&lt;version&gt;.zip: OK</code>.</p>
+<p>To check that the zip is the one the project released, verify the signature. Releases are
+signed with the key <code>7405 3993 02DB FD10 0BB7  C2C6 70F9 EFA2 295F D26E</code>, which is on
+<code>keyserver.ubuntu.com</code>:</p>
+<div class="highlight"><pre><span></span><code>gpg<span class="w"> </span>--keyserver<span class="w"> </span>hkps://keyserver.ubuntu.com<span class="w"> </span>--recv-keys<span class="w"> </span>7405399302DBFD100BB7C2C670F9EFA2295FD26E
+gpg<span class="w"> </span>--verify<span class="w"> </span>logaperture-&lt;version&gt;.zip.asc<span class="w"> </span>logaperture-&lt;version&gt;.zip
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>gpg:                using RSA key 7405399302DBFD100BB7C2C670F9EFA2295FD26E
+gpg: Good signature from "Logaperture Release (org.logaperture release artifact signing key) &lt;releases@logaperture.org&gt;" [unknown]
+gpg: WARNING: This key is not certified with a trusted signature!
+gpg:          There is no indication that the signature belongs to the owner.
+Primary key fingerprint: 7405 3993 02DB FD10 0BB7  C2C6 70F9 EFA2 295F D26E
+</code></pre></div>
+<p>What matters is <code>Good signature</code> and a primary key fingerprint that matches the one above. The
+warning only means you haven't certified the key yourself. The files on Maven Central are signed
+with the same key.</p>
 <p>Next: install it <a href="../install-wildfly/">on WildFly</a> or <a href="../install-plain-jvm/">on a plain JVM</a>.</p>
 <h2 id="maven-central">Maven Central<a class="headerlink" href="#maven-central" title="Permanent link">&para;</a></h2>
 <p>From 1.0.0-beta.1, each release is on Maven Central with the group <code>org.logaperture</code> and the

@@ -2227,6 +2227,11 @@ reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>.</p>
   <code>doc/specs/maven-central-publishing.md</code>).</p>
 </li>
 <li>
+<p><strong>Checksum and signature on GitHub Releases.</strong> Each release's zip has a <code>.sha256</code> and a <code>.asc</code>
+  GPG signature next to it on the release page, and the guide's Download page says how to check
+  them (issue #202; <code>doc/specs/maven-central-publishing.md</code> M13).</p>
+</li>
+<li>
 <p><strong><code>logctl help &lt;command&gt;</code></strong>, and <code>--help</code> after any command (<code>logctl set logger --help</code>), explain
   one command: its forms, what it does, its options, and examples. <code>logctl help set</code> lists the
   <code>set</code> commands to pick from. The guide's command reference (<code>reference/logctl.md</code>) is generated
