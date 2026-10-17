@@ -11,11 +11,18 @@ apply to everyone.
 - **`develop` is the working trunk.** All feature branches merge here, and it is
   where day-to-day work lands. **Target your pull requests at `develop`**, not
   `main` (the repo's default branch is `main`, so the PR base needs changing).
-- **`main` matches the most recent release.** It sits exactly on the last
-  release tag and advances *only* when a release is cut — a fast-forward from
-  `develop` to the commit that gets tagged. Between releases it does not move,
-  so a clone, the landing page, and tooling always show the last shipped state
-  (not in-progress work on `develop`). It is the default branch.
+- **`main` matches the most recent release.** It advances *only* when a release
+  is cut, by merging a pull request from `develop` once `develop` sits on the
+  release commit. Between releases it does not move, so a clone, the landing
+  page, and tooling always show the last shipped state (not in-progress work on
+  `develop`). It is the default branch.
+- **`main` is protected** by a repository ruleset: no direct pushes, force
+  pushes or deletion; changes arrive only through a pull request, merged with a
+  merge commit (squash and rebase would rewrite `develop`'s commits); and the
+  `from-develop` check (`.github/workflows/release-pr-source.yml`) fails any
+  pull request into `main` whose head isn't this repository's `develop`. Its
+  first-parent history is therefore one merge commit per release, each with the
+  same tree as the tagged release commit.
 - **Cutting a release:** first re-record the demo recordings with the release
   version's agent in the dev WildFly (`dev/demos/record.sh all`), watch each one,
   and commit the new `.cast` files; a recording whose output changed may mean the
@@ -29,9 +36,10 @@ apply to everyone.
   right-hand sidebar and tick **central dry run** (or run
   `gh pr edit <number> --add-label "central dry run"`). The run shows on the
   pull request's Checks tab and under Actions. To run it again, remove the
-  label and add it back. Then fast-forward `main`
-  to the release commit on `develop`, push `main`, and push a tag
-  (`v1.0.0-beta.1`, …). `.github/workflows/release.yml` builds, tests and signs
+  label and add it back. Then open a pull request from `develop` into `main`
+  (`gh pr create --base main --head develop`), wait for its checks, merge it
+  with a merge commit (`gh pr merge --merge`), and push a tag on the release
+  commit on `develop` (`v1.0.0-beta.1`, …). `.github/workflows/release.yml` builds, tests and signs
   the release, publishes it to Maven Central (`org.logaperture`: the parent POM,
   `logaperture-agent`, `logaperture-cli` and the `logaperture` zip), then
   publishes a GitHub Release with the zip attached. Publishing to Central is
