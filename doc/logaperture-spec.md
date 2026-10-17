@@ -1707,6 +1707,14 @@ Tracked as [#142](https://github.com/ddeuchert/logaperture/issues/142). **Specce
 - Capability checks per forced descendant, as a pattern target has today, and a "too many to list" threshold for the guided question.
 - Whether `reset logger com.mycompany` also reverts the forced descendants, and how `status` / `list loggers` show them.
 
+### 18.18 `set logger`: the default handlers follow the change
+
+Tracked as [#210](https://github.com/ddeuchert/logaperture/issues/210). **Draft spec under review:** [`doc/specs/default-handlers-follow.md`](specs/default-handlers-follow.md), decisions H1–H12. Release decided on the finished PR (1.0.0-beta.2 as a freeze exception, or 1.1.0).
+
+**Motivation.** After `logctl set logger com.mycompany DEBUG` the records are logged, but the console (usually the one `DEFAULT_HANDLERS` member, at `INFO`) drops them, and the user gets a WARN with a second command to run. In a team demo this two-step was the hardest thing to explain.
+
+**What the user would do.** Just `logctl set logger com.mycompany DEBUG`: the default handlers on its path that would drop DEBUG go to `AUTO` for as long as the change lasts, then back. `--keep-handlers` changes only the logger, as before.
+
 ---
 
 ## 19. First deliverables
