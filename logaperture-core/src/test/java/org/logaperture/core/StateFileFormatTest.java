@@ -317,4 +317,41 @@ class StateFileFormatTest {
         assertNull(parsed.stormDetection());
         assertEquals(1, parsed.overrides().size());
     }
+
+    @Test
+    void roundTrips_aFollowerAndACarryOnTag() {
+        HandlerLevelOverride follower = new HandlerLevelOverride(new HandlerRef("CONSOLE"), Level.DEBUG,
+                org.logaperture.api.HandlerLevelMode.AUTO, null, Instant.parse("2026-10-17T03:15:00Z"), "jmx",
+                PersistenceTier.STICKY, null, null, null, List.of("com.b", "com.a"), List.of());
+        HandlerLevelOverride carriesOn = new HandlerLevelOverride(new HandlerRef("FILE"), Level.ALL,
+                org.logaperture.api.HandlerLevelMode.FIXED, "why", Instant.parse("2026-10-17T03:16:00Z"), "jmx",
+                PersistenceTier.FOR, Instant.parse("2026-10-17T03:46:00Z"), null, null, List.of(),
+                List.of("com.acme"));
+
+        StateFileFormat.Parsed parsed = StateFileFormat.parse(
+                StateFileFormat.write(List.of(), List.of(follower, carriesOn), List.of(), List.of()));
+
+        assertEquals(List.of(follower, carriesOn), parsed.handlerOverrides());
+        assertEquals(List.of("com.a", "com.b"), parsed.handlerOverrides().get(0).follows());
+    }
+
+    @Test
+    void parse_aVersion12HandlerRecord_followsNothing() {
+        String v12 = "schemaVersion: 12\n"
+                + "overrides: []\n"
+                + "handlerOverrides:\n"
+                + "  - handlerRef: \"CONSOLE\"\n"
+                + "    level: DEBUG\n"
+                + "    mode: AUTO\n"
+                + "    reason: null\n"
+                + "    appliedAt: 2026-10-17T03:15:00Z\n"
+                + "    source: \"jmx\"\n"
+                + "    tier: STICKY\n"
+                + "    expiresAt: null\n";
+
+        HandlerLevelOverride parsed = StateFileFormat.parse(v12).handlerOverrides().get(0);
+
+        assertEquals(List.of(), parsed.follows());
+        assertEquals(List.of(), parsed.thenFollows());
+    }
 }

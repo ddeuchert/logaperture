@@ -373,7 +373,9 @@ class WildFlyContainerIT {
         // WildFly 26.1.3.Final.
         String freshLogger = "com.myapp.probe.HandlerWarningHarness";
         try {
-            Logctl raised = logctl("set", "logger", freshLogger, "TRACE");
+            // --keep-handlers: otherwise CONSOLE, the default handler, follows the change and isn't
+            // warned about (doc/specs/default-handlers-follow.md).
+            Logctl raised = logctl("set", "logger", freshLogger, "TRACE", "--keep-handlers");
             assertEquals(0, raised.exitCode(), raised.stderr());
             assertTrue(raised.stdout().contains("handler CONSOLE is at"),
                     "the warning names the resolved handler, not a token or ALL_HANDLERS:\n" + raised.stdout());
@@ -381,6 +383,29 @@ class WildFlyContainerIT {
                     "the warning's suggested command is directly copy-pasteable:\n" + raised.stdout());
         } finally {
             logctl("reset", "logger", freshLogger);
+        }
+    }
+
+    @Test
+    void setLogger_theConsoleFollowsTheChange_andGoesBackWithIt() {
+        // doc/specs/default-handlers-follow.md: CONSOLE is the default handler (on the root, at INFO),
+        // so a DEBUG change brings it along in AUTO, and resetting the change puts it back.
+        String freshLogger = "com.myapp.probe.FollowHarness";
+        try {
+            Logctl raised = logctl("set", "logger", freshLogger, "DEBUG", "for", "30m");
+            assertEquals(0, raised.exitCode(), raised.stderr());
+            assertTrue(raised.stdout().contains("handler CONSOLE → AUTO, currently DEBUG   (follows " + freshLogger + ")"),
+                    raised.stdout());
+            assertFalse(raised.stdout().contains("WARN: handler CONSOLE"), raised.stdout());
+            assertTrue(logctl("list", "handlers").stdout().contains("AUTO → DEBUG (follows " + freshLogger + ")"));
+
+            assertEquals(0, logctl("reset", "logger", freshLogger).exitCode());
+            String after = logctl("list", "handlers", "--show-all").stdout();
+            assertTrue(after.lines().anyMatch(line -> line.startsWith("CONSOLE ") && line.contains(" INFO ")
+                    && line.endsWith("—")), "CONSOLE back at INFO with no override:\n" + after);
+        } finally {
+            logctl("reset", "logger", freshLogger);
+            logctl("reset", "handler", "CONSOLE");
         }
     }
 
@@ -458,7 +483,9 @@ class WildFlyContainerIT {
         String traceMarker = "probe trace marker";
         deployProbeWar();
         try {
-            Logctl raised = logctl("set", "logger", APP_LOGGER, "TRACE");
+            // --keep-handlers: this test is about lowering the handlers by hand, so the console must not
+            // follow the change on its own (doc/specs/default-handlers-follow.md).
+            Logctl raised = logctl("set", "logger", APP_LOGGER, "TRACE", "--keep-handlers");
             assertEquals(0, raised.exitCode(), raised.stderr());
             // Post issue #14 the blocking-handler warning names CONSOLE; the
             // lower/reset below still go through ALL_HANDLERS to keep the real

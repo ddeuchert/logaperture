@@ -191,11 +191,11 @@ class JsonTest {
                 "{\"handlers\":[{\"ref\":\"ALL_HANDLERS\",\"level\":null,\"persistent\":false,\"targetPath\":null,"
                         + "\"autoFlush\":null,\"overrideActive\":false,\"overrideLevel\":null,\"overrideMode\":null,"
                         + "\"overrideTier\":null,"
-                        + "\"overrideExpiresAt\":null,\"membersSummary\":null,\"context\":\"system\",\"vendorDefault\":null,\"resetToNative\":false,\"recipe\":null},"
+                        + "\"overrideExpiresAt\":null,\"membersSummary\":null,\"context\":\"system\",\"vendorDefault\":null,\"resetToNative\":false,\"recipe\":null,\"follows\":[],\"thenFollows\":[]},"
                         + "{\"ref\":\"FILE\",\"level\":\"INFO\",\"persistent\":true,\"targetPath\":\"/var/log/server.log\","
                         + "\"autoFlush\":true,\"overrideActive\":true,\"overrideLevel\":\"DEBUG\",\"overrideMode\":\"FIXED\","
                         + "\"overrideTier\":\"FOR\","
-                        + "\"overrideExpiresAt\":\"2026-09-07T14:32:00Z\",\"membersSummary\":null,\"context\":\"system\",\"vendorDefault\":null,\"resetToNative\":false,\"recipe\":null}]}",
+                        + "\"overrideExpiresAt\":\"2026-09-07T14:32:00Z\",\"membersSummary\":null,\"context\":\"system\",\"vendorDefault\":null,\"resetToNative\":false,\"recipe\":null,\"follows\":[],\"thenFollows\":[]}]}",
                 Json.handlers(List.of(allHandlers, file)));
     }
 

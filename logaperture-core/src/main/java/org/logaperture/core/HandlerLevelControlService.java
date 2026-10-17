@@ -19,6 +19,7 @@ import org.logaperture.bridge.Diagnostics;
 import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerInfo;
 import org.logaperture.api.HandlerLevelMode;
+import org.logaperture.api.FollowedHandler;
 import org.logaperture.api.HandlerLevelOverride;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.HandlerResetOutcome;
@@ -34,6 +35,7 @@ import org.logaperture.core.spi.UnknownHandlerException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -41,6 +43,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -532,6 +535,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         // OverrideRegistry (a bigger, busier map than this one), and every
         // setLogger/resetLevel/resetAll/sweep-with-reverts calls this
         // unconditionally whether or not AUTO is even in use.
+        reconcileFollowers(); // a follower whose logger changes all ended goes first (doc/specs/default-handlers-follow.md)
         Map<HandlerRef, HandlerLevelOverride> tracked = overrides.all();
         boolean anyOperatorAuto = tracked.values().stream().anyMatch(o -> o.mode() == HandlerLevelMode.AUTO);
         if (!anyOperatorAuto && !hasVendorAuto()) {
@@ -544,6 +548,308 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             }
         }
         recomputeVendorAuto(explicit);
+    }
+
+    // --- The default handlers follow set logger (doc/specs/default-handlers-follow.md) ---------------
+
+    /** The audit source of a follower ending with the logger changes it followed. */
+    static final String FOLLOW_AUDIT_SOURCE = "follow";
+
+    /**
+     * {@link HandlerFollowing#follow}: after an operator's {@code set logger} applied {@code
+     * changed}, each {@code DEFAULT_HANDLERS} member on a changed logger's path that would drop its
+     * records follows the change ("Which handlers follow", H2-H5). A member with no override gets a
+     * follower ({@code AUTO}, tagged with the loggers); one with the operator's override, which lets
+     * the records through but ends sooner, is tagged to carry on following when it ends; one whose
+     * override lets them through for at least as long, or blocks them, is left alone. Every
+     * follower or tag already tied to a changed logger lets go of it first: this change replaces
+     * that one.
+     */
+    public HandlerFollowing.Outcome follow(List<LevelOverride> changed, boolean follow) {
+        if (!adapter.hasHandlerLevels() || changed.isEmpty()) {
+            return HandlerFollowing.Outcome.NONE;
+        }
+        Set<String> changedNames = new LinkedHashSet<>();
+        changed.forEach(change -> changedNames.add(change.loggerName()));
+        Map<String, LevelOverride> active = activeLoggerChanges();
+
+        Map<HandlerRef, Set<String>> toFollow = new LinkedHashMap<>();
+        Map<HandlerRef, Set<String>> toCarryOn = new LinkedHashMap<>();
+        if (follow) {
+            List<HandlerRef> defaults = membersOf(HandlerRef.DEFAULT_HANDLERS);
+            for (LevelOverride change : changed) {
+                for (HandlerRef handler : adapter.handlersOnPath(change.loggerName())) {
+                    if (defaults.contains(handler)) {
+                        classify(handler, change, toFollow, toCarryOn);
+                    }
+                }
+            }
+        }
+
+        String denied = null;
+        if (!toFollow.isEmpty() || !toCarryOn.isEmpty()) {
+            denied = deniedToFollow(changed);
+            if (denied != null) {
+                toFollow.clear();
+                toCarryOn.clear();
+            }
+        }
+
+        // This change replaces each earlier one on the same loggers: let go of them first.
+        for (HandlerLevelOverride tied : List.copyOf(overrides.all().values())) {
+            if (tied.follows().stream().anyMatch(changedNames::contains)
+                    || tied.thenFollows().stream().anyMatch(changedNames::contains)) {
+                Set<String> follows = new TreeSet<>(tied.follows());
+                follows.removeAll(changedNames);
+                Set<String> thenFollows = new TreeSet<>(tied.thenFollows());
+                thenFollows.removeAll(changedNames);
+                if (!tied.isFollower() || !toFollow.containsKey(tied.handlerRef())) {
+                    relink(tied, follows, thenFollows, active); // else re-tied just below, with no revert between
+                }
+            }
+        }
+
+        List<FollowedHandler> following = new ArrayList<>();
+        for (Map.Entry<HandlerRef, Set<String>> entry : toFollow.entrySet()) {
+            Set<String> loggers = new TreeSet<>(entry.getValue());
+            Optional<HandlerLevelOverride> earlier = overrides.get(entry.getKey()).filter(HandlerLevelOverride::isFollower);
+            if (earlier.isPresent()) { // it keeps following the other changes it followed
+                Set<String> others = new TreeSet<>(earlier.get().follows());
+                others.removeAll(changedNames);
+                loggers.addAll(stillFollowed(entry.getKey(), others, active));
+            }
+            Level previous = adapter.handlerLevel(entry.getKey()).orElse(null);
+            upsertFollower(entry.getKey(), loggers, active).ifPresent(follower -> following.add(
+                    new FollowedHandler(follower.handlerRef(), previous, follower.level(), follower.follows(), false,
+                            null, null)));
+        }
+        for (Map.Entry<HandlerRef, Set<String>> entry : toCarryOn.entrySet()) {
+            Optional<HandlerLevelOverride> own = overrides.get(entry.getKey());
+            if (own.isEmpty()) {
+                continue;
+            }
+            Set<String> thenFollows = new TreeSet<>(own.get().thenFollows());
+            thenFollows.addAll(entry.getValue());
+            HandlerLevelOverride tagged = own.get().withThenFollows(thenFollows);
+            replaceTracked(own.get(), tagged);
+            Level now = adapter.handlerLevel(entry.getKey()).orElse(tagged.level());
+            following.add(new FollowedHandler(entry.getKey(), now, now, tagged.thenFollows(), true, tagged.tier(),
+                    tagged.expiresAt()));
+        }
+        return new HandlerFollowing.Outcome(following, denied);
+    }
+
+    /**
+     * Sorts one default handler on {@code change}'s path (H5): blocking with no override of its own
+     * follows; one the operator's own override lets the records through for less long carries on
+     * (or, for a group override, follows now -- a member-level follower can't leave the group's
+     * override "as it is" for its other members); anything else stays as it is.
+     */
+    private void classify(HandlerRef handler, LevelOverride change, Map<HandlerRef, Set<String>> toFollow,
+            Map<HandlerRef, Set<String>> toCarryOn) {
+        Optional<Level> current = adapter.handlerLevel(handler);
+        boolean blocks = current.isPresent() && current.get().compareTo(change.level()) > 0;
+        Optional<HandlerLevelOverride> own = overrides.get(handler);
+        if (own.isPresent() && !own.get().isFollower()) {
+            if (!blocks && !outlasts(own.get(), change)) {
+                toCarryOn.computeIfAbsent(handler, h -> new TreeSet<>()).add(change.loggerName());
+            }
+            return; // a blocking override was set on purpose: the warning stays
+        }
+        Optional<HandlerLevelOverride> group = own.isPresent() ? Optional.empty() : coveringGroupOverride(handler);
+        if (group.isPresent()) {
+            if (!blocks && !outlasts(group.get(), change)) {
+                toFollow.computeIfAbsent(handler, h -> new TreeSet<>()).add(change.loggerName());
+            }
+            return;
+        }
+        if (blocks || own.isPresent()) { // a follower already: this change joins it
+            toFollow.computeIfAbsent(handler, h -> new TreeSet<>()).add(change.loggerName());
+        }
+    }
+
+    /** H7: following lowers a handler, and lasts as long as the change does. */
+    private String deniedToFollow(List<LevelOverride> changed) {
+        if (!policy.isGranted(Capability.HANDLER_LOWER)) {
+            return Capability.HANDLER_LOWER.name();
+        }
+        boolean outlivesSession = changed.stream().anyMatch(change -> change.tier() != PersistenceTier.SESSION);
+        if (outlivesSession && !policy.isGranted(Capability.PERSIST)) {
+            return Capability.PERSIST.name();
+        }
+        return null;
+    }
+
+    /** Whether {@code override} lasts at least as long as {@code change}: sticky, then session, then the later deadline. */
+    static boolean outlasts(HandlerLevelOverride override, LevelOverride change) {
+        int own = lifetimeRank(override.tier());
+        int theirs = lifetimeRank(change.tier());
+        if (own != theirs) {
+            return own > theirs;
+        }
+        return override.tier() != PersistenceTier.FOR || !override.expiresAt().isBefore(change.expiresAt());
+    }
+
+    private static int lifetimeRank(PersistenceTier tier) {
+        return switch (tier) {
+            case FOR -> 0;
+            case SESSION -> 1;
+            case STICKY -> 2;
+        };
+    }
+
+    /** This context's active logger overrides, by name. */
+    private Map<String, LevelOverride> activeLoggerChanges() {
+        Map<String, LevelOverride> byName = new HashMap<>();
+        for (LevelOverride override : activeLoggerFloor.active()) {
+            byName.put(override.loggerName(), override);
+        }
+        return byName;
+    }
+
+    /**
+     * The loggers in {@code loggers} whose change {@code handler} still has a reason to follow: an
+     * active override more verbose than the handler's own level. A change replaced by a quieter
+     * one, reset or expired is no longer followed (H4).
+     */
+    private Set<String> stillFollowed(HandlerRef handler, Collection<String> loggers,
+            Map<String, LevelOverride> active) {
+        Optional<Level> own;
+        try {
+            own = baselines.isCaptured(handler) ? baselines.get(handler) : Optional.empty();
+        } catch (IllegalStateException neverCaptured) {
+            own = Optional.empty();
+        }
+        Set<String> live = new TreeSet<>();
+        for (String logger : loggers) {
+            LevelOverride change = active.get(logger);
+            if (change != null && (own.isEmpty() || change.level().isMoreVerboseThan(own.get()))) {
+                live.add(logger);
+            }
+        }
+        return live;
+    }
+
+    /**
+     * Ties {@code handler} to {@code loggers}' changes as a follower: created ({@code AUTO}, audited
+     * with origin {@code follows <loggers>}) or brought up to date -- its tier and deadline the
+     * longest of the changes' (H4). Empty if {@code AUTO} has nothing to resolve the handler to.
+     */
+    private Optional<HandlerLevelOverride> upsertFollower(HandlerRef handler, Set<String> loggers,
+            Map<String, LevelOverride> active) {
+        PersistenceTier tier = PersistenceTier.FOR;
+        Instant expiresAt = null;
+        for (String logger : loggers) {
+            LevelOverride change = active.get(logger);
+            if (change == null) {
+                continue;
+            }
+            if (lifetimeRank(change.tier()) > lifetimeRank(tier)) {
+                tier = change.tier();
+                expiresAt = null;
+            } else if (tier == PersistenceTier.FOR && change.tier() == PersistenceTier.FOR
+                    && (expiresAt == null || change.expiresAt().isAfter(expiresAt))) {
+                expiresAt = change.expiresAt();
+            }
+        }
+        if (tier == PersistenceTier.FOR && expiresAt == null) {
+            return Optional.empty(); // none of them is active any more
+        }
+        Optional<HandlerLevelOverride> existing = overrides.get(handler);
+        if (existing.isPresent() && existing.get().isFollower()) {
+            HandlerLevelOverride current = existing.get();
+            HandlerLevelOverride updated = new HandlerLevelOverride(handler, current.level(), HandlerLevelMode.AUTO,
+                    null, current.appliedAt(), current.source(), tier, expiresAt, current.stateId(), null,
+                    List.copyOf(loggers), List.of());
+            if (!updated.equals(current)) {
+                replaceTracked(current, updated);
+            }
+            return Optional.of(updated);
+        }
+        String origin = "follows " + String.join(", ", loggers);
+        Optional<Level> target = applyAutoTarget(handler, activeLoggerFloor.lowestActive(), source, null, origin);
+        if (target.isEmpty()) {
+            return Optional.empty();
+        }
+        pendingResume.remove(handler);
+        HandlerLevelOverride follower = new HandlerLevelOverride(handler, target.get(), HandlerLevelMode.AUTO, null,
+                Instant.now(), source, tier, expiresAt, null, null, List.copyOf(loggers), List.of());
+        existing.ifPresent(replaced -> overrides.removeIfCurrent(handler, replaced));
+        return Optional.of(trackAutoOverride(follower));
+    }
+
+    /**
+     * Brings {@code tied}'s ties to logger changes down to the ones still {@linkplain #stillFollowed
+     * followed}: a follower left with none ends, the handler back on its own level, audited; an
+     * operator's override just keeps the ones it carries on following.
+     */
+    private void relink(HandlerLevelOverride tied, Set<String> follows, Set<String> thenFollows,
+            Map<String, LevelOverride> active) {
+        HandlerRef handler = tied.handlerRef();
+        if (tied.isFollower()) {
+            Set<String> live = stillFollowed(handler, follows, active);
+            if (live.isEmpty()) {
+                if (applyReset(handler, tied, FOLLOW_AUDIT_SOURCE)) {
+                    safePersist(() -> stateStore.removeHandler(handler));
+                }
+            } else if (!live.equals(new TreeSet<>(tied.follows()))) {
+                upsertFollower(handler, live, active);
+            }
+            return;
+        }
+        Set<String> live = stillFollowed(handler, thenFollows, active);
+        if (!live.equals(new TreeSet<>(tied.thenFollows()))) {
+            replaceTracked(tied, tied.withThenFollows(live));
+        }
+    }
+
+    /**
+     * Part of {@link #recomputeAuto}: every follower and carry-on tag lets go of the logger changes
+     * that ended (expired, reset, or replaced with one that no longer needs it), and a follower left
+     * with none ends with them -- "expire at the same time" (H4).
+     */
+    private void reconcileFollowers() {
+        Map<String, LevelOverride> active = null;
+        for (HandlerLevelOverride tied : List.copyOf(overrides.all().values())) {
+            if (!tied.isFollower() && tied.thenFollows().isEmpty()) {
+                continue;
+            }
+            if (active == null) {
+                active = activeLoggerChanges();
+            }
+            relink(tied, new TreeSet<>(tied.follows()), new TreeSet<>(tied.thenFollows()), active);
+        }
+    }
+
+    /**
+     * The expiry sweep's turn for an operator override that carries on following (H5): when it ends
+     * while a change it was tagged with is still active, a follower takes its place instead of the
+     * handler going back to its own level half-way through. Empty if none of those changes is
+     * still followed, and the override reverts as any other does.
+     */
+    private Optional<HandlerLevelOverride> carryOn(HandlerLevelOverride expiring) {
+        if (expiring.thenFollows().isEmpty()) {
+            return Optional.empty();
+        }
+        Map<String, LevelOverride> active = activeLoggerChanges();
+        Set<String> live = stillFollowed(expiring.handlerRef(), expiring.thenFollows(), active);
+        if (live.isEmpty()) {
+            return Optional.empty();
+        }
+        return upsertFollower(expiring.handlerRef(), live, active);
+    }
+
+    /** Swaps {@code current} for {@code replacement} in the registry and state file, unaudited: the same change, re-tied. */
+    private void replaceTracked(HandlerLevelOverride current, HandlerLevelOverride replacement) {
+        if (!overrides.removeIfCurrent(current.handlerRef(), current)) {
+            return; // changed under us -- whatever replaced it wins
+        }
+        overrides.put(replacement);
+        if (replacement.tier() != PersistenceTier.SESSION) {
+            safePersist(() -> stateStore.saveHandler(replacement));
+        } else if (current.tier() != PersistenceTier.SESSION) {
+            safePersist(() -> stateStore.removeHandler(replacement.handlerRef()));
+        }
     }
 
     /** Vendor-defaulted handlers that haven't resolved since install -- {@code doctor}'s informational finding (Decision M7). */
@@ -732,7 +1038,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         // A recompute follows the logger floor; it isn't a change by hand, so a recipe's tag stays (recipes.md #7).
         HandlerLevelOverride updated = new HandlerLevelOverride(ref, tracked, HandlerLevelMode.AUTO,
                 current.reason(), current.appliedAt(), current.source(), current.tier(), current.expiresAt(), null,
-                current.recipe());
+                current.recipe(), current.follows(), current.thenFollows());
 
         Optional<HandlerLevelOverride> afterApply = overrides.get(ref);
         if (!afterApply.map(current::equals).orElse(false)) {
@@ -1367,7 +1673,9 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                     null,
                     baselines.vendorDefault(ref).map(HandlerLevelControlService::describeVendor).orElse(null),
                     baselines.isResetToNative(ref),
-                    override == null ? null : override.recipe()));
+                    override == null ? null : override.recipe(),
+                    override == null ? List.of() : override.follows(),
+                    override == null ? List.of() : override.thenFollows()));
         }
         HandlerLevelOverride defaultHandlersOverride = overrides.get(HandlerRef.DEFAULT_HANDLERS).orElse(null);
         rows.add(new HandlerInfo(
@@ -1551,8 +1859,13 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         List<HandlerRef> reverted = new ArrayList<>();
         for (HandlerRef ref : overrides.all().keySet()) {
             Consumer<HandlerLevelOverride> revertIfExpired = override -> {
-                if (override.tier() == PersistenceTier.FOR && !override.expiresAt().isAfter(now)
-                        && applyReset(ref, override, "expiry-sweep")) {
+                if (override.tier() != PersistenceTier.FOR || override.expiresAt().isAfter(now)) {
+                    return;
+                }
+                if (carryOn(override).isPresent()) {
+                    return; // a follower took its place (doc/specs/default-handlers-follow.md H5)
+                }
+                if (applyReset(ref, override, "expiry-sweep")) {
                     reverted.add(ref);
                 }
             };
@@ -1892,7 +2205,10 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             }
         }
         for (HandlerLevelOverride override : overrides.all().values()) {
-            if (!isGroupRef(override.handlerRef()) && override.tier() == PersistenceTier.STICKY) {
+            // A follower exists only for its logger changes: written as AUTO it would follow on every server
+            // the file goes to, forever (doc/specs/default-handlers-follow.md H11).
+            if (!isGroupRef(override.handlerRef()) && override.tier() == PersistenceTier.STICKY
+                    && !override.isFollower()) {
                 exported.put(override.handlerRef().value(),
                         exportEntry(override.handlerRef(), override, stateIds.get(override.handlerRef())));
             }

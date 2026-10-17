@@ -8,6 +8,16 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ## [Unreleased]
 
+### Changed
+
+- **`set logger` brings the console along.** A default handler (usually the console) that would
+  drop the new records goes to `AUTO` for as long as the change lasts, then back to its own level,
+  so `logctl set logger com.mycompany DEBUG` shows the DEBUG lines on the console with no second
+  command. A handler you set yourself is left as you set it, and `--keep-handlers` changes only the
+  logger, as before. `status` and `list handlers` show what a handler follows; `--json` adds
+  `following` and `followDenied` to `set logger`, and `follows` and `thenFollows` to handler
+  overrides (issue #210; `doc/specs/default-handlers-follow.md`).
+
 ### Fixed
 
 - **Every file in the release zip was dated 1 February 1980**, and so was every entry in the jars

@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Story 1: why don't I see my TRACE? A logger raised to TRACE still shows nothing on the
-# console, because the CONSOLE handler is at INFO. doc/specs/demo-recordings.md.
+# Story 1: why don't I see my TRACE? The CONSOLE handler is at INFO, so a logger raised to TRACE
+# would show nothing there -- but the console follows the change (doc/specs/
+# default-handlers-follow.md), so one command is enough. doc/specs/demo-recordings.md.
 
 DEMO_TITLE="Why don't I see my TRACE?"
 
@@ -25,11 +26,8 @@ story() {
     hold 1
     say "A customer reports failed payments. Turn on TRACE for the payment code:"
     run logctl set logger com.example.shop.payment TRACE for 15m
-    hold 4
-    expect_absent "$TRACE_LINE"
-    say "No TRACE above: the CONSOLE handler is at INFO. Let it follow the logger:"
-    run logctl set handler CONSOLE AUTO
     wait_for "$TRACE_LINE" 10
+    say "The CONSOLE handler is at INFO, so it follows the change to let the TRACE through."
     hold 3
     run logctl status
     say "Both revert on their own. Nothing in standalone.xml changed."

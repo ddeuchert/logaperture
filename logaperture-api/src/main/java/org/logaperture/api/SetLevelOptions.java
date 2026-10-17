@@ -38,7 +38,13 @@ import java.util.Objects;
  *                  too, tagged with the target (doc/specs/set-logger-force.md)
  */
 public record SetLevelOptions(String reason, Duration expiresIn, PersistenceTier tier, boolean confirmed,
-        RecipeTag recipe, boolean force) {
+        RecipeTag recipe, boolean force, boolean followHandlers) {
+
+    /** The default handlers don't follow -- every caller but an operator's {@code set logger}. */
+    public SetLevelOptions(String reason, Duration expiresIn, PersistenceTier tier, boolean confirmed,
+            RecipeTag recipe, boolean force) {
+        this(reason, expiresIn, tier, confirmed, recipe, force, false);
+    }
 
     /** Not made by a recipe. */
     public SetLevelOptions(String reason, Duration expiresIn, PersistenceTier tier, boolean confirmed) {
@@ -84,16 +90,25 @@ public record SetLevelOptions(String reason, Duration expiresIn, PersistenceTier
 
     /** A copy of this options value with {@code confirmed} set — the CLI's own preview-then-apply step. */
     public SetLevelOptions withConfirmed(boolean confirmed) {
-        return new SetLevelOptions(reason, expiresIn, tier, confirmed, recipe, force);
+        return new SetLevelOptions(reason, expiresIn, tier, confirmed, recipe, force, followHandlers);
     }
 
     /** These options for a change made by applying {@code recipe} (doc/specs/recipes.md B4). */
     public SetLevelOptions withRecipe(RecipeTag recipe) {
-        return new SetLevelOptions(reason, expiresIn, tier, confirmed, recipe, force);
+        return new SetLevelOptions(reason, expiresIn, tier, confirmed, recipe, force, followHandlers);
     }
 
     /** These options with {@code force} -- doc/specs/set-logger-force.md. */
     public SetLevelOptions withForce(boolean force) {
-        return new SetLevelOptions(reason, expiresIn, tier, confirmed, recipe, force);
+        return new SetLevelOptions(reason, expiresIn, tier, confirmed, recipe, force, followHandlers);
+    }
+
+    /**
+     * These options with {@code followHandlers}: the default handlers that would drop the records
+     * follow the change (doc/specs/default-handlers-follow.md). Only an operator's {@code set
+     * logger} asks for it (H9), unless {@code --keep-handlers}.
+     */
+    public SetLevelOptions withFollowHandlers(boolean followHandlers) {
+        return new SetLevelOptions(reason, expiresIn, tier, confirmed, recipe, force, followHandlers);
     }
 }

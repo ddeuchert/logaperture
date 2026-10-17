@@ -28,6 +28,7 @@ import org.logaperture.core.DropSummary;
 import org.logaperture.core.EnvironmentReportService;
 import org.logaperture.core.FileStateStore;
 import org.logaperture.core.HandlerBaselineRegistry;
+import org.logaperture.core.HandlerFollowing;
 import org.logaperture.core.HandlerInstallPolicy;
 import org.logaperture.core.HandlerLevelControlService;
 import org.logaperture.core.HandlerOverrideRegistry;
@@ -240,9 +241,11 @@ public final class WildFlyContainer implements AutoCloseable {
         adapter.onHandlerRenamed(handlerService::migrateHandlerRef);
 
         LoggerOverrideChangeListener autoRecomputeListener = handlerService::recomputeAuto;
+        // doc/specs/default-handlers-follow.md: the same pairing, for set logger's followers.
+        HandlerFollowing defaultHandlersFollow = handlerService::follow;
         LevelControlService service = new LevelControlService(
                 adapter, baselines, overrides, policy, auditLog, stateStore, principal(), "jmx",
-                autoRecomputeListener);
+                autoRecomputeListener, defaultHandlersFollow);
         RuleService ruleService = new RuleService(adapter, policy, auditLog, stateStore, handle.stableKey(),
                 principal(), "jmx");
         // doc/specs/drop-rule.md "Persistence" -- see NoneContainer's identical call.
