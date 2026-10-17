@@ -174,4 +174,48 @@ class JulLevelControlTest {
         assertEquals(1, reapplied);
         assertEquals(java.util.logging.Level.FINE, Logger.getLogger(logger).getLevel());
     }
+
+    /**
+     * doc/specs/default-handlers-follow.md, against real JUL: the root's console handler at INFO is the
+     * one default handler, and follows a DEBUG change until it's reset. The two services are wired as
+     * a container wires them.
+     */
+    @Test
+    void theRootConsoleFollowsASetLoggerUntilItIsReset() {
+        java.util.logging.ConsoleHandler console = new java.util.logging.ConsoleHandler();
+        console.setLevel(java.util.logging.Level.INFO);
+        Logger root = Logger.getLogger("");
+        java.util.logging.Handler[] before = root.getHandlers();
+        for (java.util.logging.Handler handler : before) {
+            root.removeHandler(handler);
+        }
+        root.addHandler(console);
+        try {
+            LoggingAdapter adapter = JulAdapterFactory.forCurrentContext();
+            OverrideRegistry overrides = new OverrideRegistry();
+            org.logaperture.core.ActiveLoggerFloor floor = () -> java.util.List.copyOf(overrides.all().values());
+            HandlerLevelControlService handlers = new HandlerLevelControlService(adapter,
+                    new HandlerBaselineRegistry(), new HandlerOverrideRegistry(), new DefaultHandlerGroupRegistry(),
+                    CapabilityPolicy.allowAll(), auditLog, StateStore.noOp(), "alice", "jmx", floor);
+            org.logaperture.core.LoggerOverrideChangeListener recompute = handlers::recomputeAuto;
+            org.logaperture.core.HandlerFollowing follow = handlers::follow;
+            LevelControlService service = new LevelControlService(adapter, new BaselineRegistry(), overrides,
+                    CapabilityPolicy.allowAll(), auditLog, StateStore.noOp(), "alice", "jmx", recompute, follow);
+
+            org.logaperture.api.SetLevelResult result = service.setLogger(logger, Level.DEBUG,
+                    SetLevelOptions.forDuration(Duration.ofMinutes(5)).withFollowHandlers(true));
+
+            assertEquals(1, result.following().size(), result.toString());
+            assertTrue(result.blockingHandlers().isEmpty(), result.toString());
+            assertEquals(java.util.logging.Level.FINE, console.getLevel());
+
+            service.resetLogger(logger, false);
+            assertEquals(java.util.logging.Level.INFO, console.getLevel());
+        } finally {
+            root.removeHandler(console);
+            for (java.util.logging.Handler handler : before) {
+                root.addHandler(handler);
+            }
+        }
+    }
 }

@@ -1,6 +1,6 @@
 # `set logger`: the default handlers follow the change
 
-Status: **draft, under review.** Tracked as [#210](https://github.com/ddeuchert/logaperture/issues/210).
+Status: **signed off 2026-10-17** (all decisions H1–H12 agreed as recommended, H5 including the carry-on for a shorter override). Tracked as [#210](https://github.com/ddeuchert/logaperture/issues/210).
 Parent: [`doc/logaperture-spec.md`](../logaperture-spec.md) §18.18. Related:
 [`handler-floor-control.md`](handler-floor-control.md) ("Warning on level commands", "AUTO handler
 level", "Default handler group"), [`set-logger-force.md`](set-logger-force.md) (the `forcedBy` tagging
@@ -16,9 +16,10 @@ After this feature, the user will be able to:
 - See, in what `set logger` prints, which handler was let through and for how long.
 - Run `logctl set logger com.mycompany DEBUG --keep-handlers` to change only the logger, as before.
 
-Guide pages that change: `get-started/quick-start.md` (step 4), `how-to/raise-a-level.md`,
-`reference/logctl.md` (regenerated), `reference/json-output.md`, `reference/audit-log.md`, and the
-`why-no-trace` demo recording.
+Guide pages that change: `get-started/quick-start.md` (steps 2–5 and 7), `how-to/raise-a-level.md`,
+`troubleshooting.md`, `vendors/vendor-defaults.md`, the home page, `reference/logctl.md`
+(regenerated), `reference/json-output.md`, `reference/audit-log.md`, and the `why-no-trace` and
+`debug-for-a-while` demo recordings.
 
 ## The problem
 
@@ -164,7 +165,7 @@ Apply? [Y/n]
   and `list handlers`.
 - **`status` / `list handlers`** show a following handler as `AUTO` with `follows com.mycompany` in
   the reason column when it has no reason of its own (the `forced by` precedent, F10); `REVERTS`
-  reads `with com.mycompany`.
+  reads `with the logger` (or `with the loggers`), so the names appear once.
 - **Audit.** One `MUTATION` record for the handler, `origin=follows com.mycompany`; one `REVERSION`
   when it ends with the logger change.
 - **State file.** A `follows:` line on a handler override, written only when set; schema 12 → 13. A
@@ -175,9 +176,9 @@ Apply? [Y/n]
 - **Multi-context (WildFly).** Each context decides for its own `DEFAULT_HANDLERS`; resume and
   re-broadcast restore the tag with the override.
 
-## Decisions (open)
+## Decisions (all agreed 2026-10-17)
 
-| # | Question | Recommended |
+| # | Question | Agreed |
 |---|---|---|
 | H1 | On by default, or opt-in? | **On by default**, opt out with `--keep-handlers`. The point is that the first command works. Risk: on a server whose console feeds a log pipeline, DEBUG now reaches it too; bounded by the 4h default lifetime, and a logger the native config already sets to DEBUG will show on the console too while it follows. |
 | H2 | Which handlers follow? | **`DEFAULT_HANDLERS` members on the raised logger's path that would drop the level**, and only those. Others keep the WARN. |
@@ -207,3 +208,36 @@ Apply? [Y/n]
   `status` / `list handlers` rendering; old-agent fallback.
 - WildFly IT: `set logger` at DEBUG, the DEBUG line reaches `CONSOLE`; reset, `CONSOLE` back to
   `INFO`.
+
+## Settled during implementation
+
+Details the text above left open; none changes an agreed decision.
+
+- **How "ends with them" is checked.** A follower's ties are re-checked every time `AUTO`
+  recomputes, which already happens on every logger change, reset and expiry. A tie stays while
+  that logger has a change more verbose than the handler's own level. So a change replaced by a
+  quieter one (`set logger com.mycompany WARN`) lets go of it, as H4 says.
+- **Setting the same logger again** replaces its tie. With `--keep-handlers`, the handler lets go
+  of that logger; if nothing else is tied, it goes back to its own level.
+- **The carry-on line** reads `handler CONSOLE keeps your change on it (FOR, reverts 05:37:58 local
+  — in 1m), then follows io.undertow.request`, not the draft's `AUTO until 14:02`. The handler's
+  own change can be `AUTO` or a fixed level, and the line shouldn't have to say which.
+- **A group override that ends sooner** (`set handler DEFAULT_HANDLERS AUTO for 10m`): the member
+  follows at once, rather than carrying on afterwards. A member-level follower takes precedence
+  over the group, and the group override still covers its other members, so there is nothing to
+  tag. The member shows the records either way.
+- **The guided confirmation** names the default handlers from the handler catalog: each member
+  with no change of its own and a level that would drop the records. Whether a handler is on the
+  logger's path is decided by the agent when the change applies. A default handler is almost
+  always on the root, so the two agree.
+- **Several contexts (WildFly):** a handler that follows in one context but drops the records in
+  another is reported in both `following` and the warning. Each answer is true for its own context.
+- **Capability:** `persist` is checked only when one of the changes outlives the session. A
+  `session` change follows with `handler.lower` alone.
+- **Known limit: a `session` override that carries on, after a restart.** It ends with the JVM, so
+  its carry-on tag goes with it. A `sticky` logger change it was tied to resumes, and the handler
+  doesn't follow it until that logger is set again. Rare (it needs a `session` handler override and
+  a `sticky` logger change together); not worth persisting tags on session overrides for.
+- **Audit:** following is a `MUTATION` with `source=jmx` and `origin=follows <logger>`. The handler
+  going back is a `REVERSION` with `source=follow`. `AUTO` moving a follower is `auto-recompute`,
+  as for any `AUTO` handler.

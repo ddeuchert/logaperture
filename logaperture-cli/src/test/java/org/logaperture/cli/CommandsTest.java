@@ -17,7 +17,9 @@ package org.logaperture.cli;
 
 import org.junit.jupiter.api.Test;
 import org.logaperture.control.jmx.DoctorFindingData;
+import org.logaperture.control.jmx.FollowedHandlerData;
 import org.logaperture.control.jmx.HandlerFloorData;
+import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
@@ -919,8 +921,111 @@ class CommandsTest {
         assertEquals(
                 "{\"overrides\":[{\"loggerName\":\"com.acme\",\"level\":\"DEBUG\","
                         + "\"reason\":null,\"appliedAt\":\"2026-08-25T00:00:00Z\",\"source\":\"jmx\","
-                        + "\"tier\":\"SESSION\",\"expiresAt\":null,\"forcedBy\":null}],\"warnings\":[],\"descendants\":[]}",
+                        + "\"tier\":\"SESSION\",\"expiresAt\":null,\"forcedBy\":null}],\"warnings\":[],\"descendants\":[],"
+                        + "\"following\":[],\"followDenied\":null}",
                 output().strip());
+    }
+
+    // --- the default handlers follow (doc/specs/default-handlers-follow.md) -------------------------
+
+    private static SetLevelResultData followResult(List<HandlerFloorData> blocking, List<FollowedHandlerData> following,
+            String denied) {
+        return new SetLevelResultData(List.of(new LevelOverrideData("com.acme", "DEBUG", null,
+                Instant.now().toString(), "jmx", "SESSION", null)), blocking, List.of(), following, denied);
+    }
+
+    @Test
+    void setLevel_aFollowingHandler_printsItsLineInPlaceOfTheWarning() {
+        mbean.setLevelResult = followResult(List.of(), List.of(new FollowedHandlerData("CONSOLE", "INFO", "DEBUG",
+                List.of("com.acme"), false, null, null)), null);
+
+        run(Commands.setLogger("com.acme", "DEBUG", null, "SESSION", 0L, false, false));
+
+        String text = output();
+        assertTrue(text.contains("handler CONSOLE → AUTO, currently DEBUG   (follows com.acme)"), text);
+        assertFalse(text.contains("WARN"), text);
+        assertTrue(mbean.keepHandlersCalls.isEmpty(), "no --keep-handlers: the older overload, as an old agent has");
+    }
+
+    @Test
+    void setLevel_aHandlerThatCarriesOn_saysWhenItsOwnChangeEnds() {
+        String ends = Instant.now().plus(10, ChronoUnit.MINUTES).toString();
+        mbean.setLevelResult = followResult(List.of(), List.of(new FollowedHandlerData("CONSOLE", "DEBUG", "DEBUG",
+                List.of("com.acme"), true, "FOR", ends)), null);
+
+        run(Commands.setLogger("com.acme", "DEBUG", null, "SESSION", 0L, false, false));
+
+        String text = output();
+        assertTrue(text.contains("handler CONSOLE keeps your change on it (FOR, reverts "), text);
+        assertTrue(text.contains("), then follows com.acme"), text);
+    }
+
+    @Test
+    void setLevel_followDenied_keepsTheWarningAndSaysWhy() {
+        mbean.setLevelResult = followResult(List.of(new HandlerFloorData("CONSOLE", "INFO")), List.of(),
+                "HANDLER_LOWER");
+
+        run(Commands.setLogger("com.acme", "DEBUG", null, "SESSION", 0L, false, false));
+
+        String text = output();
+        assertTrue(text.contains("WARN: handler CONSOLE is at INFO"), text);
+        assertTrue(text.contains("NOTE: the default handlers didn't follow this change: handler.lower isn't granted."),
+                text);
+    }
+
+    @Test
+    void setLevel_keepHandlers_callsTheOverloadThatSaysSo() {
+        run(Commands.setLogger("com.acme", "DEBUG", null, "SESSION", 0L, false, false, false, true));
+
+        assertEquals(List.of(true), mbean.keepHandlersCalls);
+    }
+
+    @Test
+    void setLevelJson_includesWhatFollowed() {
+        mbean.setLevelResult = followResult(List.of(), List.of(new FollowedHandlerData("CONSOLE", "INFO", "DEBUG",
+                List.of("com.acme"), false, null, null)), null);
+
+        run(Commands.setLogger("com.acme", "DEBUG", null, "SESSION", 0L, false, true));
+
+        assertTrue(output().contains("\"following\":[{\"handlerRef\":\"CONSOLE\",\"previousLevel\":\"INFO\","
+                + "\"level\":\"DEBUG\",\"follows\":[\"com.acme\"],\"carriesOn\":false,\"ownTier\":null,"
+                + "\"ownExpiresAt\":null}],\"followDenied\":null"), output());
+    }
+
+    @Test
+    void status_aFollowerShowsWhatItFollowsAndEndsWith() {
+        mbean.handlerOverrides.add(new HandlerLevelOverrideData("CONSOLE", "DEBUG", "AUTO", null,
+                Instant.now().toString(), "jmx", "FOR", Instant.now().plus(30, ChronoUnit.MINUTES).toString(),
+                List.of(), List.of("com.acme"), List.of()));
+
+        run(Commands.status(false));
+
+        String text = output();
+        assertTrue(text.contains("with the logger"), text);
+        assertTrue(text.contains("follows com.acme"), text);
+    }
+
+    @Test
+    void listHandlers_aFollowerAndACarryOnTag_readInTheOverrideColumn() {
+        mbean.handlerCatalog.add(new HandlerInfoData("CONSOLE", "DEBUG", false, null, null, true, "DEBUG", "AUTO",
+                "FOR", Instant.now().plus(30, ChronoUnit.MINUTES).toString(), null, null, null, false, null,
+                List.of("com.acme"), List.of()));
+        mbean.handlerCatalog.add(new HandlerInfoData("FILE", "ALL", true, "/tmp/x.log", null, true, "ALL", "FIXED",
+                "SESSION", null, null, null, null, false, null, List.of(), List.of("com.acme")));
+
+        run(Commands.listHandlers(false, false));
+
+        String text = output();
+        assertTrue(text.contains("AUTO → DEBUG (follows com.acme)"), text);
+        assertTrue(text.contains("ALL (SESSION, then follows com.acme)"), text);
+    }
+
+    @Test
+    void defaultHandlerNames_readsEveryShapeOfTheSummary() {
+        assertEquals(List.of("CONSOLE"), Commands.defaultHandlerNames("(auto: CONSOLE)"));
+        assertEquals(List.of("CONSOLE", "FILE"), Commands.defaultHandlerNames("(vendor: CONSOLE, FILE)"));
+        assertEquals(List.of("FILE", "CONSOLE"), Commands.defaultHandlerNames("FILE, CONSOLE"));
+        assertEquals(List.of(), Commands.defaultHandlerNames("(auto -- no handlers yet)"));
     }
 
     @Test
@@ -1236,7 +1341,7 @@ class CommandsTest {
         assertEquals(
                 "{\"handlerRef\":\"CONSOLE\",\"level\":\"TRACE\",\"mode\":\"FIXED\",\"reason\":null,"
                         + "\"appliedAt\":\"2026-08-25T00:00:00Z\",\"source\":\"jmx\",\"tier\":\"STICKY\","
-                        + "\"expiresAt\":null,\"warnings\":[]}",
+                        + "\"expiresAt\":null,\"warnings\":[],\"follows\":[],\"thenFollows\":[]}",
                 output().strip());
     }
 
@@ -1282,7 +1387,8 @@ class CommandsTest {
         assertEquals(
                 "{\"handlerRef\":\"CONSOLE\",\"level\":\"INFO\",\"mode\":\"FIXED\",\"reason\":null,"
                         + "\"appliedAt\":\"2026-08-25T00:00:00Z\",\"source\":\"jmx\",\"tier\":\"SESSION\","
-                        + "\"expiresAt\":null,\"warnings\":[{\"loggerName\":\"com.acme.Worker\",\"level\":\"DEBUG\"}]}",
+                        + "\"expiresAt\":null,\"warnings\":[{\"loggerName\":\"com.acme.Worker\",\"level\":\"DEBUG\"}],"
+                        + "\"follows\":[],\"thenFollows\":[]}",
                 output().strip());
     }
 
@@ -1329,7 +1435,7 @@ class CommandsTest {
         assertEquals(
                 "{\"handlerRef\":\"CONSOLE\",\"level\":\"TRACE\",\"mode\":\"AUTO\",\"reason\":null,"
                         + "\"appliedAt\":\"2026-08-25T00:00:00Z\",\"source\":\"jmx\",\"tier\":\"STICKY\","
-                        + "\"expiresAt\":null,\"warnings\":[]}",
+                        + "\"expiresAt\":null,\"warnings\":[],\"follows\":[],\"thenFollows\":[]}",
                 output().strip());
     }
 

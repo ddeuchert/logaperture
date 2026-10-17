@@ -51,13 +51,12 @@ logctl set logger io.undertow.request DEBUG for 5m
 ```
 
 ```
-io.undertow.request → DEBUG   (FOR, reverts 05:01:22 local — in 4m)
-WARN: handler CONSOLE is at INFO and will drop DEBUG records from this logger.
-      To see them: logctl set handler CONSOLE DEBUG
+io.undertow.request → DEBUG   (FOR, reverts 05:45:49 local — in 4m)
+handler CONSOLE → AUTO, currently DEBUG   (follows io.undertow.request)
 ```
 
-`for 5m` is the tier: the change reverts by itself after five minutes. Leave the warning for now;
-step 4 is about it.
+`for 5m` is the tier: the change reverts by itself after five minutes. The second line is about the
+console; step 4 explains it.
 
 ## 3. See it take effect
 
@@ -67,14 +66,14 @@ Send the server any request, even one that ends in a 404:
 curl http://localhost:8080/
 ```
 
-and look at the end of `server.log`:
+and look at the end of `server.log`, or at the console:
 
 ```sh
 tail $JBOSS_HOME/standalone/log/server.log
 ```
 
 ```
-2026-10-09 04:56:29,448 DEBUG [io.undertow.request] (default I/O-9) Matched default handler path /
+2026-10-17 05:40:49,860 DEBUG [io.undertow.request] (default I/O-15) Matched default handler path /
 ```
 
 The running server logged at the new level: no restart, no redeploy. `status` shows the change and
@@ -88,26 +87,21 @@ logctl status
 Storm detection: disabled
 
 LOGGER               LEVEL  TIER  REVERTS           REASON
-io.undertow.request  DEBUG  FOR   05:01:22 (in 4m)  —
+io.undertow.request  DEBUG  FOR   05:45:49 (in 4m)  —
+
+HANDLER  LEVEL  MODE  TIER  REVERTS          REASON
+CONSOLE  DEBUG  AUTO  FOR   with the logger  follows io.undertow.request
 ```
 
-## 4. Make the console show it too
+## 4. Why the console followed
 
-The `DEBUG` line went to `server.log` but not to the console. That's the warning from step 2: a
-logger's level decides what gets logged, and each **handler** has a level of its own that decides
-what it writes. WildFly's `CONSOLE` handler is usually at `INFO`.
+A logger's level decides what gets logged, and each **handler** has a level of its own that decides
+what it writes. WildFly's `CONSOLE` handler is at `INFO`, so on its own it would drop the `DEBUG`
+line: it would reach `server.log` but not the console.
 
-You could lower it with the command the warning gave. Or put it in `AUTO`, where it follows the
-lowest `DEBUG` or `TRACE` change you have active, and goes back to its own level when there are
-none:
-
-```sh
-logctl set handler CONSOLE AUTO
-```
-
-```
-handler CONSOLE → AUTO, currently DEBUG   (FOR, reverts 08:56:33 local — in 3h 59m)
-```
+The console is the **default handler**, so it follows the change instead. It goes to `AUTO`, where
+it tracks the most verbose change you have active, for as long as the change lasts, and then goes
+back to `INFO` with it:
 
 ```sh
 logctl list handlers --show-all
@@ -117,15 +111,14 @@ logctl list handlers --show-all
 HANDLER           LEVEL  PERSISTS  TARGET                                        OVERRIDE
 ALL_HANDLERS      —      —         —                                             —
 FILE              ALL    file      /opt/jboss/wildfly/standalone/log/server.log  —
-CONSOLE           DEBUG  no        —                                             AUTO → DEBUG (FOR, reverts in 3h 59m)
+CONSOLE           DEBUG  no        —                                             AUTO → DEBUG (follows io.undertow.request)
 DEFAULT_HANDLERS  —      —         (auto: CONSOLE)                               —
 ```
 
-Run the `curl` again: this time the `DEBUG` line is on the console as well. `AUTO` itself lasts
-`for 4h`, like any `set` without a tier.
+To change only the logger and leave the console as it is, add `--keep-handlers`. `set logger` then
+warns that the console will drop the records and gives the command that would lower it.
 
-The same fix on a busier server, recorded: an application's payment logger raised to `TRACE`,
-with the console above.
+The same, on a busier server: an application's payment logger raised to `TRACE`.
 
 <div class="la-cast" data-cast="why-no-trace"></div>
 
@@ -152,13 +145,15 @@ logctl status
 Storm detection: disabled
 
 LOGGER               LEVEL  TIER     REVERTS           REASON
-io.undertow.request  DEBUG  FOR      05:01:22 (in 4m)  —
+io.undertow.request  DEBUG  FOR      05:45:49 (in 4m)  —
 com.example.demo     DEBUG  SESSION  until restart     —
 com.example.other    DEBUG  STICKY   until reset       —
 
-HANDLER  LEVEL  MODE  TIER  REVERTS               REASON
-CONSOLE  DEBUG  AUTO  FOR   08:56:33 (in 3h 59m)  —
+HANDLER  LEVEL  MODE  TIER    REVERTS           REASON
+CONSOLE  DEBUG  AUTO  STICKY  with the loggers  follows com.example.demo, com.example.other, io.undertow.request
 ```
+
+The console follows all three changes, so it lasts as long as the longest of them.
 
 If you have a minute, restart WildFly and run `logctl status` again. `com.example.other` is still
 there; `com.example.demo` is gone with the JVM it belonged to.
@@ -215,18 +210,32 @@ Reverted 2 override(s).
 Left 1 sticky override(s) in place (pass --include-sticky to include them): com.example.other
 ```
 
-A bulk reset leaves `sticky` changes alone, since you made them to last. Include them, and reset
-the handler:
+A bulk reset leaves `sticky` changes alone, since you made them to last. The console still follows
+the one left:
+
+```sh
+logctl status
+```
+
+```
+Storm detection: disabled
+
+LOGGER             LEVEL  TIER    REVERTS      REASON
+com.example.other  DEBUG  STICKY  until reset  —
+
+HANDLER  LEVEL  MODE  TIER    REVERTS          REASON
+CONSOLE  DEBUG  AUTO  STICKY  with the logger  follows com.example.other
+```
+
+Include it, and the console goes back with it:
 
 ```sh
 logctl reset loggers --include-sticky
-logctl reset handlers
 logctl status
 ```
 
 ```
 Reverted 1 override(s).
-Reverted 1 handler override(s).
 Storm detection: disabled
 
 No active overrides.

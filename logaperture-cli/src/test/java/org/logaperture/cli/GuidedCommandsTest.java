@@ -196,10 +196,28 @@ class GuidedCommandsTest {
         assertTrue(out().contains("1 logger matches '*.Deployer': org.jboss.as.server.deployment.Deployer "
                 + "(INFO, native)\n"), out());
         assertTrue(out().contains("This is the command:\n  logctl set logger org.jboss.as.server.deployment.Deployer "
-                + "DEBUG --reason \"chasing the redeploy loop\"\nApply? [Y/n]\n"), out());
+                + "DEBUG --reason \"chasing the redeploy loop\"\nCONSOLE will follow it (AUTO) until the change ends.\n"
+                + "Apply? [Y/n]\n"), out());
         assertArrayEquals(new Object[] {"org.jboss.as.server.deployment.Deployer", "DEBUG",
                 "chasing the redeploy loop", "FOR", FOUR_HOURS, true}, mbean.setLevelCalls.get(0));
         assertTrue(out().contains("org.jboss.as.server.deployment.Deployer → DEBUG"), out());
+    }
+
+    @Test
+    void setLogger_keepHandlers_isInTheCommandAndNothingIsSaidToFollow() {
+        int exit = guided(lines("DEBUG", "", "", ""), "set", "logger", "com.acme.Worker", "--keep-handlers");
+
+        assertEquals(CliError.OK, exit, err());
+        assertTrue(out().contains("  logctl set logger com.acme.Worker DEBUG --keep-handlers\nApply? [Y/n]\n"), out());
+        assertFalse(out().contains("will follow"), out());
+        assertEquals(List.of(true), mbean.keepHandlersCalls);
+    }
+
+    @Test
+    void setLogger_aQuieterLevel_saysNothingFollows() {
+        guided(lines("WARN", "", "", ""), "set", "logger", "com.acme.Worker");
+
+        assertFalse(out().contains("will follow"), out());
     }
 
     @Test

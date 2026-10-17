@@ -87,6 +87,7 @@ final class Parser {
         boolean noCollapseCauses = false;
         String outPath = null;
         boolean force = false;
+        boolean keepHandlers = false;
         String from = null;
 
         for (int i = 0; i < argv.length; i++) {
@@ -111,6 +112,7 @@ final class Parser {
                 case "--no-any-cause" -> noAnyCause = true;
                 case "--no-collapse-causes" -> noCollapseCauses = true;
                 case "--force" -> force = true;
+                case "--keep-handlers" -> keepHandlers = true;
                 case "--out" -> {
                     i++;
                     if (i >= argv.length) {
@@ -299,6 +301,9 @@ final class Parser {
         }
         if (force && !isExport && !isSetLogger) {
             throw usage("--force applies only to 'set logger' or 'export vendor-defaults --out <file>'.");
+        }
+        if (keepHandlers && !isSetLogger) {
+            throw usage("--keep-handlers applies only to 'set logger'.");
         }
         if (force && isExport && outPath == null) {
             throw usage("--force needs --out <file> -- it allows overwriting that file.");
@@ -568,14 +573,14 @@ final class Parser {
                         if (nounRest.size() < 2) {
                             if (guided && !yes) {
                                 yield Commands.setLoggerGuided(nounRest.isEmpty() ? null : nounRest.get(0), reason,
-                                        force);
+                                        force, keepHandlers);
                             }
                             throw usage("'set logger' needs <target> <level> [session | for <duration> | sticky].\n"
                                     + PROMPT_HINT);
                         }
                         TierChoice tier = resolveTier(nounRest.subList(2, nounRest.size()));
                         yield Commands.setLogger(nounRest.get(0), parseLevel(nounRest.get(1)), reason,
-                                tier.tierName(), tier.forSeconds(), yes, json, force);
+                                tier.tierName(), tier.forSeconds(), yes, json, force, keepHandlers);
                     }
                     case "handler" -> {
                         if (nounRest.size() < 2) {

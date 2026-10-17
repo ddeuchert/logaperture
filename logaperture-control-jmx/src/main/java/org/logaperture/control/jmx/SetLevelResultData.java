@@ -35,14 +35,25 @@ public final class SetLevelResultData {
     private final List<LevelOverrideData> overrides;
     private final List<HandlerFloorData> blockingHandlers;
     private final List<DescendantLevelData> descendants;
+    private final List<FollowedHandlerData> following;
+    private final String followDenied;
 
-    /** Every field, including {@code descendants} (doc/specs/set-logger-force.md). */
-    @ConstructorProperties({"overrides", "blockingHandlers", "descendants"})
+    /** Every field, including {@code following} and {@code followDenied} (doc/specs/default-handlers-follow.md). */
+    @ConstructorProperties({"overrides", "blockingHandlers", "descendants", "following", "followDenied"})
     public SetLevelResultData(List<LevelOverrideData> overrides, List<HandlerFloorData> blockingHandlers,
-            List<DescendantLevelData> descendants) {
+            List<DescendantLevelData> descendants, List<FollowedHandlerData> following, String followDenied) {
         this.overrides = overrides;
         this.blockingHandlers = blockingHandlers;
         this.descendants = descendants == null ? List.of() : descendants;
+        this.following = following == null ? List.of() : following;
+        this.followDenied = followDenied;
+    }
+
+    /** Every field but {@code following} and {@code followDenied} (doc/specs/set-logger-force.md). */
+    @ConstructorProperties({"overrides", "blockingHandlers", "descendants"})
+    public SetLevelResultData(List<LevelOverrideData> overrides, List<HandlerFloorData> blockingHandlers,
+            List<DescendantLevelData> descendants) {
+        this(overrides, blockingHandlers, descendants, List.of(), null);
     }
 
     @ConstructorProperties({"overrides", "blockingHandlers"})
@@ -54,7 +65,19 @@ public final class SetLevelResultData {
         return new SetLevelResultData(
                 result.overrides().stream().map(LevelOverrideData::from).toList(),
                 result.blockingHandlers().stream().map(HandlerFloorData::from).toList(),
-                result.descendants().stream().map(DescendantLevelData::from).toList());
+                result.descendants().stream().map(DescendantLevelData::from).toList(),
+                result.following().stream().map(FollowedHandlerData::from).toList(),
+                result.followDenied());
+    }
+
+    /** The default handlers this change let through -- see {@link SetLevelResult#following()}. */
+    public List<FollowedHandlerData> getFollowing() {
+        return following;
+    }
+
+    /** The capability that kept the default handlers from following, or {@code null} -- see {@link SetLevelResult#followDenied()}. */
+    public String getFollowDenied() {
+        return followDenied;
     }
 
     /** Loggers under an exact target that didn't follow its new level -- see {@link SetLevelResult#descendants()}. */

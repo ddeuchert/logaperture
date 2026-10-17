@@ -99,17 +99,22 @@ public final class LevelControlMXBeanImpl implements LevelControlMXBean {
     @Override
     public SetLevelResultData setLogger(String target, String level, String reason, String tier, long forSeconds,
             boolean confirmed) {
-        Level parsedLevel = parseLevel(level);
-        SetLevelOptions options = toOptions(reason, tier, forSeconds, confirmed);
-        var result = operations.setLogger(target, parsedLevel, options);
-        return SetLevelResultData.from(result);
+        return setLogger(target, level, reason, tier, forSeconds, confirmed, false, false);
     }
 
     @Override
     public SetLevelResultData setLogger(String target, String level, String reason, String tier, long forSeconds,
             boolean confirmed, boolean force) {
+        return setLogger(target, level, reason, tier, forSeconds, confirmed, force, false);
+    }
+
+    /** Every {@code set logger} over JMX is an operator's: the default handlers follow unless kept (H9). */
+    @Override
+    public SetLevelResultData setLogger(String target, String level, String reason, String tier, long forSeconds,
+            boolean confirmed, boolean force, boolean keepHandlers) {
         Level parsedLevel = parseLevel(level);
-        SetLevelOptions options = toOptions(reason, tier, forSeconds, confirmed).withForce(force);
+        SetLevelOptions options = toOptions(reason, tier, forSeconds, confirmed).withForce(force)
+                .withFollowHandlers(!keepHandlers);
         return SetLevelResultData.from(operations.setLogger(target, parsedLevel, options));
     }
 

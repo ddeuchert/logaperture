@@ -620,6 +620,14 @@ class ParserTest {
         assertTrue(error.getMessage().contains("logctl enable storms"), error.getMessage());
     }
 
+    /** doc/specs/default-handlers-follow.md: {@code --keep-handlers} belongs to {@code set logger} alone. */
+    @Test
+    void keepHandlers_onlyOnSetLogger() {
+        assertDoesNotThrow(() -> Parser.parse(new String[] {"set", "logger", "com.acme", "DEBUG", "--keep-handlers"}));
+        assertUsage(() -> Parser.parse(new String[] {"set", "handler", "CONSOLE", "DEBUG", "--keep-handlers"}));
+        assertUsage(() -> Parser.parse(new String[] {"reset", "logger", "com.acme", "--keep-handlers"}));
+    }
+
     private static void assertUsage(Executable call) {
         CliError error = assertThrows(CliError.class, call);
         assertSame(CliError.class, error.getClass());

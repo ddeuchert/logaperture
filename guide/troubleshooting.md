@@ -33,8 +33,10 @@ set up before WildFly's: check `JAVA_OPTS` for other agents or logging options.
 
 ## A raised level shows nothing
 
-Usually a handler is at a stricter level than the logger. `set logger` warns about it, with the
-command that fixes it. See [Raise a log level](how-to/raise-a-level.md#when-raising-a-logger-shows-nothing).
+Usually a handler is at a stricter level than the logger. The default handler (usually the console)
+follows the change on its own; for any other handler, or one you set yourself, `set logger` warns
+about it, with the command that fixes it. See
+[Raise a log level](how-to/raise-a-level.md#the-console-follows).
 
 Also check:
 
