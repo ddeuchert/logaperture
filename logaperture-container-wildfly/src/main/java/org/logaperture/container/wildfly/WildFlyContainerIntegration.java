@@ -18,6 +18,7 @@ package org.logaperture.container.wildfly;
 import org.logaperture.adapter.jul.JulAdapterFactory;
 import org.logaperture.adapter.jul.JulLoggingAdapter;
 import org.logaperture.bridge.Diagnostics;
+import org.logaperture.container.jbosslogmanager.JBossLogManagerContainer;
 import org.logaperture.container.jbosslogmanager.JBossLogManagerReadiness;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditLog;
@@ -109,7 +110,7 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
         // here bakes in "no version" permanently. Deferred, it is re-resolved
         // fresh whenever logctl env actually runs, long after WildFly's own
         // bootstrap has set it.
-        WildFlyContainer host = new WildFlyContainer(policy, auditLog, sweepInterval, this::version, vendorDefaults,
+        JBossLogManagerContainer host = new JBossLogManagerContainer("WildFly", policy, auditLog, sweepInterval, this::version, vendorDefaults,
                 stormDetectionEnabled);
 
         Runnable install = () -> {
@@ -256,7 +257,7 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
      * /subsystem=logging} handler is re-resolved, then runs the verification
      * sweep that re-applies any override the change overwrote.
      */
-    private static void wireConfigurationListener(WildFlyContainer host, JulLoggingAdapter adapter) {
+    private static void wireConfigurationListener(JBossLogManagerContainer host, JulLoggingAdapter adapter) {
         Runnable onConfigChange = () -> {
             adapter.invalidateNameCache();
             host.runVerificationSweepNow();

@@ -132,7 +132,7 @@ def warn_on_image_drift():
 AGENT_MODULES = ["logaperture-bridge", "logaperture-api", "logaperture-core",
                   "logaperture-adapter-logback", "logaperture-adapter-jul",
                   "logaperture-container-none", "logaperture-container-jbosslogmanager",
-                  "logaperture-container-wildfly",
+                  "logaperture-container-wildfly", "logaperture-container-quarkus",
                   "logaperture-control-jmx", "logaperture-agent"]
 CLI_MODULES = ["logaperture-bridge", "logaperture-api", "logaperture-core",
                "logaperture-control-jmx", "logaperture-cli"]

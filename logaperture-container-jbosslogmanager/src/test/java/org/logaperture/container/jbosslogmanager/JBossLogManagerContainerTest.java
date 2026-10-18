@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.container.wildfly;
+package org.logaperture.container.jbosslogmanager;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * unique-prefixed namespace per test. See doc/specs/wildfly-support.md
  * Slice 3.
  */
-class WildFlyContainerTest {
+class JBossLogManagerContainerTest {
 
     @TempDir
     private Path home;
@@ -77,11 +77,11 @@ class WildFlyContainerTest {
         System.clearProperty("logaperture.instanceId");
     }
 
-    private WildFlyContainer newHost() {
-        return new WildFlyContainer(CapabilityPolicy.allowAll(), auditLog, Duration.ofMinutes(10));
+    private JBossLogManagerContainer newHost() {
+        return new JBossLogManagerContainer("WildFly", CapabilityPolicy.allowAll(), auditLog, Duration.ofMinutes(10));
     }
 
-    private AggregateLevelControl install(WildFlyContainer host) {
+    private AggregateLevelControl install(JBossLogManagerContainer host) {
         host.installContext(ContextHandle.of(
                 ContextHandle.SYSTEM, "wildfly", JulAdapterFactory.forCurrentContext()));
         return host.operations();
@@ -93,7 +93,7 @@ class WildFlyContainerTest {
 
     @Test
     void installContext_fullLoop_listSetResetResetAll() {
-        try (WildFlyContainer host = newHost()) {
+        try (JBossLogManagerContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
 
             ops.setLogger(logger, Level.DEBUG, SetLevelOptions.withReason("boot detail"));
@@ -112,7 +112,7 @@ class WildFlyContainerTest {
 
     @Test
     void verificationSweep_reAppliesAnOverrideThatWasResetOutFromUnderUs() {
-        try (WildFlyContainer host = newHost()) {
+        try (JBossLogManagerContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
             ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
 
@@ -131,7 +131,7 @@ class WildFlyContainerTest {
 
     @Test
     void verificationSweep_isANoOpWhenNothingHasDrifted() {
-        try (WildFlyContainer host = newHost()) {
+        try (JBossLogManagerContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
             ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
             int auditSizeBefore = auditLog.records().size();
@@ -143,7 +143,7 @@ class WildFlyContainerTest {
 
     @Test
     void configurationChangeListenerPath_triggersAVerificationSweep() throws Exception {
-        try (WildFlyContainer host = newHost()) {
+        try (JBossLogManagerContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
             ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
             Logger.getLogger(logger).setLevel(null); // drift
@@ -159,7 +159,7 @@ class WildFlyContainerTest {
 
     @Test
     void forOverride_isRevertedByTheExpirySweep() {
-        try (WildFlyContainer host = newHost()) {
+        try (JBossLogManagerContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
             ops.setLogger(logger, Level.TRACE, SetLevelOptions.forDuration(Duration.ofMillis(1)));
 
@@ -171,12 +171,12 @@ class WildFlyContainerTest {
 
     @Test
     void stickyOverride_resumesAfterASimulatedRestart() {
-        try (WildFlyContainer first = newHost()) {
+        try (JBossLogManagerContainer first = newHost()) {
             install(first).setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
         }
         Logger.getLogger(logger).setLevel(null); // "restart"
 
-        try (WildFlyContainer second = newHost()) {
+        try (JBossLogManagerContainer second = newHost()) {
             LoggerInfo info = row(install(second));
             assertEquals(Level.DEBUG, info.effectiveLevel());
             assertTrue(info.overrideActive());
@@ -189,7 +189,7 @@ class WildFlyContainerTest {
         // environment-report.md: this class only ever represents WildFly, so the
         // container name must never be left null just because no version is known
         // (unlike backendName/backendVersion, which genuinely can be absent).
-        try (WildFlyContainer host = newHost()) {
+        try (JBossLogManagerContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
 
             assertEquals("WildFly", ops.environmentReport().containerName());
@@ -200,7 +200,7 @@ class WildFlyContainerTest {
     @Test
     void environmentReport_stateFilePath_isTheRealFullyQualifiedStateFile() {
         // doc/specs/environment-report.md "State file".
-        try (WildFlyContainer host = newHost()) {
+        try (JBossLogManagerContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
 
             String stateFilePath = ops.environmentReport().stateFilePath();

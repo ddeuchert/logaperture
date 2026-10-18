@@ -17,6 +17,7 @@ package org.logaperture.agent;
 
 import org.logaperture.bridge.Diagnostics;
 import org.logaperture.container.none.NoneContainerIntegration;
+import org.logaperture.container.quarkus.QuarkusContainerIntegration;
 import org.logaperture.container.wildfly.WildFlyContainerIntegration;
 import org.logaperture.control.jmx.JmxRegistrar;
 import org.logaperture.core.AggregateLevelControl;
@@ -77,10 +78,10 @@ final class AgentBootstrap {
 
     /**
      * The ordered integration list — "most specific first, {@code none}
-     * last". Slice 3 prepends the WildFly integration.
+     * last". WildFly and Quarkus never match the same launch (Quarkus needs its own entry point).
      */
     private static List<ContainerIntegration> integrations() {
-        return List.of(new WildFlyContainerIntegration(), new NoneContainerIntegration());
+        return List.of(new WildFlyContainerIntegration(), new QuarkusContainerIntegration(), new NoneContainerIntegration());
     }
 
     static void start(Instrumentation inst) {

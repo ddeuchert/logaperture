@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.container.wildfly;
+package org.logaperture.container.jbosslogmanager;
 
 import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.ActiveLoggerFloor;
@@ -63,8 +63,10 @@ import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 /**
- * Composition root for standalone WildFly — see doc/specs/wildfly-support.md
- * Slice 3. Structurally parallels {@code NoneContainer}: it owns one
+ * Composition root for a container whose logging is JBoss LogManager (standalone
+ * WildFly, Quarkus) — see doc/specs/wildfly-support.md Slice 3 and doc/specs/quarkus-support.md
+ * (Q1). It is parameterised by the container's name, which {@code logctl env} prints and which
+ * names the sweep thread. Structurally parallels {@code NoneContainer}: it owns one
  * {@link AggregateLevelControl}, the shared {@link StateStore}, and the
  * single sweep thread, and installs level control per context via
  * {@link #installContext}. For a stock standalone WildFly with no
@@ -78,14 +80,15 @@ import java.util.logging.Logger;
  * silently overwrote — JBoss LogManager has no reconfiguration event of its
  * own (§4.3). A {@code LogManager} configuration-change listener drives the
  * same verification sweep immediately when it can (see
- * {@code WildFlyContainerIntegration}); the periodic sweep is the floor.
+ * {@code the container integration}); the periodic sweep is the floor.
  *
  * <p>NOTE: the state-store / sweeper / {@code installContext} / {@code
  * close} machinery is duplicated from {@code NoneContainer}. Extract a
  * shared host if a third container integration lands.
  */
-public final class WildFlyContainer implements AutoCloseable {
+public final class JBossLogManagerContainer implements AutoCloseable {
 
+    private final String containerName;
     private final CapabilityPolicy policy;
     private final AuditLog auditLog;
     private final StateStore stateStore;
@@ -100,16 +103,13 @@ public final class WildFlyContainer implements AutoCloseable {
     /** The one-shot that runs phase 2 at the floor; cancelled on close so a pending delay never holds shutdown up. */
     private volatile ScheduledFuture<?> handlerInstallTask;
 
-    /** This class only ever represents WildFly, so {@link AggregateLevelControl}'s container name is always {@code "WildFly"} -- never left null by a constructor that doesn't happen to know a version. */
-    private static final String CONTAINER_NAME = "WildFly";
-
-    public WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog) {
-        this(policy, auditLog, SweepPolicy.interval());
+    public JBossLogManagerContainer(String containerName, CapabilityPolicy policy, AuditLog auditLog) {
+        this(containerName, policy, auditLog, SweepPolicy.interval());
     }
 
     /** Package-visible so tests can use a short sweep interval instead of the real 30s one; no known WildFly version. */
-    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval) {
-        this(policy, auditLog, sweepInterval, Optional::empty);
+    JBossLogManagerContainer(String containerName, CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval) {
+        this(containerName, policy, auditLog, sweepInterval, Optional::empty);
     }
 
     /**
@@ -118,7 +118,7 @@ public final class WildFlyContainer implements AutoCloseable {
      *                         a <em>supplier</em>, re-invoked fresh on every
      *                         {@code environmentReport()} call, not resolved
      *                         once here. {@code
-     *                         WildFlyContainerIntegration.version()}'s own
+     *                         the container integration.version()}'s own
      *                         javadoc explains why: at the point this
      *                         constructor runs (premain time), {@code
      *                         jboss.home.dir} is not yet visible to {@code
@@ -129,17 +129,17 @@ public final class WildFlyContainer implements AutoCloseable {
      *                         any hot path) and self-heals once the server
      *                         has finished its own bootstrap.
      */
-    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+    JBossLogManagerContainer(String containerName, CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
             Supplier<Optional<String>> containerVersion) {
-        this(policy, auditLog, sweepInterval, containerVersion, VendorDefaults.none());
+        this(containerName, policy, auditLog, sweepInterval, containerVersion, VendorDefaults.none());
     }
 
     /**
      * @param vendorDefaults applied by every {@link #installContext} -- doc/specs/vendor-defaults.md
      */
-    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+    JBossLogManagerContainer(String containerName, CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
             Supplier<Optional<String>> containerVersion, VendorDefaults vendorDefaults) {
-        this(policy, auditLog, sweepInterval, containerVersion, vendorDefaults, true);
+        this(containerName, policy, auditLog, sweepInterval, containerVersion, vendorDefaults, true);
     }
 
     /**
@@ -148,10 +148,10 @@ public final class WildFlyContainer implements AutoCloseable {
      *                              storm-detection-toggle.md T1, T2). The shorter constructors start
      *                              it enabled, as before, for the tests that use them.
      */
-    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
-            Supplier<Optional<String>> containerVersion, VendorDefaults vendorDefaults,
+    public JBossLogManagerContainer(String containerName, CapabilityPolicy policy, AuditLog auditLog,
+            Duration sweepInterval, Supplier<Optional<String>> containerVersion, VendorDefaults vendorDefaults,
             boolean stormDetectionEnabled) {
-        this(policy, auditLog, sweepInterval, containerVersion, HandlerInstallPolicy.delay(), Clock.systemUTC(),
+        this(containerName, policy, auditLog, sweepInterval, containerVersion, HandlerInstallPolicy.delay(), Clock.systemUTC(),
                 vendorDefaults, stormDetectionEnabled);
     }
 
@@ -161,20 +161,21 @@ public final class WildFlyContainer implements AutoCloseable {
      * @param clock               the floor's time source -- injectable so tests can move
      *                            past it without waiting
      */
-    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+    JBossLogManagerContainer(String containerName, CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
             Supplier<Optional<String>> containerVersion, Duration handlerInstallDelay, Clock clock) {
-        this(policy, auditLog, sweepInterval, containerVersion, handlerInstallDelay, clock, VendorDefaults.none());
+        this(containerName, policy, auditLog, sweepInterval, containerVersion, handlerInstallDelay, clock, VendorDefaults.none());
     }
 
-    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+    JBossLogManagerContainer(String containerName, CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
             Supplier<Optional<String>> containerVersion, Duration handlerInstallDelay, Clock clock,
             VendorDefaults vendorDefaults) {
-        this(policy, auditLog, sweepInterval, containerVersion, handlerInstallDelay, clock, vendorDefaults, true);
+        this(containerName, policy, auditLog, sweepInterval, containerVersion, handlerInstallDelay, clock, vendorDefaults, true);
     }
 
-    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+    JBossLogManagerContainer(String containerName, CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
             Supplier<Optional<String>> containerVersion, Duration handlerInstallDelay, Clock clock,
             VendorDefaults vendorDefaults, boolean stormDetectionEnabled) {
+        this.containerName = Objects.requireNonNull(containerName, "containerName");
         this.policy = policy;
         this.vendorDefaults = Objects.requireNonNull(vendorDefaults, "vendorDefaults");
         this.auditLog = auditLog;
@@ -185,7 +186,7 @@ public final class WildFlyContainer implements AutoCloseable {
         // vendor defaults file was exported from are handed over to it -- once per JVM, since
         // every context shares this one state file.
         takeOverExportedState();
-        this.aggregate = new AggregateLevelControl(CONTAINER_NAME, containerVersion,
+        this.aggregate = new AggregateLevelControl(containerName, containerVersion,
                 stateStore.location().map(Path::toString).orElse(null), this::handlerInstallAllowed, vendorDefaults,
                 new StormDetectionSwitch(stormDetectionEnabled, policy, auditLog, principal(), stateStore));
         // doc/specs/storm-detection-toggle.md "Restart": a saved 'for'/'sticky' storm setting wins over
@@ -196,7 +197,7 @@ public final class WildFlyContainer implements AutoCloseable {
         // inside a handler, so it can't loop through LogAperture's own wrappers.
         aggregate.setDropSummarySink(line -> Logger.getLogger(DropSummary.CATEGORY).info(line));
 
-        this.sweeper = Executors.newSingleThreadScheduledExecutor(WildFlyContainer::newDaemonThread);
+        this.sweeper = Executors.newSingleThreadScheduledExecutor(this::newDaemonThread);
         long intervalMillis = sweepInterval.toMillis();
         sweeper.scheduleAtFixedRate(this::sweepTick, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
     }
@@ -374,7 +375,7 @@ public final class WildFlyContainer implements AutoCloseable {
      * (not run inline) so WildFly's own configuration thread is never
      * blocked on our work.
      */
-    void runVerificationSweepNow() {
+    public void runVerificationSweepNow() {
         Runnable sweepNow = () -> {
             aggregate.verificationSweep(Instant.now());
             announceHandlerLevelIfInstalled();
@@ -412,8 +413,8 @@ public final class WildFlyContainer implements AutoCloseable {
         }
     }
 
-    private static Thread newDaemonThread(Runnable task) {
-        Thread thread = new Thread(task, "logaperture-wildfly-sweep");
+    private Thread newDaemonThread(Runnable task) {
+        Thread thread = new Thread(task, "logaperture-" + containerName.toLowerCase(java.util.Locale.ROOT) + "-sweep");
         thread.setDaemon(true);
         return thread;
     }

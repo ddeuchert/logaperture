@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.container.wildfly;
+package org.logaperture.container.jbosslogmanager;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -98,12 +98,12 @@ class DeferredHandlerInstallTest {
         System.clearProperty("logaperture.instanceId");
     }
 
-    private WildFlyContainer newHost(Duration delay, Clock clock) {
-        return new WildFlyContainer(CapabilityPolicy.allowAll(), new InMemoryAuditLog(), Duration.ofMinutes(10),
+    private JBossLogManagerContainer newHost(Duration delay, Clock clock) {
+        return new JBossLogManagerContainer("WildFly", CapabilityPolicy.allowAll(), new InMemoryAuditLog(), Duration.ofMinutes(10),
                 Optional::empty, delay, clock);
     }
 
-    private AggregateLevelControl install(WildFlyContainer host) {
+    private AggregateLevelControl install(JBossLogManagerContainer host) {
         host.installContext(ContextHandle.of(ContextHandle.SYSTEM, "wildfly", JulAdapterFactory.forCurrentContext()));
         return host.operations();
     }
@@ -111,7 +111,7 @@ class DeferredHandlerInstallTest {
     @Test
     void handlerLevelInstall_isHeldBackBeforeTheFloor_evenAcrossASweep() {
         MutableClock clock = new MutableClock();
-        try (WildFlyContainer host = newHost(FLOOR, clock)) {
+        try (JBossLogManagerContainer host = newHost(FLOOR, clock)) {
             AggregateLevelControl ops = install(host);
             assertSame(original, handler.getFormatter(), "phase 2 must not run at install");
 
@@ -125,7 +125,7 @@ class DeferredHandlerInstallTest {
     @Test
     void handlerLevelInstall_runsOnceTheFloorHasPassed_whenASweepFires() {
         MutableClock clock = new MutableClock();
-        try (WildFlyContainer host = newHost(FLOOR, clock)) {
+        try (JBossLogManagerContainer host = newHost(FLOOR, clock)) {
             AggregateLevelControl ops = install(host);
 
             clock.advance(FLOOR.plusSeconds(1));
@@ -137,7 +137,7 @@ class DeferredHandlerInstallTest {
 
     @Test
     void handlerLevelInstall_withZeroDelay_runsDuringInstallContextAsBeforeThisChange() {
-        try (WildFlyContainer host = newHost(Duration.ZERO, Clock.systemUTC())) {
+        try (JBossLogManagerContainer host = newHost(Duration.ZERO, Clock.systemUTC())) {
             install(host);
 
             assertNotSame(original, handler.getFormatter());
@@ -147,7 +147,7 @@ class DeferredHandlerInstallTest {
     @Test
     void handlerLevelInstall_theOneShotRunsAtTheFloorWithNoSweepAndNoListener() throws Exception {
         // sweep interval is 10 minutes, so only the one-shot can get there
-        try (WildFlyContainer host = newHost(Duration.ofMillis(300), Clock.systemUTC())) {
+        try (JBossLogManagerContainer host = newHost(Duration.ofMillis(300), Clock.systemUTC())) {
             install(host);
 
             long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
@@ -162,7 +162,7 @@ class DeferredHandlerInstallTest {
     @Test
     void handlerLevelInstall_aOneShotThatWakesBeforeTheWallClockFloorReschedulesInsteadOfGivingUp() throws Exception {
         MutableClock clock = new MutableClock();
-        try (WildFlyContainer host = newHost(Duration.ofMillis(200), clock)) {
+        try (JBossLogManagerContainer host = newHost(Duration.ofMillis(200), clock)) {
             install(host);
 
             Thread.sleep(700); // the one-shot has fired at least once, but the (frozen) clock is before the floor
@@ -180,7 +180,7 @@ class DeferredHandlerInstallTest {
 
     @Test
     void close_doesNotWaitOnAPendingOneShot() {
-        WildFlyContainer host = newHost(Duration.ofMinutes(10), Clock.systemUTC());
+        JBossLogManagerContainer host = newHost(Duration.ofMinutes(10), Clock.systemUTC());
         install(host);
 
         long start = System.nanoTime();

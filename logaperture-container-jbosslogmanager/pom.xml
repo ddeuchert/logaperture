@@ -29,7 +29,8 @@
 
   <description>
     What every JBoss LogManager container (WildFly, Quarkus) shares: the premain-safe readiness gate
-    that waits for JBoss LogManager before the first java.util.logging call. See
+    that waits for JBoss LogManager before the first java.util.logging call, and the host that owns
+    the state store, the sweep thread and the per-context level control. See
     doc/specs/quarkus-support.md Q1.
   </description>
 
@@ -41,7 +42,20 @@
   <dependencies>
     <dependency>
       <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.logaperture</groupId>
       <artifactId>logaperture-bridge</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-adapter-jul</artifactId>
+      <scope>test</scope>
     </dependency>
 
     <!-- test only: the tests install JBoss LogManager as the test JVM's java.util.logging.manager. -->

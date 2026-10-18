@@ -72,6 +72,7 @@
     <module>logaperture-container-none</module>
     <module>logaperture-container-jbosslogmanager</module>
     <module>logaperture-container-wildfly</module>
+    <module>logaperture-container-quarkus</module>
     <module>logaperture-control-jmx</module>
     <module>logaperture-agent</module>
     <module>logaperture-cli</module>
@@ -169,6 +170,11 @@
       <dependency>
         <groupId>org.logaperture</groupId>
         <artifactId>logaperture-container-wildfly</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.logaperture</groupId>
+        <artifactId>logaperture-container-quarkus</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
