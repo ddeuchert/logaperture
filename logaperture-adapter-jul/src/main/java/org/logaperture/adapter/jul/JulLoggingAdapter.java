@@ -249,9 +249,14 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         List<HandlerFloor> floors = new ArrayList<>();
         for (Logger current = logger(loggerName); current != null; current = current.getParent()) {
             for (Handler handler : current.getHandlers()) {
-                java.util.logging.Level handlerLevel = handler.getLevel();
-                if (handlerLevel != null && handlerLevel.intValue() > targetValue) {
-                    floors.add(new HandlerFloor(refFor(handler), LevelMapper.toApi(handlerLevel)));
+                if (TransparentHandlers.isTransparent(handler)) {
+                    // the gate is on the handlers inside it (and, in principle, on it too)
+                    addFloorIfStricter(floors, handler, targetValue);
+                    for (Handler inside : TransparentHandlers.childrenOf(handler)) {
+                        addFloorIfStricter(floors, inside, targetValue);
+                    }
+                } else {
+                    addFloorIfStricter(floors, handler, targetValue);
                 }
             }
             if (!current.getUseParentHandlers()) {
@@ -277,6 +282,18 @@ public final class JulLoggingAdapter implements LoggingAdapter {
                 .max(Comparator.naturalOrder())
                 .orElseThrow();
         return List.of(new HandlerFloor(HandlerRef.ALL_HANDLERS, strictest));
+    }
+
+    /** The live handler a ref names, or {@code null} -- for tests, which assert on identity. */
+    Handler handlerFor(HandlerRef ref) {
+        return handlersByRef.get(ref);
+    }
+
+    private void addFloorIfStricter(List<HandlerFloor> floors, Handler handler, int targetValue) {
+        java.util.logging.Level handlerLevel = handler.getLevel();
+        if (handlerLevel != null && handlerLevel.intValue() > targetValue) {
+            floors.add(new HandlerFloor(refFor(handler), LevelMapper.toApi(handlerLevel)));
+        }
     }
 
     @Override
@@ -359,12 +376,20 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      */
     @Override
     public void installStormDetection(StormObserver detector) {
-        for (HandlerRef ref : realHandlers()) {
-            Handler handler = handlersByRef.get(ref);
-            if (handler != null) {
-                FilterLayering.ensure(handler, detector, null);
-            }
+        for (Handler handler : filterAttachPoints()) {
+            FilterLayering.ensure(handler, detector, null);
         }
+    }
+
+    /**
+     * Where filters go: every handler as attached to a logger. For all but a {@link
+     * TransparentHandlers transparent} handler that is the catalogue; for one it is the wrapper,
+     * not the handlers inside it, so a record is seen once. Calls {@link #realHandlers()} first
+     * for its side effects (name resolution, pruning), as every install did before.
+     */
+    private List<Handler> filterAttachPoints() {
+        realHandlers();
+        return attachedHandlers();
     }
 
     /**
@@ -378,11 +403,8 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      */
     @Override
     public void installRulePipeline(RuleGate gate) {
-        for (HandlerRef ref : realHandlers()) {
-            Handler handler = handlersByRef.get(ref);
-            if (handler != null) {
-                FilterLayering.ensure(handler, null, gate);
-            }
+        for (Handler handler : filterAttachPoints()) {
+            FilterLayering.ensure(handler, null, gate);
         }
     }
 
@@ -557,7 +579,13 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         ensureNamesResolved();
         List<HandlerRef> refs = new ArrayList<>();
         for (Handler handler : logger(ROOT_ALIAS).getHandlers()) {
-            refs.add(refFor(handler));
+            if (TransparentHandlers.isTransparent(handler)) {
+                for (Handler inside : TransparentHandlers.childrenOf(handler)) {
+                    refs.add(refFor(inside));
+                }
+            } else {
+                refs.add(refFor(handler));
+            }
         }
         return List.copyOf(refs);
     }
@@ -644,8 +672,8 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         return ref;
     }
 
-    /** Every {@link Handler} attached to any known logger, deduped by identity. */
-    private List<Handler> liveHandlers() {
+    /** Every {@link Handler} attached to any known logger, deduped by identity -- exactly as attached. */
+    private List<Handler> attachedHandlers() {
         List<Handler> out = new ArrayList<>();
         Set<Handler> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         for (String name : knownLoggerNames()) {
@@ -653,6 +681,27 @@ public final class JulLoggingAdapter implements LoggingAdapter {
                 if (seen.add(handler)) {
                     out.add(handler);
                 }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The handler catalogue: {@link #attachedHandlers()} with each {@link TransparentHandlers
+     * transparent} handler replaced by the handlers inside it (doc/specs/quarkus-support.md Q3).
+     */
+    private List<Handler> liveHandlers() {
+        List<Handler> out = new ArrayList<>();
+        Set<Handler> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Handler attached : attachedHandlers()) {
+            if (TransparentHandlers.isTransparent(attached)) {
+                for (Handler inside : TransparentHandlers.childrenOf(attached)) {
+                    if (seen.add(inside)) {
+                        out.add(inside);
+                    }
+                }
+            } else if (seen.add(attached)) {
+                out.add(attached);
             }
         }
         return out;

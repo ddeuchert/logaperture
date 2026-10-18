@@ -15,7 +15,6 @@
  */
 package org.logaperture.container.quarkus;
 
-import org.logaperture.adapter.jul.HandlerNameResolver;
 import org.logaperture.adapter.jul.JulAdapterFactory;
 import org.logaperture.adapter.jul.JulLoggingAdapter;
 import org.logaperture.bridge.Diagnostics;
@@ -96,7 +95,7 @@ public final class QuarkusContainerIntegration implements ContainerIntegration {
 
         Runnable install = () -> {
             try {
-                JulLoggingAdapter adapter = JulAdapterFactory.forCurrentContext(HandlerNameResolver.NONE);
+                JulLoggingAdapter adapter = JulAdapterFactory.forCurrentContext(new QuarkusHandlerNameResolver());
                 host.installContext(ContextHandle.of(ContextHandle.SYSTEM, "quarkus", adapter));
                 onFirstContextReady.accept(host.operations());
                 startEarlyResweep(host);
