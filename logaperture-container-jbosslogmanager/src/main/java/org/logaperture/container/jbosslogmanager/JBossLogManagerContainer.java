@@ -59,6 +59,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 
@@ -385,6 +386,89 @@ public final class JBossLogManagerContainer implements AutoCloseable {
         } catch (java.util.concurrent.RejectedExecutionException alreadyShutDown) {
             // close() won -- nothing to do
         }
+    }
+
+    /** Early verification sweeps run so far -- read by tests, and a cheap health number. */
+    private final java.util.concurrent.atomic.AtomicInteger earlySweeps = new java.util.concurrent.atomic.AtomicInteger();
+
+    int earlySweepsRun() {
+        return earlySweeps.get();
+    }
+
+    /**
+     * Repairs, soon after install, what a framework's late logging setup overwrites
+     * (doc/specs/quarkus-support.md Q2). Two independent mechanisms, either may be absent:
+     *
+     * <ul>
+     *   <li><b>the exact trigger</b> -- {@code activation} is polled (every {@code pollInterval},
+     *       up to {@code pollFor}) and the verification sweep runs once when it turns true;</li>
+     *   <li><b>the safety net</b> -- {@code window} runs the verification sweep at its interval
+     *       until its length has passed.</li>
+     * </ul>
+     *
+     * Both run on the sweep thread, so they never overlap the periodic sweep.
+     *
+     * @param window     the fast-sweep window, or {@code null} for none
+     * @param activation the framework's "logging is now fully configured" signal, or {@code null}
+     */
+    public void startEarlyResweep(SweepPolicy.StartupWindow window, BooleanSupplier activation,
+            Duration pollInterval, Duration pollFor) {
+        Instant started = clock.instant();
+        try {
+            if (window != null) {
+                Instant windowEnd = started.plus(window.length());
+                scheduleUntil(() -> earlySweep("startup window"), window.interval(), windowEnd);
+            }
+            if (activation != null) {
+                java.util.concurrent.atomic.AtomicBoolean fired = new java.util.concurrent.atomic.AtomicBoolean();
+                Runnable pollActivation = () -> {
+                    if (fired.get()) {
+                        return;
+                    }
+                    boolean activated;
+                    try {
+                        activated = activation.getAsBoolean();
+                    } catch (RuntimeException e) {
+                        Diagnostics.debug("the activation signal failed: " + e);
+                        activated = false;
+                    }
+                    if (activated && fired.compareAndSet(false, true)) {
+                        earlySweep("framework logging activated");
+                    }
+                };
+                scheduleUntil(pollActivation, pollInterval, started.plus(pollFor));
+            }
+        } catch (java.util.concurrent.RejectedExecutionException alreadyShutDown) {
+            // close() won -- nothing to do
+        }
+    }
+
+    private void earlySweep(String why) {
+        earlySweeps.incrementAndGet();
+        Diagnostics.debug("early verification sweep (" + why + ")");
+        aggregate.verificationSweep(Instant.now());
+        announceHandlerLevelIfInstalled();
+    }
+
+    /** Runs {@code task} every {@code interval} on the sweep thread until {@code end}, then stops. */
+    private void scheduleUntil(Runnable task, Duration interval, Instant end) {
+        java.util.concurrent.atomic.AtomicReference<ScheduledFuture<?>> self =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        Runnable bounded = () -> {
+            try {
+                task.run();
+            } catch (RuntimeException e) {
+                Diagnostics.warn("early verification sweep failed, will retry on the next tick", e);
+            }
+            if (!clock.instant().isBefore(end)) {
+                ScheduledFuture<?> me = self.get();
+                if (me != null) {
+                    me.cancel(false);
+                }
+            }
+        };
+        long millis = interval.toMillis();
+        self.set(sweeper.scheduleWithFixedDelay(bounded, millis, millis, TimeUnit.MILLISECONDS));
     }
 
     private void sweepTick() {

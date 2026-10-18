@@ -26,6 +26,7 @@ import org.logaperture.api.SetLevelOptions;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditRecord;
 import org.logaperture.core.CapabilityPolicy;
+import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.InMemoryAuditLog;
 import org.logaperture.core.spi.ContextHandle;
 
@@ -126,6 +127,66 @@ class JBossLogManagerContainerTest {
             assertTrue(auditLog.records().stream().anyMatch(r ->
                     r.source().equals("verification-sweep") && r.loggerName().equals(logger)
                             && r.action() == AuditRecord.Action.MUTATION));
+        }
+    }
+
+    @Test
+    void startEarlyResweep_window_repairsDriftWellBeforeThePeriodicSweep_thenStops() throws Exception {
+        try (JBossLogManagerContainer host = newHost()) { // periodic sweep: 10 minutes
+            AggregateLevelControl ops = install(host);
+            ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
+
+            Logger.getLogger(logger).setLevel(null); // the framework's late setup overwrites it
+            host.startEarlyResweep(new SweepPolicy.StartupWindow(Duration.ofMillis(20), Duration.ofMillis(400)),
+                    null, Duration.ofMillis(20), Duration.ofMillis(400));
+
+            awaitTrue(() -> Logger.getLogger(logger).getLevel() == java.util.logging.Level.FINE);
+
+            Thread.sleep(700); // past the window's end
+            int afterWindow = host.earlySweepsRun();
+            Thread.sleep(200);
+            assertEquals(afterWindow, host.earlySweepsRun(), "the window ended, no more fast sweeps");
+            assertTrue(afterWindow >= 1);
+        }
+    }
+
+    @Test
+    void startEarlyResweep_activationSignal_sweepsOnceWhenItTurnsTrue() throws Exception {
+        try (JBossLogManagerContainer host = newHost()) {
+            AggregateLevelControl ops = install(host);
+            ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
+            java.util.concurrent.atomic.AtomicBoolean activated = new java.util.concurrent.atomic.AtomicBoolean();
+            host.startEarlyResweep(null, activated::get, Duration.ofMillis(20), Duration.ofSeconds(5));
+
+            Logger.getLogger(logger).setLevel(null);
+            Thread.sleep(150);
+            assertNull(Logger.getLogger(logger).getLevel(), "nothing swept before the framework says it is ready");
+            assertEquals(0, host.earlySweepsRun());
+
+            activated.set(true);
+            awaitTrue(() -> Logger.getLogger(logger).getLevel() == java.util.logging.Level.FINE);
+            Thread.sleep(200);
+            assertEquals(1, host.earlySweepsRun(), "the trigger fires once, not on every poll");
+        }
+    }
+
+    @Test
+    void startEarlyResweep_aThrowingSignalIsTreatedAsNotYet() throws Exception {
+        try (JBossLogManagerContainer host = newHost()) {
+            install(host);
+            host.startEarlyResweep(null, () -> {
+                throw new IllegalStateException("boom");
+            }, Duration.ofMillis(20), Duration.ofMillis(200));
+            Thread.sleep(300);
+            assertEquals(0, host.earlySweepsRun());
+        }
+    }
+
+    private static void awaitTrue(java.util.function.BooleanSupplier condition) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        while (!condition.getAsBoolean()) {
+            assertTrue(System.nanoTime() < deadline, "condition not met within 5s");
+            Thread.sleep(10);
         }
     }
 

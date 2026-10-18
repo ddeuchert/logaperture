@@ -35,6 +35,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -98,6 +99,7 @@ public final class QuarkusContainerIntegration implements ContainerIntegration {
                 JulLoggingAdapter adapter = JulAdapterFactory.forCurrentContext(HandlerNameResolver.NONE);
                 host.installContext(ContextHandle.of(ContextHandle.SYSTEM, "quarkus", adapter));
                 onFirstContextReady.accept(host.operations());
+                startEarlyResweep(host);
                 Diagnostics.debug("level control installed (quarkus container, system LogContext)");
             } catch (Throwable t) {
                 Diagnostics.error("LogAperture failed to install level control for Quarkus", t);
@@ -110,6 +112,16 @@ public final class QuarkusContainerIntegration implements ContainerIntegration {
         detector.start();
 
         return host.operations();
+    }
+
+    /**
+     * Q2: both mechanisms. The exact trigger (the delayed handler's {@code isActivated()}) is
+     * polled every 50 ms for up to two minutes -- Quarkus start-up can be slow -- and the startup
+     * fast-sweep window is the safety net for versions where the handler can't be found.
+     */
+    private static void startEarlyResweep(JBossLogManagerContainer host) {
+        BooleanSupplier activation = DelayedHandlerWatch.lazy(java.util.logging.Logger.getLogger(""));
+        host.startEarlyResweep(SweepPolicy.startupWindow(), activation, Duration.ofMillis(50), Duration.ofMinutes(2));
     }
 
     /** The Quarkus version for {@code logctl env}, read from the {@code quarkus-core} jar (Q8). */
