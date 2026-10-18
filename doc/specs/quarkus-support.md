@@ -1,7 +1,7 @@
 # Quarkus JVM mode support
 
-Status: **Signed off 2026-10-18** (decisions Q1 to Q9 below). Not yet implemented. Release `1.1.0`;
-the implementation PR is held as a draft until 1.0.0 ships (Q9).
+Status: **Signed off 2026-10-18** (decisions Q1 to Q9 below). Implemented on `feature/114-quarkus-support`
+(PR #225), held as a draft until 1.0.0 ships (Q9). Release `1.1.0`.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §15.9 (Quarkus), §15.1–15.5
 (container SPI, verification sweep), §17.1 (release plan). Evidence:

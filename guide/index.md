@@ -74,7 +74,8 @@ they have no JVM to attach an agent to.
 ## Where to start
 
 1. Get it: the release zip, or Maven Central for a build: [Download](get-started/download.md).
-2. Install the agent: [on WildFly](get-started/install-wildfly.md) or
+2. Install the agent: [on WildFly](get-started/install-wildfly.md),
+   [on Quarkus](get-started/install-quarkus.md) (from 1.1) or
    [on a plain JVM](get-started/install-plain-jvm.md).
 3. Try it for ten minutes: [Quick start](get-started/quick-start.md).
 4. Learn what `reset` goes back to: [Configuration layers](concepts/configuration-layers.md).

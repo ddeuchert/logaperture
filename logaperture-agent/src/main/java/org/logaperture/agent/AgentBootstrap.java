@@ -271,7 +271,11 @@ final class AgentBootstrap {
     private static String banner(String version, String containerId, VendorDefaults vendorDefaults, int restored,
             String stormDetection) {
         StringBuilder line = new StringBuilder("LogAperture ").append(version).append(" active (")
-                .append("wildfly".equals(containerId) ? "WildFly" : "JVM").append(')');
+                .append(switch (containerId) {
+                    case "wildfly" -> "WildFly";
+                    case "quarkus" -> "Quarkus";
+                    default -> "JVM";
+                }).append(')');
         List<String> parts = new java.util.ArrayList<>();
         if (vendorDefaults.status() == VendorDefaults.Status.LOADED) {
             parts.add("vendor defaults " + vendorDefaults.path().map(Path::toString).orElse("?") + " ("
