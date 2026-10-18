@@ -1896,6 +1896,11 @@ that exception while the rest of the application keeps logging.</p>
 <p>The rule lets the first matching event through, then one every 5 minutes, so the full message is
 never far away in the log. Every dropped event is counted.</p>
 <h2 id="shorten-a-stack-trace">Shorten a stack trace<a class="headerlink" href="#shorten-a-stack-trace" title="Permanent link">&para;</a></h2>
+<div class="la-cast" data-cast="trim"></div>
+
+<p>Above: a payment endpoint is down, and every order logs the same <code>ConnectException</code> with its full
+stack trace. A <code>trim</code> rule keeps every warning but cuts that exception to one line, so the rest of
+the console is readable again.</p>
 <p>To keep an event but not its trace:</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>add<span class="w"> </span>rule<span class="w"> </span>trim<span class="w"> </span><span class="s1">'*.Worker'</span><span class="w"> </span>--throwable<span class="w"> </span>java.io.IOException<span class="w"> </span>--frames<span class="w"> </span><span class="m">3</span><span class="w"> </span>--yes
 </code></pre></div>
