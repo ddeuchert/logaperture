@@ -64,6 +64,11 @@ recording starts, with the shop already running (`flood.sh` starts the flood the
 `logctl` in a story runs inside the WildFly container, but the screen shows it as a user types
 it. Add the script's name to `stories` in `record.sh`.
 
+Every recording also gets a film on the guide's [Now Showing](../../guide/now-showing.md) page:
+a paragraph on when you'd need it, the embed, and a breakdown of each `run logctl …` command.
+The guide build fails until it has one, and again whenever a story's commands change without
+its breakdown.
+
 Keep the whole bottom pane to 19 lines, so the last frame (the guide's poster and the GIF's
 held frame) shows the story from its first line. Open by saying what is running, since the GIF
 has no page around it. Keep it to one problem and its fix, under 90 seconds, with generic names
