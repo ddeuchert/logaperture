@@ -23,6 +23,7 @@ import org.logaperture.api.Level;
 import org.logaperture.api.LoggerByteCount;
 import org.logaperture.core.RuleGate;
 import org.logaperture.core.StormObserver;
+import org.logaperture.core.spi.LevelFloorInfo;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.UnknownHandlerException;
 
@@ -328,7 +329,86 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         if (handler == null) {
             return HandlerDiagnostics.EMPTY;
         }
-        return JulHandlerDiagnostics.of(handler);
+        HandlerDiagnostics diagnostics = JulHandlerDiagnostics.of(handler);
+        // doc/specs/quarkus-support.md Q7: a handler inside the framework's own delayed handler is
+        // one the framework created from its configuration, not one the application added.
+        return isInsideTransparentHandler(handler) ? withFrameworkDefault(diagnostics) : diagnostics;
+    }
+
+    private boolean isInsideTransparentHandler(Handler handler) {
+        for (Handler attached : attachedHandlers()) {
+            if (TransparentHandlers.isTransparent(attached)) {
+                for (Handler inside : TransparentHandlers.childrenOf(attached)) {
+                    if (inside == handler) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private static HandlerDiagnostics withFrameworkDefault(HandlerDiagnostics d) {
+        return new HandlerDiagnostics(d.maxFileSizeBytes(), d.backupCount(), d.autoFlush(), d.targetPath(),
+                d.isConsole(), true);
+    }
+
+    /**
+     * doc/specs/quarkus-support.md, "Min-level honesty". JBoss LogManager fixes a floor per logger
+     * when the logger is created (Quarkus's build-time {@code quarkus.log.min-level}), and its
+     * {@code isLoggable} includes it: a logger whose level says TRACE is not loggable at TRACE.
+     * Asking {@code isLoggable} is therefore backend-agnostic. Plain JUL, with no floor, always
+     * answers yes for the logger's own effective level, so costs nothing there.
+     */
+    @Override
+    public Optional<LevelFloorInfo> levelFloor(String loggerName) {
+        Logger logger = logger(loggerName);
+        java.util.logging.Level effective = effectiveJulLevel(logger);
+        if (effective == null || effective.intValue() == java.util.logging.Level.OFF.intValue()
+                || logger.isLoggable(effective)) {
+            return Optional.empty();
+        }
+        for (java.util.logging.Level candidate : STANDARD_ASCENDING) {
+            if (candidate.intValue() > effective.intValue() && logger.isLoggable(candidate)) {
+                return Optional.of(new LevelFloorInfo(LevelMapper.toApi(candidate), minLevelHint()));
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static final List<java.util.logging.Level> STANDARD_ASCENDING = List.of(
+            java.util.logging.Level.FINEST, java.util.logging.Level.FINER, java.util.logging.Level.FINE,
+            java.util.logging.Level.CONFIG, java.util.logging.Level.INFO, java.util.logging.Level.WARNING,
+            java.util.logging.Level.SEVERE);
+
+    /** The nearest explicit level at or above {@code logger}, as JUL holds it; INFO if none (JUL's own default). */
+    private static java.util.logging.Level effectiveJulLevel(Logger logger) {
+        for (Logger current = logger; current != null; current = current.getParent()) {
+            java.util.logging.Level explicit = current.getLevel();
+            if (explicit != null) {
+                return explicit;
+            }
+        }
+        return java.util.logging.Level.INFO;
+    }
+
+    /**
+     * What lowers the floor, when the floor is Quarkus's: the system property its build writes the
+     * floor into ({@code logging.initial-configurator.min-level}). {@code null} for any other floor.
+     */
+    private static String minLevelHint() {
+        String raw = System.getProperty("logging.initial-configurator.min-level");
+        if (raw == null) {
+            return null;
+        }
+        try {
+            Level built = LevelMapper.toApi(java.util.logging.Level.parse(raw.trim()));
+            return "the application was built with quarkus.log.min-level=" + built
+                    + "; rebuild with a lower quarkus.log.min-level (for example TRACE) to log below it";
+        } catch (IllegalArgumentException unparseable) {
+            return "the application was built with a quarkus.log.min-level; rebuild with a lower one "
+                    + "(for example TRACE) to log below it";
+        }
     }
 
     /**

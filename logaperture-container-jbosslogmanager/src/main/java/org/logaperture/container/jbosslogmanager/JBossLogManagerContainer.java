@@ -16,6 +16,7 @@
 package org.logaperture.container.jbosslogmanager;
 
 import org.logaperture.bridge.Diagnostics;
+import org.logaperture.api.DoctorFinding;
 import org.logaperture.core.ActiveLoggerFloor;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AggregateLevelControl.ContextControl;
@@ -203,6 +204,16 @@ public final class JBossLogManagerContainer implements AutoCloseable {
         sweeper.scheduleAtFixedRate(this::sweepTick, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
     }
 
+    private volatile Supplier<List<DoctorFinding>> containerFindings = List::of;
+
+    /**
+     * Findings only the container integration can make, shown by {@code doctor} -- set once by the
+     * integration, read fresh on every {@code doctor} run.
+     */
+    public void setContainerFindings(Supplier<List<DoctorFinding>> findings) {
+        this.containerFindings = Objects.requireNonNull(findings, "findings");
+    }
+
     /** The surface a control plane (JMX) binds to. */
     public AggregateLevelControl operations() {
         return aggregate;
@@ -272,7 +283,7 @@ public final class JBossLogManagerContainer implements AutoCloseable {
             Diagnostics.warn("failed to resume persisted overrides, continuing without them", e);
         }
 
-        DoctorService doctorService = new DoctorService(adapter, policy);
+        DoctorService doctorService = new DoctorService(adapter, policy, () -> containerFindings.get());
         EnvironmentReportService environmentReportService = new EnvironmentReportService(adapter, policy);
 
         // Phase 1 ends here (doc/specs/wildfly-deferred-handler-install.md "Two phases"): the

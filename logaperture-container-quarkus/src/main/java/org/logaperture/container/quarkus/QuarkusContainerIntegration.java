@@ -17,6 +17,8 @@ package org.logaperture.container.quarkus;
 
 import org.logaperture.adapter.jul.JulAdapterFactory;
 import org.logaperture.adapter.jul.JulLoggingAdapter;
+import org.logaperture.api.DoctorFinding;
+import org.logaperture.api.Severity;
 import org.logaperture.bridge.Diagnostics;
 import org.logaperture.container.jbosslogmanager.JBossLogManagerContainer;
 import org.logaperture.container.jbosslogmanager.JBossLogManagerReadiness;
@@ -31,10 +33,10 @@ import org.logaperture.core.spi.InstallGuidance;
 
 import java.lang.instrument.Instrumentation;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -119,8 +121,28 @@ public final class QuarkusContainerIntegration implements ContainerIntegration {
      * fast-sweep window is the safety net for versions where the handler can't be found.
      */
     private static void startEarlyResweep(JBossLogManagerContainer host) {
-        BooleanSupplier activation = DelayedHandlerWatch.lazy(java.util.logging.Logger.getLogger(""));
+        DelayedHandlerWatch.Lazy activation = DelayedHandlerWatch.lazy(java.util.logging.Logger.getLogger(""));
+        Instant installed = Instant.now();
+        Supplier<List<DoctorFinding>> earlySweepStatus = () -> earlySweepFindings(activation, installed);
+        host.setContainerFindings(earlySweepStatus);
         host.startEarlyResweep(SweepPolicy.startupWindow(), activation, Duration.ofMillis(50), Duration.ofMinutes(2));
+    }
+
+    /** How long after install the delayed handler may still be missing before {@code doctor} says so. */
+    private static final Duration LOCATE_GRACE = Duration.ofSeconds(30);
+
+    /**
+     * Q2: if the exact trigger could not be set up -- the delayed handler was never found, as on a
+     * Quarkus version that names it differently -- {@code doctor} says so, and what still covers it.
+     */
+    static List<DoctorFinding> earlySweepFindings(DelayedHandlerWatch.Lazy activation, Instant installed) {
+        if (activation.isLocated() || Instant.now().isBefore(installed.plus(LOCATE_GRACE))) {
+            return List.of();
+        }
+        return List.of(new DoctorFinding("agent.early-sweep", Severity.INFO, "quarkus",
+                "The early re-sweep trigger is off: Quarkus's QuarkusDelayedHandler was not found on the root logger.",
+                "Level and rule changes made while Quarkus starts are still repaired by the startup sweep "
+                        + "(every 250 ms for the first 15 s) and the periodic sweep.", null));
     }
 
     /** The Quarkus version for {@code logctl env}, read from the {@code quarkus-core} jar (Q8). */

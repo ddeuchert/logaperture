@@ -143,7 +143,9 @@ logctl status --json
 ### set logger
 
 The overrides made (several for a pattern target or `--force`), the handlers whose level would
-hide the new output (`warnings`), and the descendants `--force` reached.
+hide the new output (`warnings`), the descendants `--force` reached, and any logger whose new level
+the application's logging cannot emit (`belowFloor`: on Quarkus, a level below the build's
+`quarkus.log.min-level`; each entry has `loggerName`, `requested`, `lowest` and a `hint`).
 
 ```sh
 logctl set logger io.undertow.request DEBUG for 30m --reason demo --json
@@ -169,7 +171,8 @@ logctl set logger io.undertow.request DEBUG for 30m --reason demo --json
       "currentLevel": "INFO"
     }
   ],
-  "descendants": []
+  "descendants": [],
+  "belowFloor": []
 }
 ```
 

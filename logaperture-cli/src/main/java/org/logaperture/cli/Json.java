@@ -28,6 +28,7 @@ import org.logaperture.control.jmx.RecipeResetResultData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
+import org.logaperture.control.jmx.LevelFloorData;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
@@ -135,8 +136,17 @@ final class Json {
                     .str("kind", descendant.getKind())
                     .toString());
         }
+        StringJoiner belowFloor = new StringJoiner(",", "[", "]");
+        for (LevelFloorData notice : result.getBelowFloor()) {
+            belowFloor.add(new Obj()
+                    .str("loggerName", notice.getLoggerName())
+                    .str("requested", notice.getRequested())
+                    .str("lowest", notice.getLowest())
+                    .str("hint", notice.getHint())
+                    .toString());
+        }
         return new Obj().raw("overrides", overrides.toString()).raw("warnings", warnings.toString())
-                .raw("descendants", descendants.toString()).toString();
+                .raw("descendants", descendants.toString()).raw("belowFloor", belowFloor.toString()).toString();
     }
 
     static String handlerOverride(HandlerLevelOverrideData data) {

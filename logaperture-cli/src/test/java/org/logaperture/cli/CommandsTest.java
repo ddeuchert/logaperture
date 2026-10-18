@@ -912,6 +912,22 @@ class CommandsTest {
     }
 
     @Test
+    void setLevelBelowTheBackendsFloor_warnsAndNamesTheHint() {
+        mbean.setLevelResult = new SetLevelResultData(
+                List.of(new LevelOverrideData("com.acme", "TRACE", null, Instant.now().toString(), "jmx",
+                        "SESSION", null)),
+                List.of(), List.of(),
+                List.of(new org.logaperture.control.jmx.LevelFloorData("com.acme", "TRACE", "DEBUG",
+                        "the application was built with quarkus.log.min-level=DEBUG; rebuild lower")));
+        run(Commands.setLogger("com.acme", "TRACE", null, "SESSION", 0L, false, false));
+
+        String text = output();
+        assertTrue(text.contains("WARN: com.acme is set to TRACE but the logging backend only emits DEBUG and above"),
+                text);
+        assertTrue(text.contains("quarkus.log.min-level=DEBUG; rebuild lower."), text);
+    }
+
+    @Test
     void setLevelJsonEmitsTheOverrideObject() {
         mbean.setLevelResult = setLevelResult(new LevelOverrideData(
                 "com.acme", "DEBUG", null, "2026-08-25T00:00:00Z", "jmx", "SESSION", null), List.of());
@@ -919,7 +935,7 @@ class CommandsTest {
         assertEquals(
                 "{\"overrides\":[{\"loggerName\":\"com.acme\",\"level\":\"DEBUG\","
                         + "\"reason\":null,\"appliedAt\":\"2026-08-25T00:00:00Z\",\"source\":\"jmx\","
-                        + "\"tier\":\"SESSION\",\"expiresAt\":null,\"forcedBy\":null}],\"warnings\":[],\"descendants\":[]}",
+                        + "\"tier\":\"SESSION\",\"expiresAt\":null,\"forcedBy\":null}],\"warnings\":[],\"descendants\":[],\"belowFloor\":[]}",
                 output().strip());
     }
 

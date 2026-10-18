@@ -63,13 +63,32 @@ final class DelayedHandlerWatch {
      * delayed handler is on the root logger from JBoss LogManager's own initialisation, but this
      * does not depend on that having happened before our install.
      */
-    static BooleanSupplier lazy(Logger root) {
-        BooleanSupplier[] found = new BooleanSupplier[1];
-        return () -> {
-            if (found[0] == null) {
-                found[0] = find(root).orElse(null);
+    static Lazy lazy(Logger root) {
+        return new Lazy(root);
+    }
+
+    /** See {@link #lazy}. */
+    static final class Lazy implements BooleanSupplier {
+        private final Logger root;
+        private volatile BooleanSupplier found;
+
+        private Lazy(Logger root) {
+            this.root = root;
+        }
+
+        @Override
+        public boolean getAsBoolean() {
+            BooleanSupplier signal = found;
+            if (signal == null) {
+                signal = find(root).orElse(null);
+                found = signal;
             }
-            return found[0] != null && found[0].getAsBoolean();
-        };
+            return signal != null && signal.getAsBoolean();
+        }
+
+        /** Whether the delayed handler (and its {@code isActivated}) has been found yet. */
+        boolean isLocated() {
+            return found != null;
+        }
     }
 }

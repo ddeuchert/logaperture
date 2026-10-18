@@ -49,6 +49,35 @@ class DelayedHandlerWatchTest {
     }
 
     @Test
+    void lazy_isLocatedOnlyOnceTheHandlerIsFound() {
+        Logger root = Logger.getAnonymousLogger();
+        DelayedHandlerWatch.Lazy signal = DelayedHandlerWatch.lazy(root);
+        signal.getAsBoolean();
+        assertFalse(signal.isLocated());
+        root.addHandler(new QuarkusDelayedHandler());
+        signal.getAsBoolean();
+        assertTrue(signal.isLocated());
+    }
+
+    @Test
+    void earlySweepFinding_onlyWhenNeverFoundAndPastTheGrace() {
+        Logger root = Logger.getAnonymousLogger();
+        DelayedHandlerWatch.Lazy missing = DelayedHandlerWatch.lazy(root);
+        missing.getAsBoolean();
+
+        assertTrue(QuarkusContainerIntegration.earlySweepFindings(missing, java.time.Instant.now()).isEmpty(),
+                "inside the grace period nothing is claimed");
+        var findings = QuarkusContainerIntegration.earlySweepFindings(missing,
+                java.time.Instant.now().minusSeconds(120));
+        assertTrue(findings.size() == 1 && findings.get(0).check().equals("agent.early-sweep"));
+
+        root.addHandler(new QuarkusDelayedHandler());
+        missing.getAsBoolean();
+        assertTrue(QuarkusContainerIntegration.earlySweepFindings(missing,
+                java.time.Instant.now().minusSeconds(120)).isEmpty());
+    }
+
+    @Test
     void lazy_findsTheHandlerWhenItAppearsLater() {
         Logger root = Logger.getAnonymousLogger();
         BooleanSupplier signal = DelayedHandlerWatch.lazy(root);
