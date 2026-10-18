@@ -225,7 +225,8 @@ Two requirements carry into any spec:
   be about a gigabyte. §16.7 applies.
 - **Formatting stays on the application thread, as Logback's `AsyncAppender` does it.** The
   harness formatted the message in `append` because the arguments a caller passes may change
-  after the call returns (Logback's `prepareForDeferredProcessing` exists for this reason). That cost is in every figure above.
+  after the call returns (Logback's `prepareForDeferredProcessing` exists for this reason).
+  That cost is in every figure above.
 
 ## Findings: installing and removing the handler (question 2)
 
