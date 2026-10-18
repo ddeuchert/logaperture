@@ -1,8 +1,8 @@
 # Spike — `logctl` as a handler, and `logctl listen`
 
 Status: **in progress.** Question 1 (transport) is answered for plain Logback on JDK 21, and
-question 2 (installing and removing the handler) for plain Logback, plain JUL and WildFly.
-Questions 3–7 are open.
+question 2 (installing and removing the handler) for plain Logback, plain JUL and WildFly, and
+question 3 (lifecycle) for plain Logback. Questions 4–7 are open.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §8.2 (the agent never listens),
 §9.9 (the agent never transmits anything), §13 risk 4 (scope creep toward "log router"), §16.7
@@ -293,9 +293,9 @@ existing hooks behave, against the `develop` build at b7d4a6c.
   registers a `LoggerContextListener` with `isResetResistant() == false`. Logback removes such
   listeners after the reset they fire on. Measured: after the first reconfiguration,
   `com.acme.public` stayed at DEBUG. After the second and third, it fell to INFO until the
-  verification sweep restored it, 9–16 s later (30 s interval). Separately, because `onReset` runs before
-  Joran, a logger the file gives a level (`com.acme.private`) is overwritten even the first time
-  and waits for the sweep.
+  verification sweep restored it, 9–16 s later (30 s interval). Separately, because `onReset`
+  runs before Joran, a logger the file gives a level (`com.acme.private`) is overwritten even
+  the first time and waits for the sweep.
 - **WildFly: the configuration listener doesn't fire for `/subsystem=logging` changes** on
   26.1.3, contrary to the comment on `WildFlyContainerIntegration.wireConfigurationListener`.
   Measured: after `logger=…Worker:add(level=INFO)`, the agent's DEBUG override read INFO, and
@@ -303,7 +303,74 @@ existing hooks behave, against the `develop` build at b7d4a6c.
 
 In both cases the sweep is the safety net it was designed to be, so no override is lost for
 good. But each reconfiguration opens a window of up to one sweep interval where it isn't
-applied. Both deserve their own issues, outside this spike.
+applied. Filed as [#231](https://github.com/ddeuchert/logaperture/issues/231) (Logback) and
+[#232](https://github.com/ddeuchert/logaperture/issues/232) (WildFly), both for 1.0.0.
+
+## Findings: lifecycle (question 3)
+
+The harness gave the handler to **leases**. `open(name, leaseMs)` creates a lease and attaches
+the handler if it isn't attached already. Every `drain` call renews the caller's lease. A reaper
+thread in the agent checks every 250 ms, drops leases not renewed within `leaseMs`, and removes
+the handler once no lease is left. `close(id)` ends a lease at once, and the listener calls it
+from a shutdown hook. The lease was 3 s, and each listener polled every 100 ms.
+
+### 11. A listener that dies without cleaning up is detected within one lease
+
+On plain Logback, with four listeners (A–D) started and stopped against one application:
+
+| Event | Agent | Delay |
+|---|---|---|
+| `kill -9` A while B and C listen | A's lease expires; the handler stays | 3.1 s |
+| `SIGSTOP` B (as Ctrl-Z would) | B's lease expires; the handler stays for C | 3.1 s |
+| `SIGCONT` B | B finds its lease gone, opens a new one, and reports `records 1348..2511 were not seen` | immediate |
+| `SIGTERM` B, then C | Each lease is closed by the shutdown hook; the handler is removed after C | 5 ms |
+| `kill -9` D, the only listener | Lease expires, handler removed | 3.1 s |
+
+Leases need nothing new from the transport, because the `drain` calls RING already makes are
+the heartbeat. The only state the agent keeps per listener is one lease with its last-seen
+time. JMX doesn't help here. The connector server that `startLocalManagementAgent` creates isn't
+exposed to code in the JVM, so its connection-closed notifications can't be heard. RMI's own
+cleanup (the DGC lease, 10 minutes by default, or the
+connector's 2-minute idle timeout) is far too slow to bound a handler's lifetime.
+
+### 12. Several listeners share one handler
+
+B and C listened together for 17 s and A for the first 4 s, all from one handler and one ring,
+each with its own cursor. None lost a record: C received 3,280 records with no gap. Each
+listener's position is its cursor, which `logctl` holds, so the agent needs no per-listener
+buffer. A second listener costs only its own `drain` calls.
+
+One refinement came out of the pause test. When B came back, it reopened at the ring's
+**current** position and reported the 1,164 records it missed. But C had kept the handler
+attached, so those records were still in the ring. A reopened lease should resume from the
+listener's old cursor when that is still in the ring, and report a gap only for what has been
+overwritten.
+
+### 13. "Add a handler" and `listen` are two different features
+
+Leases settle what a bare `listen` needs: it attaches the handler, and when the last listener
+goes, the handler goes too, whether the exit was clean or a crash. Nothing is left in the
+application. A separate `add handler` command would be a different thing: a handler that stays
+**without** a listener. That would be worth having for two reasons:
+
+- **Backlog.** A handler added earlier keeps filling the ring. A later `listen` could start from
+  recent history rather than from now: `logctl listen --since 5m`, or "show me what happened
+  just before the error".
+- **Step 3 of #195.** On-the-fly handlers with their own destination, such as a file or a
+  console, have no listener at all.
+
+Such a handler outlives any client, so it needs the same lifetime rules as an override: a tier
+(session, `for <duration>`, sticky), expiry, an audit line, and a place in `status` and in
+`reset`. It also costs every log call it sees while nobody is reading, which is question 4.
+
+The spec should decide:
+
+- whether 1.x ships `listen` on its own, with lease-bound handlers only, and leaves `add handler`
+  for step 3;
+- or whether it ships both, with `listen` reading from an existing handler when there is one and
+  making a lease-bound one when there isn't.
+
+The harness supports either. The lease mechanism is the same.
 
 ## Not established
 
@@ -319,6 +386,9 @@ applied. Both deserve their own issues, outside this spike.
 - **WildFly per-deployment logging.** A deployment with its own logging configuration or a
   logging profile gets its own log context, which a handler on the server's root never sees.
   Not tested, and WildFly versions other than 26.1.3 weren't tried.
+- **Leases on JUL and WildFly, and over long runs.** The lease test ran on plain Logback for
+  about 30 s. Server-side JMX connection state left behind by a `kill -9`'d client wasn't
+  inspected.
 - **The exact Logback version that added `ConfigurationEventListener`.** Only 1.2.13, 1.3.0,
   1.3.14, 1.4.0, 1.4.14 and 1.5.x were checked.
 - **Records with stack traces.** No record carried a throwable. Rendering one on the
@@ -341,4 +411,6 @@ The question 2 harness reuses `TapRing` and adds `Tap2` (the agent, with one bin
 Logback and one for JUL), `AppQ2` (the two-logger application) and `Probe`. `Probe` attaches
 to a pid and runs a list of steps: `start` and `start+` (with the re-add hook), `stop`,
 `reconf`, `status`, `count:<seconds>` and `sh:<command>`, which ran jboss-cli inside the WildFly
-container.
+container. For question 3, `Tap2` gained `open`, `drainFor` and `close` plus the reaper thread,
+and `Lsn` is a listener that holds a lease, polls, reports once a second, and closes its lease
+from a shutdown hook.
