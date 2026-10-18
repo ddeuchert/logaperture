@@ -595,8 +595,10 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             }
         }
 
-        // This change replaces each earlier one on the same loggers: let go of them first.
-        for (HandlerLevelOverride tied : List.copyOf(overrides.all().values())) {
+        // This change replaces each earlier one on the same loggers: let go of them first. Under a
+        // denial nothing is changed (no persist capability to touch the stored follower); --keep-handlers
+        // does let go (spec: setting the same logger again replaces its tie).
+        for (HandlerLevelOverride tied : denied == null ? List.copyOf(overrides.all().values()) : List.<HandlerLevelOverride>of()) {
             if (tied.follows().stream().anyMatch(changedNames::contains)
                     || tied.thenFollows().stream().anyMatch(changedNames::contains)) {
                 Set<String> follows = new TreeSet<>(tied.follows());
@@ -663,7 +665,11 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             }
             return;
         }
-        if (blocks || own.isPresent()) { // a follower already: this change joins it
+        // A follower already: this change joins it only if the handler's own level, which the follower
+        // lowered, would still drop the records -- a quieter change lets it go instead.
+        boolean followerBlocked = own.isPresent() && baselines.isCaptured(handler)
+                && baselines.get(handler).map(base -> base.compareTo(change.level()) > 0).orElse(false);
+        if (blocks || followerBlocked) {
             toFollow.computeIfAbsent(handler, h -> new TreeSet<>()).add(change.loggerName());
         }
     }

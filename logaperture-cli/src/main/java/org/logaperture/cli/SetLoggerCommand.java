@@ -250,6 +250,8 @@ final class SetLoggerCommand implements Command {
         // One warning per handler, however many of the loggers it would block.
         Map<String, HandlerFloorData> blocking = new LinkedHashMap<>();
         Map<String, DescendantLevelData> descendants = new LinkedHashMap<>();
+        Map<String, FollowedHandlerData> following = new LinkedHashMap<>();
+        String followDenied = null;
         List<String> refusals = new ArrayList<>();
         int exitCode = CliError.OK;
         for (String name : names) {
@@ -263,6 +265,12 @@ final class SetLoggerCommand implements Command {
                 for (HandlerFloorData floor : result.getBlockingHandlers()) {
                     blocking.putIfAbsent(floor.getHandlerRef(), floor);
                 }
+                for (FollowedHandlerData followed : result.getFollowing()) {
+                    following.putIfAbsent(followed.getHandlerRef(), followed);
+                }
+                if (followDenied == null) {
+                    followDenied = result.getFollowDenied();
+                }
             } catch (RuntimeException e) {
                 Main.Failure failure = Main.failureOf(e);
                 refusals.add(name + ": " + failure.message());
@@ -272,7 +280,8 @@ final class SetLoggerCommand implements Command {
             }
         }
         render(out, chosenLevel, new SetLevelResultData(overrides, new ArrayList<>(blocking.values()),
-                new ArrayList<>(descendants.values())), null, chosenTier, chosenReason);
+                new ArrayList<>(descendants.values()), new ArrayList<>(following.values()), followDenied), null,
+                chosenTier, chosenReason);
         for (String refusal : refusals) {
             err.println(refusal);
         }
