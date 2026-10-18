@@ -76,6 +76,14 @@ jobs:
           pip install -r requirements-docs.txt
           mkdocs build --strict
 
+      - name: QuarkusIT on the tested Quarkus version
+        # doc/specs/quarkus-support.md Q6: the release always runs the Quarkus profile. It is the one
+        # integration test this workflow runs; the CI job has the full version matrix.
+        run: |
+          ./mvnw -B --no-transfer-progress -Pquarkus -pl logaperture-it -am verify \
+            -Dit.test=QuarkusIT -Dfailsafe.failIfNoSpecifiedTests=false \
+            -Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false
+
       - name: Build, test and sign
         # -am pulls in the agent/cli and their deps; it does NOT pull in
         # logaperture-it, so the WildFly Testcontainers IT (already run on the

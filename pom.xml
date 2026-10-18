@@ -284,6 +284,18 @@
     </profile>
 
     <!--
+      The Quarkus sample application and QuarkusIT (doc/specs/quarkus-support.md Q6). Off in the
+      default build, which stays fast; CI runs it as its own job and the release workflow always does.
+      Build and test: mvn -Pquarkus verify [-Dquarkus.version=3.33.4]
+    -->
+    <profile>
+      <id>quarkus</id>
+      <modules>
+        <module>logaperture-sample-quarkus</module>
+      </modules>
+    </profile>
+
+    <!--
       Maven Central (doc/specs/maven-central-publishing.md). Adds sources and javadoc jars and
       signs every artifact. `deploy` goes to a staging directory, never to Central:
         mvn -Prelease -DskipTests deploy -DaltDeploymentRepository=staging::file:target/staging
