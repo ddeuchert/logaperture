@@ -30,8 +30,11 @@ import javax.servlet.http.HttpServletResponse;
  *   <li>{@code POST /logaperture-sample-war/demo/flood/start} — make the stock sync fail
  *       many times a second.</li>
  *   <li>{@code POST /logaperture-sample-war/demo/flood/stop} — end the flood.</li>
+ *   <li>{@code POST /logaperture-sample-war/demo/payment-outage/start} — make every order's
+ *       first payment attempt fail with a refused connection and its stack trace.</li>
+ *   <li>{@code POST /logaperture-sample-war/demo/payment-outage/stop} — end the outage.</li>
  *   <li>{@code POST /logaperture-sample-war/demo/stop} — stop everything.</li>
- *   <li>{@code GET  /logaperture-sample-war/demo/status} — running? flooding?</li>
+ *   <li>{@code GET  /logaperture-sample-war/demo/status} — running? flooding? payment outage?</li>
  * </ul>
  *
  * <p>A start of something already running is a no-op that still answers {@code 200}, so the
@@ -63,9 +66,14 @@ public class DemoServlet extends HttpServlet {
             writeStatus(resp, shop.startFlood() ? "flood started" : "already flooding");
         } else if ("/flood/stop".equals(path)) {
             writeStatus(resp, shop.stopFlood() ? "flood stopped" : "was not flooding");
+        } else if ("/payment-outage/start".equals(path)) {
+            writeStatus(resp, shop.startPaymentOutage() ? "payment outage started" : "already out");
+        } else if ("/payment-outage/stop".equals(path)) {
+            writeStatus(resp, shop.stopPaymentOutage() ? "payment outage stopped" : "was not out");
         } else {
-            resp.sendError(HttpServletResponse.SC_NOT_FOUND,
-                    "POST supports /demo/start, /demo/stop, /demo/flood/start and /demo/flood/stop");
+            resp.sendError(HttpServletResponse.SC_NOT_FOUND, "POST supports /demo/start, /demo/stop,"
+                    + " /demo/flood/start, /demo/flood/stop, /demo/payment-outage/start and"
+                    + " /demo/payment-outage/stop");
         }
     }
 
@@ -73,6 +81,7 @@ public class DemoServlet extends HttpServlet {
         DemoShop shop = DemoShop.INSTANCE;
         resp.setStatus(HttpServletResponse.SC_OK);
         resp.setContentType("text/plain; charset=UTF-8");
-        resp.getWriter().printf("%s%nrunning: %s%nflooding: %s%n", action, shop.running(), shop.flooding());
+        resp.getWriter().printf("%s%nrunning: %s%nflooding: %s%npayment outage: %s%n", action, shop.running(),
+                shop.flooding(), shop.paymentOutage());
     }
 }
