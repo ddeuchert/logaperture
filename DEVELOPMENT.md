@@ -133,6 +133,8 @@ The module list and its rationale are in
   `LoggingAdapter`s (JUL covers JBoss LogManager and plain `java.util.logging`).
 - `logaperture-container-none`, `logaperture-container-wildfly` — per-environment
   `ContainerIntegration`s (detect, discover contexts, wire lifecycle).
+- `logaperture-container-jbosslogmanager` — what the JBoss LogManager containers (WildFly, and Quarkus
+  next) share: the readiness gate.
 - `logaperture-control-jmx` — the `LevelControlMXBean` surface.
 - `logaperture-agent` — the `premain` / `agentmain` entry points.
 - `logaperture-cli` — `logctl`.

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.container.wildfly;
+package org.logaperture.container.jbosslogmanager;
 
 import org.logaperture.bridge.Diagnostics;
 
@@ -44,16 +44,45 @@ import java.util.function.Supplier;
  * first JUL call itself with the context classloader temporarily set to
  * that class's loader — exactly as WildFly does. Whichever thread wins the
  * race, JUL gets JBoss LogManager, so no fixed settle delay is needed.
+ *
+ * <p>Shared by every container that runs on JBoss LogManager (WildFly, Quarkus,
+ * doc/specs/quarkus-support.md Q1). What differs per container is the extra
+ * {@link LoadedClassCondition} that must also hold before the first JUL call:
+ * WildFly passes {@link #NO_EXTRA_CONDITION} (its behaviour is unchanged), Quarkus
+ * passes {@link #JUL_INITIALISATION_STARTED}.
  */
-final class WildFlyLogManagerReadiness {
+public final class JBossLogManagerReadiness {
 
-    static final String JBOSS_LOG_MANAGER = "org.jboss.logmanager.LogManager";
+    public static final String JBOSS_LOG_MANAGER = "org.jboss.logmanager.LogManager";
+    private static final String JBOSS_LOG_CONTEXT = "org.jboss.logmanager.LogContext";
     private static final String MANAGER_PROPERTY = "java.util.logging.manager";
 
     private static final long POLL_INTERVAL_MS = 100;
     private static final long MAX_WAIT_MS = 60_000; // WildFly loads it within the first second or two
 
-    private WildFlyLogManagerReadiness() {
+    /**
+     * A container-specific readiness condition over the classes loaded so far, checked on every poll
+     * after the JBoss LogManager class itself has been found. Must only inspect class presence; it
+     * must never touch {@code java.util.logging}.
+     */
+    @FunctionalInterface
+    public interface LoadedClassCondition {
+        boolean holds(Class<?>[] loadedClasses);
+    }
+
+    /** WildFly's condition: nothing beyond JBoss LogManager being loaded and named by the property. */
+    public static final LoadedClassCondition NO_EXTRA_CONDITION = loaded -> true;
+
+    /**
+     * Quarkus's condition (doc/specs/quarkus-support.md Q1, spike finding 2): the application itself has
+     * started initialising JBoss LogManager, signalled by {@code org.jboss.logmanager.LogContext} being
+     * loaded. The gate is then never the first JUL caller, so it cannot change the build-time
+     * min-level floor Quarkus sets as it initialises.
+     */
+    public static final LoadedClassCondition JUL_INITIALISATION_STARTED =
+            loaded -> findClassByName(loaded, JBOSS_LOG_CONTEXT) != null;
+
+    private JBossLogManagerReadiness() {
     }
 
     /**
@@ -63,15 +92,28 @@ final class WildFlyLogManagerReadiness {
      * WildFly after all, or a broken launch) it gives up with a diagnostic
      * and does not run {@code onReady}.
      */
-    static void awaitJBossLogManagerThen(Instrumentation inst, Runnable onReady) {
-        // The property check is cheap; only then pay for scanning every loaded class.
-        Supplier<Class<?>> loadedManagerClass = () -> JBOSS_LOG_MANAGER.equals(System.getProperty(MANAGER_PROPERTY))
-                ? findClassByName(inst.getAllLoadedClasses(), JBOSS_LOG_MANAGER)
-                : null;
-        awaitJBossLogManagerThen(loadedManagerClass, POLL_INTERVAL_MS, MAX_WAIT_MS, onReady);
+    public static void awaitJBossLogManagerThen(
+            Instrumentation inst, LoadedClassCondition extraCondition, Runnable onReady) {
+        awaitJBossLogManagerThen(loadedManagerClass(inst, extraCondition), POLL_INTERVAL_MS, MAX_WAIT_MS, onReady);
     }
 
-    /** Package-visible for {@code WildFlyLogManagerReadinessTest}. */
+    /**
+     * The manager class once it is loaded, named by the {@code java.util.logging.manager} property, and
+     * {@code extraCondition} holds; otherwise {@code null}. Package-visible for the test.
+     */
+    static Supplier<Class<?>> loadedManagerClass(Instrumentation inst, LoadedClassCondition extraCondition) {
+        // The property check is cheap; only then pay for scanning every loaded class.
+        return () -> {
+            if (!JBOSS_LOG_MANAGER.equals(System.getProperty(MANAGER_PROPERTY))) {
+                return null;
+            }
+            Class<?>[] loaded = inst.getAllLoadedClasses();
+            Class<?> manager = findClassByName(loaded, JBOSS_LOG_MANAGER);
+            return manager != null && extraCondition.holds(loaded) ? manager : null;
+        };
+    }
+
+    /** Package-visible for {@code JBossLogManagerReadinessTest}. */
     static void awaitJBossLogManagerThen(
             Supplier<Class<?>> loadedManagerClass, long pollIntervalMs, long maxWaitMs, Runnable onReady) {
         long deadline = System.nanoTime() + maxWaitMs * 1_000_000L;
@@ -79,7 +121,7 @@ final class WildFlyLogManagerReadiness {
         while ((managerClass = loadedManagerClass.get()) == null) {
             if (System.nanoTime() - deadline >= 0) {
                 Diagnostics.warn(JBOSS_LOG_MANAGER + " was not loaded within " + maxWaitMs
-                        + "ms; not installing WildFly level control");
+                        + "ms; not installing level control");
                 return;
             }
             try {
@@ -99,7 +141,7 @@ final class WildFlyLogManagerReadiness {
             return;
         }
         Diagnostics.warn(JBOSS_LOG_MANAGER + " is loaded but the installed LogManager is "
-                + installed + "; not installing WildFly level control");
+                + installed + "; not installing level control");
     }
 
     /** The class with the given name, or {@code null} if it is not in {@code classes}. */

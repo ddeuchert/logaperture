@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.container.wildfly;
+package org.logaperture.container.jbosslogmanager;
 
 import org.junit.jupiter.api.Test;
 
@@ -38,13 +38,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * so that is left to the real-WildFly IT; the pieces of the gate are covered
  * individually here.
  */
-class WildFlyLogManagerReadinessTest {
+class JBossLogManagerReadinessTest {
 
     private static final Class<?> JBOSS_MANAGER_CLASS = org.jboss.logmanager.LogManager.class;
 
     @Test
     void awaitJBossLogManagerThen_runsTheCallbackOnceTheClassIsLoaded() {
-        assertEquals(WildFlyLogManagerReadiness.JBOSS_LOG_MANAGER,
+        assertEquals(JBossLogManagerReadiness.JBOSS_LOG_MANAGER,
                 java.util.logging.LogManager.getLogManager().getClass().getName(),
                 "the pom installs JBoss LogManager for this test JVM");
 
@@ -52,7 +52,7 @@ class WildFlyLogManagerReadinessTest {
         AtomicInteger polls = new AtomicInteger();
         Supplier<Class<?>> appearsOnThirdPoll = () -> polls.incrementAndGet() < 3 ? null : JBOSS_MANAGER_CLASS;
 
-        WildFlyLogManagerReadiness.awaitJBossLogManagerThen(appearsOnThirdPoll, 1, 5_000, () -> ran.set(true));
+        JBossLogManagerReadiness.awaitJBossLogManagerThen(appearsOnThirdPoll, 1, 5_000, () -> ran.set(true));
 
         assertTrue(ran.get());
         assertEquals(3, polls.get());
@@ -62,7 +62,7 @@ class WildFlyLogManagerReadinessTest {
     void awaitJBossLogManagerThen_givesUpWithoutRunningTheCallbackWhenTheClassNeverLoads() {
         AtomicBoolean ran = new AtomicBoolean(false);
 
-        WildFlyLogManagerReadiness.awaitJBossLogManagerThen(() -> null, 1, 50, () -> ran.set(true));
+        JBossLogManagerReadiness.awaitJBossLogManagerThen(() -> null, 1, 50, () -> ran.set(true));
 
         assertFalse(ran.get());
     }
@@ -72,9 +72,9 @@ class WildFlyLogManagerReadinessTest {
         Class<?>[] loaded = {String.class, JBOSS_MANAGER_CLASS, Integer.class};
 
         assertSame(JBOSS_MANAGER_CLASS,
-                WildFlyLogManagerReadiness.findClassByName(loaded, WildFlyLogManagerReadiness.JBOSS_LOG_MANAGER));
-        assertNull(WildFlyLogManagerReadiness.findClassByName(loaded, "no.such.Manager"));
-        assertNull(WildFlyLogManagerReadiness.findClassByName(new Class<?>[0], "java.lang.String"));
+                JBossLogManagerReadiness.findClassByName(loaded, JBossLogManagerReadiness.JBOSS_LOG_MANAGER));
+        assertNull(JBossLogManagerReadiness.findClassByName(loaded, "no.such.Manager"));
+        assertNull(JBossLogManagerReadiness.findClassByName(new Class<?>[0], "java.lang.String"));
     }
 
     @Test
@@ -83,7 +83,7 @@ class WildFlyLogManagerReadinessTest {
         ClassLoader moduleLoader = new URLClassLoader(new URL[0], null);
 
         Supplier<ClassLoader> readContextLoader = () -> Thread.currentThread().getContextClassLoader();
-        ClassLoader seenDuringCall = WildFlyLogManagerReadiness.callWithContextClassLoader(moduleLoader, readContextLoader);
+        ClassLoader seenDuringCall = JBossLogManagerReadiness.callWithContextClassLoader(moduleLoader, readContextLoader);
 
         assertSame(moduleLoader, seenDuringCall);
         assertSame(original, Thread.currentThread().getContextClassLoader());
@@ -98,7 +98,7 @@ class WildFlyLogManagerReadinessTest {
             throw new IllegalStateException("boom");
         };
         assertThrows(IllegalStateException.class,
-                () -> WildFlyLogManagerReadiness.callWithContextClassLoader(moduleLoader, failing));
+                () -> JBossLogManagerReadiness.callWithContextClassLoader(moduleLoader, failing));
 
         assertSame(original, Thread.currentThread().getContextClassLoader());
     }
@@ -108,8 +108,52 @@ class WildFlyLogManagerReadinessTest {
         ClassLoader original = Thread.currentThread().getContextClassLoader();
 
         Supplier<ClassLoader> readContextLoader = () -> Thread.currentThread().getContextClassLoader();
-        ClassLoader seenDuringCall = WildFlyLogManagerReadiness.callWithContextClassLoader(null, readContextLoader);
+        ClassLoader seenDuringCall = JBossLogManagerReadiness.callWithContextClassLoader(null, readContextLoader);
 
         assertSame(original, seenDuringCall);
+    }
+
+    @Test
+    void noExtraCondition_holdsForAnyLoadedClasses() {
+        assertTrue(JBossLogManagerReadiness.NO_EXTRA_CONDITION.holds(new Class<?>[0]));
+        assertTrue(JBossLogManagerReadiness.NO_EXTRA_CONDITION.holds(new Class<?>[] {String.class}));
+    }
+
+    @Test
+    void julInitialisationStarted_holdsOnlyOnceLogContextIsLoaded() {
+        assertFalse(JBossLogManagerReadiness.JUL_INITIALISATION_STARTED.holds(
+                new Class<?>[] {String.class, JBOSS_MANAGER_CLASS}));
+        assertTrue(JBossLogManagerReadiness.JUL_INITIALISATION_STARTED.holds(
+                new Class<?>[] {String.class, org.jboss.logmanager.LogContext.class}));
+    }
+
+    @Test
+    void loadedManagerClass_waitsForTheExtraConditionAsWellAsTheManagerClass() {
+        java.lang.instrument.Instrumentation inst = instrumentationReporting(
+                new Class<?>[] {String.class, JBOSS_MANAGER_CLASS});
+
+        assertSame(JBOSS_MANAGER_CLASS,
+                JBossLogManagerReadiness.loadedManagerClass(inst, JBossLogManagerReadiness.NO_EXTRA_CONDITION).get());
+        assertNull(JBossLogManagerReadiness.loadedManagerClass(inst, loaded -> false).get(),
+                "manager class loaded but the container's extra condition not yet true");
+    }
+
+    @Test
+    void loadedManagerClass_isNullWhileTheManagerClassItselfIsAbsent() {
+        java.lang.instrument.Instrumentation inst = instrumentationReporting(new Class<?>[] {String.class});
+
+        assertNull(JBossLogManagerReadiness.loadedManagerClass(inst, JBossLogManagerReadiness.NO_EXTRA_CONDITION).get());
+    }
+
+    private static java.lang.instrument.Instrumentation instrumentationReporting(Class<?>[] loaded) {
+        return (java.lang.instrument.Instrumentation) java.lang.reflect.Proxy.newProxyInstance(
+                JBossLogManagerReadinessTest.class.getClassLoader(),
+                new Class<?>[] {java.lang.instrument.Instrumentation.class},
+                (proxy, method, args) -> {
+                    if (method.getName().equals("getAllLoadedClasses")) {
+                        return loaded;
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                });
     }
 }
