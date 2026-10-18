@@ -1,8 +1,7 @@
-# Quarkus JVM mode support — overview
+# Quarkus JVM mode support
 
-Status: **Overview, pre-sign-off.** This is not yet an implementation spec. It collects what the
-spike established and the decisions a spec has to make. The spec is written from it once the
-release slot is chosen on 2026-10-04 (top-level spec §17.1).
+Status: **Signed off 2026-10-18** (decisions Q1 to Q9 below). Not yet implemented. Release `1.1.0`;
+the implementation PR is held as a draft until 1.0.0 ships (Q9).
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §15.9 (Quarkus), §15.1–15.5
 (container SPI, verification sweep), §17.1 (release plan). Evidence:
@@ -18,12 +17,37 @@ After this feature, the user will be able to:
 - Add LogAperture to a Quarkus app running in JVM mode with one `-javaagent` flag (or
   `JAVA_OPTS_APPEND` in Quarkus's container images), and control it with `logctl` the same way
   as a WildFly server: `set logger`, `set handler`, vendor defaults, `drop` / `trim` rules, `top`,
-  `doctor`, `storms`.
-- See Quarkus's own handlers in `logctl list handlers` as `console`, `file` and so on, and raise
-  or lower them.
+  `doctor`, storms.
+- See Quarkus's own handlers in `logctl list handlers` as `console`, `file`, `syslog` and
+  `socket`, and raise or lower them.
 - Get a clear warning when `logctl set logger X TRACE` can't take effect because the app was
   built with a higher `quarkus.log.min-level`, and what to rebuild with.
-- Do the same on a plain `java -jar` app that logs through `java.util.logging` alone.
+- See `Quarkus <version>` in `logctl env`.
+
+Guide pages this changes: new `get-started/install-quarkus.md` (install, the supported versions,
+the limits below); `reference/doctor-checks.md` (the new min-level check, the autoflush
+demotion); `get-started/quick-start.md` and `troubleshooting.md` (a Quarkus pointer); `index.md`
+and `mkdocs.yml` navigation. `reference/agent-options.md` changes only if the slice adds a
+`-Dlogaperture.*` property (none is planned).
+
+Not part of this feature: plain `java -jar` apps on `java.util.logging` alone
+([#221](https://github.com/ddeuchert/logaperture/issues/221)).
+
+## Decisions
+
+All nine were agreed on 2026-10-18 from the sign-off review.
+
+| Id | Decision | Outcome |
+|---|---|---|
+| Q1 | Readiness gate | The poll, timeout and TCCL handling become shared code; the "ready" condition is a parameter. Quarkus passes the new condition (`org.jboss.logmanager.LogContext` loaded). WildFly keeps today's condition, so its behaviour does not change in 1.1.0. |
+| Q2 | Early re-sweep | **Both.** Poll `QuarkusDelayedHandler.isActivated()` by reflection and sweep when it turns true; and run a startup fast sweep (about every 250 ms for the first 10 to 20 s after install) as the safety net. The fast sweep is a startup window in the shared sweep policy, switched on by the container: Quarkus on, WildFly off in 1.1.0 ([#223](https://github.com/ddeuchert/logaperture/issues/223) for WildFly). The interval and window are sized from a measured sweep cost on a large app. |
+| Q3 | Handler names | Type-based only: `console`, `file`, `syslog`, `socket`. Configured names are [#222](https://github.com/ddeuchert/logaperture/issues/222). |
+| Q4 | Quarkus versions | The tested minor (3.39.x) plus the current LTS stream, both in the IT; the guide names exactly those. Any other version is not blocked: it degrades to the periodic sweep plus the fast sweep, and `doctor` reports what could not be found. |
+| Q5 | Plain-JVM JUL | Split out: [#221](https://github.com/ddeuchert/logaperture/issues/221), same milestone, built right after this on the shared gate. #114 is Quarkus only. |
+| Q6 | Sample module | In the reactor behind a profile, off in the default build; a separate CI job activates it and the release workflow always does. |
+| Q7 | `doctor` autoflush | On Quarkus, the autoflush finding on Quarkus's own default handlers is reported as info, marked as a framework default. A warning stays for handlers a user created. |
+| Q8 | `logctl env` | Prints `Quarkus <version>`, read from the `quarkus-core` jar manifest (a file read, never touching JUL). |
+| Q9 | Slot | Release `1.1.0`, ahead of Spring Boot (which stays in 1.2 per §17.1). The spec merges first; the implementation is a draft PR on `feature/114-quarkus-support`, labelled "do not merge until 1.0.0 ships", kept rebased on `develop` and run against `WildFlyContainerIT` while held. `on develop` is applied to #114 only when the PR merges. |
 
 ## Where things stand
 
@@ -31,7 +55,7 @@ After this feature, the user will be able to:
 |---|---|
 | Engine: aggregate, services, state store, `logctl` | Works unchanged |
 | Level control, `for` expiry, `sticky` across restart, reset | Works |
-| `drop` / `trim` rules | Work, but only after the first sweep (see below) |
+| `drop` / `trim` rules | Work, but only after the first sweep |
 | Detection | Missing: today's agent does nothing on Quarkus and breaks nothing |
 | Readiness gate | The WildFly gate is **unsafe** here as it stands |
 | Handler catalogue, `set handler`, handler-floor hint, `top` | Miss Quarkus's real handlers |
@@ -41,71 +65,87 @@ After this feature, the user will be able to:
 
 ## What has to be built
 
-1. **A safe readiness gate.** The WildFly gate fires on the first line of `QuarkusEntryPoint.main`
-   and can make the first JUL call before Quarkus sets its build-time floor
-   (`logging.initial-configurator.min-level`). JBoss LogManager fixes that floor per logger at
-   creation, so winning the race permanently changes the app's logging (floor `ALL` instead of
-   `DEBUG`: 3 of 21 timing-shifted runs, 2 of 2 at a 1 ms poll). The fix is one more
-   class-presence condition, "`org.jboss.logmanager.LogContext` is loaded", so the agent only ever
-   joins an initialisation the app already started (16 of 16 runs correct). Spike finding 2.
-2. **`QuarkusContainerIntegration`.** Detection without touching JUL: the `QuarkusEntryPoint`
-   resource *and* a Quarkus launch (`quarkus-run.jar`, `io.quarkus.runner.GeneratedMain`, a
-   `*-runner.jar`, or `quarkus-application.dat`), because a bootstrap jar on a non-Quarkus
-   classpath otherwise triggers a false positive. The host is the existing JBoss LogManager
-   container, generalised to take a container name. Findings 1, 7.
-3. **An early re-sweep.** Quarkus's startup logging setup replaces our filters on its root
-   `QuarkusDelayedHandler`. The periodic sweep restores them idempotently, but with the default
-   30 s interval a sticky `drop` rule leaks for the first ~30 s of every start. Re-sweeping when
-   `QuarkusDelayedHandler.isActivated()` turns true restored everything at +1.8 s, before the app
-   finished starting. The JBoss LogManager config listener never fires on Quarkus. Finding 5.
-4. **A transparent delayed handler.** Quarkus's console and file handlers are children of
-   `QuarkusDelayedHandler`. The JUL adapter must catalogue those children in its place for
+1. **A safe readiness gate (Q1).** The WildFly gate fires on the first line of
+   `QuarkusEntryPoint.main` and can make the first JUL call before Quarkus sets its build-time
+   floor (`logging.initial-configurator.min-level`). JBoss LogManager fixes that floor per logger
+   at creation, so winning the race permanently changes the app's logging (floor `ALL` instead of
+   `DEBUG`: 3 of 21 timing-shifted runs, 2 of 2 at a 1 ms poll). The Quarkus condition adds
+   "`org.jboss.logmanager.LogContext` is loaded", so the agent only ever joins an initialisation
+   the app already started (16 of 16 runs correct). Shared code, parameterised condition; the
+   WildFly condition is untouched. Spike finding 2.
+2. **`QuarkusContainerIntegration` (Q4, Q8).** Detection without touching JUL: the
+   `QuarkusEntryPoint` resource *and* a Quarkus launch (`quarkus-run.jar`,
+   `io.quarkus.runner.GeneratedMain`, a `*-runner.jar`, or `quarkus-application.dat`), because a
+   bootstrap jar on a non-Quarkus classpath otherwise triggers a false positive. The host is the
+   existing JBoss LogManager container, generalised to take a container name. The version comes
+   from the `quarkus-core` jar manifest. Findings 1, 7.
+3. **Early re-sweep, two mechanisms (Q2).** Quarkus's startup logging setup replaces our filters
+   on its root `QuarkusDelayedHandler`.
+   - *Exact trigger:* poll `QuarkusDelayedHandler.isActivated()` (found by reflection) and run
+     the verification sweep when it turns true. In the spike this restored everything at +1.8 s,
+     before the app finished starting. If the reflection finds nothing, `doctor` says the early
+     sweep is off and why.
+   - *Safety net:* a startup fast-sweep window in the shared sweep policy, enabled by the
+     container. It needs no Quarkus internals, so it covers Quarkus versions where the reflection
+     fails and dev-mode live reload. Sweeps are idempotent, so extra ticks only cost time; the
+     slice measures one sweep on a large app and fixes the interval and window from the result.
+   - The JBoss LogManager config listener never fires on Quarkus, so it is not used. Finding 5.
+4. **A transparent delayed handler (Q3).** Quarkus's console and file handlers are children of
+   `QuarkusDelayedHandler`. The JUL adapter catalogues those children in its place for
    `list handlers`, handler-level control, `ALL_HANDLERS` fan-out, the handler-floor hint, `top`
-   and `doctor`, while keeping the delayed handler as the attach point for filters. Findings 3, 5, 6.
+   and `doctor`, while keeping the delayed handler as the attach point for filters. Names are by
+   type: `console`, `file`, `syslog`, `socket`. Findings 3, 5, 6.
 5. **Min-level honesty.** After `set logger`, check `isLoggable(level)`. If it's false, warn and
-   name `quarkus.log.min-level`. Add a `doctor` finding, and stop `list loggers` from reporting an
-   effective level below the floor. The check is generic, not Quarkus-specific. Finding 4.
-6. **Plain `java -jar` on JUL.** The `none` integration also binds the JUL adapter once
-   `java.util.logging.LogManager$RootLogger` is loaded, which only happens after the app itself
-   touched JUL. Finding 7.
-7. **Tests and docs.** A sample Quarkus module plus `QuarkusIT`. A quickstart and a limits page.
+   name `quarkus.log.min-level`. Add a `doctor` finding, and stop `list loggers` from reporting
+   an effective level below the floor. The check is generic, not Quarkus-specific. Finding 4.
+6. **`doctor` autoflush on Quarkus (Q7).** The finding on Quarkus's own default handlers is
+   info, marked as a framework default. Handlers a user created keep the warning.
+7. **Tests and docs (Q6).** A `logaperture-sample-quarkus` module behind a profile, plus
+   `QuarkusIT`, run on the tested minor and the current LTS stream. A separate CI job activates
+   the profile; the release workflow always does. The guide pages listed in the Functional
+   summary.
+
+## Acceptance
+
+`QuarkusIT` runs `java -jar quarkus-run.jar` with the agent and checks:
+
+- boot is intact and the min-level floor is unchanged (the app's logging semantics are not
+  altered by the agent);
+- DEBUG works; TRACE on a default build produces the warning, not silence;
+- a sticky `drop` rule is effective before the first request, with the exact trigger, and, with
+  reflection disabled, within the fast-sweep window;
+- sticky overrides survive a restart;
+- `list handlers` shows `console` and `file`, and `top` counts the main log file;
+- `WildFlyContainerIT` still passes with the shared gate (and, while the PR is held, on every
+  rebase).
 
 ## Behaviour to document rather than change
 
-- Overrides bypass per-category `quarkus.log.category."X".min-level`. That's only applied when
+- Overrides bypass per-category `quarkus.log.category."X".min-level`. That is only applied when
   Quarkus configures logging at startup.
 - Dev mode runs with floor `ALL`, so TRACE works there even when it doesn't in production.
-- Quarkus's default handlers have `autoflush` on, so `doctor` flags it on every stock app unless
-  the check is tuned (Q7).
+- Versions other than the two tested ones run in a degraded mode (Q4).
 
-## Open decisions for the spec
+## Out of scope
 
-- **Q1 — Shared gate or Quarkus-only gate?** The extra condition is untested on WildFly,
-  including the #86/#87 launch shape. Either regression-test it and share it, or ship it
-  Quarkus-only first.
-- **Q2 — Early re-sweep mechanism.** Poll `QuarkusDelayedHandler.isActivated()` (exact, but a
-  Quarkus internal), or a container-agnostic fast sweep for the first 10–20 s after install
-  (less exact, but also helps WildFly and later Spring Boot).
-- **Q3 — Handler names.** Type-based names only (`console`, `file`, `syslog`, `socket`), or also
-  the configured names of `quarkus.log.handler.*."<name>"` handlers, read through
-  `ConfigProvider` (about one extra day).
-- **Q4 — Supported Quarkus versions.** The spike tested only 3.39.5. Pin a tested range and add
-  the current LTS stream to the IT. Degrade to the periodic sweep when reflection finds nothing.
-- **Q5 — Plain-JVM JUL in the same slice?** It shares the gate work (1–2 days), but serves a
-  different audience.
-- **Q6 — Where the sample Quarkus module lives.** In the reactor, behind a profile, or out of the
-  default build. It brings the Quarkus BOM and plugin in, which lengthens cold CI builds.
-- **Q7 — `doctor`'s autoflush finding on Quarkus.** Tune it, or accept a warning on every stock
-  app.
-- **Q8 — Name.** `logctl env` should print `Quarkus <version>`, read from the `quarkus-core` jar
-  manifest (file read only).
+Native image; the Quarkus extension (`quarkus ext add logaperture`, §18.2); dev-mode live reload
+as a supported target; `quarkus.log.*.async` handlers (two nesting levels, untested); syslog and
+socket handlers beyond naming; configured handler names
+([#222](https://github.com/ddeuchert/logaperture/issues/222)); the fast sweep on WildFly
+([#223](https://github.com/ddeuchert/logaperture/issues/223)); plain-JVM `java.util.logging`
+([#221](https://github.com/ddeuchert/logaperture/issues/221)).
 
-Out of scope: native image; the Quarkus extension (`quarkus ext add logaperture`, §18.2);
-dev-mode live reload as a supported target; `quarkus.log.*.async` handlers (two nesting levels,
-untested); syslog and socket handlers beyond naming.
+## Not established
+
+From the spike, to be closed by the slice's tests: Quarkus versions other than 3.39.5; async
+handlers; storm detection on Quarkus (confirmed by code, not by a run); `--vendor-defaults` on
+Quarkus; container-image packaging; whether the `LogContext` condition is also right for WildFly
+(deliberately not needed, Q1).
 
 ## Estimate and slot
 
-About 6–7 working days for one developer, spec sign-off included (spike "Estimate"). Release
-slot, per §17.1: a preview in `1.0.0` only if the Oct 4–13 window is free (library recipes #92
-cut to 1.1 on Oct 4); otherwise a `1.1.0` of its own, ahead of Spring Boot.
+About 6.5 to 7.5 working days for one developer, spec sign-off included. Day 1 is this spec; the
+rest follows the spike's plan (shared gate and `WildFlyContainerIT` regression; the
+integration, exact trigger and fast-sweep window; the transparent delayed handler; min-level
+honesty and the `doctor` changes; sample module and IT; guide). Q2 adds half a day to the spike's
+figure. Release `1.1.0` (Q9).
