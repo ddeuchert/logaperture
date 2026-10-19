@@ -17,8 +17,16 @@
 # Thin launcher for the LogAperture control CLI. Requires a JDK, not just a
 # JRE (it needs com.sun.tools.attach). Build the jar with `mvn -pl
 # logaperture-cli package` first.
+#
+# An optional logctl.conf beside this script is sourced first, so it can set,
+# override or clear any variable (JAVA_HOME, JAVA_OPTS, ...) whatever the
+# caller's environment holds. $here is available to it for relative paths.
 
 here=$(cd "$(dirname "$0")" && pwd)
+
+if [ -f "$here/logctl.conf" ]; then
+  . "$here/logctl.conf"
+fi
 
 # The distribution zip puts the jar in ../lib; a source-tree build leaves it
 # in ../target. Try both.
@@ -35,4 +43,17 @@ if [ -z "$jar" ]; then
   exit 1
 fi
 
-exec java -jar "$jar" "$@"
+# JAVA_HOME, when set, is the only Java considered: no fallback to PATH.
+if [ -n "${JAVA_HOME:-}" ]; then
+  java_cmd="$JAVA_HOME/bin/java"
+  if [ ! -x "$java_cmd" ]; then
+    echo "logctl: JAVA_HOME is set to $JAVA_HOME but $java_cmd was not found." >&2
+    exit 1
+  fi
+else
+  java_cmd=java
+fi
+
+# JAVA_OPTS is deliberately unquoted so it splits into separate arguments.
+# shellcheck disable=SC2086
+exec "$java_cmd" ${JAVA_OPTS:-} -jar "$jar" "$@"
