@@ -425,7 +425,7 @@ A JUL `Handler`'s filter isn't applied by the logger. The handler's own `publish
 
 | | `server.log` | tap ignoring its filter | tap honouring its filter |
 |---|---|---|---|
-| levels received | ERROR, SEVERE | INFO, WARNING, SEVERE | SEVERE only |
+| levels received | ERROR, SEVERE | INFO, WARN, ERROR (JUL 800, 900, 1000) | ERROR / SEVERE only (1000) |
 
 So on JUL and WildFly, `listen` can show either what the file shows or what the application
 logged, depending on whether the tap calls `isLoggable`. Honouring the filter costs no second
