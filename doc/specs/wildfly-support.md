@@ -642,7 +642,7 @@ Therefore:
   diagnostic (§15.6: v1 is standalone only).
 - **Discovery** (`WildFlyLogManagerReadiness`, driven on a daemon thread from `activate`)
   does the M0 spike point 2 discipline — never a `java.util.logging` call until it is safe —
-  in three steps:
+  in four steps:
   1. **Wait for JBoss to have loaded its LogManager.** Poll (100ms, up to 60s) until
      `System.getProperty("java.util.logging.manager")` reads `org.jboss.logmanager.LogManager`
      **and** `org.jboss.logmanager.LogManager` has been loaded by *some* classloader, found by
@@ -658,7 +658,13 @@ Therefore:
      is mid-initialization we block on the JDK class-init lock until it finishes; and if we
      get there first, JUL's own lookup still succeeds, so whichever thread wins, JUL gets the
      JBoss LogManager.
-  3. `installContext` a `JulLoggingAdapter` (over the now-installed
+  3. **Wait for `javax.management.builder.initial` (issue #237).** jboss-modules sets this
+     property, and then creates the platform MBean server itself, later than it sets
+     `java.util.logging.manager`. The JDK builds the platform server once, so registering our
+     MBean before the property is set would build it with the default builder and WildFly's
+     `PluggableMBeanServerBuilder` would never be used (no `jboss.as` MBeans, datasources fail).
+     Poll (100ms, up to 30s); on timeout warn and install anyway, so it can never hang startup.
+  4. `installContext` a `JulLoggingAdapter` (over the now-installed
      `java.util.logging.LogManager`) as `stableKey` `"system"`.
 
   No fixed settle delay: step 2 removes the race the delay was guessing at.

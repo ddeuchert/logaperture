@@ -112,4 +112,40 @@ class WildFlyLogManagerReadinessTest {
 
         assertSame(original, seenDuringCall);
     }
+
+    @Test
+    void awaitPropertyThenWarn_returnsOnceThePropertyIsSet() throws Exception {
+        String name = "logaperture.test.awaitProperty";
+        System.clearProperty(name);
+        Thread setter = new Thread(() -> {
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException ignored) {
+                return;
+            }
+            System.setProperty(name, "x");
+        });
+        try {
+            setter.start();
+            long start = System.nanoTime();
+
+            WildFlyLogManagerReadiness.awaitPropertyThenWarn(name, 1, 5_000);
+
+            assertEquals("x", System.getProperty(name));
+            assertTrue((System.nanoTime() - start) / 1_000_000L < 4_000, "returned on the property, not the timeout");
+        } finally {
+            setter.join();
+            System.clearProperty(name);
+        }
+    }
+
+    @Test
+    void awaitPropertyThenWarn_givesUpWhenThePropertyIsNeverSet() {
+        String name = "logaperture.test.awaitPropertyNever";
+        System.clearProperty(name);
+
+        WildFlyLogManagerReadiness.awaitPropertyThenWarn(name, 1, 50);
+
+        assertNull(System.getProperty(name));
+    }
 }
