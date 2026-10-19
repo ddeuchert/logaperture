@@ -1,6 +1,6 @@
 # Spike — `logctl` as a handler, and `logctl listen`
 
-Status: **in progress.** Question 1 (transport) is answered for plain Logback on JDK 21, and
+Status: **done** (2026-10-18). Question 1 (transport) is answered for plain Logback on JDK 21, and
 question 2 (installing and removing the handler) for plain Logback, plain JUL and WildFly, and
 question 3 (lifecycle) for plain Logback. Question 4 (cost) is answered for one thread, and
 question 5 (rules) on WildFly, and question 6 (threshold below the configured level) on plain
