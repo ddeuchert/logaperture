@@ -59,7 +59,7 @@ final class WildFlyLogManagerReadiness {
 
     private static final long POLL_INTERVAL_MS = 100;
     private static final long MAX_WAIT_MS = 60_000; // WildFly loads it within the first second or two
-    private static final long MBEAN_SERVER_BUILDER_MAX_WAIT_MS = 30_000;
+    private static final long MBEAN_SERVER_BUILDER_MAX_WAIT_MS = 30_000; // jboss-modules sets it within a few seconds of the LogManager
 
     private WildFlyLogManagerReadiness() {
     }
@@ -76,10 +76,11 @@ final class WildFlyLogManagerReadiness {
         Supplier<Class<?>> loadedManagerClass = () -> JBOSS_LOG_MANAGER.equals(System.getProperty(MANAGER_PROPERTY))
                 ? findClassByName(inst.getAllLoadedClasses(), JBOSS_LOG_MANAGER)
                 : null;
-        awaitJBossLogManagerThen(loadedManagerClass, POLL_INTERVAL_MS, MAX_WAIT_MS, () -> {
+        Runnable awaitMBeanServerBuilderThenInstall = () -> {
             awaitPropertyThenWarn(MBEAN_SERVER_BUILDER_PROPERTY, POLL_INTERVAL_MS, MBEAN_SERVER_BUILDER_MAX_WAIT_MS);
             onReady.run();
-        });
+        };
+        awaitJBossLogManagerThen(loadedManagerClass, POLL_INTERVAL_MS, MAX_WAIT_MS, awaitMBeanServerBuilderThenInstall);
     }
 
     /**
