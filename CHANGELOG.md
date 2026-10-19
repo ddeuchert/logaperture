@@ -8,6 +8,11 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every file in the release zip was dated 1 February 1980**, and so was every entry in the jars
+  inside it. The files now carry the date of the release's commit (issue #207).
+
 ## [1.0.0-beta.1] — 2026-10-15
 
 The 1.0 feature freeze: everything 1.0.0 will do is in this build. New since alpha.3: logging

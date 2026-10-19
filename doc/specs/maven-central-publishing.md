@@ -50,11 +50,14 @@ fixtures.
 1. **The `release` Maven profile** (parent POM) adds sources and javadoc jars, attaches the
    release zip to the `logaperture-dist` module's artifact (`logaperture`, M2), and signs every artifact with the GPG key in
    `MAVEN_GPG_KEY` (BouncyCastle signer: no `gpg` keyring needed).
-2. **`mvn -Prelease deploy -DaltDeploymentRepository=staging::file:target/staging`** writes the
+2. **`./mvnw -Prelease deploy -DaltDeploymentRepository=staging::file:target/staging`** writes the
    signed release into a local staging repository, never to Central. Modules that are never
-   published set `maven.deploy.skip` (M4).
+   published set `maven.deploy.skip` (M4). The workflows run the Maven wrapper, never the
+   runner's own `mvn`, and pass `-Dproject.build.outputTimestamp` set to the built commit's time:
+   every jar and zip entry is dated that commit, the same on any rebuild of the tag (issue #207).
 3. **`.github/scripts/central.sh bundle`** checks the staging repository holds exactly the files in
-   the table above, each signed and checksummed, and nothing else; then zips it into a Central
+   the table above, each signed and checksummed, and nothing else, and that no entry in its jars
+   and zip, or in the jars inside the zip, is dated before 2000; then zips it into a Central
    bundle.
 4. **`central.sh upload`** sends the bundle to the Central Portal's Publisher API as a
    *user-managed* deployment: Central validates it and then waits. **`central.sh wait`** polls
@@ -98,6 +101,15 @@ zip was never affected, because it copies `target/logaperture-agent.jar` by path
 `finalName` to `<build>`: the file is still `target/logaperture-agent.jar`, and it is now also the
 module's artifact. `logaperture-it`, which depends on the agent at test scope, now gets the shaded
 jar too.
+
+**The beta.1 zip's entries were all dated 1980-02-01** (issue #207, found after release). The
+workflows ran the runner image's `mvn`, which moved from 3.9.16 to 3.10.0 on 2026-10-04, between
+alpha.3 and beta.1. Maven 3.10 defaults `project.build.outputTimestamp` to 1980-02-01, and the
+POM didn't set it, so every jar and zip entry got that date. Fixed three ways: the parent POM
+sets it (the build time for a local build), the release build and the dry run pass the built
+commit's time, and the workflows run `./mvnw`, whose Maven version the repo pins. `central.sh
+bundle` fails on an entry dated before 2000, so a regression can't ship unnoticed. beta.1 is on
+Maven Central for good and keeps its dates.
 
 **Each published POM needs its own `<name>`.** Found by the first dry run: see Testing.
 

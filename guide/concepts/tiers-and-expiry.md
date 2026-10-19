@@ -49,9 +49,19 @@ move it. It belongs to LogAperture: don't edit it.
 
 Applications and servers change their own logging configuration too: a WildFly management
 command, a Logback configuration reload. When that happens to a logger or handler that has an
-override, LogAperture puts the override back within 30 seconds and audits it with
-`source=verification-sweep`. The override wins until it ends. Then the logger goes back to the
-application's configuration as it is at that moment, including the change.
+override, LogAperture puts the override back:
+
+- On WildFly, within about a second of a `/subsystem=logging` change or a `:reload`, audited with
+  `source=verification-sweep`.
+- On Logback 1.3.14, 1.4.14 or 1.5.x, as soon as the reload finishes. This puts back the levels
+  LogAperture already had in place, so it writes no audit line.
+- Otherwise within the sweep interval, 30 seconds by default
+  ([`logaperture.sweep.seconds`](../reference/agent-options.md)), audited with
+  `source=verification-sweep`. That includes Logback 1.2.x, 1.3.0 and 1.4.0 when the file itself
+  sets the logger's level, and a WildFly server started with `-Djboss.server.persist.config=false`.
+
+The override wins until it ends. Then the logger goes back to the application's configuration as
+it is at that moment, including the change.
 
 ## Seeing tiers
 

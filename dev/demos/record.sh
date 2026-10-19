@@ -27,7 +27,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 out_dir=$root/guide/assets/demos
-stories=(why-no-trace debug-for-a-while flood)
+stories=(why-no-trace debug-for-a-while flood trim)
 
 cols=120
 rows=32
@@ -73,9 +73,13 @@ record_story() {
         fi
     )
 
-    # A clean environment: no host name, user name or local path reaches the recording.
+    # A clean environment: no host name, user name or local path reaches the recording. The
+    # XDG data and config dirs stay the user's, since rootless podman (behind a `docker` shim)
+    # finds its containers there, not through a daemon; they're only read, never printed.
     local -a clean_env=(env -i "HOME=$work/home" "PATH=$PATH" "TERM=xterm-256color"
         "LANG=C.UTF-8" "SHELL=/bin/bash" "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-}"
+        "XDG_DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}"
+        "XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}"
         "DEMO_CONTAINER=$container" "DEMO_INTERACTIVE=$([[ $mode == rehearse ]] && echo 1 || echo 0)")
     [[ -n ${DOCKER_HOST:-} ]] && clean_env+=("DOCKER_HOST=$DOCKER_HOST")
 
@@ -129,6 +133,10 @@ fi
 for tool in tmux asciinema perl curl docker; do
     command -v "$tool" >/dev/null || die "$tool is not installed"
 done
+# podman's docker shim prints a notice on every call, which would land in both panes.
+if docker version 2>&1 | grep -q 'Emulate Docker CLI'; then
+    die "podman's docker shim prints a notice that would be recorded; quiet it: sudo touch /etc/containers/nodocker"
+fi
 curl -fsS "$demo_url/status" >/dev/null ||
     die "the sample app isn't answering at $demo_url; run dev/wildfly/wildflyctl.py up and deploy"
 

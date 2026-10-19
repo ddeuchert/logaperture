@@ -27,6 +27,8 @@ WildFly console; `logctl` runs below.
 
 <div class="la-cast" data-cast="why-no-trace"></div>
 
+More films in [Now Showing](now-showing.md).
+
 ## What it does
 
 - **Change log levels on a running JVM**, and have the change undo itself on a timer, last until

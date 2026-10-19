@@ -1,0 +1,38 @@
+# Copyright 2026 David Deuchert
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# main only moves when a release is cut, by a pull request from develop. The
+# repository ruleset on main requires this check, so a pull request into main
+# from any other branch (or from a fork) can't be merged.
+name: Release PR source
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  from-develop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the pull request comes from develop
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          if [ "$HEAD_REF" != develop ] || [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+            echo "::error::Pull requests into main must come from $GITHUB_REPOSITORY:develop, not $HEAD_REPO:$HEAD_REF."
+            exit 1
+          fi

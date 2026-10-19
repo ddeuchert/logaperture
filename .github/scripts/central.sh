@@ -117,6 +117,27 @@ PY
         | grep -v -x -F -f <(echo "$allowed") || true)
     [[ -z "$unexpected" ]] || die "unexpected files in the staging repository:"$'\n'"$unexpected"
 
+    # Every entry in the jars and the zip, and in the jars inside the zip, carries a real date:
+    # Maven 3.10's default outputTimestamp dated the whole beta.1 zip 1980-02-01 (issue #207).
+    local archives=()
+    while read -r f; do
+        [[ "$f" == *.jar || "$f" == *.zip ]] && archives+=("$group/$f")
+    done < <(expected_files "$version")
+    python3 - "${archives[@]}" <<'PY' || die "an archive has entries dated before 2000 - is project.build.outputTimestamp set?"
+import io, sys, zipfile
+def old_entries(name, archive):
+    for entry in archive.infolist():
+        if entry.date_time[0] < 2000:
+            yield f"{name}!{entry.filename}: {entry.date_time[0]}"
+        elif entry.filename.endswith(".jar"):
+            nested = zipfile.ZipFile(io.BytesIO(archive.read(entry)))
+            yield from old_entries(f"{name}!{entry.filename}", nested)
+bad = [line for path in sys.argv[1:] for line in old_entries(path, zipfile.ZipFile(path))]
+for line in bad[:10]:
+    print(line, file=sys.stderr)
+sys.exit(1 if bad else 0)
+PY
+
     rm -f "$out"
     local abs_out
     abs_out=$(realpath -m "$out")

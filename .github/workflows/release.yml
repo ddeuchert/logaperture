@@ -45,7 +45,7 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME}"
           version="${tag#v}"
-          pom_version="$(mvn -B -q --no-transfer-progress help:evaluate \
+          pom_version="$(./mvnw -B -q --no-transfer-progress help:evaluate \
             -Dexpression=project.version -DforceStdout | tail -1 | tr -d '[:space:]')"
           if [ "$version" != "$pom_version" ]; then
             echo "::error::tag $tag implies version '$version' but the pom is '$pom_version'"
@@ -82,11 +82,15 @@ jobs:
         # develop merge) doesn't re-run here. The release profile signs everything
         # and deploys to target/staging, never to Maven Central directly
         # (doc/specs/maven-central-publishing.md).
+        # ./mvnw, not the runner's mvn: the runner image's Maven changes under us (3.10 stamped
+        # every zip entry 1980-02-01, issue #207). Every jar and zip entry is dated the tagged
+        # commit's time, the same on any rebuild of the tag.
         env:
           MAVEN_GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          mvn -B --no-transfer-progress -Prelease -pl logaperture-dist -am deploy \
+          ./mvnw -B --no-transfer-progress -Prelease -pl logaperture-dist -am deploy \
+            -Dproject.build.outputTimestamp="$(git log -1 --format=%cI)" \
             -DaltDeploymentRepository=staging::file:target/staging
 
       - name: Bundle and check for Maven Central

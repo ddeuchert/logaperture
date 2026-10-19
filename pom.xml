@@ -21,7 +21,7 @@
 
   <groupId>org.logaperture</groupId>
   <artifactId>logaperture-parent</artifactId>
-  <version>1.0.0-beta.1</version>
+  <version>1.0.0-beta.2-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>LogAperture</name>
@@ -83,6 +83,13 @@
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <!--
+      The date stamped on every jar and zip entry. Maven 3.10 defaults it to 1980-02-01, which
+      shipped in the beta.1 zip (issue #207), so it is always set here: the build time for a
+      local build, and the tagged commit's time for a release, which the release workflow passes
+      as -Dproject.build.outputTimestamp, so rebuilding the tag gives the same dates.
+    -->
+    <project.build.outputTimestamp>${maven.build.timestamp}</project.build.outputTimestamp>
 
     <!-- The version validated by the M0 spike (doc/spikes/m0-adapter-grid.md point 1). -->
     <logback.version>1.5.13</logback.version>

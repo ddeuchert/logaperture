@@ -1,0 +1,805 @@
+# Spike — `logctl` as a handler, and `logctl listen`
+
+Status: **done** (2026-10-18). Question 1 (transport) is answered for plain Logback on JDK 21, and
+question 2 (installing and removing the handler) for plain Logback, plain JUL and WildFly, and
+question 3 (lifecycle) for plain Logback. Question 4 (cost) is answered for one thread, and
+question 5 (rules) on WildFly, and question 6 (threshold below the configured level) on plain
+Logback, plain JUL and WildFly, and question 7 (capability and audit) as design, checked against
+what 1.0 ships.
+
+Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §8.2 (the agent never listens),
+§9.9 (the agent never transmits anything), §13 risk 4 (scope creep toward "log router"), §16.7
+(all state size-bounded).
+Related: [`doc/specs/cli-transport.md`](../specs/cli-transport.md) (attach + local JMX),
+[`doc/specs/handler-floor-control.md`](../specs/handler-floor-control.md),
+[`doc/specs/filtering-epic.md`](../specs/filtering-epic.md),
+[`dynamic-attach.md`](dynamic-attach.md).
+Issue: [#230](https://github.com/ddeuchert/logaperture/issues/230), feeding
+[#195](https://github.com/ddeuchert/logaperture/issues/195). Post-1.0 (milestone `1.x`).
+
+This is a spike per [`CLAUDE.md`](../../CLAUDE.md): the deliverable is this findings document,
+not the harness that produces it.
+
+## The idea
+
+Today `logctl` only changes levels and rules on handlers the application already has. This
+spike looks at letting `logctl` receive records itself:
+
+- a command that adds a LogAperture-owned handler to a running JVM;
+- `logctl listen`, which streams that handler's records to stdout, to a file, or to both.
+
+#195 describes the longer path this leads to: `listen`, then a Chainsaw-style console view, then
+general on-the-fly handlers.
+
+## Question
+
+1. **Transport, against §8.2 and §9.9.** The agent opens no network connections, inbound or
+   outbound, ever. #195 suggests a dedicated local socket, which would break that. Can records
+   reach `logctl` without one? Candidates:
+   - (a) `logctl` polls a bounded ring buffer through an MBean operation (`drain(cursor, max)`)
+     over the attach + local JMX connection `logctl` already uses;
+   - (b) JMX notifications. On the RMI connector the client pulls them, and the server keeps a
+     bounded buffer that reports how many were lost, so this may suit log volume better than
+     #195 assumed;
+   - (c) the agent writes a bounded, rotating file and `logctl` tails it;
+   - (d) for comparison only, a Unix-domain socket that `logctl` creates and the agent connects
+     to.
+
+   For each one, measure records/s sustained, latency, CPU on both sides, and what loss looks
+   like.
+2. **Installing and removing a handler at runtime**, on plain Logback, plain JUL and WildFly
+   (JBoss LogManager). Does it survive a logging reconfiguration through the re-apply-on-reset
+   hook? On WildFly it's invisible to jboss-cli. Does that matter, and does `doctor` need to
+   report it?
+3. **Lifecycle.** Is adding the handler separate from `listen`, or does `listen` attach it and
+   remove it when it exits? Who removes the handler when a listener dies without cleaning up (a
+   lease, or a heartbeat that has to arrive before a deadline)? Can several listeners share one
+   handler? Which tier (session / for / sticky) can a handler have?
+4. **Never slowing the application.** Measure the cost per record with the handler installed and
+   nobody draining it, and with a slow consumer, using the
+   [overhead harness](../specs/overhead-benchmarks.md). Records are dropped and counted, never
+   blocking.
+5. **Where the tap sits in the rule pipeline.** Does it see records before or after `drop`,
+   `trim` and storm collapse? Which is the useful default?
+6. **Listening below the configured level.** Can `listen <logger> TRACE` work without flooding
+   the application's other handlers? Is a listener-only filter feasible with the existing filter
+   layering?
+7. **Security and audit.** Streaming is a data egress channel (§9.9). Does it need its own
+   capability so it can be denied separately, like `capture`? What audit lines does it write?
+
+## Environment
+
+One machine. Every result below comes from it.
+
+- Linux (Fedora, kernel 7.2), 8 cores, 23 GB. Temurin JDK 21.0.12 for both the application and
+  the client.
+- Application: SLF4J 2.0.17 / Logback 1.5.18, root at INFO, one `FileAppender` writing to
+  `/dev/null`, `-Xmx512m`. Four threads log one parameterised INFO line each (about 90
+  characters) at a fixed total rate, round-robin over 20 loggers.
+- Tap: a throwaway agent loaded with `-javaagent`. It adds one `UnsynchronizedAppenderBase` to
+  the root logger. The appender copies level, logger, thread, time and the formatted message into
+  a 65,536-slot ring with a sequence number per record. Writers never wait, and a reader that
+  falls behind skips ahead. Each sequence gap is a lost record, so loss is counted the same way
+  for every transport.
+- Client: a stand-in for `logctl listen`. It connects the same way `logctl` does today
+  (`VirtualMachine.attach`, `startLocalManagementAgent`, local JMX), starts the tap, formats
+  every record into a text line and writes it to a file (the `--file` case).
+- Question 2 used a second throwaway agent. It adds the same ring-backed handler to whichever
+  framework is present, with an optional hook that re-adds the handler after a reconfiguration.
+  The test application logs every 10 ms through two loggers: an ordinary one, and one whose
+  records don't reach the root (`additivity="false"` in Logback, `useParentHandlers=false` in
+  JUL). On WildFly the agent was loaded into the running server with `VirtualMachine.loadAgent`.
+  The server was the dev environment's `quay.io/wildfly/wildfly:26.1.3.Final-jdk17`, with the
+  sample WAR's timer logging, and the changes were made through `jboss-cli.sh`.
+- Each transport run lasts 20 s (16 s for the flat-out and slow-listener runs). The application runs
+  5 s before the listener connects. CPU is process CPU time over the window, as a percentage of
+  one core. "Live heap" is the application's used heap right after a forced full GC, taken just
+  before the tap stops.
+
+## Findings: transport (question 1)
+
+### 1. The candidates, as built
+
+Four transports share the ring and the appender. They differ only in how records leave the JVM:
+
+| | Transport | Thread in the agent | Opens a connection |
+|---|---|---|---|
+| (a) **RING** | `logctl` calls an MBean operation `drain(cursor, 8192)` over the existing JMX connection, every 10 ms when idle. Returns one `byte[]` batch. | none | no |
+| (b) **NOTIFY** | An agent thread drains the ring every 10 ms into one JMX notification per batch (up to 8,192 records). | one | no |
+| (b′) **NOTIFY_EACH** | One JMX notification per record, sent from the application thread. This is the design #195 rejected. | none | no |
+| (c) **FILE** | An agent thread drains the ring into 8 MB segment files, keeping the newest four, in a directory `logctl` names. `logctl` tails them. | one | no |
+| (d) **UDS** | `logctl` binds a Unix-domain socket; an agent thread connects to it and writes batches. Measured for comparison only. | one | **yes, outbound** |
+
+The JMX connection isn't new. `startLocalManagementAgent` already opens the JDK's loopback RMI
+connector for every `logctl` command today. (a) and (b) add no endpoint of their own.
+
+### 2. Throughput, latency and CPU at fixed rates
+
+Application CPU is shown as extra percentage points over the same rate with nobody listening.
+
+| Rate | | RING | NOTIFY | NOTIFY_EACH | FILE | UDS |
+|---|---|---|---|---|---|---|
+| 1k/s | app CPU | +22 | +17 | +35 | +4 | +3 |
+| | latency p50 / p99 | 7 / 16 ms | 7 / 13 ms | 1 / 3 ms | 11 / 20 ms | 6 / 11 ms |
+| 10k/s | app CPU | +35 | +23 | +64 | +7 | +12 |
+| | latency p50 / p99 | 9 / 23 ms | 7 / 14 ms | 1 / 83 ms | 11 / 20 ms | 7 / 12 ms |
+| | lost | 0 | 0 | 27 | 0 | 0 |
+| 50k/s | app CPU | +50 | +61 | +105 | +43 | +43 |
+| | latency p50 / p99 | 13 / 161 ms | 9 / 69 ms | 2 / 40 ms | 14 / 151 ms | 9 / 90 ms |
+| | lost | 0 | 0 | **3.1 %** | 0 | 0 |
+| flat out | delivered | 151k/s | 146k/s | — | 108k/s | 134k/s |
+| | lost | **2.5 %** | 0 | — | 0 | 0 |
+
+At a 200k/s target the application topped out at 115–165k records/s. Delivered rates and
+loss there matched the flat-out row. NOTIFY_EACH lost 8.5 %, and the JMX client reported
+246,677 notifications lost.
+
+- **Per-record notifications are out**, as #195 assumed. They cost the most CPU on both sides.
+  The connector's buffer holds 1,000 notifications, so they start losing records at 50k/s.
+- **RING's cost at low rates is the polling.** It makes 100 RMI calls a second even when there
+  is nothing to fetch, and that costs the application more than every other design at 1k–10k/s.
+  Polling less often when a batch comes back empty would cut that and add latency. That wasn't
+  measured.
+- **RING tops out around 125–150k/s** with this client: one thread fetching 8,192 records per
+  round trip. Beyond that it loses 1–2.5 %, counted exactly. That's a limit of the client loop,
+  not of the ring, and bigger batches or pipelined calls weren't tried.
+- **FILE and UDS are cheapest for the application** at low and moderate rates, because the
+  agent writes raw batches and does no RMI serialization.
+
+### 3. Batched JMX notifications hold hundreds of megabytes
+
+| Flat out, live heap | none | RING | NOTIFY | FILE | UDS |
+|---|---|---|---|---|---|
+| MB | 6 | 16 | **282** | 17 | 16 |
+
+The ring itself costs about 10 MB everywhere. NOTIFY adds about 270 MB more, and the JDK source
+explains why. `com.sun.jmx.remote.internal.ArrayNotificationBuffer` keeps the last
+`jmx.remote.x.notification.buffer.size` notifications (default 1,000). It drops one only when
+the queue is full, never because a client has fetched it. At full batches that is up to about
+8 million records held on the application's heap, even while the client keeps up.
+
+There are three more problems:
+
+- **The buffer is JVM-wide.** It's shared by every MBean and every connector server. Log
+  batches would push out the notifications other JMX tools in the same JVM depend on, such as
+  JConsole, VisualVM and monitoring agents. Those tools would then see `NOTIFS_LOST`.
+- **The agent can't size it.** It's a system property read when the connector server is
+  created, and it applies to the whole JVM.
+- **A slow listener receives stale records for minutes** (see §4). The buffer delivers its
+  backlog in order and the agent can't see how far behind the client is.
+
+Smaller batches would hold less heap but hit the 1,000-notification limit sooner. So batched
+notifications are out as well.
+
+### 4. A slow listener never slows the application
+
+50k records/s offered, with the client capped at 5k/s:
+
+| | none | RING | NOTIFY | FILE | UDS |
+|---|---|---|---|---|---|
+| app calls/s | 50,000 | 50,000 | 50,000 | 50,000 | 50,000 |
+| not delivered | — | 83 %, counted | 90 %, backlog in JMX | 92 %, whole segments | 81 %, counted |
+| live heap | 5 MB | 15 MB | 86 MB | 15 MB | 18 MB |
+
+The ring holds in every case: the application kept logging at exactly its target rate.
+
+How each one loses records differs:
+
+- **RING and UDS** drop the oldest records and count every one.
+- **FILE** loses whole 8 MB segments when they are rotated away before the reader gets to them.
+  The gaps are coarse, and records sit on disk in the meantime.
+- **NOTIFY** holds the backlog on the application's heap and keeps delivering it after the
+  listener stops. With 16 s of output queued at 5k/s, the client would have been reading
+  records minutes old. The harness had to stop waiting for it.
+
+### 5. Recommendation
+
+**(a) RING: `logctl` pulls batches from a bounded ring over the existing JMX connection.**
+
+- It is the only design that adds nothing to the agent's boundary. There's no socket, no file,
+  and no agent thread. It uses the same connection, and the same OS-user authorization, as
+  every other `logctl` command. §8.2 and §9.9 hold as written.
+- Memory is bounded by the ring and belongs to LogAperture alone. Nothing shared with other JMX
+  users grows.
+- Loss is exact. `logctl` sees each sequence gap and can print `[dropped 1,234 records]`, as
+  #195 asks.
+- When the listener stops, the agent stops: if nobody drains, nothing is sent. Removing the
+  handler on a missed lease (question 3) fits naturally, because the agent already sees every
+  `drain` call.
+- Its costs are application CPU for RMI serialization at 10k–50k/s, and a client ceiling of
+  around 150k/s. Both are tuning problems in the client loop and poll interval, not design
+  problems.
+
+`listen --file` should be written by **`logctl`**, not the agent. That keeps log content out of
+any file the agent creates, and it's what the harness did.
+
+**(d) UDS was the best performer, but it is excluded by design.** The agent would make an
+outbound connection, which is exactly what §9.9 rules out "for any feature". Reopening that
+would be a spec decision, and nothing here forces it.
+
+**(c) FILE is the fallback** if RING's CPU cost turns out to matter. It doesn't break §8.2 as
+written, but it leaves log content at rest in agent-written files. Its loss is coarse, and the
+files need cleaning up when `logctl` dies.
+
+Two requirements carry into any spec:
+
+- **The ring needs a byte cap, not just a slot count.** A 65,536-slot ring of 90-character
+  messages is about 10 MB. The same ring full of 16 KB messages or rendered stack traces would
+  be about a gigabyte. §16.7 applies.
+- **Formatting stays on the application thread, as Logback's `AsyncAppender` does it.** The
+  harness formatted the message in `append` because the arguments a caller passes may change
+  after the call returns (Logback's `prepareForDeferredProcessing` exists for this reason).
+  That cost is in every figure above.
+
+## Findings: installing and removing the handler (question 2)
+
+### 6. Adding and removing works on all three; the root alone is not enough
+
+Adding the handler to the root logger at runtime, and removing it again, worked on plain
+Logback, plain JUL and WildFly. On WildFly that includes loading the agent into the running
+server. There, the handler sits on JBoss LogManager's root next to the subsystem's
+`PeriodicRotatingFileHandler` and `ConsoleHandler`.
+
+**A handler on the root never sees a logger whose records stop before the root.** That means
+Logback `additivity="false"` and JUL `useParentHandlers=false`. In the test,
+`com.acme.private.Audit` delivered nothing. Adding the handler to the root **and** to every
+logger that stops propagation fixes it, and each record still arrives exactly once: 188/188 on
+Logback and 173/173 on JUL. A record's propagation ends at the first such logger or at the root,
+so it reaches exactly one of those attachment points. Since propagation settings change on
+reconfiguration, the set of attachment points has to be recomputed every time the handler is
+re-added.
+
+### 7. Every framework drops the handler on reconfiguration, without telling anyone
+
+| Change | Handler afterwards |
+|---|---|
+| Logback: `reset` + Joran, which is what `scan="true"` does | removed |
+| JUL: `LogManager.readConfiguration()` | removed |
+| WildFly: root `level` changed, a handler added or removed through jboss-cli | **kept** |
+| WildFly: `root-logger=ROOT:write-attribute(name=handlers, …)`, even with an unchanged list | removed |
+| WildFly: `:reload` | removed; the agent's MBean survives (same JVM) |
+
+Nothing fails and nothing is logged. The listener just stops receiving records. Since the ring
+is no longer being fed, there's no sequence gap to report either. **`listen` can't tell "the
+application went quiet" from "the handler was removed".** The agent must report
+removal itself, so `logctl` can print something like `[handler removed by a logging
+reconfiguration at 12:41:07; re-added 12:41:30]`.
+
+### 8. Re-adding: what each framework offers
+
+| Framework | Hook | Result |
+|---|---|---|
+| Logback | `LoggerContextListener.onReset`, `isResetResistant() == true` | Re-adds to the root after every reset. It runs **before** Joran applies the new file, though, while every logger still propagates to the root. So a logger the file declares `additivity="false"` is missed. |
+| Logback | `ConfigurationEventListener`, any `*ENDED*` event | Runs after Joran finishes. Re-added correctly, both loggers, across three reconfigurations in a row. Present in 1.3.14, 1.4.14 and 1.5.x; **absent** from 1.2.13, 1.3.0 and 1.4.0, which the §11 matrix also covers. |
+| JUL | `LogManager.addConfigurationListener` (public since JDK 9) | Runs after `readConfiguration`. Re-added correctly, both loggers. §4.3 says JUL has no reconfiguration hook ("none — poll"); that is out of date for every JDK LogAperture supports. |
+| WildFly | JBoss LogManager's `addConfigurationListener` | **Never fired.** Not for a root level change, a handler-list replacement, a new logger with `use-parent-handlers=false`, or `:reload`. |
+
+So on WildFly the only way back is a periodic check, like the verification sweep that already
+re-applies level overrides (5 s in the dev environment, 30 s by default). Records logged in that
+window are lost. On older Logback, a reset-resistant `onReset` plus the same periodic check
+covers the gap.
+
+### 9. On WildFly the handler is invisible to the management model
+
+`/subsystem=logging/root-logger=ROOT:read-attribute(name=handlers)` lists only `CONSOLE` and
+`FILE` while the handler is attached, and `standalone.xml` is never touched. This is consistent
+with how LogAperture treats WildFly elsewhere: nothing it does is written to server
+configuration. But an administrator looking at the server through jboss-cli can't see that log
+content is being streamed. They can only find out from `logctl` and the audit log, so `logctl
+status` and `doctor` should show an attached handler (question 7).
+
+### 10. Found along the way: two gaps in shipped re-application
+
+These are about level overrides, not the handler. They came out of checking how the agent's
+existing hooks behave, against the `develop` build at b7d4a6c.
+
+- **Logback: the agent's reconfiguration hook only works once.** `LogbackLoggingAdapter.onReset`
+  registers a `LoggerContextListener` with `isResetResistant() == false`. Logback removes such
+  listeners after the reset they fire on. Measured: after the first reconfiguration,
+  `com.acme.public` stayed at DEBUG. After the second and third, it fell to INFO until the
+  verification sweep restored it, 9–16 s later (30 s interval). Separately, because `onReset`
+  runs before Joran, a logger the file gives a level (`com.acme.private`) is overwritten even
+  the first time and waits for the sweep.
+- **WildFly: the configuration listener doesn't fire for `/subsystem=logging` changes** on
+  26.1.3, contrary to the comment on `WildFlyContainerIntegration.wireConfigurationListener`.
+  Measured: after `logger=…Worker:add(level=INFO)`, the agent's DEBUG override read INFO, and
+  read DEBUG again 7 s later, by the 5 s sweep.
+
+In both cases the sweep is the safety net it was designed to be, so no override is lost for
+good. But each reconfiguration opens a window of up to one sweep interval where it isn't
+applied. Filed as [#231](https://github.com/ddeuchert/logaperture/issues/231) (Logback) and
+[#232](https://github.com/ddeuchert/logaperture/issues/232) (WildFly), both for 1.0.0.
+
+## Findings: lifecycle (question 3)
+
+The harness gave the handler to **leases**. `open(name, leaseMs)` creates a lease and attaches
+the handler if it isn't attached already. Every `drain` call renews the caller's lease. A reaper
+thread in the agent checks every 250 ms, drops leases not renewed within `leaseMs`, and removes
+the handler once no lease is left. `close(id)` ends a lease at once, and the listener calls it
+from a shutdown hook. The lease was 3 s, and each listener polled every 100 ms.
+
+### 11. A listener that dies without cleaning up is detected within one lease
+
+On plain Logback, with four listeners (A–D) started and stopped against one application:
+
+| Event | Agent | Delay |
+|---|---|---|
+| `kill -9` A while B and C listen | A's lease expires; the handler stays | 3.1 s |
+| `SIGSTOP` B (as Ctrl-Z would) | B's lease expires; the handler stays for C | 3.1 s |
+| `SIGCONT` B | B finds its lease gone, opens a new one, and reports `records 1348..2511 were not seen` | immediate |
+| `SIGTERM` B, then C | Each lease is closed by the shutdown hook; the handler is removed after C | 5 ms |
+| `kill -9` D, the only listener | Lease expires, handler removed | 3.1 s |
+
+Leases need nothing new from the transport, because the `drain` calls RING already makes are
+the heartbeat. The only state the agent keeps per listener is one lease with its last-seen
+time. JMX doesn't help here. The connector server that `startLocalManagementAgent` creates isn't
+exposed to code in the JVM, so its connection-closed notifications can't be heard. RMI's own
+cleanup (the DGC lease, 10 minutes by default, or the
+connector's 2-minute idle timeout) is far too slow to bound a handler's lifetime.
+
+### 12. Several listeners share one handler
+
+B and C listened together for 17 s and A for the first 4 s, all from one handler and one ring,
+each with its own cursor. None lost a record: C received 3,280 records with no gap. Each
+listener's position is its cursor, which `logctl` holds, so the agent needs no per-listener
+buffer. A second listener costs only its own `drain` calls.
+
+One refinement came out of the pause test. When B came back, it reopened at the ring's
+**current** position and reported the 1,164 records it missed. But C had kept the handler
+attached, so those records were still in the ring. A reopened lease should resume from the
+listener's old cursor when that is still in the ring, and report a gap only for what has been
+overwritten.
+
+### 13. "Add a handler" and `listen` are two different features
+
+Leases settle what a bare `listen` needs: it attaches the handler, and when the last listener
+goes, the handler goes too, whether the exit was clean or a crash. Nothing is left in the
+application. A separate `add handler` command would be a different thing: a handler that stays
+**without** a listener. That would be worth having for two reasons:
+
+- **Backlog.** A handler added earlier keeps filling the ring. A later `listen` could start from
+  recent history rather than from now: `logctl listen --since 5m`, or "show me what happened
+  just before the error".
+- **Step 3 of #195.** On-the-fly handlers with their own destination, such as a file or a
+  console, have no listener at all.
+
+Such a handler outlives any client, so it needs the same lifetime rules as an override: a tier
+(session, `for <duration>`, sticky), expiry, an audit line, and a place in `status` and in
+`reset`. It also costs every log call it sees while nobody is reading, which is question 4.
+
+**Decided 2026-10-18: the first pass is `listen` only, with lease-bound handlers.** `add
+handler` waits for step 3 of #195, where it gets an override's lifetime rules.
+
+## Findings: cost on the application thread (question 4)
+
+The cost was measured with the project's JMH harness. A temporary benchmark in
+`logaperture-bench` reused `IdleBenchmark`'s setup: JBoss LogManager, the bench category's
+`DiscardingFileHandler`, and the shipped idle pipeline (`Pipeline.install`, storm detection
+installed but off, the trim and `top` wraps on). On top of that it added the tap handler, with
+nobody draining it, so every record overwrote an old one in the ring. Settings were 2 forks,
+3 × 1 s warmup and 5 × 1 s measurement, one thread. The CPU governor was `schedutil`, not
+pinned.
+
+| ns per call (± error) | baseline | idle | idle + tap | idle + tap, trace rendered |
+|---|---|---|---|---|
+| `template` message | 1,139 ± 60 | 1,273 ± 106 | 1,352 ± 64 | 1,349 ± 82 |
+| with a 20-frame exception | 5,822 ± 238 | 6,659 ± 538 | 7,280 ± 602 | **15,459 ± 4,503** |
+
+### 14. The tap costs about what the idle agent costs; rendering a stack trace doesn't belong on the logging thread
+
+- **An ordinary record costs about 80 ns more** with the tap attached (+6 % over idle). The
+  extra work is formatting the message once, one `getAndIncrement` and one small object. With
+  an exception, the tap without rendering measured +620 ns, which is inside the error bars.
+- **Turning the stack trace into text on the application thread costs about 8 µs per record
+  that carries an exception**, more than doubling the call. The tap should store the
+  `Throwable` (or a cheap snapshot of it) and render it when it's drained. With RING, `drain`
+  runs on the JMX connection's RMI thread, so that cost leaves the application's threads
+  entirely. Whether a stored `Throwable` can change before it's drained (`addSuppressed`, a
+  cause set late) needs a look in the spec. The snapshot alternative wasn't measured.
+- **"Attached and nobody reading" barely exists with leases.** Under the listen-only decision
+  (§13), the handler is attached only while a lease is live. After a crash it stays attached
+  for at most one lease, about 3 s. So the cost is paid while someone is watching, and the
+  application pays nothing the rest of the time.
+- **Four threads were too noisy to read.** The error was ±30–70 % of the score: every thread
+  logs through one shared handler whose lock dominates. Whether the ring's shared counter adds
+  contention on top of that wasn't separated.
+
+## Findings: where the tap sits relative to the rules (question 5)
+
+### 15. On WildFly the agent adopts the tap as one of its own handlers
+
+The JUL adapter's `liveHandlers()` collects every handler on every known logger, and the
+verification sweep installs the agent's filters on each one. Measured: within 8 s of attaching
+(sweep: 5 s), the tap's filter went from none to `JulRuleFilter`. The tap doesn't appear in
+`logctl list handlers`, because the names there come from the management model. Inside the
+agent, though, it is a real handler. It is also a candidate for anything else the agent does to
+real handlers, such as handler floor control, vendor defaults for handlers, and `top`'s byte
+counting.
+
+So the implementation has to **exclude its own handler explicitly** from the handlers it adopts,
+and decide the rule behaviour deliberately rather than inherit it.
+
+### 16. A JUL handler applies its filter only if it asks
+
+A JUL `Handler`'s filter isn't applied by the logger. The handler's own `publish` has to call
+`isLoggable`, as `StreamHandler` does. With `drop` rule
+`--message-contains "tick" --below ERROR` on the sample's `Worker`, over the same 4 s window:
+
+| | `server.log` | tap ignoring its filter | tap honouring its filter |
+|---|---|---|---|
+| levels received | ERROR, SEVERE | INFO, WARN, ERROR (JUL 800, 900, 1000) | ERROR / SEVERE only (1000) |
+
+So on JUL and WildFly, `listen` can show either what the file shows or what the application
+logged, depending on whether the tap calls `isLoggable`. Honouring the filter costs no second
+evaluation and doesn't count the rule's hit twice, because `RuleService.evaluateGate` caches
+the verdict per record (`computeIfAbsent` on the record's identity).
+
+`trim` is a different kind of rule. It wraps a handler's `Formatter`, and the tap has none. So a
+tap shows a full stack trace even where the file shows it trimmed, unless the tap applies the
+trim verdict itself. This wasn't tested.
+
+On Logback the choice disappears. In 1.0, Logback has level control only (rules come with
+Release 2), and §4.3 puts Logback's gate stage in a context-wide `TurboFilter`. A record that
+filter drops never reaches any appender, the tap included. Showing dropped records on Logback
+would need the tap to sit in that `TurboFilter` too. That is reasoning from the design, not a
+measurement.
+
+**Decided 2026-10-18: `listen` respects the configuration, as the application's handlers do.**
+Records go through the same `drop` rules, storm suppression and logger levels as the
+application's own handlers, and `trim` applies too. On JUL/WildFly the tap calls `isLoggable`,
+which this spike verified, and applies the trim verdict when it renders the stack trace at drain
+time, which it didn't test. `--show-dropped` isn't part of the first pass.
+
+**Decided 2026-10-18: `listen` behaves like a native handler, with two settings of its own.**
+
+- **A threshold.** It works like a handler's level, set per `listen` invocation. This settles
+  the handler-level question: the application's handlers disagree (`FILE` at ALL, `CONSOLE` at
+  INFO in the dev environment), so `listen` doesn't borrow either one's level.
+- **One or more loggers.** `listen` receives records from each of them and from their
+  descendants, as a handler attached to those loggers would. A record reaches `listen` only once,
+  stopping at the nearest assigned logger. So `listen com.acme com.acme.batch` never shows a
+  `com.acme.batch.Worker` line twice. The application's own loggers and their
+  `use-parent-handlers` / `additivity` settings are not changed.
+
+## Findings: listening below the configured level (question 6)
+
+The design under test is §16's: `listen` is attached to one or more loggers with its own
+threshold. A third throwaway agent (`Tap6`) implemented it for Logback and JUL. The test
+application logs every 10 ms through three loggers:
+
+- `com.acme.batch.Worker` at TRACE, DEBUG and INFO;
+- `com.acme.batch.Private` at DEBUG and INFO, with `additivity="false"` / `useParentHandlers=false`
+  and its own destination;
+- `com.acme.Other` at DEBUG and INFO.
+
+The root is at INFO and writes to `app.log` through a handler at ALL (Logback `FileAppender`,
+JUL `FileHandler`). ALL is the case that floods: anything the logger lets through gets written.
+Each window is 3 s, comparing what `listen` received with what `app.log` gained.
+
+### 17. Both frameworks can listen below the level without flooding, by different routes
+
+`listen com.acme.batch --threshold TRACE`:
+
+| | `listen` received | `app.log` gained |
+|---|---|---|
+| Logback | Worker TRACE, DEBUG, INFO (292 each) | Worker INFO, Other INFO only |
+| JUL | Worker FINEST, FINE, INFO (279 each) | Worker INFO, Other INFO only |
+| after `stop`, both | nothing | Worker INFO, Other INFO only |
+
+- **Logback doesn't need to touch the level.** A `TurboFilter` runs before Logback's level
+  check, with the logger, level, format, arguments and throwable. For a call below the logger's
+  effective level but at or above the threshold, it formats the message, puts the record in the
+  ring itself, and returns `NEUTRAL`. Logback's level check then turns the event away from every
+  appender as usual. Measured: 1,020 records came this way and 340 through the appenders
+  attached to `com.acme.batch`, and `app.log` never saw a TRACE or DEBUG line.
+- **JUL has no hook before the level check.** `Logger.log` returns at once when the level
+  doesn't allow the record, and JBoss LogManager does the same. So `listen` has to lower the
+  assigned logger's level to the threshold. Every other handler then needs a filter that turns
+  away records below the level the logger had before (its **baseline**). Measured: 648 records
+  were turned away from other handlers, which is exactly Worker's FINEST and FINE over the
+  window. `app.log` stayed at INFO. The filter has to be on every handler before the level comes
+  down, or the gap floods.
+
+### 18. "Only once" works on both
+
+`listen com.acme,com.acme.batch --threshold INFO` delivered Worker INFO 286 times on Logback
+(271 on JUL), the same count as Other, so it wasn't doubled. Each attachment knows its own
+logger and accepts a record only when it is the nearest assigned ancestor of the record's
+logger.
+
+### 19. What JUL's route costs and what it collides with
+
+Lowering a level isn't free and isn't private to `listen`:
+
+- **Descendants inherit the lower level.** `Private` has no level of its own, so its effective
+  level dropped to FINEST along with `com.acme.batch`. Its FINE records were created and then
+  turned away by its handler's level, at INFO. Every record below the baseline anywhere under an
+  assigned logger is now created, and each handler pays a filter check on it.
+- **Application code sees it.** A `logger.isLoggable(FINE)` guard around expensive debug output
+  now returns true, so the application does that work while `listen` runs. Logback's
+  `TurboFilter` route doesn't have this effect.
+- **A handler added during the session isn't covered.** Here the filter went onto the handlers
+  that existed at `listen`. In the agent the check would live in the `JulRuleFilter` the sweep
+  already installs on every handler (§15), so a new handler floods for at most one sweep
+  interval.
+- **It collides with level control.** `listen` changes a level that `logctl set logger`, an
+  expiring override, vendor defaults and the verification sweep also manage. A raw `setLevel`
+  would be overwritten by the next sweep, or would overwrite a user's override when it's
+  restored. In the agent, `listen`'s lowered level has to be a layer the level-control core
+  knows about, with the baseline taken from that core, not from the logger. §22 measured this
+  on WildFly, and found a worse case: the agent captures `listen`'s level as the baseline.
+
+### 20. A logger that doesn't propagate: native semantics leave it out, and Logback's route has to agree
+
+A handler on `com.acme.batch` never sees `com.acme.batch.Private`, whose records stop at its own
+destination. JUL's route behaved that way: `listen` got nothing from `Private`. Logback's
+behaved inconsistently. `Private`'s **DEBUG** reached `listen` through the `TurboFilter`, but
+its **INFO** didn't, because INFO goes through the appender path, which `Private` doesn't
+propagate to.
+
+So the `TurboFilter` must apply the same propagation rule: walk from the record's logger up to
+the assigned one, and skip the record if any logger on the way has `additivity="false"`. Then
+both routes agree with §16's native semantics. Users can still assign `Private` explicitly to
+see it. Since leaving it out is silent, `listen` should say so when it starts, for example:
+`com.acme.batch.Private doesn't pass records to its parents; add it to listen to see it`.
+
+### 21. On WildFly the JUL route works, but the sweep wraps the band instead of leaving it alone
+
+On WildFly 26.1.3 the test agent ran inside the server alongside the real agent (built from this
+branch, 5 s sweep). The sample WAR's timer logs `org.logaperture.sample.work.Worker` at every
+level through JUL, SLF4J and Log4j every 500 ms. The root is at INFO with two handlers:
+`FILE` (`server.log`, level ALL, the flooding case) and `CONSOLE` (INFO).
+
+`listen org.logaperture.sample.work.Worker TRACE` got TRACE, DEBUG, INFO, WARN and ERROR from
+all three facades, 6 of each per 3 s window. `server.log` gained only INFO, WARN and ERROR, over
+four windows spanning three sweeps. JBoss LogManager behaves like JUL here: the logger's level
+had to be lowered, and the band filter kept the rest out of `server.log`. `CONSOLE` drops TRACE
+and DEBUG on its own level before any filter runs, so only `FILE` needed the band.
+
+The sweep, though, rewrote both handlers' filter chains within one interval:
+
+| | Filter chain on `FILE` and `CONSOLE` |
+|---|---|
+| Before `listen` | `JulRuleFilter > JulStormFilter` |
+| Right after `listen` | `Band > JulRuleFilter > JulStormFilter` |
+| After one sweep | `JulRuleFilter > JulStormFilter > Band > JulRuleFilter > JulStormFilter` |
+
+`FilterLayering` treats any filter it doesn't recognise as the application's own "base" and
+rebuilds its canonical layers on top. The band survives, which is why nothing flooded, but the
+agent's own filters now run twice per record:
+
+- **The rule gate** caches its verdict per record (§16), so evaluating it twice is cheap and
+  doesn't count twice.
+- **The storm filter** probably sees each record twice, which would double the handler's storm
+  counts while `listen` runs. Not measured.
+
+On `stop` the test agent put back the chain it had saved, which dropped the outer copies. In the
+real implementation the band can't be a separate wrapper. It has to be part of `JulRuleFilter`'s
+own decision, inside the canonical chain.
+
+### 22. `listen`'s lowered level and the agent's level control collide, in four measured ways
+
+The same setup, with `logctl set logger org.logaperture.sample.work.Worker DEBUG for 2m` mixed
+in. Worker has no level of its own, so it inherits INFO.
+
+| Sequence | What happened |
+|---|---|
+| `listen … TRACE`, then `set logger … DEBUG` | The override replaced `listen`'s TRACE. `listen` silently stopped getting TRACE but still reported threshold TRACE. And the band, still filtering against INFO, kept the user's DEBUG out of `server.log`: the override looked as if it hadn't worked |
+| Then `stop` | `listen` put back the level it had saved (unset), undoing the override. The next sweep re-applied DEBUG (audit `source=verification-sweep previous=INFO new=DEBUG`); for those few seconds DEBUG was missing from `server.log` |
+| Then the override expired | **Worker went to TRACE, not INFO.** When the override was set, the agent captured Worker's level, `listen`'s TRACE at that moment, as the baseline (audit `previous=TRACE`; `list loggers` showed CONFIGURED TRACE). On expiry it restored that baseline (audit `REVERSION source=expiry-sweep previous=DEBUG new=TRACE`). `server.log` then got TRACE and DEBUG with no `listen` running, and `reset logger` also restored "TRACE (baseline)". It lasted until the restart |
+| `set logger … DEBUG` first, then `listen … TRACE` | The verification sweep treated `listen`'s TRACE as drift and restored DEBUG within one interval (audit `source=verification-sweep previous=TRACE new=DEBUG`). `listen` silently lost TRACE. Stopping it afterwards put back DEBUG, which was harmless |
+
+The third row is the one that matters. It's a verbosity raise that outlives `listen`, so it's
+exactly the data exposure §9.1 is about, and it gets into `server.log`. The audit trail recorded
+every step, but as ordinary changes, with nothing linking the TRACE to `listen`.
+
+All four come from one cause: the test agent changes the level directly, behind the agent's back.
+The real implementation needs `listen` as a layer level control knows about:
+
+- **The level in force** is the lower of what level control wants (override, vendor default or
+  baseline) and the lowest threshold of any `listen` covering the logger.
+- **Baseline capture and the verification sweep** compute the level without the `listen` layer,
+  so they never take it for the application's own level or treat it as drift.
+- **`stop` removes the layer.** It never restores a snapshot, so an override set in the meantime
+  survives.
+- **The band's cut-off** is the level without the layer. It's recomputed whenever an override
+  changes, so the user's DEBUG still reaches `server.log`.
+- **The level change is audited** as `listen`'s (§25: `origin=listen L3`).
+
+Logback's `TurboFilter` route changes no level, so none of this applies there. JBoss LogManager
+has no equivalent hook before the level check, so on WildFly the layer is needed.
+
+## Findings: capability and audit (question 7)
+
+Mostly design, checked against what 1.0 ships. Today `CapabilityPolicy.allowAll()` grants
+everything (no policy file yet), `Capability` has no `capture`, and every audit line names
+`principal=` as the JVM's own `user.name`. One measurement backs §24: a throwaway MBean
+(`Who`) reported who was calling it over each kind of JMX connection.
+
+### 23. `listen` needs its own capability, `stream`, and below-level listening also needs `level.raise`
+
+`listen` is closer to `capture` than to anything else in §9.3: log content leaves the agent.
+But it is a weaker control point than `capture`. It is continuous rather than a bounded bundle,
+it has no manifest for an administrator to review before sending, and with `--file` it lands
+somewhere the agent can't see (§5: the file is written by `logctl`). So it needs its own
+capability, denied separately from `capture`. A customer may accept "a bundle I review" but not
+"a live feed":
+
+| `listen` asks for | Needs | Why |
+|---|---|---|
+| Records the application's handlers would get anyway (threshold at or above every assigned logger's effective level) | `stream` | Egress, like `capture`. Roughly equivalent to reading the log files, but not all logs are locally readable (syslog, a remote collector, a container's stdout) |
+| Records below the configured level (§17) | `stream` + `level.raise` | The same data exposure as `set logger … DEBUG`, §9.1's "less obvious and more likely to bite". On JUL it is a level raise (§19) |
+| A logger under the verbosity ceiling (§9.5) | Refused below the ceiling | §9.5 applies whether the output goes to a file or to `listen` |
+
+Notes on the rows:
+
+- **Name.** `stream` rather than `listen`, so the same grant covers #195's console view later.
+  §9.3 names capabilities after the risk, not the command.
+- **Not `persist`.** A `listen` never outlives its lease (§11).
+- **Default under modes (§9.11).** `prod` denies it, like everything beyond `view`. The strictest
+  `prod` that permits `view` and `capture` live should not imply `stream`.
+- **The ceiling applies per record, not per listen.** `listen com.acme TRACE` covers descendants,
+  and one of them may be ceiling-protected. Refusing the whole `listen` for that is harsh, and
+  silently skipping it breaks §9.6. So the hook checks each record's logger against the
+  ceiling, and `listen` names the protected categories when it starts, the same way §20 names a
+  non-propagating logger. The refusal is audited (§25).
+- **Redaction.** If `capture` applies customer redaction (§9.9) and `listen` doesn't, `listen`
+  is a way round it. `listen` has to apply the same redaction patterns before a record enters
+  the ring. Neither exists yet, so this is a requirement on whichever ships second.
+
+### 24. Egress goes wherever the JVM's JMX goes, and the agent can't always tell where that is
+
+RING keeps §8.2 and §9.9's claim as written: the agent opens no socket and sends nothing on its
+own. `drain` is an MBean operation answered on a connection the JVM already has. But it is
+answered on **every** connector the JVM exposes, not only `logctl`'s local attach. A JVM started
+with `-Dcom.sun.management.jmxremote.port` lets any JMX client on the network call `drain`. The
+`Who` MBean reported, on JDK 21:
+
+| Caller | `Subject.current()` | `RemoteServer.getClientHost()` |
+|---|---|---|
+| Local attach (`startLocalManagementAgent`), as `logctl` does it | `null` | the host's LAN address |
+| Remote port, authenticated (password file) | non-null, principal `ops` | the host's LAN address |
+| Remote port, `authenticate=false` | `null` | the host's LAN address |
+
+So:
+
+- **An authenticated remote caller is identifiable**, by its Subject. The local connector never
+  authenticates, so a Subject means the call didn't come through `logctl`'s attach.
+- **An unauthenticated remote caller looks exactly like `logctl`.** The client host doesn't help
+  either: RMI reported the LAN address even for the local attach, from the same machine.
+
+The recommendation follows. `stream` is local-only by default: refuse `drain` (and `open`) from a
+caller with a Subject unless the policy explicitly allows remote streaming. An unauthenticated
+remote JMX port can't be detected, but it already exposes `set logger`, every other operation and
+the JVM's own MBeans, so `listen` adds nothing to that exposure. `doctor` could flag it: the
+`com.sun.management.jmxremote.*` properties are readable. §9.9's "a human moves it" should gain a
+sentence: `listen`'s output reaches whatever the JVM's JMX reaches.
+
+This also says something about 1.0's audit lines. The principal is always the JVM account. That
+is right for local attach, which only that account or root can use (§9.8). For an authenticated
+remote caller, the Subject's principal is the honest value. That applies to every audited
+operation, not just `listen`.
+
+### 25. Audit: one line when a listen starts, one when it stops, nothing per record
+
+The audit trail records changes and their reverts (§9.7). A `listen` is a change with a defined
+end, so it fits as a pair, in the existing line format with a new target kind, `listen=<lease>`:
+
+```
+[logaperture-audit] 2026-10-18T14:02:11Z action=MUTATION principal=ddeucher source=jmx listen=L3 previous=<none> new=com.acme.batch,com.acme.Other>=TRACE reason=INC-4411
+[logaperture-audit] 2026-10-18T14:02:11Z action=MUTATION principal=ddeucher source=jmx logger=com.acme.batch previous=INFO new=TRACE reason=INC-4411 origin=listen L3
+[logaperture-audit] 2026-10-18T14:19:40Z action=REVERSION principal=ddeucher source=lease listen=L3 previous=com.acme.batch,com.acme.Other>=TRACE new=<none> reason=lease expired delivered=48211 lost=0
+[logaperture-audit] 2026-10-18T14:19:40Z action=REVERSION principal=ddeucher source=lease logger=com.acme.batch previous=TRACE new=INFO origin=listen L3
+```
+
+- **Start** names the loggers and the threshold, and takes a `--reason` like every other
+  mutation.
+- **The JUL level change is audited** as an ordinary logger mutation with `origin=listen L3`,
+  reusing the field recipes already use (recipes.md B5). Logback's `TurboFilter` route changes
+  no level, so it writes no second line. Either way the start line says the threshold is below
+  the configured level, so `grep listen=` finds every below-level exposure.
+- **Stop always gets a line**, whoever stopped it. The stop reason distinguishes:
+  - `closed`: `logctl` exited normally;
+  - `lease expired`: the listener died (§11);
+  - `agent stopped`: the JVM shut down;
+  - `refused`: the policy changed (not possible today, since grants are sealed at boot, §9.4).
+
+  An expired lease is "an override that expired unnoticed" (§9.7), so it matters most. The
+  reaper writes it, with the original principal and `source=lease`.
+- **Counts on the stop line.** `delivered` and `lost` say how much left and how complete the
+  copy was. The ring knows both exactly (§5).
+- **Not audited:** each batch, each record, and the handler being reattached after a
+  reconfiguration (§7). The reattachment is a diagnostic, since nothing about the scope changed.
+- **Refusals are audited too.** A `listen` denied `stream`, or held back below the ceiling for a
+  protected category (§23), writes a line. 1.0 doesn't audit capability denials at all, so this
+  is a new kind of line, not just a new target.
+- **`--file` can't be audited by the agent.** The path is chosen and written by `logctl`.
+  `logctl` could send it with `open` as a declared value, audited as `file=<path> (declared)`,
+  but the agent can't check it. `logctl` should create the file `0600`. Records below the
+  configured level land in a file nobody configured, and the default umask would leave it
+  world-readable.
+
+### 26. Several listeners on one ring must not see each other's scope
+
+§12 has listeners share one ring, each with its own cursor. With §16's per-listener loggers and
+thresholds, the ring holds the union of every listener's scope. `drain` has to filter each batch
+down to the caller's own loggers and threshold, or one listener gets another's TRACE records. In
+1.0 every caller is the same account, so this costs nothing in security. It matters as soon as
+remote streaming (§24) gives callers different principals, and it is cheap: the nearest-assigned
+logger is already computed on the way in (§18), so tag each entry with the leases it matched.
+Alternatively, give each lease its own ring, at the cost of copying shared records.
+
+## Not established
+
+- **Overhead from the transport harness at flat out.** Its flat-out throughput was too noisy to
+  read: 144k calls/s with nobody listening and 172k with NOTIFY, which is backwards. Question 4
+  was measured with JMH instead (§14).
+- **Cost under contention.** The 4-thread JMH run was too noisy (±30–70 %). A run with pinned
+  CPU frequency and per-thread handlers (`IdleBenchmark`'s `per-thread` shape) would isolate the
+  ring's shared counter.
+- **RING tuning.** Adaptive polling (backing off when a batch is empty), bigger batches and
+  pipelined `drain` calls were not tried. They're the obvious next step if the CPU cost at
+  10k–50k/s matters.
+- **Transport on JDK 17 and 25, JUL and WildFly.** The transport comparison ran on JDK 21 with
+  plain Logback only.
+- **WildFly per-deployment logging.** A deployment with its own logging configuration or a
+  logging profile gets its own log context, which a handler on the server's root never sees.
+  Not tested, and WildFly versions other than 26.1.3 weren't tried.
+- **Leases on JUL and WildFly, and over long runs.** The lease test ran on plain Logback for
+  about 30 s. Server-side JMX connection state left behind by a `kill -9`'d client wasn't
+  inspected.
+- **The `listen` layer in level control (§22) and the band inside `JulRuleFilter` (§21)** weren't
+  built. Neither was the storm filter's double count while the band is wrapped (§21) measured.
+- **The exact Logback version that added `ConfigurationEventListener`.** Only 1.2.13, 1.3.0,
+  1.3.14, 1.4.0, 1.4.14 and 1.5.x were checked.
+- **Whether the local connector refuses other hosts.** The connector `startLocalManagementAgent`
+  starts listened on a wildcard address (`*:39607`). The JDK documents that it accepts only
+  local peers, and `logctl` already relies on that in 1.0. It wasn't tried from another host.
+  `listen`'s privacy rests on it, along with everything else `logctl` does.
+- **Question 7 on anything but JDK 21's RMI connector.** Neither the audit lines (§25) nor the
+  per-lease filtering (§26) were built. The `Who` probe ran once per connection type.
+- **Records with stack traces.** No record carried a throwable. Rendering one on the
+  application thread, as the byte cap above assumes, is a separate cost.
+
+## Harness
+
+Not committed, per `CLAUDE.md`. The transport harness has five pieces:
+
+- `TapRing`: the ring and the batch encoding.
+- `Tap` with `TapMBean`: the agent. `start(mode, arg)`, `stop()`, `drain(cursor, max)`.
+- `App`: the rate-controlled logger.
+- `Listen`: the client. `Listen <pid> <mode> <seconds> [records/s cap]`. It prints one result
+  line with offered, received, lost, latency percentiles, CPU on both sides, JMX notifications
+  lost and live heap.
+- `run.sh`: starts the application with the agent, waits 5 s, runs `Listen` and reports the
+  application's median calls/s while listening.
+
+The question 2 harness reuses `TapRing` and adds `Tap2` (the agent, with one binding for
+Logback and one for JUL), `AppQ2` (the two-logger application) and `Probe`. `Probe` attaches
+to a pid and runs a list of steps: `start` and `start+` (with the re-add hook), `stop`,
+`reconf`, `status`, `count:<seconds>` and `sh:<command>`, which ran jboss-cli inside the WildFly
+container. For question 3, `Tap2` gained `open`, `drainFor` and `close` plus the reaper thread,
+and `Lsn` is a listener that holds a lease, polls, reports once a second, and closes its lease
+from a shutdown hook.
+
+Question 4's benchmark, `SpikeListenTapBenchmark`, lived in `logaperture-bench` for the run
+(`java -jar logaperture-bench/target/benchmarks.jar SpikeListenTapBenchmark -t 1`) and was
+removed afterwards. For question 5, `Tap2`'s JUL handler took an agent argument, `honorFilter`,
+to call `isLoggable` before offering a record.
+
+Question 6's agent, `Tap6`, takes `listen(loggers, threshold)` and `stop()`. Its Logback
+binding has one appender per assigned logger plus the `TurboFilter`. Its JUL binding has one
+handler per assigned logger, saves each logger's level and baseline, and wraps every other
+handler's filter. `AppQ6` is the three-logger application, and `q6.sh` runs a sequence of
+`listen` / `stop` steps, comparing what `listen` received with what `app.log` gained over each
+3 s window.
+
+For question 7, `Who` is an MBean whose one operation returns `Subject.current()`,
+`RemoteServer.getClientHost()` and the calling thread's name. `Ask` calls it over local attach,
+or over a remote port with or without credentials.
+
+For question 6 on WildFly, `Tap6` gained `level(logger)`. It reports the logger's level and each
+root handler's level and full filter chain. `Probe6` gained `agent:<jar>` (load the agent into
+the running server), `level:<logger>` and `sleep:<seconds>`, and its `count:` step also counts
+what `server.log` gained over the window. `w6.sh` runs `Probe6` inside the container, alongside
+`logctl` run with `docker exec`.

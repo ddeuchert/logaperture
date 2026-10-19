@@ -1,9 +1,13 @@
 # Demo recordings
 
 Status: **signed off 2026-10-10**, decisions D1–D12 agreed as recommended. Implemented
-2026-10-10: story 1 as the prototype (D12), reviewed, then stories 2 and 3.
-Issue: [#196](https://github.com/ddeuchert/logaperture/issues/196). Milestone `1.0.0`; documentation
-only, so it can land after the beta 1 feature freeze (Oct 15).
+2026-10-10: story 1 as the prototype (D12), reviewed, then stories 2 and 3. Story 4 (a `trim`
+rule) added 2026-10-18, decisions T1–T6 agreed as recommended. The Now Showing page: C1–C5
+and N1–N6 agreed 2026-10-18, as recommended.
+Issues: [#196](https://github.com/ddeuchert/logaperture/issues/196) (stories 1–3),
+[#226](https://github.com/ddeuchert/logaperture/issues/226) (story 4),
+[#228](https://github.com/ddeuchert/logaperture/issues/228) (the Now Showing page). Milestone `1.0.0`;
+documentation and a test fixture only, so it can land after the beta 1 feature freeze (Oct 15).
 Parent spec: [`doc/specs/user-documentation.md`](user-documentation.md) (the guide this adds to), and
 through it [`doc/logaperture-spec.md`](../logaperture-spec.md) §17.1 "User documentation".
 Related: [`wildfly-dev-environment.md`](wildfly-dev-environment.md) (the server the demos run
@@ -17,15 +21,20 @@ After this feature, the user will be able to:
   on the README, with the server's console above and `logctl` below.
 - Pause a recording on the guide and copy a command straight out of it, including in the guide
   that ships in the release zip.
-- See three stories: **why don't I see my TRACE?** (a handler stricter than the logger),
-  **debug one package for a while, then it cleans itself up** (`set logger … for`), and
-  **something is flooding the log** (`top`, then a `drop` rule).
+- See four stories: **why don't I see my TRACE?** (a handler stricter than the logger),
+  **debug one package for a while, then it cleans itself up** (`set logger … for`),
+  **something is flooding the log** (`top`, then a `drop` rule), and **stack traces are burying
+  the log** (a `trim` rule).
+- Watch every recording in one place, the guide's **Now Showing** page: for each, when you'd
+  run into that problem, the recording, and every command in it explained, linked to its
+  reference.
 - Trust that what a recording shows matches the release they run: the recordings are made by a
   script against a real server and redone for each release.
 
 Guide pages changed: `index.md` ("See it work") and `get-started/quick-start.md` (step 4) for
-story 1, `how-to/raise-a-level.md` for story 2, `how-to/silence-noise.md` for story 3. README:
-one GIF near the top.
+story 1, `how-to/raise-a-level.md` for story 2, `how-to/silence-noise.md` for stories 3 and 4.
+`now-showing.md` (new, its own nav entry) for all of them, and a link to it from `index.md`'s
+"See it work". README: one GIF near the top.
 
 For the maintainer: `dev/demos/record.sh` re-records every demo against the dev WildFly; the
 release steps in `DEVELOPMENT.md` gain "re-record the demos".
@@ -39,8 +48,8 @@ explains the same steps.
 
 ## Out of scope
 
-- Story 4 from the issue (`doctor`, storm detection, vendor defaults with `export`): a later
-  issue, once the first three show the format works (D11).
+- Story 5 (`doctor`, storm detection, vendor defaults with `export`), first planned as story 4:
+  a later issue, [#198](https://github.com/ddeuchert/logaperture/issues/198) (D11, T1).
 - A narrated screen capture (OBS, audio). The issue leaves that for later.
 - Running the recordings in CI. They need Docker, a WildFly and a minute of wall-clock time each;
   the release step is manual (D10).
@@ -112,6 +121,46 @@ logctl list rules
 that has been up a while the flood needs time to lead. The story's hidden setup starts the
 flood 20 seconds before recording, and the story checks that StockSync is `top`'s first line.
 
+### 4. Stack traces are burying the log (issue #226)
+
+The demo shop's primary payment endpoint refuses connections: every order fails once, then goes
+through on the fallback, and each failure logs a WARN with a stack trace 28 lines long. The
+console is a wall of frames that says the same thing every time. About 40 seconds.
+
+```sh
+# A web shop app deployed on a WildFly server. Its console is above.
+# Its primary payment endpoint is down. Every order falls back, and logs a full stack trace:
+#   the console is all stack frames
+# Same ConnectException every time, nothing to learn from the trace. Keep the warning, one line:
+logctl add rule trim com.example.shop.payment.PaymentGateway --throwable java.net.ConnectException --any-cause
+#   each warning is now 2 lines: the WARN, and
+#   "Caused by: java.net.ConnectException: Connection refused [stack trace trimmed: 24 frames omitted]"
+logctl list rules
+# Every warning is still logged, with its cause on one line. The orders are readable again.
+```
+
+The point is noise reduction for a failure whose cause is known: the real case behind this story
+was a `ConnectException` from an environment problem, the same root cause every time, where the
+full trace added nothing. Story 3 drops a flood; this one keeps every event, so the narration
+says why not `drop`.
+
+The rule names the exception (T3). `--throwable` matches the top-level exception's exact class,
+and here the `ConnectException` is the cause of the shop's `PaymentException`, as client
+libraries usually wrap it, so the rule adds `--any-cause`. It has no `--frames`: the default, 0,
+prints each exception as one line. The command fits the 120-column pane on one line.
+
+Measured on the dev WildFly: 28 lines per warning before the rule, 2 after. WildFly's pattern
+puts the `PaymentException`'s summary on the WARN line itself, and the pane cuts that long line
+before its marker; the `Caused by:` line, with the exception class and its marker, fits. Every
+order also logs two INFO lines, so after the rule a warning and its order take 4 lines, and the
+11-row console pane shows two or three orders at once.
+
+The story fails the recording unless, before narrating, a stack frame is on the console pane;
+then, after the rule, a `Caused by: java.net.ConnectException: … [stack trace trimmed: ` line
+reaches it within 15 s, and every stack frame and `... N more` line leaves it within 25 s
+(`wait_gone`) (T6). Its hidden setup starts the outage before recording, so the first frame
+already shows the problem.
+
 ## Design
 
 ### The demo app (D1)
@@ -129,7 +178,26 @@ WildFly routes into JBoss LogManager:
 
 `POST /demo/flood/start` makes `StockSync` log a WARN with a `java.net.ConnectException` and its
 stack trace every 50 ms until `POST /demo/flood/stop`. `POST /demo/stop` stops everything, and
-`GET /demo/status` says what is running. Order numbers, amounts and cards come from a fixed seed,
+`GET /demo/status` says what is running.
+
+`POST /demo/payment-outage/start` (story 4, T2) makes the primary payment endpoint refuse
+connections until `POST /demo/payment-outage/stop`: every order's first attempt fails, and
+`PaymentGateway` logs a WARN `Primary payment endpoint unreachable for order 10425, using
+fallback` with a `com.example.shop.payment.PaymentException` caused by a
+`java.net.ConnectException: Connection refused`; the order then goes through as usual. The trace
+comes from real nested calls inside the demo shop — checkout calls the gateway, which calls a
+provider client and its interceptor chain, which calls a transport, which refuses — not from a
+real network failure, so every recording shows the same trace (T4). It is 28 lines printed: the
+`PaymentException` with its 10 frames, then the `Caused by:` with the 15 frames it doesn't share
+and `... 9 more`. `/demo/stop` ends the outage too.
+
+These classes live in `com.example.shop.checkout` and `com.example.shop.payment`
+(`CheckoutService`, `PaymentGateway`, `PaymentException`, `ProviderClient`, `HttpTransport`),
+not under the project's `org.logaperture` package root: the recording shows their frames and the
+exceptions' class names, and they should read as the shop's own code. The exception is allowed
+because the sample WAR is a test fixture that never ships.
+
+Order numbers, amounts and cards come from a fixed seed,
 so two recordings show the same orders. Messages are kept short, so that a line with its logger
 and thread names fits the 120-column pane.
 
@@ -148,10 +216,12 @@ dev/demos/
   why-no-trace.sh         story 1
   debug-for-a-while.sh    story 2
   flood.sh                story 3
+  trim.sh                 story 4
 guide/assets/demos/
   why-no-trace.cast       the recordings, committed (asciicast v2 text: ~40 KB each,
   debug-for-a-while.cast  ~580 KB for the flood, whose stack traces are most of it)
   flood.cast
+  trim.cast
 ```
 
 A story script is a `story()` function made of steps:
@@ -233,6 +303,7 @@ the build when a page names a recording that `guide/assets/demos/` doesn't have.
 | Why don't I see my TRACE? | `index.md` ("See it work"), `get-started/quick-start.md` step 4 |
 | Debug one package for a while | `how-to/raise-a-level.md` |
 | Something is flooding the log | `how-to/silence-noise.md` |
+| Stack traces are burying the log | `how-to/silence-noise.md`, "Shorten a stack trace", above the static example, which stays (T5) |
 
 ### On the README (D9)
 
@@ -245,6 +316,77 @@ the README embeds `https://logaperture.org/latest/assets/demos/why-no-trace.gif`
 ~1 MB binary that changes every release out of the git history. The cost: the image is missing
 until a release tag publishes `latest` with it. `main` only moves at a release, so the README
 people see on GitHub gets the image link and the published GIF together.
+
+### Now Showing (issue #228)
+
+The recordings sit next to the how-to each one illustrates, so a reader only finds the ones on
+pages they open. **Now Showing** presents them all on one page, as a guided walk-through: what
+the problem is and when you'd meet it, the film, then each command in it taken apart.
+
+**The page (C1, C3).** `guide/now-showing.md`, titled "Now Showing", a top-level nav entry
+between "Get started" and "How-to". It opens with a subtitle line, "Short films of LogAperture
+fixing real problems, recorded with [asciinema](https://asciinema.org)." (no count: N1), and a
+short paragraph: each film runs against a real WildFly with a demo web shop, the server console
+above and `logctl` below, under 90 seconds; pause one to copy a command. Then the
+**programme** (N6): a list of the films, each linking to its anchor. The home page's "See it
+work" gains one line after its recording: "More films in [Now Showing](now-showing.md)."
+
+**Each film (C2, C4).** In story order, 1 → 4; story 5 (#198) joins when it ships.
+
+```markdown
+## Why don't I see my TRACE? {#why-no-trace}
+
+<one paragraph: the situation, and when a reader would reach for this>
+
+<div class="la-cast" data-cast="why-no-trace"></div>
+
+### Commands in this film {#why-no-trace-commands}
+
+**`logctl set logger com.example.shop.payment TRACE for 15m`**: raise one package's level.
+
+- `com.example.shop.payment`: the logger; a package name covers every logger under it.
+- `TRACE`: the new level.
+- `for 15m`: the change reverts by itself after 15 minutes.
+
+Reference: [`set logger`](reference/logctl.md#set-logger) · How-to:
+[Raise a log level](how-to/raise-a-level.md#a-logger-and-everything-under-it)
+```
+
+- A film's anchor is its recording's name, which is stable: it is the `.cast` file's name and
+  `record.sh`'s story name. The commands heading gets an explicit `{#<name>-commands}`, since
+  four identical headings would otherwise get `_1`, `_2`… suffixes that move when a film is
+  added.
+- Every command the film runs is listed, as typed, with every argument and option explained.
+  A command a later film repeats (`set handler CONSOLE AUTO` in films 1 and 2, `list rules` in
+  3 and 4) is explained again, briefly, so a film read on its own from a link is complete (N2).
+- Each command links to its `reference/logctl.md` anchor (every command there has one) and to
+  the how-to section that covers that use of it.
+- The player is the guide's existing embed, unchanged: poster at the last frame, plays from the
+  release zip with no network (C4). All four films load with the page (N3).
+
+The paragraph for each film, and the commands it explains:
+
+| Film | When you'd reach for it | Commands | Reference | How-to |
+|---|---|---|---|---|
+| Why don't I see my TRACE? | You raised a logger and nothing new shows up: a handler between the logger and the output filters it. | `set logger com.example.shop.payment TRACE for 15m`, `set handler CONSOLE AUTO`, `status` | `#set-logger`, `#set-handler`, `#status` | `raise-a-level.md#when-raising-a-logger-shows-nothing`, `undo-changes.md#see-what-is-changed` |
+| Debug one package for a while | You need DEBUG for one investigation and don't want to remember to put it back. | `set logger com.example.shop.checkout DEBUG for 30s`, `set handler CONSOLE AUTO`, `list loggers com.example`, `status` | `#set-logger`, `#set-handler`, `#list-loggers`, `#status` | `raise-a-level.md#a-logger-and-everything-under-it`, `concepts/tiers-and-expiry.md#how-a-timed-change-ends`, `find-a-logger.md#from-the-start-of-the-name` |
+| Something is flooding the log | One component repeats the same failure many times a second, and you need to find it and quiet it without a restart. | `top --limit 5`, `add rule drop com.example.shop.inventory.StockSync --throwable java.net.ConnectException --sample-full 1m`, `list rules` | `#top`, `#add-rule`, `#list-rules` | `find-disk-usage.md#which-loggers-write-the-most`, `silence-noise.md#drop-a-message`, `silence-noise.md#see-and-change-rules` |
+| Stack traces are burying the log | A known failure, the same root cause every time, prints a full stack trace each time, and the trace teaches nothing new. | `add rule trim com.example.shop.payment.PaymentGateway --throwable java.net.ConnectException --any-cause`, `list rules` | `#add-rule`, `#list-rules` | `silence-noise.md#shorten-a-stack-trace`, `silence-noise.md#matching-on-the-exception` |
+
+The "for 30s" in film 2 is explained as the recording's stand-in for a real duration such as
+`for 1h` (D7).
+
+**Keeping it true (C5, N4, N5).**
+
+- `mkdocs.yml` turns on `validation: anchors: warn` (MkDocs 1.6), so `mkdocs build --strict`
+  fails on a link to an anchor that doesn't exist: a renamed reference section or how-to
+  heading breaks the build instead of silently breaking a link. It applies to the whole guide;
+  any broken anchor it finds elsewhere is fixed in the same PR (N4).
+- The `demo_casts.py` hook, which already fails on a page naming a missing recording, also
+  fails when a recording in `guide/assets/demos/` isn't on `now-showing.md`, and when a
+  `run logctl …` line in a film's `dev/demos/<name>.sh` doesn't appear on the page as typed
+  (N5). Changing a story's command then means updating its breakdown. The docs workflow's path
+  filter gains `dev/demos/*.sh`, so such a change runs the check.
 
 ### Re-recording at each release (D10)
 
@@ -270,6 +412,33 @@ guide's example output may need the same update.
 | D11 | Scope for 1.0 | Stories 1–3. Story 4 (`doctor`, storms, vendor export) gets its own issue. |
 | D12 | Order of work | Story 1 end to end first (app, scripts, player, one page, README GIF) as the prototype, for review; then stories 2 and 3. |
 
+Story 4 (issue #226), agreed 2026-10-18:
+
+| # | Decision | Agreed |
+|---|---|---|
+| T1 | Numbering | The `trim` story is story 4; the `doctor` / storms / export story from D11 becomes story 5 (#198). |
+| T2 | Scenario | A payment-outage switch in the demo shop: every order's first attempt fails, and `PaymentGateway` WARNs with a `PaymentException` caused by a `ConnectException`, 28 lines printed. Revised after the first recording: a timeout on every third order with `--frames 3` didn't look buried in an 11-row pane. |
+| T3 | The rule | `trim <logger> --throwable java.net.ConnectException --any-cause`, default `--frames 0`: a known root cause cut to one line. Revised from a bare `--frames 3` to put the emphasis on noise reduction, after the real case that motivated `trim`. |
+| T4 | Where the trace comes from | Real nested calls in the demo shop (checkout → gateway → client → transport), not a real network failure: the same trace in every recording. In `com.example.shop.*`, not `org.logaperture`, so the frames read as the shop's (agreed during implementation). |
+| T5 | Guide placement | `how-to/silence-noise.md`, "Shorten a stack trace", next to story 3; the static example stays. |
+| T6 | Checks | A stack frame on the console before the story starts; after the rule, a trimmed `Caused by: java.net.ConnectException` line within 15 s, then `wait_gone` on every frame and `... N more` line. |
+
+The Now Showing page (issue #228), agreed 2026-10-18:
+
+| # | Decision | Agreed |
+|---|---|---|
+| C1 | Name | "Now Showing", with the asciinema nod in the subtitle. |
+| C2 | Each film | Heading with a stable anchor, a when-you'd-use-it paragraph, the player, then every command with each argument explained, linked to its reference anchor and how-to. |
+| C3 | Placement | Top-level nav entry between "Get started" and "How-to"; a link from the home page's "See it work". |
+| C4 | Player | The guide's existing embed and behaviour; stories in order, story 5 added when it ships. |
+| C5 | Process | Issue #228, this section, its own PR after story 4 (#227) lands; strict builds fail on broken anchors. |
+| N1 | Subtitle | No count of films ("Short films of…"), so story 5 doesn't make it stale. |
+| N2 | A command repeated in a later film | Explained again, briefly: a film reached from a link reads on its own. |
+| N3 | Loading | All four films load with the page, as elsewhere in the guide (about 0.7 MB, most of it the flood). No lazy loading. |
+| N4 | Anchor validation | Site-wide `validation: anchors: warn`; existing broken anchors it finds are fixed in the same PR. |
+| N5 | Commands drift check | The hook fails when a recording is missing from the page, or a story's `run logctl …` line isn't on it as typed. |
+| N6 | Top of the page | A short "programme" list linking to each film, as on a cinema bill. |
+
 ### Changes during implementation
 
 Details the agreed decisions left open, settled while building story 1:
@@ -282,6 +451,16 @@ Details the agreed decisions left open, settled while building story 1:
   as agreed would otherwise have failed in the zip).
 - The flood is a WARN with a top-level `ConnectException` and no cause, so the story 3 rule
   matches it with plain `--throwable` and the default `--below ERROR`.
+
+Found while recording story 4 (issue #226), on a machine with podman's `docker` shim rather
+than Docker:
+
+- Rootless podman finds its containers under the user's XDG data and config dirs, which the
+  clean environment's scratch `HOME` hid, so `record.sh` passes `XDG_DATA_HOME` and
+  `XDG_CONFIG_HOME` through. They are only read, never printed, so no path reaches a `.cast`.
+- The shim prints an "Emulate Docker CLI" notice on every call, which would be recorded in both
+  panes. `record.sh` stops unless it is quieted (`/etc/containers/nodocker`); `dev/demos/README.md`
+  says so.
 
 ## Testing
 
