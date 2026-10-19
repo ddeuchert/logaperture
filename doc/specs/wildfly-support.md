@@ -729,8 +729,8 @@ per-deployment `LogContext`s, which the supported config doesn't produce.
 
 ## Reconfiguration re-application: the verification sweep
 
-JBoss LogManager has no reconfiguration event (§4.3), and a level change made through
-WildFly's own `/subsystem=logging` management API (or an XML edit + `:reload`) will
+JBoss LogManager has no reconfiguration event WildFly uses (§4.3), and a level change made
+through WildFly's own `/subsystem=logging` management API (or an XML edit + `:reload`) will
 overwrite a runtime override with no notification. Per §15.5, the answer is not a
 per-container hook but a **core invariant**: the agent must be able to re-establish its
 entire installed state, idempotently, at any moment, from an event *or* a periodic sweep.
@@ -755,15 +755,33 @@ Slice 3 adds the **verification sweep** as `LevelControlService.verifyAndReapply
   core invariant, not a WildFly special case (belt-and-suspenders there, since Logback
   fires its own reset event).
 
-**A clean event hook, wired reflectively (mechanism 1).** JBoss LogManager's
-`addConfigurationListener(Runnable)` fires on `readConfiguration` / `updateConfiguration` —
-the path a `/subsystem=logging` change and an XML edit + `:reload` both take.
-`WildFlyContainerIntegration` registers the verification sweep against it via reflection
-(no compile-time `org.jboss.logmanager` reference: `getLogManager().getClass()
-.getMethod("addConfigurationListener", Runnable.class).invoke(...)`), guarded by a class-name
-check and a catch that falls back to the periodic sweep. Submitted to the sweep thread,
-never run on WildFly's config thread. Better than §15.6's pessimistic "WildFly does not
-publish a clean event".
+**An event hook: `logging.properties` being rewritten (mechanism 1, issue
+[#232](https://github.com/ddeuchert/logaperture/issues/232)).** WildFly's logging subsystem
+commits every `/subsystem=logging` change straight into the log context
+(`LoggingOperations.CommitOperationStepHandler` → `ConfigurationPersistence.commit()`), then
+writes `logging.properties` (`writeConfiguration`, which commits before it opens the file). It
+writes the file on `:reload` too. So a rewritten file means the change is already in effect.
+Measured on WildFly 26.1.3: every logger, root-logger and handler change rewrote it, and so did
+`:reload`; a read-only operation didn't.
+
+`WildFlyContainerIntegration` checks the file's modification time and size once a second on the
+sweep thread (`LoggingPropertiesWatch`, one `stat` call, no thread of its own and no new
+property). On a change it drops the cached handler-name resolution (issue #14) and runs the
+verification sweep at once. Measured with the default 30 s sweep: a `logger:add`, `logger:remove`
+or `write-attribute(level)` on an overridden logger was corrected within 2 s, and a `:reload`
+that put back a model-declared level within 0.4 s of the server reaching `running`. The file is
+`${jboss.server.config.dir}/logging.properties` (`${jboss.server.data.dir}` on a managed domain
+server), read when first needed, since the agent starts before WildFly sets those properties.
+
+The periodic sweep stays the floor where nothing is written: a server started with
+`-Djboss.server.persist.config=false`, and a change to a logging profile.
+
+JBoss LogManager's `addConfigurationListener(Runnable)`, the hook this section first relied on,
+is still registered, reflectively (no compile-time `org.jboss.logmanager` reference). It fires
+only on `readConfiguration` / `updateConfiguration`, which the logging subsystem never calls: on
+WildFly 26.1.3 it fired for none of the changes above. It costs nothing and covers anything else
+that does reconfigure through those methods. Either hook submits to the sweep thread, never
+running on WildFly's own configuration thread.
 
 ## Installation mechanics
 

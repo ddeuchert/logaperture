@@ -239,17 +239,29 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
                         "The agent's overrides live only in its own store and never touch standalone.xml."));
     }
 
+    /** How often {@link LoggingPropertiesWatch} looks at the file: one {@code stat} a second. */
+    static final Duration CONFIGURATION_CHECK_INTERVAL = Duration.ofSeconds(1);
+
     /**
-     * Mechanism 1 (doc/specs/wildfly-support.md): JBoss LogManager exposes
-     * {@code addConfigurationListener(Runnable)}, fired on {@code
-     * readConfiguration} / {@code updateConfiguration} — the path a {@code
-     * /subsystem=logging} change and an XML edit + {@code :reload} both take.
-     * Wired reflectively (no compile-time reference to {@code
-     * org.jboss.logmanager}); absent that method, the periodic verification
-     * sweep is the only re-apply mechanism.
+     * Mechanism 1 (doc/specs/wildfly-support.md): re-apply promptly after a
+     * logging configuration change, rather than on the next periodic sweep.
      *
-     * <p>The callback first drops {@code adapter}'s cached handler-name
-     * resolution (issue #14) so a renamed or newly-added {@code
+     * <p>The signal that works is {@code logging.properties} being rewritten
+     * ({@link LoggingPropertiesWatch}), checked every {@link
+     * #CONFIGURATION_CHECK_INTERVAL} on the sweep thread. WildFly's logging
+     * subsystem writes it after committing every {@code /subsystem=logging}
+     * change, and on {@code :reload} (issue #232).
+     *
+     * <p>JBoss LogManager's {@code addConfigurationListener(Runnable)} is
+     * registered too, but it fires only on {@code readConfiguration} / {@code
+     * updateConfiguration}, which the logging subsystem never calls; on
+     * WildFly 26.1.3 it fired for none of those changes. It costs nothing and
+     * covers anything else that does reconfigure through those methods.
+     * Wired reflectively (no compile-time reference to {@code
+     * org.jboss.logmanager}).
+     *
+     * <p>Either way the callback first drops {@code adapter}'s cached
+     * handler-name resolution (issue #14) so a renamed or newly-added {@code
      * /subsystem=logging} handler is re-resolved, then runs the verification
      * sweep that re-applies any override the change overwrote.
      */
@@ -258,11 +270,14 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
             adapter.invalidateNameCache();
             host.runVerificationSweepNow();
         };
+        LoggingPropertiesWatch watch = LoggingPropertiesWatch.forThisServer();
+        host.watchConfiguration(watch::changed, onConfigChange, CONFIGURATION_CHECK_INTERVAL);
+        if (!Boolean.parseBoolean(System.getProperty("jboss.server.persist.config", "true"))) {
+            Diagnostics.debug("jboss.server.persist.config=false: WildFly won't write logging.properties, "
+                    + "so management changes are re-applied by the periodic verification sweep only");
+        }
         if (registerConfigurationListener(java.util.logging.LogManager.getLogManager(), onConfigChange)) {
             Diagnostics.debug("registered a JBoss LogManager configuration-change listener");
-        } else {
-            Diagnostics.debug("no JBoss LogManager configuration-change hook; "
-                    + "relying on the periodic verification sweep");
         }
     }
 

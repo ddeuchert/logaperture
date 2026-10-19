@@ -29,10 +29,14 @@ import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.InMemoryAuditLog;
 import org.logaperture.core.spi.ContextHandle;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
 
@@ -126,6 +130,55 @@ class WildFlyContainerTest {
             assertTrue(auditLog.records().stream().anyMatch(r ->
                     r.source().equals("verification-sweep") && r.loggerName().equals(logger)
                             && r.action() == AuditRecord.Action.MUTATION));
+        }
+    }
+
+    /**
+     * Issue #232: a rewritten logging.properties is how a /subsystem=logging change shows itself, and
+     * it re-applies at once, with a periodic sweep (10 minutes here) nowhere near due.
+     */
+    @Test
+    void watchConfiguration_aRewrittenLoggingPropertiesReAppliesWithoutWaitingForTheSweep(@TempDir Path config)
+            throws Exception {
+        Path properties = Files.writeString(config.resolve("logging.properties"), "logger.level=INFO\n");
+        LoggingPropertiesWatch watch = new LoggingPropertiesWatch(() -> List.of(properties));
+        try (WildFlyContainer host = newHost()) {
+            AggregateLevelControl ops = install(host);
+            ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
+            host.watchConfiguration(watch::changed, host::runVerificationSweepNow, Duration.ofMillis(50));
+            awaitTrue(() -> watch.file() != null, "the watch found the file");
+
+            Logger.getLogger(logger).setLevel(null); // the change the subsystem commits...
+            Files.writeString(properties, "logger.level=INFO\nlogger.it.level=WARN\n"); // ...then writes
+
+            awaitTrue(() -> java.util.logging.Level.FINE.equals(Logger.getLogger(logger).getLevel()),
+                    "the override was re-applied after the file changed");
+        }
+    }
+
+    @Test
+    void watchConfiguration_aCheckThatThrowsDoesNotStopLaterChecks() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        BooleanSupplier throwsOnce = () -> {
+            if (calls.incrementAndGet() == 1) {
+                throw new IllegalStateException("first check fails");
+            }
+            return false;
+        };
+        try (WildFlyContainer host = newHost()) {
+            host.watchConfiguration(throwsOnce, () -> { }, Duration.ofMillis(20));
+
+            awaitTrue(() -> calls.get() >= 3, "checks kept running after the first one threw");
+        }
+    }
+
+    private static void awaitTrue(BooleanSupplier condition, String message) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() > deadline) {
+                throw new AssertionError(message);
+            }
+            Thread.sleep(20);
         }
     }
 

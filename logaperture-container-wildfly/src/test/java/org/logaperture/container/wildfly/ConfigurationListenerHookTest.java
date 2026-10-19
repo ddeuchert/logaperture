@@ -24,14 +24,16 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Locks in Mechanism 1's API assumption: {@code
+ * Locks in the API assumption behind the secondary configuration hook: {@code
  * org.jboss.logmanager.LogManager.addConfigurationListener(Runnable)} exists
  * and resolves reflectively. If a future JBoss LogManager renames or
  * re-signatures the method, {@code registerConfigurationListener} returns
  * false and this test fails at build time — rather than the agent silently
  * falling back to the 30s sweep with no signal. The test JVM runs with
- * JBoss LogManager installed (see the pom). Its <em>firing</em> semantics
- * are exercised end to end by {@code logaperture-it}.
+ * JBoss LogManager installed (see the pom). It only <em>fires</em> on
+ * {@code readConfiguration} / {@code updateConfiguration}, which WildFly's
+ * logging subsystem never calls; the hook that does fire for a {@code
+ * /subsystem=logging} change is {@link LoggingPropertiesWatch} (issue #232).
  */
 class ConfigurationListenerHookTest {
 
