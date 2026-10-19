@@ -3,7 +3,8 @@
 Status: **in progress.** Question 1 (transport) is answered for plain Logback on JDK 21, and
 question 2 (installing and removing the handler) for plain Logback, plain JUL and WildFly, and
 question 3 (lifecycle) for plain Logback. Question 4 (cost) is answered for one thread, and
-question 5 (rules) on WildFly. Questions 6 and 7 are open.
+question 5 (rules) on WildFly, and question 6 (threshold below the configured level) on plain
+Logback and plain JUL. Question 7 is open.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §8.2 (the agent never listens),
 §9.9 (the agent never transmits anything), §13 risk 4 (scope creep toward "log router"), §16.7
@@ -448,13 +449,97 @@ application's own handlers, and `trim` applies too. On JUL/WildFly the tap calls
 which this spike verified, and applies the trim verdict when it renders the stack trace at drain
 time, which it didn't test. `--show-dropped` isn't part of the first pass.
 
-Still open: **handler levels.** The application's handlers don't all agree. In the dev
-environment, `FILE` is at ALL and `CONSOLE` at INFO, so "what the handlers write" differs by
-handler. The tap needs a level of its own:
+**Decided 2026-10-18: `listen` behaves like a native handler, with two settings of its own.**
 
-- the most permissive of the handlers on the root (here `FILE`'s ALL), so `listen` shows
-  whatever reaches at least one destination;
-- or a level chosen per `listen` invocation, which question 6 needs anyway.
+- **A threshold.** It works like a handler's level, set per `listen` invocation. This settles
+  the handler-level question: the application's handlers disagree (`FILE` at ALL, `CONSOLE` at
+  INFO in the dev environment), so `listen` doesn't borrow either one's level.
+- **One or more loggers.** `listen` receives records from each of them and from their
+  descendants, as a handler attached to those loggers would. A record reaches `listen` only once,
+  stopping at the nearest assigned logger. So `listen com.acme com.acme.batch` never shows a
+  `com.acme.batch.Worker` line twice. The application's own loggers and their
+  `use-parent-handlers` / `additivity` settings are not changed.
+
+## Findings: listening below the configured level (question 6)
+
+The design under test is §16's: `listen` is attached to one or more loggers with its own
+threshold. A third throwaway agent (`Tap6`) implemented it for Logback and JUL. The test
+application logs every 10 ms through three loggers:
+
+- `com.acme.batch.Worker` at TRACE, DEBUG and INFO;
+- `com.acme.batch.Private` at DEBUG and INFO, with `additivity="false"` / `useParentHandlers=false`
+  and its own destination;
+- `com.acme.Other` at DEBUG and INFO.
+
+The root is at INFO and writes to `app.log` through a handler at ALL (Logback `FileAppender`,
+JUL `FileHandler`). ALL is the case that floods: anything the logger lets through gets written.
+Each window is 3 s, comparing what `listen` received with what `app.log` gained.
+
+### 17. Both frameworks can listen below the level without flooding, by different routes
+
+`listen com.acme.batch --threshold TRACE`:
+
+| | `listen` received | `app.log` gained |
+|---|---|---|
+| Logback | Worker TRACE, DEBUG, INFO (292 each) | Worker INFO, Other INFO only |
+| JUL | Worker FINEST, FINE, INFO (279 each) | Worker INFO, Other INFO only |
+| after `stop`, both | nothing | Worker INFO, Other INFO only |
+
+- **Logback doesn't need to touch the level.** A `TurboFilter` runs before Logback's level
+  check, with the logger, level, format, arguments and throwable. For a call below the logger's
+  effective level but at or above the threshold, it formats the message, puts the record in the
+  ring itself, and returns `NEUTRAL`. Logback's level check then turns the event away from every
+  appender as usual. Measured: 1,020 records came this way and 340 through the appenders
+  attached to `com.acme.batch`, and `app.log` never saw a TRACE or DEBUG line.
+- **JUL has no hook before the level check.** `Logger.log` returns at once when the level
+  doesn't allow the record, and JBoss LogManager does the same. So `listen` has to lower the
+  assigned logger's level to the threshold. Every other handler then needs a filter that turns
+  away records below the level the logger had before (its **baseline**). Measured: 648 records
+  were turned away from other handlers, which is exactly Worker's FINEST and FINE over the
+  window. `app.log` stayed at INFO. The filter has to be on every handler before the level comes
+  down, or the gap floods.
+
+### 18. "Only once" works on both
+
+`listen com.acme,com.acme.batch --threshold INFO` delivered Worker INFO 286 times on Logback
+(271 on JUL), the same count as Other, so it wasn't doubled. Each attachment knows its own
+logger and accepts a record only when it is the nearest assigned ancestor of the record's
+logger.
+
+### 19. What JUL's route costs and what it collides with
+
+Lowering a level isn't free and isn't private to `listen`:
+
+- **Descendants inherit the lower level.** `Private` has no level of its own, so its effective
+  level dropped to FINEST along with `com.acme.batch`. Its FINE records were created and then
+  turned away by its handler's level, at INFO. Every record below the baseline anywhere under an
+  assigned logger is now created, and each handler pays a filter check on it.
+- **Application code sees it.** A `logger.isLoggable(FINE)` guard around expensive debug output
+  now returns true, so the application does that work while `listen` runs. Logback's
+  `TurboFilter` route doesn't have this effect.
+- **A handler added during the session isn't covered.** Here the filter went onto the handlers
+  that existed at `listen`. In the agent the check would live in the `JulRuleFilter` the sweep
+  already installs on every handler (§15), so a new handler floods for at most one sweep
+  interval.
+- **It collides with level control.** `listen` changes a level that `logctl set logger`, an
+  expiring override, vendor defaults and the verification sweep also manage. A raw `setLevel`
+  would be overwritten by the next sweep, or would overwrite a user's override when it's
+  restored. In the agent, `listen`'s lowered level has to be a layer the level-control core
+  knows about, with the baseline taken from that core, not from the logger. This wasn't tested.
+
+### 20. A logger that doesn't propagate: native semantics leave it out, and Logback's route has to agree
+
+A handler on `com.acme.batch` never sees `com.acme.batch.Private`, whose records stop at its own
+destination. JUL's route behaved that way: `listen` got nothing from `Private`. Logback's
+behaved inconsistently. `Private`'s **DEBUG** reached `listen` through the `TurboFilter`, but
+its **INFO** didn't, because INFO goes through the appender path, which `Private` doesn't
+propagate to.
+
+So the `TurboFilter` must apply the same propagation rule: walk from the record's logger up to
+the assigned one, and skip the record if any logger on the way has `additivity="false"`. Then
+both routes agree with §16's native semantics. Users can still assign `Private` explicitly to
+see it. Since leaving it out is silent, `listen` should say so when it starts, for example:
+`com.acme.batch.Private doesn't pass records to its parents; add it to listen to see it`.
 
 ## Not established
 
@@ -475,6 +560,10 @@ handler. The tap needs a level of its own:
 - **Leases on JUL and WildFly, and over long runs.** The lease test ran on plain Logback for
   about 30 s. Server-side JMX connection state left behind by a `kill -9`'d client wasn't
   inspected.
+- **Question 6 on WildFly**, and the level-control layering in §19. JBoss LogManager has the
+  same level check as JUL, so the same route applies. But the filter would live in the agent's
+  `JulRuleFilter`, and `listen`'s lowered level has to go through the agent's level control.
+  Neither was built here.
 - **The exact Logback version that added `ConfigurationEventListener`.** Only 1.2.13, 1.3.0,
   1.3.14, 1.4.0, 1.4.14 and 1.5.x were checked.
 - **Records with stack traces.** No record carried a throwable. Rendering one on the
@@ -505,3 +594,10 @@ Question 4's benchmark, `SpikeListenTapBenchmark`, lived in `logaperture-bench` 
 (`java -jar logaperture-bench/target/benchmarks.jar SpikeListenTapBenchmark -t 1`) and was
 removed afterwards. For question 5, `Tap2`'s JUL handler took an agent argument, `honorFilter`,
 to call `isLoggable` before offering a record.
+
+Question 6's agent, `Tap6`, takes `listen(loggers, threshold)` and `stop()`. Its Logback
+binding has one appender per assigned logger plus the `TurboFilter`. Its JUL binding has one
+handler per assigned logger, saves each logger's level and baseline, and wraps every other
+handler's filter. `AppQ6` is the three-logger application, and `q6.sh` runs a sequence of
+`listen` / `stop` steps, comparing what `listen` received with what `app.log` gained over each
+3 s window.
