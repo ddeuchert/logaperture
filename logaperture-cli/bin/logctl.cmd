@@ -27,11 +27,21 @@ setlocal
 
 if exist "%~dp0logctl.conf.cmd" call "%~dp0logctl.conf.cmd"
 
-rem The distribution zip puts the jar in ..\lib; a source-tree build leaves it
-rem in ..\target. Try both.
+rem LOGCTL_JAR_HOME, when set, is the only place looked in. Otherwise the
+rem distribution zip puts the jar in ..\lib and a source-tree build leaves it
+rem in ..\target. Try both. (Single-line ifs: a path containing parentheses
+rem would break a block.)
+if not defined LOGCTL_JAR_HOME goto defaultjar
+set "JAR=%LOGCTL_JAR_HOME%\logaperture-cli.jar"
+if exist "%JAR%" goto havejar
+echo logctl: LOGCTL_JAR_HOME is set to %LOGCTL_JAR_HOME% but %JAR% was not found. 1>&2
+exit /b 1
+
+:defaultjar
 set "JAR=%~dp0..\lib\logaperture-cli.jar"
 if not exist "%JAR%" set "JAR=%~dp0..\target\logaperture-cli.jar"
 
+:havejar
 if not exist "%JAR%" (
   echo logctl: logaperture-cli.jar not found in ..\lib or ..\target - in a source tree, run "mvn -pl logaperture-cli package" first. 1>&2
   exit /b 1

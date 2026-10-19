@@ -1,6 +1,6 @@
 # Launcher configuration file for `logctl` (issue #238)
 
-Status: **signed off 2026-10-19** (L1–L6 agreed).
+Status: **signed off 2026-10-19** (L1–L6 agreed); L7 added 2026-10-19, awaiting confirmation.
 Parent spec: [`distribution-bundle.md`](distribution-bundle.md) "Launcher change" (the
 `bin/logctl` and `bin/logctl.cmd` launchers this feature extends).
 
@@ -15,6 +15,8 @@ After this feature, the user will be able to:
 - Set or clear any environment variable for `logctl` (`JAVA_OPTS`, `JAVA_TOOL_OPTIONS`, …) from
   that file.
 - Use `JAVA_HOME` to choose the Java for `logctl`, with or without the file.
+- Use `LOGCTL_JAR_HOME` to say which directory holds `logaperture-cli.jar`, when the jar isn't in
+  the usual place beside the launcher.
 - Get a clear error naming the path it tried when the configured Java isn't there, instead of
   `logctl` quietly running some other `java`.
 
@@ -87,6 +89,19 @@ use; the release notes call it out.
 
 The existing requirement stands: it must be a JDK, not a JRE (`com.sun.tools.attach`).
 
+### L7. `LOGCTL_JAR_HOME`
+
+`LOGCTL_JAR_HOME` names the directory that holds `logaperture-cli.jar`. Like every other
+variable it is read after the conf file has run, so the file can set it (for example
+`LOGCTL_JAR_HOME="$here/../../lib/logaperture"`) as well as the caller.
+
+- Set and non-empty: the launcher uses `$LOGCTL_JAR_HOME/logaperture-cli.jar` and nothing else. If
+  that file doesn't exist it exits 1 with
+  `logctl: LOGCTL_JAR_HOME is set to <dir> but <dir>/logaperture-cli.jar was not found.` It does
+  not fall back to the lookup below, for the same reason `JAVA_HOME` doesn't fall back to `PATH`.
+- Otherwise: the existing lookup, unchanged (`../lib/logaperture-cli.jar`, then
+  `../target/logaperture-cli.jar`, then the existing "not found" error).
+
 ### L4. `JAVA_OPTS`
 
 The launcher passes `$JAVA_OPTS` (sh: unquoted, so it splits on whitespace; cmd: `%JAVA_OPTS%`)
@@ -109,7 +124,9 @@ to the JVM ahead of `-jar`. It is empty if unset. Set it in the file to pass fla
   no `JAVA_HOME` uses `PATH`; ambient `JAVA_HOME` is used; a file's `JAVA_HOME` overrides the
   ambient one; a relative `JAVA_HOME` set from `$here` resolves against the launcher when run from
   another working directory; a missing `$JAVA_HOME/bin/java` exits 1 with the message and does not
-  run the `PATH` `java`; the file can clear `JAVA_OPTS`; `JAVA_OPTS` reaches the JVM before `-jar`.
+  run the `PATH` `java`; the file can clear `JAVA_OPTS`; `JAVA_OPTS` reaches the JVM before `-jar`;
+  `LOGCTL_JAR_HOME` selects the jar over `../lib`, a file-set one overrides the ambient one, and
+  one pointing at a directory without the jar exits 1 with the message.
 - The `.cmd` cases run only on Windows (skipped elsewhere); the sh cases run on Linux and macOS.
   The Windows case is also checked by hand on a real Windows machine before merge.
 
@@ -117,7 +134,7 @@ to the JVM ahead of `-jar`. It is empty if unset. Set it in the file to pass fla
 
 - `guide/vendors/logctl-launcher.md` (new): the file names and location, order of evaluation, the
   `here` / `%~dp0` variable, the `JAVA_HOME` rule with the no-fallback behavior, `JAVA_OPTS`, and
-  the two snippets, with the error output captured from a real run.
+  `LOGCTL_JAR_HOME`, the two snippets, with the error output captured from a real run.
 - `guide/get-started/download.md`: the `bin/logctl` row links to that page.
 - `guide/release-notes.md`: the ambient `JAVA_HOME` change.
 
@@ -131,3 +148,4 @@ to the JVM ahead of `-jar`. It is empty if unset. Set it in the file to pass fla
 | L4 | `JAVA_OPTS` passed to the JVM | Agreed (David, 2026-10-19) |
 | L5 | Nothing shipped; guide documents the contract | Agreed (David, 2026-10-19) |
 | L6 | No `LOGCTL_CONF` redirect; beside the launcher only | Agreed (David, 2026-10-19) |
+| L7 | `LOGCTL_JAR_HOME` = directory holding `logaperture-cli.jar`; wins when set, no fallback | Proposed — David asked for the variable; directory meaning and no-fallback are my reading |

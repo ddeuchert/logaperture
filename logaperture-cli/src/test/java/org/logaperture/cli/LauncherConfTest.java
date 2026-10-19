@@ -131,4 +131,40 @@ class LauncherConfTest {
         Result r = run(root, Map.of());
         assertTrue(r.out().contains("args=-Xmx64m -Djdk.console=java.base -jar "), r.out());
     }
+
+    private Path jarIn(String dir) throws IOException {
+        Path d = Files.createDirectories(root.resolve(dir));
+        return Files.writeString(d.resolve("logaperture-cli.jar"), "");
+    }
+
+    @Test
+    void jarHomeSelectsTheJarOverTheDefaultLocation() throws Exception {
+        Path jar = jarIn("elsewhere/jars");
+        Result r = run(root, Map.of("LOGCTL_JAR_HOME", root.resolve("elsewhere/jars").toString()));
+        assertEquals(0, r.exit(), r.err());
+        assertTrue(r.out().contains("-jar " + jar), r.out());
+    }
+
+    @Test
+    void confJarHomeOverridesAmbientAndResolvesAgainstLauncher() throws Exception {
+        Path jar = jarIn("dist/jars");
+        jarIn("ambient/jars");
+        Files.writeString(bin.resolve("logctl.conf"), "LOGCTL_JAR_HOME=\"$here/../jars\"\n");
+        Path elsewhere = Files.createDirectories(root.resolve("cwd"));
+        Result r = run(elsewhere, Map.of("LOGCTL_JAR_HOME", root.resolve("ambient/jars").toString()));
+        assertEquals(0, r.exit(), r.err());
+        assertTrue(r.out().contains("jars/logaperture-cli.jar"), r.out());
+        assertTrue(r.out().contains("dist/bin/../jars"), r.out());
+        assertTrue(Files.exists(jar));
+    }
+
+    @Test
+    void missingJarHomeFailsWithoutFallingBackToTheDefaultLocation() throws Exception {
+        Path dir = Files.createDirectories(root.resolve("empty"));
+        Result r = run(root, Map.of("LOGCTL_JAR_HOME", dir.toString()));
+        assertEquals(1, r.exit());
+        assertTrue(r.err().contains("logctl: LOGCTL_JAR_HOME is set to " + dir + " but "
+                + dir.resolve("logaperture-cli.jar") + " was not found."), r.err());
+        assertFalse(r.out().contains("PATH-java"), r.out());
+    }
 }

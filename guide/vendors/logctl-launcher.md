@@ -54,6 +54,24 @@ After the conf file has run:
 This is true with or without a conf file: `logctl` honors a `JAVA_HOME` in the caller's
 environment. It must be a JDK, not a JRE.
 
+## Where the jar is
+
+By default `logctl` runs `../lib/logaperture-cli.jar`, relative to the launcher, and falls back
+to `../target/logaperture-cli.jar` in a source tree. If you keep the jar somewhere else, set
+`LOGCTL_JAR_HOME` to the **directory** that holds `logaperture-cli.jar`, in the conf file or in
+the environment:
+
+```sh
+LOGCTL_JAR_HOME="$here/../../lib/logaperture"
+```
+
+When `LOGCTL_JAR_HOME` is set, that is the only place `logctl` looks. If the jar isn't there it
+stops with exit code 1 and names the path it tried; it does not go on to the default locations:
+
+```
+logctl: LOGCTL_JAR_HOME is set to /opt/acme/lib but /opt/acme/lib/logaperture-cli.jar was not found.
+```
+
 ## JVM options
 
 `logctl` passes `JAVA_OPTS` to the JVM before `-jar`. Set it in the conf file to give `logctl` its

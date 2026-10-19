@@ -28,15 +28,24 @@ if [ -f "$here/logctl.conf" ]; then
   . "$here/logctl.conf"
 fi
 
-# The distribution zip puts the jar in ../lib; a source-tree build leaves it
-# in ../target. Try both.
+# LOGCTL_JAR_HOME, when set, is the only place looked in. Otherwise the
+# distribution zip puts the jar in ../lib and a source-tree build leaves it in
+# ../target. Try both.
 jar=""
-for candidate in "$here/../lib/logaperture-cli.jar" "$here/../target/logaperture-cli.jar"; do
-  if [ -f "$candidate" ]; then
-    jar="$candidate"
-    break
+if [ -n "${LOGCTL_JAR_HOME:-}" ]; then
+  jar="$LOGCTL_JAR_HOME/logaperture-cli.jar"
+  if [ ! -f "$jar" ]; then
+    echo "logctl: LOGCTL_JAR_HOME is set to $LOGCTL_JAR_HOME but $jar was not found." >&2
+    exit 1
   fi
-done
+else
+  for candidate in "$here/../lib/logaperture-cli.jar" "$here/../target/logaperture-cli.jar"; do
+    if [ -f "$candidate" ]; then
+      jar="$candidate"
+      break
+    fi
+  done
+fi
 
 if [ -z "$jar" ]; then
   echo "logctl: logaperture-cli.jar not found in ../lib or ../target — in a source tree, run 'mvn -pl logaperture-cli package' first." >&2

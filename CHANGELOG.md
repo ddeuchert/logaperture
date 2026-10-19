@@ -13,7 +13,8 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 - **A conf file for the `logctl` launchers.** An optional `bin/logctl.conf` (`bin/logctl.conf.cmd`
   on Windows) is run before anything else and can set or clear any variable, so a bundled JDK can
   be found by a path relative to the launcher regardless of the caller's environment. The
-  launchers also pass `JAVA_OPTS` to the JVM (issue #238).
+  launchers also pass `JAVA_OPTS` to the JVM, and `LOGCTL_JAR_HOME` names the directory holding
+  `logaperture-cli.jar` when it isn't beside the launcher (issue #238).
 
 ### Changed
 
