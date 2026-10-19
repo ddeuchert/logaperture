@@ -270,9 +270,10 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
             adapter.invalidateNameCache();
             host.runVerificationSweepNow();
         };
-        LoggingPropertiesWatch watch = LoggingPropertiesWatch.forThisServer();
-        host.watchConfiguration(watch::changed, onConfigChange, CONFIGURATION_CHECK_INTERVAL);
-        if (!Boolean.parseBoolean(System.getProperty("jboss.server.persist.config", "true"))) {
+        if (Boolean.parseBoolean(System.getProperty("jboss.server.persist.config", "true"))) {
+            LoggingPropertiesWatch watch = LoggingPropertiesWatch.forThisServer();
+            host.watchConfiguration(watch::changed, onConfigChange, CONFIGURATION_CHECK_INTERVAL);
+        } else {
             Diagnostics.debug("jboss.server.persist.config=false: WildFly won't write logging.properties, "
                     + "so management changes are re-applied by the periodic verification sweep only");
         }

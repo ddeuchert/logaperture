@@ -31,9 +31,9 @@ import org.logaperture.core.spi.ContextHandle;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
@@ -141,7 +141,7 @@ class WildFlyContainerTest {
     void watchConfiguration_aRewrittenLoggingPropertiesReAppliesWithoutWaitingForTheSweep(@TempDir Path config)
             throws Exception {
         Path properties = Files.writeString(config.resolve("logging.properties"), "logger.level=INFO\n");
-        LoggingPropertiesWatch watch = new LoggingPropertiesWatch(() -> List.of(properties));
+        LoggingPropertiesWatch watch = new LoggingPropertiesWatch(() -> properties, Clock.systemUTC());
         try (WildFlyContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
             ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
@@ -159,16 +159,20 @@ class WildFlyContainerTest {
     @Test
     void watchConfiguration_aCheckThatThrowsDoesNotStopLaterChecks() throws Exception {
         AtomicInteger calls = new AtomicInteger();
-        BooleanSupplier throwsOnce = () -> {
-            if (calls.incrementAndGet() == 1) {
+        BooleanSupplier throwsTwice = () -> {
+            int call = calls.incrementAndGet();
+            if (call == 1) {
                 throw new IllegalStateException("first check fails");
+            }
+            if (call == 2) {
+                throw new NoClassDefFoundError("second check fails with an Error");
             }
             return false;
         };
         try (WildFlyContainer host = newHost()) {
-            host.watchConfiguration(throwsOnce, () -> { }, Duration.ofMillis(20));
+            host.watchConfiguration(throwsTwice, () -> { }, Duration.ofMillis(20));
 
-            awaitTrue(() -> calls.get() >= 3, "checks kept running after the first one threw");
+            awaitTrue(() -> calls.get() >= 4, "checks kept running after the first two threw");
         }
     }
 

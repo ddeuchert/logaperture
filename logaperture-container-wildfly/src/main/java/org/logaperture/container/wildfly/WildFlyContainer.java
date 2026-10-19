@@ -59,6 +59,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
@@ -391,16 +392,21 @@ public final class WildFlyContainer implements AutoCloseable {
     /**
      * Checks {@code changed} every {@code interval} on the sweep thread, and runs {@code onChange}
      * there when it says so -- issue #232's {@code logging.properties} watch. A check that throws is
-     * reported and skipped, never allowed to cancel the schedule.
+     * skipped, never allowed to cancel the schedule, and reported once until a check succeeds again
+     * (it runs every second).
      */
     void watchConfiguration(BooleanSupplier changed, Runnable onChange, Duration interval) {
+        AtomicBoolean failing = new AtomicBoolean();
         Runnable check = () -> {
             try {
                 if (changed.getAsBoolean()) {
                     onChange.run();
                 }
-            } catch (RuntimeException e) {
-                Diagnostics.warn("logging configuration check failed, will try again", e);
+                failing.set(false);
+            } catch (RuntimeException | LinkageError e) {
+                if (!failing.getAndSet(true)) {
+                    Diagnostics.warn("logging configuration check failed, will keep trying", e);
+                }
             }
         };
         long millis = interval.toMillis();

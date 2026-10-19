@@ -766,15 +766,20 @@ Measured on WildFly 26.1.3: every logger, root-logger and handler change rewrote
 
 `WildFlyContainerIntegration` checks the file's modification time and size once a second on the
 sweep thread (`LoggingPropertiesWatch`, one `stat` call, no thread of its own and no new
-property). On a change it drops the cached handler-name resolution (issue #14) and runs the
+property). For a few seconds after each write it also compares a checksum of the contents, since
+on a filesystem with coarse timestamps two same-length rewrites within one tick look identical
+otherwise. On a change it drops the cached handler-name resolution (issue #14) and runs the
 verification sweep at once. Measured with the default 30 s sweep: a `logger:add`, `logger:remove`
 or `write-attribute(level)` on an overridden logger was corrected within 2 s, and a `:reload`
 that put back a model-declared level within 0.4 s of the server reaching `running`. The file is
-`${jboss.server.config.dir}/logging.properties` (`${jboss.server.data.dir}` on a managed domain
-server), read when first needed, since the agent starts before WildFly sets those properties.
+`${jboss.server.config.dir}/logging.properties`, the property read on each check, since the
+agent starts before WildFly sets it. (A managed domain server writes under
+`${jboss.server.data.dir}`, but domain mode is declined.) The watched file is logged at debug
+once found.
 
 The periodic sweep stays the floor where nothing is written: a server started with
-`-Djboss.server.persist.config=false`, and a change to a logging profile.
+`-Djboss.server.persist.config=false` (the agent doesn't watch at all then), and a change to a
+logging profile.
 
 JBoss LogManager's `addConfigurationListener(Runnable)`, the hook this section first relied on,
 is still registered, reflectively (no compile-time `org.jboss.logmanager` reference). It fires

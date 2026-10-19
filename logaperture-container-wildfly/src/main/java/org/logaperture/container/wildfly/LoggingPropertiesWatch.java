@@ -15,15 +15,18 @@
  */
 package org.logaperture.container.wildfly;
 
+import org.logaperture.bridge.Diagnostics;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.function.Supplier;
+import java.util.zip.CRC32;
 
 /**
  * Tells when WildFly's logging subsystem has committed a change (issue #232).
@@ -42,34 +45,37 @@ import java.util.function.Supplier;
  */
 final class LoggingPropertiesWatch {
 
-    private static final String FILE_NAME = "logging.properties";
+    /**
+     * How long after its modification time the file's contents are compared too. A filesystem
+     * with 1 s or 2 s timestamps (ext3, HFS+, FAT, some NFS) gives two same-length rewrites in one
+     * tick the same modification time and size; this covers the coarsest tick plus a 1 s check
+     * interval, with a second's slack, and the file is read only during it.
+     */
+    private static final Duration RECENTLY_WRITTEN = Duration.ofSeconds(4);
 
-    private final Supplier<List<Path>> candidates;
+    private final Supplier<Path> location;
+    private final Clock clock;
     private Path file;
     private Stamp last;
 
-    /** {@code candidates} is asked on each call until one of its paths exists. */
-    LoggingPropertiesWatch(Supplier<List<Path>> candidates) {
-        this.candidates = Objects.requireNonNull(candidates, "candidates");
+    /** {@code location} is asked on each call, and may return null while the file isn't known yet. */
+    LoggingPropertiesWatch(Supplier<Path> location, Clock clock) {
+        this.location = Objects.requireNonNull(location, "location");
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     /**
-     * The file a standalone server writes ({@code jboss.server.config.dir}), then a managed domain
-     * server's ({@code jboss.server.data.dir}). Read on each call, since the agent starts before
-     * WildFly sets these properties.
+     * The file a standalone server writes, {@code ${jboss.server.config.dir}/logging.properties}.
+     * The property is read on each call, since the agent starts before WildFly sets it. (A
+     * managed domain server writes under {@code jboss.server.data.dir}, but the agent declines
+     * domain mode.)
      */
     static LoggingPropertiesWatch forThisServer() {
-        Supplier<List<Path>> serverDirectories = () -> {
-            List<Path> paths = new ArrayList<>(2);
-            for (String property : List.of("jboss.server.config.dir", "jboss.server.data.dir")) {
-                String directory = System.getProperty(property);
-                if (directory != null) {
-                    paths.add(Path.of(directory, FILE_NAME));
-                }
-            }
-            return paths;
+        Supplier<Path> configDirectoryFile = () -> {
+            String directory = System.getProperty("jboss.server.config.dir");
+            return directory == null ? null : Path.of(directory, "logging.properties");
         };
-        return new LoggingPropertiesWatch(serverDirectories);
+        return new LoggingPropertiesWatch(configDirectoryFile, Clock.systemUTC());
     }
 
     /**
@@ -78,19 +84,22 @@ final class LoggingPropertiesWatch {
      * sweep thread only.
      */
     boolean changed() {
-        if (file == null) {
-            file = candidates.get().stream().filter(Files::isRegularFile).findFirst().orElse(null);
-            if (file == null) {
-                return false;
-            }
+        Path current = location.get();
+        if (current == null || !Files.isRegularFile(current)) {
+            return false;
         }
-        Stamp now = Stamp.of(file);
+        if (!current.equals(file)) {
+            file = current;
+            last = null;
+            Diagnostics.debug("watching " + file + " for logging subsystem changes");
+        }
+        Stamp before = last;
+        Stamp now = Stamp.of(file, clock);
         if (now == null) {
             return false;
         }
-        Stamp before = last;
         last = now;
-        return before != null && !before.equals(now);
+        return before != null && !before.sameAs(now);
     }
 
     /** The file being watched, once found. */
@@ -98,15 +107,32 @@ final class LoggingPropertiesWatch {
         return file;
     }
 
-    private record Stamp(FileTime modified, long size) {
+    /** {@code checksum} is set only while the file is recently written; otherwise null. */
+    private record Stamp(FileTime modified, long size, Long checksum) {
 
-        static Stamp of(Path file) {
+        static Stamp of(Path file, Clock clock) {
             try {
                 BasicFileAttributes attributes = Files.readAttributes(file, BasicFileAttributes.class);
-                return new Stamp(attributes.lastModifiedTime(), attributes.size());
+                FileTime modified = attributes.lastModifiedTime();
+                boolean recent = clock.instant().isBefore(modified.toInstant().plus(RECENTLY_WRITTEN));
+                Long checksum = recent ? checksum(file) : null;
+                return new Stamp(modified, attributes.size(), checksum);
             } catch (IOException | RuntimeException unreadable) {
                 return null;
             }
+        }
+
+        boolean sameAs(Stamp other) {
+            if (!modified.equals(other.modified) || size != other.size) {
+                return false;
+            }
+            return checksum == null || other.checksum == null || checksum.equals(other.checksum);
+        }
+
+        private static long checksum(Path file) throws IOException {
+            CRC32 crc = new CRC32();
+            crc.update(Files.readAllBytes(file));
+            return crc.getValue();
         }
     }
 }

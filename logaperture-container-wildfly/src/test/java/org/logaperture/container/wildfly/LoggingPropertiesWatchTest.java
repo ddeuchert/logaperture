@@ -21,8 +21,10 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Clock;
 import java.time.Instant;
-import java.util.List;
+import java.time.ZoneOffset;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -38,16 +40,23 @@ class LoggingPropertiesWatchTest {
     private static final FileTime T1 = FileTime.from(Instant.parse("2026-10-18T10:00:00Z"));
     private static final FileTime T2 = FileTime.from(Instant.parse("2026-10-18T10:00:05Z"));
 
-    private Path write(String name, String content, FileTime modified) throws Exception {
-        Path file = Files.writeString(dir.resolve(name), content);
+    /** Long after every write, so contents are never compared. */
+    private static final Clock LATER = Clock.fixed(Instant.parse("2026-10-18T11:00:00Z"), ZoneOffset.UTC);
+
+    private Path write(String content, FileTime modified) throws Exception {
+        Path file = Files.writeString(dir.resolve("logging.properties"), content);
         Files.setLastModifiedTime(file, modified);
         return file;
     }
 
+    private LoggingPropertiesWatch watching(Path file, Clock clock) {
+        return new LoggingPropertiesWatch(() -> file, clock);
+    }
+
     @Test
     void firstSighting_onlyRecordsTheFile() throws Exception {
-        Path file = write("logging.properties", "a", T1);
-        LoggingPropertiesWatch watch = new LoggingPropertiesWatch(() -> List.of(file));
+        Path file = write("a", T1);
+        LoggingPropertiesWatch watch = watching(file, LATER);
 
         assertFalse(watch.changed());
         assertEquals(file, watch.file());
@@ -56,11 +65,11 @@ class LoggingPropertiesWatchTest {
 
     @Test
     void aNewModificationTime_isAChange_reportedOnce() throws Exception {
-        Path file = write("logging.properties", "a", T1);
-        LoggingPropertiesWatch watch = new LoggingPropertiesWatch(() -> List.of(file));
+        Path file = write("a", T1);
+        LoggingPropertiesWatch watch = watching(file, LATER);
         watch.changed();
 
-        write("logging.properties", "a", T2);
+        write("a", T2);
 
         assertTrue(watch.changed());
         assertFalse(watch.changed());
@@ -68,50 +77,74 @@ class LoggingPropertiesWatchTest {
 
     @Test
     void aNewSizeWithTheSameModificationTime_isAChange() throws Exception {
-        Path file = write("logging.properties", "a", T1);
-        LoggingPropertiesWatch watch = new LoggingPropertiesWatch(() -> List.of(file));
+        Path file = write("a", T1);
+        LoggingPropertiesWatch watch = watching(file, LATER);
         watch.changed();
 
-        write("logging.properties", "a longer file", T1);
+        write("a longer file", T1);
 
         assertTrue(watch.changed());
+    }
+
+    @Test
+    void aSameLengthRewriteInTheSameTimestampTick_isAChange_whileTheFileIsRecent() throws Exception {
+        Clock justAfterT1 = Clock.fixed(T1.toInstant().plusSeconds(1), ZoneOffset.UTC);
+        Path file = write("level=INFO", T1);
+        LoggingPropertiesWatch watch = watching(file, justAfterT1);
+        watch.changed();
+
+        write("level=WARN", T1);
+
+        assertTrue(watch.changed());
+        assertFalse(watch.changed());
+    }
+
+    @Test
+    void aSameLengthRewriteWithTheSameTimestamp_isNotSeen_onceTheFileIsOld() throws Exception {
+        Path file = write("level=INFO", T1);
+        LoggingPropertiesWatch watch = watching(file, LATER);
+        watch.changed();
+
+        write("level=WARN", T1);
+
+        assertFalse(watch.changed(), "contents are read only shortly after a write");
     }
 
     @Test
     void noFileYet_isNoChange_andTheFileIsPickedUpWhenItAppears() throws Exception {
-        Path missing = dir.resolve("logging.properties");
-        LoggingPropertiesWatch watch = new LoggingPropertiesWatch(() -> List.of(missing));
+        LoggingPropertiesWatch watch = watching(dir.resolve("logging.properties"), LATER);
 
         assertFalse(watch.changed());
         assertNull(watch.file());
 
-        write("logging.properties", "a", T1);
+        write("a", T1);
         assertFalse(watch.changed(), "first sighting only records it");
-        write("logging.properties", "b", T2);
+        write("b", T2);
         assertTrue(watch.changed());
     }
 
     @Test
-    void theFirstCandidateThatExists_isTheOneWatched() throws Exception {
-        Path configDir = dir.resolve("configuration").resolve("logging.properties");
-        Path dataDir = write("logging.properties", "a", T1);
-        LoggingPropertiesWatch watch = new LoggingPropertiesWatch(() -> List.of(configDir, dataDir));
+    void anUnknownLocation_isNoChange_andIsAskedAgainOnTheNextCall() throws Exception {
+        AtomicReference<Path> location = new AtomicReference<>();
+        LoggingPropertiesWatch watch = new LoggingPropertiesWatch(location::get, LATER);
 
+        assertFalse(watch.changed());
+
+        location.set(write("a", T1));
         watch.changed();
-
-        assertEquals(dataDir, watch.file());
+        assertEquals(location.get(), watch.file());
     }
 
     @Test
     void aFileThatDisappears_isNoChange_andItsReturnIsOne() throws Exception {
-        Path file = write("logging.properties", "a", T1);
-        LoggingPropertiesWatch watch = new LoggingPropertiesWatch(() -> List.of(file));
+        Path file = write("a", T1);
+        LoggingPropertiesWatch watch = watching(file, LATER);
         watch.changed();
 
         Files.delete(file);
         assertFalse(watch.changed());
 
-        write("logging.properties", "b", T2);
+        write("b", T2);
         assertTrue(watch.changed());
     }
 }
