@@ -56,9 +56,17 @@ public final class JBossLogManagerReadiness {
     public static final String JBOSS_LOG_MANAGER = "org.jboss.logmanager.LogManager";
     private static final String JBOSS_LOG_CONTEXT = "org.jboss.logmanager.LogContext";
     private static final String MANAGER_PROPERTY = "java.util.logging.manager";
+    /**
+     * jboss-modules sets this and then creates the platform MBean server itself, later than it sets
+     * {@link #MANAGER_PROPERTY}. The JDK builds that server once, so registering an MBean before the
+     * property is set creates it with the default builder and WildFly's {@code jboss.as} MBeans never
+     * appear on it.
+     */
+    private static final String MBEAN_SERVER_BUILDER_PROPERTY = "javax.management.builder.initial";
 
     private static final long POLL_INTERVAL_MS = 100;
     private static final long MAX_WAIT_MS = 60_000; // WildFly loads it within the first second or two
+    private static final long MBEAN_SERVER_BUILDER_MAX_WAIT_MS = 30_000; // jboss-modules sets it within a few seconds of the LogManager
 
     /**
      * A container-specific readiness condition over the classes loaded so far, checked on every poll
@@ -95,6 +103,37 @@ public final class JBossLogManagerReadiness {
     public static void awaitJBossLogManagerThen(
             Instrumentation inst, LoadedClassCondition extraCondition, Runnable onReady) {
         awaitJBossLogManagerThen(loadedManagerClass(inst, extraCondition), POLL_INTERVAL_MS, MAX_WAIT_MS, onReady);
+    }
+
+    /**
+     * WildFly only (issue #237): blocks until jboss-modules has set {@code javax.management.builder.initial},
+     * so our MBean registration cannot make the JDK build the platform MBean server with the default builder.
+     * Call it on the detection thread before installing; it never waits longer than 30 s. Quarkus does not
+     * use it -- it has no such builder.
+     */
+    public static void awaitMBeanServerBuilder() {
+        awaitPropertyThenWarn(MBEAN_SERVER_BUILDER_PROPERTY, POLL_INTERVAL_MS, MBEAN_SERVER_BUILDER_MAX_WAIT_MS);
+    }
+
+    /**
+     * Blocks until the system property {@code name} is set. If it never is within {@code maxWaitMs},
+     * warns and returns so the caller carries on rather than stalling startup.
+     * Package-visible for {@code JBossLogManagerReadinessTest}.
+     */
+    static void awaitPropertyThenWarn(String name, long pollIntervalMs, long maxWaitMs) {
+        long deadline = System.nanoTime() + maxWaitMs * 1_000_000L;
+        while (System.getProperty(name) == null) {
+            if (System.nanoTime() - deadline >= 0) {
+                Diagnostics.warn(name + " was not set within " + maxWaitMs + "ms; continuing without it");
+                return;
+            }
+            try {
+                Thread.sleep(pollIntervalMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
     }
 
     /**

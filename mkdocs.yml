@@ -33,6 +33,11 @@ copyright: Copyright 2026 David Deuchert · Apache License 2.0
 docs_dir: guide
 site_dir: site
 
+# A link to a missing #anchor is a warning, so a --strict build fails on it: a renamed heading
+# breaks the build rather than silently breaking a link (doc/specs/demo-recordings.md, N4).
+validation:
+  anchors: warn
+
 theme:
   name: material
   custom_dir: guide-overrides
@@ -122,6 +127,7 @@ nav:
       - Install on Quarkus: get-started/install-quarkus.md
       - Install on a plain JVM: get-started/install-plain-jvm.md
       - Quick start: get-started/quick-start.md
+  - Now Showing: now-showing.md
   - How-to:
       - Raise a log level: how-to/raise-a-level.md
       - Find a logger: how-to/find-a-logger.md

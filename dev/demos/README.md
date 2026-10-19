@@ -10,11 +10,15 @@ asciinema: the server console on top, `logctl` below. Design:
 | Why don't I see my TRACE? | [`why-no-trace.sh`](why-no-trace.sh) | `guide/assets/demos/why-no-trace.cast` | guide home, Quick start step 4, README GIF |
 | Debug one package for a while | [`debug-for-a-while.sh`](debug-for-a-while.sh) | `guide/assets/demos/debug-for-a-while.cast` | How-to: Raise a log level |
 | Something is flooding the log | [`flood.sh`](flood.sh) | `guide/assets/demos/flood.cast` | How-to: Silence noise |
+| Stack traces are burying the log | [`trim.sh`](trim.sh) | `guide/assets/demos/trim.cast` | How-to: Silence noise |
 
 ## Prerequisites
 
 - The dev WildFly up with the sample deployed: `python3 dev/wildfly/wildflyctl.py up`, then `deploy`.
 - `tmux`, `asciinema` 3 (`dnf install asciinema`), `perl`, `curl`.
+- With podman's `docker` shim (Fedora's `podman-docker`) rather than Docker:
+  `sudo touch /etc/containers/nodocker`, or its "Emulate Docker CLI" notice ends up in the
+  recording. `record.sh` checks and stops if it is still printed.
 - To preview the README GIF: [agg](https://github.com/asciinema/agg/releases) on the `PATH`.
 
 ## Record
@@ -59,6 +63,11 @@ A story is a `story()` function made of the steps in [`lib.sh`](lib.sh): `say` (
 recording starts, with the shop already running (`flood.sh` starts the flood there).
 `logctl` in a story runs inside the WildFly container, but the screen shows it as a user types
 it. Add the script's name to `stories` in `record.sh`.
+
+Every recording also gets a film on the guide's [Now Showing](../../guide/now-showing.md) page:
+a paragraph on when you'd need it, the embed, and a breakdown of each `run logctl …` command.
+The guide build fails until it has one, and again whenever a story's commands change without
+its breakdown.
 
 Keep the whole bottom pane to 19 lines, so the last frame (the guide's poster and the GIF's
 held frame) shows the story from its first line. Open by saying what is running, since the GIF

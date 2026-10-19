@@ -381,9 +381,10 @@ public final class JBossLogManagerContainer implements AutoCloseable {
     }
 
     /**
-     * Runs the verification sweep off the sweep thread, now. Called from the
-     * {@code LogManager} configuration-change listener so a management change
-     * is corrected promptly rather than on the next periodic tick. Submitted
+     * Runs the verification sweep off the sweep thread, now. Called when the
+     * logging configuration changes ({@code logging.properties} rewritten, or a
+     * {@code LogManager} configuration listener) so a management change is
+     * corrected promptly rather than on the next periodic tick. Submitted
      * (not run inline) so WildFly's own configuration thread is never
      * blocked on our work.
      */
@@ -449,6 +450,34 @@ public final class JBossLogManagerContainer implements AutoCloseable {
                 };
                 scheduleUntil(pollActivation, pollInterval, started.plus(pollFor));
             }
+        } catch (java.util.concurrent.RejectedExecutionException alreadyShutDown) {
+            // close() won -- nothing to do
+        }
+    }
+
+    /**
+     * Checks {@code changed} every {@code interval} on the sweep thread, and runs {@code onChange}
+     * there when it says so -- issue #232's {@code logging.properties} watch. A check that throws is
+     * skipped, never allowed to cancel the schedule, and reported once until a check succeeds again
+     * (it runs every second).
+     */
+    public void watchConfiguration(BooleanSupplier changed, Runnable onChange, Duration interval) {
+        AtomicBoolean failing = new AtomicBoolean();
+        Runnable check = () -> {
+            try {
+                if (changed.getAsBoolean()) {
+                    onChange.run();
+                }
+                failing.set(false);
+            } catch (RuntimeException | LinkageError e) {
+                if (!failing.getAndSet(true)) {
+                    Diagnostics.warn("logging configuration check failed, will keep trying", e);
+                }
+            }
+        };
+        long millis = interval.toMillis();
+        try {
+            sweeper.scheduleWithFixedDelay(check, millis, millis, TimeUnit.MILLISECONDS);
         } catch (java.util.concurrent.RejectedExecutionException alreadyShutDown) {
             // close() won -- nothing to do
         }

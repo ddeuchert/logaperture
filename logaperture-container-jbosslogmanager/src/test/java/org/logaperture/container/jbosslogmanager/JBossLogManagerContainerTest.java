@@ -34,6 +34,9 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import java.util.logging.LogManager;
 import java.util.logging.Logger;
 
@@ -127,6 +130,57 @@ class JBossLogManagerContainerTest {
             assertTrue(auditLog.records().stream().anyMatch(r ->
                     r.source().equals("verification-sweep") && r.loggerName().equals(logger)
                             && r.action() == AuditRecord.Action.MUTATION));
+        }
+    }
+
+    /**
+     * Issue #232: a rewritten logging.properties is how a /subsystem=logging change shows itself, and
+     * it re-applies at once, with a periodic sweep (10 minutes here) nowhere near due.
+     */
+    @Test
+    void watchConfiguration_aChangeReportedByTheCheckReAppliesWithoutWaitingForTheSweep() throws Exception {
+        AtomicBoolean fileRewritten = new AtomicBoolean();
+        BooleanSupplier changedOnce = () -> fileRewritten.getAndSet(false);
+        try (JBossLogManagerContainer host = newHost()) {
+            AggregateLevelControl ops = install(host);
+            ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
+            host.watchConfiguration(changedOnce, host::runVerificationSweepNow, Duration.ofMillis(50));
+
+            Logger.getLogger(logger).setLevel(null); // the change the subsystem commits...
+            fileRewritten.set(true); // ...then the file is rewritten
+
+            awaitTrue(() -> java.util.logging.Level.FINE.equals(Logger.getLogger(logger).getLevel()),
+                    "the override was re-applied after the change");
+        }
+    }
+
+    @Test
+    void watchConfiguration_aCheckThatThrowsDoesNotStopLaterChecks() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        BooleanSupplier throwsTwice = () -> {
+            int call = calls.incrementAndGet();
+            if (call == 1) {
+                throw new IllegalStateException("first check fails");
+            }
+            if (call == 2) {
+                throw new NoClassDefFoundError("second check fails with an Error");
+            }
+            return false;
+        };
+        try (JBossLogManagerContainer host = newHost()) {
+            host.watchConfiguration(throwsTwice, () -> { }, Duration.ofMillis(20));
+
+            awaitTrue(() -> calls.get() >= 4, "checks kept running after the first two threw");
+        }
+    }
+
+    private static void awaitTrue(BooleanSupplier condition, String message) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() > deadline) {
+                throw new AssertionError(message);
+            }
+            Thread.sleep(20);
         }
     }
 

@@ -10,6 +10,12 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ### Fixed
 
+- **WildFly's `jboss.as` MBeans (and so datasources) went missing with the agent on.** The agent
+  could create the platform MBean server before jboss-modules had set
+  `javax.management.builder.initial`, so WildFly's own MBean server builder was never used. The
+  agent now waits for that property (up to 30 s) before installing (issue #237, thanks to
+  @mikeleonfsc, PR #235).
+
 - **Every file in the release zip was dated 1 February 1980**, and so was every entry in the jars
   inside it. The files now carry the date of the release's commit (issue #207).
 
