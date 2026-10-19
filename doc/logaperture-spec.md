@@ -156,7 +156,7 @@ Some actions are *decided* at gate stage but *applied* at render stage. Carry th
 | Level read/write | `LoggerContext.getLogger().setLevel()` | `Configurator.setLevel()` | `Logger.setLevel()` | `Logger.setLevel()` |
 | Gate stage | `TurboFilter` (context-wide) | context-wide `Filter` | `Logger.setFilter()` / handler filter | appender `Filter` |
 | Render stage | wrap `Encoder` on each appender; wrap `ILoggingEvent` to return trimmed `IThrowableProxy` | wrap `Layout`, or `RewriteAppender`/`RewritePolicy`; rebuild via `Log4jLogEvent.Builder` | wrap `Formatter` on each handler | wrap `Layout` |
-| Reconfiguration hook | `LoggerContextListener` | `ConfigurationListener` / `PropertyChangeListener` | none — poll (see §4.1: `LogManager` is typically already loaded before any agent attaches, so a reliable class-load-time hook usually isn't even available) | none — poll |
+| Reconfiguration hook | `ConfigurationEventListener`, after the configuration ends (1.3.14+, 1.4.14+, 1.5.x); a reset-resistant `LoggerContextListener` on older versions (issue [#231](https://github.com/ddeuchert/logaperture/issues/231)) | `ConfigurationListener` / `PropertyChangeListener` | none — poll (see §4.1: `LogManager` is typically already loaded before any agent attaches, so a reliable class-load-time hook usually isn't even available) | none — poll |
 | Multiple contexts | one `LoggerContext` per classloader via `ContextSelector` | same | single global `LogManager` | one hierarchy per classloader |
 
 Note that `ILoggingEvent` and `LogEvent` are both interfaces, which makes render-stage wrapping tractable without bytecode work.
