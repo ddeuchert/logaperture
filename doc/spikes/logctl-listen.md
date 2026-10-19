@@ -2,7 +2,8 @@
 
 Status: **in progress.** Question 1 (transport) is answered for plain Logback on JDK 21, and
 question 2 (installing and removing the handler) for plain Logback, plain JUL and WildFly, and
-question 3 (lifecycle) for plain Logback. Questions 4–7 are open.
+question 3 (lifecycle) for plain Logback. Question 4 (cost) is answered for one thread, and
+question 5 (rules) on WildFly. Questions 6 and 7 are open.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §8.2 (the agent never listens),
 §9.9 (the agent never transmits anything), §13 risk 4 (scope creep toward "log router"), §16.7
@@ -364,21 +365,100 @@ Such a handler outlives any client, so it needs the same lifetime rules as an ov
 (session, `for <duration>`, sticky), expiry, an audit line, and a place in `status` and in
 `reset`. It also costs every log call it sees while nobody is reading, which is question 4.
 
-The spec should decide:
+**Decided 2026-10-18: the first pass is `listen` only, with lease-bound handlers.** `add
+handler` waits for step 3 of #195, where it gets an override's lifetime rules.
 
-- whether 1.x ships `listen` on its own, with lease-bound handlers only, and leaves `add handler`
-  for step 3;
-- or whether it ships both, with `listen` reading from an existing handler when there is one and
-  making a lease-bound one when there isn't.
+## Findings: cost on the application thread (question 4)
 
-The harness supports either. The lease mechanism is the same.
+The cost was measured with the project's JMH harness. A temporary benchmark in
+`logaperture-bench` reused `IdleBenchmark`'s setup: JBoss LogManager, the bench category's
+`DiscardingFileHandler`, and the shipped idle pipeline (`Pipeline.install`, storm detection
+installed but off, the trim and `top` wraps on). On top of that it added the tap handler, with
+nobody draining it, so every record overwrote an old one in the ring. Settings were 2 forks,
+3 × 1 s warmup and 5 × 1 s measurement, one thread. The CPU governor was `schedutil`, not
+pinned.
+
+| ns per call (± error) | baseline | idle | idle + tap | idle + tap, trace rendered |
+|---|---|---|---|---|
+| `template` message | 1,139 ± 60 | 1,273 ± 106 | 1,352 ± 64 | 1,349 ± 82 |
+| with a 20-frame exception | 5,822 ± 238 | 6,659 ± 538 | 7,280 ± 602 | **15,459 ± 4,503** |
+
+### 14. The tap costs about what the idle agent costs; rendering a stack trace doesn't belong on the logging thread
+
+- **An ordinary record costs about 80 ns more** with the tap attached (+6 % over idle). The
+  extra work is formatting the message once, one `getAndIncrement` and one small object. With
+  an exception, the tap without rendering measured +620 ns, which is inside the error bars.
+- **Turning the stack trace into text on the application thread costs about 8 µs per record
+  that carries an exception**, more than doubling the call. The tap should store the
+  `Throwable` (or a cheap snapshot of it) and render it when it's drained. With RING, `drain`
+  runs on the JMX connection's RMI thread, so that cost leaves the application's threads
+  entirely. Whether a stored `Throwable` can change before it's drained (`addSuppressed`, a
+  cause set late) needs a look in the spec. The snapshot alternative wasn't measured.
+- **"Attached and nobody reading" barely exists with leases.** Under the listen-only decision
+  (§13), the handler is attached only while a lease is live. After a crash it stays attached
+  for at most one lease, about 3 s. So the cost is paid while someone is watching, and the
+  application pays nothing the rest of the time.
+- **Four threads were too noisy to read.** The error was ±30–70 % of the score: every thread
+  logs through one shared handler whose lock dominates. Whether the ring's shared counter adds
+  contention on top of that wasn't separated.
+
+## Findings: where the tap sits relative to the rules (question 5)
+
+### 15. On WildFly the agent adopts the tap as one of its own handlers
+
+The JUL adapter's `liveHandlers()` collects every handler on every known logger, and the
+verification sweep installs the agent's filters on each one. Measured: within 8 s of attaching
+(sweep: 5 s), the tap's filter went from none to `JulRuleFilter`. The tap doesn't appear in
+`logctl list handlers`, because the names there come from the management model. Inside the
+agent, though, it is a real handler. It is also a candidate for anything else the agent does to
+real handlers, such as handler floor control, vendor defaults for handlers, and `top`'s byte
+counting.
+
+So the implementation has to **exclude its own handler explicitly** from the handlers it adopts,
+and decide the rule behaviour deliberately rather than inherit it.
+
+### 16. A JUL handler applies its filter only if it asks
+
+A JUL `Handler`'s filter isn't applied by the logger. The handler's own `publish` has to call
+`isLoggable`, as `StreamHandler` does. With `drop` rule
+`--message-contains "tick" --below ERROR` on the sample's `Worker`, over the same 4 s window:
+
+| | `server.log` | tap ignoring its filter | tap honouring its filter |
+|---|---|---|---|
+| levels received | ERROR, SEVERE | INFO, WARNING, SEVERE | SEVERE only |
+
+So on JUL and WildFly, `listen` can show either what the file shows or what the application
+logged, depending on whether the tap calls `isLoggable`. Honouring the filter costs no second
+evaluation and doesn't count the rule's hit twice, because `RuleService.evaluateGate` caches
+the verdict per record (`computeIfAbsent` on the record's identity).
+
+`trim` is a different kind of rule. It wraps a handler's `Formatter`, and the tap has none. So a
+tap shows a full stack trace even where the file shows it trimmed, unless the tap applies the
+trim verdict itself. This wasn't tested.
+
+On Logback the choice disappears. In 1.0, Logback has level control only (rules come with
+Release 2), and §4.3 puts Logback's gate stage in a context-wide `TurboFilter`. A record that
+filter drops never reaches any appender, the tap included. Showing dropped records on Logback
+would need the tap to sit in that `TurboFilter` too. That is reasoning from the design, not a
+measurement.
+
+**For the spec to decide:**
+
+- **The default.** "What the application's handlers write" (honour the filter) matches what a
+  user expects from tailing a log, and it is the only behaviour Logback can offer.
+- **Whether to offer an option to see what the rules removed** (`--show-dropped`). On
+  JUL/WildFly the cached verdict already carries the id of the denying rule, so `listen` could
+  mark dropped records rather than hide them. That would be a useful way to check a new `drop`
+  rule.
 
 ## Not established
 
-- **Overhead on the application thread at flat out.** The flat-out throughput was too noisy to
-  read: 144k calls/s with nobody listening and 172k with NOTIFY, which is backwards. The cost
-  per record with the handler installed (question 4) needs the JMH harness from
-  [`overhead-benchmarks.md`](../specs/overhead-benchmarks.md), not this one.
+- **Overhead from the transport harness at flat out.** Its flat-out throughput was too noisy to
+  read: 144k calls/s with nobody listening and 172k with NOTIFY, which is backwards. Question 4
+  was measured with JMH instead (§14).
+- **Cost under contention.** The 4-thread JMH run was too noisy (±30–70 %). A run with pinned
+  CPU frequency and per-thread handlers (`IdleBenchmark`'s `per-thread` shape) would isolate the
+  ring's shared counter.
 - **RING tuning.** Adaptive polling (backing off when a batch is empty), bigger batches and
   pipelined `drain` calls were not tried. They're the obvious next step if the CPU cost at
   10k–50k/s matters.
@@ -415,3 +495,8 @@ to a pid and runs a list of steps: `start` and `start+` (with the re-add hook), 
 container. For question 3, `Tap2` gained `open`, `drainFor` and `close` plus the reaper thread,
 and `Lsn` is a listener that holds a lease, polls, reports once a second, and closes its lease
 from a shutdown hook.
+
+Question 4's benchmark, `SpikeListenTapBenchmark`, lived in `logaperture-bench` for the run
+(`java -jar logaperture-bench/target/benchmarks.jar SpikeListenTapBenchmark -t 1`) and was
+removed afterwards. For question 5, `Tap2`'s JUL handler took an agent argument, `honorFilter`,
+to call `isLoggable` before offering a record.
