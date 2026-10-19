@@ -4,8 +4,8 @@ Status: **done** (2026-10-18). Question 1 (transport) is answered for plain Logb
 question 2 (installing and removing the handler) for plain Logback, plain JUL and WildFly, and
 question 3 (lifecycle) for plain Logback. Question 4 (cost) is answered for one thread, and
 question 5 (rules) on WildFly, and question 6 (threshold below the configured level) on plain
-Logback, plain JUL and WildFly, and question 7 (capability and audit) as design, checked against what 1.0
-ships.
+Logback, plain JUL and WildFly, and question 7 (capability and audit) as design, checked against
+what 1.0 ships.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §8.2 (the agent never listens),
 §9.9 (the agent never transmits anything), §13 risk 4 (scope creep toward "log router"), §16.7
