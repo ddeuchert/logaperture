@@ -1,6 +1,6 @@
 # Launcher configuration file for `logctl` (issue #238)
 
-Status: **signed off 2026-10-19** (L1–L6 agreed); L7 added 2026-10-19, awaiting confirmation.
+Status: **signed off 2026-10-19** (L1–L6 agreed); L7 added and agreed 2026-10-19.
 Parent spec: [`distribution-bundle.md`](distribution-bundle.md) "Launcher change" (the
 `bin/logctl` and `bin/logctl.cmd` launchers this feature extends).
 
@@ -148,4 +148,4 @@ to the JVM ahead of `-jar`. It is empty if unset. Set it in the file to pass fla
 | L4 | `JAVA_OPTS` passed to the JVM | Agreed (David, 2026-10-19) |
 | L5 | Nothing shipped; guide documents the contract | Agreed (David, 2026-10-19) |
 | L6 | No `LOGCTL_CONF` redirect; beside the launcher only | Agreed (David, 2026-10-19) |
-| L7 | `LOGCTL_JAR_HOME` = directory holding `logaperture-cli.jar`; wins when set, no fallback | Proposed — David asked for the variable; directory meaning and no-fallback are my reading |
+| L7 | `LOGCTL_JAR_HOME` = directory holding `logaperture-cli.jar`; wins when set, no fallback | Agreed (David, 2026-10-19) |
