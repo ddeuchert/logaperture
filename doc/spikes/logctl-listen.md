@@ -4,7 +4,7 @@ Status: **in progress.** Question 1 (transport) is answered for plain Logback on
 question 2 (installing and removing the handler) for plain Logback, plain JUL and WildFly, and
 question 3 (lifecycle) for plain Logback. Question 4 (cost) is answered for one thread, and
 question 5 (rules) on WildFly, and question 6 (threshold below the configured level) on plain
-Logback and plain JUL, and question 7 (capability and audit) as design, checked against what 1.0
+Logback, plain JUL and WildFly, and question 7 (capability and audit) as design, checked against what 1.0
 ships.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §8.2 (the agent never listens),
@@ -526,7 +526,8 @@ Lowering a level isn't free and isn't private to `listen`:
   expiring override, vendor defaults and the verification sweep also manage. A raw `setLevel`
   would be overwritten by the next sweep, or would overwrite a user's override when it's
   restored. In the agent, `listen`'s lowered level has to be a layer the level-control core
-  knows about, with the baseline taken from that core, not from the logger. This wasn't tested.
+  knows about, with the baseline taken from that core, not from the logger. §22 measured this
+  on WildFly, and found a worse case: the agent captures `listen`'s level as the baseline.
 
 ### 20. A logger that doesn't propagate: native semantics leave it out, and Logback's route has to agree
 
@@ -542,14 +543,80 @@ both routes agree with §16's native semantics. Users can still assign `Private`
 see it. Since leaving it out is silent, `listen` should say so when it starts, for example:
 `com.acme.batch.Private doesn't pass records to its parents; add it to listen to see it`.
 
+### 21. On WildFly the JUL route works, but the sweep wraps the band instead of leaving it alone
+
+On WildFly 26.1.3 the test agent ran inside the server alongside the real agent (built from this
+branch, 5 s sweep). The sample WAR's timer logs `org.logaperture.sample.work.Worker` at every
+level through JUL, SLF4J and Log4j every 500 ms. The root is at INFO with two handlers:
+`FILE` (`server.log`, level ALL, the flooding case) and `CONSOLE` (INFO).
+
+`listen org.logaperture.sample.work.Worker TRACE` got TRACE, DEBUG, INFO, WARN and ERROR from
+all three facades, 6 of each per 3 s window. `server.log` gained only INFO, WARN and ERROR, over
+four windows spanning three sweeps. JBoss LogManager behaves like JUL here: the logger's level
+had to be lowered, and the band filter kept the rest out of `server.log`. `CONSOLE` drops TRACE
+and DEBUG on its own level before any filter runs, so only `FILE` needed the band.
+
+The sweep, though, rewrote both handlers' filter chains within one interval:
+
+| | Filter chain on `FILE` and `CONSOLE` |
+|---|---|
+| Before `listen` | `JulRuleFilter > JulStormFilter` |
+| Right after `listen` | `Band > JulRuleFilter > JulStormFilter` |
+| After one sweep | `JulRuleFilter > JulStormFilter > Band > JulRuleFilter > JulStormFilter` |
+
+`FilterLayering` treats any filter it doesn't recognise as the application's own "base" and
+rebuilds its canonical layers on top. The band survives, which is why nothing flooded, but the
+agent's own filters now run twice per record:
+
+- **The rule gate** caches its verdict per record (§16), so evaluating it twice is cheap and
+  doesn't count twice.
+- **The storm filter** probably sees each record twice, which would double the handler's storm
+  counts while `listen` runs. Not measured.
+
+On `stop` the test agent put back the chain it had saved, which dropped the outer copies. In the
+real implementation the band can't be a separate wrapper. It has to be part of `JulRuleFilter`'s
+own decision, inside the canonical chain.
+
+### 22. `listen`'s lowered level and the agent's level control collide, in four measured ways
+
+The same setup, with `logctl set logger org.logaperture.sample.work.Worker DEBUG for 2m` mixed
+in. Worker has no level of its own, so it inherits INFO.
+
+| Sequence | What happened |
+|---|---|
+| `listen … TRACE`, then `set logger … DEBUG` | The override replaced `listen`'s TRACE. `listen` silently stopped getting TRACE but still reported threshold TRACE. And the band, still filtering against INFO, kept the user's DEBUG out of `server.log`: the override looked as if it hadn't worked |
+| Then `stop` | `listen` put back the level it had saved (unset), undoing the override. The next sweep re-applied DEBUG (audit `source=verification-sweep previous=INFO new=DEBUG`); for those few seconds DEBUG was missing from `server.log` |
+| Then the override expired | **Worker went to TRACE, not INFO.** When the override was set, the agent captured Worker's level, `listen`'s TRACE at that moment, as the baseline (audit `previous=TRACE`; `list loggers` showed CONFIGURED TRACE). On expiry it restored that baseline (audit `REVERSION source=expiry-sweep previous=DEBUG new=TRACE`). `server.log` then got TRACE and DEBUG with no `listen` running, and `reset logger` also restored "TRACE (baseline)". It lasted until the restart |
+| `set logger … DEBUG` first, then `listen … TRACE` | The verification sweep treated `listen`'s TRACE as drift and restored DEBUG within one interval (audit `source=verification-sweep previous=TRACE new=DEBUG`). `listen` silently lost TRACE. Stopping it afterwards put back DEBUG, which was harmless |
+
+The third row is the one that matters. It's a verbosity raise that outlives `listen`, so it's
+exactly the data exposure §9.1 is about, and it gets into `server.log`. The audit trail recorded
+every step, but as ordinary changes, with nothing linking the TRACE to `listen`.
+
+All four come from one cause: the test agent changes the level directly, behind the agent's back.
+The real implementation needs `listen` as a layer level control knows about:
+
+- **The level in force** is the lower of what level control wants (override, vendor default or
+  baseline) and the lowest threshold of any `listen` covering the logger.
+- **Baseline capture and the verification sweep** compute the level without the `listen` layer,
+  so they never take it for the application's own level or treat it as drift.
+- **`stop` removes the layer.** It never restores a snapshot, so an override set in the meantime
+  survives.
+- **The band's cut-off** is the level without the layer. It's recomputed whenever an override
+  changes, so the user's DEBUG still reaches `server.log`.
+- **The level change is audited** as `listen`'s (§25: `origin=listen L3`).
+
+Logback's `TurboFilter` route changes no level, so none of this applies there. JBoss LogManager
+has no equivalent hook before the level check, so on WildFly the layer is needed.
+
 ## Findings: capability and audit (question 7)
 
 Mostly design, checked against what 1.0 ships. Today `CapabilityPolicy.allowAll()` grants
 everything (no policy file yet), `Capability` has no `capture`, and every audit line names
-`principal=` as the JVM's own `user.name`. One measurement backs §22: a throwaway MBean
+`principal=` as the JVM's own `user.name`. One measurement backs §24: a throwaway MBean
 (`Who`) reported who was calling it over each kind of JMX connection.
 
-### 21. `listen` needs its own capability, `stream`, and below-level listening also needs `level.raise`
+### 23. `listen` needs its own capability, `stream`, and below-level listening also needs `level.raise`
 
 `listen` is closer to `capture` than to anything else in §9.3: log content leaves the agent.
 But it is a weaker control point than `capture`. It is continuous rather than a bounded bundle,
@@ -575,12 +642,12 @@ Notes on the rows:
   and one of them may be ceiling-protected. Refusing the whole `listen` for that is harsh, and
   silently skipping it breaks §9.6. So the hook checks each record's logger against the
   ceiling, and `listen` names the protected categories when it starts, the same way §20 names a
-  non-propagating logger. The refusal is audited (§23).
+  non-propagating logger. The refusal is audited (§25).
 - **Redaction.** If `capture` applies customer redaction (§9.9) and `listen` doesn't, `listen`
   is a way round it. `listen` has to apply the same redaction patterns before a record enters
   the ring. Neither exists yet, so this is a requirement on whichever ships second.
 
-### 22. Egress goes wherever the JVM's JMX goes, and the agent can't always tell where that is
+### 24. Egress goes wherever the JVM's JMX goes, and the agent can't always tell where that is
 
 RING keeps §8.2 and §9.9's claim as written: the agent opens no socket and sends nothing on its
 own. `drain` is an MBean operation answered on a connection the JVM already has. But it is
@@ -613,7 +680,7 @@ is right for local attach, which only that account or root can use (§9.8). For 
 remote caller, the Subject's principal is the honest value. That applies to every audited
 operation, not just `listen`.
 
-### 23. Audit: one line when a listen starts, one when it stops, nothing per record
+### 25. Audit: one line when a listen starts, one when it stops, nothing per record
 
 The audit trail records changes and their reverts (§9.7). A `listen` is a change with a defined
 end, so it fits as a pair, in the existing line format with a new target kind, `listen=<lease>`:
@@ -644,7 +711,7 @@ end, so it fits as a pair, in the existing line format with a new target kind, `
 - **Not audited:** each batch, each record, and the handler being reattached after a
   reconfiguration (§7). The reattachment is a diagnostic, since nothing about the scope changed.
 - **Refusals are audited too.** A `listen` denied `stream`, or held back below the ceiling for a
-  protected category (§21), writes a line. 1.0 doesn't audit capability denials at all, so this
+  protected category (§23), writes a line. 1.0 doesn't audit capability denials at all, so this
   is a new kind of line, not just a new target.
 - **`--file` can't be audited by the agent.** The path is chosen and written by `logctl`.
   `logctl` could send it with `open` as a declared value, audited as `file=<path> (declared)`,
@@ -652,13 +719,13 @@ end, so it fits as a pair, in the existing line format with a new target kind, `
   configured level land in a file nobody configured, and the default umask would leave it
   world-readable.
 
-### 24. Several listeners on one ring must not see each other's scope
+### 26. Several listeners on one ring must not see each other's scope
 
 §12 has listeners share one ring, each with its own cursor. With §16's per-listener loggers and
 thresholds, the ring holds the union of every listener's scope. `drain` has to filter each batch
 down to the caller's own loggers and threshold, or one listener gets another's TRACE records. In
 1.0 every caller is the same account, so this costs nothing in security. It matters as soon as
-remote streaming (§22) gives callers different principals, and it is cheap: the nearest-assigned
+remote streaming (§24) gives callers different principals, and it is cheap: the nearest-assigned
 logger is already computed on the way in (§18), so tag each entry with the leases it matched.
 Alternatively, give each lease its own ring, at the cost of copying shared records.
 
@@ -681,18 +748,16 @@ Alternatively, give each lease its own ring, at the cost of copying shared recor
 - **Leases on JUL and WildFly, and over long runs.** The lease test ran on plain Logback for
   about 30 s. Server-side JMX connection state left behind by a `kill -9`'d client wasn't
   inspected.
-- **Question 6 on WildFly**, and the level-control layering in §19. JBoss LogManager has the
-  same level check as JUL, so the same route applies. But the filter would live in the agent's
-  `JulRuleFilter`, and `listen`'s lowered level has to go through the agent's level control.
-  Neither was built here.
+- **The `listen` layer in level control (§22) and the band inside `JulRuleFilter` (§21)** weren't
+  built. Neither was the storm filter's double count while the band is wrapped (§21) measured.
 - **The exact Logback version that added `ConfigurationEventListener`.** Only 1.2.13, 1.3.0,
   1.3.14, 1.4.0, 1.4.14 and 1.5.x were checked.
 - **Whether the local connector refuses other hosts.** The connector `startLocalManagementAgent`
   starts listened on a wildcard address (`*:39607`). The JDK documents that it accepts only
   local peers, and `logctl` already relies on that in 1.0. It wasn't tried from another host.
   `listen`'s privacy rests on it, along with everything else `logctl` does.
-- **Question 7 on anything but JDK 21's RMI connector.** Neither the audit lines (§23) nor the
-  per-lease filtering (§24) were built. The `Who` probe ran once per connection type.
+- **Question 7 on anything but JDK 21's RMI connector.** Neither the audit lines (§25) nor the
+  per-lease filtering (§26) were built. The `Who` probe ran once per connection type.
 - **Records with stack traces.** No record carried a throwable. Rendering one on the
   application thread, as the byte cap above assumes, is a separate cost.
 
@@ -732,3 +797,9 @@ handler's filter. `AppQ6` is the three-logger application, and `q6.sh` runs a se
 For question 7, `Who` is an MBean whose one operation returns `Subject.current()`,
 `RemoteServer.getClientHost()` and the calling thread's name. `Ask` calls it over local attach,
 or over a remote port with or without credentials.
+
+For question 6 on WildFly, `Tap6` gained `level(logger)`. It reports the logger's level and each
+root handler's level and full filter chain. `Probe6` gained `agent:<jar>` (load the agent into
+the running server), `level:<logger>` and `sleep:<seconds>`, and its `count:` step also counts
+what `server.log` gained over the window. `w6.sh` runs `Probe6` inside the container, alongside
+`logctl` run with `docker exec`.
