@@ -442,14 +442,19 @@ filter drops never reaches any appender, the tap included. Showing dropped recor
 would need the tap to sit in that `TurboFilter` too. That is reasoning from the design, not a
 measurement.
 
-**For the spec to decide:**
+**Decided 2026-10-18: `listen` respects the configuration, as the application's handlers do.**
+Records go through the same `drop` rules, storm suppression and logger levels as the
+application's own handlers, and `trim` applies too. On JUL/WildFly the tap calls `isLoggable`,
+which this spike verified, and applies the trim verdict when it renders the stack trace at drain
+time, which it didn't test. `--show-dropped` isn't part of the first pass.
 
-- **The default.** "What the application's handlers write" (honour the filter) matches what a
-  user expects from tailing a log, and it is the only behaviour Logback can offer.
-- **Whether to offer an option to see what the rules removed** (`--show-dropped`). On
-  JUL/WildFly the cached verdict already carries the id of the denying rule, so `listen` could
-  mark dropped records rather than hide them. That would be a useful way to check a new `drop`
-  rule.
+Still open: **handler levels.** The application's handlers don't all agree. In the dev
+environment, `FILE` is at ALL and `CONSOLE` at INFO, so "what the handlers write" differs by
+handler. The tap needs a level of its own:
+
+- the most permissive of the handlers on the root (here `FILE`'s ALL), so `listen` shows
+  whatever reaches at least one destination;
+- or a level chosen per `listen` invocation, which question 6 needs anyway.
 
 ## Not established
 
