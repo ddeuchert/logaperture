@@ -4,7 +4,8 @@ Status: **in progress.** Question 1 (transport) is answered for plain Logback on
 question 2 (installing and removing the handler) for plain Logback, plain JUL and WildFly, and
 question 3 (lifecycle) for plain Logback. Question 4 (cost) is answered for one thread, and
 question 5 (rules) on WildFly, and question 6 (threshold below the configured level) on plain
-Logback and plain JUL. Question 7 is open.
+Logback and plain JUL, and question 7 (capability and audit) as design, checked against what 1.0
+ships.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §8.2 (the agent never listens),
 §9.9 (the agent never transmits anything), §13 risk 4 (scope creep toward "log router"), §16.7
@@ -541,6 +542,126 @@ both routes agree with §16's native semantics. Users can still assign `Private`
 see it. Since leaving it out is silent, `listen` should say so when it starts, for example:
 `com.acme.batch.Private doesn't pass records to its parents; add it to listen to see it`.
 
+## Findings: capability and audit (question 7)
+
+Mostly design, checked against what 1.0 ships. Today `CapabilityPolicy.allowAll()` grants
+everything (no policy file yet), `Capability` has no `capture`, and every audit line names
+`principal=` as the JVM's own `user.name`. One measurement backs §22: a throwaway MBean
+(`Who`) reported who was calling it over each kind of JMX connection.
+
+### 21. `listen` needs its own capability, `stream`, and below-level listening also needs `level.raise`
+
+`listen` is closer to `capture` than to anything else in §9.3: log content leaves the agent.
+But it is a weaker control point than `capture`. It is continuous rather than a bounded bundle,
+it has no manifest for an administrator to review before sending, and with `--file` it lands
+somewhere the agent can't see (§5: the file is written by `logctl`). So it needs its own
+capability, denied separately from `capture`. A customer may accept "a bundle I review" but not
+"a live feed":
+
+| `listen` asks for | Needs | Why |
+|---|---|---|
+| Records the application's handlers would get anyway (threshold at or above every assigned logger's effective level) | `stream` | Egress, like `capture`. Roughly equivalent to reading the log files, but not all logs are locally readable (syslog, a remote collector, a container's stdout) |
+| Records below the configured level (§17) | `stream` + `level.raise` | The same data exposure as `set logger … DEBUG`, §9.1's "less obvious and more likely to bite". On JUL it is a level raise (§19) |
+| A logger under the verbosity ceiling (§9.5) | Refused below the ceiling | §9.5 applies whether the output goes to a file or to `listen` |
+
+Notes on the rows:
+
+- **Name.** `stream` rather than `listen`, so the same grant covers #195's console view later.
+  §9.3 names capabilities after the risk, not the command.
+- **Not `persist`.** A `listen` never outlives its lease (§11).
+- **Default under modes (§9.11).** `prod` denies it, like everything beyond `view`. The strictest
+  `prod` that permits `view` and `capture` live should not imply `stream`.
+- **The ceiling applies per record, not per listen.** `listen com.acme TRACE` covers descendants,
+  and one of them may be ceiling-protected. Refusing the whole `listen` for that is harsh, and
+  silently skipping it breaks §9.6. So the hook checks each record's logger against the
+  ceiling, and `listen` names the protected categories when it starts, the same way §20 names a
+  non-propagating logger. The refusal is audited (§23).
+- **Redaction.** If `capture` applies customer redaction (§9.9) and `listen` doesn't, `listen`
+  is a way round it. `listen` has to apply the same redaction patterns before a record enters
+  the ring. Neither exists yet, so this is a requirement on whichever ships second.
+
+### 22. Egress goes wherever the JVM's JMX goes, and the agent can't always tell where that is
+
+RING keeps §8.2 and §9.9's claim as written: the agent opens no socket and sends nothing on its
+own. `drain` is an MBean operation answered on a connection the JVM already has. But it is
+answered on **every** connector the JVM exposes, not only `logctl`'s local attach. A JVM started
+with `-Dcom.sun.management.jmxremote.port` lets any JMX client on the network call `drain`. The
+`Who` MBean reported, on JDK 21:
+
+| Caller | `Subject.current()` | `RemoteServer.getClientHost()` |
+|---|---|---|
+| Local attach (`startLocalManagementAgent`), as `logctl` does it | `null` | the host's LAN address |
+| Remote port, authenticated (password file) | non-null, principal `ops` | the host's LAN address |
+| Remote port, `authenticate=false` | `null` | the host's LAN address |
+
+So:
+
+- **An authenticated remote caller is identifiable**, by its Subject. The local connector never
+  authenticates, so a Subject means the call didn't come through `logctl`'s attach.
+- **An unauthenticated remote caller looks exactly like `logctl`.** The client host doesn't help
+  either: RMI reported the LAN address even for the local attach, from the same machine.
+
+The recommendation follows. `stream` is local-only by default: refuse `drain` (and `open`) from a
+caller with a Subject unless the policy explicitly allows remote streaming. An unauthenticated
+remote JMX port can't be detected, but it already exposes `set logger`, every other operation and
+the JVM's own MBeans, so `listen` adds nothing to that exposure. `doctor` could flag it: the
+`com.sun.management.jmxremote.*` properties are readable. §9.9's "a human moves it" should gain a
+sentence: `listen`'s output reaches whatever the JVM's JMX reaches.
+
+This also says something about 1.0's audit lines. The principal is always the JVM account. That
+is right for local attach, which only that account or root can use (§9.8). For an authenticated
+remote caller, the Subject's principal is the honest value. That applies to every audited
+operation, not just `listen`.
+
+### 23. Audit: one line when a listen starts, one when it stops, nothing per record
+
+The audit trail records changes and their reverts (§9.7). A `listen` is a change with a defined
+end, so it fits as a pair, in the existing line format with a new target kind, `listen=<lease>`:
+
+```
+[logaperture-audit] 2026-10-18T14:02:11Z action=MUTATION principal=ddeucher source=jmx listen=L3 previous=<none> new=com.acme.batch,com.acme.Other>=TRACE reason=INC-4411
+[logaperture-audit] 2026-10-18T14:02:11Z action=MUTATION principal=ddeucher source=jmx logger=com.acme.batch previous=INFO new=TRACE reason=INC-4411 origin=listen L3
+[logaperture-audit] 2026-10-18T14:19:40Z action=REVERSION principal=ddeucher source=lease listen=L3 previous=com.acme.batch,com.acme.Other>=TRACE new=<none> reason=lease expired delivered=48211 lost=0
+[logaperture-audit] 2026-10-18T14:19:40Z action=REVERSION principal=ddeucher source=lease logger=com.acme.batch previous=TRACE new=INFO origin=listen L3
+```
+
+- **Start** names the loggers and the threshold, and takes a `--reason` like every other
+  mutation.
+- **The JUL level change is audited** as an ordinary logger mutation with `origin=listen L3`,
+  reusing the field recipes already use (recipes.md B5). Logback's `TurboFilter` route changes
+  no level, so it writes no second line. Either way the start line says the threshold is below
+  the configured level, so `grep listen=` finds every below-level exposure.
+- **Stop always gets a line**, whoever stopped it. The stop reason distinguishes:
+  - `closed`: `logctl` exited normally;
+  - `lease expired`: the listener died (§11);
+  - `agent stopped`: the JVM shut down;
+  - `refused`: the policy changed (not possible today, since grants are sealed at boot, §9.4).
+
+  An expired lease is "an override that expired unnoticed" (§9.7), so it matters most. The
+  reaper writes it, with the original principal and `source=lease`.
+- **Counts on the stop line.** `delivered` and `lost` say how much left and how complete the
+  copy was. The ring knows both exactly (§5).
+- **Not audited:** each batch, each record, and the handler being reattached after a
+  reconfiguration (§7). The reattachment is a diagnostic, since nothing about the scope changed.
+- **Refusals are audited too.** A `listen` denied `stream`, or held back below the ceiling for a
+  protected category (§21), writes a line. 1.0 doesn't audit capability denials at all, so this
+  is a new kind of line, not just a new target.
+- **`--file` can't be audited by the agent.** The path is chosen and written by `logctl`.
+  `logctl` could send it with `open` as a declared value, audited as `file=<path> (declared)`,
+  but the agent can't check it. `logctl` should create the file `0600`. Records below the
+  configured level land in a file nobody configured, and the default umask would leave it
+  world-readable.
+
+### 24. Several listeners on one ring must not see each other's scope
+
+§12 has listeners share one ring, each with its own cursor. With §16's per-listener loggers and
+thresholds, the ring holds the union of every listener's scope. `drain` has to filter each batch
+down to the caller's own loggers and threshold, or one listener gets another's TRACE records. In
+1.0 every caller is the same account, so this costs nothing in security. It matters as soon as
+remote streaming (§22) gives callers different principals, and it is cheap: the nearest-assigned
+logger is already computed on the way in (§18), so tag each entry with the leases it matched.
+Alternatively, give each lease its own ring, at the cost of copying shared records.
+
 ## Not established
 
 - **Overhead from the transport harness at flat out.** Its flat-out throughput was too noisy to
@@ -566,6 +687,12 @@ see it. Since leaving it out is silent, `listen` should say so when it starts, f
   Neither was built here.
 - **The exact Logback version that added `ConfigurationEventListener`.** Only 1.2.13, 1.3.0,
   1.3.14, 1.4.0, 1.4.14 and 1.5.x were checked.
+- **Whether the local connector refuses other hosts.** The connector `startLocalManagementAgent`
+  starts listened on a wildcard address (`*:39607`). The JDK documents that it accepts only
+  local peers, and `logctl` already relies on that in 1.0. It wasn't tried from another host.
+  `listen`'s privacy rests on it, along with everything else `logctl` does.
+- **Question 7 on anything but JDK 21's RMI connector.** Neither the audit lines (§23) nor the
+  per-lease filtering (§24) were built. The `Who` probe ran once per connection type.
 - **Records with stack traces.** No record carried a throwable. Rendering one on the
   application thread, as the byte cap above assumes, is a separate cost.
 
@@ -601,3 +728,7 @@ handler per assigned logger, saves each logger's level and baseline, and wraps e
 handler's filter. `AppQ6` is the three-logger application, and `q6.sh` runs a sequence of
 `listen` / `stop` steps, comparing what `listen` received with what `app.log` gained over each
 3 s window.
+
+For question 7, `Who` is an MBean whose one operation returns `Subject.current()`,
+`RemoteServer.getClientHost()` and the calling thread's name. `Ask` calls it over local attach,
+or over a remote port with or without credentials.
