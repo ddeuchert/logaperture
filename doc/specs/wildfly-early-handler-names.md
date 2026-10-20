@@ -76,13 +76,16 @@ A vendor-defaults handler entry whose name isn't known at install (the normal ca
 where nothing resolves yet) goes on the pending list as today. The sweep would retry it, but its
 first tick is one full interval after start (30 s by default), which would waste the early names.
 So **while any vendor handler entry is pending, a retry runs about once a second** (a fixed 1 s,
-not configurable) until every pending entry has applied or been found unknown, then stops. The
-normal sweep interval is unchanged and stays the backstop. Installs with no vendor handler entries
-never start the retry.
+not configurable) until nothing is pending, or for two minutes, whichever comes first. After two
+minutes a name that still hasn't resolved is probably not going to, so the retry stops and the
+normal sweep alone carries on (it still applies the entry as soon as the handler appears). The
+retry starts after a context is installed with something pending; an install with no vendor
+handler entries never starts it.
 
-An applied entry is audited as today, with its reason `vendor-defaults`. The "handler not found"
-warning is raised only once resolution has completed (E1 bound, or the model route ran) and the
-name is still unknown, not at the first failed try.
+An applied entry is audited as today (once per load, not per entry; quieter-output.md Q1). What
+"warns" about a handler that isn't found is the informational `vendor-defaults.unresolved-handler`
+finding in `logctl doctor`; it is raised from the same pending list, so it disappears as soon as
+the entry applies and is no longer shown for the seconds it used to cover.
 
 ### E6. What this does not do
 
@@ -123,5 +126,5 @@ name is still unknown, not at the first failed try.
 | E2 | "Not ready yet" is retried quietly; the `running` check is not applied to E1 | Agreed (David, 2026-10-20) |
 | E3 | Model route stays as the fallback, unchanged | Agreed (David, 2026-10-20) |
 | E4 | Handlers E1 doesn't list stay anonymous until the model route runs | Agreed (David, 2026-10-20) |
-| E5 | While a vendor handler entry is pending, retry about every 1 s until applied; warn only after resolution completes | Agreed (David, 2026-10-20; revised same day) |
+| E5 | While a vendor handler entry is pending, retry every 1 s until applied or for two minutes; the doctor finding reflects the same list | Agreed (David, 2026-10-20; revised same day) |
 | E6 | No type-based guessing, no change outside WildFly | Agreed (David, 2026-10-20) |

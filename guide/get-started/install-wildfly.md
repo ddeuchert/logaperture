@@ -89,6 +89,11 @@ Your versions and paths will differ. This output is from a WildFly in a containe
 check the server log before going further. If `logctl` says it can't find a JVM, see
 [Work with several JVMs](../how-to/several-jvms.md).
 
+LogAperture knows WildFly's handler names (`CONSOLE`, `FILE`, …) a few seconds after the JVM
+starts, so you can set a handler level or put one in the
+[vendor defaults](../vendors/vendor-defaults.md) while a long-starting application is still
+deploying. `ALL_HANDLERS` always works.
+
 Next: the [Quick start](quick-start.md).
 
 ## Agent options

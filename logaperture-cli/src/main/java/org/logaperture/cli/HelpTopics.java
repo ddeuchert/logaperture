@@ -98,8 +98,9 @@ final class HelpTopics {
                     List.of("logctl list handlers [--show-all]"),
                     List.of("Shows every handler you can name, its level, and any active override. Without "
                                     + "`--show-all`, only handlers with an active override are shown.",
-                            "On WildFly the individual names (`CONSOLE`, `FILE`, …) appear once the server is up. "
-                                    + "Before that, and always, `ALL_HANDLERS` means every handler at once."),
+                            "On WildFly the individual names (`CONSOLE`, `FILE`, …) appear a few seconds after "
+                                    + "the server starts, whatever the application takes to deploy. Before that, and always, "
+                                    + "`ALL_HANDLERS` means every handler at once."),
                     List.of(new Option("--show-all", "Every known handler, not just overridden ones.")),
                     List.of("logctl list handlers --show-all")),
 
