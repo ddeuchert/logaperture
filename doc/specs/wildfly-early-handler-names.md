@@ -107,8 +107,9 @@ the entry applies and is no longer shown for the seconds it used to cover.
   reaches the console log during the delay.
 - The same IT checks that vendor-defaults logger levels still hold after WildFly applies its own
   logging configuration during boot (the open point in the issue).
-- Not covered by CI: WildFly 27 and later, and a `custom-handler`; both are checked by hand and
-  recorded here.
+- Not covered by CI: other WildFly versions and a `custom-handler`. `WildFlySlowStartIT` was run by
+  hand against WildFly 27.0.1.Final (JDK 17) and 33.0.0.Final (JDK 21) on 2026-10-20 and passed; a
+  `custom-handler` has not been checked.
 
 ## Guide changes
 
