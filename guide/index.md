@@ -16,7 +16,8 @@ logctl add rule drop com.acme.batch.Worker --message-contains "This happens a lo
 
 !!! warning "Pre-release"
     LogAperture 1.0 is in beta. Try it on a server you can afford to restart, and
-    [tell us](https://github.com/ddeuchert/logaperture/issues) what breaks. It is not for
+    [tell us](https://github.com/ddeuchert/logaperture/issues) what breaks, or
+    [how it went](https://github.com/ddeuchert/logaperture/discussions). It is not for
     production use before 1.0.0.
 
 ## See it work
