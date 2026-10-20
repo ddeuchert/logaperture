@@ -474,8 +474,8 @@ logctl env --json
 
 ```json
 {
-  "agentVersion": "1.0.0-beta.1",
-  "cliVersion": "1.0.0-beta.1",
+  "agentVersion": "1.0.0-beta.2",
+  "cliVersion": "1.0.0-beta.2",
   "javaVersion": "17.0.5",
   "javaVendor": "Eclipse Adoptium",
   "osName": "Linux",
