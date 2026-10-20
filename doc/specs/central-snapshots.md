@@ -1,6 +1,6 @@
 # Publishing PR snapshots to Maven Central (issue #248)
 
-Status: **draft, not yet agreed.**
+Status: **agreed 2026-10-20** (D1–D8, as recommended). Implementation follows.
 Parent spec: [`maven-central-publishing.md`](maven-central-publishing.md) (the release flow this
 sits beside; it is not changed). Related: [`distribution-bundle.md`](distribution-bundle.md).
 
@@ -30,8 +30,8 @@ only a labeled PR keeps `develop`'s every push from becoming public.
 A new workflow, `.github/workflows/snapshot.yml`, in the style of `central.yml`:
 
 1. **Trigger (D1).** `pull_request` of type `labeled`, run only for the label `deploy snapshot`,
-   and only when the PR's head is in this repository (D5). GitHub gives the job the PR's merge
-   result as the checkout, so what is published is what would be merged.
+   and only when the PR's head is in this repository (D5). The job checks out the PR's head commit
+   (not the merge with the base), so what is published is the commit CI tested.
 2. **Guards (D5).** The POM version must end in `-SNAPSHOT` (a release version is refused, so this
    path can never publish a release), and the PR's `build` check must have succeeded for the
    commit being built.
@@ -67,14 +67,14 @@ No GPG secret is needed.
 
 | # | Decision | Recommended | Status |
 |---|---|---|---|
-| D1 | Trigger | The label `deploy snapshot` on a pull request. Only adding the label publishes; to publish again, remove it and add it back (as with `central dry run`). Pushing to the PR or to `develop` never does. | Proposed |
-| D2 | What version is published | **The POM version as it is** (`1.0.0-beta.3-SNAPSHOT`), so a tester always asks for the same coordinates and gets the newest labeled build. The cost is that two labeled PRs overwrite each other and the files don't say which PR they came from (the job summary does). The alternative is a per-PR version (`1.0.0-beta.3-PR247-SNAPSHOT`): no overwriting, and the PR is in the name, but the tester has to be told the coordinates each time and there is no "latest". | Proposed (your call) |
-| D3 | What is published | The same four artifacts as a release, with sources and javadoc jars, **unsigned** (Central doesn't check snapshots), so the workflow needs the Central token but not the GPG key. | Proposed |
-| D4 | How it is deployed | The Maven Deploy Plugin with the repository given on the command line, and the token supplied as server credentials by `actions/setup-java`. No change to the POMs, so the release flow is untouched. The Central publishing plugin (0.7.0+) is the alternative; it would mean a POM change in the release path. | Proposed |
-| D5 | Guards | Same-repository PRs only (a fork gets no secrets anyway); refuse a version that doesn't end in `-SNAPSHOT`; require the PR's `build` check to have passed for the commit being built, so a broken build is never published. Tests aren't rerun, as in the dry run. | Proposed |
-| D6 | Reporting | A job summary only: PR, commit, version, the repository URL and the path to the files. No PR comment. | Proposed |
-| D7 | Retention | Central's: 90 days, and a new upload replaces the same version. Nothing of ours cleans up. | Proposed |
-| D8 | Documentation | `DEVELOPMENT.md` gets the maintainer steps; the Download page gets a short, plain "Try an unreleased build" section (the repository URL, the artifact coordinates, a `curl` for the zip, "not for production"). Leave the Download section out if you'd rather not point users at snapshots yet. | Proposed |
+| D1 | Trigger | The label `deploy snapshot` on a pull request. Only adding the label publishes; to publish again, remove it and add it back (as with `central dry run`). Pushing to the PR or to `develop` never does. | Agreed (David, 2026-10-20) |
+| D2 | What version is published | **The POM version as it is** (`1.0.0-beta.3-SNAPSHOT`), so a tester always asks for the same coordinates and gets the newest labeled build. The cost is that two labeled PRs overwrite each other and the files don't say which PR they came from (the job summary does). The alternative is a per-PR version (`1.0.0-beta.3-PR247-SNAPSHOT`): no overwriting, and the PR is in the name, but the tester has to be told the coordinates each time and there is no "latest". | Agreed (recommended option, David, 2026-10-20) |
+| D3 | What is published | The same four artifacts as a release, with sources and javadoc jars, **unsigned** (Central doesn't check snapshots), so the workflow needs the Central token but not the GPG key. | Agreed (David, 2026-10-20) |
+| D4 | How it is deployed | The Maven Deploy Plugin with the repository given on the command line, and the token supplied as server credentials by `actions/setup-java`. No change to the POMs, so the release flow is untouched. The Central publishing plugin (0.7.0+) is the alternative; it would mean a POM change in the release path. | Agreed (David, 2026-10-20) |
+| D5 | Guards | Same-repository PRs only (a fork gets no secrets anyway); refuse a version that doesn't end in `-SNAPSHOT`; require the PR's `build` check to have passed for the commit being built, so a broken build is never published. Tests aren't rerun, as in the dry run. | Agreed (David, 2026-10-20) |
+| D6 | Reporting | A job summary only: PR, commit, version, the repository URL and the path to the files. No PR comment. | Agreed (David, 2026-10-20) |
+| D7 | Retention | Central's: 90 days, and a new upload replaces the same version. Nothing of ours cleans up. | Agreed (David, 2026-10-20) |
+| D8 | Documentation | `DEVELOPMENT.md` gets the maintainer steps; the Download page gets a short, plain "Try an unreleased build" section (the repository URL, the artifact coordinates, a `curl` for the zip, "not for production"). Leave the Download section out if you'd rather not point users at snapshots yet. | Agreed (David, 2026-10-20) |
 
 ## Tests
 

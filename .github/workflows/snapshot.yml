@@ -1,0 +1,105 @@
+# Copyright 2026 David Deuchert
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Publishes a pull request's build as a -SNAPSHOT to Maven Central's snapshot repository -
+# doc/specs/central-snapshots.md. Only the label `deploy snapshot` starts it: a push to a pull
+# request or to develop never does. To publish again, remove the label and add it back.
+name: Maven Central snapshot
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: central
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    # A pull request from a fork gets no secrets, so it can't publish; refuse it up front.
+    if: >-
+      github.event.label.name == 'deploy snapshot' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      # The commit CI tested, not a merge with whatever the base has become since.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Require a green build for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          conclusions="$(gh api "repos/${{ github.repository }}/commits/$SHA/check-runs" \
+            --jq '.check_runs[] | select(.name == "build") | .conclusion // "pending"')"
+          if [ -z "$conclusions" ]; then
+            echo "::error::No 'build' check has run for $SHA yet. Wait for CI, then remove the label and add it back."
+            exit 1
+          fi
+          if [ "$(echo "$conclusions" | sort -u)" != "success" ]; then
+            echo "::error::The 'build' check for $SHA is not green ($(echo "$conclusions" | sort -u | tr '\n' ' ')). Fix or wait, then remove the label and add it back."
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          # Writes a settings.xml server entry named central-snapshots, filled from these variables.
+          server-id: central-snapshots
+          server-username: CENTRAL_TOKEN_USERNAME
+          server-password: CENTRAL_TOKEN_PASSWORD
+
+      - name: Require a -SNAPSHOT version
+        id: v
+        run: |
+          version="$(./mvnw -B -q --no-transfer-progress help:evaluate \
+            -Dexpression=project.version -DforceStdout | tail -1 | tr -d '[:space:]')"
+          case "$version" in
+            *-SNAPSHOT) ;;
+            *) echo "::error::$version is not a -SNAPSHOT: this workflow never publishes a release."; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # The packaging is under test here, not the code: CI has already run the tests. Unsigned:
+      # Central does not check snapshots, so no GPG key is needed.
+      - name: Build and deploy to the snapshot repository
+        env:
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+        run: |
+          ./mvnw -B --no-transfer-progress -Prelease -pl logaperture-dist -am -DskipTests -Dgpg.skip=true deploy \
+            -Dproject.build.outputTimestamp="$(git log -1 --format=%cI)" \
+            -DaltDeploymentRepository=central-snapshots::https://central.sonatype.com/repository/maven-snapshots/
+
+      - name: Report
+        run: |
+          {
+            echo "### Published ${{ steps.v.outputs.version }}"
+            echo
+            echo "- Pull request: #${{ github.event.pull_request.number }} (${{ github.event.pull_request.title }})"
+            echo "- Commit: \`${{ github.event.pull_request.head.sha }}\`"
+            echo "- Repository: https://central.sonatype.com/repository/maven-snapshots/"
+            echo "- Files: \`org/logaperture/{logaperture-parent,logaperture-agent,logaperture-cli,logaperture}/${{ steps.v.outputs.version }}/\`"
+            echo
+            echo "A later labeled pull request replaces this version. Central removes snapshots after 90 days."
+          } >> "$GITHUB_STEP_SUMMARY"
