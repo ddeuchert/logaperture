@@ -8,6 +8,20 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ## [Unreleased]
 
+### Added
+
+- **A conf file for the `logctl` launchers.** An optional `bin/logctl.conf` (`bin/logctl.conf.cmd`
+  on Windows) is run before anything else and can set or clear any variable, so a bundled JDK can
+  be found by a path relative to the launcher regardless of the caller's environment. The
+  launchers also pass `JAVA_OPTS` to the JVM, and `LOGCTL_JAR_HOME` names the directory holding
+  `logaperture-cli.jar` when it isn't beside the launcher (issue #238).
+
+### Changed
+
+- **`logctl` now honors `JAVA_HOME`.** The launchers used to run `java` from the `PATH` and ignore
+  it. When `JAVA_HOME` is set, `logctl` runs `$JAVA_HOME/bin/java` only, and stops with an error
+  if it isn't there (issue #238).
+
 ### Fixed
 
 - **WildFly's `jboss.as` MBeans (and so datasources) went missing with the agent on.** The agent
