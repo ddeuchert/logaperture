@@ -57,7 +57,7 @@ jobs:
         run: |
           version="$INPUT_VERSION"
           if [ -z "$version" ]; then
-            version="$(mvn -B -q --no-transfer-progress help:evaluate \
+            version="$(./mvnw -B -q --no-transfer-progress help:evaluate \
               -Dexpression=project.version -DforceStdout | tail -1 | tr -d '[:space:]')"
             version="${version%-SNAPSHOT}"
           fi
@@ -65,7 +65,7 @@ jobs:
             *-SNAPSHOT) echo "::error::$version is a snapshot"; exit 1 ;;
           esac
           # In this checkout only; never committed.
-          mvn -B -q --no-transfer-progress versions:set -DnewVersion="$version" \
+          ./mvnw -B -q --no-transfer-progress versions:set -DnewVersion="$version" \
             -DgenerateBackupFiles=false -DprocessAllModules=true
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
@@ -75,7 +75,8 @@ jobs:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         # The packaging is under test here, not the code: CI has already run the tests.
         run: |
-          mvn -B --no-transfer-progress -Prelease -pl logaperture-dist -am -DskipTests deploy \
+          ./mvnw -B --no-transfer-progress -Prelease -pl logaperture-dist -am -DskipTests deploy \
+            -Dproject.build.outputTimestamp="$(git log -1 --format=%cI)" \
             -DaltDeploymentRepository=staging::file:target/staging
 
       - name: Bundle and check

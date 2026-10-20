@@ -21,8 +21,8 @@ on the same machine, run by the same operating-system user.
 
     ```
     PID    VERSION       STARTED           DIRECTORY   COMMAND
-    28337  1.0.0-beta.1  2026-10-15 20:45  /srv/app-a  org.logaperture.agent.it.FixtureApp
-    28342  1.0.0-beta.1  2026-10-15 20:45  /srv/app-b  org.logaperture.agent.it.FixtureApp
+    28337  1.0.0-beta.2  2026-10-15 20:45  /srv/app-a  org.logaperture.agent.it.FixtureApp
+    28342  1.0.0-beta.2  2026-10-15 20:45  /srv/app-b  org.logaperture.agent.it.FixtureApp
     Several candidates — pass --pid <n>.
     ```
 

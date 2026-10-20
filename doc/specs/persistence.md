@@ -187,9 +187,23 @@ Runs once, inside `NoneContainer.install`, after baseline capture and before the
 
 ### Reconfiguration re-application
 
-`logaperture-adapter-logback` gains a `LoggerContextListener` (Logback's own reset-notification
-mechanism, per §4.3) that calls back into the composition root on `resetComplete`. The composition
-root's response is exactly the sequence Feature 1's plumbing already anticipated:
+`logaperture-adapter-logback` calls back into the composition root once a reconfiguration has
+finished, using Logback's own notification mechanism (§4.3). Which one depends on the version
+(issue [#231](https://github.com/ddeuchert/logaperture/issues/231)):
+
+- **Logback 1.3.14+, 1.4.14+ and 1.5.x:** a `ConfigurationEventListener`, on any
+  `*CONFIGURATION_ENDED*` event. It fires after Joran has applied the file, so a level the file
+  sets doesn't overwrite the re-applied override, and the appenders the file creates already exist
+  when the wraps are re-installed. A bare `context.reset()` with no configuration after it fires
+  nothing. That leaves no appenders, so nothing is written until something configures the context
+  again; the verification sweep covers a configuration that fires no event.
+- **Older Logback (1.2.x, 1.3.0, 1.4.0):** a `LoggerContextListener` on `onReset`, marked
+  reset-resistant. Logback removes a listener that isn't at the end of the first reset that fires
+  it, which left every later reconfiguration to the sweep. It runs inside `reset()`, before Joran,
+  so a logger the file gives a level to keeps the file's level until the next sweep re-applies the
+  override.
+
+The composition root's response is exactly the sequence Feature 1's plumbing already anticipated:
 
 1. Re-capture baseline for any logger not already in `BaselineRegistry` (a reset can introduce
    loggers the original capture never saw).

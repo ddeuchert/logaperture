@@ -16,6 +16,8 @@
 package org.logaperture.container.none;
 
 import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.joran.JoranConfigurator;
+import ch.qos.logback.core.joran.spi.JoranException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +34,8 @@ import org.logaperture.core.spi.ContextHandle;
 import org.slf4j.ILoggerFactory;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -233,23 +237,48 @@ class NoneContainerTest {
 
     // --- reconfiguration re-application ---------------------------------------------------------------
 
+    /**
+     * A file that gives {@code reset.Worker} a level of its own, so a re-apply that runs before Joran
+     * (issue #231) is overwritten by it. Root stays at DEBUG with a console appender, roughly
+     * Logback's own default for a JVM with no configuration file, which is what the other tests here
+     * run under.
+     */
+    private static final String RECONFIGURATION = """
+            <configuration>
+              <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+                <encoder><pattern>%d %-5level [%thread] %logger - %msg%n</pattern></encoder>
+              </appender>
+              <logger name="org.logaperture.container.none.reset.Worker" level="INFO"/>
+              <root level="DEBUG"><appender-ref ref="CONSOLE"/></root>
+            </configuration>
+            """;
+
+    /** What {@code scan="true"} and {@code JMXConfigurator} do: reset, then Joran. */
+    private static void reconfigureLogback() throws JoranException {
+        ILoggerFactory factory = LoggerFactory.getILoggerFactory();
+        assertTrue(factory instanceof LoggerContext, "test JVM must be bound to a real Logback LoggerContext");
+        LoggerContext context = (LoggerContext) factory;
+        context.reset();
+        JoranConfigurator joran = new JoranConfigurator();
+        joran.setContext(context);
+        joran.doConfigure(new ByteArrayInputStream(RECONFIGURATION.getBytes(StandardCharsets.UTF_8)));
+    }
+
     @Test
-    void logbackReset_reappliesActiveOverridesWithoutDuplication() {
+    void logbackReconfiguration_reappliesActiveOverridesEveryTime() throws JoranException {
         String loggerName = "org.logaperture.container.none.reset.Worker";
 
         try (NoneContainer root = newRoot()) {
             AggregateLevelControl ops = install(root);
-            ops.setLogger(loggerName, Level.DEBUG, SetLevelOptions.sticky());
+            ops.setLogger(loggerName, Level.TRACE, SetLevelOptions.sticky());
 
-            ILoggerFactory factory = LoggerFactory.getILoggerFactory();
-            assertTrue(factory instanceof LoggerContext, "test JVM must be bound to a real Logback LoggerContext");
-            LoggerContext context = (LoggerContext) factory;
-
-            context.reset(); // simulates the framework discarding installed levels on its own
-            assertEquals(Level.DEBUG, ops.listLoggers(loggerName).get(0).effectiveLevel());
-
-            context.reset(); // a second reset must not double-apply or otherwise misbehave
-            assertEquals(Level.DEBUG, ops.listLoggers(loggerName).get(0).effectiveLevel());
+            // Three in a row: issue #231's listener survived only the first, and lost to the file's
+            // INFO even then.
+            for (int i = 1; i <= 3; i++) {
+                reconfigureLogback();
+                assertEquals(Level.TRACE, ops.listLoggers(loggerName).get(0).effectiveLevel(),
+                        "reconfiguration " + i);
+            }
         }
     }
 
@@ -261,7 +290,7 @@ class NoneContainerTest {
      * context.reset()}.
      */
     @Test
-    void closeThenReinstall_closedRootsListenerDoesNotFireAnymore() {
+    void closeThenReinstall_closedRootsListenerDoesNotFireAnymore() throws JoranException {
         String firstLogger = "org.logaperture.container.none.reset.FirstInstallWorker";
         String secondLogger = "org.logaperture.container.none.reset.SecondInstallWorker";
 
@@ -277,10 +306,9 @@ class NoneContainerTest {
             AggregateLevelControl ops = install(second);
             ops.setLogger(secondLogger, Level.DEBUG, SetLevelOptions.sticky());
 
-            ILoggerFactory factory = LoggerFactory.getILoggerFactory();
-            ((LoggerContext) factory).reset();
+            reconfigureLogback();
 
-            // The second root's own override survives its own reset...
+            // The second root's own override survives its own reconfiguration...
             assertEquals(Level.DEBUG, ops.listLoggers(secondLogger).get(0).effectiveLevel());
             // ...but the first (closed) root's listener must not have fired
             // and reapplied its stale TRACE override onto the shared context.
