@@ -12,8 +12,8 @@ After this feature, the user will be able to:
 
 - See `CONSOLE`, `FILE` and the other configured handler names in `logctl list handlers` within a
   few seconds of WildFly starting, however long the application takes to deploy.
-- Put `CONSOLE: AUTO` (or any handler level) in the vendor defaults and have it take effect at the
-  start of the boot, so a logger set to TRACE shows on the console during deployment without
+- Put `CONSOLE: AUTO` (or any handler level) in the vendor defaults and have it take effect within
+  a few seconds of the start of the boot, not at the first 30-second sweep, so a logger set to TRACE shows on the console during deployment without
   editing `standalone.xml`.
 - Set a handler override with `logctl set handler CONSOLE …` while the application is still
   starting.
@@ -72,11 +72,17 @@ doesn't list) stays a token until the model route runs.
 
 ### E5. Vendor defaults on a handler pending at start
 
-A vendor-defaults handler entry is applied as soon as its name resolves, by the existing retry in
-the verification sweep. No change to the vendor layer is made beyond what earlier names give it:
-a handler that resolves in the first seconds is applied in the first sweep after that, with its
-reason `vendor-defaults`. The "handler not found" warning is raised only after resolution has
-completed (E1 bound, or the model route ran) and the name is still unknown.
+A vendor-defaults handler entry whose name isn't known at install (the normal case on WildFly,
+where nothing resolves yet) goes on the pending list as today. The sweep would retry it, but its
+first tick is one full interval after start (30 s by default), which would waste the early names.
+So **while any vendor handler entry is pending, a retry runs about once a second** (a fixed 1 s,
+not configurable) until every pending entry has applied or been found unknown, then stops. The
+normal sweep interval is unchanged and stays the backstop. Installs with no vendor handler entries
+never start the retry.
+
+An applied entry is audited as today, with its reason `vendor-defaults`. The "handler not found"
+warning is raised only once resolution has completed (E1 bound, or the model route ran) and the
+name is still unknown, not at the first failed try.
 
 ### E6. What this does not do
 
@@ -94,7 +100,7 @@ completed (E1 bound, or the model route ran) and the name is still unknown.
 - A WildFly IT (the dev image, 26.1.3) with the sample WAR delayed
   (`-Dsample.startupDelaySeconds`): while the deployment is still starting, `list handlers` shows
   `CONSOLE` and `FILE`; a vendor-defaults `CONSOLE: AUTO` with a logger at TRACE lowers the console
-  before the deployment finishes, and a TRACE record from a logger set in the vendor defaults
+  within a few seconds of start (well before the first sweep tick), while the deployment is still running, and a TRACE record from a logger set in the vendor defaults
   reaches the console log during the delay.
 - The same IT checks that vendor-defaults logger levels still hold after WildFly applies its own
   logging configuration during boot (the open point in the issue).
@@ -117,5 +123,5 @@ completed (E1 bound, or the model route ran) and the name is still unknown.
 | E2 | "Not ready yet" is retried quietly; the `running` check is not applied to E1 | Proposed |
 | E3 | Model route stays as the fallback, unchanged | Proposed |
 | E4 | Handlers E1 doesn't list stay anonymous until the model route runs | Proposed |
-| E5 | Vendor handler entries apply through the existing retry; warn only after resolution completes | Proposed |
+| E5 | While a vendor handler entry is pending, retry about every 1 s until applied; warn only after resolution completes | Proposed (revised 2026-10-20) |
 | E6 | No type-based guessing, no change outside WildFly | Proposed |
