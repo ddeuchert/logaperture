@@ -167,4 +167,11 @@ class LauncherConfTest {
                 + dir.resolve("logaperture-cli.jar") + " was not found."), r.err());
         assertFalse(r.out().contains("PATH-java"), r.out());
     }
+
+    @Test
+    void confSetVariableReachesTheJvm() throws Exception {
+        Files.writeString(bin.resolve("logctl.conf"), "JAVA_TOOL_OPTIONS=-Dset.in.conf=1\n");
+        Result r = run(root, Map.of());
+        assertTrue(r.out().contains("tool=-Dset.in.conf=1\n"), r.out());
+    }
 }
