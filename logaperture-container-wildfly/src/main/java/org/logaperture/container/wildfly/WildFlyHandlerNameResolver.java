@@ -18,6 +18,7 @@ package org.logaperture.container.wildfly;
 import org.logaperture.adapter.jul.HandlerNameResolver;
 import org.logaperture.bridge.Diagnostics;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -103,6 +104,13 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
             "size-rotating-file-handler", "periodic-size-rotating-file-handler",
             "syslog-handler", "custom-handler");
 
+    /** The module holding WildFly's logging subsystem, whose configuration object knows the handler names. */
+    private static final String LOGGING_MODULE = "org.jboss.as.logging";
+    private static final String LOG_CONTEXT_CLASS = "org.jboss.logmanager.LogContext";
+    private static final String CONFIGURATION_PERSISTENCE_CLASS = "org.jboss.as.logging.logmanager.ConfigurationPersistence";
+    private static final String LOG_CONTEXT_CONFIGURATION_CLASS = "org.jboss.logmanager.config.LogContextConfiguration";
+    private static final String HANDLER_CONFIGURATION_CLASS = "org.jboss.logmanager.config.ObjectConfigurable";
+
     private static final boolean DEBUG = Boolean.getBoolean("logaperture.wildfly.handlerNames.debug");
 
     /** {@code Module.getBootModuleLoader()}, or null off a JBoss Modules server. */
@@ -136,7 +144,130 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
             dbg("module.path not set yet -- JBoss Modules has not started; not touching its boot loader");
             return Map.of();
         }
-        ClassLoader loader = firstLoadableModuleLoader();
+        Object bootLoader = bootModuleLoader.get();
+        if (bootLoader == null) {
+            return Map.of();
+        }
+        // doc/specs/wildfly-early-handler-names.md E1: the logging subsystem's own configuration
+        // first -- ready seconds into the boot -- then the management model (E3) for any handler it
+        // left unnamed, which only answers once the server is running.
+        Map<Handler, String> early = resolveFromLoggingConfiguration(bootLoader, handlers);
+        if (early.size() >= handlers.size()) {
+            return early;
+        }
+        List<Handler> unnamed = new ArrayList<>();
+        for (Handler handler : handlers) {
+            if (!early.containsKey(handler)) {
+                unnamed.add(handler);
+            }
+        }
+        Map<Handler, String> fromModel;
+        try {
+            fromModel = resolveFromModel(bootLoader, unnamed);
+        } catch (Throwable failure) { // never lose what the configuration already named
+            dbg("model route threw: " + failure);
+            Diagnostics.debug("WildFly handler name resolution from the model failed this pass (" + failure + ")");
+            fromModel = Map.of();
+        }
+        if (early.isEmpty()) {
+            return fromModel;
+        }
+        Map<Handler, String> merged = new IdentityHashMap<>(early);
+        merged.putAll(fromModel);
+        return merged;
+    }
+
+    /**
+     * E1: the handler names and live instances WildFly's logging subsystem configured, bound to
+     * {@code handlers} by identity. Ready a few seconds into the boot, long before
+     * {@code server-state=running}. Anything short of a complete answer -- the subsystem hasn't
+     * installed its configuration yet (E2), a class layout this version doesn't have -- is "not
+     * yet": an empty map, noted at debug only, and the next pass tries again.
+     */
+    private Map<Handler, String> resolveFromLoggingConfiguration(Object bootLoader, List<Handler> handlers) {
+        try {
+            ClassLoader logging = moduleClassLoader(bootLoader, LOGGING_MODULE);
+            if (logging == null) {
+                return Map.of();
+            }
+            Object configuration = loggingConfiguration(logging);
+            if (configuration == null) {
+                dbg("logging configuration not installed yet");
+                return Map.of();
+            }
+            Map<Handler, String> bound = bindByIdentity(handlers, configuredHandlers(configuration, logging));
+            dbg("logging configuration named " + bound.size() + " of " + handlers.size());
+            return bound;
+        } catch (Throwable notYet) {
+            Throwable cause = notYet instanceof InvocationTargetException && notYet.getCause() != null
+                    ? notYet.getCause() : notYet;
+            dbg("logging configuration not usable this pass: " + cause);
+            return Map.of();
+        }
+    }
+
+    /**
+     * WildFly's {@code ConfigurationPersistence} for the system log context, or null before the
+     * subsystem has installed it (until then the context's configurator is the plain
+     * {@code logging.properties} one, and the cast inside {@code getConfigurationPersistence} fails).
+     */
+    private static Object loggingConfiguration(ClassLoader logging) throws ReflectiveOperationException {
+        Class<?> logContextClass = Class.forName(LOG_CONTEXT_CLASS, false, logging);
+        Object logContext = logContextClass.getMethod("getSystemLogContext").invoke(null);
+        Class<?> persistence = Class.forName(CONFIGURATION_PERSISTENCE_CLASS, false, logging);
+        try {
+            return persistence.getMethod("getConfigurationPersistence", logContextClass).invoke(null, logContext);
+        } catch (InvocationTargetException notInstalled) {
+            if (notInstalled.getCause() instanceof ClassCastException) {
+                return null;
+            }
+            throw notInstalled;
+        }
+    }
+
+    /**
+     * Name -> live handler for every handler in {@code configuration} (a
+     * {@code LogContextConfiguration}), read through the public interfaces, never through the
+     * module-private implementation class. A handler whose instance can't be read is left out.
+     */
+    static Map<String, Handler> configuredHandlers(Object configuration, ClassLoader loader)
+            throws ReflectiveOperationException {
+        Class<?> configurationType = Class.forName(LOG_CONTEXT_CONFIGURATION_CLASS, false, loader);
+        Class<?> objectType = Class.forName(HANDLER_CONFIGURATION_CLASS, false, loader);
+        Method handlerNames = configurationType.getMethod("getHandlerNames");
+        Method handlerConfiguration = configurationType.getMethod("getHandlerConfiguration", String.class);
+        Method instance = objectType.getMethod("getInstance");
+        Map<String, Handler> out = new LinkedHashMap<>();
+        for (Object name : (List<?>) handlerNames.invoke(configuration)) {
+            try {
+                Object live = instance.invoke(handlerConfiguration.invoke(configuration, name));
+                if (live instanceof Handler handler) {
+                    out.put((String) name, handler);
+                }
+            } catch (ReflectiveOperationException | RuntimeException unreadable) {
+                dbg("handler " + name + " has no readable instance: " + unreadable);
+            }
+        }
+        return out;
+    }
+
+    /** Package-visible for {@code WildFlyHandlerNameResolverTest}: each configured instance that is in {@code handlers}, by identity. */
+    static Map<Handler, String> bindByIdentity(List<Handler> handlers, Map<String, Handler> configured) {
+        Map<Handler, String> out = new IdentityHashMap<>();
+        for (Map.Entry<String, Handler> entry : configured.entrySet()) {
+            for (Handler handler : handlers) {
+                if (handler == entry.getValue()) {
+                    out.put(handler, entry.getKey());
+                    break;
+                }
+            }
+        }
+        return out;
+    }
+
+    /** E3: the management-model route, unchanged -- needs {@code server-state=running}. */
+    private Map<Handler, String> resolveFromModel(Object bootLoader, List<Handler> handlers) throws Exception {
+        ClassLoader loader = firstLoadableModuleLoader(bootLoader);
         dbg("moduleLoader=" + loader);
         if (loader == null) {
             return Map.of();
@@ -572,11 +703,17 @@ final class WildFlyHandlerNameResolver implements HandlerNameResolver {
         }
     }
 
-    private ClassLoader firstLoadableModuleLoader() {
-        Object bootLoader = bootModuleLoader.get();
-        if (bootLoader == null) {
+    /** The class loader of the named module, or null when this server has no module by that name. */
+    private static ClassLoader moduleClassLoader(Object bootLoader, String moduleName) {
+        try {
+            Object module = bootLoader.getClass().getMethod("loadModule", String.class).invoke(bootLoader, moduleName);
+            return (ClassLoader) module.getClass().getMethod("getClassLoader").invoke(module);
+        } catch (ReflectiveOperationException | RuntimeException absent) {
             return null;
         }
+    }
+
+    private static ClassLoader firstLoadableModuleLoader(Object bootLoader) {
         for (String moduleName : CANDIDATE_MODULES) {
             try {
                 Object module = bootLoader.getClass().getMethod("loadModule", String.class).invoke(bootLoader, moduleName);

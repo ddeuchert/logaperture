@@ -15,6 +15,11 @@
  */
 package org.logaperture.container.wildfly;
 
+import org.jboss.as.logging.logmanager.ConfigurationPersistence;
+import org.jboss.logmanager.LogContext;
+import org.jboss.logmanager.config.HandlerConfiguration;
+import org.jboss.logmanager.config.LogContextConfiguration;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
@@ -31,6 +36,7 @@ import java.util.logging.LogRecord;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -241,6 +247,125 @@ class WildFlyHandlerNameResolverTest {
 
     private static Function<String, List<Handler>> attached(Map<String, List<Handler>> byCategory) {
         return category -> byCategory.getOrDefault(category, List.of());
+    }
+
+    // --- doc/specs/wildfly-early-handler-names.md E1-E4 -----------------------------------------
+
+    @AfterEach
+    void forgetTheLoggingConfiguration() {
+        ConfigurationPersistence.configuration = null;
+    }
+
+    @Test
+    void bindByIdentity_namesOnlyTheInstancesItIsGiven() {
+        Handler console = new ConsoleHandler();
+        Handler file = new PlainHandler();
+        Handler other = new PlainHandler();
+        Map<String, Handler> configured = new LinkedHashMap<>();
+        configured.put("CONSOLE", console);
+        configured.put("FILE", file);
+        configured.put("NOT_LIVE", new PlainHandler());
+
+        Map<Handler, String> bound = WildFlyHandlerNameResolver.bindByIdentity(List.of(console, other, file), configured);
+
+        assertEquals(2, bound.size());
+        assertEquals("CONSOLE", bound.get(console));
+        assertEquals("FILE", bound.get(file));
+        assertNull(bound.get(other), "a live handler the configuration doesn't list stays unnamed");
+    }
+
+    @Test
+    void configuredHandlers_readsNamesAndLiveInstancesThroughThePublicInterfaces() throws Exception {
+        LogContextConfiguration configuration = configurationWith("CONSOLE", "FILE");
+
+        Map<String, Handler> configured =
+                WildFlyHandlerNameResolver.configuredHandlers(configuration, getClass().getClassLoader());
+
+        assertEquals(List.of("CONSOLE", "FILE"), List.copyOf(configured.keySet()));
+        assertSame(configuration.getHandlerConfiguration("CONSOLE").getInstance(), configured.get("CONSOLE"));
+        assertSame(configuration.getHandlerConfiguration("FILE").getInstance(), configured.get("FILE"));
+    }
+
+    @Test
+    void resolve_namesHandlersFromTheLoggingConfiguration_beforeTheServerIsRunning() {
+        LogContextConfiguration configuration = configurationWith("CONSOLE", "FILE");
+        Handler console = configuration.getHandlerConfiguration("CONSOLE").getInstance();
+        Handler file = configuration.getHandlerConfiguration("FILE").getInstance();
+        ConfigurationPersistence.configuration = configuration;
+        WildFlyHandlerNameResolver early = new WildFlyHandlerNameResolver(FakeBootLoader::new);
+
+        withModulePath("/opt/wildfly/modules", () -> {
+            Map<Handler, String> bound = early.resolve(List.of(file, console));
+            assertEquals("CONSOLE", bound.get(console));
+            assertEquals("FILE", bound.get(file));
+            assertEquals(2, bound.size());
+        });
+    }
+
+    @Test
+    void resolve_beforeWildFlyInstallsItsConfiguration_isNotYetNotAnError() {
+        ConfigurationPersistence.configuration = null; // the stand-in throws ClassCastException, as WildFly does
+        WildFlyHandlerNameResolver early = new WildFlyHandlerNameResolver(FakeBootLoader::new);
+
+        withModulePath("/opt/wildfly/modules", () ->
+                assertEquals(Map.of(), early.resolve(List.of(new ConsoleHandler()))));
+    }
+
+    @Test
+    void resolve_whenTheLoggingModuleIsMissing_fallsThroughToTheModelRouteAndNamesNothing() {
+        WildFlyHandlerNameResolver noLoggingModule = new WildFlyHandlerNameResolver(() -> new FakeBootLoader() {
+            @Override public Object loadModule(String name) throws Exception {
+                throw new Exception("no module " + name);
+            }
+        });
+
+        withModulePath("/opt/wildfly/modules", () ->
+                assertEquals(Map.of(), noLoggingModule.resolve(List.of(new ConsoleHandler()))));
+    }
+
+    @Test
+    void resolve_aHandlerTheConfigurationDoesNotListStaysUnnamed() {
+        LogContextConfiguration configuration = configurationWith("CONSOLE");
+        Handler console = configuration.getHandlerConfiguration("CONSOLE").getInstance();
+        Handler stranger = new PlainHandler();
+        ConfigurationPersistence.configuration = configuration;
+        WildFlyHandlerNameResolver early = new WildFlyHandlerNameResolver(FakeBootLoader::new);
+
+        withModulePath("/opt/wildfly/modules", () -> {
+            Map<Handler, String> bound = early.resolve(List.of(console, stranger));
+            assertEquals("CONSOLE", bound.get(console));
+            assertNull(bound.get(stranger), "the model route can't name it here either, so it stays a token");
+        });
+    }
+
+    /** A stand-in configuration with a live {@code ConsoleHandler} per name, as WildFly's holds once it has constructed them. */
+    private static LogContextConfiguration configurationWith(String... handlerNames) {
+        Map<String, Handler> live = new LinkedHashMap<>();
+        for (String name : handlerNames) {
+            live.put(name, new ConsoleHandler());
+        }
+        return new LogContextConfiguration() {
+            @Override public List<String> getHandlerNames() {
+                return List.copyOf(live.keySet());
+            }
+
+            @Override public HandlerConfiguration getHandlerConfiguration(String name) {
+                return () -> live.get(name);
+            }
+        };
+    }
+
+    /** Stands in for JBoss Modules' boot module loader: every module's class loader is this test's. */
+    public static class FakeBootLoader {
+        public Object loadModule(String name) throws Exception {
+            return new FakeModule();
+        }
+    }
+
+    public static final class FakeModule {
+        public ClassLoader getClassLoader() {
+            return WildFlyHandlerNameResolverTest.class.getClassLoader();
+        }
     }
 
     private static void withModulePath(String value, Runnable body) {
