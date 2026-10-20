@@ -89,7 +89,7 @@ LogAperture writes one line at startup, then only warnings and errors. For more,
 ## Reporting a problem
 
 For a question, or to tell us how a try-out went, use
-[Discussions](https://github.com/ddeuchert/logaperture/discussions). For a bug,
+[Discussions](https://github.com/ddeuchert/logaperture/discussions/245). For a bug,
 [open an issue](https://github.com/ddeuchert/logaperture/issues) with:
 
 - the output of `logctl env`, which is written to be pasted into a bug report;
