@@ -934,11 +934,15 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         // each forced logger, and each one that didn't follow, once by name.
         Map<String, LevelOverride> forcedByName = new LinkedHashMap<>();
         Map<String, DescendantLevel> descendantsByName = new LinkedHashMap<>();
+        Map<String, org.logaperture.api.LevelFloor> belowFloorByName = new LinkedHashMap<>();
         for (ContextControl context : contexts) {
             SetLevelResult result = context.service().setLogger(
                     loggerName, level, opts, resolvedMatchesByContext.get(context.stableKey()));
             for (DescendantLevel descendant : result.descendants()) {
                 descendantsByName.putIfAbsent(descendant.loggerName(), descendant);
+            }
+            for (org.logaperture.api.LevelFloor notice : result.belowFloor()) {
+                belowFloorByName.putIfAbsent(notice.loggerName(), notice);
             }
             if (isPattern) {
                 allOverrides.addAll(result.overrides());
@@ -970,7 +974,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             reportedOverrides.addAll(forcedByName.values()); // the target first, then what it forced
         }
         return new SetLevelResult(reportedOverrides, List.copyOf(blockingByRef.values()),
-                List.copyOf(descendantsByName.values()));
+                List.copyOf(descendantsByName.values()), List.copyOf(belowFloorByName.values()));
     }
 
     @Override

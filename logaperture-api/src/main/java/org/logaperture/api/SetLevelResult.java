@@ -49,15 +49,25 @@ import java.util.Objects;
  *                         level of their own or forced earlier; with it, those left alone because
  *                         the operator set them. A forced descendant itself is in {@code overrides},
  *                         with {@link LevelOverride#forcedBy()} set.
+ * @param belowFloor       loggers the level was set on that the backend will not emit it for, because
+ *                         it enforces a floor less verbose than it (doc/specs/quarkus-support.md,
+ *                         "Min-level honesty"); empty on every backend without such a floor
  */
 public record SetLevelResult(List<LevelOverride> overrides, List<HandlerFloor> blockingHandlers,
-        List<DescendantLevel> descendants) {
+        List<DescendantLevel> descendants, List<LevelFloor> belowFloor) {
 
     public SetLevelResult {
         Objects.requireNonNull(overrides, "overrides");
         overrides = List.copyOf(overrides);
         blockingHandlers = blockingHandlers == null ? List.of() : List.copyOf(blockingHandlers);
         descendants = descendants == null ? List.of() : List.copyOf(descendants);
+        belowFloor = belowFloor == null ? List.of() : List.copyOf(belowFloor);
+    }
+
+    /** No floor notices -- the shape before doc/specs/quarkus-support.md. */
+    public SetLevelResult(List<LevelOverride> overrides, List<HandlerFloor> blockingHandlers,
+            List<DescendantLevel> descendants) {
+        this(overrides, blockingHandlers, descendants, List.of());
     }
 
     /** No descendants to report -- the shape before doc/specs/set-logger-force.md. */

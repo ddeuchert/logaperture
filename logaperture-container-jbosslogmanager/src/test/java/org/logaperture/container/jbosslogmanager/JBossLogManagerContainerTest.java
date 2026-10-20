@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.container.wildfly;
+package org.logaperture.container.jbosslogmanager;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,15 +26,15 @@ import org.logaperture.api.SetLevelOptions;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditRecord;
 import org.logaperture.core.CapabilityPolicy;
+import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.InMemoryAuditLog;
 import org.logaperture.core.spi.ContextHandle;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.logging.LogManager;
@@ -53,7 +53,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * unique-prefixed namespace per test. See doc/specs/wildfly-support.md
  * Slice 3.
  */
-class WildFlyContainerTest {
+class JBossLogManagerContainerTest {
 
     @TempDir
     private Path home;
@@ -81,11 +81,11 @@ class WildFlyContainerTest {
         System.clearProperty("logaperture.instanceId");
     }
 
-    private WildFlyContainer newHost() {
-        return new WildFlyContainer(CapabilityPolicy.allowAll(), auditLog, Duration.ofMinutes(10));
+    private JBossLogManagerContainer newHost() {
+        return new JBossLogManagerContainer("WildFly", CapabilityPolicy.allowAll(), auditLog, Duration.ofMinutes(10));
     }
 
-    private AggregateLevelControl install(WildFlyContainer host) {
+    private AggregateLevelControl install(JBossLogManagerContainer host) {
         host.installContext(ContextHandle.of(
                 ContextHandle.SYSTEM, "wildfly", JulAdapterFactory.forCurrentContext()));
         return host.operations();
@@ -97,7 +97,7 @@ class WildFlyContainerTest {
 
     @Test
     void installContext_fullLoop_listSetResetResetAll() {
-        try (WildFlyContainer host = newHost()) {
+        try (JBossLogManagerContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
 
             ops.setLogger(logger, Level.DEBUG, SetLevelOptions.withReason("boot detail"));
@@ -116,7 +116,7 @@ class WildFlyContainerTest {
 
     @Test
     void verificationSweep_reAppliesAnOverrideThatWasResetOutFromUnderUs() {
-        try (WildFlyContainer host = newHost()) {
+        try (JBossLogManagerContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
             ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
 
@@ -138,21 +138,19 @@ class WildFlyContainerTest {
      * it re-applies at once, with a periodic sweep (10 minutes here) nowhere near due.
      */
     @Test
-    void watchConfiguration_aRewrittenLoggingPropertiesReAppliesWithoutWaitingForTheSweep(@TempDir Path config)
-            throws Exception {
-        Path properties = Files.writeString(config.resolve("logging.properties"), "logger.level=INFO\n");
-        LoggingPropertiesWatch watch = new LoggingPropertiesWatch(() -> properties, Clock.systemUTC());
-        try (WildFlyContainer host = newHost()) {
+    void watchConfiguration_aChangeReportedByTheCheckReAppliesWithoutWaitingForTheSweep() throws Exception {
+        AtomicBoolean fileRewritten = new AtomicBoolean();
+        BooleanSupplier changedOnce = () -> fileRewritten.getAndSet(false);
+        try (JBossLogManagerContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
             ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
-            host.watchConfiguration(watch::changed, host::runVerificationSweepNow, Duration.ofMillis(50));
-            awaitTrue(() -> watch.file() != null, "the watch found the file");
+            host.watchConfiguration(changedOnce, host::runVerificationSweepNow, Duration.ofMillis(50));
 
             Logger.getLogger(logger).setLevel(null); // the change the subsystem commits...
-            Files.writeString(properties, "logger.level=INFO\nlogger.it.level=WARN\n"); // ...then writes
+            fileRewritten.set(true); // ...then the file is rewritten
 
             awaitTrue(() -> java.util.logging.Level.FINE.equals(Logger.getLogger(logger).getLevel()),
-                    "the override was re-applied after the file changed");
+                    "the override was re-applied after the change");
         }
     }
 
@@ -169,7 +167,7 @@ class WildFlyContainerTest {
             }
             return false;
         };
-        try (WildFlyContainer host = newHost()) {
+        try (JBossLogManagerContainer host = newHost()) {
             host.watchConfiguration(throwsTwice, () -> { }, Duration.ofMillis(20));
 
             awaitTrue(() -> calls.get() >= 4, "checks kept running after the first two threw");
@@ -187,8 +185,68 @@ class WildFlyContainerTest {
     }
 
     @Test
+    void startEarlyResweep_window_repairsDriftWellBeforeThePeriodicSweep_thenStops() throws Exception {
+        try (JBossLogManagerContainer host = newHost()) { // periodic sweep: 10 minutes
+            AggregateLevelControl ops = install(host);
+            ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
+
+            Logger.getLogger(logger).setLevel(null); // the framework's late setup overwrites it
+            host.startEarlyResweep(new SweepPolicy.StartupWindow(Duration.ofMillis(20), Duration.ofMillis(400)),
+                    null, Duration.ofMillis(20), Duration.ofMillis(400));
+
+            awaitTrue(() -> Logger.getLogger(logger).getLevel() == java.util.logging.Level.FINE);
+
+            Thread.sleep(700); // past the window's end
+            int afterWindow = host.earlySweepsRun();
+            Thread.sleep(200);
+            assertEquals(afterWindow, host.earlySweepsRun(), "the window ended, no more fast sweeps");
+            assertTrue(afterWindow >= 1);
+        }
+    }
+
+    @Test
+    void startEarlyResweep_activationSignal_sweepsOnceWhenItTurnsTrue() throws Exception {
+        try (JBossLogManagerContainer host = newHost()) {
+            AggregateLevelControl ops = install(host);
+            ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
+            java.util.concurrent.atomic.AtomicBoolean activated = new java.util.concurrent.atomic.AtomicBoolean();
+            host.startEarlyResweep(null, activated::get, Duration.ofMillis(20), Duration.ofSeconds(5));
+
+            Logger.getLogger(logger).setLevel(null);
+            Thread.sleep(150);
+            assertNull(Logger.getLogger(logger).getLevel(), "nothing swept before the framework says it is ready");
+            assertEquals(0, host.earlySweepsRun());
+
+            activated.set(true);
+            awaitTrue(() -> Logger.getLogger(logger).getLevel() == java.util.logging.Level.FINE);
+            Thread.sleep(200);
+            assertEquals(1, host.earlySweepsRun(), "the trigger fires once, not on every poll");
+        }
+    }
+
+    @Test
+    void startEarlyResweep_aThrowingSignalIsTreatedAsNotYet() throws Exception {
+        try (JBossLogManagerContainer host = newHost()) {
+            install(host);
+            host.startEarlyResweep(null, () -> {
+                throw new IllegalStateException("boom");
+            }, Duration.ofMillis(20), Duration.ofMillis(200));
+            Thread.sleep(300);
+            assertEquals(0, host.earlySweepsRun());
+        }
+    }
+
+    private static void awaitTrue(java.util.function.BooleanSupplier condition) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        while (!condition.getAsBoolean()) {
+            assertTrue(System.nanoTime() < deadline, "condition not met within 5s");
+            Thread.sleep(10);
+        }
+    }
+
+    @Test
     void verificationSweep_isANoOpWhenNothingHasDrifted() {
-        try (WildFlyContainer host = newHost()) {
+        try (JBossLogManagerContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
             ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
             int auditSizeBefore = auditLog.records().size();
@@ -200,7 +258,7 @@ class WildFlyContainerTest {
 
     @Test
     void configurationChangeListenerPath_triggersAVerificationSweep() throws Exception {
-        try (WildFlyContainer host = newHost()) {
+        try (JBossLogManagerContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
             ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
             Logger.getLogger(logger).setLevel(null); // drift
@@ -216,7 +274,7 @@ class WildFlyContainerTest {
 
     @Test
     void forOverride_isRevertedByTheExpirySweep() {
-        try (WildFlyContainer host = newHost()) {
+        try (JBossLogManagerContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
             ops.setLogger(logger, Level.TRACE, SetLevelOptions.forDuration(Duration.ofMillis(1)));
 
@@ -228,12 +286,12 @@ class WildFlyContainerTest {
 
     @Test
     void stickyOverride_resumesAfterASimulatedRestart() {
-        try (WildFlyContainer first = newHost()) {
+        try (JBossLogManagerContainer first = newHost()) {
             install(first).setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
         }
         Logger.getLogger(logger).setLevel(null); // "restart"
 
-        try (WildFlyContainer second = newHost()) {
+        try (JBossLogManagerContainer second = newHost()) {
             LoggerInfo info = row(install(second));
             assertEquals(Level.DEBUG, info.effectiveLevel());
             assertTrue(info.overrideActive());
@@ -246,7 +304,7 @@ class WildFlyContainerTest {
         // environment-report.md: this class only ever represents WildFly, so the
         // container name must never be left null just because no version is known
         // (unlike backendName/backendVersion, which genuinely can be absent).
-        try (WildFlyContainer host = newHost()) {
+        try (JBossLogManagerContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
 
             assertEquals("WildFly", ops.environmentReport().containerName());
@@ -257,7 +315,7 @@ class WildFlyContainerTest {
     @Test
     void environmentReport_stateFilePath_isTheRealFullyQualifiedStateFile() {
         // doc/specs/environment-report.md "State file".
-        try (WildFlyContainer host = newHost()) {
+        try (JBossLogManagerContainer host = newHost()) {
             AggregateLevelControl ops = install(host);
 
             String stateFilePath = ops.environmentReport().stateFilePath();

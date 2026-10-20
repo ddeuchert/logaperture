@@ -124,6 +124,7 @@ nav:
   - Get started:
       - Download: get-started/download.md
       - Install on WildFly: get-started/install-wildfly.md
+      - Install on Quarkus: get-started/install-quarkus.md
       - Install on a plain JVM: get-started/install-plain-jvm.md
       - Quick start: get-started/quick-start.md
   - Now Showing: now-showing.md

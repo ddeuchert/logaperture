@@ -131,8 +131,10 @@ The module list and its rationale are in
 - `logaperture-api`, `logaperture-core` — the model and the level-control engine.
 - `logaperture-adapter-logback`, `logaperture-adapter-jul` — per-backend
   `LoggingAdapter`s (JUL covers JBoss LogManager and plain `java.util.logging`).
-- `logaperture-container-none`, `logaperture-container-wildfly` — per-environment
-  `ContainerIntegration`s (detect, discover contexts, wire lifecycle).
+- `logaperture-container-none`, `logaperture-container-wildfly`, `logaperture-container-quarkus` —
+  per-environment `ContainerIntegration`s (detect, discover contexts, wire lifecycle).
+- `logaperture-container-jbosslogmanager` — what the JBoss LogManager containers (WildFly, Quarkus)
+  share: the readiness gate and the host (`JBossLogManagerContainer`) that takes the container name.
 - `logaperture-control-jmx` — the `LevelControlMXBean` surface.
 - `logaperture-agent` — the `premain` / `agentmain` entry points.
 - `logaperture-cli` — `logctl`.
@@ -311,8 +313,8 @@ The container publishes JDWP on **8787**. Two attach configs in
 
 | Phase | Thread | Path |
 |---|---|---|
-| **A — premain** | `main` | `LogApertureAgent.premain` → `AgentBootstrap.start` → `WildFlyContainerIntegration.detect()` → `.activate()`, which constructs `WildFlyContainer`, starts the `logaperture-wildfly-detect` daemon, and **returns immediately** |
-| **B — install** | `logaperture-wildfly-detect` | `WildFlyLogManagerReadiness.awaitJBossLogManagerThen` polls the `java.util.logging.manager` property and `Instrumentation.getAllLoadedClasses()` (side channels, never JUL itself) until the property reads `org.jboss.logmanager.LogManager` and jboss-modules has loaded that class; it then makes the first JUL call itself, with the context classloader set to the class's loader → `JulAdapterFactory.forCurrentContext()` → `installContext` → `wireConfigurationListener` → `JmxRegistrar.register` → sets `-Dlogaperture.version` |
+| **A — premain** | `main` | `LogApertureAgent.premain` → `AgentBootstrap.start` → `WildFlyContainerIntegration.detect()` → `.activate()`, which constructs `JBossLogManagerContainer`, starts the `logaperture-wildfly-detect` daemon, and **returns immediately** |
+| **B — install** | `logaperture-wildfly-detect` | `JBossLogManagerReadiness.awaitJBossLogManagerThen` polls the `java.util.logging.manager` property and `Instrumentation.getAllLoadedClasses()` (side channels, never JUL itself) until the property reads `org.jboss.logmanager.LogManager` and jboss-modules has loaded that class; it then makes the first JUL call itself, with the context classloader set to the class's loader → `JulAdapterFactory.forCurrentContext()` → `installContext` → `wireConfigurationListener` → `JmxRegistrar.register` → sets `-Dlogaperture.version` |
 
 Between the two, WildFly's own boot runs (~1s) until jboss-modules loads
 JBoss LogManager. The premain gotcha (spec §15.6) is that phase B must not touch
@@ -351,7 +353,7 @@ step slowly through phase B, resume fully before the budget elapses or level
 control won't install for that session.
 
 For post-boot code, skip all of the above: **Attach to WildFly (8787)** on a
-normally-booted server, breakpoint e.g. `WildFlyContainer.sweepTick` (runs every
+normally-booted server, breakpoint e.g. `JBossLogManagerContainer.sweepTick` (runs every
 `logaperture.sweep.seconds`, default 5 in this environment).
 
 ## How the container boot line is assembled

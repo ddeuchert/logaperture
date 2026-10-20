@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.container.wildfly;
+package org.logaperture.container.jbosslogmanager;
 
 import org.logaperture.bridge.Diagnostics;
+import org.logaperture.api.DoctorFinding;
 import org.logaperture.core.ActiveLoggerFloor;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AggregateLevelControl.ContextControl;
@@ -59,14 +60,15 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 /**
- * Composition root for standalone WildFly — see doc/specs/wildfly-support.md
- * Slice 3. Structurally parallels {@code NoneContainer}: it owns one
+ * Composition root for a container whose logging is JBoss LogManager (standalone
+ * WildFly, Quarkus) — see doc/specs/wildfly-support.md Slice 3 and doc/specs/quarkus-support.md
+ * (Q1). It is parameterised by the container's name, which {@code logctl env} prints and which
+ * names the sweep thread. Structurally parallels {@code NoneContainer}: it owns one
  * {@link AggregateLevelControl}, the shared {@link StateStore}, and the
  * single sweep thread, and installs level control per context via
  * {@link #installContext}. For a stock standalone WildFly with no
@@ -80,14 +82,15 @@ import java.util.logging.Logger;
  * silently overwrote — JBoss LogManager has no reconfiguration event of its
  * own (§4.3). A {@code LogManager} configuration-change listener drives the
  * same verification sweep immediately when it can (see
- * {@code WildFlyContainerIntegration}); the periodic sweep is the floor.
+ * {@code the container integration}); the periodic sweep is the floor.
  *
  * <p>NOTE: the state-store / sweeper / {@code installContext} / {@code
  * close} machinery is duplicated from {@code NoneContainer}. Extract a
  * shared host if a third container integration lands.
  */
-public final class WildFlyContainer implements AutoCloseable {
+public final class JBossLogManagerContainer implements AutoCloseable {
 
+    private final String containerName;
     private final CapabilityPolicy policy;
     private final AuditLog auditLog;
     private final StateStore stateStore;
@@ -102,16 +105,13 @@ public final class WildFlyContainer implements AutoCloseable {
     /** The one-shot that runs phase 2 at the floor; cancelled on close so a pending delay never holds shutdown up. */
     private volatile ScheduledFuture<?> handlerInstallTask;
 
-    /** This class only ever represents WildFly, so {@link AggregateLevelControl}'s container name is always {@code "WildFly"} -- never left null by a constructor that doesn't happen to know a version. */
-    private static final String CONTAINER_NAME = "WildFly";
-
-    public WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog) {
-        this(policy, auditLog, SweepPolicy.interval());
+    public JBossLogManagerContainer(String containerName, CapabilityPolicy policy, AuditLog auditLog) {
+        this(containerName, policy, auditLog, SweepPolicy.interval());
     }
 
     /** Package-visible so tests can use a short sweep interval instead of the real 30s one; no known WildFly version. */
-    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval) {
-        this(policy, auditLog, sweepInterval, Optional::empty);
+    JBossLogManagerContainer(String containerName, CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval) {
+        this(containerName, policy, auditLog, sweepInterval, Optional::empty);
     }
 
     /**
@@ -120,7 +120,7 @@ public final class WildFlyContainer implements AutoCloseable {
      *                         a <em>supplier</em>, re-invoked fresh on every
      *                         {@code environmentReport()} call, not resolved
      *                         once here. {@code
-     *                         WildFlyContainerIntegration.version()}'s own
+     *                         the container integration.version()}'s own
      *                         javadoc explains why: at the point this
      *                         constructor runs (premain time), {@code
      *                         jboss.home.dir} is not yet visible to {@code
@@ -131,17 +131,17 @@ public final class WildFlyContainer implements AutoCloseable {
      *                         any hot path) and self-heals once the server
      *                         has finished its own bootstrap.
      */
-    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+    JBossLogManagerContainer(String containerName, CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
             Supplier<Optional<String>> containerVersion) {
-        this(policy, auditLog, sweepInterval, containerVersion, VendorDefaults.none());
+        this(containerName, policy, auditLog, sweepInterval, containerVersion, VendorDefaults.none());
     }
 
     /**
      * @param vendorDefaults applied by every {@link #installContext} -- doc/specs/vendor-defaults.md
      */
-    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+    JBossLogManagerContainer(String containerName, CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
             Supplier<Optional<String>> containerVersion, VendorDefaults vendorDefaults) {
-        this(policy, auditLog, sweepInterval, containerVersion, vendorDefaults, true);
+        this(containerName, policy, auditLog, sweepInterval, containerVersion, vendorDefaults, true);
     }
 
     /**
@@ -150,10 +150,10 @@ public final class WildFlyContainer implements AutoCloseable {
      *                              storm-detection-toggle.md T1, T2). The shorter constructors start
      *                              it enabled, as before, for the tests that use them.
      */
-    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
-            Supplier<Optional<String>> containerVersion, VendorDefaults vendorDefaults,
+    public JBossLogManagerContainer(String containerName, CapabilityPolicy policy, AuditLog auditLog,
+            Duration sweepInterval, Supplier<Optional<String>> containerVersion, VendorDefaults vendorDefaults,
             boolean stormDetectionEnabled) {
-        this(policy, auditLog, sweepInterval, containerVersion, HandlerInstallPolicy.delay(), Clock.systemUTC(),
+        this(containerName, policy, auditLog, sweepInterval, containerVersion, HandlerInstallPolicy.delay(), Clock.systemUTC(),
                 vendorDefaults, stormDetectionEnabled);
     }
 
@@ -163,20 +163,21 @@ public final class WildFlyContainer implements AutoCloseable {
      * @param clock               the floor's time source -- injectable so tests can move
      *                            past it without waiting
      */
-    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+    JBossLogManagerContainer(String containerName, CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
             Supplier<Optional<String>> containerVersion, Duration handlerInstallDelay, Clock clock) {
-        this(policy, auditLog, sweepInterval, containerVersion, handlerInstallDelay, clock, VendorDefaults.none());
+        this(containerName, policy, auditLog, sweepInterval, containerVersion, handlerInstallDelay, clock, VendorDefaults.none());
     }
 
-    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+    JBossLogManagerContainer(String containerName, CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
             Supplier<Optional<String>> containerVersion, Duration handlerInstallDelay, Clock clock,
             VendorDefaults vendorDefaults) {
-        this(policy, auditLog, sweepInterval, containerVersion, handlerInstallDelay, clock, vendorDefaults, true);
+        this(containerName, policy, auditLog, sweepInterval, containerVersion, handlerInstallDelay, clock, vendorDefaults, true);
     }
 
-    WildFlyContainer(CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
+    JBossLogManagerContainer(String containerName, CapabilityPolicy policy, AuditLog auditLog, Duration sweepInterval,
             Supplier<Optional<String>> containerVersion, Duration handlerInstallDelay, Clock clock,
             VendorDefaults vendorDefaults, boolean stormDetectionEnabled) {
+        this.containerName = Objects.requireNonNull(containerName, "containerName");
         this.policy = policy;
         this.vendorDefaults = Objects.requireNonNull(vendorDefaults, "vendorDefaults");
         this.auditLog = auditLog;
@@ -187,7 +188,7 @@ public final class WildFlyContainer implements AutoCloseable {
         // vendor defaults file was exported from are handed over to it -- once per JVM, since
         // every context shares this one state file.
         takeOverExportedState();
-        this.aggregate = new AggregateLevelControl(CONTAINER_NAME, containerVersion,
+        this.aggregate = new AggregateLevelControl(containerName, containerVersion,
                 stateStore.location().map(Path::toString).orElse(null), this::handlerInstallAllowed, vendorDefaults,
                 new StormDetectionSwitch(stormDetectionEnabled, policy, auditLog, principal(), stateStore));
         // doc/specs/storm-detection-toggle.md "Restart": a saved 'for'/'sticky' storm setting wins over
@@ -198,9 +199,19 @@ public final class WildFlyContainer implements AutoCloseable {
         // inside a handler, so it can't loop through LogAperture's own wrappers.
         aggregate.setDropSummarySink(line -> Logger.getLogger(DropSummary.CATEGORY).info(line));
 
-        this.sweeper = Executors.newSingleThreadScheduledExecutor(WildFlyContainer::newDaemonThread);
+        this.sweeper = Executors.newSingleThreadScheduledExecutor(this::newDaemonThread);
         long intervalMillis = sweepInterval.toMillis();
         sweeper.scheduleAtFixedRate(this::sweepTick, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
+    }
+
+    private volatile Supplier<List<DoctorFinding>> containerFindings = List::of;
+
+    /**
+     * Findings only the container integration can make, shown by {@code doctor} -- set once by the
+     * integration, read fresh on every {@code doctor} run.
+     */
+    public void setContainerFindings(Supplier<List<DoctorFinding>> findings) {
+        this.containerFindings = Objects.requireNonNull(findings, "findings");
     }
 
     /** The surface a control plane (JMX) binds to. */
@@ -272,7 +283,7 @@ public final class WildFlyContainer implements AutoCloseable {
             Diagnostics.warn("failed to resume persisted overrides, continuing without them", e);
         }
 
-        DoctorService doctorService = new DoctorService(adapter, policy);
+        DoctorService doctorService = new DoctorService(adapter, policy, () -> containerFindings.get());
         EnvironmentReportService environmentReportService = new EnvironmentReportService(adapter, policy);
 
         // Phase 1 ends here (doc/specs/wildfly-deferred-handler-install.md "Two phases"): the
@@ -377,7 +388,7 @@ public final class WildFlyContainer implements AutoCloseable {
      * (not run inline) so WildFly's own configuration thread is never
      * blocked on our work.
      */
-    void runVerificationSweepNow() {
+    public void runVerificationSweepNow() {
         Runnable sweepNow = () -> {
             aggregate.verificationSweep(Instant.now());
             announceHandlerLevelIfInstalled();
@@ -389,13 +400,68 @@ public final class WildFlyContainer implements AutoCloseable {
         }
     }
 
+    /** Early verification sweeps run so far -- read by tests, and a cheap health number. */
+    private final java.util.concurrent.atomic.AtomicInteger earlySweeps = new java.util.concurrent.atomic.AtomicInteger();
+
+    int earlySweepsRun() {
+        return earlySweeps.get();
+    }
+
+    /**
+     * Repairs, soon after install, what a framework's late logging setup overwrites
+     * (doc/specs/quarkus-support.md Q2). Two independent mechanisms, either may be absent:
+     *
+     * <ul>
+     *   <li><b>the exact trigger</b> -- {@code activation} is polled (every {@code pollInterval},
+     *       up to {@code pollFor}) and the verification sweep runs once when it turns true;</li>
+     *   <li><b>the safety net</b> -- {@code window} runs the verification sweep at its interval
+     *       until its length has passed.</li>
+     * </ul>
+     *
+     * Both run on the sweep thread, so they never overlap the periodic sweep.
+     *
+     * @param window     the fast-sweep window, or {@code null} for none
+     * @param activation the framework's "logging is now fully configured" signal, or {@code null}
+     */
+    public void startEarlyResweep(SweepPolicy.StartupWindow window, BooleanSupplier activation,
+            Duration pollInterval, Duration pollFor) {
+        Instant started = clock.instant();
+        try {
+            if (window != null) {
+                Instant windowEnd = started.plus(window.length());
+                scheduleUntil(() -> earlySweep("startup window"), window.interval(), windowEnd);
+            }
+            if (activation != null) {
+                java.util.concurrent.atomic.AtomicBoolean fired = new java.util.concurrent.atomic.AtomicBoolean();
+                Runnable pollActivation = () -> {
+                    if (fired.get()) {
+                        return;
+                    }
+                    boolean activated;
+                    try {
+                        activated = activation.getAsBoolean();
+                    } catch (RuntimeException e) {
+                        Diagnostics.debug("the activation signal failed: " + e);
+                        activated = false;
+                    }
+                    if (activated && fired.compareAndSet(false, true)) {
+                        earlySweep("framework logging activated");
+                    }
+                };
+                scheduleUntil(pollActivation, pollInterval, started.plus(pollFor));
+            }
+        } catch (java.util.concurrent.RejectedExecutionException alreadyShutDown) {
+            // close() won -- nothing to do
+        }
+    }
+
     /**
      * Checks {@code changed} every {@code interval} on the sweep thread, and runs {@code onChange}
      * there when it says so -- issue #232's {@code logging.properties} watch. A check that throws is
      * skipped, never allowed to cancel the schedule, and reported once until a check succeeds again
      * (it runs every second).
      */
-    void watchConfiguration(BooleanSupplier changed, Runnable onChange, Duration interval) {
+    public void watchConfiguration(BooleanSupplier changed, Runnable onChange, Duration interval) {
         AtomicBoolean failing = new AtomicBoolean();
         Runnable check = () -> {
             try {
@@ -415,6 +481,34 @@ public final class WildFlyContainer implements AutoCloseable {
         } catch (java.util.concurrent.RejectedExecutionException alreadyShutDown) {
             // close() won -- nothing to do
         }
+    }
+
+    private void earlySweep(String why) {
+        earlySweeps.incrementAndGet();
+        Diagnostics.debug("early verification sweep (" + why + ")");
+        aggregate.verificationSweep(Instant.now());
+        announceHandlerLevelIfInstalled();
+    }
+
+    /** Runs {@code task} every {@code interval} on the sweep thread until {@code end}, then stops. */
+    private void scheduleUntil(Runnable task, Duration interval, Instant end) {
+        java.util.concurrent.atomic.AtomicReference<ScheduledFuture<?>> self =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        Runnable bounded = () -> {
+            try {
+                task.run();
+            } catch (RuntimeException e) {
+                Diagnostics.warn("early verification sweep failed, will retry on the next tick", e);
+            }
+            if (!clock.instant().isBefore(end)) {
+                ScheduledFuture<?> me = self.get();
+                if (me != null) {
+                    me.cancel(false);
+                }
+            }
+        };
+        long millis = interval.toMillis();
+        self.set(sweeper.scheduleWithFixedDelay(bounded, millis, millis, TimeUnit.MILLISECONDS));
     }
 
     private void sweepTick() {
@@ -443,8 +537,8 @@ public final class WildFlyContainer implements AutoCloseable {
         }
     }
 
-    private static Thread newDaemonThread(Runnable task) {
-        Thread thread = new Thread(task, "logaperture-wildfly-sweep");
+    private Thread newDaemonThread(Runnable task) {
+        Thread thread = new Thread(task, "logaperture-" + containerName.toLowerCase(java.util.Locale.ROOT) + "-sweep");
         thread.setDaemon(true);
         return thread;
     }

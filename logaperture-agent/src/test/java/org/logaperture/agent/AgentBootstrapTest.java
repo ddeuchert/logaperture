@@ -58,6 +58,8 @@ class AgentBootstrapTest {
                 + "restored", AgentBootstrap.banner("1.0.0", "wildfly", vendor, 3));
         assertEquals("LogAperture 1.0.0 active (JVM)",
                 AgentBootstrap.banner("1.0.0", "none", org.logaperture.core.VendorDefaults.none(), 0));
+        assertEquals("LogAperture 1.0.0 active (Quarkus)",
+                AgentBootstrap.banner("1.0.0", "quarkus", org.logaperture.core.VendorDefaults.none(), 0));
     }
 
     @Test

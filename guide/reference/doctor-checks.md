@@ -46,8 +46,23 @@ deliberate.
 ### `handler.autoflush`
 
 A handler that flushes after every record, which costs disk I/O on a busy logger. `WARNING`.
+On Quarkus, the console and file handlers Quarkus creates itself are reported as `INFO` instead,
+marked as the framework's default: the application didn't choose it. A handler the application added
+keeps the `WARNING`.
 
 **Fix:** turn autoflush off on that handler, if losing the last few lines in a crash is acceptable.
+
+### `logger.below-floor`
+
+A logger set to a level the logging backend will not emit, because the backend enforces a floor
+that is less verbose. On Quarkus this is the build-time `quarkus.log.min-level`: an application
+built with the default `DEBUG` never logs `TRACE`, whatever a logger's level says. `WARNING`, one
+finding per logger. Not reported where the backend has no such floor, which is every backend but
+JBoss LogManager under a framework that sets one. `logctl set logger` gives the same warning when
+you set the level, and `logctl list loggers` shows the level that is actually emitted.
+
+**Fix:** on Quarkus, rebuild the application with a lower `quarkus.log.min-level` (for example
+`TRACE`). The finding names the value the application was built with.
 
 ### `disk.headroom`
 
@@ -67,6 +82,14 @@ Agents set in `JAVA_TOOL_OPTIONS` or `JDK_JAVA_OPTIONS` count as listed first. N
 LogAperture was attached to a running JVM. See [Agent order](../concepts/agent-order.md).
 
 **Fix:** list LogAperture's `-javaagent` before the others, where the site allows it.
+
+### `agent.early-sweep`
+
+Quarkus only. LogAperture re-applies what Quarkus's own start-up logging setup overwrites as soon as
+Quarkus says that setup is done. `INFO` when it could not find the signal Quarkus gives for that (on
+a Quarkus version that names it differently). Nothing is lost: a start-up sweep every quarter of a
+second for the first 15 seconds, and the periodic sweep, still repair it. Not reported when the
+signal was found.
 
 ### `agent.duplicate`
 

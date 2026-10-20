@@ -17,6 +17,7 @@ package org.logaperture.agent;
 
 import org.logaperture.bridge.Diagnostics;
 import org.logaperture.container.none.NoneContainerIntegration;
+import org.logaperture.container.quarkus.QuarkusContainerIntegration;
 import org.logaperture.container.wildfly.WildFlyContainerIntegration;
 import org.logaperture.control.jmx.JmxRegistrar;
 import org.logaperture.core.AggregateLevelControl;
@@ -77,10 +78,10 @@ final class AgentBootstrap {
 
     /**
      * The ordered integration list — "most specific first, {@code none}
-     * last". Slice 3 prepends the WildFly integration.
+     * last". WildFly and Quarkus never match the same launch (Quarkus needs its own entry point).
      */
     private static List<ContainerIntegration> integrations() {
-        return List.of(new WildFlyContainerIntegration(), new NoneContainerIntegration());
+        return List.of(new WildFlyContainerIntegration(), new QuarkusContainerIntegration(), new NoneContainerIntegration());
     }
 
     static void start(Instrumentation inst) {
@@ -270,7 +271,11 @@ final class AgentBootstrap {
     private static String banner(String version, String containerId, VendorDefaults vendorDefaults, int restored,
             String stormDetection) {
         StringBuilder line = new StringBuilder("LogAperture ").append(version).append(" active (")
-                .append("wildfly".equals(containerId) ? "WildFly" : "JVM").append(')');
+                .append(switch (containerId) {
+                    case "wildfly" -> "WildFly";
+                    case "quarkus" -> "Quarkus";
+                    default -> "JVM";
+                }).append(')');
         List<String> parts = new java.util.ArrayList<>();
         if (vendorDefaults.status() == VendorDefaults.Status.LOADED) {
             parts.add("vendor defaults " + vendorDefaults.path().map(Path::toString).orElse("?") + " ("

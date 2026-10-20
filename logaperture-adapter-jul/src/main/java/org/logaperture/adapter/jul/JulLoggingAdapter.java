@@ -23,6 +23,7 @@ import org.logaperture.api.Level;
 import org.logaperture.api.LoggerByteCount;
 import org.logaperture.core.RuleGate;
 import org.logaperture.core.StormObserver;
+import org.logaperture.core.spi.LevelFloorInfo;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.UnknownHandlerException;
 
@@ -249,9 +250,14 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         List<HandlerFloor> floors = new ArrayList<>();
         for (Logger current = logger(loggerName); current != null; current = current.getParent()) {
             for (Handler handler : current.getHandlers()) {
-                java.util.logging.Level handlerLevel = handler.getLevel();
-                if (handlerLevel != null && handlerLevel.intValue() > targetValue) {
-                    floors.add(new HandlerFloor(refFor(handler), LevelMapper.toApi(handlerLevel)));
+                if (TransparentHandlers.isTransparent(handler)) {
+                    // the gate is on the handlers inside it (and, in principle, on it too)
+                    addFloorIfStricter(floors, handler, targetValue);
+                    for (Handler inside : TransparentHandlers.childrenOf(handler)) {
+                        addFloorIfStricter(floors, inside, targetValue);
+                    }
+                } else {
+                    addFloorIfStricter(floors, handler, targetValue);
                 }
             }
             if (!current.getUseParentHandlers()) {
@@ -277,6 +283,18 @@ public final class JulLoggingAdapter implements LoggingAdapter {
                 .max(Comparator.naturalOrder())
                 .orElseThrow();
         return List.of(new HandlerFloor(HandlerRef.ALL_HANDLERS, strictest));
+    }
+
+    /** The live handler a ref names, or {@code null} -- for tests, which assert on identity. */
+    Handler handlerFor(HandlerRef ref) {
+        return handlersByRef.get(ref);
+    }
+
+    private void addFloorIfStricter(List<HandlerFloor> floors, Handler handler, int targetValue) {
+        java.util.logging.Level handlerLevel = handler.getLevel();
+        if (handlerLevel != null && handlerLevel.intValue() > targetValue) {
+            floors.add(new HandlerFloor(refFor(handler), LevelMapper.toApi(handlerLevel)));
+        }
     }
 
     @Override
@@ -311,7 +329,86 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         if (handler == null) {
             return HandlerDiagnostics.EMPTY;
         }
-        return JulHandlerDiagnostics.of(handler);
+        HandlerDiagnostics diagnostics = JulHandlerDiagnostics.of(handler);
+        // doc/specs/quarkus-support.md Q7: a handler inside the framework's own delayed handler is
+        // one the framework created from its configuration, not one the application added.
+        return isInsideTransparentHandler(handler) ? withFrameworkDefault(diagnostics) : diagnostics;
+    }
+
+    private boolean isInsideTransparentHandler(Handler handler) {
+        for (Handler attached : attachedHandlers()) {
+            if (TransparentHandlers.isTransparent(attached)) {
+                for (Handler inside : TransparentHandlers.childrenOf(attached)) {
+                    if (inside == handler) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private static HandlerDiagnostics withFrameworkDefault(HandlerDiagnostics d) {
+        return new HandlerDiagnostics(d.maxFileSizeBytes(), d.backupCount(), d.autoFlush(), d.targetPath(),
+                d.isConsole(), true);
+    }
+
+    /**
+     * doc/specs/quarkus-support.md, "Min-level honesty". JBoss LogManager fixes a floor per logger
+     * when the logger is created (Quarkus's build-time {@code quarkus.log.min-level}), and its
+     * {@code isLoggable} includes it: a logger whose level says TRACE is not loggable at TRACE.
+     * Asking {@code isLoggable} is therefore backend-agnostic. Plain JUL, with no floor, always
+     * answers yes for the logger's own effective level, so costs nothing there.
+     */
+    @Override
+    public Optional<LevelFloorInfo> levelFloor(String loggerName) {
+        Logger logger = logger(loggerName);
+        java.util.logging.Level effective = effectiveJulLevel(logger);
+        if (effective == null || effective.intValue() == java.util.logging.Level.OFF.intValue()
+                || logger.isLoggable(effective)) {
+            return Optional.empty();
+        }
+        for (java.util.logging.Level candidate : STANDARD_ASCENDING) {
+            if (candidate.intValue() > effective.intValue() && logger.isLoggable(candidate)) {
+                return Optional.of(new LevelFloorInfo(LevelMapper.toApi(candidate), minLevelHint()));
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static final List<java.util.logging.Level> STANDARD_ASCENDING = List.of(
+            java.util.logging.Level.FINEST, java.util.logging.Level.FINER, java.util.logging.Level.FINE,
+            java.util.logging.Level.CONFIG, java.util.logging.Level.INFO, java.util.logging.Level.WARNING,
+            java.util.logging.Level.SEVERE);
+
+    /** The nearest explicit level at or above {@code logger}, as JUL holds it; INFO if none (JUL's own default). */
+    private static java.util.logging.Level effectiveJulLevel(Logger logger) {
+        for (Logger current = logger; current != null; current = current.getParent()) {
+            java.util.logging.Level explicit = current.getLevel();
+            if (explicit != null) {
+                return explicit;
+            }
+        }
+        return java.util.logging.Level.INFO;
+    }
+
+    /**
+     * What lowers the floor, when the floor is Quarkus's: the system property its build writes the
+     * floor into ({@code logging.initial-configurator.min-level}). {@code null} for any other floor.
+     */
+    private static String minLevelHint() {
+        String raw = System.getProperty("logging.initial-configurator.min-level");
+        if (raw == null) {
+            return null;
+        }
+        try {
+            Level built = LevelMapper.toApi(java.util.logging.Level.parse(raw.trim()));
+            return "the application was built with quarkus.log.min-level=" + built
+                    + "; rebuild with a lower quarkus.log.min-level (for example TRACE) to log below it";
+        } catch (IllegalArgumentException unparseable) {
+            return "the application was built with a quarkus.log.min-level; rebuild with a lower one "
+                    + "(for example TRACE) to log below it";
+        }
     }
 
     /**
@@ -359,12 +456,20 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      */
     @Override
     public void installStormDetection(StormObserver detector) {
-        for (HandlerRef ref : realHandlers()) {
-            Handler handler = handlersByRef.get(ref);
-            if (handler != null) {
-                FilterLayering.ensure(handler, detector, null);
-            }
+        for (Handler handler : filterAttachPoints()) {
+            FilterLayering.ensure(handler, detector, null);
         }
+    }
+
+    /**
+     * Where filters go: every handler as attached to a logger. For all but a {@link
+     * TransparentHandlers transparent} handler that is the catalogue; for one it is the wrapper,
+     * not the handlers inside it, so a record is seen once. Calls {@link #realHandlers()} first
+     * for its side effects (name resolution, pruning), as every install did before.
+     */
+    private List<Handler> filterAttachPoints() {
+        realHandlers();
+        return attachedHandlers();
     }
 
     /**
@@ -378,11 +483,8 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      */
     @Override
     public void installRulePipeline(RuleGate gate) {
-        for (HandlerRef ref : realHandlers()) {
-            Handler handler = handlersByRef.get(ref);
-            if (handler != null) {
-                FilterLayering.ensure(handler, null, gate);
-            }
+        for (Handler handler : filterAttachPoints()) {
+            FilterLayering.ensure(handler, null, gate);
         }
     }
 
@@ -557,7 +659,13 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         ensureNamesResolved();
         List<HandlerRef> refs = new ArrayList<>();
         for (Handler handler : logger(ROOT_ALIAS).getHandlers()) {
-            refs.add(refFor(handler));
+            if (TransparentHandlers.isTransparent(handler)) {
+                for (Handler inside : TransparentHandlers.childrenOf(handler)) {
+                    refs.add(refFor(inside));
+                }
+            } else {
+                refs.add(refFor(handler));
+            }
         }
         return List.copyOf(refs);
     }
@@ -644,8 +752,8 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         return ref;
     }
 
-    /** Every {@link Handler} attached to any known logger, deduped by identity. */
-    private List<Handler> liveHandlers() {
+    /** Every {@link Handler} attached to any known logger, deduped by identity -- exactly as attached. */
+    private List<Handler> attachedHandlers() {
         List<Handler> out = new ArrayList<>();
         Set<Handler> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         for (String name : knownLoggerNames()) {
@@ -653,6 +761,27 @@ public final class JulLoggingAdapter implements LoggingAdapter {
                 if (seen.add(handler)) {
                     out.add(handler);
                 }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The handler catalogue: {@link #attachedHandlers()} with each {@link TransparentHandlers
+     * transparent} handler replaced by the handlers inside it (doc/specs/quarkus-support.md Q3).
+     */
+    private List<Handler> liveHandlers() {
+        List<Handler> out = new ArrayList<>();
+        Set<Handler> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Handler attached : attachedHandlers()) {
+            if (TransparentHandlers.isTransparent(attached)) {
+                for (Handler inside : TransparentHandlers.childrenOf(attached)) {
+                    if (seen.add(inside)) {
+                        out.add(inside);
+                    }
+                }
+            } else if (seen.add(attached)) {
+                out.add(attached);
             }
         }
         return out;

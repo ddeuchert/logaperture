@@ -140,6 +140,23 @@ final class FakeLoggingAdapter implements LoggingAdapter {
         return explicitLevels.get("ROOT");
     }
 
+    private Level floor; // null: no floor, as on Logback and plain JUL
+    private String floorHint;
+
+    /** Models a backend that emits nothing more verbose than {@code lowest} (a Quarkus min-level). */
+    void setFloor(Level lowest, String hint) {
+        this.floor = lowest;
+        this.floorHint = hint;
+    }
+
+    @Override
+    public Optional<org.logaperture.core.spi.LevelFloorInfo> levelFloor(String loggerName) {
+        if (floor == null || !effectiveLevel(loggerName).isMoreVerboseThan(floor)) {
+            return Optional.empty();
+        }
+        return Optional.of(new org.logaperture.core.spi.LevelFloorInfo(floor, floorHint));
+    }
+
     @Override
     public void applyLevel(String loggerName, Level level) {
         knownNames.add(loggerName);

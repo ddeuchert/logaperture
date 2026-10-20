@@ -200,6 +200,40 @@ class DoctorServiceTest {
     }
 
     @Test
+    void autoflush_onAFrameworkDefaultHandler_isInfoNotAWarning() {
+        adapter.addHandler(FILE, Level.INFO);
+        adapter.setHandlerDiagnostics(FILE,
+                new HandlerDiagnostics(1L, 1, true, Path.of("/var/log/a.log"), false, true));
+
+        List<DoctorFinding> findings = service.diagnose();
+
+        DoctorFinding finding = findingFor(findings, "handler.autoflush", Severity.INFO);
+        assertTrue(finding.detail().contains("framework"), finding.detail());
+    }
+
+    // --- logger.below-floor (doc/specs/quarkus-support.md) ---------------------------------------
+
+    @Test
+    void belowFloor_aLoggerMoreVerboseThanTheFloor_isFlaggedWithTheHint() {
+        adapter.addKnownLogger("com.acme.Worker");
+        adapter.setConfiguredLevel("com.acme.Worker", Level.TRACE);
+        adapter.setFloor(Level.DEBUG, "rebuild with a lower min-level");
+
+        DoctorFinding finding = findingFor(service.diagnose(), "logger.below-floor", Severity.WARNING);
+
+        assertEquals("com.acme.Worker", finding.subject());
+        assertEquals("rebuild with a lower min-level", finding.suggestedFix());
+    }
+
+    @Test
+    void belowFloor_withoutAFloor_printsNothing() {
+        adapter.addKnownLogger("com.acme.Worker");
+        adapter.setConfiguredLevel("com.acme.Worker", Level.TRACE);
+
+        assertTrue(service.diagnose().stream().noneMatch(f -> f.check().equals("logger.below-floor")));
+    }
+
+    @Test
     void autoflush_disabled_isClean() {
         adapter.addHandler(FILE, Level.INFO);
         adapter.setHandlerDiagnostics(FILE, new HandlerDiagnostics(1L, 1, false, Path.of("/var/log/a.log")));

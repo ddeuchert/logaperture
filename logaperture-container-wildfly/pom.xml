@@ -55,6 +55,10 @@
       <groupId>org.logaperture</groupId>
       <artifactId>logaperture-adapter-jul</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-container-jbosslogmanager</artifactId>
+    </dependency>
 
     <!--
       test only. Main code has NO reference to org.jboss.logmanager (the

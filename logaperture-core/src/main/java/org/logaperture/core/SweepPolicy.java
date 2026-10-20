@@ -38,6 +38,30 @@ public final class SweepPolicy {
     private SweepPolicy() {
     }
 
+    /**
+     * A short burst of fast verification sweeps right after a container installs
+     * (doc/specs/quarkus-support.md Q2). A framework that finishes configuring logging after our
+     * install replaces what we put on its handlers, and the periodic interval would leave that
+     * unrepaired for up to 30 seconds. Sweeps are idempotent, so extra ticks only cost time.
+     *
+     * @param interval how often to sweep during the window
+     * @param length   how long after install the window stays open
+     */
+    public record StartupWindow(Duration interval, Duration length) {
+        public StartupWindow {
+            if (interval.isZero() || interval.isNegative() || length.isNegative()) {
+                throw new IllegalArgumentException("a startup window needs a positive interval and a non-negative length");
+            }
+        }
+    }
+
+    /** The window the Quarkus container switches on: every {@value #STARTUP_INTERVAL_MILLIS} ms for 15 s. */
+    public static StartupWindow startupWindow() {
+        return new StartupWindow(Duration.ofMillis(STARTUP_INTERVAL_MILLIS), Duration.ofSeconds(15));
+    }
+
+    private static final long STARTUP_INTERVAL_MILLIS = 250;
+
     /** The configured sweep interval — the {@code logaperture.sweep.seconds} property, or 30s. */
     public static Duration interval() {
         String raw = System.getProperty(INTERVAL_PROPERTY);

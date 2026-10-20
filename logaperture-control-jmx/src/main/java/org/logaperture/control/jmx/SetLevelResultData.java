@@ -35,14 +35,26 @@ public final class SetLevelResultData {
     private final List<LevelOverrideData> overrides;
     private final List<HandlerFloorData> blockingHandlers;
     private final List<DescendantLevelData> descendants;
+    private final List<LevelFloorData> belowFloor;
 
-    /** Every field, including {@code descendants} (doc/specs/set-logger-force.md). */
-    @ConstructorProperties({"overrides", "blockingHandlers", "descendants"})
+    /**
+     * Every field, including {@code belowFloor} (doc/specs/quarkus-support.md). Additive: a result
+     * from an agent that predates a field still converts, through the shorter constructors below.
+     */
+    @ConstructorProperties({"overrides", "blockingHandlers", "descendants", "belowFloor"})
     public SetLevelResultData(List<LevelOverrideData> overrides, List<HandlerFloorData> blockingHandlers,
-            List<DescendantLevelData> descendants) {
+            List<DescendantLevelData> descendants, List<LevelFloorData> belowFloor) {
         this.overrides = overrides;
         this.blockingHandlers = blockingHandlers;
         this.descendants = descendants == null ? List.of() : descendants;
+        this.belowFloor = belowFloor == null ? List.of() : belowFloor;
+    }
+
+    /** Through {@code descendants} (doc/specs/set-logger-force.md). */
+    @ConstructorProperties({"overrides", "blockingHandlers", "descendants"})
+    public SetLevelResultData(List<LevelOverrideData> overrides, List<HandlerFloorData> blockingHandlers,
+            List<DescendantLevelData> descendants) {
+        this(overrides, blockingHandlers, descendants, List.of());
     }
 
     @ConstructorProperties({"overrides", "blockingHandlers"})
@@ -54,7 +66,13 @@ public final class SetLevelResultData {
         return new SetLevelResultData(
                 result.overrides().stream().map(LevelOverrideData::from).toList(),
                 result.blockingHandlers().stream().map(HandlerFloorData::from).toList(),
-                result.descendants().stream().map(DescendantLevelData::from).toList());
+                result.descendants().stream().map(DescendantLevelData::from).toList(),
+                result.belowFloor().stream().map(LevelFloorData::from).toList());
+    }
+
+    /** Levels set that the backend won't emit -- see {@link SetLevelResult#belowFloor()}. */
+    public List<LevelFloorData> getBelowFloor() {
+        return belowFloor;
     }
 
     /** Loggers under an exact target that didn't follow its new level -- see {@link SetLevelResult#descendants()}. */
