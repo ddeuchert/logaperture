@@ -1,6 +1,6 @@
 # WildFly: handler names within seconds of start (issue #246)
 
-Status: **draft, not yet agreed.**
+Status: **agreed 2026-10-20** (E1–E6); implementation to follow on this branch.
 Parent spec: [`handler-floor-control.md`](handler-floor-control.md), "WildFly handler name
 resolution (issue #14)", including its "Gated on `server-state == running`" paragraph (issue #66).
 Also touches [`vendor-defaults.md`](vendor-defaults.md) (handlers pending at start).
@@ -119,9 +119,9 @@ name is still unknown, not at the first failed try.
 
 | # | Decision | Status |
 |---|---|---|
-| E1 | Logging subsystem configuration is the first source for names, bound by identity | Proposed |
-| E2 | "Not ready yet" is retried quietly; the `running` check is not applied to E1 | Proposed |
-| E3 | Model route stays as the fallback, unchanged | Proposed |
-| E4 | Handlers E1 doesn't list stay anonymous until the model route runs | Proposed |
-| E5 | While a vendor handler entry is pending, retry about every 1 s until applied; warn only after resolution completes | Proposed (revised 2026-10-20) |
-| E6 | No type-based guessing, no change outside WildFly | Proposed |
+| E1 | Logging subsystem configuration is the first source for names, bound by identity | Agreed (David, 2026-10-20) |
+| E2 | "Not ready yet" is retried quietly; the `running` check is not applied to E1 | Agreed (David, 2026-10-20) |
+| E3 | Model route stays as the fallback, unchanged | Agreed (David, 2026-10-20) |
+| E4 | Handlers E1 doesn't list stay anonymous until the model route runs | Agreed (David, 2026-10-20) |
+| E5 | While a vendor handler entry is pending, retry about every 1 s until applied; warn only after resolution completes | Agreed (David, 2026-10-20; revised same day) |
+| E6 | No type-based guessing, no change outside WildFly | Agreed (David, 2026-10-20) |
