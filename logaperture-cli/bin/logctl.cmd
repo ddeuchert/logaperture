@@ -47,6 +47,9 @@ if not exist "%JAR%" (
   exit /b 1
 )
 
+rem Strip any quotes from JAVA_HOME, which would otherwise break the path below.
+if defined JAVA_HOME set "JAVA_HOME=%JAVA_HOME:"=%"
+
 rem JAVA_HOME, when set, is the only Java considered: no fallback to PATH.
 rem (Single-line ifs: a path containing parentheses would break a block.)
 set "JAVA_CMD=java"

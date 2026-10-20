@@ -50,7 +50,7 @@ override variable; the file is found beside the launcher or not at all.
 ### L2. What the file can do
 
 The file runs inside the launcher's own process, so it may set, override or clear any variable,
-and whatever it leaves behind is what the launcher and the JVM it starts see. A plain assignment
+and whatever it leaves behind is what the launcher and the JVM it starts see. The sh launcher exports everything the file assigns (`set -a`), so a variable the file newly defines reaches the JVM too, not only one it overrides. The batch launcher needs no equivalent: `set` already lands in the environment of the process it starts. A quoted `JAVA_HOME` (`set "JAVA_HOME=\"C:\Program Files\jdk\""`) is stripped of its quotes before use. A plain assignment
 replaces an inherited value; `unset` (sh) or `set "NAME="` (cmd) clears one. Because the file is
 code it can also compute values.
 

@@ -24,8 +24,12 @@
 
 here=$(cd "$(dirname "$0")" && pwd)
 
+# set -a exports everything the file assigns, so a variable it newly defines
+# (not just one it overrides) reaches the JVM.
 if [ -f "$here/logctl.conf" ]; then
+  set -a
   . "$here/logctl.conf"
+  set +a
 fi
 
 # LOGCTL_JAR_HOME, when set, is the only place looked in. Otherwise the
