@@ -176,6 +176,17 @@ class DefaultHandlersFollowTest {
     }
 
     @Test
+    void aLessVerboseChangeOnTheSameLoggerLowersTheFollowerToIt() {
+        set(APP, Level.TRACE, forMinutes(30));
+        assertEquals(Optional.of(Level.TRACE), adapter.handlerLevel(CONSOLE));
+
+        set(APP, Level.DEBUG, forMinutes(30));
+
+        assertEquals(List.of(APP), handlerOverride(CONSOLE).orElseThrow().follows());
+        assertEquals(Optional.of(Level.DEBUG), adapter.handlerLevel(CONSOLE));
+    }
+
+    @Test
     void keepHandlersOnTheSameLoggerLetsGoOfIt() {
         set(APP, Level.DEBUG, forMinutes(30));
 
@@ -376,6 +387,41 @@ class DefaultHandlersFollowTest {
     }
 
     @Test
+    void aLessVerboseForcedChangeLowersTheFollowerToIt() {
+        String child = APP + ".db";
+        adapter.addKnownLogger(child);
+        adapter.setConfiguredLevel(child, Level.WARN);
+        adapter.addHandler(CONSOLE, Level.INFO, child);
+        set(OTHER, Level.TRACE, forMinutes(30));
+
+        set(APP, Level.TRACE, forMinutes(30).withForce(true));
+        assertEquals(Optional.of(Level.TRACE), adapter.handlerLevel(CONSOLE));
+        set(APP, Level.DEBUG, forMinutes(30).withForce(true));
+        assertEquals(Optional.of(Level.TRACE), adapter.handlerLevel(CONSOLE)); // OTHER is still TRACE
+
+        set(OTHER, Level.DEBUG, forMinutes(30));
+
+        assertEquals(Optional.of(Level.DEBUG), adapter.handlerLevel(CONSOLE));
+        assertEquals(List.of(APP, child, OTHER), handlerOverride(CONSOLE).orElseThrow().follows());
+    }
+
+    @Test
+    void anEarlierTraceChangeThatEndsLetsTheFollowerSettleOnTheNewLowest() {
+        set(OTHER, Level.TRACE, SetLevelOptions.sticky()); // set earlier, not followed
+        assertEquals(Optional.of(Level.INFO), adapter.handlerLevel(CONSOLE));
+
+        set(APP, Level.TRACE, forMinutes(30));
+        set(APP, Level.DEBUG, forMinutes(30));
+
+        loggers.resetLogger(OTHER, true);
+
+        assertEquals(Optional.of(Level.DEBUG), adapter.handlerLevel(CONSOLE));
+        loggers.resetLogger(APP, false);
+        assertEquals(Optional.of(Level.INFO), adapter.handlerLevel(CONSOLE));
+        assertTrue(handlerOverride(CONSOLE).isEmpty());
+    }
+
+    @Test
     void aLoggerFrameworkWithoutHandlerLevelsFollowsNothing() {
         adapter.disableHandlerLevels();
 
@@ -400,6 +446,28 @@ class DefaultHandlersFollowTest {
         assertEquals(List.of(APP), handlerOverride(CONSOLE).orElseThrow().follows());
         assertEquals(Optional.of(Level.DEBUG), adapter.handlerLevel(CONSOLE));
         loggers.resetLogger(APP, true);
+        assertTrue(handlerOverride(CONSOLE).isEmpty());
+        assertEquals(Optional.of(Level.INFO), adapter.handlerLevel(CONSOLE));
+    }
+
+    @Test
+    void aStickyFollowerResumedBeforeItsHandlerResolvesStillRevertsToTheNativeLevel() {
+        set(APP, Level.TRACE, SetLevelOptions.sticky().withFollowHandlers(true));
+
+        // a restart on WildFly: the logger resumes at once, CONSOLE's name resolves only later
+        adapter = new FakeLoggingAdapter(Level.INFO);
+        adapter.addKnownLogger(APP);
+        wire(CapabilityPolicy.allowAll());
+        loggers.resumeFromStateStore(Instant.now());
+        handlers.resumeFromStateStore(Instant.now());
+        adapter.addHandler(CONSOLE, Level.INFO, APP); // name resolution catches up, at its configured INFO
+        adapter.attachToRoot(CONSOLE);
+        handlers.verifyAndReapply(Instant.now());
+        handlers.recomputeAuto();
+
+        set(APP, Level.DEBUG, SetLevelOptions.sticky().withFollowHandlers(true));
+        loggers.resetLogger(APP, true);
+
         assertTrue(handlerOverride(CONSOLE).isEmpty());
         assertEquals(Optional.of(Level.INFO), adapter.handlerLevel(CONSOLE));
     }
