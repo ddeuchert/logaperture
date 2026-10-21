@@ -8,6 +8,25 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ## [Unreleased]
 
+### Changed
+
+- **`set logger` brings the console along.** A default handler (usually the console) that would
+  drop the new records goes to `AUTO` for as long as the change lasts, then back to its own level,
+  so `logctl set logger com.mycompany DEBUG` shows the DEBUG lines on the console with no second
+  command. A handler you set yourself is left as you set it, and `--keep-handlers` changes only the
+  logger, as before. `status` and `list handlers` show what a handler follows; `--json` adds
+  `following` and `followDenied` to `set logger`, and `follows` and `thenFollows` to handler
+  overrides. `-Dlogaperture.followHandlers=false` turns this off for a whole server (issue #210;
+  `doc/specs/default-handlers-follow.md`).
+
+- **WildFly: handler names (`CONSOLE`, `FILE`, …) are known a few seconds after start**, not
+  once every deployment has finished. `logctl list handlers`, `logctl set handler CONSOLE …` and a
+  vendor-defaults handler entry such as `CONSOLE: AUTO` now work while a slow application is still
+  deploying, so a logger raised for the boot can reach the console without editing `standalone.xml`.
+  The names come from the logging subsystem's own configuration; the management model is still the
+  fallback. A vendor handler entry that wasn't found at install is retried every second for up to
+  two minutes (issue #246).
+
 ### Added
 
 - **Snapshot builds on Maven Central.** A maintainer can publish a pull request's build as a

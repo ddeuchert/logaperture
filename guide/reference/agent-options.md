@@ -55,6 +55,12 @@ argument is skipped with a warning in the log; the agent still starts.
     logged under the `org.logaperture.drop` category, so it can be raised, lowered or sent to its
     own file like any other category.
 
+`-Dlogaperture.followHandlers=false`
+:   Turn off the default handlers following `set logger`. By default a handler that would drop the
+    new records (usually the console) is let through for as long as the change lasts. With this
+    set, `set logger` changes only the logger, as `--keep-handlers` does on every call, and says
+    why the handlers didn't follow. Default `true`.
+
 `-Dlogaperture.handlerInstallDelaySeconds=<n>`
 :   On WildFly, hold back the parts of LogAperture that wrap the server's handlers (`drop` and
     `trim` rules, `top`, storm detection) for `n` seconds after startup. Default `0`, at most `600`.

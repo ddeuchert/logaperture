@@ -73,6 +73,8 @@ services:
         -javaagent:/opt/logaperture-agent.jar${LOGAPERTURE_AGENT_ARGS:-}
         -Dlogaperture.sweep.seconds=${LOGAPERTURE_SWEEP_SECONDS:-5}
         -Dlogaperture.handlerInstallDelaySeconds=${LOGAPERTURE_HANDLER_DELAY_SECONDS:-3}
+        -Dlogaperture.wildfly.handlerNames.debug=${HANDLER_NAMES_DEBUG:-false}
+        -Dsample.startupDelaySeconds=${SAMPLE_STARTUP_DELAY_SECONDS:-0}
         -Dlogaperture.home=/opt/jboss/wildfly/standalone/tmp/logaperture"'
         >> "$$JBOSS_HOME/bin/standalone.conf"
         && exec "$$JBOSS_HOME/bin/standalone.sh" -b 0.0.0.0 -bmanagement 0.0.0.0

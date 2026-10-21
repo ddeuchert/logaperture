@@ -68,6 +68,15 @@ public interface LevelControlMXBean {
             boolean confirmed, boolean force);
 
     /**
+     * {@link #setLogger(String, String, String, String, long, boolean, boolean)}, with {@code
+     * keepHandlers}: only the logger changes. Without it -- and in every overload above -- the
+     * default handlers that would drop the records follow the change for as long as it lasts
+     * (doc/specs/default-handlers-follow.md).
+     */
+    SetLevelResultData setLogger(String target, String level, String reason, String tier, long forSeconds,
+            boolean confirmed, boolean force, boolean keepHandlers);
+
+    /**
      * {@code target} is either an exact logger name or a pattern (doc/specs/
      * pattern-selection-semantics.md) — resetting a pattern reverts every
      * currently-matched logger that carries an active override, a one-time

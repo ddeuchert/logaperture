@@ -39,7 +39,29 @@ public final class HandlerLevelOverrideData {
     private final String tier;
     private final String expiresAt;
     private final List<SquelchedLoggerData> warnings;
+    private final List<String> follows;
+    private final List<String> thenFollows;
 
+    /** Every field, including the ties of doc/specs/default-handlers-follow.md. */
+    @ConstructorProperties({"handlerRef", "level", "mode", "reason", "appliedAt", "source", "tier", "expiresAt",
+            "warnings", "follows", "thenFollows"})
+    public HandlerLevelOverrideData(String handlerRef, String level, String mode, String reason, String appliedAt,
+            String source, String tier, String expiresAt, List<SquelchedLoggerData> warnings, List<String> follows,
+            List<String> thenFollows) {
+        this.handlerRef = handlerRef;
+        this.level = level;
+        this.mode = mode;
+        this.reason = reason;
+        this.appliedAt = appliedAt;
+        this.source = source;
+        this.tier = tier;
+        this.expiresAt = expiresAt;
+        this.warnings = warnings == null ? List.of() : warnings;
+        this.follows = follows == null ? List.of() : follows;
+        this.thenFollows = thenFollows == null ? List.of() : thenFollows;
+    }
+
+    /** Every field but the ties -- the shape before doc/specs/default-handlers-follow.md. */
     @ConstructorProperties({"handlerRef", "level", "mode", "reason", "appliedAt", "source", "tier", "expiresAt", "warnings"})
     public HandlerLevelOverrideData(
             String handlerRef,
@@ -51,15 +73,7 @@ public final class HandlerLevelOverrideData {
             String tier,
             String expiresAt,
             List<SquelchedLoggerData> warnings) {
-        this.handlerRef = handlerRef;
-        this.level = level;
-        this.mode = mode;
-        this.reason = reason;
-        this.appliedAt = appliedAt;
-        this.source = source;
-        this.tier = tier;
-        this.expiresAt = expiresAt;
-        this.warnings = warnings == null ? List.of() : warnings;
+        this(handlerRef, level, mode, reason, appliedAt, source, tier, expiresAt, warnings, List.of(), List.of());
     }
 
     /** {@code warnings} always empty -- the {@link #from(HandlerLevelOverride, List)} overload is for {@code setHandlerLevel}'s raise direction. */
@@ -77,7 +91,9 @@ public final class HandlerLevelOverrideData {
                 override.source(),
                 override.tier().name(),
                 override.expiresAt() == null ? null : override.expiresAt().toString(),
-                squelched.stream().map(SquelchedLoggerData::from).toList());
+                squelched.stream().map(SquelchedLoggerData::from).toList(),
+                override.follows(),
+                override.thenFollows());
     }
 
     public String getHandlerRef() {
@@ -116,5 +132,15 @@ public final class HandlerLevelOverrideData {
     /** Active logger overrides this raise newly silences (doc/specs/handler-floor-control.md "Squelch warning", issue #16) — empty otherwise. */
     public List<SquelchedLoggerData> getWarnings() {
         return warnings;
+    }
+
+    /** The loggers whose {@code set logger} this override follows (doc/specs/default-handlers-follow.md); empty otherwise. */
+    public List<String> getFollows() {
+        return follows;
+    }
+
+    /** The loggers this operator override carries on following when it ends; empty otherwise. */
+    public List<String> getThenFollows() {
+        return thenFollows;
     }
 }

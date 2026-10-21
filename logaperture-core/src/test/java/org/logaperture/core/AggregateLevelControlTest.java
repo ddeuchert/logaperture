@@ -109,13 +109,21 @@ class AggregateLevelControlTest {
         }
 
         Ctx(String key, CapabilityPolicy policy, String source) {
+            this(key, policy, source, false);
+        }
+
+        /** @param wired the two services wired together as a container wires them (AUTO, following) */
+        Ctx(String key, CapabilityPolicy policy, String source, boolean wired) {
             OverrideRegistry overrides = new OverrideRegistry();
-            service = new LevelControlService(adapter, new BaselineRegistry(), overrides,
-                    policy, auditLog, sharedStore, "alice", source);
             ActiveLoggerFloor activeLoggerFloor = () -> List.copyOf(overrides.all().values());
             handlerService = new HandlerLevelControlService(adapter, new HandlerBaselineRegistry(),
                     new HandlerOverrideRegistry(), new DefaultHandlerGroupRegistry(), policy, auditLog, sharedStore,
                     "alice", "jmx", activeLoggerFloor);
+            LoggerOverrideChangeListener recompute = wired ? handlerService::recomputeAuto
+                    : LoggerOverrideChangeListener.NONE;
+            HandlerFollowing follow = wired ? handlerService::follow : HandlerFollowing.NONE;
+            service = new LevelControlService(adapter, new BaselineRegistry(), overrides,
+                    policy, auditLog, sharedStore, "alice", source, recompute, follow);
             doctorService = new DoctorService(adapter, policy);
             topService = new TopService(adapter, policy);
             stormService = new StormService(adapter, policy, stormDetector);
@@ -131,6 +139,34 @@ class AggregateLevelControlTest {
                         false, null, () -> "rendered", Instant.now()));
             }
         }
+    }
+
+    // --- the default handlers follow set logger (doc/specs/default-handlers-follow.md) ----------
+
+    @Test
+    void setLogger_followHandlers_eachContextFollowsOnItsOwn_reportedOnceByName() {
+        Ctx system = new Ctx("system", CapabilityPolicy.allowAll(), "jmx", true);
+        Ctx app = new Ctx("myapp.war", CapabilityPolicy.allowAll(), "jmx", true);
+        HandlerRef console = new HandlerRef("CONSOLE");
+        for (Ctx ctx : List.of(system, app)) {
+            ctx.adapter.addKnownLogger("com.acme");
+            ctx.adapter.addHandler(console, Level.INFO, "com.acme");
+            ctx.adapter.attachToRoot(console);
+        }
+        aggregate.addContext(system.control);
+        aggregate.addContext(app.control);
+
+        SetLevelResult result = aggregate.setLogger("com.acme", Level.DEBUG,
+                SetLevelOptions.defaults().withFollowHandlers(true));
+
+        assertEquals(List.of(console), result.following().stream().map(f -> f.handlerRef()).toList());
+        assertTrue(result.blockingHandlers().isEmpty());
+        assertEquals(Optional.of(Level.DEBUG), system.adapter.handlerLevel(console));
+        assertEquals(Optional.of(Level.DEBUG), app.adapter.handlerLevel(console));
+
+        aggregate.resetLogger("com.acme", false);
+        assertEquals(Optional.of(Level.INFO), system.adapter.handlerLevel(console));
+        assertEquals(Optional.of(Level.INFO), app.adapter.handlerLevel(console));
     }
 
     // --- set logger --force (doc/specs/set-logger-force.md) -------------------------------------

@@ -92,7 +92,7 @@ logctl list handlers [--show-all]
 
 Shows every handler you can name, its level, and any active override. Without `--show-all`, only handlers with an active override are shown.
 
-On WildFly the individual names (`CONSOLE`, `FILE`, …) appear once the server is up. Before that, and always, `ALL_HANDLERS` means every handler at once.
+On WildFly the individual names (`CONSOLE`, `FILE`, …) appear a few seconds after the server starts, whatever the application takes to deploy. Before that, and always, `ALL_HANDLERS` means every handler at once.
 
 **Options**
 
@@ -127,7 +127,7 @@ logctl status --json
 Change a logger's level.
 
 ```text
-logctl set logger <target> <level> [session | for <duration> | sticky] [--force]
+logctl set logger <target> <level> [session | for <duration> | sticky] [--force] [--keep-handlers]
 ```
 
 Changes the level until the tier says otherwise: `for 4h` unless you give one. Nothing in the application's own configuration files is touched.
@@ -136,12 +136,15 @@ A target is an exact logger name, or a leading-`*` pattern like `'*.Worker'`. A 
 
 A trailing-`*` target (`'org.apache.*'`) is refused. Every descendant already inherits a set ancestor's level from the logging framework, so `logctl set logger org.apache DEBUG` covers `org.apache` and everything under it, present and future. The exception is a descendant with a level of its own, which keeps it: add `--force` to set those too. `reset logger org.apache` puts them back with it.
 
-If a handler is set stricter than the new level, the extra output still won't appear. `set logger` then names the handler and the command that lowers it: see `logctl help set handler`.
+A handler has a level of its own, and one set stricter than the new level would drop the extra output. The default handlers (usually the console) follow the change instead: each one that would drop it goes to `AUTO` for as long as the change lasts, then back to its own level. A handler you set yourself is left as you set it. For any other handler that would drop it, `set logger` names the handler and the command that lowers it: see `logctl help set handler`.
 
 **Options**
 
 `--force`
 :   Also set the loggers under the target that have a level of their own.
+
+`--keep-handlers`
+:   Change only the logger: the default handlers keep their own level.
 
 `--yes`
 :   For a pattern target: take every match without asking.

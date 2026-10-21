@@ -25,6 +25,7 @@ import org.logaperture.control.jmx.RecipeDetailData;
 import org.logaperture.control.jmx.RecipeFileProblemData;
 import org.logaperture.control.jmx.RecipeListData;
 import org.logaperture.control.jmx.RecipeResetResultData;
+import org.logaperture.control.jmx.FollowedHandlerData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
@@ -135,8 +136,22 @@ final class Json {
                     .str("kind", descendant.getKind())
                     .toString());
         }
+        // doc/specs/default-handlers-follow.md: the default handlers this change let through.
+        StringJoiner following = new StringJoiner(",", "[", "]");
+        for (FollowedHandlerData followed : result.getFollowing()) {
+            following.add(new Obj()
+                    .str("handlerRef", followed.getHandlerRef())
+                    .str("previousLevel", followed.getPreviousLevel())
+                    .str("level", followed.getLevel())
+                    .raw("follows", stringArray(followed.getFollows()))
+                    .bool("carriesOn", followed.isCarriesOn())
+                    .str("ownTier", followed.getOwnTier())
+                    .str("ownExpiresAt", followed.getOwnExpiresAt())
+                    .toString());
+        }
         return new Obj().raw("overrides", overrides.toString()).raw("warnings", warnings.toString())
-                .raw("descendants", descendants.toString()).toString();
+                .raw("descendants", descendants.toString()).raw("following", following.toString())
+                .str("followDenied", result.getFollowDenied()).toString();
     }
 
     static String handlerOverride(HandlerLevelOverrideData data) {
@@ -168,7 +183,9 @@ final class Json {
                 .str("source", data.getSource())
                 .str("tier", data.getTier())
                 .str("expiresAt", data.getExpiresAt())
-                .raw("warnings", warnings.toString());
+                .raw("warnings", warnings.toString())
+                .raw("follows", stringArray(data.getFollows()))
+                .raw("thenFollows", stringArray(data.getThenFollows()));
     }
 
     /**
@@ -374,6 +391,8 @@ final class Json {
                     .str("vendorDefault", row.getVendorDefault())
                     .bool("resetToNative", row.isResetToNative())
                     .str("recipe", row.getOverrideRecipe())
+                    .raw("follows", stringArray(row.getOverrideFollows()))
+                    .raw("thenFollows", stringArray(row.getOverrideThenFollows()))
                     .toString());
         }
         return new Obj().raw("handlers", array.toString()).toString();

@@ -46,6 +46,8 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     final List<Object[]> setLevelCalls = new ArrayList<>();
     /** The {@code force} flag of each 7-argument {@code setLogger} call (doc/specs/set-logger-force.md). */
     final List<Boolean> forceCalls = new ArrayList<>();
+    /** The {@code keepHandlers} flag of each 8-argument {@code setLogger} call (doc/specs/default-handlers-follow.md). */
+    final List<Boolean> keepHandlersCalls = new ArrayList<>();
     /** When set, what an exact-name {@code resetLogger} returns -- e.g. forced descendants it reverted. */
     ResetOutcomeData exactResetOutcome;
     final List<String> resetLevelCalls = new ArrayList<>();
@@ -94,6 +96,13 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
             }
         }
         return matches;
+    }
+
+    @Override
+    public SetLevelResultData setLogger(String target, String level, String reason, String tier, long forSeconds,
+            boolean confirmed, boolean force, boolean keepHandlers) {
+        keepHandlersCalls.add(keepHandlers);
+        return setLogger(target, level, reason, tier, forSeconds, confirmed, force);
     }
 
     @Override

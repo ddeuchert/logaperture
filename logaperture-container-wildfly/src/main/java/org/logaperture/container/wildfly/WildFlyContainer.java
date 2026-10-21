@@ -28,6 +28,7 @@ import org.logaperture.core.DropSummary;
 import org.logaperture.core.EnvironmentReportService;
 import org.logaperture.core.FileStateStore;
 import org.logaperture.core.HandlerBaselineRegistry;
+import org.logaperture.core.HandlerFollowing;
 import org.logaperture.core.HandlerInstallPolicy;
 import org.logaperture.core.HandlerLevelControlService;
 import org.logaperture.core.HandlerOverrideRegistry;
@@ -61,6 +62,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 
@@ -242,9 +244,11 @@ public final class WildFlyContainer implements AutoCloseable {
         adapter.onHandlerRenamed(handlerService::migrateHandlerRef);
 
         LoggerOverrideChangeListener autoRecomputeListener = handlerService::recomputeAuto;
+        // doc/specs/default-handlers-follow.md: the same pairing, for set logger's followers.
+        HandlerFollowing defaultHandlersFollow = handlerService::follow;
         LevelControlService service = new LevelControlService(
                 adapter, baselines, overrides, policy, auditLog, stateStore, principal(), "jmx",
-                autoRecomputeListener);
+                autoRecomputeListener, defaultHandlersFollow);
         RuleService ruleService = new RuleService(adapter, policy, auditLog, stateStore, handle.stableKey(),
                 principal(), "jmx");
         // doc/specs/drop-rule.md "Persistence" -- see NoneContainer's identical call.
@@ -288,6 +292,59 @@ public final class WildFlyContainer implements AutoCloseable {
 
         // With no deferral configured (delay 0) this installs immediately, as before this change.
         installHandlerLevelNow();
+        startPendingVendorRetry();
+    }
+
+    /** How often a vendor handler still pending is retried (doc/specs/wildfly-early-handler-names.md E5). */
+    static final Duration PENDING_VENDOR_RETRY = Duration.ofSeconds(1);
+
+    /**
+     * How long that quick retry runs before the normal sweep alone carries on: a handler name that
+     * still hasn't resolved by then is probably not going to, so it isn't polled every second forever.
+     */
+    static final Duration PENDING_VENDOR_RETRY_WINDOW = Duration.ofMinutes(2);
+
+    private ScheduledFuture<?> pendingVendorRetry; // guarded by this
+
+    /**
+     * E5: while a vendor-defaults handler is pending, retries it about once a second, so a vendor
+     * handler level takes effect as soon as the name resolves (seconds into the boot) instead of at
+     * the sweep's first tick (one interval after start). Stops when nothing is pending or the window
+     * ends; installing another context starts it again. A no-op for a file with no handler entries.
+     */
+    private synchronized void startPendingVendorRetry() {
+        if (pendingVendorRetry != null || !aggregate.hasPendingVendorHandlers()) {
+            return;
+        }
+        long endsAt = System.nanoTime() + PENDING_VENDOR_RETRY_WINDOW.toNanos();
+        Runnable retry = () -> {
+            boolean stillPending = retryStep(aggregate::retryPendingVendorHandlers);
+            if (!stillPending || System.nanoTime() - endsAt >= 0) {
+                stopPendingVendorRetry();
+            }
+        };
+        pendingVendorRetry = sweeper.scheduleWithFixedDelay(
+                retry, PENDING_VENDOR_RETRY.toMillis(), PENDING_VENDOR_RETRY.toMillis(), TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * One quick-retry pass. An exception escaping the scheduled task would cancel it silently, so a
+     * failed pass counts as "still pending" and the next one tries again until the window ends.
+     */
+    static boolean retryStep(Predicate<Instant> retry) {
+        try {
+            return retry.test(Instant.now());
+        } catch (RuntimeException | LinkageError e) {
+            Diagnostics.warn("retrying the pending vendor handlers failed, will retry", e);
+            return true;
+        }
+    }
+
+    private synchronized void stopPendingVendorRetry() {
+        if (pendingVendorRetry != null) {
+            pendingVendorRetry.cancel(false);
+            pendingVendorRetry = null;
+        }
     }
 
     /**

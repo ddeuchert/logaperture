@@ -16,9 +16,12 @@
 package org.logaperture.cli;
 
 import org.logaperture.api.DescendantLevel;
+import org.logaperture.api.Level;
 import org.logaperture.api.RuleExpression;
 import org.logaperture.control.jmx.DescendantLevelData;
+import org.logaperture.control.jmx.FollowedHandlerData;
 import org.logaperture.control.jmx.HandlerFloorData;
+import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.LevelControlMXBean;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerInfoData;
@@ -49,15 +52,18 @@ final class SetLoggerCommand implements Command {
     private final boolean yes;
     private final boolean json;
     private final boolean force;
+    private final boolean keepHandlers;
 
     /**
      * @param target {@code null} in guided mode when not given: it is asked for
      * @param level  {@code null} for guided mode, which then also asks for the lifetime ({@code tier} is ignored)
      * @param force  {@code --force}: also set the loggers under each target that keep a level of their own
      *               (doc/specs/set-logger-force.md); in guided mode, given means the question isn't asked
+     * @param keepHandlers {@code --keep-handlers}: only the logger changes; the default handlers don't follow
+     *               (doc/specs/default-handlers-follow.md)
      */
     SetLoggerCommand(String target, String level, String reason, Parser.TierChoice tier, boolean yes, boolean json,
-            boolean force) {
+            boolean force, boolean keepHandlers) {
         this.target = target;
         this.level = level;
         this.reason = reason;
@@ -65,6 +71,7 @@ final class SetLoggerCommand implements Command {
         this.yes = yes;
         this.json = json;
         this.force = force;
+        this.keepHandlers = keepHandlers;
     }
 
     @Override
@@ -88,7 +95,7 @@ final class SetLoggerCommand implements Command {
         if (!Commands.isPattern(target) || yes || Commands.isTrailingWildcard(target)) {
             // An exact name, --yes, or a trailing-star target the server rejects on its own: one call,
             // already confirmed.
-            return render(out, level, setLogger(mbean, target, level, reason, tier, force), target, tier, reason);
+            return render(out, level, setLogger(mbean, target, level, reason, tier, force, keepHandlers), target, tier, reason);
         }
         List<String> matches = Picker.matchingNames(mbean, target);
         if (!interactive) {
@@ -108,7 +115,7 @@ final class SetLoggerCommand implements Command {
             if (!prompter.askYesNo("", "Apply?", false)) {
                 throw new Prompter.Cancelled();
             }
-            return render(out, level, setLogger(mbean, target, level, reason, tier, force), target, tier, reason);
+            return render(out, level, setLogger(mbean, target, level, reason, tier, force, keepHandlers), target, tier, reason);
         }
         List<String> names = Picker.loggers(mbean, prompter, target, "set it anyway?", SetLoggerCommand::currently);
         if (names == null) {
@@ -135,7 +142,10 @@ final class SetLoggerCommand implements Command {
         out.println(names.size() == 1 ? "This is the command:" : "These are the commands:");
         for (String name : names) {
             out.println(INDENT + commandLine(name, chosenLevel, chosenTier, chosenReason)
-                    + (chosenForce ? " --force" : ""));
+                    + (chosenForce ? " --force" : "") + (keepHandlers ? " --keep-handlers" : ""));
+        }
+        if (!keepHandlers) {
+            printWillFollow(out, mbean, chosenLevel);
         }
         if (!prompter.askYesNo("", "Apply?", true)) {
             throw new Prompter.Cancelled();
@@ -187,11 +197,17 @@ final class SetLoggerCommand implements Command {
     }
 
     /**
-     * The 6-argument operation unless {@code force} is asked for, so a plain {@code set logger} still works
-     * against an agent from before doc/specs/set-logger-force.md, as {@code reset --to-native} does.
+     * The 6-argument operation unless {@code force} or {@code keepHandlers} is asked for, so a plain {@code
+     * set logger} still works against an agent from before doc/specs/set-logger-force.md, as {@code reset
+     * --to-native} does; and the 7-argument one unless {@code keepHandlers}, from before doc/specs/
+     * default-handlers-follow.md -- such an agent never makes the default handlers follow anyway.
      */
     private static SetLevelResultData setLogger(LevelControlMXBean mbean, String name, String chosenLevel,
-            String chosenReason, Parser.TierChoice chosenTier, boolean chosenForce) {
+            String chosenReason, Parser.TierChoice chosenTier, boolean chosenForce, boolean keepHandlers) {
+        if (keepHandlers) {
+            return mbean.setLogger(name, chosenLevel, chosenReason, chosenTier.tierName(), chosenTier.forSeconds(),
+                    true, chosenForce, true);
+        }
         return chosenForce
                 ? mbean.setLogger(name, chosenLevel, chosenReason, chosenTier.tierName(), chosenTier.forSeconds(),
                         true, true)
@@ -228,24 +244,32 @@ final class SetLoggerCommand implements Command {
             String chosenLevel, Parser.TierChoice chosenTier, String chosenReason, boolean chosenForce) {
         if (names.size() == 1) {
             return render(out, chosenLevel, setLogger(mbean, names.get(0), chosenLevel, chosenReason, chosenTier,
-                    chosenForce), names.get(0), chosenTier, chosenReason);
+                    chosenForce, keepHandlers), names.get(0), chosenTier, chosenReason);
         }
         List<LevelOverrideData> overrides = new ArrayList<>();
         // One warning per handler, however many of the loggers it would block.
         Map<String, HandlerFloorData> blocking = new LinkedHashMap<>();
         Map<String, DescendantLevelData> descendants = new LinkedHashMap<>();
+        Map<String, FollowedHandlerData> following = new LinkedHashMap<>();
+        String followDenied = null;
         List<String> refusals = new ArrayList<>();
         int exitCode = CliError.OK;
         for (String name : names) {
             try {
                 SetLevelResultData result = setLogger(mbean, name, chosenLevel, chosenReason, chosenTier,
-                        chosenForce);
+                        chosenForce, keepHandlers);
                 overrides.addAll(result.getOverrides());
                 for (DescendantLevelData descendant : result.getDescendants()) {
                     descendants.putIfAbsent(descendant.getLoggerName(), descendant);
                 }
                 for (HandlerFloorData floor : result.getBlockingHandlers()) {
                     blocking.putIfAbsent(floor.getHandlerRef(), floor);
+                }
+                for (FollowedHandlerData followed : result.getFollowing()) {
+                    following.putIfAbsent(followed.getHandlerRef(), followed);
+                }
+                if (followDenied == null) {
+                    followDenied = result.getFollowDenied();
                 }
             } catch (RuntimeException e) {
                 Main.Failure failure = Main.failureOf(e);
@@ -256,7 +280,8 @@ final class SetLoggerCommand implements Command {
             }
         }
         render(out, chosenLevel, new SetLevelResultData(overrides, new ArrayList<>(blocking.values()),
-                new ArrayList<>(descendants.values())), null, chosenTier, chosenReason);
+                new ArrayList<>(descendants.values()), new ArrayList<>(following.values()), followDenied), null,
+                chosenTier, chosenReason);
         for (String refusal : refusals) {
             err.println(refusal);
         }
@@ -287,9 +312,70 @@ final class SetLoggerCommand implements Command {
                     + Commands.tierDetail(override.getTier(), override.getExpiresAt())
                     + (override.getForcedBy() != null ? ", forced" : "") + ")");
         }
+        printFollowing(out, result.getFollowing());
         printDescendants(out, appliedLevel, result.getDescendants(), target, appliedTier, appliedReason);
         Commands.printBlockingHandlersWarning(out, appliedLevel, result.getBlockingHandlers());
+        if (result.getFollowDenied() != null) {
+            String denied = result.getFollowDenied();
+            String why = denied.startsWith("-D") ? "following is turned off on the agent (" + denied + ")."
+                    : capabilityName(denied) + " isn't granted.";
+            out.println("NOTE: the default handlers didn't follow this change: " + why);
+        }
         return CliError.OK;
+    }
+
+    /**
+     * doc/specs/default-handlers-follow.md H10: one line per default handler this change let through --
+     * following it now, or carrying on following it once the operator's own change on it ends (H5).
+     */
+    private static void printFollowing(PrintStream out, List<FollowedHandlerData> following) {
+        for (FollowedHandlerData followed : following) {
+            String follows = String.join(", ", followed.getFollows());
+            if (followed.isCarriesOn()) {
+                out.println("handler " + followed.getHandlerRef() + " keeps your change on it ("
+                        + Commands.tierDetail(followed.getOwnTier(), followed.getOwnExpiresAt())
+                        + "), then follows " + follows);
+            } else {
+                out.println("handler " + followed.getHandlerRef() + " → AUTO, currently " + followed.getLevel()
+                        + "   (follows " + follows + ")");
+            }
+        }
+    }
+
+    /** A capability as the agent's policy names it: {@code HANDLER_LOWER} is {@code handler.lower}. */
+    static String capabilityName(String capability) {
+        return capability.toLowerCase(java.util.Locale.ROOT).replace('_', '.');
+    }
+
+    /**
+     * H8: the guided confirmation says which default handlers will follow -- each member with no change of
+     * its own whose level would drop {@code chosenLevel}. The agent decides for certain when it applies
+     * (only a handler on the logger's path follows); this is what the catalog shows before then.
+     */
+    private static void printWillFollow(PrintStream out, LevelControlMXBean mbean, String chosenLevel) {
+        List<HandlerInfoData> catalog;
+        try {
+            catalog = mbean.listHandlers();
+        } catch (RuntimeException e) {
+            return; // only a preview -- never in the way of the change itself
+        }
+        List<String> members = List.of();
+        for (HandlerInfoData row : catalog) {
+            if ("DEFAULT_HANDLERS".equals(row.getRef()) && row.getMembersSummary() != null) {
+                members = Commands.defaultHandlerNames(row.getMembersSummary());
+            }
+        }
+        Level requested = Level.valueOf(chosenLevel);
+        List<String> willFollow = new ArrayList<>();
+        for (HandlerInfoData row : catalog) {
+            if (members.contains(row.getRef()) && !row.isOverrideActive() && row.getLevel() != null
+                    && requested.isMoreVerboseThan(Level.valueOf(row.getLevel()))) {
+                willFollow.add(row.getRef());
+            }
+        }
+        if (!willFollow.isEmpty()) {
+            out.println(String.join(" and ", willFollow) + " will follow it (AUTO) until the change ends.");
+        }
     }
 
     /** At most this many names in the note after a plain {@code set logger} (F6). */

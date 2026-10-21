@@ -167,6 +167,54 @@ class VendorHandlerDefaultsTest {
         assertEquals(0, service.verifyAndReapply(Instant.now()), "applied once, then quiet");
     }
 
+    // --- doc/specs/wildfly-early-handler-names.md E5 --------------------------------------------
+
+    @Test
+    void retryPendingVendorHandlers_appliesAHandlerAsSoonAsItResolves_withoutASweep() {
+        service.applyVendorDefaults(Instant.now());
+        assertTrue(service.retryPendingVendorHandlers(Instant.now()), "LATE is still unknown -> still pending");
+        assertEquals(Optional.empty(), adapter.handlerLevel(LATE));
+
+        adapter.addHandler(LATE, Level.INFO);
+
+        assertEquals(false, service.retryPendingVendorHandlers(Instant.now()), "nothing pending afterwards");
+        assertEquals(Optional.of(Level.ERROR), adapter.handlerLevel(LATE));
+        assertTrue(service.pendingVendorHandlers().isEmpty());
+        assertEquals(0, service.verifyAndReapply(Instant.now()), "applied once, then quiet");
+    }
+
+    @Test
+    void retryPendingVendorHandlers_anAutoHandlerThatArrivesLate_followsTheLoggerFloorAtOnce() {
+        HandlerRef lateConsole = new HandlerRef("LATE_CONSOLE");
+        HandlerBaselineRegistry withLateAuto = new HandlerBaselineRegistry(Map.of(lateConsole,
+                new VendorDefaults.HandlerDefault(lateConsole, null, HandlerLevelMode.AUTO, null)));
+        activeLoggerOverrides.add(debugOverride("com.acme")); // sticky TRACE/DEBUG loggers resumed before the handler is known
+        HandlerLevelControlService autoService = new HandlerLevelControlService(adapter, withLateAuto,
+                new HandlerOverrideRegistry(), new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(),
+                auditLog, stateStore, "alice", "jmx", () -> List.copyOf(activeLoggerOverrides));
+        autoService.applyVendorDefaults(Instant.now());
+        assertEquals(List.of(lateConsole), autoService.pendingVendorHandlers());
+
+        adapter.addHandler(lateConsole, Level.INFO);
+        adapter.attachToRoot(lateConsole);
+
+        assertEquals(false, autoService.retryPendingVendorHandlers(Instant.now()));
+        assertEquals(Optional.of(Level.DEBUG), adapter.handlerLevel(lateConsole),
+                "the handler drops to the lowest active logger override when it first resolves");
+    }
+
+    @Test
+    void retryPendingVendorHandlers_withNothingPending_isANoOp() {
+        HandlerLevelControlService plain = new HandlerLevelControlService(adapter,
+                new HandlerBaselineRegistry(Map.of()), new HandlerOverrideRegistry(),
+                new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(), auditLog, stateStore,
+                "alice", "jmx", List::of);
+        plain.applyVendorDefaults(Instant.now());
+
+        assertEquals(false, plain.retryPendingVendorHandlers(Instant.now()));
+        assertTrue(auditLog.records().isEmpty());
+    }
+
     @Test
     void verificationSweep_reappliesADriftedFixedVendorLevel() {
         service.applyVendorDefaults(Instant.now());
