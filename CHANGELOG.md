@@ -8,6 +8,16 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ## [Unreleased]
 
+### Changed
+
+- **WildFly: handler names (`CONSOLE`, `FILE`, …) are known a few seconds after start**, not
+  once every deployment has finished. `logctl list handlers`, `logctl set handler CONSOLE …` and a
+  vendor-defaults handler entry such as `CONSOLE: AUTO` now work while a slow application is still
+  deploying, so a logger raised for the boot can reach the console without editing `standalone.xml`.
+  The names come from the logging subsystem's own configuration; the management model is still the
+  fallback. A vendor handler entry that wasn't found at install is retried every second for up to
+  two minutes (issue #246).
+
 ## [1.0.0-beta.2] — 2026-10-20
 
 Fixes on WildFly and Logback, more in the guide, and a conf file for the `logctl` launchers. The

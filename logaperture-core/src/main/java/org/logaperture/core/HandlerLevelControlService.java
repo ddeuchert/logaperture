@@ -614,6 +614,29 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     }
 
     /**
+     * Retries only the vendor handlers still pending, outside the verification sweep -- doc/specs/
+     * wildfly-early-handler-names.md E5: a container whose handler names arrive seconds into the
+     * boot calls this about once a second until nothing is pending, so a vendor level doesn't wait
+     * for the sweep's first tick. Cheap when nothing is pending. Never throws.
+     *
+     * @return whether some vendor handler is still pending afterwards
+     */
+    public boolean retryPendingVendorHandlers(Instant now) {
+        try {
+            if (adapter.hasHandlerLevels() && !pendingVendor.isEmpty()) {
+                for (VendorDefaults.HandlerDefault vendor : baselines.activeVendorDefaults()) {
+                    if (pendingVendor.contains(vendor.ref()) && tryApplyVendor(vendor, now)) {
+                        pendingVendor.remove(vendor.ref());
+                    }
+                }
+            }
+        } catch (RuntimeException e) {
+            Diagnostics.warn("retrying the pending vendor handlers failed, will retry: " + e);
+        }
+        return !pendingVendorHandlers().isEmpty();
+    }
+
+    /**
      * @return {@code true} if {@code vendor}'s handler resolved and its default is now in effect
      *         (or an override already covers it); {@code false} if it doesn't resolve yet
      */
