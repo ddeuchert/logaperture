@@ -1945,6 +1945,11 @@ warnings and errors. <code>ERROR</code> hides the startup line too; <code>INFO</
 least <code>1m</code>. It can't be turned off: dropped events are never hidden. On WildFly the line is
 logged under the <code>org.logaperture.drop</code> category, so it can be raised, lowered or sent to its
 own file like any other category.</dd>
+<dt><code>-Dlogaperture.followHandlers=false</code></dt>
+<dd>Turn off the default handlers following <code>set logger</code>. By default a handler that would drop the
+new records (usually the console) is let through for as long as the change lasts. With this
+set, <code>set logger</code> changes only the logger, as <code>--keep-handlers</code> does on every call, and says
+why the handlers didn't follow. Default <code>true</code>.</dd>
 <dt><code>-Dlogaperture.handlerInstallDelaySeconds=&lt;n&gt;</code></dt>
 <dd>On WildFly, hold back the parts of LogAperture that wrap the server's handlers (<code>drop</code> and
 <code>trim</code> rules, <code>top</code>, storm detection) for <code>n</code> seconds after startup. Default <code>0</code>, at most <code>600</code>.

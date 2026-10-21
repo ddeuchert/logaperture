@@ -2396,16 +2396,18 @@ logctl<span class="w"> </span>status<span class="w"> </span>--json
 </code></pre></div>
 <h2 id="set-logger">set logger<a class="headerlink" href="#set-logger" title="Permanent link">&para;</a></h2>
 <p>Change a logger's level.</p>
-<div class="highlight"><pre><span></span><code>logctl set logger &lt;target&gt; &lt;level&gt; [session | for &lt;duration&gt; | sticky] [--force]
+<div class="highlight"><pre><span></span><code>logctl set logger &lt;target&gt; &lt;level&gt; [session | for &lt;duration&gt; | sticky] [--force] [--keep-handlers]
 </code></pre></div>
 <p>Changes the level until the tier says otherwise: <code>for 4h</code> unless you give one. Nothing in the application's own configuration files is touched.</p>
 <p>A target is an exact logger name, or a leading-<code>*</code> pattern like <code>'*.Worker'</code>. A pattern is a one-time selection of every logger matching it now: on a terminal it lists them to pick from, and <code>--yes</code> takes all of them. A logger created later that would also match is not touched.</p>
 <p>A trailing-<code>*</code> target (<code>'org.apache.*'</code>) is refused. Every descendant already inherits a set ancestor's level from the logging framework, so <code>logctl set logger org.apache DEBUG</code> covers <code>org.apache</code> and everything under it, present and future. The exception is a descendant with a level of its own, which keeps it: add <code>--force</code> to set those too. <code>reset logger org.apache</code> puts them back with it.</p>
-<p>If a handler is set stricter than the new level, the extra output still won't appear. <code>set logger</code> then names the handler and the command that lowers it: see <code>logctl help set handler</code>.</p>
+<p>A handler has a level of its own, and one set stricter than the new level would drop the extra output. The default handlers (usually the console) follow the change instead: each one that would drop it goes to <code>AUTO</code> for as long as the change lasts, then back to its own level. A handler you set yourself is left as you set it. For any other handler that would drop it, <code>set logger</code> names the handler and the command that lowers it: see <code>logctl help set handler</code>.</p>
 <p><strong>Options</strong></p>
 <dl>
 <dt><code>--force</code></dt>
 <dd>Also set the loggers under the target that have a level of their own.</dd>
+<dt><code>--keep-handlers</code></dt>
+<dd>Change only the logger: the default handlers keep their own level.</dd>
 <dt><code>--yes</code></dt>
 <dd>For a pattern target: take every match without asking.</dd>
 </dl>

@@ -1956,9 +1956,9 @@ logctl<span class="w"> </span>add<span class="w"> </span>rule<span class="w"> </
 production use before 1.0.0.</p>
 </div>
 <h2 id="see-it-work">See it work<a class="headerlink" href="#see-it-work" title="Permanent link">&para;</a></h2>
-<p>A logger raised to <code>TRACE</code> still shows nothing on the console, because the console's own handler
-is at <code>INFO</code>. One more command fixes it, and both changes revert on their own. The top pane is the
-WildFly console; <code>logctl</code> runs below.</p>
+<p>A logger raised to <code>TRACE</code> on a running WildFly. The console's own handler is at <code>INFO</code>, so it
+follows the change to let the <code>TRACE</code> lines through, and both revert on their own. The top pane is
+the WildFly console; <code>logctl</code> runs below.</p>
 <div class="la-cast" data-cast="why-no-trace"></div>
 
 <p>More films in <a href="now-showing/">Now Showing</a>.</p>

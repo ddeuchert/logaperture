@@ -2476,7 +2476,11 @@ vendor defaults file if any, and storm detection's state.</p>
 </code></pre></div>
 <h3 id="set-logger">set logger<a class="headerlink" href="#set-logger" title="Permanent link">&para;</a></h3>
 <p>The overrides made (several for a pattern target or <code>--force</code>), the handlers whose level would
-hide the new output (<code>warnings</code>), and the descendants <code>--force</code> reached.</p>
+hide the new output (<code>warnings</code>), the descendants <code>--force</code> reached, and the default handlers that
+now follow the change (<code>following</code>; see <a href="../../how-to/raise-a-level/#the-console-follows">Raise a log level</a>).
+A handler in <code>following</code> has <code>carriesOn: true</code> when your own setting on it still applies, with that
+setting's tier and deadline in <code>ownTier</code> and <code>ownExpiresAt</code>; it follows the change once that ends.
+<code>followDenied</code> names the capability that kept the default handlers from following, if one did.</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>io.undertow.request<span class="w"> </span>DEBUG<span class="w"> </span><span class="k">for</span><span class="w"> </span>30m<span class="w"> </span>--reason<span class="w"> </span>demo<span class="w"> </span>--json
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><span class="p">{</span>
@@ -2485,20 +2489,29 @@ hide the new output (<code>warnings</code>), and the descendants <code>--force</
 <span class="w">      </span><span class="nt">"loggerName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"io.undertow.request"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"level"</span><span class="p">:</span><span class="w"> </span><span class="s2">"DEBUG"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"reason"</span><span class="p">:</span><span class="w"> </span><span class="s2">"demo"</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"appliedAt"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-10-09T05:12:12.441226621Z"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"appliedAt"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-10-17T05:41:00.098475751Z"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"jmx"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"FOR"</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"expiresAt"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-10-09T05:42:12.441226621Z"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"expiresAt"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-10-17T06:11:00.098475751Z"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"forcedBy"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="w">  </span><span class="p">],</span>
-<span class="w">  </span><span class="nt">"warnings"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">  </span><span class="nt">"warnings"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">  </span><span class="nt">"descendants"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">  </span><span class="nt">"following"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">    </span><span class="p">{</span>
 <span class="w">      </span><span class="nt">"handlerRef"</span><span class="p">:</span><span class="w"> </span><span class="s2">"CONSOLE"</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"currentLevel"</span><span class="p">:</span><span class="w"> </span><span class="s2">"INFO"</span>
+<span class="w">      </span><span class="nt">"previousLevel"</span><span class="p">:</span><span class="w"> </span><span class="s2">"INFO"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"level"</span><span class="p">:</span><span class="w"> </span><span class="s2">"DEBUG"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"follows"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="s2">"io.undertow.request"</span>
+<span class="w">      </span><span class="p">],</span>
+<span class="w">      </span><span class="nt">"carriesOn"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"ownTier"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"ownExpiresAt"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="w">  </span><span class="p">],</span>
-<span class="w">  </span><span class="nt">"descendants"</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<span class="w">  </span><span class="nt">"followDenied"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 <span class="p">}</span>
 </code></pre></div>
 <h3 id="reset">reset<a class="headerlink" href="#reset" title="Permanent link">&para;</a></h3>
@@ -2559,14 +2572,18 @@ descendants under it. <code>reset loggers</code> and <code>reset handlers</code>
 <span class="w">      </span><span class="nt">"autoFlush"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"overrideActive"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"overrideLevel"</span><span class="p">:</span><span class="w"> </span><span class="s2">"DEBUG"</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"overrideMode"</span><span class="p">:</span><span class="w"> </span><span class="s2">"FIXED"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"overrideMode"</span><span class="p">:</span><span class="w"> </span><span class="s2">"AUTO"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"overrideTier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"FOR"</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"overrideExpiresAt"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-10-09T05:22:26.576398427Z"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"overrideExpiresAt"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-10-17T06:11:00.098475751Z"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"membersSummary"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"context"</span><span class="p">:</span><span class="w"> </span><span class="s2">"system"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"vendorDefault"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"resetToNative"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">"recipe"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">      </span><span class="nt">"recipe"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"follows"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="s2">"io.undertow.request"</span>
+<span class="w">      </span><span class="p">],</span>
+<span class="w">      </span><span class="nt">"thenFollows"</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="w">  </span><span class="p">]</span>
 <span class="p">}</span>
@@ -2583,7 +2600,9 @@ descendants under it. <code>reset loggers</code> and <code>reset handlers</code>
 <span class="w">  </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"jmx"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"FOR"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"expiresAt"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-10-09T05:22:26.576398427Z"</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"warnings"</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<span class="w">  </span><span class="nt">"warnings"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">  </span><span class="nt">"follows"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">  </span><span class="nt">"thenFollows"</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
 <span class="p">}</span>
 </code></pre></div>
 <h2 id="rules">Rules<a class="headerlink" href="#rules" title="Permanent link">&para;</a></h2>

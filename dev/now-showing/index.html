@@ -2085,7 +2085,7 @@ and one more command lets it through.</p>
 </ul>
 <p><code>logctl</code> warns that the <code>CONSOLE</code> handler is at <code>INFO</code> and will drop the <code>TRACE</code> records.</p>
 <p>Reference: <a href="../reference/logctl/#set-logger"><code>set logger</code></a> · How-to:
-<a href="../how-to/raise-a-level/#when-raising-a-logger-shows-nothing">When raising a logger shows nothing</a></p>
+<a href="../how-to/raise-a-level/#the-console-follows">The console follows</a></p>
 <p><strong><code>logctl set handler CONSOLE AUTO</code></strong>: let the console handler follow the logger.</p>
 <ul>
 <li><code>CONSOLE</code>: the handler, by the name WildFly gives it. <code>logctl list handlers</code> lists the names.</li>
@@ -2093,7 +2093,7 @@ and one more command lets it through.</p>
   override, and goes back to its own level once none are left.</li>
 </ul>
 <p>Reference: <a href="../reference/logctl/#set-handler"><code>set handler</code></a> · How-to:
-<a href="../how-to/raise-a-level/#when-raising-a-logger-shows-nothing">When raising a logger shows nothing</a></p>
+<a href="../how-to/raise-a-level/#the-console-follows">The console follows</a></p>
 <p><strong><code>logctl status</code></strong>: show everything LogAperture has changed, and when each change reverts.
 It changes nothing.</p>
 <p>Reference: <a href="../reference/logctl/#status"><code>status</code></a> · How-to:
@@ -2124,7 +2124,7 @@ ends, so nothing is left to clean up.</p>
 <li><code>AUTO</code>: follow the lowest <code>DEBUG</code> or <code>TRACE</code> logger override.</li>
 </ul>
 <p>Reference: <a href="../reference/logctl/#set-handler"><code>set handler</code></a> · How-to:
-<a href="../how-to/raise-a-level/#when-raising-a-logger-shows-nothing">When raising a logger shows nothing</a></p>
+<a href="../how-to/raise-a-level/#the-console-follows">The console follows</a></p>
 <p><strong><code>logctl list loggers com.example</code></strong>: show the loggers under <code>com.example</code> that have an override,
 with their levels and when each reverts.</p>
 <ul>

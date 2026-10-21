@@ -1989,7 +1989,9 @@ logctl<span class="w"> </span><span class="nb">export</span><span class="w"> </s
 <span class="w">    </span><span class="nt">stateId</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0d5498e8-4026-4da9-ab36-c3b104e7dfb0</span>
 </code></pre></div>
 <p>The export is the file the JVM started with, plus every <code>sticky</code> change on top of it. <code>session</code> and
-<code>for</code> changes are left out: only what you meant to keep is exported.</p>
+<code>for</code> changes are left out: only what you meant to keep is exported. So is a handler that is only
+following a <code>sticky</code> logger change: it went to <code>AUTO</code> for that change, not as a setting of its own.
+To ship a handler in <code>AUTO</code>, set it yourself (<code>logctl set handler CONSOLE AUTO sticky</code>).</p>
 <p>The <code>stateId</code> lines connect each entry to the <code>sticky</code> change it came from. When you restart with
 the new file, the file takes those changes over, so each setting is active once, from the file.
 Later edits to the file then take effect on the next restart.</p>

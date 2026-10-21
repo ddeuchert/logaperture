@@ -2098,8 +2098,10 @@ application itself can run on either.</p>
 <p>On WildFly, the log line <code>The LogManager was not properly installed</code> means the JVM's logging was
 set up before WildFly's: check <code>JAVA_OPTS</code> for other agents or logging options.</p>
 <h2 id="a-raised-level-shows-nothing">A raised level shows nothing<a class="headerlink" href="#a-raised-level-shows-nothing" title="Permanent link">&para;</a></h2>
-<p>Usually a handler is at a stricter level than the logger. <code>set logger</code> warns about it, with the
-command that fixes it. See <a href="../how-to/raise-a-level/#when-raising-a-logger-shows-nothing">Raise a log level</a>.</p>
+<p>Usually a handler is at a stricter level than the logger. The default handler (usually the console)
+follows the change on its own; for any other handler, or one you set yourself, <code>set logger</code> warns
+about it, with the command that fixes it. See
+<a href="../how-to/raise-a-level/#the-console-follows">Raise a log level</a>.</p>
 <p>Also check:</p>
 <ul>
 <li>the logger's name is right: <code>logctl list loggers '*.&lt;last part&gt;' --show-all</code> (see

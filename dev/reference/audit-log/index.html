@@ -1912,7 +1912,7 @@ Rules can't drop audit lines: they don't go through the application's logging.</
 </tr>
 <tr>
 <td><code>source</code></td>
-<td>What made the change: <code>jmx</code> for <code>logctl</code>; <code>expiry-sweep</code> for a timed change running out; <code>verification-sweep</code> for re-applying a change the server undid; <code>resume</code> for <code>sticky</code> changes restored at startup; <code>vendor-defaults</code> for the vendor defaults file; <code>recipe</code> for a recipe.</td>
+<td>What made the change: <code>jmx</code> for <code>logctl</code>; <code>expiry-sweep</code> for a timed change running out; <code>verification-sweep</code> for re-applying a change the server undid; <code>resume</code> for <code>sticky</code> changes restored at startup; <code>vendor-defaults</code> for the vendor defaults file; <code>recipe</code> for a recipe; <code>follow</code> for a default handler going back to its own level when the logger change it followed ends; <code>auto-recompute</code> for an <code>AUTO</code> handler moving with the logger changes it tracks.</td>
 </tr>
 <tr>
 <td>target</td>
@@ -1928,7 +1928,7 @@ Rules can't drop audit lines: they don't go through the application's logging.</
 </tr>
 <tr>
 <td><code>origin</code></td>
-<td>Only on a change made by a recipe: which one.</td>
+<td>Only on a change made by a recipe (which one), or on a default handler that started following a <code>set logger</code> (<code>follows &lt;logger&gt;</code>).</td>
 </tr>
 </tbody>
 </table>

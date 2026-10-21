@@ -2437,13 +2437,25 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
 <h2 id="unreleased"><a href="https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.2...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>WildFly: handler names (<code>CONSOLE</code>, <code>FILE</code>, …) are known a few seconds after start</strong>, not
+<li>
+<p><strong><code>set logger</code> brings the console along.</strong> A default handler (usually the console) that would
+  drop the new records goes to <code>AUTO</code> for as long as the change lasts, then back to its own level,
+  so <code>logctl set logger com.mycompany DEBUG</code> shows the DEBUG lines on the console with no second
+  command. A handler you set yourself is left as you set it, and <code>--keep-handlers</code> changes only the
+  logger, as before. <code>status</code> and <code>list handlers</code> show what a handler follows; <code>--json</code> adds
+  <code>following</code> and <code>followDenied</code> to <code>set logger</code>, and <code>follows</code> and <code>thenFollows</code> to handler
+  overrides. <code>-Dlogaperture.followHandlers=false</code> turns this off for a whole server (issue #210;
+  <code>doc/specs/default-handlers-follow.md</code>).</p>
+</li>
+<li>
+<p><strong>WildFly: handler names (<code>CONSOLE</code>, <code>FILE</code>, …) are known a few seconds after start</strong>, not
   once every deployment has finished. <code>logctl list handlers</code>, <code>logctl set handler CONSOLE …</code> and a
   vendor-defaults handler entry such as <code>CONSOLE: AUTO</code> now work while a slow application is still
   deploying, so a logger raised for the boot can reach the console without editing <code>standalone.xml</code>.
   The names come from the logging subsystem's own configuration; the management model is still the
   fallback. A vendor handler entry that wasn't found at install is retried every second for up to
-  two minutes (issue #246).</li>
+  two minutes (issue #246).</p>
+</li>
 </ul>
 <h2 id="100-beta2-2026-10-20"><a href="https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.2">1.0.0-beta.2</a> — 2026-10-20<a class="headerlink" href="#100-beta2-2026-10-20" title="Permanent link">&para;</a></h2>
 <p>Fixes on WildFly and Logback, more in the guide, and a conf file for the <code>logctl</code> launchers. The
