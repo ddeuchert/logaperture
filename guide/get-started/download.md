@@ -201,13 +201,18 @@ repository. This is for people who have been asked to try a fix: it is **not for
 changes without notice, and Central removes snapshots after 90 days.
 
 A snapshot has the next version followed by `-SNAPSHOT` and lives in a separate repository,
-`https://central.sonatype.com/repository/maven-snapshots/`. To fetch its zip:
+`https://central.sonatype.com/repository/maven-snapshots/`. To fetch its zip, download it from that
+repository, then copy it out of your local Maven repository:
 
 ```sh
-mvn dependency:copy -Dartifact=org.logaperture:logaperture:<version>-SNAPSHOT:zip \
-    -DoutputDirectory=. \
+mvn dependency:get -Dartifact=org.logaperture:logaperture:<version>-SNAPSHOT:zip \
+    -Dtransitive=false \
     -DremoteRepositories=snapshots::::https://central.sonatype.com/repository/maven-snapshots/
+mvn dependency:copy -Dartifact=org.logaperture:logaperture:<version>-SNAPSHOT:zip \
+    -DoutputDirectory=.
 ```
+
+The two steps are needed because `dependency:copy` ignores `-DremoteRepositories`.
 
 Ask whoever sent you the request which version to use. `logctl env` shows the version of what is
 running.
