@@ -2084,10 +2084,15 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (!overrides.removeIfCurrent(ref, toRevert)) {
             return false; // a concurrent setHandlerLevel already replaced it
         }
-        pendingResume.remove(ref); // untracked either way -- pending status is moot now
+        boolean neverApplied = pendingResume.remove(ref); // untracked either way -- pending status is moot now
 
         if (isGroupRef(ref)) {
             applyGroupReset(ref, auditSource, reasonFor);
+            return true;
+        }
+        if (neverApplied) {
+            // Resumed, but its handler never resolved: nothing was applied, so there is nothing to
+            // revert and no baseline to revert to -- it just stops being tracked.
             return true;
         }
 

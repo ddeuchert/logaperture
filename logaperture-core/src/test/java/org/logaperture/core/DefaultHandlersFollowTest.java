@@ -473,6 +473,27 @@ class DefaultHandlersFollowTest {
     }
 
     @Test
+    void aResumedFollowerWhoseHandlerNeverResolvedIsDroppedQuietlyWhenItsChangeEnds() {
+        set(APP, Level.TRACE, SetLevelOptions.sticky().withFollowHandlers(true));
+
+        adapter = new FakeLoggingAdapter(Level.INFO); // CONSOLE's name has not resolved yet
+        adapter.addKnownLogger(APP);
+        wire(CapabilityPolicy.allowAll());
+        loggers.resumeFromStateStore(Instant.now());
+        handlers.resumeFromStateStore(Instant.now());
+        assertTrue(handlerOverride(CONSOLE).isPresent());
+        int auditBefore = auditLog.records().size();
+
+        loggers.resetLogger(APP, true);
+
+        assertTrue(handlerOverride(CONSOLE).isEmpty());
+        assertTrue(stateStore.loadAllHandlers().isEmpty());
+        // nothing was ever applied to the handler, so there is nothing to revert and nothing to audit for it
+        assertTrue(auditLog.records().subList(auditBefore, auditLog.records().size()).stream()
+                .noneMatch(r -> "CONSOLE".equals(r.loggerName())));
+    }
+
+    @Test
     void exportLeavesAStickyFollowerOut() {
         set(APP, Level.DEBUG, SetLevelOptions.sticky().withFollowHandlers(true));
 
