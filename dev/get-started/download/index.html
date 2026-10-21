@@ -736,17 +736,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#try-an-unreleased-build" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Try an unreleased build
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -2004,17 +1993,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#try-an-unreleased-build" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Try an unreleased build
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -2235,18 +2213,6 @@ instead of <code>/tmp</code> if <code>sticky</code> changes should survive the c
 <p>On WildFly the <code>-javaagent:</code> line goes in the server's startup configuration instead: see
 <a href="../install-wildfly/">Install on WildFly</a>. <code>logctl</code> must run on the same machine, or in the same
 container, as the JVM: see <a href="../install-plain-jvm/">Install on a plain JVM</a>.</p>
-<h2 id="try-an-unreleased-build">Try an unreleased build<a class="headerlink" href="#try-an-unreleased-build" title="Permanent link">&para;</a></h2>
-<p>Between releases, a build of a change under test can be published to Maven Central's snapshot
-repository. This is for people who have been asked to try a fix: it is <strong>not for production</strong>, it
-changes without notice, and Central removes snapshots after 90 days.</p>
-<p>A snapshot has the next version followed by <code>-SNAPSHOT</code> and lives in a separate repository,
-<code>https://central.sonatype.com/repository/maven-snapshots/</code>. To fetch its zip:</p>
-<div class="highlight"><pre><span></span><code>mvn<span class="w"> </span>dependency:copy<span class="w"> </span>-Dartifact<span class="o">=</span>org.logaperture:logaperture:&lt;version&gt;-SNAPSHOT:zip<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>-DoutputDirectory<span class="o">=</span>.<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>-DremoteRepositories<span class="o">=</span>snapshots::::https://central.sonatype.com/repository/maven-snapshots/
-</code></pre></div>
-<p>Ask whoever sent you the request which version to use. <code>logctl env</code> shows the version of what is
-running.</p>
 
 
 
