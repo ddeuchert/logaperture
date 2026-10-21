@@ -92,7 +92,7 @@ logctl list handlers [--show-all]
 
 Shows every handler you can name, its level, and any active override. Without `--show-all`, only handlers with an active override are shown.
 
-On WildFly the individual names (`CONSOLE`, `FILE`, …) appear once the server is up. Before that, and always, `ALL_HANDLERS` means every handler at once.
+On WildFly the individual names (`CONSOLE`, `FILE`, …) appear a few seconds after the server starts, whatever the application takes to deploy. Before that, and always, `ALL_HANDLERS` means every handler at once.
 
 **Options**
 

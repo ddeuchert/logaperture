@@ -36,11 +36,22 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class LogbackLoggingAdapter implements LoggingAdapter {
 
     private final LoggerContext context;
-    private final AtomicReference<LoggerContextListener> registeredListener = new AtomicReference<>();
+    private final boolean configurationEvents;
+    private final AtomicReference<Registration> registered = new AtomicReference<>();
 
     /** Package-visible: tests construct against a fresh, throwaway {@code LoggerContext} directly. */
     LogbackLoggingAdapter(LoggerContext context) {
+        this(context, ConfigurationEndedHook.isSupported(context));
+    }
+
+    /**
+     * {@code configurationEvents} false forces the reset-listener fallback {@link #onReset} uses
+     * on Logback without configuration events, so tests on the 1.5.x the build compiles against
+     * can still exercise it.
+     */
+    LogbackLoggingAdapter(LoggerContext context, boolean configurationEvents) {
         this.context = Objects.requireNonNull(context, "context");
+        this.configurationEvents = configurationEvents;
     }
 
     @Override
@@ -68,28 +79,43 @@ public final class LogbackLoggingAdapter implements LoggingAdapter {
     }
 
     /**
-     * Registers a bare-bones {@link LoggerContextListener} whose only real
-     * method is {@code onReset} -- Logback's own reconfiguration-notification
-     * mechanism (doc/logaperture-spec.md §4.3), fired once {@code
-     * context.reset()} has finished clearing logger levels, which is
-     * exactly what makes {@code listener} safe to run immediately: whatever
-     * it reapplies won't itself be wiped by the reset it's reacting to. See
-     * doc/specs/persistence.md "Reconfiguration re-application".
+     * Runs {@code listener} after each reconfiguration -- doc/specs/persistence.md
+     * "Reconfiguration re-application", issue #231. Two mechanisms, chosen once per context:
      *
-     * <p>Replaces, rather than accumulates alongside, any listener already
-     * registered by an earlier call on this same instance -- matching the
-     * "at most one listener" contract {@link LoggingAdapter#onReset}
-     * documents. {@link #clearResetListener()} handles the other half:
-     * unregistering across separate adapter instances that all wrap the
-     * same shared static {@code context} (e.g. successive {@code
-     * NoneContainer.install()} calls in one JVM).
+     * <ul>
+     *   <li><b>Configuration ended</b>, where Logback has {@code ConfigurationEventListener}
+     *       (1.3.14+, 1.4.14+, 1.5.x): {@link ConfigurationEndedHook} fires after Joran has
+     *       applied the file, so a level the file sets doesn't overwrite the re-applied override,
+     *       and the appenders it creates already exist. A bare {@code context.reset()} with no
+     *       configuration after it fires nothing; the verification sweep covers that.</li>
+     *   <li><b>Reset</b>, on older Logback: a {@link LoggerContextListener} on {@code onReset}.
+     *       It has to be reset-resistant, or Logback removes it at the end of the first reset
+     *       that fires it ({@code resetListenersExceptResetResistant}). It runs before Joran, so
+     *       a level the file sets still wins until the next sweep.</li>
+     * </ul>
+     *
+     * <p>Replaces, rather than accumulates alongside, any listener already registered by an
+     * earlier call on this same instance -- matching the "at most one listener" contract {@link
+     * LoggingAdapter#onReset} documents. {@link #clearResetListener()} handles the other half:
+     * unregistering across separate adapter instances that all wrap the same shared static {@code
+     * context} (e.g. successive {@code NoneContainer.install()} calls in one JVM).
      */
     @Override
     public void onReset(Runnable listener) {
+        Registration registration = configurationEvents
+                ? ConfigurationEndedHook.register(context, listener)
+                : registerResetListener(listener);
+        Registration previous = registered.getAndSet(registration);
+        if (previous != null) {
+            previous.remove();
+        }
+    }
+
+    private Registration registerResetListener(Runnable listener) {
         LoggerContextListener wrapper = new LoggerContextListener() {
             @Override
             public boolean isResetResistant() {
-                return false;
+                return true;
             }
 
             @Override
@@ -112,18 +138,21 @@ public final class LogbackLoggingAdapter implements LoggingAdapter {
                 // not of interest to this adapter
             }
         };
-        LoggerContextListener previous = registeredListener.getAndSet(wrapper);
-        if (previous != null) {
-            context.removeListener(previous);
-        }
         context.addListener(wrapper);
+        return () -> context.removeListener(wrapper);
     }
 
     @Override
     public void clearResetListener() {
-        LoggerContextListener previous = registeredListener.getAndSet(null);
+        Registration previous = registered.getAndSet(null);
         if (previous != null) {
-            context.removeListener(previous);
+            previous.remove();
         }
+    }
+
+    /** Undoes one {@link #onReset} registration, whichever mechanism made it. */
+    @FunctionalInterface
+    interface Registration {
+        void remove();
     }
 }

@@ -92,6 +92,8 @@ layout) first, then `../target/logaperture-cli.jar` (source-tree layout), and
 keep the existing "not found" error. This is the only change outside the new
 module; it lets the same committed launchers work in both layouts.
 
+The launchers' optional conf file and `JAVA_HOME` handling: [`launcher-conf.md`](launcher-conf.md) (#238).
+
 ## The install guide — `INSTALL-wildfly.md`
 
 > **Superseded (2026-10-09, issue #159).** The bundle no longer carries `INSTALL-wildfly.md`. It

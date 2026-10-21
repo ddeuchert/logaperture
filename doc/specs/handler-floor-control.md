@@ -721,6 +721,9 @@ Two reflection disciplines the IT forced, both classic JBoss-Modules traps:
   moved from stderr to stdout for the same reason — WildFly tags every
   `[stderr]` line ERROR regardless of content, so even successful trace lines
   showed up looking like failures.
+  *Superseded as the first source by [wildfly-early-handler-names.md](wildfly-early-handler-names.md)
+  (issue #246): the logging subsystem's own configuration gives the names seconds after start;
+  this model route stays as the fallback.*
 - **Load through the boot module loader.** `org.jboss.modules.Module` is the
   one WildFly class on the system class path; `getBootModuleLoader()
   .loadModule("org.jboss.as.server").getClassLoader()` is the loader that can

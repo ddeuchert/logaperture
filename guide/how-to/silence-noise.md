@@ -37,6 +37,12 @@ never far away in the log. Every dropped event is counted.
 
 ## Shorten a stack trace
 
+<div class="la-cast" data-cast="trim"></div>
+
+Above: a payment endpoint is down, and every order logs the same `ConnectException` with its full
+stack trace. A `trim` rule keeps every warning but cuts that exception to one line, so the rest of
+the console is readable again.
+
 To keep an event but not its trace:
 
 ```sh

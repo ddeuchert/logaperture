@@ -1308,6 +1308,33 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     }
 
     /**
+     * Whether some context still has a vendor-defaults handler that hasn't resolved. A container
+     * checks this after installing a context to decide whether to start the quick retry (E5).
+     */
+    public boolean hasPendingVendorHandlers() {
+        for (ContextControl context : sortedByKey()) {
+            if (!context.handlerService().pendingVendorHandlers().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Retries the pending vendor handlers of every context -- doc/specs/wildfly-early-handler-names.md
+     * E5. Never throws.
+     *
+     * @return whether some context still has one pending afterwards
+     */
+    public boolean retryPendingVendorHandlers(Instant now) {
+        boolean pending = false;
+        for (ContextControl context : sortedByKey()) {
+            pending |= context.handlerService().retryPendingVendorHandlers(now);
+        }
+        return pending;
+    }
+
+    /**
      * Runs the verification sweep across every context
      * (doc/specs/wildfly-support.md, §15.5) — re-applies any override a
      * framework reconfiguration has silently overwritten. Driven by the

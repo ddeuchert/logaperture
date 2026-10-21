@@ -27,6 +27,9 @@ import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.example.shop.checkout.CheckoutService;
+import com.example.shop.payment.PaymentException;
+
 /**
  * A small online shop that logs like a real application, for the demo recordings
  * (doc/specs/demo-recordings.md). While running, a daemon thread places an order every
@@ -35,7 +38,9 @@ import org.slf4j.LoggerFactory;
  * {@code com.example.shop.inventory.StockSync} reports a sync every
  * {@value #STOCK_PERIOD_MS} ms. {@link #startFlood()} makes the stock sync fail with a
  * {@link ConnectException} every {@value #FLOOD_PERIOD_MS} ms instead, for the
- * "something is flooding the log" story.
+ * "something is flooding the log" story. {@link #startPaymentOutage()} makes every order's
+ * first payment attempt fail, logging a WARN with a {@link PaymentException} caused by a
+ * {@link ConnectException}, for the "stack traces are burying the log" story.
  *
  * <p>Order numbers, amounts and cards come from a fixed seed, so two recordings show the
  * same orders. Logs through SLF4J, which WildFly routes into JBoss LogManager.
@@ -59,6 +64,7 @@ enum DemoShop {
     private final Logger checkout = LoggerFactory.getLogger(CHECKOUT_LOGGER);
     private final Logger payment = LoggerFactory.getLogger(PAYMENT_LOGGER);
     private final Logger stock = LoggerFactory.getLogger(STOCK_LOGGER);
+    private final CheckoutService checkoutService = new CheckoutService();
 
     private ScheduledExecutorService executor;
     private ScheduledFuture<?> orders;
@@ -67,6 +73,7 @@ enum DemoShop {
     private Random random;
     private int nextOrder;
     private long floodAttempts;
+    private boolean paymentOutage;
 
     /** @return whether this call started the shop (false: it was already running) */
     synchronized boolean start() {
@@ -100,12 +107,36 @@ enum DemoShop {
         return wasFlooding;
     }
 
-    /** Stops the orders, the stock sync and any flood. @return whether anything was running */
+    /**
+     * From the next order on, the primary payment endpoint refuses connections: each order
+     * fails once, then goes through on the fallback.
+     * @return whether this call started the outage (false: already on)
+     */
+    synchronized boolean startPaymentOutage() {
+        if (paymentOutage) {
+            return false;
+        }
+        paymentOutage = true;
+        return true;
+    }
+
+    /** @return whether a payment outage was on (and is now over) */
+    synchronized boolean stopPaymentOutage() {
+        boolean wasOut = paymentOutage;
+        paymentOutage = false;
+        return wasOut;
+    }
+
+    /**
+     * Stops the orders, the stock sync, any flood and any payment outage.
+     * @return whether anything was running
+     */
     synchronized boolean stop() {
-        boolean wasRunning = orders != null || flood != null;
+        boolean wasRunning = orders != null || flood != null || paymentOutage;
         orders = cancel(orders);
         stockSync = cancel(stockSync);
         flood = cancel(flood);
+        paymentOutage = false;
         return wasRunning;
     }
 
@@ -126,6 +157,10 @@ enum DemoShop {
         return flood != null;
     }
 
+    synchronized boolean paymentOutage() {
+        return paymentOutage;
+    }
+
     private void placeOrder() {
         int order;
         int items;
@@ -133,7 +168,10 @@ enum DemoShop {
         String card;
         boolean declined;
         int latencyMs;
+        boolean outage;
         synchronized (this) {
+            // Not drawn from random, so an outage leaves the orders the seed gives unchanged.
+            outage = paymentOutage;
             order = nextOrder++;
             items = 1 + random.nextInt(4);
             total = (1_200 + random.nextInt(14_000)) / 100.0;
@@ -146,6 +184,13 @@ enum DemoShop {
         checkout.debug("Cart {}: {} line{}, subtotal {} EUR", order, items, items == 1 ? "" : "s", amount);
         payment.debug("POST /v2/auth order={} {} EUR", order, amount);
         payment.trace("req order={} card=****{} 3ds=ok", order, card);
+        if (outage) {
+            try {
+                checkoutService.checkout(order, amount, true);
+            } catch (PaymentException e) {
+                payment.warn("Primary payment endpoint unreachable for order {}, using fallback", order, e);
+            }
+        }
         if (declined) {
             payment.trace("resp order={} code=05 in {}ms", order, latencyMs);
             payment.warn("Order {} declined: do not honour", order);

@@ -18,10 +18,59 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
   `following` and `followDenied` to `set logger`, and `follows` and `thenFollows` to handler
   overrides (issue #210; `doc/specs/default-handlers-follow.md`).
 
+- **WildFly: handler names (`CONSOLE`, `FILE`, …) are known a few seconds after start**, not
+  once every deployment has finished. `logctl list handlers`, `logctl set handler CONSOLE …` and a
+  vendor-defaults handler entry such as `CONSOLE: AUTO` now work while a slow application is still
+  deploying, so a logger raised for the boot can reach the console without editing `standalone.xml`.
+  The names come from the logging subsystem's own configuration; the management model is still the
+  fallback. A vendor handler entry that wasn't found at install is retried every second for up to
+  two minutes (issue #246).
+
+## [1.0.0-beta.2] — 2026-10-20
+
+Fixes on WildFly and Logback, more in the guide, and a conf file for the `logctl` launchers. The
+commands and the `--json` output are unchanged; the one behavior change is that `logctl` now
+honors `JAVA_HOME`. **Not for production yet.** WildFly users on beta.1 should upgrade: on some
+servers the agent stopped WildFly's own management beans from registering.
+
 ### Fixed
+
+- **WildFly's `jboss.as` MBeans (and so datasources) went missing with the agent on.** The agent
+  could create the platform MBean server before jboss-modules had set
+  `javax.management.builder.initial`, so WildFly's own MBean server builder was never used. The
+  agent now waits for that property (up to 30 s) before installing (issue #237, thanks to
+  @mikeleonfsc, PR #235).
+
+- **WildFly: overrides now come back as soon as a `/subsystem=logging` change lands**, instead of
+  waiting for the next verification sweep (30 s by default). The agent watches the server's
+  `logging.properties`, because JBoss LogManager's configuration listener never fires for those
+  changes (issue #232).
+
+- **Logback: overrides are re-applied after every reconfiguration, and after the new file is
+  read.** Before, only the first reconfiguration re-applied them, and a logger the file gave a
+  level to was re-applied and then overwritten (issue #231).
 
 - **Every file in the release zip was dated 1 February 1980**, and so was every entry in the jars
   inside it. The files now carry the date of the release's commit (issue #207).
+
+### Added
+
+- **Now Showing**, a guide page that walks through every demo recording in order: when you would
+  reach for each, the recording, and every command in it with each argument explained and linked
+  to the `logctl` reference (issue #228).
+- **A fourth demo recording: a trim rule cuts a known `ConnectException` to one line**, embedded
+  in How-to: Silence noise (issue #226).
+- **A conf file for the `logctl` launchers.** An optional `bin/logctl.conf` (`bin/logctl.conf.cmd`
+  on Windows) is run before anything else and can set or clear any variable, so a bundled JDK can
+  be found by a path relative to the launcher whatever the caller's environment. The launchers
+  also pass `JAVA_OPTS` to the JVM, and `LOGCTL_JAR_HOME` names the directory holding
+  `logaperture-cli.jar` (issue #238, review by @mikeleonfsc).
+
+### Changed
+
+- **`logctl` now honors `JAVA_HOME`.** The launchers used to run `java` from the `PATH` and ignore
+  it. When `JAVA_HOME` is set, `logctl` runs `$JAVA_HOME/bin/java` only, and stops with an error
+  if it isn't there (issue #238).
 
 ## [1.0.0-beta.1] — 2026-10-15
 
@@ -501,7 +550,8 @@ store's on-disk format may still change between builds without a migration path.
   `/subsystem=logging` reconfiguration
   ([#31](https://github.com/ddeuchert/logaperture/issues/31)).
 
-[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.1...HEAD
+[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.2...HEAD
+[1.0.0-beta.2]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.2
 [1.0.0-beta.1]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.1
 [0.1.0-alpha.3]: https://github.com/ddeuchert/logaperture/releases/tag/v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/ddeuchert/logaperture/releases/tag/v0.1.0-alpha.2

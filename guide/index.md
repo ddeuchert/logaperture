@@ -16,7 +16,8 @@ logctl add rule drop com.acme.batch.Worker --message-contains "This happens a lo
 
 !!! warning "Pre-release"
     LogAperture 1.0 is in beta. Try it on a server you can afford to restart, and
-    [tell us](https://github.com/ddeuchert/logaperture/issues) what breaks. It is not for
+    [tell us](https://github.com/ddeuchert/logaperture/issues) what breaks, or
+    [how it went](https://github.com/ddeuchert/logaperture/discussions/245). It is not for
     production use before 1.0.0.
 
 ## See it work
@@ -26,6 +27,8 @@ follows the change to let the `TRACE` lines through, and both revert on their ow
 the WildFly console; `logctl` runs below.
 
 <div class="la-cast" data-cast="why-no-trace"></div>
+
+More films in [Now Showing](now-showing.md).
 
 ## What it does
 
