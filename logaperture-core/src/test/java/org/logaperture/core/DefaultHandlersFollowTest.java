@@ -326,6 +326,33 @@ class DefaultHandlersFollowTest {
     }
 
     @Test
+    void turningFollowingOffWithTheSystemPropertyKeepsTheWarningAndSaysWhy() {
+        System.setProperty(HandlerFollowing.PROPERTY, "false");
+        try {
+            SetLevelResult result = set(APP, Level.DEBUG, forMinutes(30));
+
+            assertTrue(result.following().isEmpty());
+            assertEquals("-Dlogaperture.followHandlers=false", result.followDenied());
+            assertTrue(result.blockingHandlers().stream().anyMatch(f -> f.handlerRef().equals(CONSOLE)));
+            assertTrue(handlerOverride(CONSOLE).isEmpty());
+            assertEquals(Optional.of(Level.INFO), adapter.handlerLevel(CONSOLE));
+        } finally {
+            System.clearProperty(HandlerFollowing.PROPERTY);
+        }
+    }
+
+    @Test
+    void followingIsOnWhenTheSystemPropertyIsAbsentOrTrue() {
+        assertTrue(HandlerFollowing.enabled());
+        System.setProperty(HandlerFollowing.PROPERTY, "true");
+        try {
+            assertTrue(HandlerFollowing.enabled());
+        } finally {
+            System.clearProperty(HandlerFollowing.PROPERTY);
+        }
+    }
+
+    @Test
     void aDeniedPersistKeepsTheWarningForALastingChange() {
         wire(capability -> capability != Capability.PERSIST || false);
         // PERSIST is needed for the logger change itself too: a session change follows without it.

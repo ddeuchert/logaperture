@@ -316,8 +316,10 @@ final class SetLoggerCommand implements Command {
         printDescendants(out, appliedLevel, result.getDescendants(), target, appliedTier, appliedReason);
         Commands.printBlockingHandlersWarning(out, appliedLevel, result.getBlockingHandlers());
         if (result.getFollowDenied() != null) {
-            out.println("NOTE: the default handlers didn't follow this change: "
-                    + capabilityName(result.getFollowDenied()) + " isn't granted.");
+            String denied = result.getFollowDenied();
+            String why = denied.startsWith("-D") ? "following is turned off on the agent (" + denied + ")."
+                    : capabilityName(denied) + " isn't granted.";
+            out.println("NOTE: the default handlers didn't follow this change: " + why);
         }
         return CliError.OK;
     }

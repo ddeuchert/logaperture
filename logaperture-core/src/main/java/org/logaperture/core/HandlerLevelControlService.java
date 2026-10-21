@@ -676,6 +676,9 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
 
     /** H7: following lowers a handler, and lasts as long as the change does. */
     private String deniedToFollow(List<LevelOverride> changed) {
+        if (!HandlerFollowing.enabled()) {
+            return HandlerFollowing.DISABLED_BY;
+        }
         if (!policy.isGranted(Capability.HANDLER_LOWER)) {
             return Capability.HANDLER_LOWER.name();
         }

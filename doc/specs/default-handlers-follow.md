@@ -1,6 +1,6 @@
 # `set logger`: the default handlers follow the change
 
-Status: **signed off 2026-10-17** (all decisions H1–H12 agreed as recommended, H5 including the carry-on for a shorter override). Tracked as [#210](https://github.com/ddeuchert/logaperture/issues/210).
+Status: **signed off 2026-10-17** (all decisions H1–H12 agreed as recommended, H5 including the carry-on for a shorter override); H12 revised and H13 added 2026-10-21. Tracked as [#210](https://github.com/ddeuchert/logaperture/issues/210).
 Parent: [`doc/logaperture-spec.md`](../logaperture-spec.md) §18.18. Related:
 [`handler-floor-control.md`](handler-floor-control.md) ("Warning on level commands", "AUTO handler
 level", "Default handler group"), [`set-logger-force.md`](set-logger-force.md) (the `forcedBy` tagging
@@ -15,8 +15,10 @@ After this feature, the user will be able to:
   expires or is reset.
 - See, in what `set logger` prints, which handler was let through and for how long.
 - Run `logctl set logger com.mycompany DEBUG --keep-handlers` to change only the logger, as before.
+- Start a JVM with `-Dlogaperture.followHandlers=false` to turn following off for good on that
+  server: `set logger` then changes only the logger, and says why the handlers didn't follow.
 
-Guide pages that change: `get-started/quick-start.md` (steps 2–5 and 7), `how-to/raise-a-level.md`,
+Guide pages that change: `reference/agent-options.md`, `get-started/quick-start.md` (steps 2–5 and 7), `how-to/raise-a-level.md`,
 `troubleshooting.md`, `vendors/vendor-defaults.md`, the home page, `reference/logctl.md`
 (regenerated), `reference/json-output.md`, `reference/audit-log.md`, and the `why-no-trace` and
 `debug-for-a-while` demo recordings.
@@ -126,6 +128,18 @@ blocking before the logger change ends, is touched.
 `set logger` asks nothing new; the confirmation shows what will follow (H8), and answering No to
 "Apply?" is the way out, as for everything else it shows.
 
+### Turning it off for a server (H13)
+
+`-Dlogaperture.followHandlers=false` on the JVM turns following off for every `set logger`, as if
+each carried `--keep-handlers`. Absent or `true`, following is on. It is read by the agent each time,
+so it needs no `logctl` flag and old and new `logctl` behave the same. A `set logger` that would
+have let a handler through reports it as denied (the H7 path) with
+`-Dlogaperture.followHandlers=false` as the reason, so the WARN still appears and the NOTE reads
+`following is turned off on the agent (-Dlogaperture.followHandlers=false).`; with `--keep-handlers`
+nothing extra is said. Followers already in a state file keep working until they end; the property
+stops new ones. The guided confirmation (H8) can't see the agent's JVM, so it still names the
+handlers that would follow; the NOTE after Apply is the correction.
+
 ### Permission (H7)
 
 Following needs `handler.lower` (and `persist` for a sticky or `for` lifetime), like `set handler
@@ -191,7 +205,8 @@ Apply? [Y/n]
 | H9 | Commands other than `set logger` | **Out**: `alter`, recipes, vendor file and import don't bring handlers along. |
 | H10 | Output | One `handler … → AUTO, currently …   (follows …)` line per handler, in place of its WARN. |
 | H11 | `export vendor-defaults` | **Leave following handlers out.** |
-| H12 | Release | **Decide on the finished PR**: develop for 1.0.0-beta.2, as a stated exception to the beta.1 feature freeze, or hold. After 1.0 it's a behavior change to a core command, so it would ship in **1.1.0**, not a 1.0.x patch (§11.1). |
+| H12 | Release | **1.0.0** (decided 2026-10-21; earlier 2026-10-19 it was 1.1.0). The first `set logger` that leaves the console unchanged confuses new users, and 1.0 is where they meet it. |
+| H13 | A way to turn it off for a whole server | **`-Dlogaperture.followHandlers=false`**, agent-side, default on. Reported through the H7 denial path. Alternatives: an agent argument (`--follow-handlers=off`); a `logctl` setting. A property because the people who want it off are the ones who own the JVM's flags, and it works against any `logctl`. |
 
 ## Testing
 

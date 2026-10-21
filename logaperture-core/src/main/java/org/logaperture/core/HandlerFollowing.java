@@ -40,7 +40,8 @@ public interface HandlerFollowing {
 
     /**
      * @param following the handlers let through
-     * @param denied    the capability whose denial kept them from it (H7), or {@code null}
+     * @param denied    the capability whose denial kept them from it (H7), {@link #DISABLED_BY} when the
+     *                  agent has following turned off (H13), or {@code null}
      */
     record Outcome(List<FollowedHandler> following, String denied) {
 
@@ -49,6 +50,17 @@ public interface HandlerFollowing {
         public Outcome {
             following = List.copyOf(following);
         }
+    }
+
+    /** {@value}: the system property that turns following off (H13). */
+    String PROPERTY = "logaperture.followHandlers";
+
+    /** What {@code Outcome.denied} carries when {@link #PROPERTY} is {@code false}. */
+    String DISABLED_BY = "-D" + PROPERTY + "=false";
+
+    /** Whether following is on: it is unless {@code -Dlogaperture.followHandlers=false}. */
+    static boolean enabled() {
+        return !"false".equalsIgnoreCase(System.getProperty(PROPERTY, "true").trim());
     }
 
     HandlerFollowing NONE = (changed, follow) -> Outcome.NONE;

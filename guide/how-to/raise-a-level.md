@@ -115,7 +115,9 @@ at least as long as the logger change, nothing changes. If it ends sooner, the h
 setting until then and follows the change after that. If it blocks them, `set logger` warns about
 it.
 
-To change only the logger, add `--keep-handlers`:
+To change only the logger, add `--keep-handlers`. To make that the rule for a whole server, start
+its JVM with `-Dlogaperture.followHandlers=false` (see [agent options](../reference/agent-options.md));
+`set logger` then says why the handlers didn't follow.
 
 ```sh
 logctl set logger io.undertow.request DEBUG for 5m --keep-handlers

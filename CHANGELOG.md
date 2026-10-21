@@ -16,7 +16,8 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
   command. A handler you set yourself is left as you set it, and `--keep-handlers` changes only the
   logger, as before. `status` and `list handlers` show what a handler follows; `--json` adds
   `following` and `followDenied` to `set logger`, and `follows` and `thenFollows` to handler
-  overrides (issue #210; `doc/specs/default-handlers-follow.md`).
+  overrides. `-Dlogaperture.followHandlers=false` turns this off for a whole server (issue #210;
+  `doc/specs/default-handlers-follow.md`).
 
 - **WildFly: handler names (`CONSOLE`, `FILE`, …) are known a few seconds after start**, not
   once every deployment has finished. `logctl list handlers`, `logctl set handler CONSOLE …` and a

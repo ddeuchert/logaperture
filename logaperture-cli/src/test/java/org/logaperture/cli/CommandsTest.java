@@ -961,6 +961,19 @@ class CommandsTest {
     }
 
     @Test
+    void setLevel_followingTurnedOffOnTheAgent_saysSo() {
+        mbean.setLevelResult = followResult(List.of(new HandlerFloorData("CONSOLE", "INFO")), List.of(),
+                "-Dlogaperture.followHandlers=false");
+
+        run(Commands.setLogger("com.acme", "DEBUG", null, "SESSION", 0L, false, false));
+
+        String text = output();
+        assertTrue(text.contains("WARN: handler CONSOLE is at INFO"), text);
+        assertTrue(text.contains("NOTE: the default handlers didn't follow this change: following is turned off"
+                + " on the agent (-Dlogaperture.followHandlers=false)."), text);
+    }
+
+    @Test
     void setLevel_followDenied_keepsTheWarningAndSaysWhy() {
         mbean.setLevelResult = followResult(List.of(new HandlerFloorData("CONSOLE", "INFO")), List.of(),
                 "HANDLER_LOWER");
