@@ -14,9 +14,10 @@ After this feature, the user will be able to:
   repository, for example to try a fix before the next beta.
 - (Maintainer) See in the pull request's checks which commit was published and where to fetch it.
 
-Guide pages changed: [Download](../../guide/get-started/download.md) (a short "Try an unreleased
-build" section, D8). For the maintainer, [`DEVELOPMENT.md`](../../DEVELOPMENT.md) gets a
-"Publishing a snapshot" paragraph next to "Cutting a release".
+Guide pages changed: none. Snapshots are not mentioned in the guide (D8, revised): a maintainer
+passes the coordinates to the specific adopters who ask. For the maintainer,
+[`DEVELOPMENT.md`](../../DEVELOPMENT.md) gets a "Publishing a snapshot" paragraph next to "Cutting a
+release".
 
 ## Why
 
@@ -74,7 +75,7 @@ No GPG secret is needed.
 | D5 | Guards | Same-repository PRs only (a fork gets no secrets anyway); refuse a version that doesn't end in `-SNAPSHOT`; require the PR's `build` check to have passed for the commit being built, so a broken build is never published. Tests aren't rerun, as in the dry run. | Agreed (David, 2026-10-20) |
 | D6 | Reporting | A job summary only: PR, commit, version, the repository URL and the path to the files. No PR comment. | Agreed (David, 2026-10-20) |
 | D7 | Retention | Central's: 90 days, and a new upload replaces the same version. Nothing of ours cleans up. | Agreed (David, 2026-10-20) |
-| D8 | Documentation | `DEVELOPMENT.md` gets the maintainer steps; the Download page gets a short, plain "Try an unreleased build" section (the repository URL, the artifact coordinates, a `curl` for the zip, "not for production"). Leave the Download section out if you'd rather not point users at snapshots yet. | Agreed (David, 2026-10-20) |
+| D8 | Documentation | `DEVELOPMENT.md` gets the maintainer steps. **The guide says nothing about snapshots** (revised 2026-10-21; first agreed was a short "Try an unreleased build" section on the Download page). Reason: a tester behind a corporate Nexus mirror that proxies only Central's releases can't resolve a snapshot with the Maven commands, and the people who need one are few; the maintainer gives them the zip's URL directly. Add it back to the Download page if the need becomes general. | Agreed (David, 2026-10-21) |
 
 ## Tests
 

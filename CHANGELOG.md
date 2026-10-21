@@ -31,7 +31,7 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 - **Snapshot builds on Maven Central.** A maintainer can publish a pull request's build as a
   `-SNAPSHOT` to Central's snapshot repository by labeling it `deploy snapshot`, so testers can try
-  a fix before the next beta. The Download page says how to fetch one (issue #248).
+  a fix before the next beta (issue #248).
 
 ## [1.0.0-beta.2] — 2026-10-20
 
