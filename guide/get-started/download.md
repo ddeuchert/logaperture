@@ -193,3 +193,21 @@ instead of `/tmp` if `sticky` changes should survive the container being replace
 On WildFly the `-javaagent:` line goes in the server's startup configuration instead: see
 [Install on WildFly](install-wildfly.md). `logctl` must run on the same machine, or in the same
 container, as the JVM: see [Install on a plain JVM](install-plain-jvm.md).
+
+## Try an unreleased build
+
+Between releases, a build of a change under test can be published to Maven Central's snapshot
+repository. This is for people who have been asked to try a fix: it is **not for production**, it
+changes without notice, and Central removes snapshots after 90 days.
+
+A snapshot has the next version followed by `-SNAPSHOT` and lives in a separate repository,
+`https://central.sonatype.com/repository/maven-snapshots/`. To fetch its zip:
+
+```sh
+mvn dependency:copy -Dartifact=org.logaperture:logaperture:<version>-SNAPSHOT:zip \
+    -DoutputDirectory=. \
+    -DremoteRepositories=snapshots::::https://central.sonatype.com/repository/maven-snapshots/
+```
+
+Ask whoever sent you the request which version to use. `logctl env` shows the version of what is
+running.
