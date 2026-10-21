@@ -20,6 +20,7 @@ import org.logaperture.api.DescendantLevel;
 import org.logaperture.api.BackendInfo;
 import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.EnvironmentReport;
+import org.logaperture.api.FollowedHandler;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerInfo;
 import org.logaperture.api.HandlerLevelOverride;
@@ -934,9 +935,19 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         // each forced logger, and each one that didn't follow, once by name.
         Map<String, LevelOverride> forcedByName = new LinkedHashMap<>();
         Map<String, DescendantLevel> descendantsByName = new LinkedHashMap<>();
+        // doc/specs/default-handlers-follow.md: each context's default handlers follow on their own; a
+        // handler named alike in several is reported once, as the warning does.
+        Map<HandlerRef, FollowedHandler> followingByRef = new LinkedHashMap<>();
+        String followDenied = null;
         for (ContextControl context : contexts) {
             SetLevelResult result = context.service().setLogger(
                     loggerName, level, opts, resolvedMatchesByContext.get(context.stableKey()));
+            for (FollowedHandler followed : result.following()) {
+                followingByRef.putIfAbsent(followed.handlerRef(), followed);
+            }
+            if (followDenied == null) {
+                followDenied = result.followDenied();
+            }
             for (DescendantLevel descendant : result.descendants()) {
                 descendantsByName.putIfAbsent(descendant.loggerName(), descendant);
             }
@@ -970,7 +981,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             reportedOverrides.addAll(forcedByName.values()); // the target first, then what it forced
         }
         return new SetLevelResult(reportedOverrides, List.copyOf(blockingByRef.values()),
-                List.copyOf(descendantsByName.values()));
+                List.copyOf(descendantsByName.values()), List.copyOf(followingByRef.values()), followDenied);
     }
 
     @Override

@@ -124,10 +124,16 @@ import java.util.Map;
  * top-level {@code stormDetection:} entry -- one mapping, not a list, written only when a {@code
  * for} or {@code sticky} storm-detection setting exists. A version-≤11 file has none and reads as
  * no saved setting.
+ *
+ * <p>Schema version 13 (doc/specs/default-handlers-follow.md) adds optional {@code follows:} and
+ * {@code thenFollows:} lines to {@code handlerOverrides:} records -- the loggers a follower follows,
+ * or an operator's override carries on following, one quoted value with the names separated by
+ * newlines (a logger name never has one), written only when there are any. A version-≤12 record
+ * has neither and reads as empty.
  */
 final class StateFileFormat {
 
-    private static final int SCHEMA_VERSION = 12;
+    private static final int SCHEMA_VERSION = 13;
     private static final char PAYLOAD_ENTRY_SEPARATOR = '\u0001';
     private static final char PAYLOAD_KV_SEPARATOR = '\u0002';
     private static final int MIN_SUPPORTED_SCHEMA_VERSION = 1;
@@ -187,6 +193,8 @@ final class StateFileFormat {
                 out.append("    expiresAt: ").append(override.expiresAt() == null ? "null" : override.expiresAt()).append('\n');
                 appendStateId(out, override.stateId());
                 appendRecipe(out, override.recipe());
+                appendLoggerList(out, "follows", override.follows());
+                appendLoggerList(out, "thenFollows", override.thenFollows());
             }
         }
 
@@ -243,6 +251,18 @@ final class StateFileFormat {
             out.append("  source: ").append(quote(stormDetection.source())).append('\n');
         }
         return out.toString();
+    }
+
+    private static void appendLoggerList(StringBuilder out, String key, List<String> loggerNames) {
+        if (!loggerNames.isEmpty()) {
+            out.append("    ").append(key).append(": ").append(quote(String.join("\n", loggerNames))).append('\n');
+        }
+    }
+
+    /** A version-≤12 record has no {@code follows:}/{@code thenFollows:} line -- empty. */
+    private static List<String> loggerList(Map<String, String> fields, String key) {
+        String value = nullable(fields.get(key));
+        return value == null ? List.of() : List.of(unquote(value).split("\n"));
     }
 
     private static void appendRecipe(StringBuilder out, String recipe) {
@@ -491,7 +511,9 @@ final class StateFileFormat {
                 PersistenceTier.valueOf(fields.get("tier")),
                 nullable(fields.get("expiresAt")) == null ? null : Instant.parse(fields.get("expiresAt")),
                 stateId(fields),
-                recipe(fields));
+                recipe(fields),
+                loggerList(fields, "follows"),
+                loggerList(fields, "thenFollows"));
     }
 
     private static PersistedRule toRule(Map<String, String> fields) {

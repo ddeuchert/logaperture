@@ -22,9 +22,9 @@ logctl add rule drop com.acme.batch.Worker --message-contains "This happens a lo
 
 ## See it work
 
-A logger raised to `TRACE` still shows nothing on the console, because the console's own handler
-is at `INFO`. One more command fixes it, and both changes revert on their own. The top pane is the
-WildFly console; `logctl` runs below.
+A logger raised to `TRACE` on a running WildFly. The console's own handler is at `INFO`, so it
+follows the change to let the `TRACE` lines through, and both revert on their own. The top pane is
+the WildFly console; `logctl` runs below.
 
 <div class="la-cast" data-cast="why-no-trace"></div>
 

@@ -113,7 +113,8 @@ final class HelpTopics {
                     List.of("logctl status", "logctl status --json")),
 
             new HelpTopic("set logger", "Change a logger's level.",
-                    List.of("logctl set logger <target> <level> [session | for <duration> | sticky] [--force]"),
+                    List.of("logctl set logger <target> <level> [session | for <duration> | sticky] [--force] "
+                            + "[--keep-handlers]"),
                     List.of("Changes the level until the tier says otherwise: `for 4h` unless you give one. Nothing "
                                     + "in the application's own configuration files is touched.",
                             "A target is an exact logger name, or a leading-`*` pattern like `'*.Worker'`. A pattern "
@@ -126,11 +127,16 @@ final class HelpTopics {
                                     + "future. The exception is a descendant with a level of its own, which keeps "
                                     + "it: add `--force` to set those too. `reset logger org.apache` puts them back "
                                     + "with it.",
-                            "If a handler is set stricter than the new level, the extra output still won't appear. "
-                                    + "`set logger` then names the handler and the command that lowers it: see "
-                                    + "`logctl help set handler`."),
+                            "A handler has a level of its own, and one set stricter than the new level would drop "
+                                    + "the extra output. The default handlers (usually the console) follow the change "
+                                    + "instead: each one that would drop it goes to `AUTO` for as long as the change "
+                                    + "lasts, then back to its own level. A handler you set yourself is left as you set "
+                                    + "it. For any other handler that would drop it, `set logger` names the handler "
+                                    + "and the command that lowers it: see `logctl help set handler`."),
                     List.of(new Option("--force", "Also set the loggers under the target that have a level of "
                                     + "their own."),
+                            new Option("--keep-handlers", "Change only the logger: the default handlers keep their "
+                                    + "own level."),
                             new Option("--yes", "For a pattern target: take every match without asking.")),
                     List.of("logctl set logger com.example.demo DEBUG for 30m",
                             "logctl set logger '*.Worker' TRACE session --yes",

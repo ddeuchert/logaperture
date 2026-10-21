@@ -49,15 +49,28 @@ import java.util.Objects;
  *                         level of their own or forced earlier; with it, those left alone because
  *                         the operator set them. A forced descendant itself is in {@code overrides},
  *                         with {@link LevelOverride#forcedBy()} set.
+ * @param following        the default handlers that now follow the change, or will carry on
+ *                         following it when their own override ends (doc/specs/
+ *                         default-handlers-follow.md); never in {@code blockingHandlers}
+ * @param followDenied     the capability whose denial kept the default handlers from following
+ *                         (H7), as {@code logctl} names it, or {@code null}; those handlers stay
+ *                         in {@code blockingHandlers}
  */
 public record SetLevelResult(List<LevelOverride> overrides, List<HandlerFloor> blockingHandlers,
-        List<DescendantLevel> descendants) {
+        List<DescendantLevel> descendants, List<FollowedHandler> following, String followDenied) {
+
+    /** No handler follows -- the shape before doc/specs/default-handlers-follow.md. */
+    public SetLevelResult(List<LevelOverride> overrides, List<HandlerFloor> blockingHandlers,
+            List<DescendantLevel> descendants) {
+        this(overrides, blockingHandlers, descendants, List.of(), null);
+    }
 
     public SetLevelResult {
         Objects.requireNonNull(overrides, "overrides");
         overrides = List.copyOf(overrides);
         blockingHandlers = blockingHandlers == null ? List.of() : List.copyOf(blockingHandlers);
         descendants = descendants == null ? List.of() : List.copyOf(descendants);
+        following = following == null ? List.of() : List.copyOf(following);
     }
 
     /** No descendants to report -- the shape before doc/specs/set-logger-force.md. */
