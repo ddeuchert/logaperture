@@ -484,6 +484,24 @@ class HandlerLevelControlServiceTest {
     }
 
     @Test
+    void resumeFromStateStore_pendingHandler_resolvesLater_resetRevertsToItsOwnLevelNotTheResumedOne() {
+        service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.sticky());
+        FakeLoggingAdapter freshAdapter = new FakeLoggingAdapter(Level.INFO);
+        HandlerLevelControlService resumed = new HandlerLevelControlService(freshAdapter,
+                new HandlerBaselineRegistry(), new HandlerOverrideRegistry(),
+                new DefaultHandlerGroupRegistry(), CapabilityPolicy.allowAll(), auditLog, stateStore, "alice", "resume");
+        resumed.resumeFromStateStore(Instant.now());
+
+        freshAdapter.addHandler(CONSOLE, Level.INFO); // name resolution catches up, at its configured INFO
+        resumed.verifyAndReapply(Instant.now());
+        assertEquals(Level.TRACE, freshAdapter.handlerLevel(CONSOLE).orElseThrow());
+        resumed.resetHandler(CONSOLE, true);
+
+        assertEquals(Level.INFO, freshAdapter.handlerLevel(CONSOLE).orElseThrow());
+        assertTrue(resumed.listHandlerOverrides().isEmpty());
+    }
+
+    @Test
     void resumeFromStateStore_pendingHandler_afterItFirstResolves_aLaterVanishStillDropsIt() {
         service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.sticky());
         FakeLoggingAdapter freshAdapter = new FakeLoggingAdapter(Level.INFO);

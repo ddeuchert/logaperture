@@ -1557,6 +1557,12 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
                             + ref + "', leaving it for the next tick: " + e);
                     continue;
                 }
+                if (pendingResume.contains(ref)) {
+                    // First time it resolves: resumeOne couldn't record the handler's own level, and
+                    // the re-apply below is about to overwrite it. Record it now, or the override's
+                    // level would be taken as the native one and a reset would "revert" to it.
+                    baselines.captureIfAbsent(ref, adapter);
+                }
                 drifted = current.isEmpty() || current.get() != override.level();
                 currentDescription = current.map(Level::toString).orElse("<none>");
             }
