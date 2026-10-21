@@ -2376,7 +2376,7 @@ logctl<span class="w"> </span>list<span class="w"> </span>loggers<span class="w"
 <div class="highlight"><pre><span></span><code>logctl list handlers [--show-all]
 </code></pre></div>
 <p>Shows every handler you can name, its level, and any active override. Without <code>--show-all</code>, only handlers with an active override are shown.</p>
-<p>On WildFly the individual names (<code>CONSOLE</code>, <code>FILE</code>, …) appear once the server is up. Before that, and always, <code>ALL_HANDLERS</code> means every handler at once.</p>
+<p>On WildFly the individual names (<code>CONSOLE</code>, <code>FILE</code>, …) appear a few seconds after the server starts, whatever the application takes to deploy. Before that, and always, <code>ALL_HANDLERS</code> means every handler at once.</p>
 <p><strong>Options</strong></p>
 <dl>
 <dt><code>--show-all</code></dt>

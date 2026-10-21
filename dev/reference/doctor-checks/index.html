@@ -2267,7 +2267,7 @@ applies.</p>
 <p><strong>Fix:</strong> make the file and its directory read-only for that account.</p>
 <h3 id="vendor-defaultsunresolved-handler"><code>vendor-defaults.unresolved-handler</code><a class="headerlink" href="#vendor-defaultsunresolved-handler" title="Permanent link">&para;</a></h3>
 <p>The vendor defaults file sets a handler that doesn't exist yet. <code>INFO</code>. The setting is applied as
-soon as the handler appears, which on WildFly can be some time after startup.</p>
+soon as the handler appears, which on WildFly is a few seconds after startup.</p>
 <p><strong>Fix:</strong> if it never appears, check the name against <code>logctl list handlers --show-all</code>.</p>
 <h3 id="recipe-files"><code>recipe-files</code><a class="headerlink" href="#recipe-files" title="Permanent link">&para;</a></h3>
 <p>Whether every recipe file reads cleanly. <code>OK</code>, or <code>INFO</code> for each file that can't be read: its

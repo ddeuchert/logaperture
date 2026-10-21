@@ -2061,6 +2061,10 @@ Vendor defaults      not configured
 <p><code>Framework/container</code> must name WildFly. If it doesn't, LogAperture didn't recognize the server:
 check the server log before going further. If <code>logctl</code> says it can't find a JVM, see
 <a href="../../how-to/several-jvms/">Work with several JVMs</a>.</p>
+<p>LogAperture knows WildFly's handler names (<code>CONSOLE</code>, <code>FILE</code>, …) a few seconds after the JVM
+starts, so you can set a handler level or put one in the
+<a href="../../vendors/vendor-defaults/">vendor defaults</a> while a long-starting application is still
+deploying. <code>ALL_HANDLERS</code> always works.</p>
 <p>Next: the <a href="../quick-start/">Quick start</a>.</p>
 <h2 id="agent-options">Agent options<a class="headerlink" href="#agent-options" title="Permanent link">&para;</a></h2>
 <p>Agent options go after the jar, separated by <code>=</code>:</p>

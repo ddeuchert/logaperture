@@ -1783,6 +1783,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Unreleased">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1820,7 +1837,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed" class="md-nav__link">
+  <a href="#changed_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -1859,7 +1876,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed_1" class="md-nav__link">
+  <a href="#changed_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -1909,7 +1926,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed_2" class="md-nav__link">
+  <a href="#changed_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -1959,7 +1976,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#changed_3" class="md-nav__link">
+  <a href="#changed_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -2100,6 +2117,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Unreleased">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2137,7 +2171,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed" class="md-nav__link">
+  <a href="#changed_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -2176,7 +2210,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed_1" class="md-nav__link">
+  <a href="#changed_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -2226,7 +2260,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#changed_2" class="md-nav__link">
+  <a href="#changed_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -2276,7 +2310,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#changed_3" class="md-nav__link">
+  <a href="#changed_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         Changed
@@ -2401,6 +2435,16 @@ to follow <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a> 
 reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>; the betas and release
 candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code>.</p>
 <h2 id="unreleased"><a href="https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.2...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>WildFly: handler names (<code>CONSOLE</code>, <code>FILE</code>, …) are known a few seconds after start</strong>, not
+  once every deployment has finished. <code>logctl list handlers</code>, <code>logctl set handler CONSOLE …</code> and a
+  vendor-defaults handler entry such as <code>CONSOLE: AUTO</code> now work while a slow application is still
+  deploying, so a logger raised for the boot can reach the console without editing <code>standalone.xml</code>.
+  The names come from the logging subsystem's own configuration; the management model is still the
+  fallback. A vendor handler entry that wasn't found at install is retried every second for up to
+  two minutes (issue #246).</li>
+</ul>
 <h2 id="100-beta2-2026-10-20"><a href="https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.2">1.0.0-beta.2</a> — 2026-10-20<a class="headerlink" href="#100-beta2-2026-10-20" title="Permanent link">&para;</a></h2>
 <p>Fixes on WildFly and Logback, more in the guide, and a conf file for the <code>logctl</code> launchers. The
 commands and the <code>--json</code> output are unchanged; the one behavior change is that <code>logctl</code> now
@@ -2444,7 +2488,7 @@ servers the agent stopped WildFly's own management beans from registering.</p>
   also pass <code>JAVA_OPTS</code> to the JVM, and <code>LOGCTL_JAR_HOME</code> names the directory holding
   <code>logaperture-cli.jar</code> (issue #238, review by @mikeleonfsc).</li>
 </ul>
-<h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
+<h3 id="changed_1">Changed<a class="headerlink" href="#changed_1" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong><code>logctl</code> now honors <code>JAVA_HOME</code>.</strong> The launchers used to run <code>java</code> from the <code>PATH</code> and ignore
   it. When <code>JAVA_HOME</code> is set, <code>logctl</code> runs <code>$JAVA_HOME/bin/java</code> only, and stops with an error
@@ -2550,7 +2594,7 @@ renames from the 1.0 review of commands and <code>--json</code> output.</p>
 <li><strong>Vendor defaults file: <code>namespace:</code> and <code>recipes:</code></strong>, and multi-line text written as YAML's
   <code>key: |</code> block text (issue #92). <code>logctl export vendor-defaults</code> carries both sections over.</li>
 </ul>
-<h3 id="changed_1">Changed<a class="headerlink" href="#changed_1" title="Permanent link">&para;</a></h3>
+<h3 id="changed_2">Changed<a class="headerlink" href="#changed_2" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong><code>logctl list loggers --json</code> prints an object, <code>{"loggers": [...]}</code></strong>, like every other
   command, instead of a bare array. A script reading it with <code>jq '.[]'</code> now needs
@@ -2793,7 +2837,7 @@ formats may still change between builds without a migration path.</p>
   answer only those, and the <code>alter rule</code> command naming just those changes is printed before it's
   applied. <code>-</code> removes an optional part; answers that change nothing apply nothing (issue #116).</li>
 </ul>
-<h3 id="changed_2">Changed<a class="headerlink" href="#changed_2" title="Permanent link">&para;</a></h3>
+<h3 id="changed_3">Changed<a class="headerlink" href="#changed_3" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong><code>logctl set logger '&lt;pattern&gt;' &lt;level&gt;</code> on a terminal lists the matches to pick from</strong> (<code>1,3-5</code>,
   <code>all</code>, Enter to cancel) rather than asking once to apply to all of them, the same as <code>add rule</code>. A
@@ -2836,7 +2880,7 @@ formats may still change between builds without a migration path.</p>
 <p>Developer handler workflow, a reworked command surface, and WildFly fixes.
 <strong>Evaluation only — not for production.</strong> The override store's on-disk format may
 still change between builds without a migration path.</p>
-<h3 id="changed_3">Changed<a class="headerlink" href="#changed_3" title="Permanent link">&para;</a></h3>
+<h3 id="changed_4">Changed<a class="headerlink" href="#changed_4" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong><code>logctl</code> command surface refactor.</strong> <code>set</code>, <code>reset</code> and <code>list</code> are now
   namespaced by target: <code>logctl set logger &lt;logger&gt; &lt;level&gt;</code>,
