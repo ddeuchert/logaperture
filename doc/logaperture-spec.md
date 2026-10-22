@@ -1232,6 +1232,7 @@ The M0–M6 plan above stays the long-term map. It is too much to build before a
 | `0.1.0-alpha.3` | ~Oct 1 | Everything on `develop` today, plus guided `list`, `set`, `reset` and `alter rule` (#116), which finished early and was pulled forward from beta 1 (2026-09-28). Last GitHub-only release. |
 | `1.0.0-beta.1` | Oct 15 | **Feature freeze.** Adds library recipes (#92), whose spec was signed off in time. First Maven Central publish; docs site live. Released 2026-10-15. |
 | `1.0.0-beta.2` | Oct 20 | Fixes and guide only: WildFly `jboss.as` MBeans (#237), override re-apply on WildFly (#232) and Logback (#231), zip file dates (#207), the launcher conf file (#238), Now Showing and the trim recording. Released 2026-10-20. |
+| `1.0.0-beta.3` | Oct 21 | `set logger` brings the default handlers along (#210), WildFly handler names within seconds of start (#246), snapshot builds on Maven Central (#248), the Discussions links (#243), and two resume fixes (#251, #253). Released 2026-10-21. |
 | `1.0.0-beta.N`, `-rc.1` | rc by Nov 9 | Fixes only, plus renames from the contract review. |
 | `1.0.0` | Nov 16 | The §11.1 compatibility promise starts; the "not for production" warning comes off within the §11 1.0 matrix. |
 | `1.1.0` | Dec 2026 – early 2027 | Quarkus JVM mode (#114), then plain-JVM JUL (#221). Not in 1.0.0. Then Release 2: Spring Boot, Logback depth (rules, `top`, `doctor`, storms), configurable storm suppression (#27), Tomcat with per-webapp Logback. If Quarkus takes 1.1, Release 2 becomes 1.2. |

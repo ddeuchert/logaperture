@@ -8,6 +8,10 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ## [Unreleased]
 
+## [1.0.0-beta.3] — 2026-10-21
+
+`set logger` now shows its result on the console, and WildFly's handler names are available while the server is still starting. **Not for production yet.**
+
 ### Changed
 
 - **`set logger` brings the console along.** A default handler (usually the console) that would
@@ -26,6 +30,8 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
   The names come from the logging subsystem's own configuration; the management model is still the
   fallback. A vendor handler entry that wasn't found at install is retried every second for up to
   two minutes (issue #246).
+
+- **The README, the guide and the issue chooser point testers at GitHub Discussions** for questions and feedback, and at Issues for bugs (issue #243).
 
 ### Added
 
@@ -557,7 +563,8 @@ store's on-disk format may still change between builds without a migration path.
   `/subsystem=logging` reconfiguration
   ([#31](https://github.com/ddeuchert/logaperture/issues/31)).
 
-[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.2...HEAD
+[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.3...HEAD
+[1.0.0-beta.3]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.3
 [1.0.0-beta.2]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.2
 [1.0.0-beta.1]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.1
 [0.1.0-alpha.3]: https://github.com/ddeuchert/logaperture/releases/tag/v0.1.0-alpha.3

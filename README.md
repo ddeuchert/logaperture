@@ -10,7 +10,7 @@
 
 **Install it, learn it, and look up every command at [logaperture.org](https://logaperture.org/).** Open source under the [Apache License 2.0](LICENSE).
 
-> ### Status: 1.0.0-beta.2 — feature-complete for 1.0, testers wanted
+> ### Status: 1.0.0-beta.3 — feature-complete for 1.0, testers wanted
 >
 > **Not for production yet.** Everything 1.0 will do is in this build — see [Try the beta](#try-the-beta). Until 1.0.0 only fixes, documentation and packaging change, plus any renames from the 1.0 review of commands and output, so a script written against this beta may need a small change at 1.0.0.
 >
@@ -40,7 +40,7 @@
 
 ## Try the beta
 
-`1.0.0-beta.2` runs on **standalone WildFly** (26.1 and later) and on **plain `java -jar` with Logback**, on JDK 17, 21 and 25. Not every feature works on both yet: the guide's [support table](https://logaperture.org/latest/#what-10-supports) says which.
+`1.0.0-beta.3` runs on **standalone WildFly** (26.1 and later) and on **plain `java -jar` with Logback**, on JDK 17, 21 and 25. Not every feature works on both yet: the guide's [support table](https://logaperture.org/latest/#what-10-supports) says which.
 
 - **Change a log level on the running JVM**, and have it revert on a timer, last until restart, or survive restarts. One command undoes everything.
 - **`top` and `doctor`**: which loggers fill the disk, and logging configuration that will hurt you.
