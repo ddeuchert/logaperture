@@ -92,7 +92,7 @@
             
             
   
-    This guide is for <strong>1.0.0-beta.2</strong>, a pre-release. Commands
+    This guide is for <strong>1.0.0-beta.3</strong>, a pre-release. Commands
     and options may still change before 1.0.0.
   
 
@@ -902,10 +902,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#when-raising-a-logger-shows-nothing" class="md-nav__link">
+  <a href="#the-console-follows" class="md-nav__link">
     <span class="md-ellipsis">
       
-        When raising a logger shows nothing
+        The console follows
       
     </span>
   </a>
@@ -1918,10 +1918,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#when-raising-a-logger-shows-nothing" class="md-nav__link">
+  <a href="#the-console-follows" class="md-nav__link">
     <span class="md-ellipsis">
       
-        When raising a logger shows nothing
+        The console follows
       
     </span>
   </a>
@@ -1980,10 +1980,10 @@ the top pane. The change reverts on its own, and the console's <code>AUTO</code>
 <h2 id="one-logger">One logger<a class="headerlink" href="#one-logger" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>io.undertow.request<span class="w"> </span>DEBUG<span class="w"> </span><span class="k">for</span><span class="w"> </span>5m
 </code></pre></div>
-<div class="highlight"><pre><span></span><code>io.undertow.request → DEBUG   (FOR, reverts 05:01:22 local — in 4m)
-WARN: handler CONSOLE is at INFO and will drop DEBUG records from this logger.
-      To see them: logctl set handler CONSOLE DEBUG
+<div class="highlight"><pre><span></span><code>io.undertow.request → DEBUG   (FOR, reverts 05:45:49 local — in 4m)
+handler CONSOLE → AUTO, currently DEBUG   (follows io.undertow.request)
 </code></pre></div>
+<p>The second line is the console following the change: see <a href="#the-console-follows">The console follows</a>.</p>
 <p>The level is one of <code>TRACE</code>, <code>DEBUG</code>, <code>INFO</code>, <code>WARN</code>, <code>ERROR</code>, <code>OFF</code> or <code>ALL</code>. The tier at the
 end says how long the change lasts: <code>for 30m</code>, <code>session</code> (until the JVM stops), or <code>sticky</code> (until
 you reset it). Without a tier, <code>for 4h</code>. See <a href="../../concepts/tiers-and-expiry/">Tiers and expiry</a>.</p>
@@ -2025,22 +2025,40 @@ all of them:</p>
 </code></pre></div>
 <p>The pattern is applied once, to the loggers that exist now. A matching logger created later isn't
 changed. Quote the pattern, so the shell doesn't expand the <code>*</code>.</p>
-<h2 id="when-raising-a-logger-shows-nothing">When raising a logger shows nothing<a class="headerlink" href="#when-raising-a-logger-shows-nothing" title="Permanent link">&para;</a></h2>
-<p>The warning after <code>set logger</code> is the usual reason:</p>
-<div class="highlight"><pre><span></span><code>WARN: handler CONSOLE is at INFO and will drop DEBUG records from this logger.
+<h2 id="the-console-follows">The console follows<a class="headerlink" href="#the-console-follows" title="Permanent link">&para;</a></h2>
+<p>A logger's level decides what is logged. Each <strong>handler</strong> (the console, a file) has a level of its
+own that decides what it writes. WildFly's console handler is usually at <code>INFO</code>, so on its own it
+would write <code>DEBUG</code> lines to <code>server.log</code> but not to the console.</p>
+<p>The console is the default handler (<code>DEFAULT_HANDLERS</code>), so <code>set logger</code> brings it along: a default
+handler that would drop the new records goes to <code>AUTO</code>, where it tracks the most verbose change you
+have active. It goes back to its own level when the changes it follows have all ended: expired,
+reset, or set back to a quieter level. <code>logctl status</code> shows what it follows:</p>
+<div class="highlight"><pre><span></span><code>HANDLER  LEVEL  MODE  TIER  REVERTS          REASON
+CONSOLE  DEBUG  AUTO  FOR   with the logger  follows io.undertow.request
+</code></pre></div>
+<p>A handler you've set yourself is left as you set it. If your setting lets the records through for
+at least as long as the logger change, nothing changes. If it ends sooner, the handler keeps your
+setting until then and follows the change after that. If it blocks them, <code>set logger</code> warns about
+it.</p>
+<p>To change only the logger, add <code>--keep-handlers</code>: it keeps the handlers at their own levels instead
+of letting them follow the change. To make that the rule for a whole server, start
+its JVM with <code>-Dlogaperture.followHandlers=false</code> (see <a href="../../reference/agent-options/">agent options</a>);
+<code>set logger</code> then says why the handlers didn't follow.</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>io.undertow.request<span class="w"> </span>DEBUG<span class="w"> </span><span class="k">for</span><span class="w"> </span>5m<span class="w"> </span>--keep-handlers
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>io.undertow.request → DEBUG   (FOR, reverts 05:45:58 local — in 4m)
+WARN: handler CONSOLE is at INFO and will drop DEBUG records from this logger.
       To see them: logctl set handler CONSOLE DEBUG
 </code></pre></div>
-<p>A logger's level decides what is logged. Each <strong>handler</strong> (the console, a file) has a level of its
-own that decides what it writes. WildFly's console handler is usually at <code>INFO</code>, so <code>DEBUG</code> lines go
-to <code>server.log</code> but not to the console.</p>
-<p>Either lower the handler for a while, as the warning says:</p>
+<p>The same warning names any other handler that would drop the records, such as a file handler a
+vendor or the application set stricter. Lower it for a while, as the warning says:</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>handler<span class="w"> </span>CONSOLE<span class="w"> </span>DEBUG<span class="w"> </span><span class="k">for</span><span class="w"> </span>30m
 </code></pre></div>
-<p>or put it in <code>AUTO</code>, where it follows the lowest <code>DEBUG</code> or <code>TRACE</code> change you have active and goes
-back to its own level when there are none:</p>
-<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>handler<span class="w"> </span>CONSOLE<span class="w"> </span>AUTO
+<p>or put it in <code>AUTO</code> for good, so it follows every change without being brought along:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>handler<span class="w"> </span>CONSOLE<span class="w"> </span>AUTO<span class="w"> </span>sticky
 </code></pre></div>
-<p><code>logctl list handlers --show-all</code> lists the handlers. <code>ALL_HANDLERS</code> means all of them at once.</p>
+<p><code>logctl list handlers --show-all</code> lists the handlers. <code>ALL_HANDLERS</code> means all of them at once, and
+<code>DEFAULT_HANDLERS</code> the ones that follow <code>set logger</code>.</p>
 <h2 id="let-logctl-ask">Let <code>logctl</code> ask<a class="headerlink" href="#let-logctl-ask" title="Permanent link">&para;</a></h2>
 <p>On a terminal, leave out what you don't know. <code>logctl set</code> alone asks what to set, which logger
 (starting from part of its name, such as <code>Worker</code>), the level and the tier, then shows the full
@@ -2124,7 +2142,7 @@ See <a href="../undo-changes/">Undo changes</a>.</p>
   <div class="md-copyright__highlight">
     Copyright 2026 David Deuchert · Apache License 2.0
   </div>
-  Guide for LogAperture 1.0.0-beta.2
+  Guide for LogAperture 1.0.0-beta.3
 </div>
       
     </div>

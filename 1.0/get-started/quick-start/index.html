@@ -92,7 +92,7 @@
             
             
   
-    This guide is for <strong>1.0.0-beta.2</strong>, a pre-release. Commands
+    This guide is for <strong>1.0.0-beta.3</strong>, a pre-release. Commands
     and options may still change before 1.0.0.
   
 
@@ -768,10 +768,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-make-the-console-show-it-too" class="md-nav__link">
+  <a href="#4-why-the-console-followed" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4. Make the console show it too
+        4. Why the console followed
       
     </span>
   </a>
@@ -1940,10 +1940,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-make-the-console-show-it-too" class="md-nav__link">
+  <a href="#4-why-the-console-followed" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4. Make the console show it too
+        4. Why the console followed
       
     </span>
   </a>
@@ -2048,20 +2048,19 @@ with an override.</p>
 without an application deployed.</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>io.undertow.request<span class="w"> </span>DEBUG<span class="w"> </span><span class="k">for</span><span class="w"> </span>5m
 </code></pre></div>
-<div class="highlight"><pre><span></span><code>io.undertow.request → DEBUG   (FOR, reverts 05:01:22 local — in 4m)
-WARN: handler CONSOLE is at INFO and will drop DEBUG records from this logger.
-      To see them: logctl set handler CONSOLE DEBUG
+<div class="highlight"><pre><span></span><code>io.undertow.request → DEBUG   (FOR, reverts 05:45:49 local — in 4m)
+handler CONSOLE → AUTO, currently DEBUG   (follows io.undertow.request)
 </code></pre></div>
-<p><code>for 5m</code> is the tier: the change reverts by itself after five minutes. Leave the warning for now;
-step 4 is about it.</p>
+<p><code>for 5m</code> is the tier: the change reverts by itself after five minutes. The second line is about the
+console; step 4 explains it.</p>
 <h2 id="3-see-it-take-effect">3. See it take effect<a class="headerlink" href="#3-see-it-take-effect" title="Permanent link">&para;</a></h2>
 <p>Send the server any request, even one that ends in a 404:</p>
 <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>http://localhost:8080/
 </code></pre></div>
-<p>and look at the end of <code>server.log</code>:</p>
+<p>and look at the end of <code>server.log</code>, or at the console:</p>
 <div class="highlight"><pre><span></span><code>tail<span class="w"> </span><span class="nv">$JBOSS_HOME</span>/standalone/log/server.log
 </code></pre></div>
-<div class="highlight"><pre><span></span><code>2026-10-09 04:56:29,448 DEBUG [io.undertow.request] (default I/O-9) Matched default handler path /
+<div class="highlight"><pre><span></span><code>2026-10-17 05:40:49,860 DEBUG [io.undertow.request] (default I/O-15) Matched default handler path /
 </code></pre></div>
 <p>The running server logged at the new level: no restart, no redeploy. <code>status</code> shows the change and
 when it reverts:</p>
@@ -2070,31 +2069,29 @@ when it reverts:</p>
 <div class="highlight"><pre><span></span><code>Storm detection: disabled
 
 LOGGER               LEVEL  TIER  REVERTS           REASON
-io.undertow.request  DEBUG  FOR   05:01:22 (in 4m)  —
+io.undertow.request  DEBUG  FOR   05:45:49 (in 4m)  —
+
+HANDLER  LEVEL  MODE  TIER  REVERTS          REASON
+CONSOLE  DEBUG  AUTO  FOR   with the logger  follows io.undertow.request
 </code></pre></div>
-<h2 id="4-make-the-console-show-it-too">4. Make the console show it too<a class="headerlink" href="#4-make-the-console-show-it-too" title="Permanent link">&para;</a></h2>
-<p>The <code>DEBUG</code> line went to <code>server.log</code> but not to the console. That's the warning from step 2: a
-logger's level decides what gets logged, and each <strong>handler</strong> has a level of its own that decides
-what it writes. WildFly's <code>CONSOLE</code> handler is usually at <code>INFO</code>.</p>
-<p>You could lower it with the command the warning gave. Or put it in <code>AUTO</code>, where it follows the
-lowest <code>DEBUG</code> or <code>TRACE</code> change you have active, and goes back to its own level when there are
-none:</p>
-<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>handler<span class="w"> </span>CONSOLE<span class="w"> </span>AUTO
-</code></pre></div>
-<div class="highlight"><pre><span></span><code>handler CONSOLE → AUTO, currently DEBUG   (FOR, reverts 08:56:33 local — in 3h 59m)
-</code></pre></div>
+<h2 id="4-why-the-console-followed">4. Why the console followed<a class="headerlink" href="#4-why-the-console-followed" title="Permanent link">&para;</a></h2>
+<p>A logger's level decides what gets logged, and each <strong>handler</strong> has a level of its own that decides
+what it writes. WildFly's <code>CONSOLE</code> handler is at <code>INFO</code>, so on its own it would drop the <code>DEBUG</code>
+line: it would reach <code>server.log</code> but not the console.</p>
+<p>The console is the <strong>default handler</strong>, so it follows the change instead. It goes to <code>AUTO</code>, where
+it tracks the most verbose change you have active, for as long as the change lasts, and then goes
+back to <code>INFO</code> with it:</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>list<span class="w"> </span>handlers<span class="w"> </span>--show-all
 </code></pre></div>
 <div class="highlight"><pre><span></span><code>HANDLER           LEVEL  PERSISTS  TARGET                                        OVERRIDE
 ALL_HANDLERS      —      —         —                                             —
 FILE              ALL    file      /opt/jboss/wildfly/standalone/log/server.log  —
-CONSOLE           DEBUG  no        —                                             AUTO → DEBUG (FOR, reverts in 3h 59m)
+CONSOLE           DEBUG  no        —                                             AUTO → DEBUG (follows io.undertow.request)
 DEFAULT_HANDLERS  —      —         (auto: CONSOLE)                               —
 </code></pre></div>
-<p>Run the <code>curl</code> again: this time the <code>DEBUG</code> line is on the console as well. <code>AUTO</code> itself lasts
-<code>for 4h</code>, like any <code>set</code> without a tier.</p>
-<p>The same fix on a busier server, recorded: an application's payment logger raised to <code>TRACE</code>,
-with the console above.</p>
+<p>To change only the logger and leave the console as it is, add <code>--keep-handlers</code>. <code>set logger</code> then
+warns that the console will drop the records and gives the command that would lower it.</p>
+<p>The same, on a busier server: an application's payment logger raised to <code>TRACE</code>.</p>
 <div class="la-cast" data-cast="why-no-trace"></div>
 
 <h2 id="5-compare-how-long-changes-last">5. Compare how long changes last<a class="headerlink" href="#5-compare-how-long-changes-last" title="Permanent link">&para;</a></h2>
@@ -2133,13 +2130,14 @@ logctl<span class="w"> </span>status
 <div class="highlight"><pre><span></span><code>Storm detection: disabled
 
 LOGGER               LEVEL  TIER     REVERTS           REASON
-io.undertow.request  DEBUG  FOR      05:01:22 (in 4m)  —
+io.undertow.request  DEBUG  FOR      05:45:49 (in 4m)  —
 com.example.demo     DEBUG  SESSION  until restart     —
 com.example.other    DEBUG  STICKY   until reset       —
 
-HANDLER  LEVEL  MODE  TIER  REVERTS               REASON
-CONSOLE  DEBUG  AUTO  FOR   08:56:33 (in 3h 59m)  —
+HANDLER  LEVEL  MODE  TIER    REVERTS           REASON
+CONSOLE  DEBUG  AUTO  STICKY  with the loggers  follows com.example.demo, com.example.other, io.undertow.request
 </code></pre></div>
+<p>The console follows all three changes, so it lasts as long as the longest of them.</p>
 <p>If you have a minute, restart WildFly and run <code>logctl status</code> again. <code>com.example.other</code> is still
 there; <code>com.example.demo</code> is gone with the JVM it belonged to.</p>
 <h2 id="6-ask-where-the-logging-goes">6. Ask where the logging goes<a class="headerlink" href="#6-ask-where-the-logging-goes" title="Permanent link">&para;</a></h2>
@@ -2177,14 +2175,23 @@ is busiest.</p>
 <div class="highlight"><pre><span></span><code>Reverted 2 override(s).
 Left 1 sticky override(s) in place (pass --include-sticky to include them): com.example.other
 </code></pre></div>
-<p>A bulk reset leaves <code>sticky</code> changes alone, since you made them to last. Include them, and reset
-the handler:</p>
+<p>A bulk reset leaves <code>sticky</code> changes alone, since you made them to last. The console still follows
+the one left:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>status
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>Storm detection: disabled
+
+LOGGER             LEVEL  TIER    REVERTS      REASON
+com.example.other  DEBUG  STICKY  until reset  —
+
+HANDLER  LEVEL  MODE  TIER    REVERTS          REASON
+CONSOLE  DEBUG  AUTO  STICKY  with the logger  follows com.example.other
+</code></pre></div>
+<p>Include it, and the console goes back with it:</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>reset<span class="w"> </span>loggers<span class="w"> </span>--include-sticky
-logctl<span class="w"> </span>reset<span class="w"> </span>handlers
 logctl<span class="w"> </span>status
 </code></pre></div>
 <div class="highlight"><pre><span></span><code>Reverted 1 override(s).
-Reverted 1 handler override(s).
 Storm detection: disabled
 
 No active overrides.
@@ -2273,7 +2280,7 @@ No active overrides.
   <div class="md-copyright__highlight">
     Copyright 2026 David Deuchert · Apache License 2.0
   </div>
-  Guide for LogAperture 1.0.0-beta.2
+  Guide for LogAperture 1.0.0-beta.3
 </div>
       
     </div>

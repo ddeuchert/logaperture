@@ -92,7 +92,7 @@
             
             
   
-    This guide is for <strong>1.0.0-beta.2</strong>, a pre-release. Commands
+    This guide is for <strong>1.0.0-beta.3</strong>, a pre-release. Commands
     and options may still change before 1.0.0.
   
 
@@ -1970,7 +1970,7 @@ logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span
 logctl<span class="w"> </span>add<span class="w"> </span>rule<span class="w"> </span>drop<span class="w"> </span>io.undertow.request<span class="w"> </span>--message-contains<span class="w"> </span><span class="s2">"Matched default"</span><span class="w"> </span>--below<span class="w"> </span>WARN<span class="w"> </span>sticky
 logctl<span class="w"> </span><span class="nb">export</span><span class="w"> </span>vendor-defaults<span class="w"> </span>--out<span class="w"> </span>logging.yaml
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><span class="c1"># Exported by logctl export vendor-defaults, 2026-10-16T01:45:07Z, agent 1.0.0-beta.2</span>
+<div class="highlight"><pre><span></span><code><span class="c1"># Exported by logctl export vendor-defaults, 2026-10-16T01:45:07Z, agent 1.0.0-beta.3</span>
 <span class="c1"># Started from: no vendor defaults file</span>
 <span class="nt">schemaVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
 <span class="nt">loggers</span><span class="p">:</span>
@@ -1992,7 +1992,9 @@ logctl<span class="w"> </span><span class="nb">export</span><span class="w"> </s
 <span class="w">    </span><span class="nt">stateId</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0d5498e8-4026-4da9-ab36-c3b104e7dfb0</span>
 </code></pre></div>
 <p>The export is the file the JVM started with, plus every <code>sticky</code> change on top of it. <code>session</code> and
-<code>for</code> changes are left out: only what you meant to keep is exported.</p>
+<code>for</code> changes are left out: only what you meant to keep is exported. So is a handler that is only
+following a <code>sticky</code> logger change: it went to <code>AUTO</code> for that change, not as a setting of its own.
+To ship a handler in <code>AUTO</code>, set it yourself (<code>logctl set handler CONSOLE AUTO sticky</code>).</p>
 <p>The <code>stateId</code> lines connect each entry to the <code>sticky</code> change it came from. When you restart with
 the new file, the file takes those changes over, so each setting is active once, from the file.
 Later edits to the file then take effect on the next restart.</p>
@@ -2112,7 +2114,7 @@ configuration says <code>INFO</code>:</p>
   <div class="md-copyright__highlight">
     Copyright 2026 David Deuchert · Apache License 2.0
   </div>
-  Guide for LogAperture 1.0.0-beta.2
+  Guide for LogAperture 1.0.0-beta.3
 </div>
       
     </div>

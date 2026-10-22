@@ -92,7 +92,7 @@
             
             
   
-    This guide is for <strong>1.0.0-beta.2</strong>, a pre-release. Commands
+    This guide is for <strong>1.0.0-beta.3</strong>, a pre-release. Commands
     and options may still change before 1.0.0.
   
 
@@ -2270,7 +2270,7 @@ applies.</p>
 <p><strong>Fix:</strong> make the file and its directory read-only for that account.</p>
 <h3 id="vendor-defaultsunresolved-handler"><code>vendor-defaults.unresolved-handler</code><a class="headerlink" href="#vendor-defaultsunresolved-handler" title="Permanent link">&para;</a></h3>
 <p>The vendor defaults file sets a handler that doesn't exist yet. <code>INFO</code>. The setting is applied as
-soon as the handler appears, which on WildFly can be some time after startup.</p>
+soon as the handler appears, which on WildFly is a few seconds after startup.</p>
 <p><strong>Fix:</strong> if it never appears, check the name against <code>logctl list handlers --show-all</code>.</p>
 <h3 id="recipe-files"><code>recipe-files</code><a class="headerlink" href="#recipe-files" title="Permanent link">&para;</a></h3>
 <p>Whether every recipe file reads cleanly. <code>OK</code>, or <code>INFO</code> for each file that can't be read: its
@@ -2352,7 +2352,7 @@ recipes are not offered. <code>logctl list recipes --verbose</code> shows each e
   <div class="md-copyright__highlight">
     Copyright 2026 David Deuchert · Apache License 2.0
   </div>
-  Guide for LogAperture 1.0.0-beta.2
+  Guide for LogAperture 1.0.0-beta.3
 </div>
       
     </div>

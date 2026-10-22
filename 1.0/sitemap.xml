@@ -2,130 +2,130 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://logaperture.org/1.0/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/now-showing/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/overhead/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/release-notes/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/troubleshooting/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/concepts/agent-order/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/concepts/configuration-layers/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/concepts/rules/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/concepts/security/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/concepts/tiers-and-expiry/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/get-started/download/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/get-started/install-plain-jvm/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/get-started/install-wildfly/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/get-started/quick-start/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/how-to/find-a-logger/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/how-to/find-disk-usage/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/how-to/raise-a-level/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/how-to/recipes/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/how-to/scripting/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/how-to/several-jvms/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/how-to/silence-noise/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/how-to/storms/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/how-to/undo-changes/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/reference/agent-options/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/reference/audit-log/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/reference/doctor-checks/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/reference/file-formats/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/reference/json-output/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/reference/logctl/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/vendors/library-recipes/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/vendors/logctl-launcher/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
     <url>
          <loc>https://logaperture.org/1.0/vendors/vendor-defaults/</loc>
-         <lastmod>2026-10-20</lastmod>
+         <lastmod>2026-10-22</lastmod>
     </url>
 </urlset>
