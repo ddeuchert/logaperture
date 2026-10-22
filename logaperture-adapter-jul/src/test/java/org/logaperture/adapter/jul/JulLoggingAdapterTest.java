@@ -204,6 +204,35 @@ class JulLoggingAdapterTest {
         }
     }
 
+    @Test
+    void handlersOnPath_listsEveryHandlerARecordReaches_andStopsWhereParentHandlersAreOff() {
+        ConsoleHandler onRoot = testConsoleAtInfo();
+        ConsoleHandler onParent = testConsoleAtInfo();
+        ConsoleHandler onChild = testConsoleAtInfo();
+        Logger root = Logger.getLogger("");
+        Logger parent = Logger.getLogger(name("path"));
+        Logger child = Logger.getLogger(name("path.Worker"));
+        root.addHandler(onRoot);
+        parent.addHandler(onParent);
+        child.addHandler(onChild);
+        try {
+            List<HandlerRef> path = adapter.handlersOnPath(name("path.Worker"));
+            assertTrue(path.contains(HandlerRef.anonymous(onChild)));
+            assertTrue(path.contains(HandlerRef.anonymous(onParent)));
+            assertTrue(path.contains(HandlerRef.anonymous(onRoot)), "an INFO handler is on the path at any level");
+
+            parent.setUseParentHandlers(false);
+            path = adapter.handlersOnPath(name("path.Worker"));
+            assertTrue(path.contains(HandlerRef.anonymous(onParent)));
+            assertFalse(path.contains(HandlerRef.anonymous(onRoot)), "records stop at the parent");
+        } finally {
+            parent.setUseParentHandlers(true);
+            root.removeHandler(onRoot);
+            parent.removeHandler(onParent);
+            child.removeHandler(onChild);
+        }
+    }
+
     // handler-floor *warning* rendering moved to core (doc/specs/
     // handler-floor-control.md "Warning on level commands") -- this
     // adapter's job is only to report handlerFloorsBelow() correctly

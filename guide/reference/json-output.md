@@ -143,7 +143,11 @@ logctl status --json
 ### set logger
 
 The overrides made (several for a pattern target or `--force`), the handlers whose level would
-hide the new output (`warnings`), and the descendants `--force` reached.
+hide the new output (`warnings`), the descendants `--force` reached, and the default handlers that
+now follow the change (`following`; see [Raise a log level](../how-to/raise-a-level.md#the-console-follows)).
+A handler in `following` has `carriesOn: true` when your own setting on it still applies, with that
+setting's tier and deadline in `ownTier` and `ownExpiresAt`; it follows the change once that ends.
+`followDenied` names the capability that kept the default handlers from following, if one did.
 
 ```sh
 logctl set logger io.undertow.request DEBUG for 30m --reason demo --json
@@ -156,20 +160,29 @@ logctl set logger io.undertow.request DEBUG for 30m --reason demo --json
       "loggerName": "io.undertow.request",
       "level": "DEBUG",
       "reason": "demo",
-      "appliedAt": "2026-10-09T05:12:12.441226621Z",
+      "appliedAt": "2026-10-17T05:41:00.098475751Z",
       "source": "jmx",
       "tier": "FOR",
-      "expiresAt": "2026-10-09T05:42:12.441226621Z",
+      "expiresAt": "2026-10-17T06:11:00.098475751Z",
       "forcedBy": null
     }
   ],
-  "warnings": [
+  "warnings": [],
+  "descendants": [],
+  "following": [
     {
       "handlerRef": "CONSOLE",
-      "currentLevel": "INFO"
+      "previousLevel": "INFO",
+      "level": "DEBUG",
+      "follows": [
+        "io.undertow.request"
+      ],
+      "carriesOn": false,
+      "ownTier": null,
+      "ownExpiresAt": null
     }
   ],
-  "descendants": []
+  "followDenied": null
 }
 ```
 
@@ -250,14 +263,18 @@ logctl list handlers --json
       "autoFlush": true,
       "overrideActive": true,
       "overrideLevel": "DEBUG",
-      "overrideMode": "FIXED",
+      "overrideMode": "AUTO",
       "overrideTier": "FOR",
-      "overrideExpiresAt": "2026-10-09T05:22:26.576398427Z",
+      "overrideExpiresAt": "2026-10-17T06:11:00.098475751Z",
       "membersSummary": null,
       "context": "system",
       "vendorDefault": null,
       "resetToNative": false,
-      "recipe": null
+      "recipe": null,
+      "follows": [
+        "io.undertow.request"
+      ],
+      "thenFollows": []
     }
   ]
 }
@@ -279,7 +296,9 @@ logctl set handler CONSOLE DEBUG for 10m --json
   "source": "jmx",
   "tier": "FOR",
   "expiresAt": "2026-10-09T05:22:26.576398427Z",
-  "warnings": []
+  "warnings": [],
+  "follows": [],
+  "thenFollows": []
 }
 ```
 
@@ -474,8 +493,8 @@ logctl env --json
 
 ```json
 {
-  "agentVersion": "1.0.0-beta.2",
-  "cliVersion": "1.0.0-beta.2",
+  "agentVersion": "1.0.0-beta.3",
+  "cliVersion": "1.0.0-beta.3",
   "javaVersion": "17.0.5",
   "javaVendor": "Eclipse Adoptium",
   "osName": "Linux",

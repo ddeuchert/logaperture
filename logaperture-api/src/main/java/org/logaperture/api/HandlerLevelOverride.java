@@ -16,13 +16,18 @@
 package org.logaperture.api;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.TreeSet;
 
 /**
  * A recorded handler-level override — the {@link LevelOverride} counterpart
  * for {@code logctl set handler <name> <level>} (doc/specs/
  * handler-floor-control.md "Data model"). Independent lifetime: nothing
  * about a {@link LevelOverride} creates, extends, or reverts one of these,
- * and vice versa (see the spec's "Independent lifetime" semantics note). The
+ * and vice versa (see the spec's "Independent lifetime" semantics note) --
+ * except a {@linkplain #isFollower() follower}, which {@code set logger}
+ * makes and whose lifetime is its logger changes' (doc/specs/
+ * default-handlers-follow.md). The
  * handler's pre-LogAperture baseline is tracked separately, in a {@code
  * HandlerBaselineRegistry} — this record mirrors {@link LevelOverride}'s own
  * shape, which does the same for logger baselines.
@@ -54,6 +59,13 @@ import java.time.Instant;
  *                   until it has been persisted
  * @param recipe     the id of the recipe that made it (doc/specs/recipes.md #6), or {@code null};
  *                   a later change made by hand replaces the override and so drops it (#7)
+ * @param follows    the loggers whose {@code set logger} this override exists for (doc/specs/
+ *                   default-handlers-follow.md): an {@code AUTO} override that ends when the last of
+ *                   their changes ends, its lifetime the longest of theirs. Empty for every override
+ *                   the operator made; never {@code null}
+ * @param thenFollows on an operator's own override that lets those loggers' records through but ends
+ *                   sooner than their changes: the loggers it goes on following when it ends (H5).
+ *                   Empty otherwise; never {@code null}
  */
 public record HandlerLevelOverride(
         HandlerRef handlerRef,
@@ -65,7 +77,9 @@ public record HandlerLevelOverride(
         PersistenceTier tier,
         Instant expiresAt,
         String stateId,
-        String recipe) {
+        String recipe,
+        List<String> follows,
+        List<String> thenFollows) {
 
     public HandlerLevelOverride {
         if (handlerRef == null) {
@@ -93,6 +107,20 @@ public record HandlerLevelOverride(
         } else if (expiresAt != null) {
             throw new IllegalArgumentException("expiresAt must be null unless tier is FOR");
         }
+        follows = follows == null ? List.of() : List.copyOf(new TreeSet<>(follows));
+        thenFollows = thenFollows == null ? List.of() : List.copyOf(new TreeSet<>(thenFollows));
+    }
+
+    /** Neither follows nor carries on following a logger change -- every override before doc/specs/default-handlers-follow.md. */
+    public HandlerLevelOverride(HandlerRef handlerRef, Level level, HandlerLevelMode mode, String reason,
+            Instant appliedAt, String source, PersistenceTier tier, Instant expiresAt, String stateId, String recipe) {
+        this(handlerRef, level, mode, reason, appliedAt, source, tier, expiresAt, stateId, recipe, List.of(),
+                List.of());
+    }
+
+    /** Whether this is an override {@code set logger} made for a default handler to follow its change. */
+    public boolean isFollower() {
+        return !follows.isEmpty();
     }
 
     /** A {@link HandlerLevelMode#FIXED} override — the pre-AUTO constructor shape, kept as a named factory for readability at call sites that only ever set a fixed level. */
@@ -117,6 +145,12 @@ public record HandlerLevelOverride(
 
     public HandlerLevelOverride withStateId(String stateId) {
         return new HandlerLevelOverride(handlerRef, level, mode, reason, appliedAt, source, tier, expiresAt, stateId,
-                recipe);
+                recipe, follows, thenFollows);
+    }
+
+    /** This override, carrying on following {@code loggers} when it ends (H5). */
+    public HandlerLevelOverride withThenFollows(java.util.Collection<String> loggers) {
+        return new HandlerLevelOverride(handlerRef, level, mode, reason, appliedAt, source, tier, expiresAt, stateId,
+                recipe, follows, List.copyOf(loggers));
     }
 }

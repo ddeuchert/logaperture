@@ -13,7 +13,8 @@
 # limitations under the License.
 
 # Story 2: debug one package for a while, then it cleans itself up. A `for` override reverts on
-# its own timer, and CONSOLE's AUTO level follows it back down. doc/specs/demo-recordings.md.
+# its own timer, and CONSOLE, which followed it (doc/specs/default-handlers-follow.md), goes back
+# down with it. doc/specs/demo-recordings.md.
 
 DEMO_TITLE="Debug one package for a while"
 
@@ -25,7 +26,6 @@ story() {
     hold 1
     say "Debug the checkout code for a while: 30 seconds here, an hour in real life."
     run logctl set logger com.example.shop.checkout DEBUG for 30s
-    run logctl set handler CONSOLE AUTO
     wait_for "$DEBUG_LINE" 10
     run logctl list loggers com.example
     say "Now wait. Nobody has to remember to put it back..."

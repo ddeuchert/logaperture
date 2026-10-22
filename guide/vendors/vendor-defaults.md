@@ -43,7 +43,7 @@ logctl export vendor-defaults --out logging.yaml
 ```
 
 ```yaml
-# Exported by logctl export vendor-defaults, 2026-10-16T01:45:07Z, agent 1.0.0-beta.2
+# Exported by logctl export vendor-defaults, 2026-10-16T01:45:07Z, agent 1.0.0-beta.3
 # Started from: no vendor defaults file
 schemaVersion: 1
 loggers:
@@ -66,7 +66,9 @@ rules:
 ```
 
 The export is the file the JVM started with, plus every `sticky` change on top of it. `session` and
-`for` changes are left out: only what you meant to keep is exported.
+`for` changes are left out: only what you meant to keep is exported. So is a handler that is only
+following a `sticky` logger change: it went to `AUTO` for that change, not as a setting of its own.
+To ship a handler in `AUTO`, set it yourself (`logctl set handler CONSOLE AUTO sticky`).
 
 The `stateId` lines connect each entry to the `sticky` change it came from. When you restart with
 the new file, the file takes those changes over, so each setting is active once, from the file.

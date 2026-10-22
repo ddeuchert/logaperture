@@ -18,6 +18,7 @@ package org.logaperture.control.jmx;
 import org.logaperture.api.HandlerInfo;
 
 import java.beans.ConstructorProperties;
+import java.util.List;
 
 /**
  * MXBean-friendly mirror of {@link HandlerInfo} — the {@link LoggerInfoData}
@@ -43,6 +44,8 @@ public final class HandlerInfoData {
     private final String vendorDefault;
     private final boolean resetToNative;
     private final String overrideRecipe;
+    private final List<String> overrideFollows;
+    private final List<String> overrideThenFollows;
 
     /**
      * Every field, including {@code resetToNative} (doc/specs/reset-to-native.md "Surfaces"); the
@@ -50,11 +53,12 @@ public final class HandlerInfoData {
      */
     @ConstructorProperties({"ref", "level", "persistent", "targetPath", "autoFlush", "overrideActive",
             "overrideLevel", "overrideMode", "overrideTier", "overrideExpiresAt", "membersSummary", "context",
-            "vendorDefault", "resetToNative", "overrideRecipe"})
+            "vendorDefault", "resetToNative", "overrideRecipe", "overrideFollows", "overrideThenFollows"})
     public HandlerInfoData(String ref, String level, boolean persistent, String targetPath, Boolean autoFlush,
             boolean overrideActive, String overrideLevel, String overrideMode, String overrideTier,
             String overrideExpiresAt, String membersSummary, String context, String vendorDefault,
-            boolean resetToNative, String overrideRecipe) {
+            boolean resetToNative, String overrideRecipe, List<String> overrideFollows,
+            List<String> overrideThenFollows) {
         this.ref = ref;
         this.level = level;
         this.persistent = persistent;
@@ -70,6 +74,21 @@ public final class HandlerInfoData {
         this.vendorDefault = vendorDefault;
         this.resetToNative = resetToNative;
         this.overrideRecipe = overrideRecipe;
+        this.overrideFollows = overrideFollows == null ? List.of() : overrideFollows;
+        this.overrideThenFollows = overrideThenFollows == null ? List.of() : overrideThenFollows;
+    }
+
+    /** Every field but the override's ties -- the shape before doc/specs/default-handlers-follow.md. */
+    @ConstructorProperties({"ref", "level", "persistent", "targetPath", "autoFlush", "overrideActive",
+            "overrideLevel", "overrideMode", "overrideTier", "overrideExpiresAt", "membersSummary", "context",
+            "vendorDefault", "resetToNative", "overrideRecipe"})
+    public HandlerInfoData(String ref, String level, boolean persistent, String targetPath, Boolean autoFlush,
+            boolean overrideActive, String overrideLevel, String overrideMode, String overrideTier,
+            String overrideExpiresAt, String membersSummary, String context, String vendorDefault,
+            boolean resetToNative, String overrideRecipe) {
+        this(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel, overrideMode, overrideTier,
+                overrideExpiresAt, membersSummary, context, vendorDefault, resetToNative, overrideRecipe, List.of(),
+                List.of());
     }
 
     /** Every field but {@code overrideRecipe} -- the shape before doc/specs/recipes.md. */
@@ -130,7 +149,9 @@ public final class HandlerInfoData {
                 info.context(),
                 info.vendorDefault(),
                 info.resetToNative(),
-                info.overrideRecipe());
+                info.overrideRecipe(),
+                info.overrideFollows(),
+                info.overrideThenFollows());
     }
 
     public String getRef() {
@@ -186,6 +207,16 @@ public final class HandlerInfoData {
 
     public String getContext() {
         return context;
+    }
+
+    /** The loggers whose change the active override follows (doc/specs/default-handlers-follow.md); empty otherwise. */
+    public List<String> getOverrideFollows() {
+        return overrideFollows;
+    }
+
+    /** The loggers the active override carries on following when it ends; empty otherwise. */
+    public List<String> getOverrideThenFollows() {
+        return overrideThenFollows;
     }
 
     /** The vendor defaults file's setting for this handler (a level name or {@code AUTO}), or {@code null}. */

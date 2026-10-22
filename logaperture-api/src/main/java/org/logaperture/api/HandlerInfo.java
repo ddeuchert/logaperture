@@ -16,6 +16,7 @@
 package org.logaperture.api;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * One row of the handler catalog {@code logctl list handlers} lists — the {@link
@@ -70,6 +71,10 @@ import java.time.Instant;
  *                          ({@code logctl reset handler --to-native}, doc/specs/reset-to-native.md)
  * @param overrideRecipe    the id of the recipe that made the active override, or {@code null}
  *                          (doc/specs/recipes.md #6)
+ * @param overrideFollows   the loggers whose {@code set logger} the active override follows
+ *                          ({@link HandlerLevelOverride#follows()}); empty otherwise
+ * @param overrideThenFollows the loggers the active override carries on following when it ends
+ *                          ({@link HandlerLevelOverride#thenFollows()}); empty otherwise
  */
 public record HandlerInfo(
         String ref,
@@ -86,7 +91,9 @@ public record HandlerInfo(
         String context,
         String vendorDefault,
         boolean resetToNative,
-        String overrideRecipe) {
+        String overrideRecipe,
+        List<String> overrideFollows,
+        List<String> overrideThenFollows) {
 
     /** Every field but {@code overrideRecipe} -- the shape before doc/specs/recipes.md. */
     public HandlerInfo(String ref, Level level, boolean persistent, String targetPath, Boolean autoFlush,
@@ -101,6 +108,18 @@ public record HandlerInfo(
         if (ref == null || ref.isEmpty()) {
             throw new IllegalArgumentException("ref must not be null or empty");
         }
+        overrideFollows = overrideFollows == null ? List.of() : List.copyOf(overrideFollows);
+        overrideThenFollows = overrideThenFollows == null ? List.of() : List.copyOf(overrideThenFollows);
+    }
+
+    /** Every field but the override's ties -- the shape before doc/specs/default-handlers-follow.md. */
+    public HandlerInfo(String ref, Level level, boolean persistent, String targetPath, Boolean autoFlush,
+            boolean overrideActive, Level overrideLevel, HandlerLevelMode overrideMode, PersistenceTier overrideTier,
+            Instant overrideExpiresAt, String membersSummary, String context, String vendorDefault,
+            boolean resetToNative, String overrideRecipe) {
+        this(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel, overrideMode, overrideTier,
+                overrideExpiresAt, membersSummary, context, vendorDefault, resetToNative, overrideRecipe, List.of(),
+                List.of());
     }
 
     /** A single-context service builds rows with no context key; the aggregate fills it in. */
@@ -134,6 +153,6 @@ public record HandlerInfo(
     public HandlerInfo withContext(String context) {
         return new HandlerInfo(ref, level, persistent, targetPath, autoFlush, overrideActive, overrideLevel,
                 overrideMode, overrideTier, overrideExpiresAt, membersSummary, context, vendorDefault, resetToNative,
-                overrideRecipe);
+                overrideRecipe, overrideFollows, overrideThenFollows);
     }
 }

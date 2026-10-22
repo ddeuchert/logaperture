@@ -47,6 +47,18 @@ apply to everyone.
   Afterwards, bump `develop` to the next `-SNAPSHOT`. How it works:
   [doc/specs/maven-central-publishing.md](doc/specs/maven-central-publishing.md).
 
+- **Publishing a snapshot:** to let testers try a pull request before the next
+  beta, add the label `deploy snapshot` to it (`gh pr edit <number> --add-label
+  "deploy snapshot"`). `.github/workflows/snapshot.yml` then builds that commit
+  and publishes it as the POM's `-SNAPSHOT` version (the parent POM, agent,
+  `logctl` and the zip, unsigned) to Maven Central's snapshot repository,
+  `https://central.sonatype.com/repository/maven-snapshots/`. It needs the PR's
+  `build` check to be green and refuses a version that isn't a `-SNAPSHOT`.
+  Pushing to the pull request or to `develop` never publishes; to publish again,
+  remove the label and add it back. A later labeled PR replaces the same version,
+  and Central removes snapshots after 90 days. How it works:
+  [doc/specs/central-snapshots.md](doc/specs/central-snapshots.md).
+
 ### Versioning ([SemVer](https://semver.org)) and what forces a major bump
 
 The agent and `logctl` share one version and release together. The compatibility

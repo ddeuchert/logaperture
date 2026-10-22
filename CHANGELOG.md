@@ -8,6 +8,37 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ## [Unreleased]
 
+## [1.0.0-beta.3] — 2026-10-21
+
+`set logger` now shows its result on the console, and WildFly's handler names are available while the server is still starting. **Not for production yet.**
+
+### Changed
+
+- **`set logger` brings the console along.** A default handler (usually the console) that would
+  drop the new records goes to `AUTO` for as long as the change lasts, then back to its own level,
+  so `logctl set logger com.mycompany DEBUG` shows the DEBUG lines on the console with no second
+  command. A handler you set yourself is left as you set it, and `--keep-handlers` changes only the
+  logger, as before. `status` and `list handlers` show what a handler follows; `--json` adds
+  `following` and `followDenied` to `set logger`, and `follows` and `thenFollows` to handler
+  overrides. `-Dlogaperture.followHandlers=false` turns this off for a whole server (issue #210;
+  `doc/specs/default-handlers-follow.md`).
+
+- **WildFly: handler names (`CONSOLE`, `FILE`, …) are known a few seconds after start**, not
+  once every deployment has finished. `logctl list handlers`, `logctl set handler CONSOLE …` and a
+  vendor-defaults handler entry such as `CONSOLE: AUTO` now work while a slow application is still
+  deploying, so a logger raised for the boot can reach the console without editing `standalone.xml`.
+  The names come from the logging subsystem's own configuration; the management model is still the
+  fallback. A vendor handler entry that wasn't found at install is retried every second for up to
+  two minutes (issue #246).
+
+- **The README, the guide and the issue chooser point testers at GitHub Discussions** for questions and feedback, and at Issues for bugs (issue #243).
+
+### Added
+
+- **Snapshot builds on Maven Central.** A maintainer can publish a pull request's build as a
+  `-SNAPSHOT` to Central's snapshot repository by labeling it `deploy snapshot`, so testers can try
+  a fix before the next beta (issue #248).
+
 ## [1.0.0-beta.2] — 2026-10-20
 
 Fixes on WildFly and Logback, more in the guide, and a conf file for the `logctl` launchers. The
@@ -532,7 +563,8 @@ store's on-disk format may still change between builds without a migration path.
   `/subsystem=logging` reconfiguration
   ([#31](https://github.com/ddeuchert/logaperture/issues/31)).
 
-[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.2...HEAD
+[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.3...HEAD
+[1.0.0-beta.3]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.3
 [1.0.0-beta.2]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.2
 [1.0.0-beta.1]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.1
 [0.1.0-alpha.3]: https://github.com/ddeuchert/logaperture/releases/tag/v0.1.0-alpha.3

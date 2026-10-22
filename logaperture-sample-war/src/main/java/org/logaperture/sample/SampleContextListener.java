@@ -18,9 +18,15 @@ package org.logaperture.sample;
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
 import javax.servlet.annotation.WebListener;
+import java.util.logging.Logger;
 
 /**
- * Logs a line on deploy — so {@code org.logaperture.sample.work.Worker} shows
+ * Optionally holds the deployment for {@code -Dsample.startupDelaySeconds} (default 0) before
+ * anything else, to mimic an application with a slow start: WildFly reports
+ * {@code server-state=running} only once every deployment is up, so this keeps the server in
+ * {@code starting} for a chosen time.
+ *
+ * <p>Logs a line on deploy — so {@code org.logaperture.sample.work.Worker} shows
  * up in {@code logctl list loggers} straight away — and shuts the background timer
  * (and the {@link DemoShop})
  * down on undeploy, so a redeploy does not leak its thread (and so the
@@ -30,9 +36,27 @@ import javax.servlet.annotation.WebListener;
 @WebListener
 public class SampleContextListener implements ServletContextListener {
 
+    static final String STARTUP_DELAY_PROPERTY = "sample.startupDelaySeconds";
+    private static final Logger LOG = Logger.getLogger(SampleContextListener.class.getName());
+
     @Override
     public void contextInitialized(ServletContextEvent event) {
+        sleepForStartupDelay();
         WorkLog.emitAllLevels("sample deployed");
+    }
+
+    private static void sleepForStartupDelay() {
+        int seconds = Integer.getInteger(STARTUP_DELAY_PROPERTY, 0);
+        if (seconds <= 0) {
+            return;
+        }
+        LOG.info("sample startup delay: holding the deployment for " + seconds + "s");
+        try {
+            Thread.sleep(seconds * 1000L);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        }
+        LOG.info("sample startup delay: done");
     }
 
     @Override

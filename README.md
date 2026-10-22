@@ -10,15 +10,15 @@
 
 **Install it, learn it, and look up every command at [logaperture.org](https://logaperture.org/).** Open source under the [Apache License 2.0](LICENSE).
 
-> ### Status: 1.0.0-beta.2 — feature-complete for 1.0, testers wanted
+> ### Status: 1.0.0-beta.3 — feature-complete for 1.0, testers wanted
 >
 > **Not for production yet.** Everything 1.0 will do is in this build — see [Try the beta](#try-the-beta). Until 1.0.0 only fixes, documentation and packaging change, plus any renames from the 1.0 review of commands and output, so a script written against this beta may need a small change at 1.0.0.
 >
-> Bug reports from a beta run, prior-art pointers, and war stories about log volume in constrained environments are all useful — [open an issue](../../issues).
+> Bug reports from a beta run, prior-art pointers, and war stories about log volume in constrained environments are all useful. [Open an issue](../../issues) for a bug, or tell us how a run went in [Discussions](../../discussions/245).
 
 **Have a WildFly server handy?** [Install it](https://logaperture.org/latest/get-started/install-wildfly/) and run the [Quick start](https://logaperture.org/latest/get-started/quick-start/) in about 10 minutes — raise a level and watch it revert, make the console show it, compare `for`/`session`/`sticky`, look at `doctor` and `top`. Feedback from that run is exactly what this beta needs.
 
-[![A logger raised to TRACE shows nothing on the console until logctl puts the console handler in AUTO](https://logaperture.org/latest/assets/demos/why-no-trace.gif)](https://logaperture.org/latest/#see-it-work)
+[![A logger raised to TRACE on WildFly, and the console handler following it so the TRACE lines show](https://logaperture.org/latest/assets/demos/why-no-trace.gif)](https://logaperture.org/latest/#see-it-work)
 
 ---
 
@@ -40,7 +40,7 @@
 
 ## Try the beta
 
-`1.0.0-beta.2` runs on **standalone WildFly** (26.1 and later) and on **plain `java -jar` with Logback**, on JDK 17, 21 and 25. Not every feature works on both yet: the guide's [support table](https://logaperture.org/latest/#what-10-supports) says which.
+`1.0.0-beta.3` runs on **standalone WildFly** (26.1 and later) and on **plain `java -jar` with Logback**, on JDK 17, 21 and 25. Not every feature works on both yet: the guide's [support table](https://logaperture.org/latest/#what-10-supports) says which.
 
 - **Change a log level on the running JVM**, and have it revert on a timer, last until restart, or survive restarts. One command undoes everything.
 - **`top` and `doctor`**: which loggers fill the disk, and logging configuration that will hurt you.
@@ -79,7 +79,7 @@ If you know of something that does, please say so. Finding out early is worth mo
 
 ## Contributing
 
-Code contributions are welcome after 1.0 — until then the code is frozen to fixes. For now the most useful things are bug reports from an actual beta run, design feedback on [the spec](doc/logaperture-spec.md), prior-art pointers, and war stories about log volume in constrained environments, all in [issues](../../issues).
+Code contributions are welcome after 1.0 — until then the code is frozen to fixes. For now the most useful things are bug reports from an actual beta run, design feedback on [the spec](doc/logaperture-spec.md), prior-art pointers, and war stories about log volume in constrained environments, bug reports in [issues](../../issues), everything else in [Discussions](../../discussions/245).
 
 ## License
 
