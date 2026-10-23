@@ -83,6 +83,19 @@ useful standalone.
   (`org.apache.http.impl.conn`), not a package prefix.
 - **A `logctl top --reset` command** — this slice's only window is "since this context was
   installed." Additive later without a spec change if it turns out to matter in practice.
+- **Time-windowed top: `logctl top 5` / `logctl top 30`** — rank over the last N minutes
+  instead of only "since this context was installed", from a small fixed set (for instance 5,
+  15, 30, 60; not arbitrary intervals). Roadmap entry: top-level §18.6. Motivation: a
+  since-start total hides a logger that only just went noisy, and answers "what is filling
+  the disk *now*" poorly on a long-running server. Needs per-logger counters kept per time
+  bucket (a ring) instead of one running total, which multiplies the bounded-state cost
+  (§16.7) by the bucket count. Open questions, **deferred to when this is specced**: the
+  exact set of windows and whether it is configurable; whether no argument stays "since
+  start" or becomes a default window; bucket granularity and the memory cap; how the
+  bytes-per-hour column and the stack-trace fraction read over a window shorter than an
+  hour; behaviour when the context is younger than the requested window (clamp and say so,
+  or refuse). This also gives the rolling-window comparison noted under "On interpretation"
+  a data source.
 - **Non-persistent (console-only) handlers** — mirrors `doctor.md` Decision #3's reasoning
   exactly: in a typical production deployment nothing reads stdout, so a console handler's
   volume isn't the volume that fills a disk. A logger that writes only to a console handler
