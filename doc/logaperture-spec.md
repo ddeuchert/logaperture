@@ -819,6 +819,8 @@ Every client must tolerate an **unknown enum member** (a newer agent returning a
 
 **No guarantee before 1.0.** Alpha and beta releases make **no skew promise**. The only supported pairing pre-1.0 is an agent and a `logctl` from the *same build*. The contract in this section takes effect at 1.0.0.
 
+**Release lines.** 1.0.x patches are cut from a `release/1.0` branch while `develop` carries 1.1.0 and later: [`doc/specs/release-lines.md`](specs/release-lines.md) (#257).
+
 ---
 
 ## 12. Testing strategy
