@@ -1,6 +1,6 @@
 # Release lines: `release/1.0` and a 1.1.0 `develop` (issue #257)
 
-Status: **signed off 2026-10-24** (R-a to R-e agreed as proposed).
+Status: **signed off 2026-10-24** (R-a to R-e agreed as proposed; R-f added and agreed the same day).
 Parent spec: [`logaperture-spec.md`](../logaperture-spec.md) §11.1 (versioning policy) and
 [`DEVELOPMENT.md`](../../DEVELOPMENT.md) "Branches and releases" (the process this extends).
 
@@ -13,6 +13,8 @@ This is a process change, not a product change. After it:
 - A fix for 1.0.0 or a later 1.0.x patch goes to a `release/1.0` branch, from which 1.0.0 and
   every 1.0.x release is cut.
 - Every fix made on `release/1.0` reaches 1.1.0 by merging the branch into `develop`.
+- Release an alpha or beta of 1.1.0 from `develop` while 1.0 is still shipping, without moving
+  `main` or the guide's default ("latest") page off the 1.0 line.
 - A contributor knows which branch a change belongs on, and which one a pull request targets,
   from the issue's milestone.
 - The held Quarkus pull request (#225) can merge to `develop` once the line is cut.
@@ -80,6 +82,16 @@ the same tree as the tagged release commit. The head of that pull request is now
   `v1.0.0` on the release commit on `release/1.0`. 1.0.x patches the same way.
 - 1.1.0: from `develop`, as today.
 
+**Pre-releases of a later minor.** `main` moves only for releases of the current line (above).
+A pre-release of a later minor — `1.1.0-alpha.1` while 1.0 is still shipping — is tagged on
+`develop` and does **not** get a pull request into `main`: set the version in a release commit on
+`develop`, run the Central dry run on `develop`, push the tag, then bump back to `1.1.0-SNAPSHOT`.
+`release.yml` needs no change (it checks only the tag against the POM, and marks `-alpha`, `-beta`
+and `-rc` as GitHub pre-releases). Merge `release/1.0` into `develop` first, so the pre-release
+carries the latest 1.0 fixes. When 1.1.0 itself ships it goes `develop` → `main` like any other
+release, and `main` then shows 1.1.0. So `main` matches the most recent release **of the current
+line**; the tag and the GitHub Release remain the record of a pre-release that never visited it.
+
 After a release, bump the *releasing branch* to its next `-SNAPSHOT` (`release/1.0` →
 `1.0.1-SNAPSHOT`), then forward-merge (R3). Merge `release/1.0` into `develop` before the 1.1.0
 cut, so `main`'s release merges share history.
@@ -92,7 +104,11 @@ so the ruleset still matches it.
 
 - **CI** (`ci.yml`) also runs on pushes to `release/**`. Pull requests already run for any base.
 - **Docs** (`docs.yml`): `develop` keeps publishing the guide as `dev` (now the 1.1 docs). A tag
-  publishes its minor (`1.0`, aliased `latest`) as today. A guide-only fix on `release/1.0` after
+  publishes its minor (`1.0`) as today, and moves the `latest` alias and the site's default page
+  only if the tagged commit is on `main` **and** its minor is not older than the current
+  `latest`. A pre-release tagged on `develop` (`1.1.0-alpha.1`) therefore deploys as `1.1`, with
+  the pre-release banner, and leaves `latest` on 1.0; a late 1.0.x patch after 1.1.0 shipped
+  leaves `latest` on 1.1. A guide-only fix on `release/1.0` after
   GA is published with the existing `workflow_dispatch` (version `1.0`); no new automatic trigger.
 - **Snapshots** (`snapshot.yml`) and the **Central dry run** (`central.yml`) work from any base
   and publish the POM's own `-SNAPSHOT` version, so a `release/1.0` pull request publishes
@@ -141,3 +157,4 @@ All agreed 2026-10-24.
 | R-c | A CI check that fails when `release/1.0` has commits `develop` lacks | **Deferred**: a checklist item for now; revisit if a fix is missed. File an issue |
 | R-d | A `release/**` ruleset (R6) | Yes: deletion and force-push only |
 | R-e | Docs from `release/1.0` (R5) | Manual `workflow_dispatch` only |
+| R-f | Pre-releases of a later minor (R4) | Tagged on `develop`, no pull request into `main`; `latest` docs move only for a tagged commit on `main` whose minor is not older than the current `latest` |

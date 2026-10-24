@@ -55,6 +55,9 @@ apply to everyone.
   `logaperture-agent`, `logaperture-cli` and the `logaperture` zip), then
   publishes a GitHub Release with the zip attached. Publishing to Central is
   permanent; everything before it can be fixed and the tag pushed again.
+  A pre-release of a *later* minor (`1.1.0-alpha.1` while 1.0 is still shipping) is cut the same
+  way on `develop` but **skips the pull request into `main`**: `main` moves only for the current
+  line. Merge `release/1.0` into `develop` first.
   Afterwards, bump the released branch to its next `-SNAPSHOT` and merge `release/*` forward into `develop`. How it works:
   [doc/specs/maven-central-publishing.md](doc/specs/maven-central-publishing.md).
 
