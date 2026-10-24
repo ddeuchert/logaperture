@@ -19,7 +19,7 @@ It is everything you need on one machine, and what the install pages start from:
 
 | Path | |
 |---|---|
-| `bin/logctl`, `bin/logctl.cmd` | `logctl`, for Linux and macOS, and for Windows |
+| `bin/logctl`, `bin/logctl.cmd` | `logctl`, for Linux and macOS, and for Windows; [an optional conf file](../vendors/logctl-launcher.md) next to them sets the Java it uses |
 | `lib/logaperture-agent.jar` | the agent |
 | `lib/logaperture-cli.jar` | the jar `logctl` runs |
 | `docs/index.html` | this guide, for reading without a network |

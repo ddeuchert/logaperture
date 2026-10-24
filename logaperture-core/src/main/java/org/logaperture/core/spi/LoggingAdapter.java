@@ -231,6 +231,18 @@ public interface LoggingAdapter {
     }
 
     /**
+     * The real handlers a record from {@code loggerName} reaches: those attached to it and to each
+     * parent up to the root, stopping where a logger doesn't pass records to its parent's handlers.
+     * Never collapsed to {@link HandlerRef#ALL_HANDLERS}, unlike {@link #handlerFloorsBelow} -- what
+     * {@code set logger} asks to find the default handlers on a raised logger's path (doc/specs/
+     * default-handlers-follow.md "Which handlers follow"). Default empty, for a framework whose
+     * handlers have no level of their own.
+     */
+    default List<HandlerRef> handlersOnPath(String loggerName) {
+        return List.of();
+    }
+
+    /**
      * Best-effort static facts about {@code ref}'s own configuration — file
      * size caps, backup counts, autoflush, target path — for {@code
      * doctor}'s checks (doc/specs/doctor.md "Adapter SPI"). Never a level;

@@ -52,6 +52,15 @@ In VSCode the same actions are **Tasks** (`Terminal → Run Task…`): *WildFly:
 | `POST /timer/stop` | stops it |
 | `GET /timer/status` | running?, period, tick count |
 
+To mimic a slow-starting application, set `SAMPLE_STARTUP_DELAY_SECONDS` before `up`: the sample
+holds its deployment for that long (default 0), keeping `server-state` at `starting`. Add
+`HANDLER_NAMES_DEBUG=true` to trace how WildFly handler names are resolved
+(`doc/spikes/wildfly-early-handler-names.md`).
+
+```sh
+SAMPLE_STARTUP_DELAY_SECONDS=60 HANDLER_NAMES_DEBUG=true python3 dev/wildfly/wildflyctl.py up
+```
+
 `GET /log` takes four optional query parameters, all defaulted so a bare
 `GET /log` works out of the box:
 

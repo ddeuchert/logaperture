@@ -67,6 +67,7 @@ public final class LevelControlService implements LevelControlOperations {
     /** The audit source of a change made by applying a recipe (doc/specs/recipes.md #13). */
     static final String RECIPE_AUDIT_SOURCE = "recipe";
     private final LoggerOverrideChangeListener changeListener;
+    private final HandlerFollowing handlerFollowing;
 
     /** Convenience overload for every context that doesn't need to react to logger-override changes (doc/specs/handler-floor-control.md "AUTO handler level"). */
     public LevelControlService(
@@ -92,6 +93,26 @@ public final class LevelControlService implements LevelControlOperations {
             String principal,
             String source,
             LoggerOverrideChangeListener changeListener) {
+        this(adapter, baselines, overrides, policy, auditLog, stateStore, principal, source, changeListener,
+                HandlerFollowing.NONE);
+    }
+
+    /**
+     * @param handlerFollowing what lets the default handlers follow an operator's {@code set logger}
+     *                         (doc/specs/default-handlers-follow.md) -- wired by the container, like
+     *                         {@code changeListener}
+     */
+    public LevelControlService(
+            LoggingAdapter adapter,
+            BaselineRegistry baselines,
+            OverrideRegistry overrides,
+            CapabilityPolicy policy,
+            AuditLog auditLog,
+            StateStore stateStore,
+            String principal,
+            String source,
+            LoggerOverrideChangeListener changeListener,
+            HandlerFollowing handlerFollowing) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.baselines = Objects.requireNonNull(baselines, "baselines");
         this.overrides = Objects.requireNonNull(overrides, "overrides");
@@ -101,6 +122,7 @@ public final class LevelControlService implements LevelControlOperations {
         this.principal = Objects.requireNonNull(principal, "principal");
         this.source = Objects.requireNonNull(source, "source");
         this.changeListener = Objects.requireNonNull(changeListener, "changeListener");
+        this.handlerFollowing = Objects.requireNonNull(handlerFollowing, "handlerFollowing");
     }
 
     @Override
@@ -201,9 +223,13 @@ public final class LevelControlService implements LevelControlOperations {
         // blocking-handler floor check below, so an AUTO handler that just
         // tracked down to this new level doesn't show up in that answer.
         changeListener.onChange();
+        // The default handlers follow (doc/specs/default-handlers-follow.md), after the recompute
+        // above and before the floor check below, so a handler that now follows isn't warned about.
+        HandlerFollowing.Outcome following = handlerFollowing.follow(created, opts.followHandlers());
 
         return new SetLevelResult(created, blockingFloors(previousEffective, level),
-                reportedDescendants(descendants, level, opts), belowFloor(created));
+                reportedDescendants(descendants, level, opts), following.following(), following.denied(),
+                belowFloor(created));
     }
 
     /**
@@ -428,11 +454,14 @@ public final class LevelControlService implements LevelControlOperations {
             }
         }
 
+        HandlerFollowing.Outcome following = HandlerFollowing.Outcome.NONE;
         if (!created.isEmpty()) {
             changeListener.onChange();
+            following = handlerFollowing.follow(List.copyOf(created.values()), opts.followHandlers());
         }
         return new SetLevelResult(List.copyOf(created.values()), blockingFloors(previousEffectiveByTarget, level),
-                List.copyOf(reported.values()), belowFloor(created.values()));
+                List.copyOf(reported.values()), following.following(), following.denied(),
+                belowFloor(created.values()));
     }
 
     /**

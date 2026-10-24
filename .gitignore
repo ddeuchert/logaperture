@@ -59,3 +59,4 @@ logctl-wildfly
 site/
 .venv-docs/
 .cache/
+BETA2-DRAFT.md

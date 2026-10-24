@@ -670,6 +670,22 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         return List.copyOf(refs);
     }
 
+    /** The same walk as {@link #handlerFloorsBelow}, every handler on it, never collapsed. */
+    @Override
+    public List<HandlerRef> handlersOnPath(String loggerName) {
+        ensureNamesResolved();
+        List<HandlerRef> refs = new ArrayList<>();
+        for (Logger current = logger(loggerName); current != null; current = current.getParent()) {
+            for (Handler handler : current.getHandlers()) {
+                refs.add(refFor(handler));
+            }
+            if (!current.getUseParentHandlers()) {
+                break; // records stop propagating upward here (JUL semantics)
+            }
+        }
+        return List.copyOf(refs);
+    }
+
     /**
      * Evicts {@link #refByHandler} / {@link #handlersByRef} / {@link
      * #tokenRefs} / {@link #resolvedNames} entries for a {@link Handler}

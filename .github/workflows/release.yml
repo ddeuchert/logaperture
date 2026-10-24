@@ -15,7 +15,7 @@
 name: Release
 
 # Cut a release by pushing a tag: `git tag -a v0.1.0-alpha.1 -m ... && git push origin v0.1.0-alpha.1`
-# (from `main`). This builds and signs the release, publishes it to Maven Central
+# (on the release commit of `develop` or `release/*`, after its pull request merged into `main`). This builds and signs the release, publishes it to Maven Central
 # (issue #186), then publishes a GitHub Release with the zip attached (issue #25), and its
 # .sha256 and .asc next to it (issue #202).
 # Run the Maven Central dry run (central.yml) first.

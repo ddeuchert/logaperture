@@ -231,6 +231,11 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     }
 
     @Override
+    public List<HandlerRef> handlersOnPath(String loggerName) {
+        return List.copyOf(handlersOnPath.getOrDefault(loggerName, List.of()));
+    }
+
+    @Override
     public List<HandlerFloor> handlerFloorsBelow(String loggerName, Level target) {
         if (target == null) {
             return List.of();

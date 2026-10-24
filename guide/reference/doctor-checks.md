@@ -120,7 +120,7 @@ applies.
 ### `vendor-defaults.unresolved-handler`
 
 The vendor defaults file sets a handler that doesn't exist yet. `INFO`. The setting is applied as
-soon as the handler appears, which on WildFly can be some time after startup.
+soon as the handler appears, which on WildFly is a few seconds after startup.
 
 **Fix:** if it never appears, check the name against `logctl list handlers --show-all`.
 

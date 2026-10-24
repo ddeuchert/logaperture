@@ -72,7 +72,7 @@ logctl env
 ```
 
 ```
-LogAperture agent    1.0.0-beta.1  (logctl 1.0.0-beta.1)
+LogAperture agent    1.0.0-beta.3  (logctl 1.0.0-beta.3)
 Java                 17.0.5  Eclipse Adoptium
 OS                   Linux 7.2.10-200.fc44.x86_64  amd64
 Logging backend      JBoss LogManager 2.1.18.Final
@@ -88,6 +88,11 @@ Your versions and paths will differ. This output is from a WildFly in a containe
 `Framework/container` must name WildFly. If it doesn't, LogAperture didn't recognize the server:
 check the server log before going further. If `logctl` says it can't find a JVM, see
 [Work with several JVMs](../how-to/several-jvms.md).
+
+LogAperture knows WildFly's handler names (`CONSOLE`, `FILE`, …) a few seconds after the JVM
+starts, so you can set a handler level or put one in the
+[vendor defaults](../vendors/vendor-defaults.md) while a long-starting application is still
+deploying. `ALL_HANDLERS` always works.
 
 Next: the [Quick start](quick-start.md).
 

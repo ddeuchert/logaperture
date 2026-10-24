@@ -147,6 +147,7 @@ nav:
   - Vendors:
       - Vendor defaults: vendors/vendor-defaults.md
       - Recipes for library authors: vendors/library-recipes.md
+      - Configuring the logctl launcher: vendors/logctl-launcher.md
   - Reference:
       - logctl: reference/logctl.md
       - Agent options and properties: reference/agent-options.md

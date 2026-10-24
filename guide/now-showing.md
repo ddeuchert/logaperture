@@ -36,7 +36,7 @@ and one more command lets it through.
 `logctl` warns that the `CONSOLE` handler is at `INFO` and will drop the `TRACE` records.
 
 Reference: [`set logger`](reference/logctl.md#set-logger) · How-to:
-[When raising a logger shows nothing](how-to/raise-a-level.md#when-raising-a-logger-shows-nothing)
+[The console follows](how-to/raise-a-level.md#the-console-follows)
 
 **`logctl set handler CONSOLE AUTO`**: let the console handler follow the logger.
 
@@ -45,7 +45,7 @@ Reference: [`set logger`](reference/logctl.md#set-logger) · How-to:
   override, and goes back to its own level once none are left.
 
 Reference: [`set handler`](reference/logctl.md#set-handler) · How-to:
-[When raising a logger shows nothing](how-to/raise-a-level.md#when-raising-a-logger-shows-nothing)
+[The console follows](how-to/raise-a-level.md#the-console-follows)
 
 **`logctl status`**: show everything LogAperture has changed, and when each change reverts.
 It changes nothing.
@@ -83,7 +83,7 @@ ends, so nothing is left to clean up.
 - `AUTO`: follow the lowest `DEBUG` or `TRACE` logger override.
 
 Reference: [`set handler`](reference/logctl.md#set-handler) · How-to:
-[When raising a logger shows nothing](how-to/raise-a-level.md#when-raising-a-logger-shows-nothing)
+[The console follows](how-to/raise-a-level.md#the-console-follows)
 
 **`logctl list loggers com.example`**: show the loggers under `com.example` that have an override,
 with their levels and when each reverts.

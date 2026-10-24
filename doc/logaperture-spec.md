@@ -819,6 +819,8 @@ Every client must tolerate an **unknown enum member** (a newer agent returning a
 
 **No guarantee before 1.0.** Alpha and beta releases make **no skew promise**. The only supported pairing pre-1.0 is an agent and a `logctl` from the *same build*. The contract in this section takes effect at 1.0.0.
 
+**Release lines.** 1.0.x patches are cut from a `release/1.0` branch while `develop` carries 1.1.0 and later: [`doc/specs/release-lines.md`](specs/release-lines.md) (#257).
+
 ---
 
 ## 12. Testing strategy
@@ -1231,6 +1233,8 @@ The M0–M6 plan above stays the long-term map. It is too much to build before a
 |---|---|---|
 | `0.1.0-alpha.3` | ~Oct 1 | Everything on `develop` today, plus guided `list`, `set`, `reset` and `alter rule` (#116), which finished early and was pulled forward from beta 1 (2026-09-28). Last GitHub-only release. |
 | `1.0.0-beta.1` | Oct 15 | **Feature freeze.** Adds library recipes (#92), whose spec was signed off in time. First Maven Central publish; docs site live. Released 2026-10-15. |
+| `1.0.0-beta.2` | Oct 20 | Fixes and guide only: WildFly `jboss.as` MBeans (#237), override re-apply on WildFly (#232) and Logback (#231), zip file dates (#207), the launcher conf file (#238), Now Showing and the trim recording. Released 2026-10-20. |
+| `1.0.0-beta.3` | Oct 21 | `set logger` brings the default handlers along (#210), WildFly handler names within seconds of start (#246), snapshot builds on Maven Central (#248), the Discussions links (#243), and two resume fixes (#251, #253). Released 2026-10-21. |
 | `1.0.0-beta.N`, `-rc.1` | rc by Nov 9 | Fixes only, plus renames from the contract review. |
 | `1.0.0` | Nov 16 | The §11.1 compatibility promise starts; the "not for production" warning comes off within the §11 1.0 matrix. |
 | `1.1.0` | Dec 2026 – early 2027 | Quarkus JVM mode (#114), then plain-JVM JUL (#221). Not in 1.0.0. Then Release 2: Spring Boot, Logback depth (rules, `top`, `doctor`, storms), configurable storm suppression (#27), Tomcat with per-webapp Logback. If Quarkus takes 1.1, Release 2 becomes 1.2. |
@@ -1313,6 +1317,7 @@ On ordering: **IntelliJ IDEA is missing from the original list and probably has 
 - **Metrics export** — the per-rule and per-logger counters through Micrometer or OpenTelemetry, for deployments that do have a pipeline.
 - **A container and Kubernetes story.** Ephemeral filesystems break the §6.3 file-based state store, and logs go to stdout rather than to a disk that can fill — the volume concern survives but its symptom becomes cost rather than outage.
 - **`logctl listen`: stream a logger's output to the terminal or a file** ([#195](https://github.com/ddeuchert/logaperture/issues/195)), post-1.0. `listen` attaches like a native handler to one or more loggers with its own threshold, for as long as `logctl` holds a lease, and a later step adds a lasting `add handler`. Spiked 2026-10-18: [`doc/spikes/logctl-listen.md`](spikes/logctl-listen.md). The agent keeps a bounded ring that `logctl` drains over the existing JMX connection, so the agent still never listens or transmits (§8.2, §9.9). It also needs its own deniable `stream` capability, and listening below the configured level needs a `listen` layer inside level control (on JUL and WildFly) so it can't leave a raised level behind.
+- **Time-windowed `logctl top`.** `logctl top 5`, `logctl top 30` rank the worst offenders over the last N minutes from a small fixed set (e.g. 5, 15, 30, 60) rather than only since the context was installed, so a logger that just turned noisy is not hidden by hours of history. Needs per-bucket counters in place of one running total (bounded-state cost, §16.7). Design questions deferred: the window set, the default with no argument, bucket granularity, and short-context behaviour. See [`doc/specs/top.md`](specs/top.md) (deferred scope).
 - **Upstream contribution.** As noted in §3.2, if storm collapse belongs in Log4j 2 or Logback core, contributing it there reaches far more users than this project will.
 
 ### 18.7 Pattern-based level targeting
@@ -1707,6 +1712,14 @@ Tracked as [#142](https://github.com/ddeuchert/logaperture/issues/142). **Specce
 - One-time, or standing: whether a descendant configured later (a reload adds one at WARN) is caught. Decision #5's case against standing wildcards applies.
 - Capability checks per forced descendant, as a pattern target has today, and a "too many to list" threshold for the guided question.
 - Whether `reset logger com.mycompany` also reverts the forced descendants, and how `status` / `list loggers` show them.
+
+### 18.18 `set logger`: the default handlers follow the change
+
+Tracked as [#210](https://github.com/ddeuchert/logaperture/issues/210). **Specced and signed off 2026-10-17:** [`doc/specs/default-handlers-follow.md`](specs/default-handlers-follow.md), decisions H1–H12. Release decided on the finished PR (1.0.0-beta.2 as a freeze exception, or 1.1.0).
+
+**Motivation.** After `logctl set logger com.mycompany DEBUG` the records are logged, but the console (usually the one `DEFAULT_HANDLERS` member, at `INFO`) drops them, and the user gets a WARN with a second command to run. In a team demo this two-step was the hardest thing to explain.
+
+**What the user would do.** Just `logctl set logger com.mycompany DEBUG`: the default handlers on its path that would drop DEBUG go to `AUTO` for as long as the change lasts, then back. `--keep-handlers` changes only the logger, as before.
 
 ---
 

@@ -36,8 +36,10 @@ set. `logctl` warns when you set one; see [the build's minimum level](get-starte
 
 ## A raised level shows nothing
 
-Usually a handler is at a stricter level than the logger. `set logger` warns about it, with the
-command that fixes it. See [Raise a log level](how-to/raise-a-level.md#when-raising-a-logger-shows-nothing).
+Usually a handler is at a stricter level than the logger. The default handler (usually the console)
+follows the change on its own; for any other handler, or one you set yourself, `set logger` warns
+about it, with the command that fixes it. See
+[Raise a log level](how-to/raise-a-level.md#the-console-follows).
 
 Also check:
 
@@ -91,7 +93,9 @@ LogAperture writes one line at startup, then only warnings and errors. For more,
 
 ## Reporting a problem
 
-[Open an issue](https://github.com/ddeuchert/logaperture/issues) with:
+For a question, or to tell us how a try-out went, use
+[Discussions](https://github.com/ddeuchert/logaperture/discussions/245). For a bug,
+[open an issue](https://github.com/ddeuchert/logaperture/issues) with:
 
 - the output of `logctl env`, which is written to be pasted into a bug report;
 - the command you ran and its output;

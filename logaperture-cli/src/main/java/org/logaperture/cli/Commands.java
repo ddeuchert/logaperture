@@ -197,7 +197,7 @@ final class Commands {
                             orDash(row.getMode()),
                             orDash(row.getTier()),
                             handlerRevertsCell(row),
-                            row.getReason() == null ? Format.NONE : '"' + row.getReason() + '"'));
+                            handlerReasonCell(row)));
                 }
                 out.println(Format.table(List.of("HANDLER", "LEVEL", "MODE", "TIER", "REVERTS", "REASON"), table));
                 if (groupOverlapsAnother(handlerOverrides)) {
@@ -340,8 +340,14 @@ final class Commands {
     /** With {@code force}: doc/specs/set-logger-force.md. */
     static Command setLogger(String target, String level, String reason, String tierName, long forSeconds,
             boolean yes, boolean json, boolean force) {
+        return setLogger(target, level, reason, tierName, forSeconds, yes, json, force, false);
+    }
+
+    /** With {@code keepHandlers}: only the logger changes (doc/specs/default-handlers-follow.md). */
+    static Command setLogger(String target, String level, String reason, String tierName, long forSeconds,
+            boolean yes, boolean json, boolean force, boolean keepHandlers) {
         return new SetLoggerCommand(target, level, reason, new Parser.TierChoice(tierName, forSeconds), yes, json,
-                force);
+                force, keepHandlers);
     }
 
     /** {@code set logger [<target>]} with the level left out, on a terminal (doc/specs/guided-commands.md #7). */
@@ -351,7 +357,29 @@ final class Commands {
 
     /** With {@code force} given on the command line, the guided question about descendants isn't asked. */
     static Command setLoggerGuided(String target, String reason, boolean force) {
-        return new SetLoggerCommand(target, null, reason, null, false, false, force);
+        return setLoggerGuided(target, reason, force, false);
+    }
+
+    /** With {@code keepHandlers} given on the command line, it is added to the command the guided run prints. */
+    static Command setLoggerGuided(String target, String reason, boolean force, boolean keepHandlers) {
+        return new SetLoggerCommand(target, null, reason, null, false, false, force, keepHandlers);
+    }
+
+    /**
+     * The handler names in {@code DEFAULT_HANDLERS}' catalog row summary -- {@code "FILE, CONSOLE"},
+     * {@code "(auto: CONSOLE)"} or {@code "(vendor: CONSOLE, FILE)"}; none for {@code "(none)"} or
+     * {@code "(auto -- no handlers yet)"}.
+     */
+    static List<String> defaultHandlerNames(String membersSummary) {
+        String names = membersSummary;
+        if (names.startsWith("(")) {
+            int colon = names.indexOf(": ");
+            if (colon < 0 || !names.endsWith(")")) {
+                return List.of();
+            }
+            names = names.substring(colon + 2, names.length() - 1);
+        }
+        return List.of(names.split(", "));
     }
 
     /**
@@ -1768,14 +1796,40 @@ final class Commands {
         if ("AUTO".equals(row.getOverrideMode())) {
             cell.append("AUTO → ");
         }
-        cell.append(orDash(row.getOverrideLevel())).append(" (").append(orDash(row.getOverrideTier()));
+        cell.append(orDash(row.getOverrideLevel()));
+        if (!row.getOverrideFollows().isEmpty()) { // doc/specs/default-handlers-follow.md: its tier is the loggers'
+            return cell.append(" (follows ").append(String.join(", ", row.getOverrideFollows())).append(')')
+                    .toString();
+        }
+        cell.append(" (").append(orDash(row.getOverrideTier()));
         if ("FOR".equals(row.getOverrideTier()) && row.getOverrideExpiresAt() != null) {
             cell.append(", reverts ").append(Format.relative(row.getOverrideExpiresAt()));
+        }
+        if (!row.getOverrideThenFollows().isEmpty()) {
+            cell.append(", then follows ").append(String.join(", ", row.getOverrideThenFollows()));
         }
         return cell.append(')').toString();
     }
 
+    /** The reason given, else what the override follows (doc/specs/default-handlers-follow.md, as F10's {@code forced by}). */
+    private static String handlerReasonCell(HandlerLevelOverrideData row) {
+        if (row.getReason() != null) {
+            return '"' + row.getReason() + '"';
+        }
+        if (!row.getFollows().isEmpty()) {
+            return "follows " + String.join(", ", row.getFollows());
+        }
+        if (!row.getThenFollows().isEmpty()) {
+            return "then follows " + String.join(", ", row.getThenFollows());
+        }
+        return Format.NONE;
+    }
+
     private static String handlerRevertsCell(HandlerLevelOverrideData row) {
+        if (!row.getFollows().isEmpty()) {
+            // ends with the logger changes it follows, named once, in the REASON column
+            return row.getFollows().size() == 1 ? "with the logger" : "with the loggers";
+        }
         if ("FOR".equals(row.getTier()) && row.getExpiresAt() != null) {
             return Format.clock(row.getExpiresAt()) + " (" + Format.relative(row.getExpiresAt()) + ")";
         }

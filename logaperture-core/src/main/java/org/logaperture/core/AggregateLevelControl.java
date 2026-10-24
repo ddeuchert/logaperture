@@ -20,6 +20,7 @@ import org.logaperture.api.DescendantLevel;
 import org.logaperture.api.BackendInfo;
 import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.EnvironmentReport;
+import org.logaperture.api.FollowedHandler;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerInfo;
 import org.logaperture.api.HandlerLevelOverride;
@@ -935,9 +936,19 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         Map<String, LevelOverride> forcedByName = new LinkedHashMap<>();
         Map<String, DescendantLevel> descendantsByName = new LinkedHashMap<>();
         Map<String, org.logaperture.api.LevelFloor> belowFloorByName = new LinkedHashMap<>();
+        // doc/specs/default-handlers-follow.md: each context's default handlers follow on their own; a
+        // handler named alike in several is reported once, as the warning does.
+        Map<HandlerRef, FollowedHandler> followingByRef = new LinkedHashMap<>();
+        String followDenied = null;
         for (ContextControl context : contexts) {
             SetLevelResult result = context.service().setLogger(
                     loggerName, level, opts, resolvedMatchesByContext.get(context.stableKey()));
+            for (FollowedHandler followed : result.following()) {
+                followingByRef.putIfAbsent(followed.handlerRef(), followed);
+            }
+            if (followDenied == null) {
+                followDenied = result.followDenied();
+            }
             for (DescendantLevel descendant : result.descendants()) {
                 descendantsByName.putIfAbsent(descendant.loggerName(), descendant);
             }
@@ -974,7 +985,8 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             reportedOverrides.addAll(forcedByName.values()); // the target first, then what it forced
         }
         return new SetLevelResult(reportedOverrides, List.copyOf(blockingByRef.values()),
-                List.copyOf(descendantsByName.values()), List.copyOf(belowFloorByName.values()));
+                List.copyOf(descendantsByName.values()), List.copyOf(followingByRef.values()), followDenied,
+                List.copyOf(belowFloorByName.values()));
     }
 
     @Override
@@ -1298,6 +1310,33 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             context.handlerService().sweepExpiredOverrides(now);
             context.ruleService().sweepExpiredRules(now);
         }
+    }
+
+    /**
+     * Whether some context still has a vendor-defaults handler that hasn't resolved. A container
+     * checks this after installing a context to decide whether to start the quick retry (E5).
+     */
+    public boolean hasPendingVendorHandlers() {
+        for (ContextControl context : sortedByKey()) {
+            if (!context.handlerService().pendingVendorHandlers().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Retries the pending vendor handlers of every context -- doc/specs/wildfly-early-handler-names.md
+     * E5. Never throws.
+     *
+     * @return whether some context still has one pending afterwards
+     */
+    public boolean retryPendingVendorHandlers(Instant now) {
+        boolean pending = false;
+        for (ContextControl context : sortedByKey()) {
+            pending |= context.handlerService().retryPendingVendorHandlers(now);
+        }
+        return pending;
     }
 
     /**

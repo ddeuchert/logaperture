@@ -16,14 +16,15 @@ logctl add rule drop com.acme.batch.Worker --message-contains "This happens a lo
 
 !!! warning "Pre-release"
     LogAperture 1.0 is in beta. Try it on a server you can afford to restart, and
-    [tell us](https://github.com/ddeuchert/logaperture/issues) what breaks. It is not for
+    [tell us](https://github.com/ddeuchert/logaperture/issues) what breaks, or
+    [how it went](https://github.com/ddeuchert/logaperture/discussions/245). It is not for
     production use before 1.0.0.
 
 ## See it work
 
-A logger raised to `TRACE` still shows nothing on the console, because the console's own handler
-is at `INFO`. One more command fixes it, and both changes revert on their own. The top pane is the
-WildFly console; `logctl` runs below.
+A logger raised to `TRACE` on a running WildFly. The console's own handler is at `INFO`, so it
+follows the change to let the `TRACE` lines through, and both revert on their own. The top pane is
+the WildFly console; `logctl` runs below.
 
 <div class="la-cast" data-cast="why-no-trace"></div>
 

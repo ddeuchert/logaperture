@@ -35,26 +35,39 @@ public final class SetLevelResultData {
     private final List<LevelOverrideData> overrides;
     private final List<HandlerFloorData> blockingHandlers;
     private final List<DescendantLevelData> descendants;
+    private final List<FollowedHandlerData> following;
+    private final String followDenied;
     private final List<LevelFloorData> belowFloor;
 
     /**
      * Every field, including {@code belowFloor} (doc/specs/quarkus-support.md). Additive: a result
      * from an agent that predates a field still converts, through the shorter constructors below.
      */
-    @ConstructorProperties({"overrides", "blockingHandlers", "descendants", "belowFloor"})
+    @ConstructorProperties({"overrides", "blockingHandlers", "descendants", "following", "followDenied",
+            "belowFloor"})
     public SetLevelResultData(List<LevelOverrideData> overrides, List<HandlerFloorData> blockingHandlers,
-            List<DescendantLevelData> descendants, List<LevelFloorData> belowFloor) {
+            List<DescendantLevelData> descendants, List<FollowedHandlerData> following, String followDenied,
+            List<LevelFloorData> belowFloor) {
         this.overrides = overrides;
         this.blockingHandlers = blockingHandlers;
         this.descendants = descendants == null ? List.of() : descendants;
+        this.following = following == null ? List.of() : following;
+        this.followDenied = followDenied;
         this.belowFloor = belowFloor == null ? List.of() : belowFloor;
     }
 
-    /** Through {@code descendants} (doc/specs/set-logger-force.md). */
+    /** Every field but {@code belowFloor} (doc/specs/default-handlers-follow.md). */
+    @ConstructorProperties({"overrides", "blockingHandlers", "descendants", "following", "followDenied"})
+    public SetLevelResultData(List<LevelOverrideData> overrides, List<HandlerFloorData> blockingHandlers,
+            List<DescendantLevelData> descendants, List<FollowedHandlerData> following, String followDenied) {
+        this(overrides, blockingHandlers, descendants, following, followDenied, List.of());
+    }
+
+    /** Every field but {@code following}, {@code followDenied} and {@code belowFloor} (doc/specs/set-logger-force.md). */
     @ConstructorProperties({"overrides", "blockingHandlers", "descendants"})
     public SetLevelResultData(List<LevelOverrideData> overrides, List<HandlerFloorData> blockingHandlers,
             List<DescendantLevelData> descendants) {
-        this(overrides, blockingHandlers, descendants, List.of());
+        this(overrides, blockingHandlers, descendants, List.of(), null, List.of());
     }
 
     @ConstructorProperties({"overrides", "blockingHandlers"})
@@ -67,7 +80,19 @@ public final class SetLevelResultData {
                 result.overrides().stream().map(LevelOverrideData::from).toList(),
                 result.blockingHandlers().stream().map(HandlerFloorData::from).toList(),
                 result.descendants().stream().map(DescendantLevelData::from).toList(),
+                result.following().stream().map(FollowedHandlerData::from).toList(),
+                result.followDenied(),
                 result.belowFloor().stream().map(LevelFloorData::from).toList());
+    }
+
+    /** The default handlers this change let through -- see {@link SetLevelResult#following()}. */
+    public List<FollowedHandlerData> getFollowing() {
+        return following;
+    }
+
+    /** The capability that kept the default handlers from following, or {@code null} -- see {@link SetLevelResult#followDenied()}. */
+    public String getFollowDenied() {
+        return followDenied;
     }
 
     /** Levels set that the backend won't emit -- see {@link SetLevelResult#belowFloor()}. */
