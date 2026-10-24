@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# main only moves when a release is cut, by a pull request from develop. The
-# repository ruleset on main requires this check, so a pull request into main
-# from any other branch (or from a fork) can't be merged.
+# main only moves when a release is cut, by a pull request from develop or from a release/*
+# branch of this repository (doc/specs/release-lines.md, R4). The repository ruleset on main
+# requires this check, so a pull request into main from any other branch (or from a fork) can't
+# be merged.
 name: Release PR source
 
 on:
@@ -27,12 +28,16 @@ jobs:
   from-develop:
     runs-on: ubuntu-latest
     steps:
-      - name: Check the pull request comes from develop
+      - name: Check the pull request comes from develop or a release branch
         env:
           HEAD_REF: ${{ github.head_ref }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
-          if [ "$HEAD_REF" != develop ] || [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
-            echo "::error::Pull requests into main must come from $GITHUB_REPOSITORY:develop, not $HEAD_REPO:$HEAD_REF."
+          case "$HEAD_REF" in
+            develop|release/*) from_release_line=true ;;
+            *) from_release_line=false ;;
+          esac
+          if [ "$from_release_line" != true ] || [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+            echo "::error::Pull requests into main must come from $GITHUB_REPOSITORY:develop or $GITHUB_REPOSITORY:release/*, not $HEAD_REPO:$HEAD_REF."
             exit 1
           fi

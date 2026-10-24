@@ -55,18 +55,32 @@ Three pages are checked by tests, so these fail the build rather than drifting:
 Example output in the guide is captured from a real run (the WildFly dev environment, or a plain
 JVM), not written from memory.
 
-### Label the tracking issue when the feature lands on develop
+### Move the tracking issue to "Merged" when the change lands
+
+Work is tracked in the **LogAperture** GitHub Project
+(<https://github.com/users/ddeuchert/projects/1>). Its **Status** field runs Backlog → Spec →
+In progress → In review → Merged → Released; releases are scoped by the issue's **milestone**
+(`1.0.0` / `1.0.1` for the 1.0 line, `1.1.0` committed next minor, `1.2.0` expected to follow,
+`1.x` unscheduled). Move the issue's Status as the work moves — at minimum when the spec starts,
+when the PR opens, and when it merges.
+
+The milestone also picks the branch ([`doc/specs/release-lines.md`](doc/specs/release-lines.md)):
+a change for 1.0.0 or a 1.0.x patch branches from `release/1.0` and its PR targets
+`release/1.0`; everything else branches from and targets `develop`. A merge to `release/1.0` is
+merged forward into `develop` with a merge commit.
 
 A feature branch is named for the issue it implements (`feature/<issue>-<slug>`) and its PR
 title/body reference that issue (e.g. `(issue #32)`) — deliberately never GitHub's `Closes #32`
-keyword, since merging to `develop` is not a release. The moment that PR merges into `develop`,
-add the `on develop` label to the issue, as part of finishing the merge, not a
-separate followup step.
+keyword, since merging to a branch is not a release. The moment that PR merges, set the issue's
+Status to **Merged**, as part of finishing the merge, not a separate followup step.
 
-The label means exactly what its own description says: code complete, will be part of the next
-release. **It replaces closing the issue at merge time, it doesn't precede it** — the issue
-stays open, still trackable, until an actual release ships it; closing is a separate,
-release-cut concern this label is not standing in for.
+**Merged** means exactly that: code complete on its line, will be part of the release its
+milestone names. **It replaces closing the issue at merge time, it doesn't precede it** — the
+issue stays open, still trackable, until an actual release ships it; at the release cut the issue
+is closed and its Status becomes **Released**. Closing is a separate, release-cut concern this
+status is not standing in for.
+
+A new issue gets a milestone when it is filed (`1.x` if it is not yet scheduled).
 
 ### Sign-off reviews happen in an artifact, not the thread
 
