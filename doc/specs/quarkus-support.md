@@ -1,7 +1,7 @@
 # Quarkus JVM mode support
 
 Status: **Signed off 2026-10-18** (decisions Q1 to Q9 below). Implemented on `feature/114-quarkus-support`
-(PR #225), held as a draft until 1.0.0 ships (Q9). Release `1.1.0`.
+(PR #225). Release `1.1.0`: `develop` is the 1.1.0 trunk since the release lines were cut ([`release-lines.md`](release-lines.md)), so there is no hold (Q9).
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §15.9 (Quarkus), §15.1–15.5
 (container SPI, verification sweep), §17.1 (release plan). Evidence:
@@ -47,7 +47,7 @@ All nine were agreed on 2026-10-18 from the sign-off review.
 | Q6 | Sample module | In the reactor behind a profile, off in the default build; a separate CI job activates it and the release workflow always does. |
 | Q7 | `doctor` autoflush | On Quarkus, the autoflush finding on Quarkus's own default handlers is reported as info, marked as a framework default. A warning stays for handlers a user created. |
 | Q8 | `logctl env` | Prints `Quarkus <version>`, read from the `quarkus-core` jar manifest (a file read, never touching JUL). |
-| Q9 | Slot | Release `1.1.0`, ahead of Spring Boot (which stays in 1.2 per §17.1). The spec merges first; the implementation is a draft PR on `feature/114-quarkus-support`, labelled "do not merge until 1.0.0 ships", kept rebased on `develop` and run against `WildFlyContainerIT` while held. `on develop` is applied to #114 only when the PR merges. |
+| Q9 | Slot | Release `1.1.0`, ahead of Spring Boot (which stays in 1.2 per §17.1). The spec merged first. The implementation was held as a draft PR until `develop` became the 1.1.0 trunk (release lines, #257); the hold ended 2026-10-24 and the PR goes through review and `WildFlyContainerIT` like any other. #114's Project Status becomes Merged when the PR merges. |
 
 ## Where things stand
 
@@ -123,8 +123,8 @@ All nine were agreed on 2026-10-18 from the sign-off review.
   reflection disabled, within the fast-sweep window;
 - sticky overrides survive a restart;
 - `list handlers` shows `console` and `file`, and `top` counts the main log file;
-- `WildFlyContainerIT` still passes with the shared gate (and, while the PR is held, on every
-  rebase).
+- `WildFlyContainerIT` still passes with the shared gate (and on every
+  update of the PR branch).
 
 ## Behaviour to document rather than change
 
