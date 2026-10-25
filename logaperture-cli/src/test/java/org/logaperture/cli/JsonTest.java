@@ -127,6 +127,14 @@ class JsonTest {
     }
 
     @Test
+    void topWithAHandlerCount_appendsPersistentHandlers() {
+        TopReportData report = new TopReportData(List.of(), null, 0);
+
+        assertEquals("{\"loggers\":[],\"measurementStartedAt\":null,\"trackedCount\":0,\"persistentHandlers\":1}",
+                Json.top(report, 1));
+    }
+
+    @Test
     void topEmitsTheTrueTrackedCount_notTheLimitTruncatedRowCount() {
         // --limit already truncated "loggers" to one row server-side; trackedCount
         // must still report every logger actually being tracked (doc/specs/top.md).

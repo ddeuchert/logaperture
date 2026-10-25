@@ -114,6 +114,8 @@ rebuild with `quarkus.log.min-level=TRACE`.
   with `logctl` isn't held to it.
 - In dev mode (`quarkus:dev`) the minimum level is `ALL`, so `TRACE` works there even when it doesn't
   in your production build. Dev mode isn't a supported target, though it works.
+- `logctl top` measures bytes written to files, and Quarkus logs to the console by default. Turn on
+  the file handler (`quarkus.log.file.enabled=true`) to give `top` something to measure.
 - Asynchronous handlers (`quarkus.log.*.async.enable`) aren't supported.
 - `syslog` and `socket` handlers are named and listed, but not otherwise tested.
 - A plain `java -jar` application that logs through `java.util.logging` alone, without Quarkus, is

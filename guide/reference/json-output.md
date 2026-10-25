@@ -434,6 +434,17 @@ logctl top --limit 2 --json
 }
 ```
 
+`persistentHandlers` is the number of file-backed handlers the application has. It is `0` when
+nothing writes to a file, so `top` has nothing to measure, and above `0` when a file handler exists
+but has not written anything yet. Output from a Quarkus application that logs to the console only:
+
+```json
+{"loggers":[],"measurementStartedAt":"2026-10-25T04:31:07.929750874Z","trackedCount":0,"persistentHandlers":0}
+```
+
+The field is left out when `logctl` could not get the handler list (an older agent, or a framework
+that lists no handlers), so treat a missing `persistentHandlers` as "unknown".
+
 ### storms
 
 ```sh

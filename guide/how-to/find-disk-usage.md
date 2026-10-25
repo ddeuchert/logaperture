@@ -34,6 +34,25 @@ Loggers are listed worst first, by bytes written since the agent started, with:
 `--limit` sets how many to show (default 10; `0` for all). The projection is only as good as the
 time measured: a few minutes after startup, it mostly reflects startup.
 
+## If `top` says there are no log files
+
+`top` counts bytes written to files. An application that logs only to the console has nothing to
+count, and `top` says so:
+
+```
+$ logctl top
+No log files to measure: `top` counts bytes written to files, and this application's handlers write to none (found: console).
+See `logctl list handlers`; send output to a file to measure it.
+```
+
+`logctl list handlers --show-all` shows which handlers write to a file (`file` in the `PERSISTS`
+column). Quarkus logs to the console by default; turn on its file handler
+(`quarkus.log.file.enabled=true`) and `top` has something to measure. This is different from the
+shorter "No byte-volume measurements available yet", which means a file handler exists and nothing
+has been written through it yet.
+
+With `--json`, `persistentHandlers` is the number of file-backed handlers: `0` for the case above.
+
 ## What in the configuration will hurt
 
 ```sh
