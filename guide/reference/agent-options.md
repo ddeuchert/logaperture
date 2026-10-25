@@ -87,4 +87,9 @@ supported configuration.
 | `logaperture.wildfly.handlerNames.debug` | `false` | Log how WildFly handler names were resolved. |
 
 `logaperture.version` is set by the agent itself once it is running; `logctl` uses it to find JVMs
-with the agent. Don't set it.
+with the agent. `logaperture.delivery` says whether the agent or the
+[Quarkus extension](quarkus-extension-config.md) is running in this JVM. Don't set either.
+
+On Quarkus with the LogAperture extension there is no `-javaagent` line: the same settings are
+`quarkus.logaperture.*` configuration properties. See
+[Quarkus extension configuration](quarkus-extension-config.md).

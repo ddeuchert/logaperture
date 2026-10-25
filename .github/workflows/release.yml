@@ -76,12 +76,12 @@ jobs:
           pip install -r requirements-docs.txt
           mkdocs build --strict
 
-      - name: QuarkusIT on the tested Quarkus version
-        # doc/specs/quarkus-support.md Q6: the release always runs the Quarkus profile. It is the one
-        # integration test this workflow runs; the CI job has the full version matrix.
+      - name: QuarkusIT and QuarkusExtensionIT on the tested Quarkus version
+        # doc/specs/quarkus-support.md Q6: the release always runs the Quarkus profile. They are the
+        # integration tests this workflow runs; the CI job has the full version matrix.
         run: |
           ./mvnw -B --no-transfer-progress -Pquarkus -pl logaperture-it -am verify \
-            -Dit.test=QuarkusIT -Dfailsafe.failIfNoSpecifiedTests=false \
+            -Dit.test='Quarkus*IT' -Dfailsafe.failIfNoSpecifiedTests=false \
             -Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false
 
       - name: Build, test and sign
@@ -97,7 +97,8 @@ jobs:
           MAVEN_GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          ./mvnw -B --no-transfer-progress -Prelease -pl logaperture-dist -am deploy \
+          ./mvnw -B --no-transfer-progress -Prelease,quarkus \
+            -pl logaperture-dist,logaperture-quarkus,logaperture-quarkus-deployment -am deploy \
             -Dproject.build.outputTimestamp="$(git log -1 --format=%cI)" \
             -DaltDeploymentRepository=staging::file:target/staging
 

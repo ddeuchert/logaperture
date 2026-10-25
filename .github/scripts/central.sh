@@ -44,7 +44,7 @@ die() {
 expected_files() {
     local v=$1
     echo "logaperture-parent/$v/logaperture-parent-$v.pom"
-    for a in logaperture-agent logaperture-cli; do
+    for a in logaperture-agent logaperture-cli logaperture-quarkus logaperture-quarkus-deployment; do
         echo "$a/$v/$a-$v.pom"
         echo "$a/$v/$a-$v.jar"
         echo "$a/$v/$a-$v-sources.jar"

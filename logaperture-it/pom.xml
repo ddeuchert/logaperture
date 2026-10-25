@@ -42,6 +42,7 @@
     <maven.deploy.skip>true</maven.deploy.skip>
     <!-- Empty unless the `quarkus` profile is active; QuarkusIT then runs, otherwise it skips itself. -->
     <quarkus.run.jar></quarkus.run.jar>
+    <quarkus.extension.run.jar></quarkus.extension.run.jar>
   </properties>
 
   <dependencies>
@@ -109,11 +110,19 @@
       <id>quarkus</id>
       <properties>
         <quarkus.run.jar>${maven.multiModuleProjectDirectory}/logaperture-sample-quarkus/target/quarkus-app/quarkus-run.jar</quarkus.run.jar>
+        <!-- doc/specs/quarkus-extension.md: the same app built with the extension instead of the agent. -->
+        <quarkus.extension.run.jar>${maven.multiModuleProjectDirectory}/logaperture-sample-quarkus-extension/target/quarkus-app/quarkus-run.jar</quarkus.extension.run.jar>
       </properties>
       <dependencies>
         <dependency>
           <groupId>org.logaperture</groupId>
           <artifactId>logaperture-sample-quarkus</artifactId>
+          <version>${project.version}</version>
+          <scope>test</scope>
+        </dependency>
+        <dependency>
+          <groupId>org.logaperture</groupId>
+          <artifactId>logaperture-sample-quarkus-extension</artifactId>
           <version>${project.version}</version>
           <scope>test</scope>
         </dependency>
@@ -159,6 +168,7 @@
             <logaperture.cli.jar>${maven.multiModuleProjectDirectory}/logaperture-cli/target/logaperture-cli.jar</logaperture.cli.jar>
             <logaperture.wildfly.image>${wildfly.image}</logaperture.wildfly.image>
             <logaperture.quarkus.run.jar>${quarkus.run.jar}</logaperture.quarkus.run.jar>
+            <logaperture.quarkus.extension.run.jar>${quarkus.extension.run.jar}</logaperture.quarkus.extension.run.jar>
             <!--
               docker-java (via Testcontainers) otherwise defaults to Docker API
               1.32, which Docker Engine 25+ rejects ("client version 1.32 is too

@@ -52,6 +52,14 @@ keeps the `WARNING`.
 
 **Fix:** turn autoflush off on that handler, if losing the last few lines in a crash is acceptable.
 
+### `handler.formatter-kept`
+
+A handler that requires its own formatter, so LogAperture leaves its formatter as it is: `trim`
+rules and `top` don't apply to what that handler writes. `INFO`. In practice this is Quarkus's Dev UI
+log stream (`MutinyLogHandler`), present in `quarkus dev` only.
+
+**Fix:** nothing to do.
+
 ### `logger.below-floor`
 
 A logger set to a level the logging backend will not emit, because the backend enforces a floor

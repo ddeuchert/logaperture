@@ -18,6 +18,7 @@ package org.logaperture.core;
 import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -36,16 +37,41 @@ import java.util.function.Supplier;
  */
 public final class LibraryRecipeScanner {
 
-    private final Supplier<Class<?>[]> loadedClasses;
+    private final Supplier<Collection<ClassLoader>> classLoaders;
 
-    /** @param loadedClasses {@code Instrumentation::getAllLoadedClasses} in production */
+    /** @param loadedClasses {@code Instrumentation::getAllLoadedClasses} in production: every loader they came from is scanned */
     public LibraryRecipeScanner(Supplier<Class<?>[]> loadedClasses) {
-        this.loadedClasses = Objects.requireNonNull(loadedClasses, "loadedClasses");
+        Objects.requireNonNull(loadedClasses, "loadedClasses");
+        this.classLoaders = () -> loadersOf(loadedClasses.get());
+    }
+
+    private LibraryRecipeScanner(List<ClassLoader> fixedLoaders) {
+        this.classLoaders = () -> fixedLoaders;
+    }
+
+    /**
+     * Scans one class loader (and, by parent delegation, its parents) -- the Quarkus extension's
+     * application class loader, which sees every application jar (doc/specs/quarkus-extension.md #6).
+     */
+    public static LibraryRecipeScanner forClassLoader(ClassLoader loader) {
+        Objects.requireNonNull(loader, "loader");
+        return new LibraryRecipeScanner(List.of(loader));
     }
 
     /** A scanner that finds nothing -- no {@code Instrumentation} to walk (tests, or a bootstrap failure). */
     public static LibraryRecipeScanner none() {
         return new LibraryRecipeScanner(() -> new Class<?>[0]);
+    }
+
+    private static Collection<ClassLoader> loadersOf(Class<?>[] types) {
+        Set<ClassLoader> loaders = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Class<?> type : types) {
+            ClassLoader loader = type.getClassLoader();
+            if (loader != null) {
+                loaders.add(loader);
+            }
+        }
+        return loaders;
     }
 
     /**
@@ -54,13 +80,7 @@ public final class LibraryRecipeScanner {
      * answer is skipped: one misbehaving loader must not hide every other library's recipes.
      */
     public List<URL> scan() {
-        Set<ClassLoader> loaders = Collections.newSetFromMap(new IdentityHashMap<>());
-        for (Class<?> type : loadedClasses.get()) {
-            ClassLoader loader = type.getClassLoader();
-            if (loader != null) {
-                loaders.add(loader);
-            }
-        }
+        Collection<ClassLoader> loaders = classLoaders.get();
         Map<String, URL> found = new LinkedHashMap<>();
         for (ClassLoader loader : loaders) {
             try {

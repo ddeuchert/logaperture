@@ -1771,6 +1771,21 @@ class CommandsTest {
 
     // --- env (doc/specs/environment-report.md) -----------------------------------------------
 
+    /** quarkus-extension.md #7: run as the Quarkus extension, the first line says so. */
+    @Test
+    void env_namesTheQuarkusExtension() {
+        mbean.environmentReport = new org.logaperture.control.jmx.EnvironmentReportData(
+                "1.1.0", "21.0.4", "Eclipse Adoptium", "Linux", "6.10.3", "x86_64",
+                "JBoss LogManager", "3.2.2.Final", "Quarkus", "3.39.5", null, null, null, "not configured",
+                "extension");
+
+        assertEquals(CliError.OK, run(Commands.env(false)));
+
+        String text = output();
+        assertTrue(text.startsWith("LogAperture extension") && text.contains("1.1.0"), text);
+        assertFalse(text.contains("LogAperture agent"), text);
+    }
+
     @Test
     void env_rendersAgentCliJavaAndOsAsALabelValueBlock() {
         mbean.environmentReport = new org.logaperture.control.jmx.EnvironmentReportData(

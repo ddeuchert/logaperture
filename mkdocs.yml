@@ -151,6 +151,7 @@ nav:
   - Reference:
       - logctl: reference/logctl.md
       - Agent options and properties: reference/agent-options.md
+      - Quarkus extension configuration: reference/quarkus-extension-config.md
       - JSON output: reference/json-output.md
       - File formats: reference/file-formats.md
       - Doctor checks: reference/doctor-checks.md

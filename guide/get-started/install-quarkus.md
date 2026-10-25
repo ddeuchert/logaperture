@@ -3,23 +3,61 @@
 !!! note "New in 1.1"
     Quarkus support arrives in LogAperture 1.1. This page describes it.
 
-You add one `-javaagent` option to the command that starts your Quarkus application and restart
-it once. After that, `logctl` changes logging on the running application. LogAperture never edits
-`application.properties`.
+There are two ways to add LogAperture to a Quarkus application. Either way, `logctl` then changes
+logging on the running application, and LogAperture never edits `application.properties`.
+
+- **The LogAperture extension** (recommended): add one dependency and rebuild. Nothing changes in how
+  the application is started, so it suits platforms where you don't control the command line, such
+  as Kubernetes or Azure App Service.
+- **The agent**: add a `-javaagent` option to the command that starts the application, with no
+  rebuild.
+
+Use one or the other. If both are present, the agent runs and the extension does nothing; see
+[Agent and extension together](#agent-and-extension-together).
 
 ## What you need
 
 - A Quarkus application running in **JVM mode**: `java -jar quarkus-run.jar` (the default
-  `fast-jar` package), or an uber-jar. **Native images are never supported**: they have no JVM to
-  attach an agent to.
+  `fast-jar` package), or an uber-jar. **Native images are not supported.**
 - **Quarkus 3.39** or the **3.33 LTS** stream. These are the versions LogAperture is tested on.
-  Another Quarkus version isn't blocked, but it runs in a reduced mode: see
-  [Other Quarkus versions](#other-quarkus-versions).
+  With the agent, another Quarkus version isn't blocked but runs in a reduced mode: see
+  [Other Quarkus versions](#other-quarkus-versions). The extension needs 3.33 or later.
 - **JDK 17, 21 or 25** running the application.
 - A **JDK**, not just a JRE, wherever you run `logctl`.
 - `logctl` runs **on the same machine and as the same operating-system user** as the application.
+  In Kubernetes, see [Run logctl in Kubernetes](#run-logctl-in-kubernetes).
 
-## Install
+## Install the extension
+
+1. **Add the dependency** to the application's `pom.xml`:
+
+    ```xml
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-quarkus</artifactId>
+      <version>1.1.0</version>
+    </dependency>
+    ```
+
+    Or with the Quarkus CLI: `quarkus ext add org.logaperture:logaperture-quarkus:1.1.0`. With Gradle:
+    `implementation("org.logaperture:logaperture-quarkus:1.1.0")`.
+
+2. **Rebuild and deploy** the application as usual. The start command doesn't change.
+
+3. **Settings**, if you need any, are `quarkus.logaperture.*` properties, which can come from
+   `application.properties`, environment variables or a ConfigMap. Most applications need none. In a
+   container whose user has no writable home directory, give LogAperture's state a writable place:
+
+    ```sh
+    QUARKUS_LOGAPERTURE_HOME=/tmp/logaperture
+    ```
+
+    See [Quarkus extension configuration](../reference/quarkus-extension-config.md) for every property.
+
+You also need `logctl`, from the release zip: download and unzip it as in
+[Install on WildFly](install-wildfly.md#install) steps 1 and 2. You need `bin/logctl`.
+
+## Or install the agent
 
 1. **Download** the release zip and unzip it, as in [Install on WildFly](install-wildfly.md#install)
    steps 1 and 2. You need `bin/logctl` and `lib/logaperture-agent.jar`.
@@ -46,32 +84,54 @@ it once. After that, `logctl` changes logging on the running application. LogApe
 
 ## Check it works
 
-The application's output has one line from LogAperture, before Quarkus's own banner:
+The application's output has one line from LogAperture, before Quarkus's own banner. With the
+extension it says `Quarkus extension`; with the agent, `Quarkus`:
 
 ```
-[logaperture] LogAperture 1.0.0-beta.2-SNAPSHOT active (Quarkus)
+[logaperture] LogAperture 1.1.0-SNAPSHOT active (Quarkus extension)
 ```
 
 Then run `logctl env`:
 
 ```
-LogAperture agent    1.0.0-beta.2-SNAPSHOT  (logctl 1.0.0-beta.2-SNAPSHOT)
-Java                 21.0.12  Eclipse Adoptium
-OS                   Linux 7.2.10-200.fc44.x86_64  amd64
-Logging backend      JBoss LogManager 3.0.6.Final
-Framework/container  Quarkus 3.33.4
-Diagnostics level    —
-State file           /tmp/logaperture/instances/f7b982ff04e06fc3-cap.state.yaml
-Vendor defaults      not configured
+LogAperture extension  1.1.0-SNAPSHOT  (logctl 1.1.0-SNAPSHOT)
+Java                   21.0.12  Eclipse Adoptium
+OS                     Linux 7.2.10-200.fc44.x86_64  amd64
+Logging backend        JBoss LogManager 3.2.2.Final
+Framework/container    Quarkus 3.39.5
+Diagnostics level      —
+State file             /tmp/logaperture/instances/e7e1b29c1dd098b2-cap.state.yaml
+Vendor defaults        not configured
 ```
 
-Your versions and paths will differ; this is a small sample application. `Framework/container` must name Quarkus. If it doesn't,
-LogAperture didn't recognize the application: check that it was started with `quarkus-run.jar` (or an
-uber-jar) and not another launcher. If `logctl` says it can't find a JVM, see
+With the agent, the first line reads `LogAperture agent`. Your versions and paths will differ; this
+is a small sample application. `Framework/container` must name Quarkus. If it doesn't, LogAperture
+didn't recognize the application: check that it was started with `quarkus-run.jar` (or an uber-jar)
+and not another launcher. If `logctl` says it can't find a JVM, see
 [Work with several JVMs](../how-to/several-jvms.md).
 
 Next: the [Quick start](quick-start.md). Its commands work on Quarkus too, with the logger and
 handler names of your application.
+
+## Run logctl in Kubernetes
+
+Quarkus's container images usually carry a JRE, and `logctl` needs a JDK. Run `logctl` from a
+debug container in the application's pod instead, with an image that has a JDK and `logctl`:
+
+```sh
+kubectl debug -it <pod> --image=<image with a JDK and logctl> --target=<application container> \
+  -- /opt/logaperture/bin/logctl env
+```
+
+`--target` puts the debug container in the application container's process namespace, and every
+container in a pod shares its network, which is what `logctl` needs. The debug container must run as
+the same user as the application (in Quarkus's own images, user `185`); set it with a
+`--profile` or a custom profile that sets `runAsUser`.
+
+!!! note
+    This route was checked with containers that share the process and network namespaces the way a
+    pod's do, with the application in a JRE-only image. It has not yet been run on a Kubernetes
+    cluster.
 
 ## Handler names
 
@@ -79,11 +139,11 @@ Quarkus keeps its console and file handlers inside one internal handler. LogAper
 it, and names the handlers by what they are (paths here are from a test run):
 
 ```
-HANDLER           LEVEL  PERSISTS  TARGET                  OVERRIDE
-ALL_HANDLERS      —      —         —                       —
-console           ALL    no        —                       —
-file              ALL    file      /tmp/cap/app.log        —
-DEFAULT_HANDLERS  —      —         (auto: console)         —
+HANDLER           LEVEL  PERSISTS  TARGET            OVERRIDE
+ALL_HANDLERS      —      —         —                 —
+console           ALL    no        —                 —
+file              ALL    file      /tmp/cap/app.log  —
+DEFAULT_HANDLERS  —      —         (auto: console)   —
 ```
 
 The names are `console`, `file`, `syslog` and `socket`. A second handler of one type is numbered:
@@ -94,26 +154,48 @@ to let a raised logger's lines through a handler that is set higher.
 ## The build's minimum level
 
 `quarkus.log.min-level` is fixed when you build the application, and Quarkus then lets nothing more
-verbose through, whatever a logger's level says. The default is `DEBUG`. So an application built with
-the default can show `DEBUG`, but never `TRACE`. LogAperture tells you instead of doing nothing:
+verbose through, whatever a logger's level says.
+
+**With the extension**, the minimum level is `TRACE`, so every level works without a rebuild:
 
 ```
 $ logctl set logger org.logaperture.sample.quarkus.Worker TRACE for 5m
-org.logaperture.sample.quarkus.Worker → TRACE   (FOR, reverts 13:15:16 local — in 4m)
+org.logaperture.sample.quarkus.Worker → TRACE   (FOR, reverts 12:46:48 local — in 4m)
+```
+
+Nothing more is logged until you set a logger that low. If you set `quarkus.log.min-level` yourself
+in `application.properties`, your setting wins.
+
+**With the agent**, Quarkus's default of `DEBUG` stays, so an application built with the default can
+show `DEBUG` but never `TRACE`. LogAperture tells you instead of doing nothing:
+
+```
+$ logctl set logger org.logaperture.sample.quarkus.Worker TRACE for 5m
+org.logaperture.sample.quarkus.Worker → TRACE   (FOR, reverts 12:46:54 local — in 4m)
 WARN: org.logaperture.sample.quarkus.Worker is set to TRACE but the logging backend only emits DEBUG and above for it; nothing more verbose will appear.
       the application was built with quarkus.log.min-level=DEBUG; rebuild with a lower quarkus.log.min-level (for example TRACE) to log below it.
 ```
 
 `logctl list loggers` shows the level that is actually emitted (`DEBUG` here), and `logctl doctor`
 reports it ([`logger.below-floor`](../reference/doctor-checks.md#loggerbelow-floor)). To see `TRACE`,
-rebuild with `quarkus.log.min-level=TRACE`.
+rebuild with `quarkus.log.min-level=TRACE`, or use the extension.
+
+## Dev mode
+
+With the extension, `quarkus dev` is supported. `logctl` works on the dev-mode application, and
+after each live reload LogAperture starts again with the settings you made `sticky` or `for` a time.
+Settings made for the session only lapse at a reload. `logctl doctor` reports that the Dev UI's log
+stream is left out of `trim` rules and `top`
+([`handler.formatter-kept`](../reference/doctor-checks.md#handlerformatter-kept)).
+
+With the agent, dev mode works but isn't a supported target.
 
 ## Limits
 
 - A `quarkus.log.category."X".min-level` setting only applies when Quarkus starts. A level you set
   with `logctl` isn't held to it.
-- In dev mode (`quarkus:dev`) the minimum level is `ALL`, so `TRACE` works there even when it doesn't
-  in your production build. Dev mode isn't a supported target, though it works.
+- With the agent, dev mode runs with a minimum level of `ALL`, so `TRACE` works there even when it
+  doesn't in your production build.
 - `logctl top` measures bytes written to files, and Quarkus logs to the console by default. Turn on
   the file handler (`quarkus.log.file.enabled=true`) to give `top` something to measure.
 - Asynchronous handlers (`quarkus.log.*.async.enable`) aren't supported.
@@ -123,19 +205,37 @@ rebuild with `quarkus.log.min-level=TRACE`.
 
 ### Other Quarkus versions
 
-LogAperture re-applies what it changed when Quarkus finishes its start-up logging setup. It does
-that by asking Quarkus's own logging handler, and as a safety net it also re-checks every quarter of
-a second for the first 15 seconds. On a Quarkus version where the first doesn't work, `logctl doctor`
-says so (`agent.early-sweep`) and the second still covers it. Settings made through `logctl` keep
-working either way.
+With the agent, LogAperture re-applies what it changed when Quarkus finishes its start-up logging
+setup. It does that by asking Quarkus's own logging handler, and as a safety net it also re-checks
+every quarter of a second for the first 15 seconds. On a Quarkus version where the first doesn't
+work, `logctl doctor` says so (`agent.early-sweep`) and the second still covers it. Settings made
+through `logctl` keep working either way. The extension starts after Quarkus's logging setup, so it
+needs neither.
+
+## Agent and extension together
+
+If the application has the extension and is also started with the agent, the agent runs and the
+extension starts nothing. The application's output says so:
+
+```
+[logaperture] LogAperture 1.1.0-SNAPSHOT active (Quarkus)
+[logaperture] The LogAperture agent is running in this JVM; the Quarkus extension starts nothing.
+```
+
+Remove one of them.
 
 ## Uninstall
 
-Remove the `-javaagent` option and restart. Nothing else was changed. LogAperture's state file is
-under `~/.logaperture/` of the user running the application, unless `-Dlogaperture.home` moved it.
+- **Extension:** remove the dependency and rebuild.
+- **Agent:** remove the `-javaagent` option and restart.
+
+Nothing else was changed. LogAperture's state file is under `~/.logaperture/` of the user running
+the application, unless `quarkus.logaperture.home` or `-Dlogaperture.home` moved it.
 
 ## If the application won't start
 
-Add `-Dlogaperture.disabled=true` to the command line and restart. The agent then does nothing at
-all. If the application starts that way, LogAperture is involved: please
-[open an issue](https://github.com/ddeuchert/logaperture/issues) with the output and `java -version`.
+Turn LogAperture off and start again: with the extension, set `QUARKUS_LOGAPERTURE_ENABLED=false`
+(or `quarkus.logaperture.enabled=false`); with the agent, add `-Dlogaperture.disabled=true` to the
+command line. LogAperture then does nothing at all. If the application starts that way, LogAperture
+is involved: please [open an issue](https://github.com/ddeuchert/logaperture/issues) with the output
+and `java -version`.

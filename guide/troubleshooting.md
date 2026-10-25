@@ -8,6 +8,9 @@ No LogAperture-enabled JVM found. Start the application with -javaagent:logapert
 
 - Check the JVM was started with the `-javaagent` option: the application's log has a line like
   `[logaperture] LogAperture 1.0.0 active (WildFly)` at startup (`(Quarkus)` on Quarkus, from 1.1).
+  With the [Quarkus extension](get-started/install-quarkus.md) there is no `-javaagent` option; the
+  line says `(Quarkus extension)`. If it is missing, check that `quarkus.logaperture.enabled` isn't
+  `false`.
 - Run `logctl` as the operating-system user the JVM runs as, on the same machine. `logctl` only sees
   JVMs it could attach to.
 - In a container, run `logctl` inside the same container.
@@ -33,6 +36,11 @@ set up before WildFly's: check `JAVA_OPTS` for other agents or logging options.
 
 On Quarkus (from 1.1), a level below the build's `quarkus.log.min-level` shows nothing however it is
 set. `logctl` warns when you set one; see [the build's minimum level](get-started/install-quarkus.md#the-builds-minimum-level).
+With the Quarkus extension, turn LogAperture off with `QUARKUS_LOGAPERTURE_ENABLED=false` instead.
+
+If a Quarkus application has the extension and is started with the agent as well, only the agent
+runs, and the output says `the Quarkus extension starts nothing`. Remove one of them; see
+[Agent and extension together](get-started/install-quarkus.md#agent-and-extension-together).
 
 ## A raised level shows nothing
 

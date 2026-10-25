@@ -19,24 +19,17 @@ import org.logaperture.bridge.Diagnostics;
 import org.logaperture.container.none.NoneContainerIntegration;
 import org.logaperture.container.quarkus.QuarkusContainerIntegration;
 import org.logaperture.container.wildfly.WildFlyContainerIntegration;
-import org.logaperture.control.jmx.JmxRegistrar;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditLog;
-import org.logaperture.core.AuditRecord;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.LibraryRecipeScanner;
-import org.logaperture.core.RecipeCatalog;
-import org.logaperture.core.RecipeOperations;
-import org.logaperture.core.RecipeService;
 import org.logaperture.core.StderrAuditLog;
-import org.logaperture.core.StormDetectionSwitch;
 import org.logaperture.core.VendorDefaults;
-import org.logaperture.core.VendorDefaultsFile;
 import org.logaperture.core.spi.ContainerIntegration;
+import org.logaperture.startup.EngineStartup;
 
 import java.lang.instrument.Instrumentation;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -55,14 +48,6 @@ import java.util.function.Consumer;
 final class AgentBootstrap {
 
     private static final String DISABLED_PROPERTY = "logaperture.disabled";
-
-    /**
-     * Set (to the agent's version) only once the first logging context has
-     * installed, so its presence is a reliable "the control plane is up"
-     * marker — what {@code logaperture-cli}'s discovery filters candidate
-     * JVMs on (doc/specs/cli-transport.md "Discovery").
-     */
-    private static final String VERSION_PROPERTY = "logaperture.version";
 
     /**
      * Set by the first {@link #start} that gets past the kill switch, whether or not that start then
@@ -112,11 +97,17 @@ final class AgentBootstrap {
             Diagnostics.warn(duplicateStartMessage(entry));
             return;
         }
+        if (!EngineStartup.claim(EngineStartup.Delivery.AGENT)) {
+            // doc/specs/quarkus-extension.md #3: only an attach can get here, into a JVM where the
+            // Quarkus extension already runs. premain always claims first.
+            Diagnostics.warn(claimedMessage(EngineStartup.claimant().orElse("?")));
+            return;
+        }
         try {
             CapabilityPolicy policy = CapabilityPolicy.allowAll();
             AuditLog auditLog = new StderrAuditLog();
             AgentArguments arguments = parseArguments(agentArgs);
-            VendorDefaults vendorDefaults = loadVendorDefaults(arguments);
+            VendorDefaults vendorDefaults = EngineStartup.loadVendorDefaults(arguments.vendorDefaults());
             boolean stormDetection = arguments.stormDetection();
 
             ContainerIntegration container = integrations().stream()
@@ -125,23 +116,23 @@ final class AgentBootstrap {
                     .orElseThrow(() -> new IllegalStateException(
                             "no ContainerIntegration detected -- none should always match"));
 
-            // The control surface is registered, and the discovery marker
-            // published, only once the first context is actually installed --
-            // so "MBean present" implies "there is something to control"
-            // (the CLI polls for the MBean, then calls it). The callback is
-            // handed the aggregate directly, so there is no return value to
-            // race against the async install.
-            // The vendor defaults load is audited here too, not in premain: only an installed context
-            // actually applies the file (a container that never installs one applied nothing).
-            Consumer<AggregateLevelControl> onFirstContextReady = operations -> {
-                auditVendorDefaults(vendorDefaults, auditLog);
-                publishControlSurface(container, operations, recipes(inst, policy, vendorDefaults, operations),
-                        vendorDefaults);
-            };
+            // The control surface is registered, and the discovery marker published, only once the
+            // first context is actually installed -- so "MBean present" implies "there is something
+            // to control" (the CLI polls for the MBean, then calls it). The callback is handed the
+            // aggregate directly, so there is no return value to race against the async install.
+            // The vendor defaults load is audited there too, not in premain: only an installed
+            // context actually applies the file (a container that never installs one applied nothing).
+            Consumer<AggregateLevelControl> onFirstContextReady = EngineStartup.onFirstContextReady(container.id(),
+                    EngineStartup.Delivery.AGENT, policy, auditLog, vendorDefaults, recipeScanner(inst));
             container.activate(inst, policy, auditLog, vendorDefaults, stormDetection, onFirstContextReady);
         } catch (Throwable t) {
             Diagnostics.error("LogAperture agent bootstrap failed to start", t);
         }
+    }
+
+    /** quarkus-extension.md #3: the one line an agent start writes when another route owns the JVM. */
+    static String claimedMessage(String claimant) {
+        return "LogAperture is already running in this JVM as the Quarkus " + claimant + "; the agent starts nothing.";
     }
 
     /** Issue #120: the one line a second start writes instead of bootstrapping again. */
@@ -168,146 +159,10 @@ final class AgentBootstrap {
     }
 
     /**
-     * If {@code --vendor-defaults=} names a file, reads and validates it -- on the {@code premain}
-     * thread, like {@link #parseArguments}. Never throws: a rejected file is reported and the agent
-     * carries on without vendor defaults.
+     * Library recipes are found through every class loader the agent's {@code Instrumentation} can
+     * see (doc/specs/recipes.md); no {@code Instrumentation} (a unit test) finds none.
      */
-    static VendorDefaults loadVendorDefaults(AgentArguments arguments) {
-        try {
-            if (arguments.vendorDefaults().isEmpty()) {
-                return VendorDefaults.none();
-            }
-            VendorDefaults vendorDefaults = VendorDefaultsFile.load(arguments.vendorDefaults().get());
-            reportVendorDefaults(vendorDefaults);
-            return vendorDefaults;
-        } catch (RuntimeException e) {
-            Diagnostics.warn("failed to read the vendor defaults file, continuing without it", e);
-            return VendorDefaults.none();
-        }
-    }
-
-    private static void reportVendorDefaults(VendorDefaults vendorDefaults) {
-        String path = vendorDefaults.path().map(Path::toString).orElse("?");
-        if (vendorDefaults.status() == VendorDefaults.Status.REJECTED) {
-            Diagnostics.warn("vendor defaults file " + path + " was rejected -- none of its settings "
-                    + "apply:\n  " + String.join("\n  ", vendorDefaults.errors()));
-            return;
-        }
-        // Loaded: the startup banner names it (doc/specs/quieter-output.md Q3).
-        if (vendorDefaults.writable()) {
-            Diagnostics.warn("vendor defaults file " + path + " (or its directory) is writable by the "
-                    + "account this JVM runs as -- anyone who can run code as that account can change the "
-                    + "baseline logging configuration");
-        }
-    }
-
-    /**
-     * {@code list recipes} / {@code show recipe} (doc/specs/recipes.md): the vendor defaults file's
-     * recipes, the recipes folder, and the libraries found through {@code inst}'s loaded classes.
-     * Never throws -- a failure here leaves the rest of the control surface working, with no recipes.
-     */
-    static RecipeOperations recipes(Instrumentation inst, CapabilityPolicy policy, VendorDefaults vendorDefaults,
-            AggregateLevelControl operations) {
-        try {
-            LibraryRecipeScanner scanner = inst == null ? LibraryRecipeScanner.none()
-                    : new LibraryRecipeScanner(inst::getAllLoadedClasses);
-            RecipeCatalog catalog = new RecipeCatalog(vendorDefaults.recipes(), RecipeCatalog.defaultFolder(), scanner);
-            return new RecipeService(policy, catalog, operations, operations, operations);
-        } catch (RuntimeException e) {
-            Diagnostics.warn("recipes are unavailable", e);
-            return RecipeOperations.none();
-        }
-    }
-
-    /**
-     * One audit record for a loaded vendor defaults file, naming its path and hash -- doc/specs/
-     * quieter-output.md Q1 -- in place of one per entry. A rejected file writes none (its errors are
-     * reported instead).
-     */
-    static void auditVendorDefaults(VendorDefaults vendorDefaults, AuditLog auditLog) {
-        if (vendorDefaults.status() != VendorDefaults.Status.LOADED) {
-            return;
-        }
-        try {
-            auditLog.record(new AuditRecord(Instant.now(), System.getProperty("user.name", "unknown"),
-                    VendorDefaults.AUDIT_SOURCE, vendorDefaults.path().map(Path::toString).orElse("?"), null,
-                    "loaded sha256=" + vendorDefaults.sha256().orElse("?") + " (" + vendorDefaults.summary() + ")",
-                    null, AuditRecord.Action.MUTATION).withTarget(AuditRecord.Target.FILE));
-        } catch (RuntimeException e) {
-            Diagnostics.warn("failed to audit the vendor defaults load", e);
-        }
-    }
-
-    /** {@link #banner(String, String, VendorDefaults, int, String)} with storm detection disabled. */
-    static String banner(String version, String containerId, VendorDefaults vendorDefaults, int restored) {
-        return banner(version, containerId, vendorDefaults, restored, (String) null);
-    }
-
-    /**
-     * {@link #banner(String, String, VendorDefaults, int, String)} with the storm-detection part
-     * from the switch's position once any saved setting is resumed (doc/specs/
-     * storm-detection-toggle.md "Restart"): {@code storm detection on}, {@code ... on until <time>}
-     * or {@code ... on (sticky)}; nothing when disabled.
-     */
-    static String banner(String version, String containerId, VendorDefaults vendorDefaults, int restored,
-            StormDetectionSwitch.State stormDetection) {
-        String part = null;
-        if (stormDetection.enabled()) {
-            part = switch (stormDetection.tier()) {
-                case FOR -> "storm detection on until " + stormDetection.expiresAt();
-                case STICKY -> "storm detection on (sticky)";
-                case SESSION -> "storm detection on";
-            };
-        }
-        return banner(version, containerId, vendorDefaults, restored, part);
-    }
-
-    /**
-     * The one startup line -- doc/specs/quieter-output.md Q3: version, container, the vendor defaults
-     * file and what it set, how many saved settings were restored, and {@code storm detection on}
-     * when it starts enabled (doc/specs/storm-detection-toggle.md "Starting state"; disabled, the
-     * default, says nothing).
-     */
-    private static String banner(String version, String containerId, VendorDefaults vendorDefaults, int restored,
-            String stormDetection) {
-        StringBuilder line = new StringBuilder("LogAperture ").append(version).append(" active (")
-                .append(switch (containerId) {
-                    case "wildfly" -> "WildFly";
-                    case "quarkus" -> "Quarkus";
-                    default -> "JVM";
-                }).append(')');
-        List<String> parts = new java.util.ArrayList<>();
-        if (vendorDefaults.status() == VendorDefaults.Status.LOADED) {
-            parts.add("vendor defaults " + vendorDefaults.path().map(Path::toString).orElse("?") + " ("
-                    + vendorDefaults.summary() + ")");
-        }
-        if (restored > 0) {
-            parts.add(restored + (restored == 1 ? " sticky setting" : " sticky settings") + " restored");
-        }
-        if (stormDetection != null) {
-            parts.add(stormDetection);
-        }
-        if (!parts.isEmpty()) {
-            line.append(": ").append(String.join("; ", parts));
-        }
-        return line.toString();
-    }
-
-    private static void publishControlSurface(ContainerIntegration container, AggregateLevelControl operations,
-            RecipeOperations recipes, VendorDefaults vendorDefaults) {
-        try {
-            JmxRegistrar.register(operations, operations, operations, operations, operations, operations, operations,
-                    operations, recipes); // AggregateLevelControl implements all eight operation interfaces
-            System.setProperty(VERSION_PROPERTY, agentVersion());
-            Diagnostics.notice(banner(agentVersion(), container.id(), vendorDefaults, operations.restoredSettings(),
-                    operations.stormDetectionSwitch().current()));
-        } catch (Throwable t) {
-            Diagnostics.error("LogAperture failed to register the JMX control surface", t);
-        }
-    }
-
-    private static String agentVersion() {
-        String version = LogApertureAgent.class.getPackage().getImplementationVersion();
-        return version != null ? version : "dev"; // null when run from classes dir, e.g. AgentBootstrapTest
+    static LibraryRecipeScanner recipeScanner(Instrumentation inst) {
+        return inst == null ? LibraryRecipeScanner.none() : new LibraryRecipeScanner(inst::getAllLoadedClasses);
     }
 }

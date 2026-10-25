@@ -124,6 +124,13 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     private static final String DIAGNOSTICS_LEVEL_PROPERTY = "logaperture.diagnostics.level";
 
+    /**
+     * Which route claimed this JVM, {@code agent} or {@code extension} -- the same string
+     * {@code EngineStartup.DELIVERY_PROPERTY} in {@code logaperture-startup} names, duplicated for the
+     * same reason as above (doc/specs/quarkus-extension.md #7).
+     */
+    private static final String DELIVERY_PROPERTY = "logaperture.delivery";
+
     private final Map<String, ContextControl> byKey = new ConcurrentHashMap<>();
 
     /** The detected container's display name — doc/specs/environment-report.md; {@code null} for {@code none}. */
@@ -378,6 +385,20 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     }
 
     /** The registered contexts, ordered by {@code stableKey}. */
+    /**
+     * {@link LevelControlService#revertSessionOverrides()} in every context: the host is stopping
+     * while the JVM keeps running (doc/specs/quarkus-extension.md #4).
+     *
+     * @return how many logger overrides were reverted, over all contexts
+     */
+    public int revertSessionOverrides() {
+        int reverted = 0;
+        for (ContextControl context : sortedByKey()) {
+            reverted += context.service().revertSessionOverrides();
+        }
+        return reverted;
+    }
+
     public List<ContextControl> contexts() {
         return sortedByKey();
     }
@@ -813,7 +834,8 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 System.getProperty(DIAGNOSTICS_LEVEL_PROPERTY),
                 stateFilePath,
                 vendorDefaults.path().map(Object::toString).orElse(null),
-                vendorDefaultsStatusLine());
+                vendorDefaultsStatusLine(),
+                System.getProperty(DELIVERY_PROPERTY));
     }
 
     /**

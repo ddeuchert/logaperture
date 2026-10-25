@@ -75,7 +75,8 @@ jobs:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         # The packaging is under test here, not the code: CI has already run the tests.
         run: |
-          ./mvnw -B --no-transfer-progress -Prelease -pl logaperture-dist -am -DskipTests deploy \
+          ./mvnw -B --no-transfer-progress -Prelease,quarkus \
+            -pl logaperture-dist,logaperture-quarkus,logaperture-quarkus-deployment -am -DskipTests deploy \
             -Dproject.build.outputTimestamp="$(git log -1 --format=%cI)" \
             -DaltDeploymentRepository=staging::file:target/staging
 

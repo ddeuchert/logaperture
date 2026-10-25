@@ -37,13 +37,20 @@ Group `org.logaperture`, for each release version (never a `-SNAPSHOT`, M11):
 | `logaperture-agent` | `.jar` (shaded), `-sources.jar`, `-javadoc.jar`, `.pom` | the `-javaagent` jar |
 | `logaperture-cli` | `.jar` (shaded), `-sources.jar`, `-javadoc.jar`, `.pom` | `logctl` |
 | `logaperture` | `.zip`, `.pom` | the release zip, byte-identical to the GitHub Release asset and with the same file name (M2) |
+| `logaperture-quarkus` | `.jar` (shaded), `-sources.jar`, `-javadoc.jar`, `.pom` | the Quarkus extension's runtime module, from 1.1.0 ([`quarkus-extension.md`](quarkus-extension.md) #2) |
+| `logaperture-quarkus-deployment` | `.jar`, `-sources.jar`, `-javadoc.jar`, `.pom` | the Quarkus extension's build-time module, which Quarkus resolves from the runtime module's descriptor |
 
-Every file has a `.asc` signature and `.md5`/`.sha1` checksums. The agent's and `logctl`'s POMs
-are the shade plugin's dependency-reduced POMs: everything first-party is inside the jar, so they
-declare no runtime dependencies. Nothing else is published: the internal modules (`bridge`,
-`api`, `core`, the adapters, the container integrations, `control-jmx`) exist only inside the two
-shaded jars, and `logaperture-it`, `logaperture-sample-war` and `logaperture-bench` are test
-fixtures.
+Every file has a `.asc` signature and `.md5`/`.sha1` checksums. The agent's, `logctl`'s and the
+extension runtime's POMs are the shade plugin's dependency-reduced POMs: everything first-party is
+inside the jar, so the agent and `logctl` declare no runtime dependencies and the extension declares
+only `quarkus-core`. Nothing else is published: the internal modules (`bridge`, `api`, `core`,
+`startup`, the adapters, the container integrations, `control-jmx`) exist only inside the three
+shaded jars, and `logaperture-it`, `logaperture-sample-war`, `logaperture-sample-quarkus`,
+`logaperture-sample-quarkus-extension` and `logaperture-bench` are test fixtures.
+
+The extension modules are in the `quarkus` profile, so the release, dry-run and snapshot workflows
+build with `-Prelease,quarkus -pl logaperture-dist,logaperture-quarkus,logaperture-quarkus-deployment
+-am`; `central.sh` expects their files like the agent's.
 
 ## How it works
 

@@ -61,6 +61,17 @@ final class FilterLayering {
         handler.setFilter(build(run.base, observer, gate));
     }
 
+    /**
+     * Takes LogAperture's filters off {@code handler}, leaving the base it found there
+     * (doc/specs/quarkus-extension.md #4: the engine stops on each dev-mode restart).
+     */
+    static void remove(Handler handler) {
+        Run run = Run.of(handler.getFilter());
+        if (run.depth > 0) {
+            handler.setFilter(run.base);
+        }
+    }
+
     private static Filter build(Filter base, StormObserver observer, RuleGate gate) {
         Filter filter = base;
         if (observer != null) {

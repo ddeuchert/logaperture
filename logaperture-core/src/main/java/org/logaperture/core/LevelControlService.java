@@ -1148,6 +1148,31 @@ public final class LevelControlService implements LevelControlOperations {
         }
     }
 
+    /**
+     * Reverts every {@code SESSION} override to its baseline, audited with source {@code stop}
+     * (doc/specs/quarkus-extension.md #4): the engine is stopping while the JVM keeps running -- a
+     * Quarkus dev-mode restart -- and the next engine resumes only what the state file holds, so a
+     * session override left in place would be a level nothing manages. {@code SESSION} overrides are
+     * never persisted, so the state file is not touched; {@code for} and {@code sticky} ones stay in
+     * force for the next engine to resume.
+     *
+     * @return how many were reverted
+     */
+    public int revertSessionOverrides() {
+        int reverted = 0;
+        for (String loggerName : overrides.all().keySet()) {
+            Optional<LevelOverride> current = overrides.get(loggerName);
+            if (current.isPresent() && current.get().tier() == PersistenceTier.SESSION
+                    && applyReset(loggerName, current.get(), "stop", null)) {
+                reverted++;
+            }
+        }
+        if (reverted > 0) {
+            changeListener.onChange();
+        }
+        return reverted;
+    }
+
     private Capability requiredCapabilityFor(String loggerName, Level newLevel) {
         baselines.captureIfAbsent(loggerName, adapter);
         Level current = adapter.effectiveLevel(loggerName);

@@ -228,8 +228,19 @@ class JsonTest {
                         + "\"backendVersion\":\"3.1.1.Final\",\"containerName\":\"WildFly\","
                         + "\"containerVersion\":\"34.0.1.Final\",\"diagnosticsLevel\":\"INFO\","
                         + "\"stateFilePath\":\"/home/alice/.logaperture/instances/abc123-app.state.yaml\","
-                        + "\"vendorDefaultsPath\":null,\"vendorDefaultsStatus\":null}",
+                        + "\"vendorDefaultsPath\":null,\"vendorDefaultsStatus\":null,\"delivery\":\"agent\"}",
                 Json.env(report, "0.1.0-alpha.2"));
+    }
+
+    /** quarkus-extension.md #7: the route is named; an agent too old to say is an agent. */
+    @Test
+    void envNamesTheDelivery() {
+        EnvironmentReportData extension = new EnvironmentReportData(
+                "1.1.0", "21.0.4", "Eclipse Adoptium", "Linux", "6.10.3", "x86_64",
+                "JBoss LogManager", "3.2.2.Final", "Quarkus", "3.39.5", null, null, null, "not configured",
+                "extension");
+
+        assertTrue(Json.env(extension, "1.1.0").endsWith(",\"delivery\":\"extension\"}"), Json.env(extension, "1.1.0"));
     }
 
     @Test

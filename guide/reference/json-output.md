@@ -524,3 +524,28 @@ logctl env --json
   "vendorDefaultsStatus": "not configured"
 }
 ```
+
+From 1.1 the object ends with `delivery`: `agent`, or `extension` when LogAperture runs as the
+[Quarkus extension](../get-started/install-quarkus.md). A 1.0 agent doesn't send it, and `logctl`
+reports `agent` for it. From the extension on Quarkus:
+
+```json
+{
+  "agentVersion": "1.1.0-SNAPSHOT",
+  "cliVersion": "1.1.0-SNAPSHOT",
+  "javaVersion": "21.0.12",
+  "javaVendor": "Eclipse Adoptium",
+  "osName": "Linux",
+  "osVersion": "7.2.10-200.fc44.x86_64",
+  "osArch": "amd64",
+  "backendName": "JBoss LogManager",
+  "backendVersion": "3.2.2.Final",
+  "containerName": "Quarkus",
+  "containerVersion": "3.39.5",
+  "diagnosticsLevel": null,
+  "stateFilePath": "/tmp/logaperture/instances/e7e1b29c1dd098b2-cap.state.yaml",
+  "vendorDefaultsPath": null,
+  "vendorDefaultsStatus": "not configured",
+  "delivery": "extension"
+}
+```

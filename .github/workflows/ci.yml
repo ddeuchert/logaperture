@@ -48,9 +48,10 @@ jobs:
           if-no-files-found: ignore
 
   quarkus:
-    # doc/specs/quarkus-support.md Q4, Q6: QuarkusIT against the tested minor and the current LTS
-    # stream. The sample application and the IT are behind the `quarkus` profile, so the `build`
-    # job above stays as fast as before. No Docker needed: the IT runs `java -jar quarkus-run.jar`.
+    # doc/specs/quarkus-support.md Q4, Q6: QuarkusIT (the agent) and QuarkusExtensionIT
+    # (doc/specs/quarkus-extension.md #9) against the tested minor and the current LTS stream. The
+    # samples, the extension and the ITs are behind the `quarkus` profile, so the `build` job above
+    # stays as fast as before. No Docker needed: the ITs run `java -jar quarkus-run.jar`.
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -66,11 +67,11 @@ jobs:
           java-version: '17'
           cache: maven
 
-      - name: QuarkusIT on Quarkus ${{ matrix.quarkus-version }}
+      - name: QuarkusIT and QuarkusExtensionIT on Quarkus ${{ matrix.quarkus-version }}
         run: |
           ./mvnw -B --no-transfer-progress -Pquarkus -Dquarkus.version=${{ matrix.quarkus-version }} \
             -pl logaperture-it -am verify \
-            -Dit.test=QuarkusIT -Dfailsafe.failIfNoSpecifiedTests=false \
+            -Dit.test='Quarkus*IT' -Dfailsafe.failIfNoSpecifiedTests=false \
             -Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false
 
       - name: Upload failure surefire/failsafe reports

@@ -889,6 +889,32 @@ class AggregateLevelControlTest {
         assertEquals(Level.INFO, app.adapter.effectiveLevel("com.shared.Util"));
     }
 
+    /**
+     * doc/specs/quarkus-extension.md #4: stopping while the JVM runs on reverts the session-only
+     * overrides in every context, audited as {@code stop}, and leaves {@code for} and {@code sticky}
+     * ones for the next engine to resume.
+     */
+    @Test
+    void revertSessionOverrides_revertsOnlyTheSessionTier() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+        aggregate.setLogger("com.acme.Session", Level.DEBUG, SetLevelOptions.defaults());
+        aggregate.setLogger("com.acme.Timed", Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMinutes(5)));
+        aggregate.setLogger("com.acme.Sticky", Level.DEBUG, SetLevelOptions.sticky());
+
+        assertEquals(2, aggregate.revertSessionOverrides(), "one session override, in each of two contexts");
+
+        assertEquals(Level.INFO, system.adapter.effectiveLevel("com.acme.Session"));
+        assertEquals(Level.INFO, app.adapter.effectiveLevel("com.acme.Session"));
+        assertEquals(Level.DEBUG, system.adapter.effectiveLevel("com.acme.Timed"));
+        assertEquals(Level.DEBUG, system.adapter.effectiveLevel("com.acme.Sticky"));
+        assertEquals(2, system.service.activeOverrides().size());
+        assertTrue(auditLog.records().stream().anyMatch(r -> "stop".equals(r.source())
+                && "com.acme.Session".equals(r.loggerName()) && r.action() == AuditRecord.Action.REVERSION));
+    }
+
     // --- setHandlerLevel / resetHandler broadcast (doc/specs/handler-floor-control.md) -----------
 
     @Test
