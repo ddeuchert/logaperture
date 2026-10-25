@@ -60,3 +60,6 @@ site/
 .venv-docs/
 .cache/
 BETA2-DRAFT.md
+
+# --- dev/quarkus: driver state (pid, app output, LogAperture home, variant builds) ---
+dev/quarkus/run/

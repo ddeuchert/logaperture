@@ -1286,6 +1286,24 @@ Two things make this more interesting than it first appears:
 
 **Quarkus solves the dev-mode problem for you.** Its Dev UI is present only in dev mode, stripped from production builds by build-time augmentation — which is exactly the model §9.11 borrows. A Dev UI card would inherit that guarantee from the platform, along with a Dev UI implementation that has already been through the CVE-2022-4116 hardening (§9.11.1) rather than one you would have to harden yourself.
 
+**Raised 2026-10-24: the extension is wanted, not merely possible.** The maintainer's day-job Quarkus deployments are Azure App Service and Kubernetes ([#114](https://github.com/ddeuchert/logaperture/issues/114) context), where editing the JVM command line (`-javaagent:`, `JAVA_OPTS`) is awkward or owned by a platform team. An extension is an ordinary dependency, bundled into the runnable jar at build time, so it needs no launch-time change at all.
+
+*Motivation.* Quarkus JVM mode (1.1.0, [`doc/specs/quarkus-support.md`](specs/quarkus-support.md)) still requires `-javaagent:` on the command line. Where that is not possible the app cannot use LogAperture. Dynamic attach ([`doc/spikes/dynamic-attach.md`](spikes/dynamic-attach.md), #219) reaches a running JVM from outside but is a different tool, and self-attach from inside would need `-Djdk.attach.allowAttachSelf=true`, which is a command-line flag again.
+
+*What the user would do.* `quarkus ext add logaperture` (or the Maven dependency), rebuild, deploy. Then `logctl` against the running app exactly as with the agent (`logctl set logger org.acme.Foo DEBUG for 30m`). Agent options become `quarkus.logaperture.*` configuration properties, so they can come from `application.properties`, environment variables or a Kubernetes ConfigMap.
+
+*Cost and dependencies.* Layer 3. Blocked on nothing but the `core`-never-depends-on-`agent` rule (§4.6), which the build already asserts; the extension is a new module (runtime plus deployment) with its own release cadence tied to the Quarkus SPI. It reuses the Quarkus integration built for #114 (handler resolution, the readiness gate, the below-floor warning).
+
+*Open design questions, all deferred to when this is specced:*
+
+- How `logctl` finds and reaches an in-process engine when there is no agent: the same MXBean and discovery path, or something the extension publishes.
+- Whether a build-time extension can close gaps the agent cannot: the build-time `quarkus.log.min-level` floor (reconfigure it at build time, or only warn), per-category `min-level`, and named handlers read from Quarkus config rather than recovered at runtime.
+- Whether it can be installed early enough to catch loggers created at startup, or still needs an early re-sweep.
+- Request-scoped context. A `ThreadContextProvider` registered with SmallRye Context Propagation (the mechanism the maintainer's perfmon4j uses to carry context across Vert.x worker threads) would make something like "DEBUG for this request only" possible. Whether that is in scope or a later feature.
+- Native image. The agent cannot support it (§15.9); a build-time extension might. Out of scope unless the design makes it cheap.
+- Dev mode and Dev UI card, and the interaction when both the agent and the extension are present.
+- Compatibility window across Quarkus versions (the LTS stream versus current), given the SPI moves on Quarkus's schedule (§18.1).
+
 ### 18.3 Hawtio plugin
 
 Best audience fit for the WildFly, Camel, and Fuse ecosystem, which is where this project's first users are likely to come from.
