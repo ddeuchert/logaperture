@@ -81,6 +81,14 @@ public final class VendorDefaultsFile {
     private static final Pattern STATE_ID =
             Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
 
+    /**
+     * The prefix of a bundled file's {@link VendorDefaults#source()} (doc/specs/bundled-vendor-defaults.md #6).
+     */
+    public static final String BUNDLED_PREFIX = "bundled:";
+
+    /** Where a Quarkus application bundles its vendor defaults file (bundled-vendor-defaults.md #1). */
+    public static final String BUNDLED_RESOURCE = "META-INF/logaperture/vendor-defaults.yaml";
+
     private VendorDefaultsFile() {
     }
 
@@ -120,19 +128,34 @@ public final class VendorDefaultsFile {
 
     static VendorDefaults parse(String content, Path path, boolean writable,
             ProtectedCategories protectedCategories) {
+        return parse(content, path, path.toString(), writable, protectedCategories);
+    }
+
+    /**
+     * Validates the text of a vendor defaults file that is not on disk -- one bundled in a Quarkus
+     * application at {@code resource} (doc/specs/bundled-vendor-defaults.md). Named
+     * {@code bundled:<resource>} everywhere a file's path would be shown (#6); never writable (#7).
+     */
+    public static VendorDefaults parseBundled(String content, String resource) {
+        return parse(content, null, BUNDLED_PREFIX + resource, false, ProtectedCategories.none());
+    }
+
+    /** @param path {@code null} for a bundled file, which {@code source} names */
+    private static VendorDefaults parse(String content, Path path, String source, boolean writable,
+            ProtectedCategories protectedCategories) {
         MapNode root;
         try {
             root = VendorYaml.parse(content);
         } catch (VendorYaml.SyntaxException e) {
-            return VendorDefaults.rejected(path, List.of("line " + e.line() + ": " + e.getMessage()));
+            return VendorDefaults.rejected(path, source, List.of("line " + e.line() + ": " + e.getMessage()));
         }
         Validation v = new Validation(new ArrayList<>(), protectedCategories, false);
         List<Recipe> recipes = v.run(root, new RecipeSource(RecipeSource.Kind.VENDOR_DEFAULTS,
-                RecipeSource.VENDOR_DEFAULTS_LABEL, path.toString()));
+                RecipeSource.VENDOR_DEFAULTS_LABEL, source));
         if (!v.errors.isEmpty()) {
-            return VendorDefaults.rejected(path, v.errors);
+            return VendorDefaults.rejected(path, source, v.errors);
         }
-        return VendorDefaults.loaded(path, writable, v.loggers, v.handlers, v.defaultHandlers,
+        return VendorDefaults.loaded(path, source, writable, v.loggers, v.handlers, v.defaultHandlers,
                 v.defaultHandlersStateId, v.handlerGroupStateIds, v.rules, recipes, sha256(content));
     }
 

@@ -457,7 +457,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * context. Nothing at all when no file was configured.
      */
     private List<DoctorFinding> vendorDefaultsFindings() {
-        String path = vendorDefaults.path().map(Object::toString).orElse(null);
+        String path = vendorDefaults.source().orElse(null);
         return switch (vendorDefaults.status()) {
             case NOT_CONFIGURED -> List.of();
             case REJECTED -> List.of(new DoctorFinding("vendor-defaults.file", Severity.WARNING, path,
@@ -834,7 +834,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 resolveContainerVersion(),
                 System.getProperty(DIAGNOSTICS_LEVEL_PROPERTY),
                 stateFilePath,
-                vendorDefaults.path().map(Object::toString).orElse(null),
+                vendorDefaults.source().orElse(null),
                 vendorDefaultsStatusLine(),
                 System.getProperty(DELIVERY_PROPERTY));
     }

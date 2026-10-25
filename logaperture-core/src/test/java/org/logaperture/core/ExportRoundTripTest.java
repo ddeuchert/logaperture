@@ -240,6 +240,27 @@ class ExportRoundTripTest {
                 .count());
     }
 
+    /**
+     * doc/specs/bundled-vendor-defaults.md #8: the same round trip when the file is bundled in a Quarkus
+     * application -- the export names the bundled file it started from, and the exported text, bundled
+     * in its place, takes over the sticky settings it was exported from.
+     */
+    @Test
+    void aBundledFile_roundTripsLikeAFileOnDisk() {
+        VendorDefaults bundled = VendorDefaultsFile.parseBundled(VENDOR_FILE, VendorDefaultsFile.BUNDLED_RESOURCE);
+        assertEquals(VendorDefaults.Status.LOADED, bundled.status(), bundled.errors().toString());
+        jvm = new Jvm(bundled);
+        tuneEverything();
+        String exported = jvm.export();
+        assertTrue(exported.contains("# Started from: bundled:META-INF/logaperture/vendor-defaults.yaml"), exported);
+
+        Jvm restarted = new Jvm(VendorDefaultsFile.parseBundled(exported, VendorDefaultsFile.BUNDLED_RESOURCE));
+
+        assertEquals(6, restarted.takeover.takenOver().size(), restarted.takeover.takenOver().toString());
+        assertEquals(List.of(), stateStore.loadAll());
+        assertEquals(List.of(), restarted.loggers.activeOverrides(), "the loggers are vendor defaults now");
+    }
+
     @Test
     void anEditToTheFileAfterTheRestart_takesEffect() {
         jvm.loggers.setLogger("com.acme.a", Level.ERROR, sticky());

@@ -53,6 +53,8 @@ Use one or the other. If both are present, the agent runs and the extension does
     ```
 
     See [Quarkus extension configuration](../reference/quarkus-extension-config.md) for every property.
+    To ship logging settings with the application, bundle a
+    [vendor defaults file](../vendors/vendor-defaults.md#in-a-quarkus-application) in it.
 
 You also need `logctl`, from the release zip: download and unzip it as in
 [Install on WildFly](install-wildfly.md#install) steps 1 and 2. You need `bin/logctl`.

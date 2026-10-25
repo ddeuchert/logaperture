@@ -130,8 +130,8 @@ final class VendorDefaultsExporter {
     private static String startedFromText(VendorDefaults file) {
         return switch (file.status()) {
             case NOT_CONFIGURED -> "no vendor defaults file";
-            case LOADED -> file.path().orElseThrow().toString();
-            case REJECTED -> file.path().orElseThrow() + " (rejected at startup, so none of it is included)";
+            case LOADED -> file.source().orElseThrow();
+            case REJECTED -> file.source().orElseThrow() + " (rejected at startup, so none of it is included)";
         };
     }
 }

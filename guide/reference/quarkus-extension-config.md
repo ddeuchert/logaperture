@@ -17,7 +17,8 @@ still works, and wins over the property here.
 | Property | Default | With the agent | What it sets |
 |---|---|---|---|
 | `quarkus.logaperture.enabled` | `true` | `-Dlogaperture.disabled=true` | `false` turns LogAperture off completely: it starts nothing and changes nothing. |
-| `quarkus.logaperture.vendor-defaults` | none | `--vendor-defaults=` | A [vendor defaults](../vendors/vendor-defaults.md) file. A relative path is resolved against the working directory. |
+| `quarkus.logaperture.vendor-defaults` | none | `--vendor-defaults=` | A [vendor defaults](../vendors/vendor-defaults.md) file. A relative path is resolved against the working directory. It replaces a file bundled in the application. |
+| `quarkus.logaperture.bundled-vendor-defaults` | `true` | none | `false` starts the application without the vendor defaults file [bundled in it](../vendors/vendor-defaults.md#in-a-quarkus-application) at `META-INF/logaperture/vendor-defaults.yaml`. |
 | `quarkus.logaperture.storm-detection` | `false` | `--storm-detection=` | Whether storm detection starts on. A `sticky` `logctl enable storms` or `disable storms` wins. See [Log storms](../how-to/storms.md). |
 | `quarkus.logaperture.home` | `~/.logaperture` | `-Dlogaperture.home` | Where the state files are kept, and where the recipes folder is looked for. Set it when the application's user has no writable home directory, as in many containers. |
 | `quarkus.logaperture.instance-id` | the working directory | `-Dlogaperture.instanceId` | Names this application's state file. Two applications started from the same directory need different names. |

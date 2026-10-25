@@ -55,10 +55,43 @@
       <artifactId>logaperture-quarkus</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <!--
+      The vendor-defaults parser the build step checks a bundled file with
+      (doc/specs/bundled-vendor-defaults.md #3). The runtime jar has it shaded, but a build inside this
+      reactor resolves the runtime module as its unshaded classes, so the build step can't rely on
+      that. A normal dependency, so this reactor's own builds have it; shaded into this jar and left
+      out of the published (dependency-reduced) POM, so an application's build has it from here.
+      A deployment module's dependencies are only ever on the build's class path, never in the app.
+    -->
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-core</artifactId>
+    </dependency>
   </dependencies>
 
   <build>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <configuration>
+              <artifactSet>
+                <includes>
+                  <include>org.logaperture:logaperture-core</include>
+                  <include>org.logaperture:logaperture-api</include>
+                  <include>org.logaperture:logaperture-bridge</include>
+                </includes>
+              </artifactSet>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>

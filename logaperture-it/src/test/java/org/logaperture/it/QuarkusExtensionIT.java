@@ -145,6 +145,33 @@ class QuarkusExtensionIT {
         assertTrue(second.get("/log?tag=two").contains("debug=true"));
     }
 
+    /**
+     * doc/specs/bundled-vendor-defaults.md: the sample bundles a vendor defaults file setting
+     * {@code org.logaperture.sample.quarkus.Bundled} to DEBUG. It applies and is named by its label;
+     * an external file replaces it (#4); the switch turns it off (#5).
+     */
+    @Test
+    void theBundledVendorDefaults_apply_canBeReplaced_andSwitchedOff() throws Exception {
+        String bundledLogger = "org.logaperture.sample.quarkus.Bundled";
+        App bundled = start(new App("bundled"));
+        assertTrue(bundled.output().contains("vendor defaults bundled:META-INF/logaperture/vendor-defaults.yaml"),
+                bundled.output());
+        assertTrue(logctl(bundled, "env").stdout().contains("bundled:META-INF/logaperture/vendor-defaults.yaml"));
+        String listed = logctl(bundled, "list", "loggers", bundledLogger, "--show-all").stdout();
+        assertTrue(listed.lines().anyMatch(l -> l.startsWith(bundledLogger) && l.contains("DEBUG")), listed);
+        bundled.stop();
+
+        Path external = Files.writeString(work.resolve("external.yaml"),
+                "schemaVersion: 1\nloggers:\n  - name: org.logaperture.sample.quarkus.External\n    level: WARN\n");
+        App replaced = start(new App("replaced").env("QUARKUS_LOGAPERTURE_VENDOR_DEFAULTS", external.toString()));
+        String env = logctl(replaced, "env").stdout();
+        assertTrue(env.contains(external.toString()) && !env.contains("bundled:"), env);
+        replaced.stop();
+
+        App off = start(new App("off").env("QUARKUS_LOGAPERTURE_BUNDLED_VENDOR_DEFAULTS", "false"));
+        assertTrue(logctl(off, "env").stdout().contains("not configured"));
+    }
+
     @Test
     void theKillSwitch_startsNothing() throws Exception {
         App app = new App("off").env("QUARKUS_LOGAPERTURE_ENABLED", "false").expectLogctl(false);

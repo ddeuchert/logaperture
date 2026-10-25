@@ -118,11 +118,13 @@ public final class VendorDefaults {
     }
 
     private static final VendorDefaults NONE =
-            new VendorDefaults(Status.NOT_CONFIGURED, null, List.of(), false, List.of(), List.of(), null, null,
+            new VendorDefaults(Status.NOT_CONFIGURED, null, null, List.of(), false, List.of(), List.of(), null, null,
                     List.of(), List.of(), List.of(), null);
 
     private final Status status;
     private final Path path;
+    /** What surfaces name it by: the path for a file, else a label such as {@code bundled:...}. */
+    private final String source;
     private final List<String> errors;
     private final boolean writable;
     private final Map<String, LoggerDefault> loggers;
@@ -136,12 +138,13 @@ public final class VendorDefaults {
     /** The hex SHA-256 of the loaded file's text, or {@code null} (doc/specs/quieter-output.md Q1). */
     private final String sha256;
 
-    private VendorDefaults(Status status, Path path, List<String> errors, boolean writable,
+    private VendorDefaults(Status status, Path path, String source, List<String> errors, boolean writable,
             List<LoggerDefault> loggers, List<HandlerDefault> handlers, List<HandlerRef> defaultHandlers,
             String defaultHandlersStateId, List<String> handlerGroupStateIds, List<RuleDefault> rules,
             List<Recipe> recipes, String sha256) {
         this.status = status;
         this.path = path;
+        this.source = source;
         this.errors = List.copyOf(errors);
         this.writable = writable;
         Map<String, LoggerDefault> loggerMap = new LinkedHashMap<>();
@@ -174,10 +177,16 @@ public final class VendorDefaults {
 
     static VendorDefaults rejected(Path path, List<String> errors) {
         Objects.requireNonNull(path, "path");
+        return rejected(path, path.toString(), errors);
+    }
+
+    /** @param path {@code null} for a file that is not on disk (a bundled one), named by {@code source} */
+    static VendorDefaults rejected(Path path, String source, List<String> errors) {
+        Objects.requireNonNull(source, "source");
         if (errors.isEmpty()) {
             throw new IllegalArgumentException("a rejected file needs at least one error");
         }
-        return new VendorDefaults(Status.REJECTED, path, errors, false, List.of(), List.of(), null, null,
+        return new VendorDefaults(Status.REJECTED, path, source, errors, false, List.of(), List.of(), null, null,
                 List.of(), List.of(), List.of(), null);
     }
 
@@ -198,7 +207,16 @@ public final class VendorDefaults {
             List<HandlerDefault> handlers, List<HandlerRef> defaultHandlers, String defaultHandlersStateId,
             List<String> handlerGroupStateIds, List<RuleDefault> rules, List<Recipe> recipes, String sha256) {
         Objects.requireNonNull(path, "path");
-        return new VendorDefaults(Status.LOADED, path, List.of(), writable, loggers, handlers, defaultHandlers,
+        return loaded(path, path.toString(), writable, loggers, handlers, defaultHandlers, defaultHandlersStateId,
+                handlerGroupStateIds, rules, recipes, sha256);
+    }
+
+    /** @param path {@code null} for a file that is not on disk (a bundled one), named by {@code source} */
+    static VendorDefaults loaded(Path path, String source, boolean writable, List<LoggerDefault> loggers,
+            List<HandlerDefault> handlers, List<HandlerRef> defaultHandlers, String defaultHandlersStateId,
+            List<String> handlerGroupStateIds, List<RuleDefault> rules, List<Recipe> recipes, String sha256) {
+        Objects.requireNonNull(source, "source");
+        return new VendorDefaults(Status.LOADED, path, source, List.of(), writable, loggers, handlers, defaultHandlers,
                 defaultHandlersStateId, handlerGroupStateIds, rules, recipes, sha256);
     }
 
@@ -206,9 +224,22 @@ public final class VendorDefaults {
         return status;
     }
 
-    /** The file's resolved absolute path; empty only when {@link Status#NOT_CONFIGURED}. */
+    /**
+     * The file's resolved absolute path; empty when {@link Status#NOT_CONFIGURED}, and for a file that
+     * is not on disk -- one bundled in a Quarkus application (doc/specs/bundled-vendor-defaults.md).
+     */
     public Optional<Path> path() {
         return Optional.ofNullable(path);
+    }
+
+    /**
+     * What every surface names the file by (startup line, {@code env}, {@code doctor}, the audit, the
+     * export header): its absolute path, or a label such as
+     * {@code bundled:META-INF/logaperture/vendor-defaults.yaml} (bundled-vendor-defaults.md #6). Empty
+     * only when {@link Status#NOT_CONFIGURED}.
+     */
+    public Optional<String> source() {
+        return Optional.ofNullable(source);
     }
 
     /** Every validation error, each prefixed with its line; empty unless {@link Status#REJECTED}. */
