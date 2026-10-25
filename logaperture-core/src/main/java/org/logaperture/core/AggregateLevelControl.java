@@ -384,20 +384,21 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         return byKey.containsKey(stableKey);
     }
 
-    /** The registered contexts, ordered by {@code stableKey}. */
     /**
-     * {@link LevelControlService#revertSessionOverrides()} in every context: the host is stopping
+     * {@link LevelControlService#restoreNativeLevelsForStop()} in every context: the host is stopping
      * while the JVM keeps running (doc/specs/quarkus-extension.md #4).
      *
-     * @return how many logger overrides were reverted, over all contexts
+     * @return how many {@code SESSION} logger overrides were reverted, over all contexts
      */
-    public int revertSessionOverrides() {
+    public int restoreNativeLevelsForStop() {
         int reverted = 0;
         for (ContextControl context : sortedByKey()) {
-            reverted += context.service().revertSessionOverrides();
+            reverted += context.service().restoreNativeLevelsForStop();
         }
         return reverted;
     }
+
+    /** The registered contexts, ordered by {@code stableKey}. */
 
     public List<ContextControl> contexts() {
         return sortedByKey();

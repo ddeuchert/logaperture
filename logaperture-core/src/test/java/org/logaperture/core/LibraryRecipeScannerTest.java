@@ -43,4 +43,22 @@ class LibraryRecipeScannerTest {
             assertTrue(found.get(0).toExternalForm().endsWith("library/" + RecipeFile.RESOURCE), found.toString());
         }
     }
+
+    /** #6: the extension's loader and the application's are both scanned; a file both see is found once. */
+    @Test
+    void forClassLoaders_scansEachLoader_andFindsASharedFileOnce(@TempDir Path dir) throws Exception {
+        Path shared = dir.resolve("shared");
+        Path appOnly = dir.resolve("app");
+        for (Path root : List.of(shared, appOnly)) {
+            Files.createDirectories(root.resolve("META-INF/logaperture"));
+            Files.writeString(root.resolve(RecipeFile.RESOURCE), "schemaVersion: 1\n");
+        }
+
+        try (URLClassLoader extension = new URLClassLoader(new URL[] {shared.toUri().toURL()}, null);
+             URLClassLoader application = new URLClassLoader(new URL[] {appOnly.toUri().toURL()}, extension)) {
+            List<URL> found = LibraryRecipeScanner.forClassLoaders(List.of(extension, application)).scan();
+
+            assertEquals(2, found.size(), found.toString());
+        }
+    }
 }

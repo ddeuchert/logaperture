@@ -898,14 +898,6 @@ final class Commands {
     }
 
     /**
-     * {@code logctl env} — doc/specs/environment-report.md "The operation".
-     * Read-only, like {@code doctor}/{@code top}: no target, no tier,
-     * nothing to confirm. {@code logctl}'s own version is stitched in
-     * locally ({@link Main#version()}) alongside the agent-reported facts —
-     * it's not on the wire shape at all (doc/specs/environment-report.md
-     * "Data model": "Deliberately no {@code cliVersion} field").
-     */
-    /**
      * doc/specs/quarkus-extension.md #7: {@code agent} or {@code extension}. An agent older than the
      * extension reports nothing, and is always an agent.
      */
@@ -913,6 +905,14 @@ final class Commands {
         return report.getDelivery() == null ? "agent" : report.getDelivery();
     }
 
+    /**
+     * {@code logctl env} — doc/specs/environment-report.md "The operation".
+     * Read-only, like {@code doctor}/{@code top}: no target, no tier,
+     * nothing to confirm. {@code logctl}'s own version is stitched in
+     * locally ({@link Main#version()}) alongside the agent-reported facts —
+     * it's not on the wire shape at all (doc/specs/environment-report.md
+     * "Data model": "Deliberately no {@code cliVersion} field").
+     */
     static Command env(boolean json) {
         return (mbean, out, in, interactive) -> {
             EnvironmentReportData report = mbean.environmentReport();

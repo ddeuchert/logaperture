@@ -58,6 +58,15 @@ public final class LibraryRecipeScanner {
         return new LibraryRecipeScanner(List.of(loader));
     }
 
+    /**
+     * Scans each of {@code loaders} (and their parents); a recipe file several of them see is found
+     * once. The Quarkus extension passes its own loader and the application's: in dev mode the
+     * application's own classes are only in the second (quarkus-extension.md #6).
+     */
+    public static LibraryRecipeScanner forClassLoaders(List<ClassLoader> loaders) {
+        return new LibraryRecipeScanner(List.copyOf(loaders));
+    }
+
     /** A scanner that finds nothing -- no {@code Instrumentation} to walk (tests, or a bootstrap failure). */
     public static LibraryRecipeScanner none() {
         return new LibraryRecipeScanner(() -> new Class<?>[0]);

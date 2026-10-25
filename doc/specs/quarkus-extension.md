@@ -167,13 +167,28 @@ What the implementation settled that the decisions left open, or found along the
   reactor* uses the extension's unshaded `target/classes` and fails with `NoClassDefFoundError`; a
   real application resolves the published jar and is unaffected. Dev mode is therefore checked
   from a standalone project against the installed artifacts.
-- **Stopping (#4)** withdraws the control surface (unregisters the MXBean, clears the marker and the
-  claim), **reverts the `SESSION`-tier logger overrides** (`AggregateLevelControl.revertSessionOverrides`,
-  audited with source `stop`), closes the host (sweeper, state-file lock) and takes the adapter's
-  filters and formatter wraps off the handlers (`JulLoggingAdapter.uninstall`). The session revert
-  was found by testing: Quarkus keeps logger levels across a dev-mode restart, so a session override
-  left in place survived the reload as a level nothing managed. `for` and `sticky` settings stay in
-  force and the next engine resumes them.
+- **Stopping (#4)** runs each step on its own, so one failing step can't keep the state-file lock
+  held for the rest of the dev JVM. In order:
+  1. Withdraw the control surface: unregister the MXBean, clear the marker and the claim.
+  2. Put every logger LogAperture changed back to its own level
+     (`AggregateLevelControl.restoreNativeLevelsForStop`). `SESSION` overrides are reverted for
+     good, audited with source `stop`. `for` and `sticky` overrides and vendor-default levels go
+     back to the native level on the adapter only, and stay in the registry and the state file.
+  3. Close the host: stop the sweeper, release the state-file lock.
+  4. Take the adapter's filters and formatter wraps off the handlers (`JulLoggingAdapter.uninstall`).
+  5. Clear the `-Dlogaperture.*` properties that this start set from `quarkus.logaperture.*`.
+
+  Found by testing and by review. Quarkus keeps logger levels across a dev-mode restart. A level
+  left in place would either survive the reload with nothing managing it (a session override), or
+  be captured by the next engine as the logger's native level, so a later reset or expiry would land
+  on it (`for`, `sticky`, vendor). A property left set would look like a command-line one to the
+  next start and hide a changed setting. A start that fails after the claim runs the same stop, so
+  the next reload isn't refused.
+- **Older agents (#3).** Agents from 1.0.0-beta.1 to beta.3 set no claim. The recorder also stands
+  down when the `logaperture.version` marker is set, or when the agent's class file is on the system
+  class path, where `-javaagent` puts it. It probes this as a resource and never loads the class.
+- **Recipes (#6)** are scanned through both the extension's class loader and the thread's context
+  loader at runtime init. In dev mode the application's own classes are only in the second.
 - **#5's `doctor` check** is `handler.formatter-kept` (INFO), for both routes. The formatter-bound
   list holds one class, `io.quarkus.devui.runtime.logstream.MutinyLogHandler`.
 - **#8:** the properties are as listed in the guide's `reference/quarkus-extension-config.md`; the

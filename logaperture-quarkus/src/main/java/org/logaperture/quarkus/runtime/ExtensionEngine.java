@@ -30,6 +30,7 @@ import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.VendorDefaults;
 import org.logaperture.startup.EngineStartup;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -49,65 +50,118 @@ final class ExtensionEngine {
     static void start(LogApertureConfig settings, ShutdownContext shutdown) {
         // First, before any engine class reads its settings: Diagnostics reads its level once, when
         // it is first used.
-        applyAsSystemProperties(settings);
+        List<String> propertiesSet = applyAsSystemProperties(settings);
+        boolean claimed = false;
+        JBossLogManagerContainer host = null;
+        JulLoggingAdapter adapter = null;
         try {
             if (!EngineStartup.claim(EngineStartup.Delivery.EXTENSION)) {
+                clearProperties(propertiesSet);
                 return; // an attach got in between; it owns the JVM
             }
+            claimed = true;
             CapabilityPolicy policy = CapabilityPolicy.allowAll();
             AuditLog auditLog = new StderrAuditLog();
             VendorDefaults vendorDefaults = EngineStartup.loadVendorDefaults(settings.vendorDefaults());
-            JBossLogManagerContainer host = QuarkusEngine.newHost(policy, auditLog, vendorDefaults,
+            host = QuarkusEngine.newHost(policy, auditLog, vendorDefaults,
                     settings.stormDetection(), SweepPolicy.interval(), ExtensionEngine::quarkusVersion);
-            LibraryRecipeScanner recipes = LibraryRecipeScanner.forClassLoader(ExtensionEngine.class.getClassLoader());
             Consumer<AggregateLevelControl> onFirstContextReady = EngineStartup.onFirstContextReady(
                     QuarkusEngine.CONTAINER_ID, EngineStartup.Delivery.EXTENSION, policy, auditLog, vendorDefaults,
-                    recipes);
-            JulLoggingAdapter adapter = QuarkusEngine.installSystemContext(host, onFirstContextReady);
-            Supplier<List<DoctorFinding>> containerFindings = () -> QuarkusEngine.formatterFindings(adapter);
+                    recipeScanner());
+            adapter = QuarkusEngine.installSystemContext(host, onFirstContextReady);
+            JulLoggingAdapter installed = adapter;
+            Supplier<List<DoctorFinding>> containerFindings = () -> QuarkusEngine.formatterFindings(installed);
             host.setContainerFindings(containerFindings);
-            Runnable stopEngine = () -> stop(host, adapter);
+            JBossLogManagerContainer running = host;
+            Runnable stopEngine = () -> stop(running, installed, propertiesSet);
             shutdown.addShutdownTask(stopEngine);
             Diagnostics.debug("level control installed (quarkus extension, system LogContext)");
         } catch (Throwable t) {
             Diagnostics.error("LogAperture failed to start in the Quarkus extension", t);
+            // Leave nothing behind, so the next start -- a dev-mode reload -- begins clean instead of
+            // standing down on this start's claim.
+            if (claimed) {
+                stop(host, adapter, propertiesSet);
+            } else {
+                clearProperties(propertiesSet);
+            }
         }
     }
 
     /**
      * #4: on application shutdown -- every dev-mode restart, and the JVM's exit -- withdraw the control
-     * surface, revert the session-only logger overrides (the next engine would not know them), stop
-     * the sweeper and release the state file, then take LogAperture's filters and formatter wraps off
-     * the handlers. The next start (in dev mode, in a new class loader) resumes the {@code for} and
-     * {@code sticky} settings from the state file.
+     * surface and the claim, put every logger LogAperture changed back to its own level (session
+     * overrides for good; {@code for}, {@code sticky} and vendor levels until the next engine resumes
+     * them from the state file), stop the sweeper and release the state file, take LogAperture's
+     * filters and formatter wraps off the handlers, and clear the {@code -Dlogaperture.*} properties
+     * this start set, so the next start reads the configuration afresh. Each step runs even if an
+     * earlier one fails: a held state-file lock would cost every later reload its persistence.
+     *
+     * @param host    {@code null} if start failed before the host was built
+     * @param adapter {@code null} if start failed before the context was installed
      */
-    private static void stop(JBossLogManagerContainer host, JulLoggingAdapter adapter) {
-        try {
-            EngineStartup.withdrawControlSurface();
-            host.operations().revertSessionOverrides();
-            host.close();
-            adapter.uninstall();
-        } catch (Throwable t) {
-            Diagnostics.warn("LogAperture did not stop cleanly", t);
+    private static void stop(JBossLogManagerContainer host, JulLoggingAdapter adapter, List<String> propertiesSet) {
+        step("withdraw the control surface", EngineStartup::withdrawControlSurface);
+        if (host != null) {
+            step("restore the loggers' own levels", () -> host.operations().restoreNativeLevelsForStop());
+            step("close the host", host::close);
         }
+        if (adapter != null) {
+            step("take the handler wraps off", adapter::uninstall);
+        }
+        clearProperties(propertiesSet);
+    }
+
+    private static void step(String what, Runnable action) {
+        try {
+            action.run();
+        } catch (Throwable t) {
+            Diagnostics.warn("LogAperture could not " + what + " while stopping", t);
+        }
+    }
+
+    /**
+     * #6: library recipes are found through the extension's own class loader and the application's
+     * (the thread's context loader at runtime init). In a fast-jar they are the same loader; in dev
+     * mode the application's own classes and its hot-reloadable modules are only in the second.
+     */
+    private static LibraryRecipeScanner recipeScanner() {
+        List<ClassLoader> loaders = new ArrayList<>();
+        loaders.add(ExtensionEngine.class.getClassLoader());
+        ClassLoader application = Thread.currentThread().getContextClassLoader();
+        if (application != null) {
+            loaders.add(application);
+        }
+        return LibraryRecipeScanner.forClassLoaders(loaders);
     }
 
     /**
      * #8: each {@code quarkus.logaperture.*} setting becomes the {@code -Dlogaperture.*} property the
      * engine reads, unless that property is already set on the command line, which wins.
+     *
+     * @return the properties this call set, for {@link #stop} to clear: a property left set would look
+     *         like a command-line one to the next start (a dev-mode reload) and hide a changed setting
      */
-    static void applyAsSystemProperties(LogApertureConfig settings) {
-        setIfAbsent("logaperture.home", settings.home());
-        setIfAbsent("logaperture.instanceId", settings.instanceId());
-        setIfAbsent("logaperture.recipes", settings.recipes());
-        setIfAbsent("logaperture.audit.file", settings.audit().file());
-        setIfAbsent("logaperture.diagnostics.level", settings.diagnostics().level());
-        setIfAbsent("logaperture.drop.summaryInterval", settings.drop().summaryInterval());
-        setIfAbsent("logaperture.followHandlers", settings.followHandlers().map(String::valueOf));
+    static List<String> applyAsSystemProperties(LogApertureConfig settings) {
+        List<String> set = new ArrayList<>();
+        setIfAbsent("logaperture.home", settings.home(), set);
+        setIfAbsent("logaperture.instanceId", settings.instanceId(), set);
+        setIfAbsent("logaperture.recipes", settings.recipes(), set);
+        setIfAbsent("logaperture.audit.file", settings.audit().file(), set);
+        setIfAbsent("logaperture.diagnostics.level", settings.diagnostics().level(), set);
+        setIfAbsent("logaperture.drop.summaryInterval", settings.drop().summaryInterval(), set);
+        setIfAbsent("logaperture.followHandlers", settings.followHandlers().map(String::valueOf), set);
+        return List.copyOf(set);
     }
 
-    private static void setIfAbsent(String property, Optional<String> value) {
-        value.ifPresent(v -> System.getProperties().putIfAbsent(property, v));
+    private static void setIfAbsent(String property, Optional<String> value, List<String> set) {
+        if (value.isPresent() && System.getProperties().putIfAbsent(property, value.get()) == null) {
+            set.add(property);
+        }
+    }
+
+    private static void clearProperties(List<String> properties) {
+        properties.forEach(System::clearProperty);
     }
 
     /** For {@code logctl env}: the {@code quarkus-core} jar's own version. */

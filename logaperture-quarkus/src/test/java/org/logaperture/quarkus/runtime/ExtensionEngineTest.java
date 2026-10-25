@@ -116,23 +116,70 @@ class ExtensionEngineTest {
     void aPropertyOnTheCommandLineWinsOverConfig() {
         System.setProperty("logaperture.instanceId", "from-command-line");
 
-        ExtensionEngine.applyAsSystemProperties(config());
+        List<String> set = ExtensionEngine.applyAsSystemProperties(config());
 
         assertEquals("from-command-line", System.getProperty("logaperture.instanceId"));
         assertEquals("ERROR", System.getProperty("logaperture.diagnostics.level"));
+        assertFalse(set.contains("logaperture.instanceId"), "a command-line property is not the extension's to clear");
+    }
+
+    /** A setting changed between two starts (a dev-mode reload) takes effect: the first start's value is cleared. */
+    @Test
+    void aChangedSettingAppliesAtTheNextStart() {
+        ExtensionEngine.start(config(), shutdown);
+        assertEquals("ERROR", System.getProperty("logaperture.diagnostics.level"));
+
+        runShutdown();
+        assertNull(System.getProperty("logaperture.diagnostics.level"), "stop clears what start set");
+
+        ExtensionEngine.start(config("WARN", false), shutdown);
+        assertEquals("WARN", System.getProperty("logaperture.diagnostics.level"));
+    }
+
+    /** A start that fails after claiming the JVM releases the claim, so the next start is not refused. */
+    @Test
+    void aFailedStart_leavesNothingBehind() {
+        ExtensionEngine.start(config("ERROR", true), shutdown);
+
+        assertNull(System.getProperty("logaperture.delivery"), "the claim was released");
+        assertNull(System.getProperty("logaperture.home"));
+        assertFalse(ManagementFactory.getPlatformMBeanServer().isRegistered(JmxRegistrar.OBJECT_NAME));
+
+        ExtensionEngine.start(config(), shutdown);
+        assertTrue(ManagementFactory.getPlatformMBeanServer().isRegistered(JmxRegistrar.OBJECT_NAME));
+    }
+
+    /** #3: an agent from before the extension sets no claim, but its marker shows it is there. */
+    @Test
+    void anOlderAgentIsRecognisedByItsMarker() {
+        assertNull(LogApertureRecorder.owner());
+
+        System.setProperty("logaperture.version", "1.0.0-beta.3");
+
+        assertEquals("agent", LogApertureRecorder.owner());
     }
 
     private LogApertureConfig config() {
+        return config("ERROR", false);
+    }
+
+    /** @param failing {@code vendorDefaults()} throws, so start fails after the claim */
+    private LogApertureConfig config(String diagnosticsLevel, boolean failing) {
         Path stateHome = home;
         return new LogApertureConfig() {
             @Override public boolean enabled() { return true; }
-            @Override public Optional<Path> vendorDefaults() { return Optional.empty(); }
+            @Override public Optional<Path> vendorDefaults() {
+                if (failing) {
+                    throw new IllegalStateException("a start that fails after the claim");
+                }
+                return Optional.empty();
+            }
             @Override public boolean stormDetection() { return false; }
             @Override public Optional<String> home() { return Optional.of(stateHome.toString()); }
             @Override public Optional<String> instanceId() { return Optional.of("extension-engine-test"); }
             @Override public Optional<String> recipes() { return Optional.empty(); }
             @Override public Audit audit() { return Optional::empty; }
-            @Override public Diagnostics diagnostics() { return () -> Optional.of("ERROR"); }
+            @Override public Diagnostics diagnostics() { return () -> Optional.of(diagnosticsLevel); }
             @Override public Drop drop() { return Optional::empty; }
             @Override public Optional<Boolean> followHandlers() { return Optional.empty(); }
         };

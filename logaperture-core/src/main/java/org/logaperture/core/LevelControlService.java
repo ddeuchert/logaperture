@@ -15,7 +15,6 @@
  */
 package org.logaperture.core;
 
-import org.logaperture.bridge.Diagnostics;
 import org.logaperture.api.DescendantLevel;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
@@ -28,6 +27,7 @@ import org.logaperture.api.RecipeTag;
 import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.spi.LevelFloorInfo;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
@@ -36,6 +36,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableSet;
@@ -1149,22 +1150,42 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     /**
-     * Reverts every {@code SESSION} override to its baseline, audited with source {@code stop}
-     * (doc/specs/quarkus-extension.md #4): the engine is stopping while the JVM keeps running -- a
-     * Quarkus dev-mode restart -- and the next engine resumes only what the state file holds, so a
-     * session override left in place would be a level nothing manages. {@code SESSION} overrides are
-     * never persisted, so the state file is not touched; {@code for} and {@code sticky} ones stay in
-     * force for the next engine to resume.
+     * The engine is stopping while the JVM keeps running -- a Quarkus dev-mode restart
+     * (doc/specs/quarkus-extension.md #4) -- and the next engine will capture every logger's native
+     * level afresh, then resume what the state file holds. So every logger this service changed goes
+     * back to its native level first:
      *
-     * @return how many were reverted
+     * <ul>
+     *   <li>{@code SESSION} overrides are reverted for good, audited with source {@code stop}: the
+     *       next engine never knows them.</li>
+     *   <li>{@code for} and {@code sticky} overrides, and the vendor defaults layer, go back to the
+     *       native level on the adapter only. They stay in the registry and the state file, unaudited,
+     *       and the next engine resumes them on top of a true baseline. Left in place, the next engine
+     *       would capture LogAperture's own level as the "native" one, and a later reset or expiry
+     *       would land there.</li>
+     * </ul>
+     *
+     * @return how many {@code SESSION} overrides were reverted
      */
-    public int revertSessionOverrides() {
+    public int restoreNativeLevelsForStop() {
         int reverted = 0;
-        for (String loggerName : overrides.all().keySet()) {
+        for (String loggerName : List.copyOf(overrides.all().keySet())) {
             Optional<LevelOverride> current = overrides.get(loggerName);
             if (current.isPresent() && current.get().tier() == PersistenceTier.SESSION
                     && applyReset(loggerName, current.get(), "stop", null)) {
                 reverted++;
+            }
+        }
+        Set<String> changed = new LinkedHashSet<>(overrides.all().keySet());
+        changed.addAll(baselines.vendorLoggerNames());
+        for (String loggerName : changed) {
+            if (!baselines.isCaptured(loggerName)) {
+                continue; // never touched by this engine
+            }
+            try {
+                adapter.applyLevel(loggerName, baselines.nativeLevel(loggerName).orElse(null));
+            } catch (RuntimeException e) {
+                Diagnostics.warn("failed to restore logger '" + loggerName + "' to its own level on stop: " + e);
             }
         }
         if (reverted > 0) {

@@ -184,7 +184,8 @@ rebuild with `quarkus.log.min-level=TRACE`, or use the extension.
 
 With the extension, `quarkus dev` is supported. `logctl` works on the dev-mode application, and
 after each live reload LogAperture starts again with the settings you made `sticky` or `for` a time.
-Settings made for the session only lapse at a reload. `logctl doctor` reports that the Dev UI's log
+Settings made for the session only lapse at a reload, and a changed `quarkus.logaperture.*` property
+applies from the next reload. `logctl doctor` reports that the Dev UI's log
 stream is left out of `trim` rules and `top`
 ([`handler.formatter-kept`](../reference/doctor-checks.md#handlerformatter-kept)).
 
@@ -215,7 +216,7 @@ needs neither.
 ## Agent and extension together
 
 If the application has the extension and is also started with the agent, the agent runs and the
-extension starts nothing. The application's output says so:
+extension starts nothing. This holds for an agent from 1.0 too. The application's output says so:
 
 ```
 [logaperture] LogAperture 1.1.0-SNAPSHOT active (Quarkus)
