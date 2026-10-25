@@ -991,6 +991,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#if-top-says-there-are-no-log-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If top says there are no log files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-in-the-configuration-will-hurt" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1890,6 +1901,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#if-top-says-there-are-no-log-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If top says there are no log files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#what-in-the-configuration-will-hurt" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1959,6 +1981,19 @@ measured over 46m (since agent start, 2026-10-10T00:42:20.290034554Z) — 35 log
 </ul>
 <p><code>--limit</code> sets how many to show (default 10; <code>0</code> for all). The projection is only as good as the
 time measured: a few minutes after startup, it mostly reflects startup.</p>
+<h2 id="if-top-says-there-are-no-log-files">If <code>top</code> says there are no log files<a class="headerlink" href="#if-top-says-there-are-no-log-files" title="Permanent link">&para;</a></h2>
+<p><code>top</code> counts bytes written to files. An application that logs only to the console has nothing to
+count, and <code>top</code> says so:</p>
+<div class="highlight"><pre><span></span><code>$ logctl top
+No log files to measure: `top` counts bytes written to files, and this application's handlers write to none (found: console).
+See `logctl list handlers`; send output to a file to measure it.
+</code></pre></div>
+<p><code>logctl list handlers --show-all</code> shows which handlers write to a file (<code>file</code> in the <code>PERSISTS</code>
+column). Quarkus logs to the console by default; turn on its file handler
+(<code>quarkus.log.file.enabled=true</code>) and <code>top</code> has something to measure. This is different from the
+shorter "No byte-volume measurements available yet", which means a file handler exists and nothing
+has been written through it yet.</p>
+<p>With <code>--json</code>, <code>persistentHandlers</code> is the number of file-backed handlers: <code>0</code> for the case above.</p>
 <h2 id="what-in-the-configuration-will-hurt">What in the configuration will hurt<a class="headerlink" href="#what-in-the-configuration-will-hurt" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>doctor
 </code></pre></div>

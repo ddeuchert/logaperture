@@ -2741,6 +2741,13 @@ projections are worked out from these.</p>
 <span class="w">  </span><span class="nt">"trackedCount"</span><span class="p">:</span><span class="w"> </span><span class="mi">14</span>
 <span class="p">}</span>
 </code></pre></div>
+<p><code>persistentHandlers</code> is the number of file-backed handlers the application has. It is <code>0</code> when
+nothing writes to a file, so <code>top</code> has nothing to measure, and above <code>0</code> when a file handler exists
+but has not written anything yet. Output from a Quarkus application that logs to the console only:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"loggers"</span><span class="p">:[],</span><span class="nt">"measurementStartedAt"</span><span class="p">:</span><span class="s2">"2026-10-25T04:31:07.929750874Z"</span><span class="p">,</span><span class="nt">"trackedCount"</span><span class="p">:</span><span class="mi">0</span><span class="p">,</span><span class="nt">"persistentHandlers"</span><span class="p">:</span><span class="mi">0</span><span class="p">}</span>
+</code></pre></div>
+<p>The field is left out when <code>logctl</code> could not get the handler list (an older agent, or a framework
+that lists no handlers), so treat a missing <code>persistentHandlers</code> as "unknown".</p>
 <h3 id="storms">storms<a class="headerlink" href="#storms" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>storms<span class="w"> </span>--json
 </code></pre></div>

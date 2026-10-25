@@ -2168,6 +2168,8 @@ rebuild with <code>quarkus.log.min-level=TRACE</code>.</p>
   with <code>logctl</code> isn't held to it.</li>
 <li>In dev mode (<code>quarkus:dev</code>) the minimum level is <code>ALL</code>, so <code>TRACE</code> works there even when it doesn't
   in your production build. Dev mode isn't a supported target, though it works.</li>
+<li><code>logctl top</code> measures bytes written to files, and Quarkus logs to the console by default. Turn on
+  the file handler (<code>quarkus.log.file.enabled=true</code>) to give <code>top</code> something to measure.</li>
 <li>Asynchronous handlers (<code>quarkus.log.*.async.enable</code>) aren't supported.</li>
 <li><code>syslog</code> and <code>socket</code> handlers are named and listed, but not otherwise tested.</li>
 <li>A plain <code>java -jar</code> application that logs through <code>java.util.logging</code> alone, without Quarkus, is
