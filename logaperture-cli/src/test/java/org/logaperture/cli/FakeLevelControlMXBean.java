@@ -335,10 +335,15 @@ final class FakeLevelControlMXBean implements LevelControlMXBean {
     }
 
     List<org.logaperture.control.jmx.HandlerInfoData> handlerCatalog = new ArrayList<>();
+    /** When set, {@link #listHandlers()} throws it, as an agent without the operation would. */
+    RuntimeException listHandlersFailure;
 
     @Override
     public List<org.logaperture.control.jmx.HandlerInfoData> listHandlers() {
         maybeThrow();
+        if (listHandlersFailure != null) {
+            throw listHandlersFailure;
+        }
         return handlerCatalog;
     }
 

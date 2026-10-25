@@ -63,6 +63,8 @@ Also check:
 On a plain JVM with Logback they aren't available in 1.0. On WildFly:
 
 - `top` counts from when the agent started; right after startup there's little to show.
+- `top` says "No log files to measure": none of the application's handlers write to a file, which is
+  the Quarkus default. See [Find where the disk goes](how-to/find-disk-usage.md#if-top-says-there-are-no-log-files).
 - `storms` reports nothing while storm detection is off, which is the default. See
   [Log storms](how-to/storms.md).
 

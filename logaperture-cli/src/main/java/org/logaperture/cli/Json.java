@@ -310,6 +310,15 @@ final class Json {
      * exceed {@code loggers}' own size once the limit has truncated it.
      */
     static String top(TopReportData report) {
+        return top(report, null);
+    }
+
+    /**
+     * As {@link #top(TopReportData)}, plus {@code persistentHandlers}: how many file-backed handlers the
+     * application has, so a script can tell "no files to measure" (0) from "nothing written yet" (more
+     * than 0). Omitted when null (the count could not be fetched). doc/specs/top-no-file-output.md TN3.
+     */
+    static String top(TopReportData report, Integer persistentHandlers) {
         StringJoiner array = new StringJoiner(",", "[", "]");
         for (LoggerByteCountData logger : report.getLoggers()) {
             array.add(new Obj()
@@ -319,11 +328,14 @@ final class Json {
                     .str("context", logger.getContext())
                     .toString());
         }
-        return new Obj()
+        Obj top = new Obj()
                 .raw("loggers", array.toString())
                 .str("measurementStartedAt", report.getMeasurementStartedAt())
-                .raw("trackedCount", String.valueOf(report.getTrackedCount()))
-                .toString();
+                .raw("trackedCount", String.valueOf(report.getTrackedCount()));
+        if (persistentHandlers != null) {
+            top.raw("persistentHandlers", String.valueOf(persistentHandlers));
+        }
+        return top.toString();
     }
 
     /**
