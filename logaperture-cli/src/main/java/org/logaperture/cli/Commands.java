@@ -20,6 +20,7 @@ import org.logaperture.api.Level;
 import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.EnvironmentReportData;
 import org.logaperture.control.jmx.HandlerFloorData;
+import org.logaperture.control.jmx.LevelControlMXBean;
 import org.logaperture.control.jmx.LevelFloorData;
 import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
@@ -217,7 +218,7 @@ final class Commands {
 
     /** {@code status}'s rules; none from an agent older than 0.1.0-alpha.3, which has no {@code listRules}. */
     private static List<org.logaperture.control.jmx.RuleData> rulesForStatus(
-            org.logaperture.control.jmx.LevelControlMXBean mbean) {
+            LevelControlMXBean mbean) {
         try {
             return mbean.listRules().stream().filter(Commands::isChangeForStatus).toList();
         } catch (RuntimeException e) {
@@ -1505,7 +1506,7 @@ final class Commands {
             String startedAtRaw = report.getMeasurementStartedAt();
             if (loggers.isEmpty() || startedAtRaw == null) {
                 HandlerCensus census = handlerCensus(mbean);
-                if (census != null && census.persistent() == 0) {
+                if (loggers.isEmpty() && census != null && census.persistent() == 0) {
                     out.println("No log files to measure: `top` counts bytes written to files, and this "
                             + "application's handlers write to none (found: " + String.join(", ", census.liveNames())
                             + ").");
@@ -1561,7 +1562,7 @@ final class Commands {
      * improvement on a report that already worked, never a new way for {@code top} to fail), or the
      * framework lists no handlers at all (Logback, say), which says nothing about files.
      */
-    private static HandlerCensus handlerCensus(org.logaperture.control.jmx.LevelControlMXBean mbean) {
+    private static HandlerCensus handlerCensus(LevelControlMXBean mbean) {
         try {
             List<HandlerInfoData> live = mbean.listHandlers().stream().filter(Commands::isLiveHandler).toList();
             if (live.isEmpty()) {
@@ -1653,7 +1654,7 @@ final class Commands {
      * earlier, where storm detection was always on) -- or any failure reaching it, since every
      * caller only adds a line for it.
      */
-    private static StormDetectionData stormDetectionOrNull(org.logaperture.control.jmx.LevelControlMXBean mbean) {
+    private static StormDetectionData stormDetectionOrNull(LevelControlMXBean mbean) {
         try {
             return mbean.stormDetection();
         } catch (RuntimeException e) {

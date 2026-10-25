@@ -151,7 +151,8 @@ A logger with zero measured bytes is never listed — "tracked" means "has emitt
 byte through a counted handler," not "every logger name this JVM knows about" (that list can be
 large and is `logctl levels`'s job, not this one's).
 
-`--json` emits `{"loggers": [...], "measurementStartedAt": "...", "trackedCount": N}`, one
+`--json` emits `{"loggers": [...], "measurementStartedAt": "...", "trackedCount": N}` (plus
+`persistentHandlers`, see [`top-no-file-output.md`](top-no-file-output.md)), one
 object per logger (`LoggerByteCountData`, below), already sorted worst-first; `--limit` applies
 identically to `--json`. `trackedCount` is the true number of tracked loggers -- the same figure
 the text renderer's "N loggers tracked" line reports -- independent of `--limit`: it can exceed

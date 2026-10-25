@@ -898,6 +898,42 @@ class CommandsTest {
     }
 
     @Test
+    void top_json_withAFileHandler_countsIt() {
+        mbean.topReport = new TopReportData(List.of(), null, 0);
+        mbean.handlerCatalog = List.of(
+                new HandlerInfoData("console", "ALL", false, null, Boolean.TRUE, false, null, null, null, null, null, null),
+                new HandlerInfoData("file", "ALL", true, "/tmp/x.log", null, false, null, null, null, null, null, null));
+
+        assertEquals(CliError.OK, run(Commands.top(10, true)));
+
+        assertTrue(output().contains("\"persistentHandlers\":1"), output());
+    }
+
+    @Test
+    void top_json_handlerLookupFails_omitsTheCount() {
+        mbean.topReport = new TopReportData(List.of(), null, 0);
+        mbean.listHandlersFailure = new IllegalStateException("old agent");
+
+        assertEquals(CliError.OK, run(Commands.top(10, true)));
+
+        assertFalse(output().contains("persistentHandlers"), output());
+    }
+
+    @Test
+    void top_rowsButNoMeasurementStart_neverClaimsThereAreNoFiles() {
+        // The report's own contract allows rows with a null start; the "no files" explanation is only for
+        // the empty report.
+        mbean.topReport = new TopReportData(
+                List.of(new LoggerByteCountData("a", 10L, 0L, null)), null, 1);
+        mbean.handlerCatalog = List.of(
+                new HandlerInfoData("console", "ALL", false, null, Boolean.TRUE, false, null, null, null, null, null, null));
+
+        assertEquals(CliError.OK, run(Commands.top(10, false)));
+
+        assertTrue(output().contains("No byte-volume measurements available yet."), output());
+    }
+
+    @Test
     void top_trackedCountReflectsTheTrueTotal_notTheLimitTruncatedRowCount() {
         // --limit truncated "loggers" to 1 row, but 200 loggers are actually
         // tracked -- the footer must report the true count, not loggers.size().
