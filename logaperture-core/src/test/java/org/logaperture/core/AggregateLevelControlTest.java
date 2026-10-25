@@ -889,6 +889,37 @@ class AggregateLevelControlTest {
         assertEquals(Level.INFO, app.adapter.effectiveLevel("com.shared.Util"));
     }
 
+    /**
+     * doc/specs/quarkus-extension.md #4: stopping while the JVM runs on puts every changed logger back
+     * to its own level, so the next engine captures true baselines. Session overrides are reverted for
+     * good (audited as {@code stop}); {@code for} and {@code sticky} ones stay registered and saved for
+     * the next engine to resume.
+     */
+    @Test
+    void restoreNativeLevelsForStop_restoresEveryChangedLogger_keepsWhatTheNextEngineResumes() {
+        Ctx system = new Ctx("system");
+        Ctx app = new Ctx("myapp.war");
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+        aggregate.setLogger("com.acme.Session", Level.DEBUG, SetLevelOptions.defaults());
+        aggregate.setLogger("com.acme.Timed", Level.DEBUG, SetLevelOptions.forDuration(Duration.ofMinutes(5)));
+        aggregate.setLogger("com.acme.Sticky", Level.DEBUG, SetLevelOptions.sticky());
+
+        assertEquals(2, aggregate.restoreNativeLevelsForStop(), "one session override, in each of two contexts");
+
+        for (Ctx ctx : List.of(system, app)) {
+            assertEquals(Level.INFO, ctx.adapter.effectiveLevel("com.acme.Session"));
+            assertEquals(Level.INFO, ctx.adapter.effectiveLevel("com.acme.Timed"), "back to its own level");
+            assertEquals(Level.INFO, ctx.adapter.effectiveLevel("com.acme.Sticky"), "back to its own level");
+            assertEquals(2, ctx.service.activeOverrides().size(), "for and sticky stay registered");
+        }
+        assertEquals(2, sharedStore.loadAll().size(), "the state file still holds for and sticky");
+        assertTrue(auditLog.records().stream().anyMatch(r -> "stop".equals(r.source())
+                && "com.acme.Session".equals(r.loggerName()) && r.action() == AuditRecord.Action.REVERSION));
+        assertTrue(auditLog.records().stream().noneMatch(r -> "stop".equals(r.source())
+                && !"com.acme.Session".equals(r.loggerName())), "only the session revert is audited");
+    }
+
     // --- setHandlerLevel / resetHandler broadcast (doc/specs/handler-floor-control.md) -----------
 
     @Test

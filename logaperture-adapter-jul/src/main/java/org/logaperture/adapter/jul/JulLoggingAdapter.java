@@ -106,6 +106,9 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     /** doc/specs/top.md -- shared across every {@link ByteCountingFormatter} this adapter installs. */
     private final TopCounters topCounters = new TopCounters();
 
+    /** Class names of the handlers whose formatter was left unwrapped ({@link FormatterBoundHandlers}). */
+    private final Set<String> leftUnwrapped = ConcurrentHashMap.newKeySet();
+
     /**
      * doc/specs/handler-floor-control.md "WildFly handler name resolution"
      * (issue #14). {@link HandlerNameResolver#NONE} for plain JUL — every
@@ -431,12 +434,70 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             if (handler == null || !JulHandlerDiagnostics.of(handler).isPersistent()) {
                 continue;
             }
+            if (FormatterBoundHandlers.isBound(handler)) {
+                leftUnwrapped.add(handler.getClass().getName());
+                continue;
+            }
             Formatter current = handler.getFormatter();
             if (current instanceof ByteCountingFormatter || current == null) {
                 continue; // already wrapped, or nothing to wrap around
             }
             handler.setFormatter(new ByteCountingFormatter(current, topCounters));
         }
+    }
+
+    /**
+     * Takes off everything this adapter installed on the handlers: its filters ({@code drop}, storms)
+     * and its formatter wraps ({@code trim}, {@code top}), leaving each handler with the filter and
+     * formatter it had before. Logger levels are left as they are. For a host that stops while the
+     * JVM keeps running -- Quarkus dev mode restarts the application in a new class loader, whose
+     * engine would not recognise this one's wrappers (doc/specs/quarkus-extension.md #4). Call it
+     * only once nothing re-installs (the host's sweeper is stopped).
+     */
+    public void uninstall() {
+        for (Handler handler : filterAttachPoints()) {
+            FilterLayering.remove(handler);
+        }
+        Set<Handler> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (HandlerRef ref : realHandlers()) {
+            Handler handler = handlersByRef.get(ref);
+            if (handler != null) {
+                unwrapFormatters(handler, seen);
+            }
+        }
+    }
+
+    private static void unwrapFormatters(Handler handler, Set<Handler> seen) {
+        if (!seen.add(handler)) {
+            return;
+        }
+        for (Handler nested : SubHandlers.of(handler)) {
+            unwrapFormatters(nested, seen);
+        }
+        Formatter current = handler.getFormatter();
+        Formatter original = current;
+        while (true) {
+            if (original instanceof ByteCountingFormatter counting) {
+                original = counting.delegate();
+            } else if (original instanceof JulTrimFormatter trim) {
+                original = trim.delegate();
+            } else {
+                break;
+            }
+        }
+        if (original != current) {
+            handler.setFormatter(original);
+        }
+    }
+
+    /**
+     * Class names of the handlers seen so far whose formatter LogAperture left alone because the
+     * handler requires its own type (doc/specs/quarkus-extension.md #5), sorted. Empty almost always.
+     */
+    public List<String> handlersLeftUnwrapped() {
+        List<String> names = new ArrayList<>(leftUnwrapped);
+        Collections.sort(names);
+        return names;
     }
 
     @Override
@@ -520,6 +581,10 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     private void installTrimRendering(Handler handler, RuleGate gate, Set<Handler> seen) {
         if (!seen.add(handler)) {
             return; // shared, or nested in a cycle -- already handled
+        }
+        if (FormatterBoundHandlers.isBound(handler)) {
+            leftUnwrapped.add(handler.getClass().getName());
+            return; // quarkus-extension.md #5: wrapping its formatter breaks it
         }
         for (Handler nested : SubHandlers.of(handler)) {
             installTrimRendering(nested, gate, seen);

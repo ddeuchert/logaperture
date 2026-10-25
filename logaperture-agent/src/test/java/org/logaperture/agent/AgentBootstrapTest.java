@@ -47,56 +47,10 @@ class AgentBootstrapTest {
                 AgentBootstrap.duplicateStartMessage(AgentBootstrap.Entry.AGENTMAIN));
     }
 
-    /** doc/specs/quieter-output.md Q3: the one startup line. */
+    /** quarkus-extension.md #3: an attach into a JVM the extension owns starts nothing, and says so. */
     @Test
-    void banner_namesTheContainer_theVendorFile_andWhatWasRestored() throws Exception {
-        java.nio.file.Path file = java.nio.file.Files.createTempFile("vendor", ".yaml");
-        java.nio.file.Files.writeString(file, "schemaVersion: 1\nloggers:\n  - name: com.acme\n    level: WARN\n");
-        org.logaperture.core.VendorDefaults vendor = org.logaperture.core.VendorDefaultsFile.load(file);
-
-        assertEquals("LogAperture 1.0.0 active (WildFly): vendor defaults " + file + " (1 logger); 3 sticky settings "
-                + "restored", AgentBootstrap.banner("1.0.0", "wildfly", vendor, 3));
-        assertEquals("LogAperture 1.0.0 active (JVM)",
-                AgentBootstrap.banner("1.0.0", "none", org.logaperture.core.VendorDefaults.none(), 0));
-        assertEquals("LogAperture 1.0.0 active (Quarkus)",
-                AgentBootstrap.banner("1.0.0", "quarkus", org.logaperture.core.VendorDefaults.none(), 0));
-    }
-
-    @Test
-    void banner_saysStormDetectionOn_onlyWhenItStartsEnabled() {
-        // doc/specs/storm-detection-toggle.md "Starting state": disabled, the default, says nothing.
-        org.logaperture.core.VendorDefaults none = org.logaperture.core.VendorDefaults.none();
-        java.time.Instant at = java.time.Instant.parse("2026-10-08T02:30:00Z");
-        assertEquals("LogAperture 1.0.0 active (JVM): storm detection on", AgentBootstrap.banner("1.0.0", "none",
-                none, 0, new org.logaperture.core.StormDetectionSwitch.State(true, true, null)));
-        assertEquals("LogAperture 1.0.0 active (JVM)", AgentBootstrap.banner("1.0.0", "none", none, 0,
-                new org.logaperture.core.StormDetectionSwitch.State(false, true, at)));
-        // A saved setting, resumed (slice 2).
-        assertEquals("LogAperture 1.0.0 active (JVM): storm detection on (sticky)", AgentBootstrap.banner("1.0.0",
-                "none", none, 0, new org.logaperture.core.StormDetectionSwitch.State(true, false, at,
-                        org.logaperture.api.PersistenceTier.STICKY, null)));
-        assertEquals("LogAperture 1.0.0 active (JVM): storm detection on until 2026-10-08T02:30:00Z",
-                AgentBootstrap.banner("1.0.0", "none", none, 0, new org.logaperture.core.StormDetectionSwitch.State(
-                        true, false, at, org.logaperture.api.PersistenceTier.FOR, at)));
-    }
-
-    /** Q1: one audit record per vendor defaults load, naming the file and its hash. */
-    @Test
-    void auditVendorDefaults_writesOneRecordWithTheHash() throws Exception {
-        java.nio.file.Path file = java.nio.file.Files.createTempFile("vendor", ".yaml");
-        java.nio.file.Files.writeString(file, "schemaVersion: 1\nloggers:\n  - name: com.acme\n    level: WARN\n");
-        org.logaperture.core.VendorDefaults vendor = org.logaperture.core.VendorDefaultsFile.load(file);
-        org.logaperture.core.InMemoryAuditLog audit = new org.logaperture.core.InMemoryAuditLog();
-
-        AgentBootstrap.auditVendorDefaults(vendor, audit);
-        AgentBootstrap.auditVendorDefaults(org.logaperture.core.VendorDefaults.none(), audit);
-
-        assertEquals(1, audit.records().size());
-        org.logaperture.core.AuditRecord record = audit.records().get(0);
-        assertEquals("vendor-defaults", record.source());
-        assertEquals(file.toString(), record.loggerName());
-        assertEquals(org.logaperture.core.AuditRecord.Target.FILE, record.target(), "printed as file=<path> (#137)");
-        assertEquals("loaded sha256=" + vendor.sha256().orElseThrow() + " (1 logger)", record.newValue());
-        assertEquals(64, vendor.sha256().orElseThrow().length());
+    void claimedMessage_namesTheRouteThatOwnsTheJvm() {
+        assertEquals("LogAperture is already running in this JVM as the Quarkus extension; the agent starts nothing.",
+                AgentBootstrap.claimedMessage("extension"));
     }
 }

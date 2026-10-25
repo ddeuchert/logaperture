@@ -8,6 +8,16 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ## [Unreleased]
 
+### Added
+
+- **A Quarkus extension.** Add `org.logaperture:logaperture-quarkus` to a Quarkus application and
+  rebuild: LogAperture then runs inside it with no `-javaagent`, and `logctl` works as with the
+  agent. Settings are `quarkus.logaperture.*` properties (environment variables and ConfigMaps
+  work), `logctl set logger X TRACE` works without rebuilding with a lower `quarkus.log.min-level`,
+  and `quarkus dev` is supported across live reloads. `logctl env` says `LogAperture extension`, and
+  `env --json` adds `delivery`. If the agent is present as well, the agent runs and the extension
+  starts nothing (issue #267; `doc/specs/quarkus-extension.md`).
+
 ## [1.0.0-beta.3] — 2026-10-21
 
 `set logger` now shows its result on the console, and WildFly's handler names are available while the server is still starting. **Not for production yet.**

@@ -104,6 +104,44 @@ class JulTrimRenderingTest {
         assertTrue(handler.getFormatter() instanceof JulTrimFormatter);
     }
 
+    /** quarkus-extension.md #5: a handler that requires its own formatter type keeps it, and is reported. */
+    @Test
+    void installTrimRendering_leavesAFormatterBoundHandlerAlone() {
+        io.quarkus.devui.runtime.logstream.MutinyLogHandler devUi = new io.quarkus.devui.runtime.logstream.MutinyLogHandler();
+        handler = devUi;
+        logger = Logger.getLogger(name("devui"));
+        logger.addHandler(handler);
+
+        adapter.installTrimRendering(ALWAYS_ALLOW);
+        adapter.installByteCounting();
+
+        assertTrue(devUi.getFormatter() instanceof io.quarkus.devui.runtime.logstream.MutinyLogHandler.OwnFormatter);
+        logger.info("still publishes"); // would throw ClassCastException inside publish if wrapped
+        assertEquals(java.util.List.of("io.quarkus.devui.runtime.logstream.MutinyLogHandler"),
+                adapter.handlersLeftUnwrapped());
+    }
+
+    /** quarkus-extension.md #4: uninstall leaves each handler with the formatter and filter it had. */
+    @Test
+    void uninstall_restoresTheOriginalFormatterAndFilter() {
+        handler = new FakePersistentHandler();
+        Formatter original = handler.getFormatter();
+        java.util.logging.Filter base = record -> true;
+        handler.setFilter(base);
+        logger = Logger.getLogger(name("uninstall"));
+        logger.addHandler(handler);
+        adapter.installTrimRendering(ALWAYS_ALLOW);
+        adapter.installByteCounting();
+        adapter.installRulePipeline(ALWAYS_ALLOW);
+        assertTrue(handler.getFormatter() instanceof ByteCountingFormatter);
+        assertTrue(handler.getFilter() instanceof JulRuleFilter);
+
+        adapter.uninstall();
+
+        assertEquals(original, handler.getFormatter());
+        assertEquals(base, handler.getFilter());
+    }
+
     @Test
     void installTrimRendering_calledTwice_doesNotDoubleWrap() {
         handler = new ConsoleHandler();

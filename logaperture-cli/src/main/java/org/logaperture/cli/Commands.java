@@ -898,6 +898,14 @@ final class Commands {
     }
 
     /**
+     * doc/specs/quarkus-extension.md #7: {@code agent} or {@code extension}. An agent older than the
+     * extension reports nothing, and is always an agent.
+     */
+    static String delivery(EnvironmentReportData report) {
+        return report.getDelivery() == null ? "agent" : report.getDelivery();
+    }
+
+    /**
      * {@code logctl env} — doc/specs/environment-report.md "The operation".
      * Read-only, like {@code doctor}/{@code top}: no target, no tier,
      * nothing to confirm. {@code logctl}'s own version is stitched in
@@ -914,7 +922,7 @@ final class Commands {
                 return CliError.OK;
             }
             List<List<String>> rows = new ArrayList<>();
-            rows.add(List.of("LogAperture agent", report.getAgentVersion() + "  (logctl " + cliVersion + ")"));
+            rows.add(List.of("LogAperture " + delivery(report), report.getAgentVersion() + "  (logctl " + cliVersion + ")"));
             rows.add(List.of("Java", report.getJavaVersion() + "  " + report.getJavaVendor()));
             rows.add(List.of("OS", report.getOsName() + " " + report.getOsVersion() + "  " + report.getOsArch()));
             if (report.getBackendName() != null) {

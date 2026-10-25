@@ -59,6 +59,10 @@ package org.logaperture.api;
  * @param vendorDefaultsStatus {@code "not configured"}, {@code "loaded (...)"}
  *                          with a one-line summary, or {@code "rejected
  *                          (N errors)"}
+ * @param delivery          how LogAperture is running in this JVM: {@code
+ *                          "agent"} or {@code "extension"} (the Quarkus
+ *                          extension, doc/specs/quarkus-extension.md #7), or
+ *                          {@code null} if unknown
  */
 public record EnvironmentReport(
         String agentVersion,
@@ -74,7 +78,18 @@ public record EnvironmentReport(
         String diagnosticsLevel,
         String stateFilePath,
         String vendorDefaultsPath,
-        String vendorDefaultsStatus) {
+        String vendorDefaultsStatus,
+        String delivery) {
+
+    /** Every field but {@code delivery} -- the shape before doc/specs/quarkus-extension.md. */
+    public EnvironmentReport(String agentVersion, String javaVersion, String javaVendor, String osName,
+            String osVersion, String osArch, String backendName, String backendVersion, String containerName,
+            String containerVersion, String diagnosticsLevel, String stateFilePath, String vendorDefaultsPath,
+            String vendorDefaultsStatus) {
+        this(agentVersion, javaVersion, javaVendor, osName, osVersion, osArch, backendName, backendVersion,
+                containerName, containerVersion, diagnosticsLevel, stateFilePath, vendorDefaultsPath,
+                vendorDefaultsStatus, null);
+    }
 
     /** Every field but the vendor defaults pair -- the shape before doc/specs/vendor-defaults.md. */
     public EnvironmentReport(String agentVersion, String javaVersion, String javaVendor, String osName,

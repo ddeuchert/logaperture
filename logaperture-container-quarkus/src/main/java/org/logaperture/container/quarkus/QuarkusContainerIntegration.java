@@ -15,7 +15,6 @@
  */
 package org.logaperture.container.quarkus;
 
-import org.logaperture.adapter.jul.JulAdapterFactory;
 import org.logaperture.adapter.jul.JulLoggingAdapter;
 import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.Severity;
@@ -28,7 +27,6 @@ import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.VendorDefaults;
 import org.logaperture.core.spi.ContainerIntegration;
-import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.InstallGuidance;
 
 import java.lang.instrument.Instrumentation;
@@ -79,7 +77,7 @@ public final class QuarkusContainerIntegration implements ContainerIntegration {
 
     @Override
     public String id() {
-        return "quarkus";
+        return QuarkusEngine.CONTAINER_ID;
     }
 
     @Override
@@ -92,15 +90,13 @@ public final class QuarkusContainerIntegration implements ContainerIntegration {
             Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog, VendorDefaults vendorDefaults,
             boolean stormDetectionEnabled, Consumer<AggregateLevelControl> onFirstContextReady) {
         // A supplier, re-resolved on every logctl env: a file read, so nothing is baked in at premain.
-        JBossLogManagerContainer host = new JBossLogManagerContainer("Quarkus", policy, auditLog, sweepInterval,
-                this::version, vendorDefaults, stormDetectionEnabled);
+        JBossLogManagerContainer host = QuarkusEngine.newHost(policy, auditLog, vendorDefaults, stormDetectionEnabled,
+                sweepInterval, this::version);
 
         Runnable install = () -> {
             try {
-                JulLoggingAdapter adapter = JulAdapterFactory.forCurrentContext(new QuarkusHandlerNameResolver());
-                host.installContext(ContextHandle.of(ContextHandle.SYSTEM, "quarkus", adapter));
-                onFirstContextReady.accept(host.operations());
-                startEarlyResweep(host);
+                JulLoggingAdapter adapter = QuarkusEngine.installSystemContext(host, onFirstContextReady);
+                startEarlyResweep(host, adapter);
                 Diagnostics.debug("level control installed (quarkus container, system LogContext)");
             } catch (Throwable t) {
                 Diagnostics.error("LogAperture failed to install level control for Quarkus", t);
@@ -120,11 +116,15 @@ public final class QuarkusContainerIntegration implements ContainerIntegration {
      * polled every 50 ms for up to two minutes -- Quarkus start-up can be slow -- and the startup
      * fast-sweep window is the safety net for versions where the handler can't be found.
      */
-    private static void startEarlyResweep(JBossLogManagerContainer host) {
+    private static void startEarlyResweep(JBossLogManagerContainer host, JulLoggingAdapter adapter) {
         DelayedHandlerWatch.Lazy activation = DelayedHandlerWatch.lazy(java.util.logging.Logger.getLogger(""));
         Instant installed = Instant.now();
-        Supplier<List<DoctorFinding>> earlySweepStatus = () -> earlySweepFindings(activation, installed);
-        host.setContainerFindings(earlySweepStatus);
+        Supplier<List<DoctorFinding>> containerFindings = () -> {
+            List<DoctorFinding> findings = new java.util.ArrayList<>(earlySweepFindings(activation, installed));
+            findings.addAll(QuarkusEngine.formatterFindings(adapter));
+            return findings;
+        };
+        host.setContainerFindings(containerFindings);
         host.startEarlyResweep(SweepPolicy.startupWindow(), activation, Duration.ofMillis(50), Duration.ofMinutes(2));
     }
 

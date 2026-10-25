@@ -69,6 +69,10 @@
       <groupId>org.logaperture</groupId>
       <artifactId>logaperture-control-jmx</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-startup</artifactId>
+    </dependency>
 
     <!-- Test-only: the fixture app used by LevelControlEndToEndIT needs a
          real Logback on ITS classpath (a separate process from the agent). -->

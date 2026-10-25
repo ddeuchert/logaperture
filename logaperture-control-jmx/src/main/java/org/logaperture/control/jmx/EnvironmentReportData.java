@@ -42,18 +42,20 @@ public final class EnvironmentReportData {
     private final String stateFilePath;
     private final String vendorDefaultsPath;
     private final String vendorDefaultsStatus;
+    private final String delivery;
 
     /**
-     * Every field, including the vendor defaults pair (doc/specs/vendor-defaults.md "Surfaces");
-     * the narrower constructor below stays annotated for older clients (logaperture-spec.md §11.1).
+     * Every field, including {@code delivery} (doc/specs/quarkus-extension.md #7); the narrower
+     * constructors below stay annotated for older agents' data (logaperture-spec.md §11.1).
      */
     @ConstructorProperties({"agentVersion", "javaVersion", "javaVendor", "osName", "osVersion", "osArch",
             "backendName", "backendVersion", "containerName", "containerVersion", "diagnosticsLevel",
-            "stateFilePath", "vendorDefaultsPath", "vendorDefaultsStatus"})
+            "stateFilePath", "vendorDefaultsPath", "vendorDefaultsStatus", "delivery"})
     public EnvironmentReportData(String agentVersion, String javaVersion, String javaVendor, String osName,
             String osVersion, String osArch, String backendName, String backendVersion, String containerName,
             String containerVersion, String diagnosticsLevel, String stateFilePath, String vendorDefaultsPath,
-            String vendorDefaultsStatus) {
+            String vendorDefaultsStatus, String delivery) {
+        this.delivery = delivery;
         this.vendorDefaultsPath = vendorDefaultsPath;
         this.vendorDefaultsStatus = vendorDefaultsStatus;
         this.agentVersion = agentVersion;
@@ -70,6 +72,19 @@ public final class EnvironmentReportData {
         this.stateFilePath = stateFilePath;
     }
 
+    /** Every field but {@code delivery}: an agent from before doc/specs/quarkus-extension.md. */
+    @ConstructorProperties({"agentVersion", "javaVersion", "javaVendor", "osName", "osVersion", "osArch",
+            "backendName", "backendVersion", "containerName", "containerVersion", "diagnosticsLevel",
+            "stateFilePath", "vendorDefaultsPath", "vendorDefaultsStatus"})
+    public EnvironmentReportData(String agentVersion, String javaVersion, String javaVendor, String osName,
+            String osVersion, String osArch, String backendName, String backendVersion, String containerName,
+            String containerVersion, String diagnosticsLevel, String stateFilePath, String vendorDefaultsPath,
+            String vendorDefaultsStatus) {
+        this(agentVersion, javaVersion, javaVendor, osName, osVersion, osArch, backendName, backendVersion,
+                containerName, containerVersion, diagnosticsLevel, stateFilePath, vendorDefaultsPath,
+                vendorDefaultsStatus, null);
+    }
+
     @ConstructorProperties({"agentVersion", "javaVersion", "javaVendor", "osName", "osVersion", "osArch",
             "backendName", "backendVersion", "containerName", "containerVersion", "diagnosticsLevel",
             "stateFilePath"})
@@ -77,7 +92,7 @@ public final class EnvironmentReportData {
             String osVersion, String osArch, String backendName, String backendVersion, String containerName,
             String containerVersion, String diagnosticsLevel, String stateFilePath) {
         this(agentVersion, javaVersion, javaVendor, osName, osVersion, osArch, backendName, backendVersion,
-                containerName, containerVersion, diagnosticsLevel, stateFilePath, null, null);
+                containerName, containerVersion, diagnosticsLevel, stateFilePath, null, null, null);
     }
 
     /** The vendor defaults file's absolute path, or {@code null} if none was configured. */
@@ -105,7 +120,16 @@ public final class EnvironmentReportData {
                 report.diagnosticsLevel(),
                 report.stateFilePath(),
                 report.vendorDefaultsPath(),
-                report.vendorDefaultsStatus());
+                report.vendorDefaultsStatus(),
+                report.delivery());
+    }
+
+    /**
+     * {@code "agent"} or {@code "extension"} (doc/specs/quarkus-extension.md #7); {@code null} from an
+     * agent older than the extension, which is always an agent.
+     */
+    public String getDelivery() {
+        return delivery;
     }
 
     public String getAgentVersion() {

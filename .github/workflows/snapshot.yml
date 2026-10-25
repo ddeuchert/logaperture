@@ -87,7 +87,8 @@ jobs:
           CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
           CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
         run: |
-          ./mvnw -B --no-transfer-progress -Prelease -pl logaperture-dist -am -DskipTests -Dgpg.skip=true deploy \
+          ./mvnw -B --no-transfer-progress -Prelease,quarkus \
+            -pl logaperture-dist,logaperture-quarkus,logaperture-quarkus-deployment -am -DskipTests -Dgpg.skip=true deploy \
             -Dproject.build.outputTimestamp="$(git log -1 --format=%cI)" \
             -DaltDeploymentRepository=central-snapshots::https://central.sonatype.com/repository/maven-snapshots/
 
@@ -99,7 +100,7 @@ jobs:
             echo "- Pull request: #${{ github.event.pull_request.number }} (${{ github.event.pull_request.title }})"
             echo "- Commit: \`${{ github.event.pull_request.head.sha }}\`"
             echo "- Repository: https://central.sonatype.com/repository/maven-snapshots/"
-            echo "- Files: \`org/logaperture/{logaperture-parent,logaperture-agent,logaperture-cli,logaperture}/${{ steps.v.outputs.version }}/\`"
+            echo "- Files: \`org/logaperture/{logaperture-parent,logaperture-agent,logaperture-cli,logaperture-quarkus,logaperture-quarkus-deployment,logaperture}/${{ steps.v.outputs.version }}/\`"
             echo
             echo "A later labeled pull request replaces this version. Central removes snapshots after 90 days."
           } >> "$GITHUB_STEP_SUMMARY"

@@ -735,6 +735,7 @@ final class Json {
                 .str("stateFilePath", report.getStateFilePath())
                 .str("vendorDefaultsPath", report.getVendorDefaultsPath())
                 .str("vendorDefaultsStatus", report.getVendorDefaultsStatus())
+                .str("delivery", Commands.delivery(report))
                 .toString();
     }
 
