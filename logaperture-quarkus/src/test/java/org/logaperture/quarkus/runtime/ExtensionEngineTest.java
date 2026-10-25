@@ -21,8 +21,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.logaperture.control.jmx.JmxRegistrar;
+import org.logaperture.core.VendorDefaults;
 
 import java.lang.management.ManagementFactory;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -154,20 +156,20 @@ class ExtensionEngineTest {
     void theVendorDefaultsSource_externalReplacesBundled_andTheSwitchTurnsBundledOff() throws Exception {
         String bundled = "schemaVersion: 1\nloggers:\n  - name: com.acme.Bundled\n    level: DEBUG\n";
         Path external = home.resolve("external.yaml");
-        java.nio.file.Files.writeString(external, "schemaVersion: 1\nloggers:\n  - name: com.acme.External\n    level: WARN\n");
+        Files.writeString(external, "schemaVersion: 1\nloggers:\n  - name: com.acme.External\n    level: WARN\n");
 
-        org.logaperture.core.VendorDefaults fromBundle = ExtensionEngine.vendorDefaults(config(), Optional.of(bundled));
+        VendorDefaults fromBundle = ExtensionEngine.vendorDefaults(config(), Optional.of(bundled));
         assertEquals("bundled:META-INF/logaperture/vendor-defaults.yaml", fromBundle.source().orElseThrow());
         assertTrue(fromBundle.loggers().containsKey("com.acme.Bundled"));
 
-        org.logaperture.core.VendorDefaults replaced = ExtensionEngine.vendorDefaults(
+        VendorDefaults replaced = ExtensionEngine.vendorDefaults(
                 config("ERROR", false, Optional.of(external), true), Optional.of(bundled));
         assertEquals(external.toString(), replaced.source().orElseThrow());
         assertFalse(replaced.loggers().containsKey("com.acme.Bundled"), "replaced entirely, not layered");
 
-        org.logaperture.core.VendorDefaults off = ExtensionEngine.vendorDefaults(
+        VendorDefaults off = ExtensionEngine.vendorDefaults(
                 config("ERROR", false, Optional.empty(), false), Optional.of(bundled));
-        assertEquals(org.logaperture.core.VendorDefaults.Status.NOT_CONFIGURED, off.status());
+        assertEquals(VendorDefaults.Status.NOT_CONFIGURED, off.status());
     }
 
     /** #3: an agent from before the extension sets no claim, but its marker shows it is there. */

@@ -81,6 +81,14 @@ public final class VendorDefaultsFile {
     private static final Pattern STATE_ID =
             Pattern.compile("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
 
+    /**
+     * The prefix of a bundled file's {@link VendorDefaults#source()} (doc/specs/bundled-vendor-defaults.md #6).
+     */
+    public static final String BUNDLED_PREFIX = "bundled:";
+
+    /** Where a Quarkus application bundles its vendor defaults file (bundled-vendor-defaults.md #1). */
+    public static final String BUNDLED_RESOURCE = "META-INF/logaperture/vendor-defaults.yaml";
+
     private VendorDefaultsFile() {
     }
 
@@ -122,14 +130,6 @@ public final class VendorDefaultsFile {
             ProtectedCategories protectedCategories) {
         return parse(content, path, path.toString(), writable, protectedCategories);
     }
-
-    /**
-     * The prefix of a bundled file's {@link VendorDefaults#source()} (doc/specs/bundled-vendor-defaults.md #6).
-     */
-    public static final String BUNDLED_PREFIX = "bundled:";
-
-    /** Where a Quarkus application bundles its vendor defaults file (bundled-vendor-defaults.md #1). */
-    public static final String BUNDLED_RESOURCE = "META-INF/logaperture/vendor-defaults.yaml";
 
     /**
      * Validates the text of a vendor defaults file that is not on disk -- one bundled in a Quarkus

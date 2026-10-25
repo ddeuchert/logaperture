@@ -53,8 +53,14 @@ public final class BundledVendorDefaults {
     /** The text split into chunks the recorder can carry. */
     public static List<String> chunks(String content) {
         List<String> chunks = new ArrayList<>();
-        for (int start = 0; start < content.length(); start += CHUNK_CHARS) {
-            chunks.add(content.substring(start, Math.min(content.length(), start + CHUNK_CHARS)));
+        int start = 0;
+        while (start < content.length()) {
+            int end = Math.min(content.length(), start + CHUNK_CHARS);
+            if (end < content.length() && Character.isHighSurrogate(content.charAt(end - 1))) {
+                end--; // keep a surrogate pair in one chunk, so no constant holds half a character
+            }
+            chunks.add(content.substring(start, end));
+            start = end;
         }
         return chunks;
     }

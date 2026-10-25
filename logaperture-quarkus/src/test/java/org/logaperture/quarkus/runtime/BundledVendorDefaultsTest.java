@@ -52,4 +52,14 @@ class BundledVendorDefaultsTest {
         assertEquals(text, BundledVendorDefaults.join(chunks));
         assertEquals(List.of(), BundledVendorDefaults.chunks(""));
     }
+
+    @Test
+    void chunks_neverSplitASurrogatePair() {
+        String text = "x".repeat(15_999) + "😀" + "\nschemaVersion: 1\n";
+
+        List<String> chunks = BundledVendorDefaults.chunks(text);
+
+        assertTrue(chunks.stream().noneMatch(c -> Character.isHighSurrogate(c.charAt(c.length() - 1))));
+        assertEquals(text, BundledVendorDefaults.join(chunks));
+    }
 }
