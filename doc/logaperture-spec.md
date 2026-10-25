@@ -1294,6 +1294,8 @@ Two things make this more interesting than it first appears:
 
 *Cost and dependencies.* Layer 3. Blocked on nothing but the `core`-never-depends-on-`agent` rule (§4.6), which the build already asserts; the extension is a new module (runtime plus deployment) with its own release cadence tied to the Quarkus SPI. It reuses the Quarkus integration built for #114 (handler resolution, the readiness gate, the below-floor warning).
 
+**Spiked 2026-10-25; targeted at 1.1.0.** [`doc/spikes/quarkus-extension.md`](spikes/quarkus-extension.md) answers the first three questions below: the unchanged `logctl` discovers and drives an in-process engine; a config default shipped in the extension lowers the `min-level` floor while the application's own setting still wins; and a runtime-init recorder after Quarkus's logging setup needs neither the readiness gate nor the early re-sweep. It lists the decisions the spec must settle.
+
 *Open design questions, all deferred to when this is specced:*
 
 - How `logctl` finds and reaches an in-process engine when there is no agent: the same MXBean and discovery path, or something the extension publishes.
