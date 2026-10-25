@@ -131,7 +131,8 @@ def warn_on_image_drift():
 # regex over pom.xml rather than an XML dependency).
 AGENT_MODULES = ["logaperture-bridge", "logaperture-api", "logaperture-core",
                   "logaperture-adapter-logback", "logaperture-adapter-jul",
-                  "logaperture-container-none", "logaperture-container-wildfly",
+                  "logaperture-container-none", "logaperture-container-jbosslogmanager",
+                  "logaperture-container-wildfly", "logaperture-container-quarkus",
                   "logaperture-control-jmx", "logaperture-agent"]
 CLI_MODULES = ["logaperture-bridge", "logaperture-api", "logaperture-core",
                "logaperture-control-jmx", "logaperture-cli"]

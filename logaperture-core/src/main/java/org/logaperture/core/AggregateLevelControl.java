@@ -935,6 +935,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         // each forced logger, and each one that didn't follow, once by name.
         Map<String, LevelOverride> forcedByName = new LinkedHashMap<>();
         Map<String, DescendantLevel> descendantsByName = new LinkedHashMap<>();
+        Map<String, org.logaperture.api.LevelFloor> belowFloorByName = new LinkedHashMap<>();
         // doc/specs/default-handlers-follow.md: each context's default handlers follow on their own; a
         // handler named alike in several is reported once, as the warning does.
         Map<HandlerRef, FollowedHandler> followingByRef = new LinkedHashMap<>();
@@ -950,6 +951,9 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             }
             for (DescendantLevel descendant : result.descendants()) {
                 descendantsByName.putIfAbsent(descendant.loggerName(), descendant);
+            }
+            for (org.logaperture.api.LevelFloor notice : result.belowFloor()) {
+                belowFloorByName.putIfAbsent(notice.loggerName(), notice);
             }
             if (isPattern) {
                 allOverrides.addAll(result.overrides());
@@ -981,7 +985,8 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             reportedOverrides.addAll(forcedByName.values()); // the target first, then what it forced
         }
         return new SetLevelResult(reportedOverrides, List.copyOf(blockingByRef.values()),
-                List.copyOf(descendantsByName.values()), List.copyOf(followingByRef.values()), followDenied);
+                List.copyOf(descendantsByName.values()), List.copyOf(followingByRef.values()), followDenied,
+                List.copyOf(belowFloorByName.values()));
     }
 
     @Override

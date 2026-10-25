@@ -59,6 +59,52 @@ class LevelControlServiceTest {
         return new LevelControlService(adapter, baselines, overrides, policy, auditLog, stateStore, "alice", "jmx");
     }
 
+    // --- doc/specs/quarkus-support.md "Min-level honesty" ---------------------------------------
+
+    @Test
+    void setLevel_belowTheBackendsFloor_isRecordedAndWarnedAbout() {
+        adapter.addKnownLogger("com.acme.Worker");
+        adapter.setFloor(Level.DEBUG, "rebuild with a lower min-level");
+
+        var result = service.setLogger("com.acme.Worker", Level.TRACE, SetLevelOptions.withReason("x"));
+
+        assertEquals(1, result.belowFloor().size());
+        var notice = result.belowFloor().get(0);
+        assertEquals("com.acme.Worker", notice.loggerName());
+        assertEquals(Level.TRACE, notice.requested());
+        assertEquals(Level.DEBUG, notice.lowest());
+        assertEquals("rebuild with a lower min-level", notice.hint());
+        assertTrue(overrides.get("com.acme.Worker").isPresent(), "advice, not an error: the override stands");
+    }
+
+    @Test
+    void setLevel_atOrAboveTheFloor_hasNoNotice() {
+        adapter.addKnownLogger("com.acme.Worker");
+        adapter.setFloor(Level.DEBUG, null);
+
+        assertTrue(service.setLogger("com.acme.Worker", Level.DEBUG, SetLevelOptions.withReason("x"))
+                .belowFloor().isEmpty());
+    }
+
+    @Test
+    void setLevel_withNoFloorAtAll_hasNoNotice() {
+        adapter.addKnownLogger("com.acme.Worker");
+        assertTrue(service.setLogger("com.acme.Worker", Level.TRACE, SetLevelOptions.withReason("x"))
+                .belowFloor().isEmpty());
+    }
+
+    @Test
+    void listLoggers_neverReportsALevelBelowTheFloor() {
+        adapter.addKnownLogger("com.acme.Worker");
+        adapter.setFloor(Level.DEBUG, null);
+        service.setLogger("com.acme.Worker", Level.TRACE, SetLevelOptions.withReason("x"));
+
+        var row = service.listLoggers("com.acme.Worker").stream()
+                .filter(r -> r.name().equals("com.acme.Worker")).findFirst().orElseThrow();
+
+        assertEquals(Level.DEBUG, row.effectiveLevel());
+    }
+
     // --- setLogger / resetLevel / resetAll round-trip -----------------------------------------
 
     @Test

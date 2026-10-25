@@ -18,6 +18,8 @@ package org.logaperture.container.wildfly;
 import org.logaperture.adapter.jul.JulAdapterFactory;
 import org.logaperture.adapter.jul.JulLoggingAdapter;
 import org.logaperture.bridge.Diagnostics;
+import org.logaperture.container.jbosslogmanager.JBossLogManagerContainer;
+import org.logaperture.container.jbosslogmanager.JBossLogManagerReadiness;
 import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.CapabilityPolicy;
@@ -79,7 +81,7 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
     public boolean detect() {
         // Runs at premain, before jboss-modules programmatically sets
         // java.util.logging.manager -- so that property is NOT a usable
-        // signal here (it is checked later, in WildFlyLogManagerReadiness).
+        // signal here (it is checked later, in JBossLogManagerReadiness).
         // Never touch java.util.logging. Use only cmdline -D properties and
         // class presence: jboss-modules on the system classpath + a
         // jboss.home.dir / an org.jboss.as.* main class.
@@ -108,10 +110,12 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
         // here bakes in "no version" permanently. Deferred, it is re-resolved
         // fresh whenever logctl env actually runs, long after WildFly's own
         // bootstrap has set it.
-        WildFlyContainer host = new WildFlyContainer(policy, auditLog, sweepInterval, this::version, vendorDefaults,
+        JBossLogManagerContainer host = new JBossLogManagerContainer("WildFly", policy, auditLog, sweepInterval, this::version, vendorDefaults,
                 stormDetectionEnabled);
 
         Runnable install = () -> {
+            // issue #237: let jboss-modules set javax.management.builder.initial before we touch the MBean server
+            JBossLogManagerReadiness.awaitMBeanServerBuilder();
             try {
                 JulLoggingAdapter adapter = JulAdapterFactory.forCurrentContext(new WildFlyHandlerNameResolver());
                 host.installContext(ContextHandle.of(ContextHandle.SYSTEM, "wildfly", adapter));
@@ -123,7 +127,9 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
             }
         };
         Thread detector = new Thread(
-                () -> WildFlyLogManagerReadiness.awaitJBossLogManagerThen(inst, install), "logaperture-wildfly-detect");
+                () -> JBossLogManagerReadiness.awaitJBossLogManagerThen(
+                        inst, JBossLogManagerReadiness.NO_EXTRA_CONDITION, install),
+                "logaperture-wildfly-detect");
         detector.setDaemon(true);
         detector.start();
 
@@ -265,7 +271,7 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
      * /subsystem=logging} handler is re-resolved, then runs the verification
      * sweep that re-applies any override the change overwrote.
      */
-    private static void wireConfigurationListener(WildFlyContainer host, JulLoggingAdapter adapter) {
+    private static void wireConfigurationListener(JBossLogManagerContainer host, JulLoggingAdapter adapter) {
         Runnable onConfigChange = () -> {
             adapter.invalidateNameCache();
             host.runVerificationSweepNow();

@@ -52,9 +52,20 @@ import java.nio.file.Path;
  *                         Handler} class. {@code false} where the concept
  *                         doesn't apply (Logback, a file handler, a
  *                         framework this adapter can't introspect at all)
+ * @param frameworkDefault whether the framework created this handler itself from its own configuration,
+ *                         rather than application code creating it -- Quarkus's console and file
+ *                         handlers (doc/specs/quarkus-support.md Q7). {@code doctor} reports a finding
+ *                         that is only the framework's default setting as information, not a warning.
  */
 public record HandlerDiagnostics(
-        Long maxFileSizeBytes, Integer backupCount, Boolean autoFlush, Path targetPath, boolean isConsole) {
+        Long maxFileSizeBytes, Integer backupCount, Boolean autoFlush, Path targetPath, boolean isConsole,
+        boolean frameworkDefault) {
+
+    /** Not a framework default -- the shape before doc/specs/quarkus-support.md. */
+    public HandlerDiagnostics(Long maxFileSizeBytes, Integer backupCount, Boolean autoFlush, Path targetPath,
+            boolean isConsole) {
+        this(maxFileSizeBytes, backupCount, autoFlush, targetPath, isConsole, false);
+    }
 
     /** Every field absent/{@code false} — same as the 4-arg form, {@code isConsole} defaults to {@code false}. */
     public HandlerDiagnostics(Long maxFileSizeBytes, Integer backupCount, Boolean autoFlush, Path targetPath) {
@@ -62,7 +73,7 @@ public record HandlerDiagnostics(
     }
 
     /** Every field {@code null}/{@code false} — the default for a handler/framework this can't introspect at all. */
-    public static final HandlerDiagnostics EMPTY = new HandlerDiagnostics(null, null, null, null, false);
+    public static final HandlerDiagnostics EMPTY = new HandlerDiagnostics(null, null, null, null, false, false);
 
     /** Whether this handler persists to disk — the signal doc/specs/doctor.md Decision #3 keys the duplicate-output check on. */
     public boolean isPersistent() {

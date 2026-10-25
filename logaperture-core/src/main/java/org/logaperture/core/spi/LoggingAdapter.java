@@ -146,6 +146,17 @@ public interface LoggingAdapter {
     }
 
     /**
+     * Set when the backend will not emit this logger's effective level because it enforces a floor
+     * less verbose than it (doc/specs/quarkus-support.md, "Min-level honesty"): the most verbose
+     * level it will emit, and where known what to change to lower the floor. Empty when there is no
+     * such floor, which is every backend but JBoss LogManager under a framework that sets one, and
+     * the default.
+     */
+    default Optional<LevelFloorInfo> levelFloor(String loggerName) {
+        return Optional.empty();
+    }
+
+    /**
      * The handlers on {@code loggerName}'s path to the root whose own level
      * is stricter than {@code target} — doc/specs/handler-floor-control.md
      * "Adapter SPI". Default empty, for a framework whose handlers have no

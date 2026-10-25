@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.container.wildfly;
+package org.logaperture.container.jbosslogmanager;
 
 import org.junit.jupiter.api.Test;
 
@@ -31,8 +31,8 @@ class PendingVendorRetryTest {
 
     @Test
     void retryStep_passesTheResultThrough() {
-        assertTrue(WildFlyContainer.retryStep(now -> true));
-        assertFalse(WildFlyContainer.retryStep(now -> false));
+        assertTrue(JBossLogManagerContainer.retryStep(now -> true));
+        assertFalse(JBossLogManagerContainer.retryStep(now -> false));
     }
 
     @Test
@@ -40,7 +40,7 @@ class PendingVendorRetryTest {
         Predicate<Instant> failing = now -> {
             throw new IllegalStateException("boom");
         };
-        assertTrue(WildFlyContainer.retryStep(failing));
+        assertTrue(JBossLogManagerContainer.retryStep(failing));
     }
 
     @Test
@@ -48,6 +48,6 @@ class PendingVendorRetryTest {
         Predicate<Instant> failing = now -> {
             throw new NoClassDefFoundError("org/jboss/Gone");
         };
-        assertTrue(WildFlyContainer.retryStep(failing));
+        assertTrue(JBossLogManagerContainer.retryStep(failing));
     }
 }

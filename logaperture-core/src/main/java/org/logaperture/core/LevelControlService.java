@@ -20,6 +20,7 @@ import org.logaperture.api.DescendantLevel;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
+import org.logaperture.api.LevelFloor;
 import org.logaperture.api.LevelOverride;
 import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
@@ -27,6 +28,7 @@ import org.logaperture.api.RecipeTag;
 import org.logaperture.api.ResetOutcome;
 import org.logaperture.api.SetLevelOptions;
 import org.logaperture.api.SetLevelResult;
+import org.logaperture.core.spi.LevelFloorInfo;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
 
@@ -142,7 +144,9 @@ public final class LevelControlService implements LevelControlOperations {
                 continue;
             }
             Optional<Level> configured = baselines.captureIfAbsent(name, adapter);
-            Level effective = adapter.effectiveLevel(name);
+            // doc/specs/quarkus-support.md "Min-level honesty": never claim a level the backend won't emit.
+            Level effective = adapter.levelFloor(name).map(LevelFloorInfo::lowest)
+                    .orElseGet(() -> adapter.effectiveLevel(name));
             Optional<LevelOverride> override = overrides.get(name);
             result.add(new LoggerInfo(
                     name,
@@ -224,7 +228,28 @@ public final class LevelControlService implements LevelControlOperations {
         HandlerFollowing.Outcome following = handlerFollowing.follow(created, opts.followHandlers());
 
         return new SetLevelResult(created, blockingFloors(previousEffective, level),
-                reportedDescendants(descendants, level, opts), following.following(), following.denied());
+                reportedDescendants(descendants, level, opts), following.following(), following.denied(),
+                belowFloor(created));
+    }
+
+    /**
+     * The overrides just made that the backend will not emit: it enforces a floor less verbose than
+     * the level now set on the logger (doc/specs/quarkus-support.md, "Min-level honesty"). Asked of
+     * the adapter after the level was applied, so the answer is the backend's own.
+     */
+    private List<LevelFloor> belowFloor(Collection<LevelOverride> made) {
+        List<LevelFloor> notices = new ArrayList<>();
+        for (LevelOverride override : made) {
+            if (override.level() == null) {
+                continue;
+            }
+            Optional<LevelFloorInfo> floor = adapter.levelFloor(override.loggerName());
+            if (floor.isPresent() && override.level().isMoreVerboseThan(floor.get().lowest())) {
+                notices.add(new LevelFloor(override.loggerName(), override.level(), floor.get().lowest(),
+                        floor.get().hint()));
+            }
+        }
+        return notices;
     }
 
     /** The union of handlers that still swallow {@code level} on any raised logger's path, stricter reading per ref. */
@@ -435,7 +460,8 @@ public final class LevelControlService implements LevelControlOperations {
             following = handlerFollowing.follow(List.copyOf(created.values()), opts.followHandlers());
         }
         return new SetLevelResult(List.copyOf(created.values()), blockingFloors(previousEffectiveByTarget, level),
-                List.copyOf(reported.values()), following.following(), following.denied());
+                List.copyOf(reported.values()), following.following(), following.denied(),
+                belowFloor(created.values()));
     }
 
     /**

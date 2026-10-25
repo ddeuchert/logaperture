@@ -5,7 +5,8 @@ log level, watch it take effect, make the console show it too, compare how long 
 then put everything back. Nothing here edits `standalone.xml`, and the last step leaves the server
 as it started.
 
-The output below is from WildFly 26.1.3. Your versions, times and loggers will differ.
+The output below is from WildFly 26.1.3. Your versions, times and loggers will differ. On Quarkus
+(from 1.1), see [Install on Quarkus](install-quarkus.md) first; the commands are the same.
 
 ## 1. See where you start
 

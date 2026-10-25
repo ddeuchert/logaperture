@@ -23,6 +23,7 @@ import org.logaperture.control.jmx.FollowedHandlerData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.LevelControlMXBean;
+import org.logaperture.control.jmx.LevelFloorData;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.control.jmx.SetLevelResultData;
@@ -250,6 +251,7 @@ final class SetLoggerCommand implements Command {
         // One warning per handler, however many of the loggers it would block.
         Map<String, HandlerFloorData> blocking = new LinkedHashMap<>();
         Map<String, DescendantLevelData> descendants = new LinkedHashMap<>();
+        Map<String, LevelFloorData> belowFloor = new LinkedHashMap<>();
         Map<String, FollowedHandlerData> following = new LinkedHashMap<>();
         String followDenied = null;
         List<String> refusals = new ArrayList<>();
@@ -264,6 +266,9 @@ final class SetLoggerCommand implements Command {
                 }
                 for (HandlerFloorData floor : result.getBlockingHandlers()) {
                     blocking.putIfAbsent(floor.getHandlerRef(), floor);
+                }
+                for (LevelFloorData notice : result.getBelowFloor()) {
+                    belowFloor.putIfAbsent(notice.getLoggerName(), notice);
                 }
                 for (FollowedHandlerData followed : result.getFollowing()) {
                     following.putIfAbsent(followed.getHandlerRef(), followed);
@@ -280,8 +285,8 @@ final class SetLoggerCommand implements Command {
             }
         }
         render(out, chosenLevel, new SetLevelResultData(overrides, new ArrayList<>(blocking.values()),
-                new ArrayList<>(descendants.values()), new ArrayList<>(following.values()), followDenied), null,
-                chosenTier, chosenReason);
+                new ArrayList<>(descendants.values()), new ArrayList<>(following.values()), followDenied,
+                new ArrayList<>(belowFloor.values())), null, chosenTier, chosenReason);
         for (String refusal : refusals) {
             err.println(refusal);
         }
@@ -315,6 +320,7 @@ final class SetLoggerCommand implements Command {
         printFollowing(out, result.getFollowing());
         printDescendants(out, appliedLevel, result.getDescendants(), target, appliedTier, appliedReason);
         Commands.printBlockingHandlersWarning(out, appliedLevel, result.getBlockingHandlers());
+        Commands.printBelowFloorWarning(out, result.getBelowFloor());
         if (result.getFollowDenied() != null) {
             String denied = result.getFollowDenied();
             String why = denied.startsWith("-D") ? "following is turned off on the agent (" + denied + ")."

@@ -55,14 +55,24 @@ import java.util.Objects;
  * @param followDenied     the capability whose denial kept the default handlers from following
  *                         (H7), as {@code logctl} names it, or {@code null}; those handlers stay
  *                         in {@code blockingHandlers}
+ * @param belowFloor       loggers the level was set on that the backend will not emit it for, because
+ *                         it enforces a floor less verbose than it (doc/specs/quarkus-support.md,
+ *                         "Min-level honesty"); empty on every backend without such a floor
  */
 public record SetLevelResult(List<LevelOverride> overrides, List<HandlerFloor> blockingHandlers,
-        List<DescendantLevel> descendants, List<FollowedHandler> following, String followDenied) {
+        List<DescendantLevel> descendants, List<FollowedHandler> following, String followDenied,
+        List<LevelFloor> belowFloor) {
+
+    /** No floor notices -- the shape before doc/specs/quarkus-support.md. */
+    public SetLevelResult(List<LevelOverride> overrides, List<HandlerFloor> blockingHandlers,
+            List<DescendantLevel> descendants, List<FollowedHandler> following, String followDenied) {
+        this(overrides, blockingHandlers, descendants, following, followDenied, List.of());
+    }
 
     /** No handler follows -- the shape before doc/specs/default-handlers-follow.md. */
     public SetLevelResult(List<LevelOverride> overrides, List<HandlerFloor> blockingHandlers,
             List<DescendantLevel> descendants) {
-        this(overrides, blockingHandlers, descendants, List.of(), null);
+        this(overrides, blockingHandlers, descendants, List.of(), null, List.of());
     }
 
     public SetLevelResult {
@@ -71,6 +81,7 @@ public record SetLevelResult(List<LevelOverride> overrides, List<HandlerFloor> b
         blockingHandlers = blockingHandlers == null ? List.of() : List.copyOf(blockingHandlers);
         descendants = descendants == null ? List.of() : List.copyOf(descendants);
         following = following == null ? List.of() : List.copyOf(following);
+        belowFloor = belowFloor == null ? List.of() : List.copyOf(belowFloor);
     }
 
     /** No descendants to report -- the shape before doc/specs/set-logger-force.md. */

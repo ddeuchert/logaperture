@@ -20,6 +20,7 @@ import org.logaperture.api.Level;
 import org.logaperture.control.jmx.DoctorFindingData;
 import org.logaperture.control.jmx.EnvironmentReportData;
 import org.logaperture.control.jmx.HandlerFloorData;
+import org.logaperture.control.jmx.LevelFloorData;
 import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
@@ -405,6 +406,25 @@ final class Commands {
                         + "   (currently " + floor.getCurrentLevel() + ")");
             }
             out.println("      Run the ones you actually want -- you may only need one.");
+        }
+    }
+
+    /**
+     * doc/specs/quarkus-support.md, "Min-level honesty": the level was recorded, but the backend
+     * enforces a floor less verbose than it, so nothing at that level will appear. Says what the
+     * backend does emit, and the backend's own hint on lowering the floor when it has one.
+     */
+    static void printBelowFloorWarning(java.io.PrintStream out, List<LevelFloorData> belowFloor) {
+        if (belowFloor.isEmpty()) {
+            return;
+        }
+        for (LevelFloorData notice : belowFloor) {
+            out.println("WARN: " + notice.getLoggerName() + " is set to " + notice.getRequested()
+                    + " but the logging backend only emits " + notice.getLowest() + " and above for it;"
+                    + " nothing more verbose will appear.");
+            if (notice.getHint() != null) {
+                out.println("      " + notice.getHint() + ".");
+            }
         }
     }
 

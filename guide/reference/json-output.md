@@ -143,8 +143,10 @@ logctl status --json
 ### set logger
 
 The overrides made (several for a pattern target or `--force`), the handlers whose level would
-hide the new output (`warnings`), the descendants `--force` reached, and the default handlers that
-now follow the change (`following`; see [Raise a log level](../how-to/raise-a-level.md#the-console-follows)).
+hide the new output (`warnings`), the descendants `--force` reached, the default handlers that
+now follow the change (`following`; see [Raise a log level](../how-to/raise-a-level.md#the-console-follows)),
+and any logger whose new level the application's logging cannot emit (`belowFloor`: on Quarkus, a level
+below the build's `quarkus.log.min-level`; each entry has `loggerName`, `requested`, `lowest` and a `hint`).
 A handler in `following` has `carriesOn: true` when your own setting on it still applies, with that
 setting's tier and deadline in `ownTier` and `ownExpiresAt`; it follows the change once that ends.
 `followDenied` names the capability that kept the default handlers from following, if one did.
@@ -182,7 +184,8 @@ logctl set logger io.undertow.request DEBUG for 30m --reason demo --json
       "ownExpiresAt": null
     }
   ],
-  "followDenied": null
+  "followDenied": null,
+  "belowFloor": []
 }
 ```
 

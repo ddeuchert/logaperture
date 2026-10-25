@@ -29,6 +29,7 @@ import org.logaperture.control.jmx.FollowedHandlerData;
 import org.logaperture.control.jmx.HandlerFloorData;
 import org.logaperture.control.jmx.HandlerInfoData;
 import org.logaperture.control.jmx.HandlerLevelOverrideData;
+import org.logaperture.control.jmx.LevelFloorData;
 import org.logaperture.control.jmx.LevelOverrideData;
 import org.logaperture.control.jmx.LoggerByteCountData;
 import org.logaperture.control.jmx.LoggerInfoData;
@@ -136,6 +137,15 @@ final class Json {
                     .str("kind", descendant.getKind())
                     .toString());
         }
+        StringJoiner belowFloor = new StringJoiner(",", "[", "]");
+        for (LevelFloorData notice : result.getBelowFloor()) {
+            belowFloor.add(new Obj()
+                    .str("loggerName", notice.getLoggerName())
+                    .str("requested", notice.getRequested())
+                    .str("lowest", notice.getLowest())
+                    .str("hint", notice.getHint())
+                    .toString());
+        }
         // doc/specs/default-handlers-follow.md: the default handlers this change let through.
         StringJoiner following = new StringJoiner(",", "[", "]");
         for (FollowedHandlerData followed : result.getFollowing()) {
@@ -151,7 +161,7 @@ final class Json {
         }
         return new Obj().raw("overrides", overrides.toString()).raw("warnings", warnings.toString())
                 .raw("descendants", descendants.toString()).raw("following", following.toString())
-                .str("followDenied", result.getFollowDenied()).toString();
+                .str("followDenied", result.getFollowDenied()).raw("belowFloor", belowFloor.toString()).toString();
     }
 
     static String handlerOverride(HandlerLevelOverrideData data) {

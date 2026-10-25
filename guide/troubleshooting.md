@@ -7,7 +7,7 @@ No LogAperture-enabled JVM found. Start the application with -javaagent:logapert
 ```
 
 - Check the JVM was started with the `-javaagent` option: the application's log has a line like
-  `[logaperture] LogAperture 1.0.0 active (WildFly)` at startup.
+  `[logaperture] LogAperture 1.0.0 active (WildFly)` at startup (`(Quarkus)` on Quarkus, from 1.1).
 - Run `logctl` as the operating-system user the JVM runs as, on the same machine. `logctl` only sees
   JVMs it could attach to.
 - In a container, run `logctl` inside the same container.
@@ -30,6 +30,9 @@ Add `-Dlogaperture.disabled=true` to the JVM options and start again. The agent 
 
 On WildFly, the log line `The LogManager was not properly installed` means the JVM's logging was
 set up before WildFly's: check `JAVA_OPTS` for other agents or logging options.
+
+On Quarkus (from 1.1), a level below the build's `quarkus.log.min-level` shows nothing however it is
+set. `logctl` warns when you set one; see [the build's minimum level](get-started/install-quarkus.md#the-builds-minimum-level).
 
 ## A raised level shows nothing
 

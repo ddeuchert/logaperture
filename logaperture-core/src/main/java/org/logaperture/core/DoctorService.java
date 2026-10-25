@@ -20,6 +20,7 @@ import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.Severity;
+import org.logaperture.core.spi.LevelFloorInfo;
 import org.logaperture.core.spi.LoggingAdapter;
 
 import java.io.IOException;
@@ -37,6 +38,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * {@code logctl doctor}'s engine — see doc/specs/doctor.md. Read-only:
@@ -61,10 +63,22 @@ public final class DoctorService implements DoctorOperations {
 
     private final LoggingAdapter adapter;
     private final CapabilityPolicy policy;
+    private final Supplier<List<DoctorFinding>> containerFindings;
 
     public DoctorService(LoggingAdapter adapter, CapabilityPolicy policy) {
+        this(adapter, policy, List::of);
+    }
+
+    /**
+     * @param containerFindings findings only the container integration can make, asked for fresh on
+     *                          every {@link #diagnose} (doc/specs/quarkus-support.md Q2: whether
+     *                          the early re-sweep trigger could be set up)
+     */
+    public DoctorService(LoggingAdapter adapter, CapabilityPolicy policy,
+            Supplier<List<DoctorFinding>> containerFindings) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.policy = Objects.requireNonNull(policy, "policy");
+        this.containerFindings = Objects.requireNonNull(containerFindings, "containerFindings");
     }
 
     @Override
@@ -82,6 +96,8 @@ public final class DoctorService implements DoctorOperations {
         findings.addAll(checkVerbosityLeftOn());
         findings.addAll(checkDuplicateOutput(persistentHandlers));
         findings.addAll(checkAutoflush());
+        findings.addAll(checkBelowFloor());
+        findings.addAll(containerFindings.get());
         findings.addAll(diskHeadroom);
         return List.copyOf(findings);
     }
@@ -247,9 +263,17 @@ public final class DoctorService implements DoctorOperations {
             if (autoFlush) {
                 // doc/specs/doctor.md Decision #4: fires generically, no volume
                 // threshold to weigh it against until `top` exists.
-                flagged.add(new DoctorFinding("handler.autoflush", Severity.WARNING, ref.value(),
-                        ref + " has autoflush enabled — every record forces a flush.", null,
-                        null));
+                if (adapter.handlerDiagnostics(ref).frameworkDefault()) {
+                    // doc/specs/quarkus-support.md Q7: the framework's own setting, not something the
+                    // application chose -- worth knowing, not worth a warning.
+                    flagged.add(new DoctorFinding("handler.autoflush", Severity.INFO, ref.value(),
+                            ref + " has autoflush enabled — every record forces a flush.",
+                            "this is the framework's default for its own handler", null));
+                } else {
+                    flagged.add(new DoctorFinding("handler.autoflush", Severity.WARNING, ref.value(),
+                            ref + " has autoflush enabled — every record forces a flush.", null,
+                            null));
+                }
             }
         }
         if (inspectable.isEmpty()) {
@@ -258,6 +282,31 @@ public final class DoctorService implements DoctorOperations {
         if (flagged.isEmpty()) {
             return List.of(okFinding("handler.autoflush", "handlers",
                     "no autoflush handlers found on a busy path."));
+        }
+        return List.copyOf(flagged);
+    }
+
+    // --- Check: a level the backend will not emit (doc/specs/quarkus-support.md, "Min-level honesty") ----
+
+    /**
+     * Loggers whose own level is more verbose than the backend's floor lets through: they read as
+     * if they log at that level and do not. Names only the loggers affected; no row when none are,
+     * since most backends have no such floor.
+     */
+    private List<DoctorFinding> checkBelowFloor() {
+        List<DoctorFinding> flagged = new ArrayList<>();
+        for (String name : adapter.knownLoggerNames()) {
+            Optional<Level> configured = adapter.configuredLevel(name);
+            if (configured.isEmpty()) {
+                continue;
+            }
+            Optional<LevelFloorInfo> floor = adapter.levelFloor(name);
+            if (floor.isPresent() && configured.get().isMoreVerboseThan(floor.get().lowest())) {
+                flagged.add(new DoctorFinding("logger.below-floor", Severity.WARNING, name,
+                        name + " is set to " + configured.get() + " but the logging backend only emits "
+                                + floor.get().lowest() + " and above for it.",
+                        null, floor.get().hint()));
+            }
         }
         return List.copyOf(flagged);
     }
