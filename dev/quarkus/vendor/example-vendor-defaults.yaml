@@ -1,0 +1,39 @@
+# Copyright 2026 David Deuchert
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+# A vendor defaults file for trying the feature in the Quarkus dev environment:
+#
+#   python3 dev/quarkus/quarkusctl.py up --vendor-defaults dev/quarkus/vendor/example-vendor-defaults.yaml
+#
+# Quarkus names its handlers `console` and (with --file-log) `file`. The sample's
+# own loggers are org.logaperture.sample.quarkus.Worker (JBoss Logging) and
+# org.logaperture.sample.quarkus.Jul (java.util.logging); GET /log logs through both.
+# Format: doc/specs/vendor-defaults.md.
+schemaVersion: 1
+
+loggers:
+  - name: org.logaperture.sample.quarkus.Worker
+    level: DEBUG
+
+handlers:
+  - name: console
+    level: INFO
+
+rules:
+  - id: repeat-noise
+    action: drop
+    logger: org.logaperture.sample.quarkus.Worker
+    messageContains: "REPEAT-line"
+    below: WARN

@@ -99,7 +99,7 @@ the same build are a supported pair.
 | **JDK 17** | the whole build (`maven.compiler.release` is pinned to 17); `logctl` needs a JDK, not a JRE (`com.sun.tools.attach`) |
 | **Maven 3.9+** | `mvn` on your `PATH` (no wrapper is committed) |
 | **Docker** | the real-WildFly integration test, and the `dev/wildfly` environment |
-| **Python 3** | `dev/wildfly/wildflyctl.py` (standard library only — no venv); previewing the user guide (a venv, below) |
+| **Python 3** | `dev/wildfly/wildflyctl.py` and `dev/quarkus/quarkusctl.py` (standard library only — no venv); previewing the user guide (a venv, below) |
 
 ## Build and test
 
@@ -212,6 +212,16 @@ then blocks on stdin until you press Enter.
    output.
 
 ---
+
+# Quarkus dev environment
+
+`dev/quarkus/` is the Quarkus counterpart: it runs the sample Quarkus app as a host
+process with the agent attached (no container), drives `logctl` against it, and
+supports build variants (`quarkus.log.min-level`, a second Quarkus version) and the
+VSCode debugger. It needs a JDK, Maven and Python 3, not Docker. Full design:
+[doc/specs/quarkus-dev-environment.md](doc/specs/quarkus-dev-environment.md);
+quickstart: [dev/quarkus/README.md](dev/quarkus/README.md). Like the WildFly one, it is
+not wired into CI; the automated coverage is `QuarkusIT`.
 
 # WildFly integration
 

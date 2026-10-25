@@ -1,4 +1,7 @@
 {
+  // Quarkus: tasks wrap dev/quarkus/quarkusctl.py (doc/specs/quarkus-dev-environment.md);
+  // they need only a JDK, Maven and Python 3 -- no Docker.
+  //
   // Wrappers over dev/wildfly/wildflyctl.py — the committed WildFly deploy/run/
   // debug environment. See doc/specs/wildfly-dev-environment.md. Every task just
   // shells the driver; the driver needs Docker and Python 3 (both already
@@ -12,6 +15,12 @@
       // Arguments passed straight through to `logctl` inside the container,
       // e.g.  levels org.jboss   |   debug org.acme.Foo for 30m   |   status
       "id": "logctlArgs",
+      "type": "promptString",
+      "description": "logctl arguments (no leading 'logctl')"
+    },
+    {
+      // Arguments for `Quarkus: logctl…`, e.g.  env  |  set logger org.acme.Foo DEBUG for 30m
+      "id": "quarkusLogctlArgs",
       "type": "promptString",
       "description": "logctl arguments (no leading 'logctl')"
     }
@@ -115,6 +124,100 @@
       "detail": "Container state + logctl status + image-version drift check.",
       "type": "shell",
       "command": "python3 dev/wildfly/wildflyctl.py status",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "Quarkus: up",
+      "detail": "Start the sample Quarkus app with the agent attached (host process, port 8081).",
+      "type": "shell",
+      "command": "python3 dev/quarkus/quarkusctl.py up",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "Quarkus: run (foreground)",
+      "detail": "Start the sample app attached to the terminal, console on screen. Ctrl-C stops it.",
+      "type": "shell",
+      "command": "python3 dev/quarkus/quarkusctl.py up --foreground",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Quarkus: up (debug-suspend)",
+      "detail": "Start suspended on JDWP 5006 so premain can be breakpointed. Attach 'Attach to Quarkus (5006)' after this.",
+      "type": "shell",
+      "command": "python3 dev/quarkus/quarkusctl.py up --debug-suspend",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "Quarkus: down",
+      "detail": "Stop the application quarkusctl started.",
+      "type": "shell",
+      "command": "python3 dev/quarkus/quarkusctl.py down",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Quarkus: build",
+      "detail": "Build the agent, logctl and the sample.",
+      "type": "shell",
+      "command": "python3 dev/quarkus/quarkusctl.py build",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Quarkus: logctl…",
+      "detail": "Run logctl against the running app with prompted arguments.",
+      "type": "shell",
+      "command": "python3 dev/quarkus/quarkusctl.py logctl -- ${input:quarkusLogctlArgs}",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "Quarkus: tail",
+      "detail": "Follow the application's output (Ctrl-C to stop).",
+      "type": "shell",
+      "command": "python3 dev/quarkus/quarkusctl.py tail",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Quarkus: status",
+      "detail": "Process state plus logctl env and status.",
+      "type": "shell",
+      "command": "python3 dev/quarkus/quarkusctl.py status",
       "problemMatcher": [],
       "presentation": {
         "reveal": "always",

@@ -1,0 +1,38 @@
+# Copyright 2026 David Deuchert
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+# logaperture-sample-quarkus endpoints -- the dev/quarkus target.
+#
+# Needs the "REST Client" extension (humao.rest-client): a "Send Request" link
+# appears above each request below. Bring the app up first:
+#
+#   python3 dev/quarkus/quarkusctl.py up
+#
+# The answer reports what each logger will emit (trace=, debug=, julFine=, floor=);
+# the log lines themselves go to the app's output: `quarkusctl tail`.
+#
+# There is no timer endpoint (spec decision QD4). To watch a `for 2m` expiry,
+#   watch -n 5 curl -s 'localhost:8081/log?tag=watch'
+
+@base = http://localhost:8081
+
+### Every level through JBoss Logging and java.util.logging.
+GET {{base}}/log
+
+### Tagged, so the lines are easy to find in the output.
+GET {{base}}/log?tag=x
+
+### 50 repeats of a line (for drop and trim rules, and `logctl top`).
+GET {{base}}/log?tag=x&repeat=50

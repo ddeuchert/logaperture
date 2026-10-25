@@ -61,6 +61,18 @@
       "hostName": "localhost",
       "port": 8787,
       "projectName": "logaperture-agent"
+    },
+    {
+      // Attach to the Quarkus app started by dev/quarkus (see
+      // doc/specs/quarkus-dev-environment.md). `Quarkus: up` does not open JDWP;
+      // run "Quarkus: up (debug-suspend)" first (or `quarkusctl up --debug`), then
+      // attach. With suspend=y the JVM waits for this attach before premain runs,
+      // so breakpoints in LogApertureAgent.premain are guaranteed to be in place.
+      "type": "java",
+      "name": "Attach to Quarkus (5006)",
+      "request": "attach",
+      "hostName": "localhost",
+      "port": 5006
     }
   ]
 }
