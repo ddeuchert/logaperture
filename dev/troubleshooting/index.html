@@ -531,6 +531,8 @@
       
         
       
+        
+      
     
     
     
@@ -619,6 +621,34 @@
     
   
     Install on WildFly
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get-started/install-quarkus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on Quarkus
   
 
     
@@ -2078,7 +2108,7 @@
 </code></pre></div>
 <ul>
 <li>Check the JVM was started with the <code>-javaagent</code> option: the application's log has a line like
-  <code>[logaperture] LogAperture 1.0.0 active (WildFly)</code> at startup.</li>
+  <code>[logaperture] LogAperture 1.0.0 active (WildFly)</code> at startup (<code>(Quarkus)</code> on Quarkus, from 1.1).</li>
 <li>Run <code>logctl</code> as the operating-system user the JVM runs as, on the same machine. <code>logctl</code> only sees
   JVMs it could attach to.</li>
 <li>In a container, run <code>logctl</code> inside the same container.</li>
@@ -2097,6 +2127,8 @@ application itself can run on either.</p>
 </ul>
 <p>On WildFly, the log line <code>The LogManager was not properly installed</code> means the JVM's logging was
 set up before WildFly's: check <code>JAVA_OPTS</code> for other agents or logging options.</p>
+<p>On Quarkus (from 1.1), a level below the build's <code>quarkus.log.min-level</code> shows nothing however it is
+set. <code>logctl</code> warns when you set one; see <a href="../get-started/install-quarkus/#the-builds-minimum-level">the build's minimum level</a>.</p>
 <h2 id="a-raised-level-shows-nothing">A raised level shows nothing<a class="headerlink" href="#a-raised-level-shows-nothing" title="Permanent link">&para;</a></h2>
 <p>Usually a handler is at a stricter level than the logger. The default handler (usually the console)
 follows the change on its own; for any other handler, or one you set yourself, <code>set logger</code> warns

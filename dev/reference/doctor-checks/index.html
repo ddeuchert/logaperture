@@ -531,6 +531,8 @@
       
         
       
+        
+      
     
     
     
@@ -619,6 +621,34 @@
     
   
     Install on WildFly
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/install-quarkus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on Quarkus
   
 
     
@@ -1721,6 +1751,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#loggerbelow-floor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        logger.below-floor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#diskheadroom" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1753,6 +1794,17 @@
     <span class="md-ellipsis">
       
         agent.order
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#agentearly-sweep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        agent.early-sweep
       
     </span>
   </a>
@@ -2044,6 +2096,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#loggerbelow-floor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        logger.below-floor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#diskheadroom" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2076,6 +2139,17 @@
     <span class="md-ellipsis">
       
         agent.order
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#agentearly-sweep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        agent.early-sweep
       
     </span>
   </a>
@@ -2235,8 +2309,20 @@ application's own configuration, change it there.</p>
 <p>Two or more file handlers at the same level, so the same lines are written twice. <code>INFO</code>: it can be
 deliberate.</p>
 <h3 id="handlerautoflush"><code>handler.autoflush</code><a class="headerlink" href="#handlerautoflush" title="Permanent link">&para;</a></h3>
-<p>A handler that flushes after every record, which costs disk I/O on a busy logger. <code>WARNING</code>.</p>
+<p>A handler that flushes after every record, which costs disk I/O on a busy logger. <code>WARNING</code>.
+On Quarkus, the console and file handlers Quarkus creates itself are reported as <code>INFO</code> instead,
+marked as the framework's default: the application didn't choose it. A handler the application added
+keeps the <code>WARNING</code>.</p>
 <p><strong>Fix:</strong> turn autoflush off on that handler, if losing the last few lines in a crash is acceptable.</p>
+<h3 id="loggerbelow-floor"><code>logger.below-floor</code><a class="headerlink" href="#loggerbelow-floor" title="Permanent link">&para;</a></h3>
+<p>A logger set to a level the logging backend will not emit, because the backend enforces a floor
+that is less verbose. On Quarkus this is the build-time <code>quarkus.log.min-level</code>: an application
+built with the default <code>DEBUG</code> never logs <code>TRACE</code>, whatever a logger's level says. <code>WARNING</code>, one
+finding per logger. Not reported where the backend has no such floor, which is every backend but
+JBoss LogManager under a framework that sets one. <code>logctl set logger</code> gives the same warning when
+you set the level, and <code>logctl list loggers</code> shows the level that is actually emitted.</p>
+<p><strong>Fix:</strong> on Quarkus, rebuild the application with a lower <code>quarkus.log.min-level</code> (for example
+<code>TRACE</code>). The finding names the value the application was built with.</p>
 <h3 id="diskheadroom"><code>disk.headroom</code><a class="headerlink" href="#diskheadroom" title="Permanent link">&para;</a></h3>
 <p>For each disk a file handler writes to, how long until it is full at the rate LogAperture measures
 while <code>doctor</code> runs. <code>CRITICAL</code> under 4 hours, <code>WARNING</code> under 24 hours, <code>OK</code> otherwise or when
@@ -2249,6 +2335,12 @@ listed ahead of it: anything they log while starting up is out of reach of <code
 Agents set in <code>JAVA_TOOL_OPTIONS</code> or <code>JDK_JAVA_OPTIONS</code> count as listed first. Not reported when
 LogAperture was attached to a running JVM. See <a href="../../concepts/agent-order/">Agent order</a>.</p>
 <p><strong>Fix:</strong> list LogAperture's <code>-javaagent</code> before the others, where the site allows it.</p>
+<h3 id="agentearly-sweep"><code>agent.early-sweep</code><a class="headerlink" href="#agentearly-sweep" title="Permanent link">&para;</a></h3>
+<p>Quarkus only. LogAperture re-applies what Quarkus's own start-up logging setup overwrites as soon as
+Quarkus says that setup is done. <code>INFO</code> when it could not find the signal Quarkus gives for that (on
+a Quarkus version that names it differently). Nothing is lost: a start-up sweep every quarter of a
+second for the first 15 seconds, and the periodic sweep, still repair it. Not reported when the
+signal was found.</p>
 <h3 id="agentduplicate"><code>agent.duplicate</code><a class="headerlink" href="#agentduplicate" title="Permanent link">&para;</a></h3>
 <p>The same agent jar listed more than once on the <code>-javaagent</code> list. <code>WARNING</code> when it is
 LogAperture's own jar (it starts once and ignores the rest, with a warning each), <code>INFO</code> for
