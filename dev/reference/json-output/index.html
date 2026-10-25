@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://logaperture.org/dev/reference/json-output/">
       
       
-        <link rel="prev" href="../agent-options/">
+        <link rel="prev" href="../quarkus-extension-config/">
       
       
         <link rel="next" href="../file-formats/">
@@ -1468,6 +1468,8 @@
       
         
       
+        
+      
     
     
     
@@ -1559,6 +1561,34 @@
     
   
     Agent options and properties
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quarkus-extension-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quarkus extension configuration
   
 
     
@@ -2812,6 +2842,28 @@ that was, counted from <code>firstEventAt</code>; it is <code>0</code> from an o
 <span class="w">  </span><span class="nt">"vendorDefaultsStatus"</span><span class="p">:</span><span class="w"> </span><span class="s2">"not configured"</span>
 <span class="p">}</span>
 </code></pre></div>
+<p>From 1.1 the object ends with <code>delivery</code>: <code>agent</code>, or <code>extension</code> when LogAperture runs as the
+<a href="../../get-started/install-quarkus/">Quarkus extension</a>. A 1.0 agent doesn't send it, and <code>logctl</code>
+reports <code>agent</code> for it. From the extension on Quarkus:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"agentVersion"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1.1.0-SNAPSHOT"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"cliVersion"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1.1.0-SNAPSHOT"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"javaVersion"</span><span class="p">:</span><span class="w"> </span><span class="s2">"21.0.12"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"javaVendor"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Eclipse Adoptium"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"osName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Linux"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"osVersion"</span><span class="p">:</span><span class="w"> </span><span class="s2">"7.2.10-200.fc44.x86_64"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"osArch"</span><span class="p">:</span><span class="w"> </span><span class="s2">"amd64"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"backendName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"JBoss LogManager"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"backendVersion"</span><span class="p">:</span><span class="w"> </span><span class="s2">"3.2.2.Final"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"containerName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Quarkus"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"containerVersion"</span><span class="p">:</span><span class="w"> </span><span class="s2">"3.39.5"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"diagnosticsLevel"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"stateFilePath"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/tmp/logaperture/instances/e7e1b29c1dd098b2-cap.state.yaml"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"vendorDefaultsPath"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"vendorDefaultsStatus"</span><span class="p">:</span><span class="w"> </span><span class="s2">"not configured"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"delivery"</span><span class="p">:</span><span class="w"> </span><span class="s2">"extension"</span>
+<span class="p">}</span>
+</code></pre></div>
 
 
 
@@ -2847,7 +2899,7 @@ that was, counted from <code>firstEventAt</code>; it is <code>0</code> from an o
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../agent-options/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Agent options and properties">
+          <a href="../quarkus-extension-config/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Quarkus extension configuration">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -2857,7 +2909,7 @@ that was, counted from <code>firstEventAt</code>; it is <code>0</code> from an o
                 Previous
               </span>
               <div class="md-ellipsis">
-                Agent options and properties
+                Quarkus extension configuration
               </div>
             </div>
           </a>

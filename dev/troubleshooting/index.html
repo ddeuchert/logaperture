@@ -1466,6 +1466,8 @@
       
         
       
+        
+      
     
     
     
@@ -1554,6 +1556,34 @@
     
   
     Agent options and properties
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/quarkus-extension-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quarkus extension configuration
   
 
     
@@ -2108,7 +2138,10 @@
 </code></pre></div>
 <ul>
 <li>Check the JVM was started with the <code>-javaagent</code> option: the application's log has a line like
-  <code>[logaperture] LogAperture 1.0.0 active (WildFly)</code> at startup (<code>(Quarkus)</code> on Quarkus, from 1.1).</li>
+  <code>[logaperture] LogAperture 1.0.0 active (WildFly)</code> at startup (<code>(Quarkus)</code> on Quarkus, from 1.1).
+  With the <a href="../get-started/install-quarkus/">Quarkus extension</a> there is no <code>-javaagent</code> option; the
+  line says <code>(Quarkus extension)</code>. If it is missing, check that <code>quarkus.logaperture.enabled</code> isn't
+  <code>false</code>.</li>
 <li>Run <code>logctl</code> as the operating-system user the JVM runs as, on the same machine. <code>logctl</code> only sees
   JVMs it could attach to.</li>
 <li>In a container, run <code>logctl</code> inside the same container.</li>
@@ -2128,7 +2161,11 @@ application itself can run on either.</p>
 <p>On WildFly, the log line <code>The LogManager was not properly installed</code> means the JVM's logging was
 set up before WildFly's: check <code>JAVA_OPTS</code> for other agents or logging options.</p>
 <p>On Quarkus (from 1.1), a level below the build's <code>quarkus.log.min-level</code> shows nothing however it is
-set. <code>logctl</code> warns when you set one; see <a href="../get-started/install-quarkus/#the-builds-minimum-level">the build's minimum level</a>.</p>
+set. <code>logctl</code> warns when you set one; see <a href="../get-started/install-quarkus/#the-builds-minimum-level">the build's minimum level</a>.
+With the Quarkus extension, turn LogAperture off with <code>QUARKUS_LOGAPERTURE_ENABLED=false</code> instead.</p>
+<p>If a Quarkus application has the extension and is started with the agent as well, only the agent
+runs, and the output says <code>the Quarkus extension starts nothing</code>. Remove one of them; see
+<a href="../get-started/install-quarkus/#agent-and-extension-together">Agent and extension together</a>.</p>
 <h2 id="a-raised-level-shows-nothing">A raised level shows nothing<a class="headerlink" href="#a-raised-level-shows-nothing" title="Permanent link">&para;</a></h2>
 <p>Usually a handler is at a stricter level than the logger. The default handler (usually the console)
 follows the change on its own; for any other handler, or one you set yourself, <code>set logger</code> warns

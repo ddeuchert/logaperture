@@ -717,10 +717,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#install" class="md-nav__link">
+  <a href="#install-the-extension" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Install
+        Install the extension
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#or-install-the-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Or install the agent
       
     </span>
   </a>
@@ -732,6 +743,17 @@
     <span class="md-ellipsis">
       
         Check it works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-logctl-in-kubernetes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run logctl in Kubernetes
       
     </span>
   </a>
@@ -754,6 +776,17 @@
     <span class="md-ellipsis">
       
         The build's minimum level
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dev-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dev mode
       
     </span>
   </a>
@@ -785,6 +818,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agent-and-extension-together" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent and extension together
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1623,6 +1667,8 @@
       
         
       
+        
+      
     
     
     
@@ -1711,6 +1757,34 @@
     
   
     Agent options and properties
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/quarkus-extension-config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quarkus extension configuration
   
 
     
@@ -1962,10 +2036,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#install" class="md-nav__link">
+  <a href="#install-the-extension" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Install
+        Install the extension
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#or-install-the-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Or install the agent
       
     </span>
   </a>
@@ -1977,6 +2062,17 @@
     <span class="md-ellipsis">
       
         Check it works
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-logctl-in-kubernetes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run logctl in Kubernetes
       
     </span>
   </a>
@@ -1999,6 +2095,17 @@
     <span class="md-ellipsis">
       
         The build's minimum level
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dev-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dev mode
       
     </span>
   </a>
@@ -2030,6 +2137,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#agent-and-extension-together" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent and extension together
+      
+    </span>
+  </a>
   
 </li>
       
@@ -2080,22 +2198,57 @@
 <p class="admonition-title">New in 1.1</p>
 <p>Quarkus support arrives in LogAperture 1.1. This page describes it.</p>
 </div>
-<p>You add one <code>-javaagent</code> option to the command that starts your Quarkus application and restart
-it once. After that, <code>logctl</code> changes logging on the running application. LogAperture never edits
-<code>application.properties</code>.</p>
+<p>There are two ways to add LogAperture to a Quarkus application. Either way, <code>logctl</code> then changes
+logging on the running application, and LogAperture never edits <code>application.properties</code>.</p>
+<ul>
+<li><strong>The LogAperture extension</strong> (recommended): add one dependency and rebuild. Nothing changes in how
+  the application is started, so it suits platforms where you don't control the command line, such
+  as Kubernetes or Azure App Service.</li>
+<li><strong>The agent</strong>: add a <code>-javaagent</code> option to the command that starts the application, with no
+  rebuild.</li>
+</ul>
+<p>Use one or the other. If both are present, the agent runs and the extension does nothing; see
+<a href="#agent-and-extension-together">Agent and extension together</a>.</p>
 <h2 id="what-you-need">What you need<a class="headerlink" href="#what-you-need" title="Permanent link">&para;</a></h2>
 <ul>
 <li>A Quarkus application running in <strong>JVM mode</strong>: <code>java -jar quarkus-run.jar</code> (the default
-  <code>fast-jar</code> package), or an uber-jar. <strong>Native images are never supported</strong>: they have no JVM to
-  attach an agent to.</li>
+  <code>fast-jar</code> package), or an uber-jar. <strong>Native images are not supported.</strong></li>
 <li><strong>Quarkus 3.39</strong> or the <strong>3.33 LTS</strong> stream. These are the versions LogAperture is tested on.
-  Another Quarkus version isn't blocked, but it runs in a reduced mode: see
-  <a href="#other-quarkus-versions">Other Quarkus versions</a>.</li>
+  With the agent, another Quarkus version isn't blocked but runs in a reduced mode: see
+  <a href="#other-quarkus-versions">Other Quarkus versions</a>. The extension needs 3.33 or later.</li>
 <li><strong>JDK 17, 21 or 25</strong> running the application.</li>
 <li>A <strong>JDK</strong>, not just a JRE, wherever you run <code>logctl</code>.</li>
-<li><code>logctl</code> runs <strong>on the same machine and as the same operating-system user</strong> as the application.</li>
+<li><code>logctl</code> runs <strong>on the same machine and as the same operating-system user</strong> as the application.
+  In Kubernetes, see <a href="#run-logctl-in-kubernetes">Run logctl in Kubernetes</a>.</li>
 </ul>
-<h2 id="install">Install<a class="headerlink" href="#install" title="Permanent link">&para;</a></h2>
+<h2 id="install-the-extension">Install the extension<a class="headerlink" href="#install-the-extension" title="Permanent link">&para;</a></h2>
+<ol>
+<li>
+<p><strong>Add the dependency</strong> to the application's <code>pom.xml</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">&lt;dependency&gt;</span>
+<span class="w">  </span><span class="nt">&lt;groupId&gt;</span>org.logaperture<span class="nt">&lt;/groupId&gt;</span>
+<span class="w">  </span><span class="nt">&lt;artifactId&gt;</span>logaperture-quarkus<span class="nt">&lt;/artifactId&gt;</span>
+<span class="w">  </span><span class="nt">&lt;version&gt;</span>1.1.0<span class="nt">&lt;/version&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+</code></pre></div>
+<p>Or with the Quarkus CLI: <code>quarkus ext add org.logaperture:logaperture-quarkus:1.1.0</code>. With Gradle:
+<code>implementation("org.logaperture:logaperture-quarkus:1.1.0")</code>.</p>
+</li>
+<li>
+<p><strong>Rebuild and deploy</strong> the application as usual. The start command doesn't change.</p>
+</li>
+<li>
+<p><strong>Settings</strong>, if you need any, are <code>quarkus.logaperture.*</code> properties, which can come from
+   <code>application.properties</code>, environment variables or a ConfigMap. Most applications need none. In a
+   container whose user has no writable home directory, give LogAperture's state a writable place:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">QUARKUS_LOGAPERTURE_HOME</span><span class="o">=</span>/tmp/logaperture
+</code></pre></div>
+<p>See <a href="../../reference/quarkus-extension-config/">Quarkus extension configuration</a> for every property.</p>
+</li>
+</ol>
+<p>You also need <code>logctl</code>, from the release zip: download and unzip it as in
+<a href="../install-wildfly/#install">Install on WildFly</a> steps 1 and 2. You need <code>bin/logctl</code>.</p>
+<h2 id="or-install-the-agent">Or install the agent<a class="headerlink" href="#or-install-the-agent" title="Permanent link">&para;</a></h2>
 <ol>
 <li>
 <p><strong>Download</strong> the release zip and unzip it, as in <a href="../install-wildfly/#install">Install on WildFly</a>
@@ -2118,33 +2271,51 @@ LogAperture's state at a writable place: <code>-Dlogaperture.home=/tmp/logapertu
 </li>
 </ol>
 <h2 id="check-it-works">Check it works<a class="headerlink" href="#check-it-works" title="Permanent link">&para;</a></h2>
-<p>The application's output has one line from LogAperture, before Quarkus's own banner:</p>
-<div class="highlight"><pre><span></span><code>[logaperture] LogAperture 1.0.0-beta.2-SNAPSHOT active (Quarkus)
+<p>The application's output has one line from LogAperture, before Quarkus's own banner. With the
+extension it says <code>Quarkus extension</code>; with the agent, <code>Quarkus</code>:</p>
+<div class="highlight"><pre><span></span><code>[logaperture] LogAperture 1.1.0-SNAPSHOT active (Quarkus extension)
 </code></pre></div>
 <p>Then run <code>logctl env</code>:</p>
-<div class="highlight"><pre><span></span><code>LogAperture agent    1.0.0-beta.2-SNAPSHOT  (logctl 1.0.0-beta.2-SNAPSHOT)
-Java                 21.0.12  Eclipse Adoptium
-OS                   Linux 7.2.10-200.fc44.x86_64  amd64
-Logging backend      JBoss LogManager 3.0.6.Final
-Framework/container  Quarkus 3.33.4
-Diagnostics level    —
-State file           /tmp/logaperture/instances/f7b982ff04e06fc3-cap.state.yaml
-Vendor defaults      not configured
+<div class="highlight"><pre><span></span><code>LogAperture extension  1.1.0-SNAPSHOT  (logctl 1.1.0-SNAPSHOT)
+Java                   21.0.12  Eclipse Adoptium
+OS                     Linux 7.2.10-200.fc44.x86_64  amd64
+Logging backend        JBoss LogManager 3.2.2.Final
+Framework/container    Quarkus 3.39.5
+Diagnostics level      —
+State file             /tmp/logaperture/instances/e7e1b29c1dd098b2-cap.state.yaml
+Vendor defaults        not configured
 </code></pre></div>
-<p>Your versions and paths will differ; this is a small sample application. <code>Framework/container</code> must name Quarkus. If it doesn't,
-LogAperture didn't recognize the application: check that it was started with <code>quarkus-run.jar</code> (or an
-uber-jar) and not another launcher. If <code>logctl</code> says it can't find a JVM, see
+<p>With the agent, the first line reads <code>LogAperture agent</code>. Your versions and paths will differ; this
+is a small sample application. <code>Framework/container</code> must name Quarkus. If it doesn't, LogAperture
+didn't recognize the application: check that it was started with <code>quarkus-run.jar</code> (or an uber-jar)
+and not another launcher. If <code>logctl</code> says it can't find a JVM, see
 <a href="../../how-to/several-jvms/">Work with several JVMs</a>.</p>
 <p>Next: the <a href="../quick-start/">Quick start</a>. Its commands work on Quarkus too, with the logger and
 handler names of your application.</p>
+<h2 id="run-logctl-in-kubernetes">Run logctl in Kubernetes<a class="headerlink" href="#run-logctl-in-kubernetes" title="Permanent link">&para;</a></h2>
+<p>Quarkus's container images usually carry a JRE, and <code>logctl</code> needs a JDK. Run <code>logctl</code> from a
+debug container in the application's pod instead, with an image that has a JDK and <code>logctl</code>:</p>
+<div class="highlight"><pre><span></span><code>kubectl<span class="w"> </span>debug<span class="w"> </span>-it<span class="w"> </span>&lt;pod&gt;<span class="w"> </span>--image<span class="o">=</span>&lt;image<span class="w"> </span>with<span class="w"> </span>a<span class="w"> </span>JDK<span class="w"> </span>and<span class="w"> </span>logctl&gt;<span class="w"> </span>--target<span class="o">=</span>&lt;application<span class="w"> </span>container&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--<span class="w"> </span>/opt/logaperture/bin/logctl<span class="w"> </span>env
+</code></pre></div>
+<p><code>--target</code> puts the debug container in the application container's process namespace, and every
+container in a pod shares its network, which is what <code>logctl</code> needs. The debug container must run as
+the same user as the application (in Quarkus's own images, user <code>185</code>); set it with a
+<code>--profile</code> or a custom profile that sets <code>runAsUser</code>.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This route was checked with containers that share the process and network namespaces the way a
+pod's do, with the application in a JRE-only image. It has not yet been run on a Kubernetes
+cluster.</p>
+</div>
 <h2 id="handler-names">Handler names<a class="headerlink" href="#handler-names" title="Permanent link">&para;</a></h2>
 <p>Quarkus keeps its console and file handlers inside one internal handler. LogAperture looks inside
 it, and names the handlers by what they are (paths here are from a test run):</p>
-<div class="highlight"><pre><span></span><code>HANDLER           LEVEL  PERSISTS  TARGET                  OVERRIDE
-ALL_HANDLERS      —      —         —                       —
-console           ALL    no        —                       —
-file              ALL    file      /tmp/cap/app.log        —
-DEFAULT_HANDLERS  —      —         (auto: console)         —
+<div class="highlight"><pre><span></span><code>HANDLER           LEVEL  PERSISTS  TARGET            OVERRIDE
+ALL_HANDLERS      —      —         —                 —
+console           ALL    no        —                 —
+file              ALL    file      /tmp/cap/app.log  —
+DEFAULT_HANDLERS  —      —         (auto: console)   —
 </code></pre></div>
 <p>The names are <code>console</code>, <code>file</code>, <code>syslog</code> and <code>socket</code>. A second handler of one type is numbered:
 <code>file-2</code>. The names you gave handlers in <code>application.properties</code>
@@ -2152,22 +2323,37 @@ DEFAULT_HANDLERS  —      —         (auto: console)         —
 to let a raised logger's lines through a handler that is set higher.</p>
 <h2 id="the-builds-minimum-level">The build's minimum level<a class="headerlink" href="#the-builds-minimum-level" title="Permanent link">&para;</a></h2>
 <p><code>quarkus.log.min-level</code> is fixed when you build the application, and Quarkus then lets nothing more
-verbose through, whatever a logger's level says. The default is <code>DEBUG</code>. So an application built with
-the default can show <code>DEBUG</code>, but never <code>TRACE</code>. LogAperture tells you instead of doing nothing:</p>
+verbose through, whatever a logger's level says.</p>
+<p><strong>With the extension</strong>, the minimum level is <code>TRACE</code>, so every level works without a rebuild:</p>
 <div class="highlight"><pre><span></span><code>$ logctl set logger org.logaperture.sample.quarkus.Worker TRACE for 5m
-org.logaperture.sample.quarkus.Worker → TRACE   (FOR, reverts 13:15:16 local — in 4m)
+org.logaperture.sample.quarkus.Worker → TRACE   (FOR, reverts 12:46:48 local — in 4m)
+</code></pre></div>
+<p>Nothing more is logged until you set a logger that low. If you set <code>quarkus.log.min-level</code> yourself
+in <code>application.properties</code>, your setting wins.</p>
+<p><strong>With the agent</strong>, Quarkus's default of <code>DEBUG</code> stays, so an application built with the default can
+show <code>DEBUG</code> but never <code>TRACE</code>. LogAperture tells you instead of doing nothing:</p>
+<div class="highlight"><pre><span></span><code>$ logctl set logger org.logaperture.sample.quarkus.Worker TRACE for 5m
+org.logaperture.sample.quarkus.Worker → TRACE   (FOR, reverts 12:46:54 local — in 4m)
 WARN: org.logaperture.sample.quarkus.Worker is set to TRACE but the logging backend only emits DEBUG and above for it; nothing more verbose will appear.
       the application was built with quarkus.log.min-level=DEBUG; rebuild with a lower quarkus.log.min-level (for example TRACE) to log below it.
 </code></pre></div>
 <p><code>logctl list loggers</code> shows the level that is actually emitted (<code>DEBUG</code> here), and <code>logctl doctor</code>
 reports it (<a href="../../reference/doctor-checks/#loggerbelow-floor"><code>logger.below-floor</code></a>). To see <code>TRACE</code>,
-rebuild with <code>quarkus.log.min-level=TRACE</code>.</p>
+rebuild with <code>quarkus.log.min-level=TRACE</code>, or use the extension.</p>
+<h2 id="dev-mode">Dev mode<a class="headerlink" href="#dev-mode" title="Permanent link">&para;</a></h2>
+<p>With the extension, <code>quarkus dev</code> is supported. <code>logctl</code> works on the dev-mode application, and
+after each live reload LogAperture starts again with the settings you made <code>sticky</code> or <code>for</code> a time.
+Settings made for the session only lapse at a reload, and a changed <code>quarkus.logaperture.*</code> property
+applies from the next reload. <code>logctl doctor</code> reports that the Dev UI's log
+stream is left out of <code>trim</code> rules and <code>top</code>
+(<a href="../../reference/doctor-checks/#handlerformatter-kept"><code>handler.formatter-kept</code></a>).</p>
+<p>With the agent, dev mode works but isn't a supported target.</p>
 <h2 id="limits">Limits<a class="headerlink" href="#limits" title="Permanent link">&para;</a></h2>
 <ul>
 <li>A <code>quarkus.log.category."X".min-level</code> setting only applies when Quarkus starts. A level you set
   with <code>logctl</code> isn't held to it.</li>
-<li>In dev mode (<code>quarkus:dev</code>) the minimum level is <code>ALL</code>, so <code>TRACE</code> works there even when it doesn't
-  in your production build. Dev mode isn't a supported target, though it works.</li>
+<li>With the agent, dev mode runs with a minimum level of <code>ALL</code>, so <code>TRACE</code> works there even when it
+  doesn't in your production build.</li>
 <li><code>logctl top</code> measures bytes written to files, and Quarkus logs to the console by default. Turn on
   the file handler (<code>quarkus.log.file.enabled=true</code>) to give <code>top</code> something to measure.</li>
 <li>Asynchronous handlers (<code>quarkus.log.*.async.enable</code>) aren't supported.</li>
@@ -2176,18 +2362,32 @@ rebuild with <code>quarkus.log.min-level=TRACE</code>.</p>
   not covered by this page.</li>
 </ul>
 <h3 id="other-quarkus-versions">Other Quarkus versions<a class="headerlink" href="#other-quarkus-versions" title="Permanent link">&para;</a></h3>
-<p>LogAperture re-applies what it changed when Quarkus finishes its start-up logging setup. It does
-that by asking Quarkus's own logging handler, and as a safety net it also re-checks every quarter of
-a second for the first 15 seconds. On a Quarkus version where the first doesn't work, <code>logctl doctor</code>
-says so (<code>agent.early-sweep</code>) and the second still covers it. Settings made through <code>logctl</code> keep
-working either way.</p>
+<p>With the agent, LogAperture re-applies what it changed when Quarkus finishes its start-up logging
+setup. It does that by asking Quarkus's own logging handler, and as a safety net it also re-checks
+every quarter of a second for the first 15 seconds. On a Quarkus version where the first doesn't
+work, <code>logctl doctor</code> says so (<code>agent.early-sweep</code>) and the second still covers it. Settings made
+through <code>logctl</code> keep working either way. The extension starts after Quarkus's logging setup, so it
+needs neither.</p>
+<h2 id="agent-and-extension-together">Agent and extension together<a class="headerlink" href="#agent-and-extension-together" title="Permanent link">&para;</a></h2>
+<p>If the application has the extension and is also started with the agent, the agent runs and the
+extension starts nothing. This holds for an agent from 1.0 too. The application's output says so:</p>
+<div class="highlight"><pre><span></span><code>[logaperture] LogAperture 1.1.0-SNAPSHOT active (Quarkus)
+[logaperture] The LogAperture agent is running in this JVM; the Quarkus extension starts nothing.
+</code></pre></div>
+<p>Remove one of them.</p>
 <h2 id="uninstall">Uninstall<a class="headerlink" href="#uninstall" title="Permanent link">&para;</a></h2>
-<p>Remove the <code>-javaagent</code> option and restart. Nothing else was changed. LogAperture's state file is
-under <code>~/.logaperture/</code> of the user running the application, unless <code>-Dlogaperture.home</code> moved it.</p>
+<ul>
+<li><strong>Extension:</strong> remove the dependency and rebuild.</li>
+<li><strong>Agent:</strong> remove the <code>-javaagent</code> option and restart.</li>
+</ul>
+<p>Nothing else was changed. LogAperture's state file is under <code>~/.logaperture/</code> of the user running
+the application, unless <code>quarkus.logaperture.home</code> or <code>-Dlogaperture.home</code> moved it.</p>
 <h2 id="if-the-application-wont-start">If the application won't start<a class="headerlink" href="#if-the-application-wont-start" title="Permanent link">&para;</a></h2>
-<p>Add <code>-Dlogaperture.disabled=true</code> to the command line and restart. The agent then does nothing at
-all. If the application starts that way, LogAperture is involved: please
-<a href="https://github.com/ddeuchert/logaperture/issues">open an issue</a> with the output and <code>java -version</code>.</p>
+<p>Turn LogAperture off and start again: with the extension, set <code>QUARKUS_LOGAPERTURE_ENABLED=false</code>
+(or <code>quarkus.logaperture.enabled=false</code>); with the agent, add <code>-Dlogaperture.disabled=true</code> to the
+command line. LogAperture then does nothing at all. If the application starts that way, LogAperture
+is involved: please <a href="https://github.com/ddeuchert/logaperture/issues">open an issue</a> with the output
+and <code>java -version</code>.</p>
 
 
 
