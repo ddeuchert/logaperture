@@ -1473,6 +1473,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Shipping it">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#in-a-quarkus-application" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        In a Quarkus application
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -1973,6 +1990,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Shipping it">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#in-a-quarkus-application" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        In a Quarkus application
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -2095,6 +2129,45 @@ configuration says <code>INFO</code>:</p>
 <li><strong>Storm detection isn't set in the file.</strong> Use the <code>--storm-detection=on</code> agent argument.</li>
 </ul>
 <p>The full format is in <a href="../../reference/file-formats/#vendor-defaults-file">File formats</a>.</p>
+<h3 id="in-a-quarkus-application">In a Quarkus application<a class="headerlink" href="#in-a-quarkus-application" title="Permanent link">&para;</a></h3>
+<div class="admonition note">
+<p class="admonition-title">New in 1.1</p>
+<p>Bundled vendor defaults come with the <a href="../../get-started/install-quarkus/">Quarkus extension</a> in
+LogAperture 1.1.</p>
+</div>
+<p>With the LogAperture Quarkus extension, ship the file inside the application instead: put it at</p>
+<div class="highlight"><pre><span></span><code>src/main/resources/META-INF/logaperture/vendor-defaults.yaml
+</code></pre></div>
+<p>and rebuild. It then applies wherever the application runs, with no property, volume or ConfigMap.
+Everything above holds for it, and it is named by where it is bundled:</p>
+<div class="highlight"><pre><span></span><code>[logaperture] LogAperture 1.1.0-SNAPSHOT active (Quarkus extension): vendor defaults bundled:META-INF/logaperture/vendor-defaults.yaml (1 logger)
+</code></pre></div>
+<ul>
+<li>
+<p><strong>A mistake stops the build.</strong> The extension checks the file when the application is built, and
+  a file with errors fails the build with each error and its line:</p>
+<div class="highlight"><pre><span></span><code>[ERROR] [error]: Build step org.logaperture.quarkus.deployment.LogApertureProcessor#bundledVendorDefaults threw an exception: java.lang.IllegalStateException: LogAperture: META-INF/logaperture/vendor-defaults.yaml has errors, so the application was not built:
+[ERROR]   line 4: unknown level 'LOUD' (expected one of [ALL, TRACE, DEBUG, INFO, WARN, ERROR, OFF])
+[ERROR]   line 5: unknown field 'nme' in a logger entry
+</code></pre></div>
+</li>
+<li>
+<p><strong>Only the application's own file applies.</strong> The same path in a library jar is ignored, and the
+  build log names it:</p>
+<div class="highlight"><pre><span></span><code>[WARNING] [org.logaperture.quarkus.deployment.LogApertureProcessor] Ignoring META-INF/logaperture/vendor-defaults.yaml in jar:file:///home/dev/.m2/repository/org/example/test/lib-with-vendor/1.0/lib-with-vendor-1.0.jar!/META-INF/logaperture/vendor-defaults.yaml: only the application's own file applies
+</code></pre></div>
+<p>A library offers settings as <a href="../library-recipes/">recipes</a> instead.
+- <strong>A site can replace it or turn it off</strong> without a rebuild: an external file named by
+  <code>quarkus.logaperture.vendor-defaults</code> replaces the bundled one entirely, and
+  <code>quarkus.logaperture.bundled-vendor-defaults=false</code> starts the application without it. See
+  <a href="../../reference/quarkus-extension-config/">Quarkus extension configuration</a>.
+- <strong>Tune, export, bundle.</strong> <code>logctl export vendor-defaults</code> from a running application works as
+  above (its header says <code>Started from: bundled:...</code>). Put the exported file at the same path and
+  rebuild; it takes over the <code>sticky</code> settings it was exported from.
+- In <code>quarkus dev</code>, an edit to the file reloads the application with the edited file.
+- The writable-file warning doesn't apply to a file inside the application.</p>
+</li>
+</ul>
 
 
 

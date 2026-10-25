@@ -2243,7 +2243,9 @@ logging on the running application, and LogAperture never edits <code>applicatio
    container whose user has no writable home directory, give LogAperture's state a writable place:</p>
 <div class="highlight"><pre><span></span><code><span class="nv">QUARKUS_LOGAPERTURE_HOME</span><span class="o">=</span>/tmp/logaperture
 </code></pre></div>
-<p>See <a href="../../reference/quarkus-extension-config/">Quarkus extension configuration</a> for every property.</p>
+<p>See <a href="../../reference/quarkus-extension-config/">Quarkus extension configuration</a> for every property.
+To ship logging settings with the application, bundle a
+<a href="../../vendors/vendor-defaults/#in-a-quarkus-application">vendor defaults file</a> in it.</p>
 </li>
 </ol>
 <p>You also need <code>logctl</code>, from the release zip: download and unzip it as in

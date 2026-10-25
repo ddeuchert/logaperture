@@ -1950,7 +1950,13 @@ still works, and wins over the property here.</p>
 <td><code>quarkus.logaperture.vendor-defaults</code></td>
 <td>none</td>
 <td><code>--vendor-defaults=</code></td>
-<td>A <a href="../../vendors/vendor-defaults/">vendor defaults</a> file. A relative path is resolved against the working directory.</td>
+<td>A <a href="../../vendors/vendor-defaults/">vendor defaults</a> file. A relative path is resolved against the working directory. It replaces a file bundled in the application.</td>
+</tr>
+<tr>
+<td><code>quarkus.logaperture.bundled-vendor-defaults</code></td>
+<td><code>true</code></td>
+<td>none</td>
+<td><code>false</code> starts the application without the vendor defaults file <a href="../../vendors/vendor-defaults/#in-a-quarkus-application">bundled in it</a> at <code>META-INF/logaperture/vendor-defaults.yaml</code>.</td>
 </tr>
 <tr>
 <td><code>quarkus.logaperture.storm-detection</code></td>
