@@ -136,7 +136,7 @@ context through a SmallRye `ThreadContextProvider`; a Dev UI card; the extension
 Quarkiverse (#12); a remote control plane; vendor defaults bundled at
 `META-INF/logaperture/vendor-defaults.yaml` in the application jar
 ([#269](https://github.com/ddeuchert/logaperture/issues/269), which depends on this feature and
-moves with it under #14).
+moves with it under #14; spec [`bundled-vendor-defaults.md`](bundled-vendor-defaults.md)).
 
 ## Not established
 

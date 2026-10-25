@@ -113,8 +113,24 @@ public final class EngineStartup {
         }
     }
 
+    /**
+     * Validates the vendor defaults file bundled in a Quarkus application (doc/specs/
+     * bundled-vendor-defaults.md), already checked when the application was built (#3). Never throws:
+     * a file rejected here after all is reported and the engine carries on without it.
+     */
+    public static VendorDefaults loadBundledVendorDefaults(String content) {
+        try {
+            VendorDefaults vendorDefaults = VendorDefaultsFile.parseBundled(content, VendorDefaultsFile.BUNDLED_RESOURCE);
+            reportVendorDefaults(vendorDefaults);
+            return vendorDefaults;
+        } catch (RuntimeException e) {
+            Diagnostics.warn("failed to read the bundled vendor defaults file, continuing without it", e);
+            return VendorDefaults.none();
+        }
+    }
+
     private static void reportVendorDefaults(VendorDefaults vendorDefaults) {
-        String path = vendorDefaults.path().map(Path::toString).orElse("?");
+        String path = vendorDefaults.source().orElse("?");
         if (vendorDefaults.status() == VendorDefaults.Status.REJECTED) {
             Diagnostics.warn("vendor defaults file " + path + " was rejected -- none of its settings "
                     + "apply:\n  " + String.join("\n  ", vendorDefaults.errors()));
@@ -172,7 +188,7 @@ public final class EngineStartup {
         }
         try {
             auditLog.record(new AuditRecord(Instant.now(), System.getProperty("user.name", "unknown"),
-                    VendorDefaults.AUDIT_SOURCE, vendorDefaults.path().map(Path::toString).orElse("?"), null,
+                    VendorDefaults.AUDIT_SOURCE, vendorDefaults.source().orElse("?"), null,
                     "loaded sha256=" + vendorDefaults.sha256().orElse("?") + " (" + vendorDefaults.summary() + ")",
                     null, AuditRecord.Action.MUTATION).withTarget(AuditRecord.Target.FILE));
         } catch (RuntimeException e) {
@@ -220,7 +236,7 @@ public final class EngineStartup {
                 }).append(delivery.bannerSuffix).append(')');
         List<String> parts = new ArrayList<>();
         if (vendorDefaults.status() == VendorDefaults.Status.LOADED) {
-            parts.add("vendor defaults " + vendorDefaults.path().map(Path::toString).orElse("?") + " ("
+            parts.add("vendor defaults " + vendorDefaults.source().orElse("?") + " ("
                     + vendorDefaults.summary() + ")");
         }
         if (restored > 0) {

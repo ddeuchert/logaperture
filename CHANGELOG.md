@@ -18,6 +18,14 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
   `env --json` adds `delivery`. If the agent is present as well, the agent runs and the extension
   starts nothing (issue #267; `doc/specs/quarkus-extension.md`).
 
+- **Vendor defaults bundled in a Quarkus application.** Put the file at
+  `src/main/resources/META-INF/logaperture/vendor-defaults.yaml` and rebuild: it applies wherever
+  the application runs, and is named `bundled:META-INF/logaperture/vendor-defaults.yaml`. A file
+  with errors fails the build, the same path in a library is ignored with a warning, an external
+  `quarkus.logaperture.vendor-defaults` file replaces it, and
+  `quarkus.logaperture.bundled-vendor-defaults=false` turns it off (issue #269;
+  `doc/specs/bundled-vendor-defaults.md`).
+
 ## [1.0.0-beta.3] — 2026-10-21
 
 `set logger` now shows its result on the console, and WildFly's handler names are available while the server is still starting. **Not for production yet.**

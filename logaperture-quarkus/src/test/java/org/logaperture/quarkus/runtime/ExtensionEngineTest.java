@@ -149,6 +149,27 @@ class ExtensionEngineTest {
         assertTrue(ManagementFactory.getPlatformMBeanServer().isRegistered(JmxRegistrar.OBJECT_NAME));
     }
 
+    /** bundled-vendor-defaults.md #4, #5: external replaces bundled; the switch turns bundled off. */
+    @Test
+    void theVendorDefaultsSource_externalReplacesBundled_andTheSwitchTurnsBundledOff() throws Exception {
+        String bundled = "schemaVersion: 1\nloggers:\n  - name: com.acme.Bundled\n    level: DEBUG\n";
+        Path external = home.resolve("external.yaml");
+        java.nio.file.Files.writeString(external, "schemaVersion: 1\nloggers:\n  - name: com.acme.External\n    level: WARN\n");
+
+        org.logaperture.core.VendorDefaults fromBundle = ExtensionEngine.vendorDefaults(config(), Optional.of(bundled));
+        assertEquals("bundled:META-INF/logaperture/vendor-defaults.yaml", fromBundle.source().orElseThrow());
+        assertTrue(fromBundle.loggers().containsKey("com.acme.Bundled"));
+
+        org.logaperture.core.VendorDefaults replaced = ExtensionEngine.vendorDefaults(
+                config("ERROR", false, Optional.of(external), true), Optional.of(bundled));
+        assertEquals(external.toString(), replaced.source().orElseThrow());
+        assertFalse(replaced.loggers().containsKey("com.acme.Bundled"), "replaced entirely, not layered");
+
+        org.logaperture.core.VendorDefaults off = ExtensionEngine.vendorDefaults(
+                config("ERROR", false, Optional.empty(), false), Optional.of(bundled));
+        assertEquals(org.logaperture.core.VendorDefaults.Status.NOT_CONFIGURED, off.status());
+    }
+
     /** #3: an agent from before the extension sets no claim, but its marker shows it is there. */
     @Test
     void anOlderAgentIsRecognisedByItsMarker() {
@@ -165,6 +186,11 @@ class ExtensionEngineTest {
 
     /** @param failing {@code vendorDefaults()} throws, so start fails after the claim */
     private LogApertureConfig config(String diagnosticsLevel, boolean failing) {
+        return config(diagnosticsLevel, failing, Optional.empty(), true);
+    }
+
+    private LogApertureConfig config(String diagnosticsLevel, boolean failing, Optional<Path> externalFile,
+            boolean bundledOn) {
         Path stateHome = home;
         return new LogApertureConfig() {
             @Override public boolean enabled() { return true; }
@@ -172,8 +198,9 @@ class ExtensionEngineTest {
                 if (failing) {
                     throw new IllegalStateException("a start that fails after the claim");
                 }
-                return Optional.empty();
+                return externalFile;
             }
+            @Override public boolean bundledVendorDefaults() { return bundledOn; }
             @Override public boolean stormDetection() { return false; }
             @Override public Optional<String> home() { return Optional.of(stateHome.toString()); }
             @Override public Optional<String> instanceId() { return Optional.of("extension-engine-test"); }

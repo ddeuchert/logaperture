@@ -488,4 +488,33 @@ class VendorDefaultsFileTest {
         assertTrue(errors.stream().anyMatch(e -> e.startsWith(expectedPrefix)),
                 "expected an error starting with \"" + expectedPrefix + "\" in " + errors);
     }
+
+    /** doc/specs/bundled-vendor-defaults.md #6, #7: a bundled file is named by its label, has no path, is never writable. */
+    @Test
+    void parseBundled_isNamedByItsLabel() {
+        VendorDefaults defaults = VendorDefaultsFile.parseBundled(
+                "schemaVersion: 1\nloggers:\n  - name: com.acme\n    level: WARN\n", VendorDefaultsFile.BUNDLED_RESOURCE);
+
+        assertEquals(VendorDefaults.Status.LOADED, defaults.status());
+        assertEquals("bundled:META-INF/logaperture/vendor-defaults.yaml", defaults.source().orElseThrow());
+        assertTrue(defaults.path().isEmpty());
+        assertFalse(defaults.writable());
+        assertEquals(64, defaults.sha256().orElseThrow().length());
+    }
+
+    @Test
+    void parseBundled_rejectedFile_isNamedByItsLabelToo() {
+        VendorDefaults defaults = VendorDefaultsFile.parseBundled("schemaVersion: 1\nloggers: nope\n",
+                VendorDefaultsFile.BUNDLED_RESOURCE);
+
+        assertEquals(VendorDefaults.Status.REJECTED, defaults.status());
+        assertEquals("bundled:META-INF/logaperture/vendor-defaults.yaml", defaults.source().orElseThrow());
+        assertFalse(defaults.errors().isEmpty());
+    }
+
+    /** A file on disk is named by its path, as before. */
+    @Test
+    void parse_fileIsNamedByItsPath() {
+        assertEquals(PATH.toString(), VendorDefaultsFile.parse("schemaVersion: 1\n", PATH, false).source().orElseThrow());
+    }
 }

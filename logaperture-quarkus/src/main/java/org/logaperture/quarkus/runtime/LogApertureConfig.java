@@ -42,9 +42,19 @@ public interface LogApertureConfig {
 
     /**
      * A vendor defaults file: logging settings that replace the application's own for every logger,
-     * handler and rule it names. A relative path is resolved against the working directory.
+     * handler and rule it names. A relative path is resolved against the working directory. It
+     * replaces a file bundled in the application.
      */
     Optional<Path> vendorDefaults();
+
+    /**
+     * Whether the vendor defaults file bundled in the application at
+     * {@code META-INF/logaperture/vendor-defaults.yaml} applies. With {@code false} the application
+     * starts without it; an external file named by {@code quarkus.logaperture.vendor-defaults}
+     * replaces it either way.
+     */
+    @WithDefault("true")
+    boolean bundledVendorDefaults();
 
     /** Whether storm detection starts on. A sticky {@code logctl enable storms} or {@code disable storms} wins. */
     @WithDefault("false")

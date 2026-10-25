@@ -48,6 +48,11 @@ final class ExtensionEngine {
     }
 
     static void start(LogApertureConfig settings, ShutdownContext shutdown) {
+        start(settings, shutdown, Optional.empty());
+    }
+
+    /** @param bundled the text of the vendor defaults file bundled in the application, if any */
+    static void start(LogApertureConfig settings, ShutdownContext shutdown, Optional<String> bundled) {
         // First, before any engine class reads its settings: Diagnostics reads its level once, when
         // it is first used.
         List<String> propertiesSet = applyAsSystemProperties(settings);
@@ -62,7 +67,7 @@ final class ExtensionEngine {
             claimed = true;
             CapabilityPolicy policy = CapabilityPolicy.allowAll();
             AuditLog auditLog = new StderrAuditLog();
-            VendorDefaults vendorDefaults = EngineStartup.loadVendorDefaults(settings.vendorDefaults());
+            VendorDefaults vendorDefaults = vendorDefaults(settings, bundled);
             host = QuarkusEngine.newHost(policy, auditLog, vendorDefaults,
                     settings.stormDetection(), SweepPolicy.interval(), ExtensionEngine::quarkusVersion);
             Consumer<AggregateLevelControl> onFirstContextReady = EngineStartup.onFirstContextReady(
@@ -86,6 +91,28 @@ final class ExtensionEngine {
                 clearProperties(propertiesSet);
             }
         }
+    }
+
+    /**
+     * bundled-vendor-defaults.md #4, #5: an external file, if configured, replaces the bundled one;
+     * otherwise the bundled one applies unless it is switched off.
+     */
+    static VendorDefaults vendorDefaults(LogApertureConfig settings, Optional<String> bundled) {
+        if (settings.vendorDefaults().isPresent()) {
+            if (bundled.isPresent()) {
+                Diagnostics.info("the vendor defaults file " + settings.vendorDefaults().get()
+                        + " replaces the one bundled in the application");
+            }
+            return EngineStartup.loadVendorDefaults(settings.vendorDefaults());
+        }
+        if (bundled.isPresent() && settings.bundledVendorDefaults()) {
+            return EngineStartup.loadBundledVendorDefaults(bundled.get());
+        }
+        if (bundled.isPresent()) {
+            Diagnostics.info("the vendor defaults file bundled in the application is switched off "
+                    + "(quarkus.logaperture.bundled-vendor-defaults=false)");
+        }
+        return VendorDefaults.none();
     }
 
     /**

@@ -19,6 +19,9 @@ import io.quarkus.runtime.RuntimeValue;
 import io.quarkus.runtime.ShutdownContext;
 import io.quarkus.runtime.annotations.Recorder;
 
+import java.util.List;
+import java.util.Optional;
+
 /**
  * Starts LogAperture from the runtime-init step that runs once Quarkus has set up logging
  * (doc/specs/quarkus-extension.md). Everything here runs before any engine class is loaded, so an
@@ -39,7 +42,11 @@ public class LogApertureRecorder {
         this.config = config;
     }
 
-    public void start(ShutdownContext shutdown) {
+    /**
+     * @param bundledVendorDefaults the text of the application's bundled vendor defaults file, in the
+     *                              chunks {@link BundledVendorDefaults#chunks} made; empty for none
+     */
+    public void start(ShutdownContext shutdown, List<String> bundledVendorDefaults) {
         LogApertureConfig settings = config.getValue();
         if (!settings.enabled() || Boolean.getBoolean(DISABLED_PROPERTY)) {
             return; // the kill switch, honoured without loading the engine
@@ -51,7 +58,9 @@ public class LogApertureRecorder {
                     + "the Quarkus extension starts nothing.");
             return;
         }
-        ExtensionEngine.start(settings, shutdown);
+        Optional<String> bundled = bundledVendorDefaults.isEmpty() ? Optional.empty()
+                : Optional.of(BundledVendorDefaults.join(bundledVendorDefaults));
+        ExtensionEngine.start(settings, shutdown, bundled);
     }
 
     /**
