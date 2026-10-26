@@ -98,6 +98,11 @@ class LevelControlEndToEndIT {
 
         // Baseline: ROOT is INFO per logback-test.xml; the fixture worker
         // logger has no explicit level of its own, so it inherits INFO.
+        // doc/specs/plain-jvm-jul.md #1: Logback is on the class path, so only Logback is bound --
+        // no JUL context, though the agent's own MBean registration initialised JUL ("global" is
+        // the JDK's own JUL logger).
+        assertTrue(proxy.listLoggers("global").isEmpty(), "no JUL loggers in a Logback app");
+
         List<LoggerInfoData> before = proxy.listLoggers(FIXTURE_LOGGER);
         assertEquals(1, before.size());
         assertEquals("INFO", before.get(0).getEffectiveLevel());
@@ -573,7 +578,7 @@ class LevelControlEndToEndIT {
     }
 
     /** Signals clean shutdown and waits for full exit -- needed mid-test so a relaunch's instance lock is free. */
-    private static void stopFixtureProcess(Process process) throws Exception {
+    static void stopFixtureProcess(Process process) throws Exception {
         try (OutputStream stdin = process.getOutputStream()) {
             stdin.write('\n');
             stdin.flush();
@@ -584,7 +589,7 @@ class LevelControlEndToEndIT {
         }
     }
 
-    private static MBeanServerConnection attachAndConnect(long pid) throws Exception {
+    static MBeanServerConnection attachAndConnect(long pid) throws Exception {
         VirtualMachine vm = VirtualMachine.attach(Long.toString(pid));
         try {
             String connectorAddress = vm.startLocalManagementAgent();
@@ -596,7 +601,7 @@ class LevelControlEndToEndIT {
         }
     }
 
-    private static LevelControlMXBean pollForMxBeanProxy(MBeanServerConnection connection) throws Exception {
+    static LevelControlMXBean pollForMxBeanProxy(MBeanServerConnection connection) throws Exception {
         for (int attempt = 0; attempt < 100; attempt++) { // up to 10s -- install is async
             if (connection.isRegistered(JmxRegistrar.OBJECT_NAME)) {
                 return JMX.newMXBeanProxy(connection, JmxRegistrar.OBJECT_NAME, LevelControlMXBean.class);

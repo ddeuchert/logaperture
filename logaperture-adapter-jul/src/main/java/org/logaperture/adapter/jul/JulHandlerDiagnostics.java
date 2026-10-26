@@ -63,7 +63,19 @@ final class JulHandlerDiagnostics {
         Boolean autoFlush = autoFlushOf(handler);
         Long maxFileSizeBytes = (Long) fieldOf(handler, "rotateSize");
         Integer backupCount = (Integer) fieldOf(handler, "maxBackupIndex");
-        return new HandlerDiagnostics(maxFileSizeBytes, backupCount, autoFlush, targetPath, isConsole(handler));
+        boolean fileWithoutPath = targetPath == null && isFileHandler(handler);
+        return new HandlerDiagnostics(maxFileSizeBytes, backupCount, autoFlush, targetPath, isConsole(handler),
+                false, fileWithoutPath);
+    }
+
+    /**
+     * Whether {@code handler}'s class, or a superclass, is named {@code FileHandler}. Only asked when
+     * the path could not be read, which in practice means the JDK's own {@code
+     * java.util.logging.FileHandler}: it writes a file but keeps the path private (doc/specs/
+     * plain-jvm-jul.md #5). JBoss LogManager's {@code FileHandler} exposes {@code getFile()}.
+     */
+    static boolean isFileHandler(Handler handler) {
+        return isNamed(handler, "FileHandler");
     }
 
     /**
@@ -74,8 +86,13 @@ final class JulHandlerDiagnostics {
      * instanceof}, for the same classloader reason as everything else in this class.
      */
     static boolean isConsole(Handler handler) {
+        return isNamed(handler, "ConsoleHandler");
+    }
+
+    /** Whether {@code handler}'s class, or one of its superclasses, has the simple name {@code simpleName}. */
+    private static boolean isNamed(Handler handler, String simpleName) {
         for (Class<?> type = handler.getClass(); type != null; type = type.getSuperclass()) {
-            if (type.getSimpleName().equals("ConsoleHandler")) {
+            if (type.getSimpleName().equals(simpleName)) {
                 return true;
             }
         }

@@ -1,19 +1,22 @@
 # Install on a plain JVM
 
-For an application started with `java -jar` that logs through **Logback**. You add the agent to the
-`java` command and restart once.
+For an application started with `java -jar` that logs through **Logback** or, from 1.1, through
+**`java.util.logging`** (JUL). You add the agent to the `java` command and restart once.
 
-!!! info "Level control only in 1.0"
-    On a plain JVM with Logback, 1.0 changes and resets logger levels, and applies the level
-    settings of vendor defaults files and recipes. Handler levels, `drop` and `trim` rules, `top`,
-    `doctor` and storm detection need `java.util.logging` or JBoss LogManager, so today they work
-    on WildFly only. A plain JVM that logs through `java.util.logging` alone isn't picked up yet.
-    See the [support table](../index.md#what-10-supports).
+!!! info "Logback: level control only"
+    With Logback, LogAperture changes and resets logger levels, and applies the level settings of
+    vendor defaults files and recipes. Handler levels, `drop` and `trim` rules, `top`, `doctor` and
+    storm detection need `java.util.logging`. An application on `java.util.logging` gets all of them,
+    as on WildFly. See the [support table](../index.md#what-10-supports).
+
+If Logback is on the application's class path, LogAperture uses Logback, even if some code also
+logs through `java.util.logging`. With `jul-to-slf4j` those records reach Logback and are
+controlled there.
 
 ## What you need
 
 - **JDK 17, 21 or 25** running the application, which logs through Logback (directly or through
-  SLF4J).
+  SLF4J) or through `java.util.logging`.
 - A **JDK**, not just a JRE, wherever you run `logctl`.
 - `logctl` runs **on the same machine and as the same operating-system user** as the application.
 
@@ -52,7 +55,8 @@ logctl list loggers --show-all
 ```
 
 `env` shows the agent's version and where it keeps its state file. The application's own log
-also has one line from LogAperture at startup, `LogAperture <version> active (JVM)`.
+also has one line from LogAperture at startup, `LogAperture <version> active (JVM)`. On
+`java.util.logging`, `env` shows `Logging backend    java.util.logging (JUL)`.
 `list loggers --show-all` lists the application's loggers and their levels.
 
 Then change one for a few minutes and watch the log:
@@ -64,6 +68,48 @@ logctl status
 
 The [Quick start](quick-start.md) is written for WildFly, but its level, tier and `reset` steps
 work the same here.
+
+## On `java.util.logging`
+
+LogAperture starts the moment the application makes its first `java.util.logging` call, never
+before, so the application's own `java.util.logging.manager` and `logging.properties` always take
+effect. The startup line appears just after the application's first log line. A `sticky` setting
+from the last run applies from then on; the very first lines go out at the application's own
+levels.
+
+The JDK's handlers are named by type: `console`, `file`, and `file-2` for a second one. Change
+one with `logctl set handler console WARN`. The output below is from a small application whose
+`logging.properties` writes to the console and to a file:
+
+```sh
+logctl list handlers --show-all
+```
+
+```
+HANDLER           LEVEL  PERSISTS  TARGET           OVERRIDE
+console           INFO   no        —                —
+file              ALL    file      —                —
+ALL_HANDLERS      —      —         —                —
+DEFAULT_HANDLERS  —      —         (auto: console)  —
+```
+
+`set logger` takes the console along, as on WildFly:
+
+```sh
+logctl set logger com.example DEBUG for 5m
+```
+
+```
+com.example → DEBUG   (FOR, reverts 21:47:32 local — in 4m)
+handler console → AUTO, currently DEBUG   (follows com.example)
+```
+
+`TARGET` is empty for the `file` handler: the JDK keeps a `FileHandler`'s file name private.
+`top` still counts what it writes, but `doctor` can't check that file's size limits or the disk it
+is on.
+
+If the application re-reads its configuration (`LogManager.readConfiguration()`), your changes are
+put back straight away, on the new handlers the JDK creates.
 
 ## Several applications on one machine
 

@@ -10,6 +10,14 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ### Added
 
+- **Plain JVM on `java.util.logging`.** A `java -jar` application that logs through
+  `java.util.logging` alone is now picked up, with every feature WildFly has: logger and handler
+  levels, vendor defaults, recipes, `drop` and `trim` rules, `top`, `doctor` and storm detection.
+  LogAperture starts at the application's first `java.util.logging` call, so the application's own
+  manager and `logging.properties` still apply. The JDK's handlers are named `console` and `file`,
+  and changes come back straight away after `LogManager.readConfiguration()`. `doctor` does not
+  check a JDK `FileHandler`'s size limits or disk, which the JDK keeps private. An application with
+  Logback on its class path still gets Logback only (issue #221; `doc/specs/plain-jvm-jul.md`).
 - **A Quarkus extension.** Add `org.logaperture:logaperture-quarkus` to a Quarkus application and
   rebuild: LogAperture then runs inside it with no `-javaagent`, and `logctl` works as with the
   agent. Settings are `quarkus.logaperture.*` properties (environment variables and ConfigMaps

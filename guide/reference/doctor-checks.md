@@ -14,7 +14,9 @@ Each finding has a **severity**:
 | `OK` | `[OK]` | The check ran and found nothing. |
 
 A check that has nothing to look at doesn't run and prints nothing. For example, the handler
-checks don't run on a plain JVM with Logback in 1.0. The last line counts the checks that ran.
+checks don't run on a plain JVM with Logback, and `handler.unbounded-growth` and `disk.headroom`
+skip the JDK's own `FileHandler` on a plain JVM with `java.util.logging`, which keeps its file and
+limits private. The last line counts the checks that ran.
 
 With `--json`, each finding carries the **check id** below in its `check` field. See
 [JSON output](json-output.md#doctor).

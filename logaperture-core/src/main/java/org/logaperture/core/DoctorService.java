@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
@@ -85,10 +86,11 @@ public final class DoctorService implements DoctorOperations {
     public List<DoctorFinding> diagnose() {
         requireCapability(Capability.VIEW);
 
-        List<HandlerRef> persistentHandlers = persistentHandlers();
+        List<HandlerRef> persistentHandlers = persistentHandlers(HandlerDiagnostics::isPersistent);
+        List<HandlerRef> knownFileHandlers = persistentHandlers(HandlerDiagnostics::hasKnownFile);
 
-        List<DoctorFinding> unboundedGrowth = checkUnboundedGrowth(persistentHandlers);
-        List<DoctorFinding> diskHeadroom = checkDiskHeadroom(persistentHandlers);
+        List<DoctorFinding> unboundedGrowth = checkUnboundedGrowth(knownFileHandlers);
+        List<DoctorFinding> diskHeadroom = checkDiskHeadroom(knownFileHandlers);
         List<DoctorFinding> escalatedGrowth = escalateUnboundedGrowth(unboundedGrowth, diskHeadroom);
 
         List<DoctorFinding> findings = new ArrayList<>();
@@ -102,14 +104,20 @@ public final class DoctorService implements DoctorOperations {
         return List.copyOf(findings);
     }
 
-    /** Real handlers this adapter can act on that also persist to disk — doc/specs/doctor.md Decision #3's reused signal. */
-    private List<HandlerRef> persistentHandlers() {
+    /**
+     * Real handlers this adapter can act on whose diagnostics match {@code which} -- doc/specs/doctor.md
+     * Decision #3's reused signal. The file checks ask for {@link HandlerDiagnostics#hasKnownFile()},
+     * which leaves out a JDK {@code FileHandler}, whose file and limits are private
+     * (doc/specs/plain-jvm-jul.md #5); {@code handler.duplicate-output} needs neither, so it asks
+     * for {@link HandlerDiagnostics#isPersistent()}.
+     */
+    private List<HandlerRef> persistentHandlers(Predicate<HandlerDiagnostics> which) {
         if (!adapter.hasHandlerLevels()) {
             return List.of();
         }
         List<HandlerRef> persistent = new ArrayList<>();
         for (HandlerRef ref : adapter.realHandlers()) {
-            if (adapter.handlerDiagnostics(ref).isPersistent()) {
+            if (which.test(adapter.handlerDiagnostics(ref))) {
                 persistent.add(ref);
             }
         }

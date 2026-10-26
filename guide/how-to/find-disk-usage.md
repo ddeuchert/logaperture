@@ -3,9 +3,11 @@
 When logs are filling a disk, or you want to know before they do. Two read-only commands help:
 `top` measures, and `doctor` checks the configuration. Neither changes anything.
 
-!!! info "WildFly only in 1.0"
-    `top` and `doctor` need `java.util.logging` or JBoss LogManager. On a plain JVM with Logback
-    they report nothing yet.
+!!! info "Not on Logback yet"
+    `top` and `doctor` need `java.util.logging` or JBoss LogManager: WildFly, Quarkus, or (from 1.1)
+    a plain JVM that logs through `java.util.logging`. On a plain JVM with Logback they report
+    nothing yet. On `java.util.logging`, `top` counts what the JDK's `FileHandler` writes, but
+    `doctor` can't check that file's size limits or its disk: the JDK keeps them private.
 
 The output on this page is from WildFly 26.1.3.
 

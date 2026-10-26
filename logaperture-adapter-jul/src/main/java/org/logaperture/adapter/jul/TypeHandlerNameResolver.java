@@ -13,9 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.container.quarkus;
-
-import org.logaperture.adapter.jul.HandlerNameResolver;
+package org.logaperture.adapter.jul;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -28,20 +26,21 @@ import java.util.WeakHashMap;
 import java.util.logging.Handler;
 
 /**
- * Names Quarkus's handlers by what they are -- {@code console}, {@code file}, {@code syslog},
- * {@code socket} -- doc/specs/quarkus-support.md Q3. Quarkus keeps no stable, readable handler
- * name in the running JVM (the {@code quarkus.log.handler.file."AUDIT"} names live in the build's
- * configuration), so the type is the name; the configured names are issue #222.
+ * Names handlers by what they are -- {@code console}, {@code file}, {@code syslog}, {@code socket}
+ * -- matching by simple class name, so the JDK's own {@code java.util.logging} handlers and JBoss
+ * LogManager's are both named. Used by Quarkus (doc/specs/quarkus-support.md Q3: Quarkus keeps no
+ * stable, readable handler name in the running JVM; the configured names are issue #222) and by a
+ * plain JVM on {@code java.util.logging} (doc/specs/plain-jvm-jul.md #4).
  *
  * <p>A second handler of a type gets a numbered name ({@code file-2}). A name, once given to a
  * handler instance, is kept for as long as that instance lives, and a new instance takes the
  * first name no live handler holds, so a later handler can never be given a name already in use.
  * Which of several same-type handlers is {@code file} and which {@code file-2} follows the order
- * the adapter finds them in (the handlers inside the root {@code QuarkusDelayedHandler} first),
- * which is the same on every start of the same configuration. A handler of any other type is
- * left unnamed, and the adapter falls back to its identity token for it.
+ * the adapter finds them in (on Quarkus, the handlers inside the root {@code QuarkusDelayedHandler}
+ * first), which is the same on every start of the same configuration. A handler of any other type
+ * is left unnamed, and the adapter falls back to its identity token for it.
  */
-public final class QuarkusHandlerNameResolver implements HandlerNameResolver {
+public final class TypeHandlerNameResolver implements HandlerNameResolver {
 
     private static final Map<String, String> TYPE_BY_CLASS_NAME = Map.of(
             "ConsoleHandler", "console",

@@ -9,9 +9,9 @@ logctl add rule drop com.acme.batch.Worker --message-contains "This happens a lo
 logctl add rule trim '*.AutoUpdateHelper' --throwable java.net.ConnectException --frames 3
 ```
 
-!!! info "WildFly only in 1.0"
-    Rules need `java.util.logging` or JBoss LogManager. On a plain JVM with Logback they aren't
-    available yet.
+!!! info "Not on Logback yet"
+    Rules need `java.util.logging` or JBoss LogManager: WildFly, Quarkus, or (from 1.1) a plain JVM
+    that logs through `java.util.logging`. On a plain JVM with Logback they aren't available yet.
 
 ## What a rule matches
 
