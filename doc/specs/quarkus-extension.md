@@ -78,7 +78,7 @@ column.
 | #11 | Embeddability test | A test in the reactor starts the engine through the shared module with no agent on the classpath, and the build's existing `core`-never-depends-on-`agent` assertion extends to the extension modules. | **Yes**. §18.2 asks for it to be tested, not assumed. |
 | #12 | Extension registry | (a) Maven coordinates only for 1.1.0 (`quarkus ext add org.logaperture:logaperture-quarkus`). (b) Also list the extension in the Quarkus extension catalog so `quarkus ext add logaperture` and code.quarkus.io find it. (c) Move it to Quarkiverse. | **(a) for 1.1.0, (b) right after**, as its own issue. (b) needs the extension published first. (c) moves the code out of this repository and its release line, which is a separate decision. |
 | #13 | Where `logctl` runs | `logctl` needs a JDK and the same machine and user as the app (§9.8). Quarkus's default images carry a JRE. Document, and test in the slice: `kubectl debug --target=<container>` with the LogAperture container image (§17.1 "Distribution"), and Azure App Service's SSH console. | **Yes**, guide plus a test of the Kubernetes route. A remote control plane stays out of scope (§8.2). |
-| #14 | Slot | `1.1.0`, after Quarkus JVM mode (#114) and plain-JVM JUL (#221). If it threatens the 1.1.0 date, 1.1.0 ships with the agent route and the extension becomes the head of `1.2.0`. | **Yes**, with that fallback decided now, not at the deadline. |
+| #14 | Slot | `1.1.0`, after Quarkus JVM mode (#114) and plain-JVM JUL (#221). If it threatens the 1.1.0 date, 1.1.0 ships with the agent route and the extension becomes the head of `1.2.0`. | **Yes**, with that fallback decided now, not at the deadline. The fallback is moot: the extension merged on 2026-10-25 and 1.1.0 is now built around it (spec §17.1, #272). |
 
 ## What has to be built
 
@@ -213,4 +213,4 @@ What the implementation settled that the decisions left open, or found along the
 About 7 to 9 working days for one developer, spec sign-off included: the shared start-up module
 and agent regression (2), the extension pair, config and claim (2), dev mode and the formatter
 exclusion (1.5), recipes, naming and publishing (1), tests including Kubernetes (1.5), guide (1).
-Release `1.1.0`, with the fallback in #14.
+Release `1.1.0` (#14).
