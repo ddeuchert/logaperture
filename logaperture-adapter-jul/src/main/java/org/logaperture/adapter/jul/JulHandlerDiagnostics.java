@@ -75,12 +75,7 @@ final class JulHandlerDiagnostics {
      * plain-jvm-jul.md #5). JBoss LogManager's {@code FileHandler} exposes {@code getFile()}.
      */
     static boolean isFileHandler(Handler handler) {
-        for (Class<?> type = handler.getClass(); type != null; type = type.getSuperclass()) {
-            if (type.getSimpleName().equals("FileHandler")) {
-                return true;
-            }
-        }
-        return false;
+        return isNamed(handler, "FileHandler");
     }
 
     /**
@@ -91,8 +86,13 @@ final class JulHandlerDiagnostics {
      * instanceof}, for the same classloader reason as everything else in this class.
      */
     static boolean isConsole(Handler handler) {
+        return isNamed(handler, "ConsoleHandler");
+    }
+
+    /** Whether {@code handler}'s class, or one of its superclasses, has the simple name {@code simpleName}. */
+    private static boolean isNamed(Handler handler, String simpleName) {
         for (Class<?> type = handler.getClass(); type != null; type = type.getSuperclass()) {
-            if (type.getSimpleName().equals("ConsoleHandler")) {
+            if (type.getSimpleName().equals(simpleName)) {
                 return true;
             }
         }

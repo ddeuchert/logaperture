@@ -21,6 +21,7 @@ import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.api.LoggerByteCount;
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.RuleGate;
 import org.logaperture.core.StormObserver;
 import org.logaperture.core.spi.LevelFloorInfo;
@@ -249,9 +250,15 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         if (!configurationReloads) {
             return;
         }
+        // Runs inside the application's own readConfiguration()/updateConfiguration() call, and the
+        // JDK rethrows a listener's exception from there: never let a re-apply failure reach it.
         Runnable refreshThenReapply = () -> {
-            refreshHandlersAfterReload();
-            listener.run();
+            try {
+                refreshHandlersAfterReload();
+                listener.run();
+            } catch (RuntimeException e) {
+                Diagnostics.warn("failed to re-apply overrides after a java.util.logging configuration reload", e);
+            }
         };
         LogManager.getLogManager().addConfigurationListener(refreshThenReapply);
         Runnable previous = reloadListener.getAndSet(refreshThenReapply);
@@ -267,7 +274,11 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      */
     private void refreshHandlersAfterReload() {
         pruneStaleHandlerEntries(liveHandlers());
-        resolution = Resolution.PENDING;
+        synchronized (resolutionLock) {
+            // Under the lock, as in invalidateNameCache(): an attempt already running from a
+            // pre-reload snapshot must not set DONE after this and skip naming the new handlers.
+            resolution = Resolution.PENDING;
+        }
         ensureNamesResolved();
     }
 

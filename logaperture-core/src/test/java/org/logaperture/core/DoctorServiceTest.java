@@ -120,7 +120,7 @@ class DoctorServiceTest {
         List<DoctorFinding> findings = service.diagnose();
 
         assertTrue(findings.stream().noneMatch(f -> f.check().equals("handler.unbounded-growth")
-                || f.check().equals("disk.headroom") || f.check().equals("handler.duplicate-output")), findings.toString());
+                || f.check().equals("disk.headroom")), findings.toString());
     }
 
     // --- check 2: verbosity left on ------------------------------------------------------------
@@ -170,6 +170,20 @@ class DoctorServiceTest {
         adapter.addHandler(file2, Level.INFO);
         adapter.setHandlerDiagnostics(FILE, new HandlerDiagnostics(1L, 1, false, Path.of("/var/log/a.log")));
         adapter.setHandlerDiagnostics(file2, new HandlerDiagnostics(1L, 1, false, Path.of("/var/log/b.log")));
+
+        List<DoctorFinding> findings = service.diagnose();
+
+        findingFor(findings, "handler.duplicate-output", Severity.INFO);
+    }
+
+    /** doc/specs/plain-jvm-jul.md #5: only the file checks skip a file of unknown path; this one needs no path. */
+    @Test
+    void duplicateOutput_filesWithoutPathStillCompared() {
+        HandlerRef file2 = new HandlerRef("FILE2");
+        adapter.addHandler(FILE, Level.INFO);
+        adapter.addHandler(file2, Level.INFO);
+        adapter.setHandlerDiagnostics(FILE, new HandlerDiagnostics(null, null, null, null, false, false, true));
+        adapter.setHandlerDiagnostics(file2, new HandlerDiagnostics(null, null, null, null, false, false, true));
 
         List<DoctorFinding> findings = service.diagnose();
 

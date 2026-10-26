@@ -146,8 +146,12 @@ What the implementation settled or found that the decisions left open:
   private, so as signed off `top` would have counted nothing on plain JUL. `HandlerDiagnostics`
   gains an additive `fileWithoutPath`: a handler named `FileHandler` whose path cannot be read is
   persistent (so `top` counts it and `list handlers` shows it as a file) but has no known file
-  (`hasKnownFile()`), which is what `doctor`'s file checks now key on, so they still leave it
-  alone rather than report a size cap that may well be configured.
+  (`hasKnownFile()`), which is what `doctor`'s `handler.unbounded-growth` and `disk.headroom` now
+  key on, so they leave it alone rather than report a size cap that may well be configured.
+  `handler.duplicate-output` needs no path and still compares it.
+- **A failing re-apply never reaches the application.** The JDK rethrows a configuration
+  listener's exception from the application's own `readConfiguration()`, so the listener catches
+  it and logs a warning instead.
 - **A reload replaces the handlers.** `readConfiguration()` closes the JDK's handlers and creates
   new ones. The adapter's name-to-handler cache still pointed at the closed instance, so a handler
   override re-applied after a reload landed on it. Before the re-apply hook runs, the plain-JVM
