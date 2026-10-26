@@ -5,9 +5,9 @@ Lowering the logger's level would hide everything else it says too. A **rule** r
 message, or keeps it and shortens its stack trace. See [Rules](../concepts/rules.md) for how rules
 work.
 
-!!! info "WildFly only in 1.0"
-    Rules need `java.util.logging` or JBoss LogManager. On a plain JVM with Logback they aren't
-    available yet.
+!!! info "Not on Logback yet"
+    Rules need `java.util.logging` or JBoss LogManager: WildFly, Quarkus, or (from 1.1) a plain JVM
+    that logs through `java.util.logging`. On a plain JVM with Logback they aren't available yet.
 
 <div class="la-cast" data-cast="flood"></div>
 

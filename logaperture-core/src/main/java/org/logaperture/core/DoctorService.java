@@ -102,14 +102,18 @@ public final class DoctorService implements DoctorOperations {
         return List.copyOf(findings);
     }
 
-    /** Real handlers this adapter can act on that also persist to disk — doc/specs/doctor.md Decision #3's reused signal. */
+    /**
+     * Real handlers this adapter can act on that write to a known file -- doc/specs/doctor.md Decision
+     * #3's reused signal. A JDK {@code FileHandler}, whose file and limits are private, is left out
+     * (doc/specs/plain-jvm-jul.md #5).
+     */
     private List<HandlerRef> persistentHandlers() {
         if (!adapter.hasHandlerLevels()) {
             return List.of();
         }
         List<HandlerRef> persistent = new ArrayList<>();
         for (HandlerRef ref : adapter.realHandlers()) {
-            if (adapter.handlerDiagnostics(ref).isPersistent()) {
+            if (adapter.handlerDiagnostics(ref).hasKnownFile()) {
                 persistent.add(ref);
             }
         }

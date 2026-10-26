@@ -55,4 +55,15 @@ public final class JulAdapterFactory {
     public static JulLoggingAdapter forCurrentContext(HandlerNameResolver resolver) {
         return new JulLoggingAdapter(Objects.requireNonNull(resolver, "resolver"));
     }
+
+    /**
+     * An adapter for a plain {@code java -jar} application on {@code java.util.logging}
+     * (doc/specs/plain-jvm-jul.md): handlers named by type ({@link TypeHandlerNameResolver}, #4),
+     * and {@link LoggingAdapter#onReset} wired to the {@code LogManager}'s configuration
+     * listener, so overrides are re-applied as soon as the application re-reads its
+     * {@code logging.properties} (#3).
+     */
+    public static JulLoggingAdapter forPlainJvm() {
+        return new JulLoggingAdapter(new TypeHandlerNameResolver(), true);
+    }
 }

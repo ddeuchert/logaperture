@@ -56,10 +56,21 @@ import java.nio.file.Path;
  *                         rather than application code creating it -- Quarkus's console and file
  *                         handlers (doc/specs/quarkus-support.md Q7). {@code doctor} reports a finding
  *                         that is only the framework's default setting as information, not a warning.
+ * @param fileWithoutPath  whether this handler writes to a file whose path (and limits) the adapter cannot
+ *                         read -- the JDK's own {@code java.util.logging.FileHandler}, which keeps them
+ *                         private (doc/specs/plain-jvm-jul.md #5). Such a handler is {@linkplain
+ *                         #isPersistent() persistent}, so {@code top} counts it, but has no {@linkplain
+ *                         #hasKnownFile() known file}, so {@code doctor}'s file checks leave it alone.
  */
 public record HandlerDiagnostics(
         Long maxFileSizeBytes, Integer backupCount, Boolean autoFlush, Path targetPath, boolean isConsole,
-        boolean frameworkDefault) {
+        boolean frameworkDefault, boolean fileWithoutPath) {
+
+    /** Not a file of unknown path -- the shape before doc/specs/plain-jvm-jul.md. */
+    public HandlerDiagnostics(Long maxFileSizeBytes, Integer backupCount, Boolean autoFlush, Path targetPath,
+            boolean isConsole, boolean frameworkDefault) {
+        this(maxFileSizeBytes, backupCount, autoFlush, targetPath, isConsole, frameworkDefault, false);
+    }
 
     /** Not a framework default -- the shape before doc/specs/quarkus-support.md. */
     public HandlerDiagnostics(Long maxFileSizeBytes, Integer backupCount, Boolean autoFlush, Path targetPath,
@@ -73,10 +84,21 @@ public record HandlerDiagnostics(
     }
 
     /** Every field {@code null}/{@code false} — the default for a handler/framework this can't introspect at all. */
-    public static final HandlerDiagnostics EMPTY = new HandlerDiagnostics(null, null, null, null, false, false);
+    public static final HandlerDiagnostics EMPTY =
+            new HandlerDiagnostics(null, null, null, null, false, false, false);
 
-    /** Whether this handler persists to disk — the signal doc/specs/doctor.md Decision #3 keys the duplicate-output check on. */
+    /** Whether this handler persists to disk -- what {@code top} counts and {@code list handlers} shows as a file. */
     public boolean isPersistent() {
+        return targetPath != null || fileWithoutPath;
+    }
+
+    /**
+     * Whether this handler writes to a file whose path is known -- the signal doc/specs/doctor.md
+     * Decision #3 keys {@code doctor}'s file checks on. Narrower than {@link #isPersistent()}: a JDK
+     * {@code FileHandler} persists but its file and limits are unknown, so checking it would report a
+     * missing size cap that may well be configured.
+     */
+    public boolean hasKnownFile() {
         return targetPath != null;
     }
 }

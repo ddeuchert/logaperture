@@ -762,7 +762,7 @@ Every gate-stage evaluation happens on the caller's thread inside the logging ca
 |---|---|
 | JDK | 17, 21, 25. The codebase uses records and switch expressions throughout, so a lower floor is a port, not a flag change. EAP 7.4 on JDK 8/11 is a known gap. |
 | WildFly | Standalone mode, 26.1 through current. Every feature: level and handler control, vendor defaults, recipes, `drop` / `trim`, `top`, `doctor`, storm detection. No domain mode; no EAP claim until one is tested. |
-| Plain `java -jar` | Logback: level control, plus the level settings in vendor defaults and recipes. `java.util.logging` alone is not yet detected (no container integration binds the JUL adapter outside WildFly). |
+| Plain `java -jar` | Logback: level control, plus the level settings in vendor defaults and recipes. `java.util.logging` alone: from 1.1.0, every WildFly feature, except that `doctor`'s file checks skip a JDK `FileHandler` ([`plain-jvm-jul.md`](specs/plain-jvm-jul.md), #221). |
 | Quarkus JVM mode | Not in 1.0.0. Planned for 1.1.0 ([`quarkus-support.md`](specs/quarkus-support.md), signed off 2026-10-18). |
 | Not supported | Log4j 2, Spring Boot, Tomcat, Jetty, Quarkus native image. |
 
@@ -973,7 +973,7 @@ public interface ContainerIntegration {
 
 `detect()` must be non-invasive: resource and class-presence probing only, never speculative class loading, for the reasons in §15.6.
 
-**A `none` integration is mandatory and comes first.** Plain `java -jar`: one classloader, one context, no lifecycle events. Build it before any real container, because it runs in milliseconds and it forces the SPI to be honest about which methods are genuinely optional.
+**A `none` integration is mandatory and comes first.** Plain `java -jar`: one classloader, one context, no lifecycle events. It binds one backend, chosen up front: Logback if it is on the system class path, otherwise `java.util.logging` once the application initialises it ([`plain-jvm-jul.md`](specs/plain-jvm-jul.md)). Build it before any real container, because it runs in milliseconds and it forces the SPI to be honest about which methods are genuinely optional.
 
 ### 15.3 Coverage
 
@@ -1250,7 +1250,7 @@ The M0–M6 plan above stays the long-term map. It is too much to build before a
 - **Contract review** before rc.1: every MXBean operation, `logctl` verb and flag, `--json` field, agent option and `-Dlogaperture.*` property, and the vendor-defaults and `recipes.yaml` formats, each marked keep / rename / remove. Plus a state-file migration test: a 1.0 agent loads a state file from each alpha schema without losing sticky overrides.
 - **Production readiness**: the §9.12 threat model and control mapping, published overhead numbers (§10) for an idle agent, a `trim` rule, and `top` counting, and a 24-hour soak on WildFly with rules expiring and reapplying.
 
-**Quarkus JVM mode** ([#114](https://github.com/ddeuchert/logaperture/issues/114)) was spiked on 2026-09-27 ([`doc/spikes/quarkus-jvm-mode.md`](spikes/quarkus-jvm-mode.md); spec in [`doc/specs/quarkus-support.md`](specs/quarkus-support.md), signed off 2026-10-18). The engine works unchanged. The WildFly readiness gate needs one more condition, and a usable preview also needs an early re-sweep, Quarkus's hidden handlers made visible, and a warning when the build-time `quarkus.log.min-level` blocks a level. That's about 7 days of work, which didn't fit the Oct 4–13 window next to recipes, so it ships as a `1.1.0` of its own in December, ahead of Spring Boot, which moves to 1.2. The implementation is built against the signed-off spec as a draft PR held until 1.0.0 ships. The same shared gate later binds the JUL adapter for plain-JVM `java.util.logging` apps ([#221](https://github.com/ddeuchert/logaperture/issues/221)), as its own spec.
+**Quarkus JVM mode** ([#114](https://github.com/ddeuchert/logaperture/issues/114)) was spiked on 2026-09-27 ([`doc/spikes/quarkus-jvm-mode.md`](spikes/quarkus-jvm-mode.md); spec in [`doc/specs/quarkus-support.md`](specs/quarkus-support.md), signed off 2026-10-18). The engine works unchanged. The WildFly readiness gate needs one more condition, and a usable preview also needs an early re-sweep, Quarkus's hidden handlers made visible, and a warning when the build-time `quarkus.log.min-level` blocks a level. That's about 7 days of work, which didn't fit the Oct 4–13 window next to recipes, so it ships as a `1.1.0` of its own in December, ahead of Spring Boot, which moves to 1.2. The implementation is built against the signed-off spec as a draft PR held until 1.0.0 ships. The same readiness principle later binds the JUL adapter for plain-JVM `java.util.logging` apps ([#221](https://github.com/ddeuchert/logaperture/issues/221), spec [`plain-jvm-jul.md`](specs/plain-jvm-jul.md), signed off 2026-10-25).
 
 **Tomcat** waits for Release 2. JULI gives each webapp its own logger tree, which the multi-context core can already broadcast to, but most webapps on Tomcat log through their own Logback or Log4j 2. Those only become reachable with the Logback work Spring Boot needs.
 

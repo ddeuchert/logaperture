@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.container.quarkus;
+package org.logaperture.adapter.jul;
 
 import org.junit.jupiter.api.Test;
 
@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
-class QuarkusHandlerNameResolverTest {
+class TypeHandlerNameResolverTest {
 
     /** Named like the JBoss LogManager types so the by-simple-name rule is what's tested. */
     private static class FileHandler extends Handler {
@@ -53,7 +53,7 @@ class QuarkusHandlerNameResolverTest {
         Handler file = new FileHandler();
         Handler syslog = new SyslogHandler();
         Handler socket = new SocketHandler();
-        Map<Handler, String> names = new QuarkusHandlerNameResolver().resolve(List.of(console, file, syslog, socket));
+        Map<Handler, String> names = new TypeHandlerNameResolver().resolve(List.of(console, file, syslog, socket));
         assertEquals("console", names.get(console));
         assertEquals("file", names.get(file));
         assertEquals("syslog", names.get(syslog), "the nearest known type wins over a FileHandler ancestor");
@@ -64,27 +64,27 @@ class QuarkusHandlerNameResolverTest {
     @Test
     void aSubclassOfAKnownTypeIsThatType() {
         Handler rotating = new SizeRotatingFileHandler();
-        assertEquals("file", new QuarkusHandlerNameResolver().resolve(List.of(rotating)).get(rotating));
+        assertEquals("file", new TypeHandlerNameResolver().resolve(List.of(rotating)).get(rotating));
     }
 
     @Test
     void anUnknownTypeIsLeftUnnamed() {
         Handler other = new StreamHandler();
-        assertFalse(new QuarkusHandlerNameResolver().resolve(List.of(other)).containsKey(other));
+        assertFalse(new TypeHandlerNameResolver().resolve(List.of(other)).containsKey(other));
     }
 
     @Test
     void aSecondHandlerOfATypeIsNumbered() {
         Handler first = new FileHandler();
         Handler second = new FileHandler();
-        Map<Handler, String> names = new QuarkusHandlerNameResolver().resolve(List.of(first, second));
+        Map<Handler, String> names = new TypeHandlerNameResolver().resolve(List.of(first, second));
         assertEquals("file", names.get(first));
         assertEquals("file-2", names.get(second));
     }
 
     @Test
     void aNameOnceGivenIsKept_andALaterHandlerNeverTakesANameInUse() {
-        QuarkusHandlerNameResolver resolver = new QuarkusHandlerNameResolver();
+        TypeHandlerNameResolver resolver = new TypeHandlerNameResolver();
         Handler first = new FileHandler();
         resolver.resolve(List.of(first));
 

@@ -38,6 +38,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.logging.Formatter;
 import java.util.logging.Handler;
@@ -87,10 +88,13 @@ import java.util.logging.Logger;
  * touches (JBoss LogManager weak-references facades by default; the strong
  * ref pins the node so an applied level is not reaped).
  *
- * <p>No reconfiguration hook here (§4.3) — the WildFly container's periodic
- * verification sweep, and its {@code LogManager} configuration-change
- * listener, own re-application. {@link #onReset}/{@link #clearResetListener}
- * keep the SPI's no-op default.
+ * <p>No reconfiguration hook by default (§4.3) — on WildFly and Quarkus the
+ * container's periodic verification sweep, and WildFly's own configuration
+ * watch, own re-application, and {@link #onReset}/{@link #clearResetListener}
+ * do nothing. On a plain JVM ({@link JulAdapterFactory#forPlainJvm}),
+ * {@link #onReset} registers a {@code LogManager} configuration listener
+ * instead, so overrides come back as soon as the application re-reads its
+ * {@code logging.properties} (doc/specs/plain-jvm-jul.md #3).
  */
 public final class JulLoggingAdapter implements LoggingAdapter {
 
@@ -163,6 +167,11 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      */
     private volatile BiConsumer<HandlerRef, HandlerRef> handlerRenameListener = (oldRef, newRef) -> { };
 
+    /** Whether {@link #onReset} listens for configuration reloads (plain JVM only, see the class doc). */
+    private final boolean configurationReloads;
+    /** The configuration listener {@link #onReset} registered, so a later call or {@link #clearResetListener} removes it. */
+    private final AtomicReference<Runnable> reloadListener = new AtomicReference<>();
+
     /** Package-visible: constructed by {@link JulAdapterFactory}. */
     JulLoggingAdapter() {
         this(HandlerNameResolver.NONE);
@@ -170,7 +179,16 @@ public final class JulLoggingAdapter implements LoggingAdapter {
 
     /** Package-visible: constructed by {@link JulAdapterFactory} on WildFly with a real resolver. */
     JulLoggingAdapter(HandlerNameResolver nameResolver) {
+        this(nameResolver, false);
+    }
+
+    /**
+     * Package-visible: {@code configurationReloads} true makes {@link #onReset} listen for
+     * {@code LogManager} configuration reloads -- {@link JulAdapterFactory#forPlainJvm} only.
+     */
+    JulLoggingAdapter(HandlerNameResolver nameResolver, boolean configurationReloads) {
         this.nameResolver = Objects.requireNonNull(nameResolver, "nameResolver");
+        this.configurationReloads = configurationReloads;
     }
 
     @Override
@@ -219,7 +237,47 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         // less information (no resolved HandlerRef, no --quiet/--json).
     }
 
-    // onReset / clearResetListener: SPI no-op default -- see class doc.
+    /**
+     * On a plain JVM, runs {@code listener} after every {@code LogManager.readConfiguration()} or
+     * {@code updateConfiguration()}, on the thread that called it. Replaces a listener registered
+     * earlier, as {@link LoggingAdapter#onReset} requires. Does nothing on WildFly and Quarkus (class
+     * doc).
+     */
+    @Override
+    public void onReset(Runnable listener) {
+        Objects.requireNonNull(listener, "listener");
+        if (!configurationReloads) {
+            return;
+        }
+        Runnable refreshThenReapply = () -> {
+            refreshHandlersAfterReload();
+            listener.run();
+        };
+        LogManager.getLogManager().addConfigurationListener(refreshThenReapply);
+        Runnable previous = reloadListener.getAndSet(refreshThenReapply);
+        if (previous != null) {
+            LogManager.getLogManager().removeConfigurationListener(previous);
+        }
+    }
+
+    /**
+     * A reload closes the JDK's handlers and creates new ones from the configuration. Forget the
+     * closed instances and name the new ones before overrides are re-applied, or a ref such as
+     * {@code console} would still resolve to the closed handler and the override would land there.
+     */
+    private void refreshHandlersAfterReload() {
+        pruneStaleHandlerEntries(liveHandlers());
+        resolution = Resolution.PENDING;
+        ensureNamesResolved();
+    }
+
+    @Override
+    public void clearResetListener() {
+        Runnable previous = reloadListener.getAndSet(null);
+        if (previous != null) {
+            LogManager.getLogManager().removeConfigurationListener(previous);
+        }
+    }
 
     @Override
     public void onHandlerRenamed(BiConsumer<HandlerRef, HandlerRef> listener) {
@@ -353,7 +411,7 @@ public final class JulLoggingAdapter implements LoggingAdapter {
 
     private static HandlerDiagnostics withFrameworkDefault(HandlerDiagnostics d) {
         return new HandlerDiagnostics(d.maxFileSizeBytes(), d.backupCount(), d.autoFlush(), d.targetPath(),
-                d.isConsole(), true);
+                d.isConsole(), true, d.fileWithoutPath());
     }
 
     /**

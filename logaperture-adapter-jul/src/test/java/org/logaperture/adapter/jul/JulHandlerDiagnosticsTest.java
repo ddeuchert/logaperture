@@ -17,7 +17,10 @@ package org.logaperture.adapter.jul;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.logging.ConsoleHandler;
+import java.util.logging.FileHandler;
 import java.util.logging.StreamHandler;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -55,5 +58,24 @@ class JulHandlerDiagnosticsTest {
     @Test
     void isConsole_notForAnotherHandler() {
         assertFalse(JulHandlerDiagnostics.of(new StreamHandler()).isConsole());
+    }
+
+    /** doc/specs/plain-jvm-jul.md #5: the JDK FileHandler persists, but its file is unknown. */
+    @Test
+    void jdkFileHandler_isPersistentWithoutAKnownFile(@org.junit.jupiter.api.io.TempDir Path dir) throws IOException {
+        FileHandler file = new FileHandler(dir.resolve("app%u.log").toString());
+        try {
+            org.logaperture.api.HandlerDiagnostics diagnostics = JulHandlerDiagnostics.of(file);
+            assertTrue(diagnostics.isPersistent(), "top counts it");
+            assertFalse(diagnostics.hasKnownFile(), "doctor's file checks leave it alone");
+            assertTrue(diagnostics.fileWithoutPath());
+        } finally {
+            file.close();
+        }
+    }
+
+    @Test
+    void streamHandler_isNotPersistent() {
+        assertFalse(JulHandlerDiagnostics.of(new StreamHandler()).isPersistent());
     }
 }

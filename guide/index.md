@@ -57,21 +57,21 @@ More films in [Now Showing](now-showing.md).
 
 JDK 17, 21 and 25.
 
-| | WildFly, standalone, 26.1 and later | Plain `java -jar` with Logback |
-|---|---|---|
-| Change and reset logger levels | ✓ | ✓ |
-| Change and reset handler levels | ✓ | — |
-| Vendor defaults file: levels | ✓ | ✓ |
-| Vendor defaults file: rules | ✓ | — |
-| Recipes | ✓ | ✓ |
-| `drop` and `trim` rules | ✓ | — |
-| `top` | ✓ | — |
-| `doctor` | ✓ | — |
-| Storm detection | ✓ | — |
-| `status`, `env` | ✓ | ✓ |
+| | WildFly, standalone, 26.1 and later | Plain `java -jar` with Logback | Plain `java -jar` with `java.util.logging` (from 1.1) |
+|---|---|---|---|
+| Change and reset logger levels | ✓ | ✓ | ✓ |
+| Change and reset handler levels | ✓ | — | ✓ |
+| Vendor defaults file: levels | ✓ | ✓ | ✓ |
+| Vendor defaults file: rules | ✓ | — | ✓ |
+| Recipes | ✓ | ✓ | ✓ |
+| `drop` and `trim` rules | ✓ | — | ✓ |
+| `top` | ✓ | — | ✓ |
+| `doctor` | ✓ | — | ✓ (no file-size or disk checks on the JDK's `FileHandler`) |
+| Storm detection | ✓ | — | ✓ |
+| `status`, `env` | ✓ | ✓ | ✓ |
 
 Not supported in 1.0: WildFly domain mode, a plain JVM that logs through `java.util.logging`
-alone, Log4j 2, Spring Boot, Tomcat, Jetty, Quarkus. Quarkus native images can never be supported:
+alone (from 1.1), Log4j 2, Spring Boot, Tomcat, Jetty, Quarkus (from 1.1). Quarkus native images can never be supported:
 they have no JVM to attach an agent to.
 
 ## Where to start

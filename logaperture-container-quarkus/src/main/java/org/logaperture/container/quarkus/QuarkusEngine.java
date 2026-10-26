@@ -17,6 +17,7 @@ package org.logaperture.container.quarkus;
 
 import org.logaperture.adapter.jul.JulAdapterFactory;
 import org.logaperture.adapter.jul.JulLoggingAdapter;
+import org.logaperture.adapter.jul.TypeHandlerNameResolver;
 import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.Severity;
 import org.logaperture.container.jbosslogmanager.JBossLogManagerContainer;
@@ -66,7 +67,7 @@ public final class QuarkusEngine {
      */
     public static JulLoggingAdapter installSystemContext(JBossLogManagerContainer host,
             Consumer<AggregateLevelControl> onFirstContextReady) {
-        JulLoggingAdapter adapter = JulAdapterFactory.forCurrentContext(new QuarkusHandlerNameResolver());
+        JulLoggingAdapter adapter = JulAdapterFactory.forCurrentContext(new TypeHandlerNameResolver());
         host.installContext(ContextHandle.of(ContextHandle.SYSTEM, CONTAINER_ID, adapter));
         onFirstContextReady.accept(host.operations());
         return adapter;

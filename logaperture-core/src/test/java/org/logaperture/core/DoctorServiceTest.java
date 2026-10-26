@@ -111,6 +111,18 @@ class DoctorServiceTest {
         assertTrue(findings.stream().noneMatch(f -> f.check().equals("handler.unbounded-growth")));
     }
 
+    /** doc/specs/plain-jvm-jul.md #5: a file whose path and limits are private is not reported as unbounded. */
+    @Test
+    void fileWithoutPath_fileChecksDoNotRun() {
+        adapter.addHandler(FILE, Level.INFO);
+        adapter.setHandlerDiagnostics(FILE, new HandlerDiagnostics(null, null, null, null, false, false, true));
+
+        List<DoctorFinding> findings = service.diagnose();
+
+        assertTrue(findings.stream().noneMatch(f -> f.check().equals("handler.unbounded-growth")
+                || f.check().equals("disk.headroom") || f.check().equals("handler.duplicate-output")), findings.toString());
+    }
+
     // --- check 2: verbosity left on ------------------------------------------------------------
 
     @Test

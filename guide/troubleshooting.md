@@ -64,11 +64,11 @@ Also check:
 - Events logged before LogAperture started, for example by another agent at startup, are out of
   reach. See [Agent order](concepts/agent-order.md).
 - `trim` works on text log formats only in 1.0. A JSON or XML formatter writes the full trace.
-- Rules don't work on a plain JVM with Logback in 1.0.
+- Rules don't work on a plain JVM with Logback yet.
 
 ## `top`, `doctor` or `storms` report nothing
 
-On a plain JVM with Logback they aren't available in 1.0. On WildFly:
+On a plain JVM with Logback they aren't available yet. Elsewhere:
 
 - `top` counts from when the agent started; right after startup there's little to show.
 - `top` says "No log files to measure": none of the application's handlers write to a file, which is
