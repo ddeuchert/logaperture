@@ -2013,9 +2013,9 @@ logger's level doesn't change, and every other event from it is logged as before
 logctl<span class="w"> </span>add<span class="w"> </span>rule<span class="w"> </span>trim<span class="w"> </span><span class="s1">'*.AutoUpdateHelper'</span><span class="w"> </span>--throwable<span class="w"> </span>java.net.ConnectException<span class="w"> </span>--frames<span class="w"> </span><span class="m">3</span>
 </code></pre></div>
 <div class="admonition info">
-<p class="admonition-title">WildFly only in 1.0</p>
-<p>Rules need <code>java.util.logging</code> or JBoss LogManager. On a plain JVM with Logback they aren't
-available yet.</p>
+<p class="admonition-title">Not on Logback yet</p>
+<p>Rules need <code>java.util.logging</code> or JBoss LogManager: WildFly, Quarkus, or (from 1.1) a plain JVM
+that logs through <code>java.util.logging</code>. On a plain JVM with Logback they aren't available yet.</p>
 </div>
 <h2 id="what-a-rule-matches">What a rule matches<a class="headerlink" href="#what-a-rule-matches" title="Permanent link">&para;</a></h2>
 <p>A rule is attached to one logger and applies to that logger's events and its descendants'

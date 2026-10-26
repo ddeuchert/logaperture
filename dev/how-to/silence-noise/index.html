@@ -2011,9 +2011,9 @@ Lowering the logger's level would hide everything else it says too. A <strong>ru
 message, or keeps it and shortens its stack trace. See <a href="../../concepts/rules/">Rules</a> for how rules
 work.</p>
 <div class="admonition info">
-<p class="admonition-title">WildFly only in 1.0</p>
-<p>Rules need <code>java.util.logging</code> or JBoss LogManager. On a plain JVM with Logback they aren't
-available yet.</p>
+<p class="admonition-title">Not on Logback yet</p>
+<p>Rules need <code>java.util.logging</code> or JBoss LogManager: WildFly, Quarkus, or (from 1.1) a plain JVM
+that logs through <code>java.util.logging</code>. On a plain JVM with Logback they aren't available yet.</p>
 </div>
 <div class="la-cast" data-cast="flood"></div>
 

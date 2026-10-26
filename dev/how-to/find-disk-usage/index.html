@@ -1987,9 +1987,11 @@
 <p>When logs are filling a disk, or you want to know before they do. Two read-only commands help:
 <code>top</code> measures, and <code>doctor</code> checks the configuration. Neither changes anything.</p>
 <div class="admonition info">
-<p class="admonition-title">WildFly only in 1.0</p>
-<p><code>top</code> and <code>doctor</code> need <code>java.util.logging</code> or JBoss LogManager. On a plain JVM with Logback
-they report nothing yet.</p>
+<p class="admonition-title">Not on Logback yet</p>
+<p><code>top</code> and <code>doctor</code> need <code>java.util.logging</code> or JBoss LogManager: WildFly, Quarkus, or (from 1.1)
+a plain JVM that logs through <code>java.util.logging</code>. On a plain JVM with Logback they report
+nothing yet. On <code>java.util.logging</code>, <code>top</code> counts what the JDK's <code>FileHandler</code> writes, but
+<code>doctor</code> can't check that file's size limits or its disk: the JDK keeps them private.</p>
 </div>
 <p>The output on this page is from WildFly 26.1.3.</p>
 <h2 id="which-loggers-write-the-most">Which loggers write the most<a class="headerlink" href="#which-loggers-write-the-most" title="Permanent link">&para;</a></h2>

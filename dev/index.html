@@ -2053,6 +2053,7 @@ the WildFly console; <code>logctl</code> runs below.</p>
 <th></th>
 <th>WildFly, standalone, 26.1 and later</th>
 <th>Plain <code>java -jar</code> with Logback</th>
+<th>Plain <code>java -jar</code> with <code>java.util.logging</code> (from 1.1)</th>
 </tr>
 </thead>
 <tbody>
@@ -2060,14 +2061,17 @@ the WildFly console; <code>logctl</code> runs below.</p>
 <td>Change and reset logger levels</td>
 <td>✓</td>
 <td>✓</td>
+<td>✓</td>
 </tr>
 <tr>
 <td>Change and reset handler levels</td>
 <td>✓</td>
 <td>—</td>
+<td>✓</td>
 </tr>
 <tr>
 <td>Vendor defaults file: levels</td>
+<td>✓</td>
 <td>✓</td>
 <td>✓</td>
 </tr>
@@ -2075,9 +2079,11 @@ the WildFly console; <code>logctl</code> runs below.</p>
 <td>Vendor defaults file: rules</td>
 <td>✓</td>
 <td>—</td>
+<td>✓</td>
 </tr>
 <tr>
 <td>Recipes</td>
+<td>✓</td>
 <td>✓</td>
 <td>✓</td>
 </tr>
@@ -2085,31 +2091,36 @@ the WildFly console; <code>logctl</code> runs below.</p>
 <td><code>drop</code> and <code>trim</code> rules</td>
 <td>✓</td>
 <td>—</td>
+<td>✓</td>
 </tr>
 <tr>
 <td><code>top</code></td>
 <td>✓</td>
 <td>—</td>
+<td>✓</td>
 </tr>
 <tr>
 <td><code>doctor</code></td>
 <td>✓</td>
 <td>—</td>
+<td>✓ (no file-size or disk checks on the JDK's <code>FileHandler</code>)</td>
 </tr>
 <tr>
 <td>Storm detection</td>
 <td>✓</td>
 <td>—</td>
+<td>✓</td>
 </tr>
 <tr>
 <td><code>status</code>, <code>env</code></td>
+<td>✓</td>
 <td>✓</td>
 <td>✓</td>
 </tr>
 </tbody>
 </table>
 <p>Not supported in 1.0: WildFly domain mode, a plain JVM that logs through <code>java.util.logging</code>
-alone, Log4j 2, Spring Boot, Tomcat, Jetty, Quarkus. Quarkus native images can never be supported:
+alone (from 1.1), Log4j 2, Spring Boot, Tomcat, Jetty, Quarkus (from 1.1). Quarkus native images can never be supported:
 they have no JVM to attach an agent to.</p>
 <h2 id="where-to-start">Where to start<a class="headerlink" href="#where-to-start" title="Permanent link">&para;</a></h2>
 <ol>

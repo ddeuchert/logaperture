@@ -2342,7 +2342,9 @@ what it found.</p>
 </tbody>
 </table>
 <p>A check that has nothing to look at doesn't run and prints nothing. For example, the handler
-checks don't run on a plain JVM with Logback in 1.0. The last line counts the checks that ran.</p>
+checks don't run on a plain JVM with Logback, and <code>handler.unbounded-growth</code> and <code>disk.headroom</code>
+skip the JDK's own <code>FileHandler</code> on a plain JVM with <code>java.util.logging</code>, which keeps its file and
+limits private. The last line counts the checks that ran.</p>
 <p>With <code>--json</code>, each finding carries the <strong>check id</strong> below in its <code>check</code> field. See
 <a href="../json-output/#doctor">JSON output</a>.</p>
 <h2 id="handlers-and-loggers">Handlers and loggers<a class="headerlink" href="#handlers-and-loggers" title="Permanent link">&para;</a></h2>

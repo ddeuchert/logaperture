@@ -767,6 +767,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-javautillogging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On java.util.logging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#several-applications-on-one-machine" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1964,6 +1975,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-javautillogging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On java.util.logging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#several-applications-on-one-machine" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2006,20 +2028,22 @@
 
 
 <h1 id="install-on-a-plain-jvm">Install on a plain JVM<a class="headerlink" href="#install-on-a-plain-jvm" title="Permanent link">&para;</a></h1>
-<p>For an application started with <code>java -jar</code> that logs through <strong>Logback</strong>. You add the agent to the
-<code>java</code> command and restart once.</p>
+<p>For an application started with <code>java -jar</code> that logs through <strong>Logback</strong> or, from 1.1, through
+<strong><code>java.util.logging</code></strong> (JUL). You add the agent to the <code>java</code> command and restart once.</p>
 <div class="admonition info">
-<p class="admonition-title">Level control only in 1.0</p>
-<p>On a plain JVM with Logback, 1.0 changes and resets logger levels, and applies the level
-settings of vendor defaults files and recipes. Handler levels, <code>drop</code> and <code>trim</code> rules, <code>top</code>,
-<code>doctor</code> and storm detection need <code>java.util.logging</code> or JBoss LogManager, so today they work
-on WildFly only. A plain JVM that logs through <code>java.util.logging</code> alone isn't picked up yet.
-See the <a href="../../#what-10-supports">support table</a>.</p>
+<p class="admonition-title">Logback: level control only</p>
+<p>With Logback, LogAperture changes and resets logger levels, and applies the level settings of
+vendor defaults files and recipes. Handler levels, <code>drop</code> and <code>trim</code> rules, <code>top</code>, <code>doctor</code> and
+storm detection need <code>java.util.logging</code>. An application on <code>java.util.logging</code> gets all of them,
+as on WildFly. See the <a href="../../#what-10-supports">support table</a>.</p>
 </div>
+<p>If Logback is on the application's class path, LogAperture uses Logback, even if some code also
+logs through <code>java.util.logging</code>. With <code>jul-to-slf4j</code> those records reach Logback and are
+controlled there.</p>
 <h2 id="what-you-need">What you need<a class="headerlink" href="#what-you-need" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>JDK 17, 21 or 25</strong> running the application, which logs through Logback (directly or through
-  SLF4J).</li>
+  SLF4J) or through <code>java.util.logging</code>.</li>
 <li>A <strong>JDK</strong>, not just a JRE, wherever you run <code>logctl</code>.</li>
 <li><code>logctl</code> runs <strong>on the same machine and as the same operating-system user</strong> as the application.</li>
 </ul>
@@ -2051,7 +2075,8 @@ environment variable works too:</p>
 logctl<span class="w"> </span>list<span class="w"> </span>loggers<span class="w"> </span>--show-all
 </code></pre></div>
 <p><code>env</code> shows the agent's version and where it keeps its state file. The application's own log
-also has one line from LogAperture at startup, <code>LogAperture &lt;version&gt; active (JVM)</code>.
+also has one line from LogAperture at startup, <code>LogAperture &lt;version&gt; active (JVM)</code>. On
+<code>java.util.logging</code>, <code>env</code> shows <code>Logging backend    java.util.logging (JUL)</code>.
 <code>list loggers --show-all</code> lists the application's loggers and their levels.</p>
 <p>Then change one for a few minutes and watch the log:</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>com.example<span class="w"> </span>DEBUG<span class="w"> </span><span class="k">for</span><span class="w"> </span>5m
@@ -2059,6 +2084,34 @@ logctl<span class="w"> </span>status
 </code></pre></div>
 <p>The <a href="../quick-start/">Quick start</a> is written for WildFly, but its level, tier and <code>reset</code> steps
 work the same here.</p>
+<h2 id="on-javautillogging">On <code>java.util.logging</code><a class="headerlink" href="#on-javautillogging" title="Permanent link">&para;</a></h2>
+<p>LogAperture starts the moment the application makes its first <code>java.util.logging</code> call, never
+before, so the application's own <code>java.util.logging.manager</code> and <code>logging.properties</code> always take
+effect. The startup line appears just after the application's first log line. A <code>sticky</code> setting
+from the last run applies from then on; the very first lines go out at the application's own
+levels.</p>
+<p>The JDK's handlers are named by type: <code>console</code>, <code>file</code>, and <code>file-2</code> for a second one. Change
+one with <code>logctl set handler console WARN</code>. The output below is from a small application whose
+<code>logging.properties</code> writes to the console and to a file:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>list<span class="w"> </span>handlers<span class="w"> </span>--show-all
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>HANDLER           LEVEL  PERSISTS  TARGET           OVERRIDE
+console           INFO   no        —                —
+file              ALL    file      —                —
+ALL_HANDLERS      —      —         —                —
+DEFAULT_HANDLERS  —      —         (auto: console)  —
+</code></pre></div>
+<p><code>set logger</code> takes the console along, as on WildFly:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>com.example<span class="w"> </span>DEBUG<span class="w"> </span><span class="k">for</span><span class="w"> </span>5m
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>com.example → DEBUG   (FOR, reverts 21:47:32 local — in 4m)
+handler console → AUTO, currently DEBUG   (follows com.example)
+</code></pre></div>
+<p><code>TARGET</code> is empty for the <code>file</code> handler: the JDK keeps a <code>FileHandler</code>'s file name private.
+<code>top</code> still counts what it writes, but <code>doctor</code> can't check that file's size limits or the disk it
+is on.</p>
+<p>If the application re-reads its configuration (<code>LogManager.readConfiguration()</code>), your changes are
+put back straight away, on the new handlers the JDK creates.</p>
 <h2 id="several-applications-on-one-machine">Several applications on one machine<a class="headerlink" href="#several-applications-on-one-machine" title="Permanent link">&para;</a></h2>
 <p><code>logctl</code> picks the JVM by itself when exactly one is running with the agent. With several, on a
 terminal it lists them to pick from; in a script, pass <code>--pid &lt;n&gt;</code>. See
