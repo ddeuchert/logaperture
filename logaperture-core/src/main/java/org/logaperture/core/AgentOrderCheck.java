@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 /**
@@ -43,12 +44,14 @@ final class AgentOrderCheck {
 
     static final String ORDER_CHECK = "agent.order";
     static final String DUPLICATE_CHECK = "agent.duplicate";
+    static final String ATTACHED_CHECK = "agent.attached";
 
     private static final String JAVAAGENT_PREFIX = "-javaagent:";
 
     private final Supplier<List<String>> inputArguments;
     private final Optional<Path> ownJar;
     private final Path userDir;
+    private final BooleanSupplier attached;
 
     /**
      * @param inputArguments supplies the JVM's input arguments, in the order the JVM reports them
@@ -56,9 +59,16 @@ final class AgentOrderCheck {
      * @param userDir        what relative {@code -javaagent} paths resolve against
      */
     AgentOrderCheck(Supplier<List<String>> inputArguments, Optional<Path> ownJar, Path userDir) {
+        this(inputArguments, ownJar, userDir, AttachedStart::isMarked);
+    }
+
+    /** @param attached whether the agent was started by a dynamic attach (doc/specs/logctl-attach.md #9) */
+    AgentOrderCheck(Supplier<List<String>> inputArguments, Optional<Path> ownJar, Path userDir,
+            BooleanSupplier attached) {
         this.inputArguments = Objects.requireNonNull(inputArguments, "inputArguments");
         this.ownJar = Objects.requireNonNull(ownJar, "ownJar");
         this.userDir = Objects.requireNonNull(userDir, "userDir");
+        this.attached = Objects.requireNonNull(attached, "attached");
     }
 
     /** The real inputs: this JVM's {@code RuntimeMXBean}, this class's own code source, {@code user.dir}. */
@@ -87,6 +97,8 @@ final class AgentOrderCheck {
         int ownIndex = ownIndex(agents);
         if (ownIndex >= 0) {
             findings.add(orderFinding(agents, ownIndex));
+        } else if (attached.getAsBoolean()) {
+            findings.add(attachedFinding());
         }
         findings.addAll(duplicateFindings(agents, ownIndex >= 0 ? agents.get(ownIndex).resolved() : null));
         return List.copyOf(findings);
@@ -189,6 +201,21 @@ final class AgentOrderCheck {
         return new DoctorFinding(ORDER_CHECK, Severity.INFO, subject,
                 count + " listed ahead of " + own.fileName() + ": " + String.join(", ", ahead) + ".",
                 detail, "list -javaagent:" + own.given() + " before the other -javaagent entries.");
+    }
+
+    // --- agent.attached ---------------------------------------------------------------------------
+
+    /**
+     * doc/specs/logctl-attach.md #9: an attached agent is not on the launch line, so the order check
+     * has nothing to read; say so, once, instead of leaving the row out unexplained.
+     */
+    private DoctorFinding attachedFinding() {
+        String subject = ownJar.map(Path::toString).orElse("this JVM");
+        return new DoctorFinding(ATTACHED_CHECK, Severity.INFO, subject,
+                "LogAperture was loaded by attach, so the -javaagent order check does not apply.",
+                "an attached agent is not on the launch line, and it lasts only until this JVM stops.",
+                "add -javaagent:" + ownJar.map(Path::toString).orElse("<logaperture-agent.jar>")
+                        + " to the launch line to make LogAperture permanent.");
     }
 
     // --- agent.duplicate --------------------------------------------------------------------------

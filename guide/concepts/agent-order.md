@@ -44,8 +44,9 @@ handlers. If a launch needs that held back, see `-Dlogaperture.handlerInstallDel
 
 or, when other agents are ahead of it, an `INFO` finding naming them. It also warns about the same
 jar listed twice. See [`agent.order` and `agent.duplicate`](../reference/doctor-checks.md#the-agent).
-Neither is reported when LogAperture was attached to a JVM that was already running; a jar listed
-twice still is.
+Neither is reported when LogAperture was attached to a JVM that was already running, and `doctor`
+says so with an [`agent.attached`](../reference/doctor-checks.md#the-agent) line; a jar listed twice
+still is reported.
 
 ## The same jar twice
 

@@ -237,4 +237,45 @@ class AgentOrderCheckTest {
         // Under the build, this class loads from target/test-classes, not a jar.
         assertTrue(AgentOrderCheck.ownJarOf(AgentOrderCheckTest.class).isEmpty());
     }
+
+    // --- agent.attached (doc/specs/logctl-attach.md #9) -------------------------------------------
+
+    private List<DoctorFinding> runAttached(boolean attached, String... arguments) {
+        return new AgentOrderCheck(() -> List.of(arguments), Optional.empty(), dir, () -> attached).findings();
+    }
+
+    @Test
+    void attached_withNoOwnJavaagentEntry_isOneInfoRowExplainingTheMissingOrderCheck() {
+        List<DoctorFinding> findings = runAttached(true, "-Xmx512m", "-javaagent:/opt/other.jar");
+
+        DoctorFinding attached = single(findings, AgentOrderCheck.ATTACHED_CHECK);
+        assertEquals(Severity.INFO, attached.severity());
+        assertTrue(attached.summary().contains("loaded by attach"), attached.summary());
+        assertTrue(attached.suggestedFix().contains("-javaagent:"), attached.suggestedFix());
+        assertTrue(ofCheck(findings, AgentOrderCheck.ORDER_CHECK).isEmpty());
+    }
+
+    @Test
+    void notAttached_withNoOwnJavaagentEntry_staysSilentAsBefore() {
+        // the Quarkus extension has no -javaagent entry either, and is not an attach
+        assertTrue(ofCheck(runAttached(false, "-Xmx512m"), AgentOrderCheck.ATTACHED_CHECK).isEmpty());
+    }
+
+    @Test
+    void attached_butListedOnTheLaunchLine_reportsTheOrderNotTheAttach() {
+        List<DoctorFinding> findings = runAttached(true, "-javaagent:/opt/logaperture-agent.jar");
+
+        assertEquals(1, ofCheck(findings, AgentOrderCheck.ORDER_CHECK).size());
+        assertTrue(ofCheck(findings, AgentOrderCheck.ATTACHED_CHECK).isEmpty());
+    }
+
+    @Test
+    void attached_findingNamesTheOwnJarWhenKnown() {
+        Path jar = dir.resolve("logaperture-agent.jar");
+        List<DoctorFinding> findings = new AgentOrderCheck(() -> List.of(), Optional.of(jar), dir, () -> true).findings();
+
+        DoctorFinding attached = single(findings, AgentOrderCheck.ATTACHED_CHECK);
+        assertEquals(jar.toString(), attached.subject());
+        assertTrue(attached.suggestedFix().contains(jar.toString()));
+    }
 }

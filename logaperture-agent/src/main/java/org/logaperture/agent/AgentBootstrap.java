@@ -20,6 +20,7 @@ import org.logaperture.container.none.NoneContainerIntegration;
 import org.logaperture.container.quarkus.QuarkusContainerIntegration;
 import org.logaperture.container.wildfly.WildFlyContainerIntegration;
 import org.logaperture.core.AggregateLevelControl;
+import org.logaperture.core.AttachedStart;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.LibraryRecipeScanner;
@@ -96,6 +97,9 @@ final class AgentBootstrap {
         if (!STARTED.compareAndSet(false, true)) {
             Diagnostics.warn(duplicateStartMessage(entry));
             return;
+        }
+        if (entry == Entry.AGENTMAIN) {
+            AttachedStart.mark(); // doc/specs/logctl-attach.md #9: for doctor's agent.attached finding
         }
         if (!EngineStartup.claim(EngineStartup.Delivery.AGENT)) {
             // doc/specs/quarkus-extension.md #3: only an attach can get here, into a JVM where the

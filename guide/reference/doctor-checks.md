@@ -89,9 +89,18 @@ nothing was written during the measurement.
 Where LogAperture is on the `-javaagent` list. `OK` when it is first. `INFO` when other agents are
 listed ahead of it: anything they log while starting up is out of reach of `drop` and `trim` rules.
 Agents set in `JAVA_TOOL_OPTIONS` or `JDK_JAVA_OPTIONS` count as listed first. Not reported when
-LogAperture was attached to a running JVM. See [Agent order](../concepts/agent-order.md).
+LogAperture was attached to a running JVM (`agent.attached` says so). See
+[Agent order](../concepts/agent-order.md).
 
 **Fix:** list LogAperture's `-javaagent` before the others, where the site allows it.
+
+### `agent.attached`
+
+LogAperture was loaded into a running JVM with `logctl attach`, not started by a `-javaagent` entry,
+so the `-javaagent` order check has nothing to read. `INFO`, and reported only on an attached JVM.
+An attach lasts until the JVM stops.
+
+**Fix:** add `-javaagent:` with the agent jar to the launch line to make LogAperture permanent.
 
 ### `agent.early-sweep`
 
