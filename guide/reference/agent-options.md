@@ -32,7 +32,10 @@ argument is skipped with a warning in the log; the agent still starts.
 `-Dlogaperture.home=<dir>`
 :   Where LogAperture keeps its state files, and where it looks for the recipes folder. Default
     `~/.logaperture` of the user running the JVM. Set it when that user has no writable home
-    directory, as is common in containers.
+    directory, as is common in containers. If that default can't be written, LogAperture keeps
+    its state under the system temp directory instead and says so in the application's log; the
+    system may clear it, so set this option to make it last. A directory you set is always used as
+    given.
 
 `-Dlogaperture.instanceId=<name>`
 :   Names this JVM's state file. By default the state file is named after the directory the JVM was

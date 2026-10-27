@@ -98,7 +98,33 @@ public final class FileStateStore implements StateStore, Closeable {
      *                                 instances directory or open the lock file
      */
     public static FileStateStore open() throws IOException {
-        Path instancesDir = resolveHome().resolve("instances");
+        Path home = resolveHome();
+        try {
+            return open(home);
+        } catch (InstanceLockedException collision) {
+            throw collision; // a different problem: the identity is taken, and another directory would hide that
+        } catch (IOException unusable) {
+            if (isExplicitHome()) {
+                throw unusable; // the operator named this directory; do not quietly keep state elsewhere
+            }
+            // doc/specs/logctl-attach.md #8: a default home that cannot be written (a read-only container
+            // image, a service account with no home) still gets persistence, in a directory the system may
+            // clear, rather than none.
+            Path fallback = fallbackHome();
+            Diagnostics.warn("cannot use the state directory " + home.resolve("instances") + " (" + unusable
+                    + "); keeping state in " + fallback.resolve("instances") + " instead, which the system may "
+                    + "clear. Set -D" + HOME_PROPERTY + "=<dir> to choose one.");
+            try {
+                return open(fallback);
+            } catch (IOException alsoUnusable) {
+                alsoUnusable.addSuppressed(unusable);
+                throw alsoUnusable;
+            }
+        }
+    }
+
+    private static FileStateStore open(Path home) throws IOException {
+        Path instancesDir = home.resolve("instances");
         Files.createDirectories(instancesDir);
 
         String baseName = InstanceIdentity.hash(InstanceIdentity.resolveIdentityString())
@@ -413,6 +439,20 @@ public final class FileStateStore implements StateStore, Closeable {
             return Path.of(explicit);
         }
         return Path.of(System.getProperty("user.home"), ".logaperture");
+    }
+
+    private static boolean isExplicitHome() {
+        String explicit = System.getProperty(HOME_PROPERTY);
+        return explicit != null && !explicit.isBlank();
+    }
+
+    /**
+     * Where state goes when the default home cannot be used (doc/specs/logctl-attach.md #8): a
+     * per-user directory under the temp directory. {@code logctl attach} writes the agent jar it
+     * loads to the same place when its own home is unwritable.
+     */
+    static Path fallbackHome() {
+        return Path.of(System.getProperty("java.io.tmpdir"), "logaperture-" + System.getProperty("user.name"));
     }
 
     private static FileLock acquireLock(Path lockFile) throws IOException {

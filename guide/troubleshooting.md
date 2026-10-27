@@ -78,9 +78,10 @@ On a plain JVM with Logback they aren't available yet. Elsewhere:
 
 ## A `sticky` change didn't come back after a restart
 
-- `logctl env` shows the state file. If its directory isn't writable by the JVM's user, LogAperture
-  can't save changes: set `-Dlogaperture.home` to a writable directory. This is common in
-  containers.
+- `logctl env` shows the state file. If it is under the system temp directory (`/tmp/logaperture-<user>`),
+  the default directory wasn't writable and LogAperture fell back; the system may clear it. Set
+  `-Dlogaperture.home` to a writable directory to keep changes. If you set that option and its
+  directory isn't writable, LogAperture can't save changes at all. This is common in containers.
 - Two JVMs started from the same directory share a state file name; the second can't keep `sticky`
   changes and says so in its log. Set `-Dlogaperture.instanceId`.
 
