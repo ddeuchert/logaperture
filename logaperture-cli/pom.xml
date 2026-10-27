@@ -34,7 +34,10 @@
     surface (doc/logaperture-spec.md §8.1, doc/specs/cli-transport.md). A
     standalone tool, never shaded into a customer artifact; it is a client
     of a running agent, not a peer of it, so it must not depend on
-    logaperture-agent (enforced below, mirroring core's own rule).
+    logaperture-agent (enforced below, mirroring core's own rule). It does
+    carry a copy of the shaded agent jar as an opaque resource, for
+    `logctl attach` to load (doc/specs/logctl-attach.md #2); no agent class
+    is on the CLI's class path.
   </description>
 
   <dependencies>
@@ -95,6 +98,63 @@
                 </bannedDependencies>
               </rules>
               <fail>true</fail>
+            </configuration>
+          </execution>
+          <execution>
+            <id>embedded-agent-jar-built</id>
+            <phase>prepare-package</phase>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireFilesExist>
+                  <files>
+                    <file>${project.parent.basedir}/logaperture-agent/target/logaperture-agent.jar</file>
+                  </files>
+                  <message>
+                    logaperture-cli embeds the shaded agent jar, which is not built. Build the agent first:
+                    mvn -pl logaperture-agent,logaperture-cli -am clean package
+                  </message>
+                </requireFilesExist>
+              </rules>
+              <fail>true</fail>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!--
+        The agent jar `logctl attach` loads is carried inside this jar, as the resource
+        agent/logaperture-agent.jar (doc/specs/logctl-attach.md #2). It is copied from the agent
+        module's output by path, like logaperture-dist does, because the agent's Maven artifact is
+        the thin jar, not the shaded one. This is not a dependency (banned above), so the agent
+        module must build first: it precedes this one in the root <modules>, and
+        `-pl logaperture-agent,logaperture-cli -am` builds both in that order. Bound to prepare-package, so a plain
+        `mvn test` needs no packaged agent jar; the CLI's own tests use a fixture jar. An agent jar
+        built before this run is stale if it was not built with `clean` (the shade step reuses the
+        previous shaded jar).
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>embed-agent-jar</id>
+            <phase>prepare-package</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.build.outputDirectory}/agent</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>${project.parent.basedir}/logaperture-agent/target</directory>
+                  <includes>
+                    <include>logaperture-agent.jar</include>
+                  </includes>
+                </resource>
+              </resources>
             </configuration>
           </execution>
         </executions>

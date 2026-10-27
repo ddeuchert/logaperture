@@ -89,6 +89,9 @@ final class Parser {
         boolean force = false;
         boolean keepHandlers = false;
         String from = null;
+        String vendorDefaultsFile = null;
+        String stormDetection = null;
+        String agentJarFile = null;
 
         for (int i = 0; i < argv.length; i++) {
             String arg = argv[i];
@@ -206,6 +209,27 @@ final class Parser {
                     }
                     reason = argv[i];
                 }
+                case "--vendor-defaults" -> {
+                    i++;
+                    if (i >= argv.length) {
+                        throw usage("--vendor-defaults needs a file.");
+                    }
+                    vendorDefaultsFile = argv[i];
+                }
+                case "--storm-detection" -> {
+                    i++;
+                    if (i >= argv.length || !(argv[i].equals("on") || argv[i].equals("off"))) {
+                        throw usage("--storm-detection needs 'on' or 'off'.");
+                    }
+                    stormDetection = argv[i];
+                }
+                case "--agent-jar" -> {
+                    i++;
+                    if (i >= argv.length) {
+                        throw usage("--agent-jar needs a file.");
+                    }
+                    agentJarFile = argv[i];
+                }
                 case "--from" -> {
                     i++;
                     if (i >= argv.length) {
@@ -282,6 +306,10 @@ final class Parser {
         boolean isApply = command.equals("apply");
         boolean isEnableDisable = command.equals("enable") || command.equals("disable");
 
+        boolean isAttach = command.equals("attach");
+        if ((vendorDefaultsFile != null || stormDetection != null || agentJarFile != null) && !isAttach) {
+            throw usage("--vendor-defaults, --storm-detection and --agent-jar apply only to 'attach'.");
+        }
         if (yes && !isSetLogger && !isAddRule && !isApply) {
             throw usage("--yes applies only to 'set logger', 'add rule' or 'apply recipe'.");
         }
@@ -473,6 +501,28 @@ final class Parser {
                 }
                 TierChoice tier = resolveSwitchTier(rest.subList(1, rest.size()));
                 yield Commands.setStormDetection(enable, reason, tier, json);
+            }
+            case "attach" -> {
+                if (rest.size() > 1) {
+                    throw usage("'attach' takes one process id: 'logctl attach [<pid>]'.");
+                }
+                Long attachPid = pid;
+                if (!rest.isEmpty()) {
+                    long positional;
+                    try {
+                        positional = Long.parseLong(rest.get(0));
+                    } catch (NumberFormatException e) {
+                        throw usage("'attach' needs a process id, and '" + rest.get(0) + "' is not a number.");
+                    }
+                    if (positional <= 0) {
+                        throw usage("the process id must be positive.");
+                    }
+                    if (pid != null && pid != positional) {
+                        throw usage("the process id is given twice, as " + positional + " and as --pid " + pid + ".");
+                    }
+                    attachPid = positional;
+                }
+                yield new AttachCommand(attachPid, vendorDefaultsFile, stormDetection, agentJarFile, json);
             }
             case "env" -> {
                 if (!rest.isEmpty()) {
@@ -785,7 +835,8 @@ final class Parser {
     /** The options that take a value: the word after one is its value, not a command word. */
     static final Set<String> VALUE_OPTIONS = Set.of("--out", "--frames", "--message-contains",
             "--message-contains-ignore-case", "--throwable", "--throwable-message-contains", "--below",
-            "--sample-full", "--pid", "--reason", "--from", "--limit");
+            "--sample-full", "--pid", "--reason", "--from", "--limit", "--vendor-defaults", "--storm-detection",
+            "--agent-jar");
 
     /**
      * The command words of a command line: everything that isn't an option or an option's value.

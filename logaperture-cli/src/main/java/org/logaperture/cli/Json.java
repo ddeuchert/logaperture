@@ -764,6 +764,20 @@ final class Json {
         }
     }
 
+    /** {@code attach}'s result: {@code state} is {@code active}, {@code loaded} (not up yet) or {@code already-running}. */
+    static String attach(long pid, String state, String version, String backend, String delivery, String agentJar,
+            String agentJarSource) {
+        return new Obj()
+                .raw("pid", Long.toString(pid))
+                .str("state", state)
+                .str("version", version)
+                .str("backend", backend)
+                .str("delivery", delivery)
+                .str("agentJar", agentJar)
+                .str("agentJarSource", agentJarSource)
+                .toString();
+    }
+
     private static String quote(String raw) {
         StringBuilder sb = new StringBuilder(raw.length() + 2).append('"');
         for (int i = 0; i < raw.length(); i++) {

@@ -21,12 +21,17 @@ import org.logaperture.bridge.Diagnostics;
 
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.Instrumentation;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Detects "Logback has loaded" via a one-shot {@link ClassFileTransformer}
  * registered at {@code premain} time — the reliable, class-load-time
  * pattern per doc/logaperture-spec.md §4.1, not the M0 spike's {@code
  * Instrumentation.getAllLoadedClasses()} polling shortcut.
+ *
+ * <p>A class that is already loaded when the agent starts (a dynamic attach, doc/specs/
+ * logctl-attach.md #7) is found by scanning {@link Instrumentation#getAllLoadedClasses()} once, after
+ * the transformer is registered.
  *
  * <p>Lives in {@code logaperture-container-none} because it is the {@code
  * none} integration's readiness gate (doc/specs/wildfly-support.md, Slice 1:
@@ -47,6 +52,7 @@ import java.lang.instrument.Instrumentation;
 final class LogbackLoadDetector {
 
     private static final String TARGET_CLASS_INTERNAL_NAME = "ch/qos/logback/classic/LoggerContext";
+    private static final String TARGET_CLASS_NAME = TARGET_CLASS_INTERNAL_NAME.replace('/', '.');
     private static final long POLL_INTERVAL_MS = 50;
     private static final int MAX_POLL_ATTEMPTS = 40; // ~2s total
 
@@ -54,6 +60,28 @@ final class LogbackLoadDetector {
     }
 
     static void awaitLogbackAndThen(Instrumentation inst, Runnable onReady) {
+        Runnable confirmBoundThenRun = () -> confirmBoundThenRun(onReady);
+        watch(inst, confirmBoundThenRun);
+    }
+
+    /**
+     * Runs {@code startDetection} on a daemon thread, once, as soon as {@code LoggerContext} is
+     * loaded: either by a load seen from now on, or because it was loaded already (an attach,
+     * doc/specs/logctl-attach.md #7 -- the class-load event has long passed, so the transformer
+     * alone would wait forever). The transformer is registered before the scan, so a load that
+     * lands between the two is seen by at least one of them; a flag makes it start once. A {@code
+     * -javaagent} start never finds the class loaded, so for it this is the transformer path only.
+     * Package-visible for the test.
+     */
+    static void watch(Instrumentation inst, Runnable startDetection) {
+        AtomicBoolean started = new AtomicBoolean();
+        Runnable startOnce = () -> {
+            if (started.compareAndSet(false, true)) {
+                Thread detectorThread = new Thread(startDetection, "logaperture-detector");
+                detectorThread.setDaemon(true);
+                detectorThread.start();
+            }
+        };
         ClassFileTransformer transformer = new ClassFileTransformer() {
             @Override
             public byte[] transform(
@@ -64,14 +92,16 @@ final class LogbackLoadDetector {
                     byte[] classfileBuffer) {
                 if (TARGET_CLASS_INTERNAL_NAME.equals(className)) {
                     inst.removeTransformer(this); // one-shot: none has no reset event to re-detect
-                    Thread detectorThread = new Thread(() -> confirmBoundThenRun(onReady), "logaperture-detector");
-                    detectorThread.setDaemon(true);
-                    detectorThread.start();
+                    startOnce.run();
                 }
                 return null; // unmodified -- a signal, not an instrumentation of behavior
             }
         };
         inst.addTransformer(transformer); // 1-arg form: observes new loads only, no retransform needed
+        if (JulLoadDetector.isLoaded(inst.getAllLoadedClasses(), TARGET_CLASS_NAME)) {
+            inst.removeTransformer(transformer);
+            startOnce.run();
+        }
     }
 
     private static void confirmBoundThenRun(Runnable onReady) {
