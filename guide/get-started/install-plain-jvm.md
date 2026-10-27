@@ -47,6 +47,10 @@ controlled there.
     export JAVA_TOOL_OPTIONS="-javaagent:/opt/logaperture/lib/logaperture-agent.jar"
     ```
 
+!!! tip "Try it first"
+    To see LogAperture on a running application before you change its launch line, use
+    [`logctl attach`](../how-to/try-without-restart.md). It lasts until the application stops.
+
 ## Check it works
 
 ```sh

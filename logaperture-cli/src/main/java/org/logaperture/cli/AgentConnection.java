@@ -95,7 +95,7 @@ final class AgentConnection implements ControlPlane {
         Quietly.detach(vm);
     }
 
-    private static CliError attachFailure(long pid, Exception cause) {
+    static CliError attachFailure(long pid, Exception cause) {
         if (ProcessHandle.of(pid).isEmpty()) {
             return new CliError(CliError.NO_JVM, "No process with PID " + pid + ".");
         }

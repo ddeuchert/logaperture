@@ -62,6 +62,11 @@ logging on the running server. LogAperture never edits `standalone.xml`.
 
 4. **Restart WildFly.**
 
+!!! tip "Try it first"
+    To see LogAperture on a running server before you edit `standalone.conf`, use
+    [`logctl attach`](../how-to/try-without-restart.md). It lasts until the server stops, and changes
+    nothing in `standalone.xml`.
+
 ## Check it works
 
 The server log has one line from LogAperture at startup and no

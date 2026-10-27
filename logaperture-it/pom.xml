@@ -64,6 +64,16 @@
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
+    <!--
+      AttachPlainJvmIT's fixture application logs through Logback; the IT compiles it and runs it in its own
+      JVM with the jars these bring (found through their code sources), then attaches to it
+      (doc/specs/logctl-attach.md "Test plan").
+    -->
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>testcontainers</artifactId>

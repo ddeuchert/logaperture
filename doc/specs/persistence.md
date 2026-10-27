@@ -236,6 +236,12 @@ ${logaperture.home}/instances/<instanceHash>-<slug>.state.yaml
   per-user home is fixed and discoverable; a per-launch working directory is neither, and an
   operator looking for "where did this JVM's state go" would otherwise need to already know where
   the process was started from.
+- **Fallback** (doc/specs/logctl-attach.md #8): when the default home's `instances/` directory can't be
+  created or its lock file opened (a read-only container image, a service account with no home), the
+  state goes to `${java.io.tmpdir}/logaperture-<user>/instances/` instead, with one warning that
+  names it and says the system may clear it. A `-Dlogaperture.home` the operator set is never
+  replaced this way, and a lock held by another live process (the collision case below) is not a
+  reason to move: both still degrade as described. `logctl env` shows the path in use.
 - `<instanceHash>` disambiguates JVMs sharing that one discoverable home. Computed once at agent
   install:
   1. `identityString` = the explicit `logaperture.instanceId` agent/system property if set;

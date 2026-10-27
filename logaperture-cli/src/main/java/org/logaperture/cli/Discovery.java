@@ -214,12 +214,12 @@ final class Discovery {
         return Format.table(headers, rows);
     }
 
-    private static String started(Candidate candidate) {
+    static String started(Candidate candidate) {
         return candidate.startedAt() == null ? "?" : STARTED.format(candidate.startedAt());
     }
 
     /** {@code user.dir}, with this user's home shortened to {@code ~}; {@code ?} if the JVM didn't say. */
-    private static String directory(Candidate candidate) {
+    static String directory(Candidate candidate) {
         String dir = candidate.directory();
         if (dir == null) {
             return "?";

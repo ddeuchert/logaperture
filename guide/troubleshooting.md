@@ -17,6 +17,18 @@ No LogAperture-enabled JVM found. Start the application with -javaagent:logapert
 
 See [Work with several JVMs](how-to/several-jvms.md) for "Several candidates" and attach errors.
 
+## `logctl attach` didn't work
+
+- *`was started with dynamic agent loading turned off`*: that JVM has `-XX:-EnableDynamicAgentLoading`.
+  No agent can be loaded into it. Restart it with `-javaagent`, or without that flag.
+- *`Can't attach to PID … run as the user that owns that process`*: run `logctl` as the JVM's user.
+- *`This Java has no attach support`*: run `logctl` with a JDK, not a JRE.
+- *`loaded … but not active yet`*: the application hasn't logged through Logback or
+  `java.util.logging`, and nothing is wrong until it does. If it logs through another backend, such as
+  Log4j 2, LogAperture can't control it. See [Try without a restart](how-to/try-without-restart.md).
+- *A JVM that `jps` shows is missing from the list*: `logctl attach` lists only JVMs that don't have
+  LogAperture yet, and only ones it could attach to as your user.
+
 ## `logctl` needs a JDK
 
 `logctl` uses the JVM attach mechanism, which only a JDK has. Run it with a JDK, not just a JRE. The
@@ -78,9 +90,10 @@ On a plain JVM with Logback they aren't available yet. Elsewhere:
 
 ## A `sticky` change didn't come back after a restart
 
-- `logctl env` shows the state file. If its directory isn't writable by the JVM's user, LogAperture
-  can't save changes: set `-Dlogaperture.home` to a writable directory. This is common in
-  containers.
+- `logctl env` shows the state file. If it is under the system temp directory (`/tmp/logaperture-<user>`),
+  the default directory wasn't writable and LogAperture fell back; the system may clear it. Set
+  `-Dlogaperture.home` to a writable directory to keep changes. If you set that option and its
+  directory isn't writable, LogAperture can't save changes at all. This is common in containers.
 - Two JVMs started from the same directory share a state file name; the second can't keep `sticky`
   changes and says so in its log. Set `-Dlogaperture.instanceId`.
 

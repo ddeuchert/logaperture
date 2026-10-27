@@ -314,6 +314,29 @@ final class HelpTopics {
                     List.of(new Option("--limit <n>", "Show the worst n storms. Default: every one.")),
                     List.of("logctl enable storms for 30m", "logctl storms", "logctl disable storms")),
 
+            new HelpTopic("attach", "Load the agent into a JVM that is already running.",
+                    List.of("logctl attach [<pid>] [--vendor-defaults <file>] [--storm-detection on|off] "
+                            + "[--agent-jar <file>]"),
+                    List.of("Loads the LogAperture agent into a JVM that was started without `-javaagent`, so you "
+                                    + "can use `logctl` on it without a restart. Without a PID, on a terminal, it lists "
+                                    + "the JVMs it can attach to and asks which; otherwise it needs the PID.",
+                            "The agent starts when the application first logs through Logback or "
+                                    + "`java.util.logging`, which is usually already. `attach` waits up to ten "
+                                    + "seconds and says whether it is active. A JVM that already runs LogAperture is "
+                                    + "left alone, and that is not an error.",
+                            "An attach lasts until the JVM stops. To keep LogAperture, add `-javaagent` to its launch "
+                                    + "line. A JVM started with `-XX:-EnableDynamicAgentLoading` refuses, and Java 21 "
+                                    + "and later print a warning on the JVM's own standard error.",
+                            "The agent jar is the one carried inside `logctl`, unless a newer one of the same major "
+                                    + "version sits next to it. Loading code into another process is a bigger step than "
+                                    + "the other commands: you can only do it to a JVM you could attach a debugger to."),
+                    List.of(new Option("--vendor-defaults <file>", "Start the agent with this vendor defaults file."),
+                            new Option("--storm-detection on|off", "Start the agent with storm detection on or off."),
+                            new Option("--agent-jar <file>", "Load this agent jar instead. It must be readable by "
+                                    + "the JVM you attach to, so use a path that exists inside a container.")),
+                    List.of("logctl attach", "logctl attach 12345",
+                            "logctl attach 12345 --vendor-defaults vendor-defaults.yaml")),
+
             new HelpTopic("env", "Print facts for a bug report.",
                     List.of("logctl env"),
                     List.of("Prints one block to paste into a bug report: agent and `logctl` versions, Java, the "

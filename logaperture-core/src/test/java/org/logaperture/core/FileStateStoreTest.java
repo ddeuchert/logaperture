@@ -387,4 +387,50 @@ class FileStateStoreTest {
             assertTrue(store.loadStormDetection().isEmpty());
         }
     }
+
+    /** doc/specs/logctl-attach.md #8: the default home cannot be used, so state goes under the temp directory. */
+    @Test
+    void anUnusableDefaultHomeFallsBackToTheTempDirectory(@TempDir Path scratch) throws IOException {
+        String originalHome = System.getProperty("user.home");
+        String originalTmp = System.getProperty("java.io.tmpdir");
+        try {
+            System.clearProperty("logaperture.home");
+            Path blocker = Files.writeString(scratch.resolve("a-file"), "not a directory");
+            System.setProperty("user.home", blocker.toString()); // ~/.logaperture cannot be created under a file
+            System.setProperty("java.io.tmpdir", Files.createDirectory(scratch.resolve("tmp")).toString());
+
+            try (FileStateStore store = FileStateStore.open()) {
+                store.save(sampleOverride("com.acme.Kept"));
+                Path location = store.location().orElseThrow();
+                assertTrue(location.startsWith(scratch.resolve("tmp").toAbsolutePath()), location.toString());
+                assertTrue(location.toString().contains("logaperture-" + System.getProperty("user.name")));
+                assertTrue(Files.isRegularFile(location));
+            }
+        } finally {
+            System.setProperty("user.home", originalHome);
+            System.setProperty("java.io.tmpdir", originalTmp);
+        }
+    }
+
+    @Test
+    void aHomeNamedWithTheSystemPropertyIsNeverReplaced(@TempDir Path scratch) throws IOException {
+        Path blocker = Files.writeString(scratch.resolve("a-file"), "not a directory");
+        System.setProperty("logaperture.home", blocker.resolve("home").toString());
+
+        assertThrows(IOException.class, FileStateStore::open);
+    }
+
+    @Test
+    void aLockedIdentityInTheDefaultHomeIsNotHiddenByTheFallback(@TempDir Path scratch) throws IOException {
+        String originalHome = System.getProperty("user.home");
+        try {
+            System.clearProperty("logaperture.home");
+            System.setProperty("user.home", scratch.toString());
+            try (FileStateStore first = FileStateStore.open()) {
+                assertThrows(FileStateStore.InstanceLockedException.class, FileStateStore::open);
+            }
+        } finally {
+            System.setProperty("user.home", originalHome);
+        }
+    }
 }

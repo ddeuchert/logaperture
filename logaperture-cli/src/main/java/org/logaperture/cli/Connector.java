@@ -42,6 +42,11 @@ interface Connector {
      */
     ControlPlane connect(Long explicitPid);
 
+    /** What loads an agent into a JVM for {@code attach}; a test's fake connector overrides it. */
+    default JvmAttacher attacher() {
+        return JvmAttacher.REAL;
+    }
+
     /**
      * As {@link #connect(Long)}, but with several candidate JVMs discovery may ask which one
      * (doc/specs/pick-jvm.md) -- through {@code jvmQuestion}, or never when it is {@code null}. A

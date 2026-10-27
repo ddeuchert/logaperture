@@ -136,6 +136,7 @@ nav:
       - Log storms: how-to/storms.md
       - Undo changes: how-to/undo-changes.md
       - Use recipes: how-to/recipes.md
+      - Try without a restart: how-to/try-without-restart.md
       - Work with several JVMs: how-to/several-jvms.md
       - Script logctl: how-to/scripting.md
   - Concepts:

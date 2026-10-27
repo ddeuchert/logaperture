@@ -54,6 +54,7 @@ On a terminal, `list`, `set`, `reset`, `add rule` and `alter rule` ask for anyth
 | [`doctor`](#doctor) | Check the logging configuration for common problems. |
 | [`top`](#top) | Show which loggers write the most. |
 | [`storms`](#storms) | Detect log storms, and switch detection on and off. |
+| [`attach`](#attach) | Load the agent into a JVM that is already running. |
 | [`env`](#env) | Print facts for a bug report. |
 | [`export vendor-defaults`](#export-vendor-defaults) | Write a vendor defaults file from the current settings. |
 
@@ -505,6 +506,41 @@ To have it on from the start, start the agent with `-javaagent:logaperture-agent
 logctl enable storms for 30m
 logctl storms
 logctl disable storms
+```
+
+## attach {#attach}
+
+Load the agent into a JVM that is already running.
+
+```text
+logctl attach [<pid>] [--vendor-defaults <file>] [--storm-detection on|off] [--agent-jar <file>]
+```
+
+Loads the LogAperture agent into a JVM that was started without `-javaagent`, so you can use `logctl` on it without a restart. Without a PID, on a terminal, it lists the JVMs it can attach to and asks which; otherwise it needs the PID.
+
+The agent starts when the application first logs through Logback or `java.util.logging`, which is usually already. `attach` waits up to ten seconds and says whether it is active. A JVM that already runs LogAperture is left alone, and that is not an error.
+
+An attach lasts until the JVM stops. To keep LogAperture, add `-javaagent` to its launch line. A JVM started with `-XX:-EnableDynamicAgentLoading` refuses, and Java 21 and later print a warning on the JVM's own standard error.
+
+The agent jar is the one carried inside `logctl`, unless a newer one of the same major version sits next to it. Loading code into another process is a bigger step than the other commands: you can only do it to a JVM you could attach a debugger to.
+
+**Options**
+
+`--vendor-defaults <file>`
+:   Start the agent with this vendor defaults file.
+
+`--storm-detection on|off`
+:   Start the agent with storm detection on or off.
+
+`--agent-jar <file>`
+:   Load this agent jar instead. It must be readable by the JVM you attach to, so use a path that exists inside a container.
+
+**Examples**
+
+```sh
+logctl attach
+logctl attach 12345
+logctl attach 12345 --vendor-defaults vendor-defaults.yaml
 ```
 
 ## env {#env}

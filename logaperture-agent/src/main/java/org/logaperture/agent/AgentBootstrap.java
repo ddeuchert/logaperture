@@ -20,6 +20,7 @@ import org.logaperture.container.none.NoneContainerIntegration;
 import org.logaperture.container.quarkus.QuarkusContainerIntegration;
 import org.logaperture.container.wildfly.WildFlyContainerIntegration;
 import org.logaperture.core.AggregateLevelControl;
+import org.logaperture.core.AttachedStart;
 import org.logaperture.core.AuditLog;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.LibraryRecipeScanner;
@@ -97,6 +98,9 @@ final class AgentBootstrap {
             Diagnostics.warn(duplicateStartMessage(entry));
             return;
         }
+        if (entry == Entry.AGENTMAIN) {
+            AttachedStart.mark(); // doc/specs/logctl-attach.md #9: for doctor's agent.attached finding
+        }
         if (!EngineStartup.claim(EngineStartup.Delivery.AGENT)) {
             // doc/specs/quarkus-extension.md #3: only an attach can get here, into a JVM where the
             // Quarkus extension already runs. premain always claims first.
@@ -125,6 +129,9 @@ final class AgentBootstrap {
             Consumer<AggregateLevelControl> onFirstContextReady = EngineStartup.onFirstContextReady(container.id(),
                     EngineStartup.Delivery.AGENT, policy, auditLog, vendorDefaults, recipeScanner(inst));
             container.activate(inst, policy, auditLog, vendorDefaults, stormDetection, onFirstContextReady);
+            if (entry == Entry.AGENTMAIN) {
+                AttachWatch.start(container.id()); // doc/specs/logctl-attach.md #6: say why, if nothing comes up
+            }
         } catch (Throwable t) {
             Diagnostics.error("LogAperture agent bootstrap failed to start", t);
         }

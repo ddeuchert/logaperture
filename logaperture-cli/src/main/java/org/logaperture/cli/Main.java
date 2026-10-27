@@ -116,8 +116,13 @@ public final class Main {
 
         // pick-jvm.md J1: discovery may ask which JVM only on a terminal, and never with --json or --yes.
         Prompter jvmQuestion = interactive && !invocation.neverAsk() ? new Prompter(in, err) : null;
-        try (ControlPlane controlPlane = connector.connect(invocation.pid(), jvmQuestion)) {
-            return invocation.command().run(controlPlane.mbean(), out, err, in, interactive);
+        try {
+            if (invocation.command() instanceof Standalone standalone) {
+                return standalone.run(invocation.pid(), out, err, jvmQuestion, connector);
+            }
+            try (ControlPlane controlPlane = connector.connect(invocation.pid(), jvmQuestion)) {
+                return invocation.command().run(controlPlane.mbean(), out, err, in, interactive);
+            }
         } catch (CliError e) {
             err.println(e.getMessage());
             return e.exitCode();
