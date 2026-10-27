@@ -201,4 +201,32 @@ class AgentJarTest {
         assertNull(AgentJar.Version.parse("dev"));
         assertNull(AgentJar.Version.parse(null));
     }
+
+    @Test
+    void anExistingFileWithTheNameButOtherContentIsNotTrusted() throws IOException {
+        byte[] real = agentJar("1.2.0", true);
+        Path expected = AgentJar.extract(real, "1.2.0", extractTo());
+        byte[] planted = real.clone();
+        planted[planted.length - 1] ^= 1; // same length, different bytes
+        Files.write(expected, planted);
+
+        Path again = AgentJar.extract(real, "1.2.0", extractTo());
+
+        assertEquals(expected, again);
+        assertTrue(java.util.Arrays.equals(real, Files.readAllBytes(again)), "the planted bytes were replaced");
+    }
+
+    @Test
+    void aSymbolicLinkWithTheNameIsNotFollowed() throws IOException {
+        byte[] real = agentJar("1.2.0", true);
+        Path expected = AgentJar.extract(real, "1.2.0", extractTo());
+        Files.delete(expected);
+        Path elsewhere = Files.write(dir.resolve("elsewhere.jar"), agentJar("9.9.9", true));
+        Files.createSymbolicLink(expected, elsewhere);
+
+        Path fallback = dir.resolve("fallback").resolve("agent");
+        Path written = AgentJar.extract(real, "1.2.0", List.of(expected.getParent(), fallback));
+
+        assertEquals(fallback, written.getParent(), "the directory holding the link was passed over");
+    }
 }

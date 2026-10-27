@@ -115,6 +115,8 @@ public final class FileStateStore implements StateStore, Closeable {
                     + "); keeping state in " + fallback.resolve("instances") + " instead, which the system may "
                     + "clear. Set -D" + HOME_PROPERTY + "=<dir> to choose one.");
             try {
+                // The temp directory is shared: only a directory that is ours alone may hold state.
+                PrivateDirectory.ensure(fallback.resolve("instances"), Path.of(System.getProperty("java.io.tmpdir")));
                 return open(fallback);
             } catch (IOException alsoUnusable) {
                 alsoUnusable.addSuppressed(unusable);

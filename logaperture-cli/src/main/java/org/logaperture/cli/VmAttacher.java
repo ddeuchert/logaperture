@@ -84,15 +84,8 @@ final class VmAttacher implements JvmAttacher {
         try {
             vm = VirtualMachine.attach(Long.toString(pid));
             vm.loadAgent(agentJar.toString(), agentArgs);
-            long deadline = System.nanoTime() + wait.toNanos();
-            while (true) {
-                Properties properties = vm.getSystemProperties();
-                String version = properties.getProperty(Discovery.MARKER_PROPERTY);
-                if (version != null || System.nanoTime() - deadline >= 0) {
-                    return new Loaded(version, javaFeatureOf(properties.getProperty("java.specification.version")));
-                }
-                Thread.sleep(POLL_MILLIS);
-            }
+            VirtualMachine attached = vm;
+            return awaitMarker(attached::getSystemProperties, wait, POLL_MILLIS);
         } catch (LinkageError noAttachModule) {
             throw noJdkAttach();
         } catch (InterruptedException interrupted) {
@@ -102,6 +95,34 @@ final class VmAttacher implements JvmAttacher {
             throw loadFailure(pid, e);
         } finally {
             Quietly.detach(vm);
+        }
+    }
+
+    /** Where the marker is read from; the real one is {@code VirtualMachine.getSystemProperties}. */
+    @FunctionalInterface
+    interface Properties_ {
+        Properties get() throws Exception;
+    }
+
+    /**
+     * Polls for the marker for up to {@code wait}. The agent is already loaded by now, so a poll that fails
+     * (the target went away, its attach socket closed) is not a failed attach: it is a load nobody could
+     * confirm, and reported as that. Package-visible for the test.
+     */
+    static Loaded awaitMarker(Properties_ source, Duration wait, long pollMillis) throws InterruptedException {
+        long deadline = System.nanoTime() + wait.toNanos();
+        while (true) {
+            Properties properties;
+            try {
+                properties = source.get();
+            } catch (Exception cannotAsk) {
+                return new Loaded(null, 0);
+            }
+            String version = properties.getProperty(Discovery.MARKER_PROPERTY);
+            if (version != null || System.nanoTime() - deadline >= 0) {
+                return new Loaded(version, javaFeatureOf(properties.getProperty("java.specification.version")));
+            }
+            Thread.sleep(pollMillis);
         }
     }
 

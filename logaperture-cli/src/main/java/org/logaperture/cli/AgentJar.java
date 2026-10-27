@@ -15,6 +15,8 @@
  */
 package org.logaperture.cli;
 
+import org.logaperture.core.PrivateDirectory;
+
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,6 +28,7 @@ import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.jar.Attributes;
@@ -43,7 +46,8 @@ import java.util.regex.Pattern;
  *
  * <p>The embedded copy has to be a real file for {@code VirtualMachine.loadAgent}, and the target
  * JVM keeps that file on its class path until it exits, so it is written once to a stable
- * directory and <b>never deleted</b>. The file name carries a digest of the content, so a rebuilt
+ * directory and <b>never deleted</b>. The directory is private to this user when it sits under the shared
+ * temp directory, and an existing file is reused only if its bytes are what would be written. The file name carries a digest of the content, so a rebuilt
  * jar with the same version string never overwrites one a running JVM still has open.
  */
 final class AgentJar {
@@ -197,10 +201,15 @@ final class AgentJar {
         List<String> failures = new ArrayList<>();
         for (Path dir : dirs) {
             try {
-                Files.createDirectories(dir);
+                // Under the temp directory, which other users can write to, the directory must be ours alone:
+                // the jar written here is loaded into another process.
+                PrivateDirectory.ensure(dir, Path.of(System.getProperty("java.io.tmpdir")));
                 Path target = dir.resolve(name);
-                if (Files.isRegularFile(target) && Files.size(target) == bytes.length) {
-                    return target.toAbsolutePath(); // the name carries the digest: same name, same content
+                if (Files.isSymbolicLink(target)) {
+                    throw new IOException(target + " is a symbolic link");
+                }
+                if (Files.isRegularFile(target) && Arrays.equals(Files.readAllBytes(target), bytes)) {
+                    return target.toAbsolutePath(); // the content is what we would write: reuse it
                 }
                 Path partial = Files.createTempFile(dir, "logaperture-agent-", ".part");
                 try {

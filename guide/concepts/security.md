@@ -23,7 +23,8 @@ If you can already attach a debugger to the JVM, LogAperture gives you no access
 JVM that doesn't have it. That is the same operation a debugger or `jcmd` can do, so it needs the same
 right, and nothing more. The agent jar it loads is the one carried inside `logctl`, or one you name
 with `--agent-jar`; `logctl` downloads nothing. The JVM keeps that jar open for as long as it runs, so
-only the JVM's own user should be able to write to the directory it was put in.
+only the JVM's own user should be able to write to the directory it was put in. `logctl` checks that
+for a directory under `/tmp`, and uses it only if you own it and no one else can write to it.
 
 ## What gets recorded
 

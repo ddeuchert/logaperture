@@ -70,6 +70,11 @@ The `logctl` jar carries its own copy of the agent jar, written once to
 never deleted, because the JVM keeps it open. A newer agent jar of the same major version next to the
 `logctl` jar is used instead. `--agent-jar <file>` always wins.
 
+A copy that is already there is reused only if its contents are exactly what `logctl` would write. Under
+`/tmp`, `logctl` uses the directory only if you own it and nobody else can write to it. Each new `logctl`
+version adds a copy of about 0.6 MB, and old ones are left alone, because a JVM you attached to earlier
+may still be running from one. Delete copies that no running JVM uses.
+
 The JVM you attach to opens that file, so it must exist where that JVM runs. For a JVM in a
 container, run `logctl` inside the container, or pass `--agent-jar` with a path that exists there.
 

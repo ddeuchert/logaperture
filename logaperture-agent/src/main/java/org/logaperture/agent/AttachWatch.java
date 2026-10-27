@@ -76,6 +76,9 @@ final class AttachWatch {
                 said = true;
             }
             sleepMillis.accept(POLL_MILLIS);
+            if (Thread.currentThread().isInterrupted()) {
+                return; // the sleep puts the flag back; carrying on would spin, every sleep ending at once
+            }
         }
     }
 

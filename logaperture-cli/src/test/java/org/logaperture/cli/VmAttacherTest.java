@@ -80,4 +80,38 @@ class VmAttacherTest {
         assertEquals(0, VmAttacher.javaFeatureOf(null));
         assertEquals(0, VmAttacher.javaFeatureOf("x"));
     }
+
+    @Test
+    void aPollThatFailsAfterTheLoadIsLoadedNotConfirmedNotAFailure() throws Exception {
+        int[] calls = {0};
+        VmAttacher.Properties_ dropsOnTheSecondAsk = () -> {
+            if (++calls[0] == 2) {
+                throw new IOException("connection reset");
+            }
+            return new java.util.Properties();
+        };
+
+        JvmAttacher.Loaded loaded = VmAttacher.awaitMarker(dropsOnTheSecondAsk, java.time.Duration.ofSeconds(5), 1);
+
+        assertEquals(null, loaded.version());
+        assertEquals(2, calls[0]);
+    }
+
+    @Test
+    void theMarkerEndsThePollAtOnce() throws Exception {
+        java.util.Properties up = new java.util.Properties();
+        up.setProperty(Discovery.MARKER_PROPERTY, "1.1.0");
+        up.setProperty("java.specification.version", "21");
+
+        JvmAttacher.Loaded loaded = VmAttacher.awaitMarker(() -> up, java.time.Duration.ofSeconds(5), 1);
+
+        assertEquals("1.1.0", loaded.version());
+        assertEquals(21, loaded.javaVersion());
+    }
+
+    @Test
+    void noMarkerWithinTheWaitIsLoadedNotActive() throws Exception {
+        JvmAttacher.Loaded loaded = VmAttacher.awaitMarker(java.util.Properties::new, java.time.Duration.ofMillis(50), 5);
+        assertEquals(null, loaded.version());
+    }
 }

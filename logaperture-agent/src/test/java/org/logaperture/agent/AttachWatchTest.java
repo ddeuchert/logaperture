@@ -72,4 +72,17 @@ class AttachWatchTest {
     void anotherContainerStartsNoWatch() {
         AttachWatch.start("wildfly"); // returns at once; nothing to observe, and it must not throw
     }
+
+    @Test
+    void anInterruptedWatchStopsInsteadOfSpinning() {
+        int[] sleeps = {0};
+        AttachWatch.run(() -> false, clock::get, millis -> {
+            sleeps[0]++;
+            Thread.currentThread().interrupt(); // what AttachWatch.sleep leaves behind
+        }, m -> lines.add("notice: " + m), m -> lines.add("warn: " + m));
+
+        assertTrue(Thread.interrupted(), "the flag is left set for the thread's owner");
+        assertEquals(1, sleeps[0]);
+        assertEquals(List.of(), lines);
+    }
 }

@@ -397,7 +397,7 @@ class FileStateStoreTest {
             System.clearProperty("logaperture.home");
             Path blocker = Files.writeString(scratch.resolve("a-file"), "not a directory");
             System.setProperty("user.home", blocker.toString()); // ~/.logaperture cannot be created under a file
-            System.setProperty("java.io.tmpdir", scratch.resolve("tmp").toString());
+            System.setProperty("java.io.tmpdir", Files.createDirectory(scratch.resolve("tmp")).toString());
 
             try (FileStateStore store = FileStateStore.open()) {
                 store.save(sampleOverride("com.acme.Kept"));
