@@ -125,6 +125,9 @@ final class AgentBootstrap {
             Consumer<AggregateLevelControl> onFirstContextReady = EngineStartup.onFirstContextReady(container.id(),
                     EngineStartup.Delivery.AGENT, policy, auditLog, vendorDefaults, recipeScanner(inst));
             container.activate(inst, policy, auditLog, vendorDefaults, stormDetection, onFirstContextReady);
+            if (entry == Entry.AGENTMAIN) {
+                AttachWatch.start(container.id()); // doc/specs/logctl-attach.md #6: say why, if nothing comes up
+            }
         } catch (Throwable t) {
             Diagnostics.error("LogAperture agent bootstrap failed to start", t);
         }
