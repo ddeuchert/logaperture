@@ -779,6 +779,8 @@
       
         
       
+        
+      
     
     
     
@@ -1007,6 +1009,34 @@
     
   
     Use recipes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/try-without-restart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Try without a restart
   
 
     
@@ -1912,6 +1942,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#attaching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attaching
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Attaching">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#attach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        attach
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2363,6 +2421,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#attaching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attaching
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Attaching">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#attach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        attach
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2437,7 +2523,7 @@ that would need an answer fails instead, as it does off a terminal.</p>
 </tr>
 <tr>
 <td><code>4</code></td>
-<td>Several JVMs with the agent were found, and <code>logctl</code> couldn't ask which: pass <code>--pid</code>.</td>
+<td>Several JVMs were found, and <code>logctl</code> couldn't ask which: pass <code>--pid</code> (for <code>attach</code>, the process id).</td>
 </tr>
 <tr>
 <td><code>5</code></td>
@@ -2864,6 +2950,17 @@ reports <code>agent</code> for it. From the extension on Quarkus:</p>
 <span class="w">  </span><span class="nt">"delivery"</span><span class="p">:</span><span class="w"> </span><span class="s2">"extension"</span>
 <span class="p">}</span>
 </code></pre></div>
+<h2 id="attaching">Attaching<a class="headerlink" href="#attaching" title="Permanent link">&para;</a></h2>
+<h3 id="attach">attach<a class="headerlink" href="#attach" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>attach<span class="w"> </span><span class="m">1344371</span><span class="w"> </span>--json
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">"pid"</span><span class="p">:</span><span class="mi">1344371</span><span class="p">,</span><span class="nt">"state"</span><span class="p">:</span><span class="s2">"active"</span><span class="p">,</span><span class="nt">"version"</span><span class="p">:</span><span class="s2">"1.1.0"</span><span class="p">,</span><span class="nt">"backend"</span><span class="p">:</span><span class="s2">"java.util.logging (JUL)"</span><span class="p">,</span><span class="nt">"delivery"</span><span class="p">:</span><span class="kc">null</span><span class="p">,</span><span class="nt">"agentJar"</span><span class="p">:</span><span class="s2">"/home/dev/.logaperture/agent/logaperture-agent-1.1.0-47ad08a130b3.jar"</span><span class="p">,</span><span class="nt">"agentJarSource"</span><span class="p">:</span><span class="s2">"embedded"</span><span class="p">}</span>
+</code></pre></div>
+<p><code>state</code> is <code>active</code>, <code>loaded</code> (the agent is in the JVM but waiting for the application to log) or
+<code>already-running</code>. For <code>already-running</code>, <code>delivery</code> is <code>agent</code> or <code>extension</code> and <code>agentJar</code> is
+<code>null</code>. <code>agentJarSource</code> is <code>explicit</code> (<code>--agent-jar</code>), <code>beside-cli</code> or <code>embedded</code>. <code>backend</code> is
+<code>null</code> when the agent has not started or does not name one. Without a process id, <code>--json</code> never
+asks which JVM: it exits with code 4.</p>
 
 
 

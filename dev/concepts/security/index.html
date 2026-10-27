@@ -779,6 +779,8 @@
       
         
       
+        
+      
     
     
     
@@ -1007,6 +1009,34 @@
     
   
     Use recipes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/try-without-restart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Try without a restart
   
 
     
@@ -2019,6 +2049,12 @@ debuggers use. It works only on the same machine, and only for the operating-sys
 runs as. LogAperture adds no accounts or passwords of its own: whoever can run commands as the
 JVM's user can use <code>logctl</code>, and nobody else can.</p>
 <p>If you can already attach a debugger to the JVM, LogAperture gives you no access you didn't have.</p>
+<p><code>logctl attach</code> goes one step further than the other commands: it loads LogAperture's agent into a
+JVM that doesn't have it. That is the same operation a debugger or <code>jcmd</code> can do, so it needs the same
+right, and nothing more. The agent jar it loads is the one carried inside <code>logctl</code>, or one you name
+with <code>--agent-jar</code>; <code>logctl</code> downloads nothing. The JVM keeps that jar open for as long as it runs, so
+only the JVM's own user should be able to write to the directory it was put in. <code>logctl</code> checks that
+for a directory under <code>/tmp</code>, and uses it only if you own it and no one else can write to it.</p>
 <h2 id="what-gets-recorded">What gets recorded<a class="headerlink" href="#what-gets-recorded" title="Permanent link">&para;</a></h2>
 <p>Every change is written to the <a href="../../reference/audit-log/">audit trail</a>: what changed, from what to
 what, who (the JVM's user), why (<code>--reason</code>), and what made the change, whether <code>logctl</code>, a timer

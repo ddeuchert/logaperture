@@ -779,6 +779,8 @@
       
         
       
+        
+      
     
     
     
@@ -1007,6 +1009,34 @@
     
   
     Use recipes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/try-without-restart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Try without a restart
   
 
     
@@ -1772,6 +1802,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#attach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        attach
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#env" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2272,6 +2313,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#attach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        attach
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#env" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2404,6 +2456,10 @@
 <tr>
 <td><a href="#storms"><code>storms</code></a></td>
 <td>Detect log storms, and switch detection on and off.</td>
+</tr>
+<tr>
+<td><a href="#attach"><code>attach</code></a></td>
+<td>Load the agent into a JVM that is already running.</td>
 </tr>
 <tr>
 <td><a href="#env"><code>env</code></a></td>
@@ -2701,6 +2757,28 @@ logctl disable storms [session | for &lt;duration&gt; | sticky]
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>storms<span class="w"> </span><span class="k">for</span><span class="w"> </span>30m
 logctl<span class="w"> </span>storms
 logctl<span class="w"> </span>disable<span class="w"> </span>storms
+</code></pre></div>
+<h2 id="attach">attach<a class="headerlink" href="#attach" title="Permanent link">&para;</a></h2>
+<p>Load the agent into a JVM that is already running.</p>
+<div class="highlight"><pre><span></span><code>logctl attach [&lt;pid&gt;] [--vendor-defaults &lt;file&gt;] [--storm-detection on|off] [--agent-jar &lt;file&gt;]
+</code></pre></div>
+<p>Loads the LogAperture agent into a JVM that was started without <code>-javaagent</code>, so you can use <code>logctl</code> on it without a restart. Without a PID, on a terminal, it lists the JVMs it can attach to and asks which; otherwise it needs the PID.</p>
+<p>The agent starts when the application first logs through Logback or <code>java.util.logging</code>, which is usually already. <code>attach</code> waits up to ten seconds and says whether it is active. A JVM that already runs LogAperture is left alone, and that is not an error.</p>
+<p>An attach lasts until the JVM stops. To keep LogAperture, add <code>-javaagent</code> to its launch line. A JVM started with <code>-XX:-EnableDynamicAgentLoading</code> refuses, and Java 21 and later print a warning on the JVM's own standard error.</p>
+<p>The agent jar is the one carried inside <code>logctl</code>, unless a newer one of the same major version sits next to it. Loading code into another process is a bigger step than the other commands: you can only do it to a JVM you could attach a debugger to.</p>
+<p><strong>Options</strong></p>
+<dl>
+<dt><code>--vendor-defaults &lt;file&gt;</code></dt>
+<dd>Start the agent with this vendor defaults file.</dd>
+<dt><code>--storm-detection on|off</code></dt>
+<dd>Start the agent with storm detection on or off.</dd>
+<dt><code>--agent-jar &lt;file&gt;</code></dt>
+<dd>Load this agent jar instead. It must be readable by the JVM you attach to, so use a path that exists inside a container.</dd>
+</dl>
+<p><strong>Examples</strong></p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>attach
+logctl<span class="w"> </span>attach<span class="w"> </span><span class="m">12345</span>
+logctl<span class="w"> </span>attach<span class="w"> </span><span class="m">12345</span><span class="w"> </span>--vendor-defaults<span class="w"> </span>vendor-defaults.yaml
 </code></pre></div>
 <h2 id="env">env<a class="headerlink" href="#env" title="Permanent link">&para;</a></h2>
 <p>Print facts for a bug report.</p>

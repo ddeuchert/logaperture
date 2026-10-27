@@ -779,6 +779,8 @@
       
         
       
+        
+      
     
     
     
@@ -1007,6 +1009,34 @@
     
   
     Use recipes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/try-without-restart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Try without a restart
   
 
     
@@ -1842,6 +1872,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#agentattached" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        agent.attached
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentearly-sweep" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2198,6 +2239,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#agentattached" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        agent.attached
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#agentearly-sweep" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2392,8 +2444,14 @@ nothing was written during the measurement.</p>
 <p>Where LogAperture is on the <code>-javaagent</code> list. <code>OK</code> when it is first. <code>INFO</code> when other agents are
 listed ahead of it: anything they log while starting up is out of reach of <code>drop</code> and <code>trim</code> rules.
 Agents set in <code>JAVA_TOOL_OPTIONS</code> or <code>JDK_JAVA_OPTIONS</code> count as listed first. Not reported when
-LogAperture was attached to a running JVM. See <a href="../../concepts/agent-order/">Agent order</a>.</p>
+LogAperture was attached to a running JVM (<code>agent.attached</code> says so). See
+<a href="../../concepts/agent-order/">Agent order</a>.</p>
 <p><strong>Fix:</strong> list LogAperture's <code>-javaagent</code> before the others, where the site allows it.</p>
+<h3 id="agentattached"><code>agent.attached</code><a class="headerlink" href="#agentattached" title="Permanent link">&para;</a></h3>
+<p>LogAperture was loaded into a running JVM with <code>logctl attach</code>, not started by a <code>-javaagent</code> entry,
+so the <code>-javaagent</code> order check has nothing to read. <code>INFO</code>, and reported only on an attached JVM.
+An attach lasts until the JVM stops.</p>
+<p><strong>Fix:</strong> add <code>-javaagent:</code> with the agent jar to the launch line to make LogAperture permanent.</p>
 <h3 id="agentearly-sweep"><code>agent.early-sweep</code><a class="headerlink" href="#agentearly-sweep" title="Permanent link">&para;</a></h3>
 <p>Quarkus only. LogAperture re-applies what Quarkus's own start-up logging setup overwrites as soon as
 Quarkus says that setup is done. <code>INFO</code> when it could not find the signal Quarkus gives for that (on

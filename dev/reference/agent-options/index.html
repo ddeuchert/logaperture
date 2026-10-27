@@ -779,6 +779,8 @@
       
         
       
+        
+      
     
     
     
@@ -1007,6 +1009,34 @@
     
   
     Use recipes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/try-without-restart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Try without a restart
   
 
     
@@ -1988,7 +2018,10 @@ LogAperture is involved in a startup problem, without removing the <code>-javaag
 <dt><code>-Dlogaperture.home=&lt;dir&gt;</code></dt>
 <dd>Where LogAperture keeps its state files, and where it looks for the recipes folder. Default
 <code>~/.logaperture</code> of the user running the JVM. Set it when that user has no writable home
-directory, as is common in containers.</dd>
+directory, as is common in containers. If that default can't be written, LogAperture keeps
+its state under the system temp directory instead and says so in the application's log; the
+system may clear it, so set this option to make it last. A directory you set is always used as
+given.</dd>
 <dt><code>-Dlogaperture.instanceId=&lt;name&gt;</code></dt>
 <dd>Names this JVM's state file. By default the state file is named after the directory the JVM was
 started from; two JVMs started from the same directory need different names, or the second

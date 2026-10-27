@@ -779,6 +779,8 @@
       
         
       
+        
+      
     
     
     
@@ -1007,6 +1009,34 @@
     
   
     Use recipes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-to/try-without-restart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Try without a restart
   
 
     
@@ -1794,6 +1824,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#logctl-attach-didnt-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        logctl attach didn't work
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#logctl-needs-a-jdk" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2003,6 +2044,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#logctl-attach-didnt-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        logctl attach didn't work
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#logctl-needs-a-jdk" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2147,6 +2199,18 @@
 <li>In a container, run <code>logctl</code> inside the same container.</li>
 </ul>
 <p>See <a href="../how-to/several-jvms/">Work with several JVMs</a> for "Several candidates" and attach errors.</p>
+<h2 id="logctl-attach-didnt-work"><code>logctl attach</code> didn't work<a class="headerlink" href="#logctl-attach-didnt-work" title="Permanent link">&para;</a></h2>
+<ul>
+<li><em><code>was started with dynamic agent loading turned off</code></em>: that JVM has <code>-XX:-EnableDynamicAgentLoading</code>.
+  No agent can be loaded into it. Restart it with <code>-javaagent</code>, or without that flag.</li>
+<li><em><code>Can't attach to PID … run as the user that owns that process</code></em>: run <code>logctl</code> as the JVM's user.</li>
+<li><em><code>This Java has no attach support</code></em>: run <code>logctl</code> with a JDK, not a JRE.</li>
+<li><em><code>loaded … but not active yet</code></em>: the application hasn't logged through Logback or
+  <code>java.util.logging</code>, and nothing is wrong until it does. If it logs through another backend, such as
+  Log4j 2, LogAperture can't control it. See <a href="../how-to/try-without-restart/">Try without a restart</a>.</li>
+<li><em>A JVM that <code>jps</code> shows is missing from the list</em>: <code>logctl attach</code> lists only JVMs that don't have
+  LogAperture yet, and only ones it could attach to as your user.</li>
+</ul>
 <h2 id="logctl-needs-a-jdk"><code>logctl</code> needs a JDK<a class="headerlink" href="#logctl-needs-a-jdk" title="Permanent link">&para;</a></h2>
 <p><code>logctl</code> uses the JVM attach mechanism, which only a JDK has. Run it with a JDK, not just a JRE. The
 application itself can run on either.</p>
@@ -2199,9 +2263,10 @@ about it, with the command that fixes it. See
 </ul>
 <h2 id="a-sticky-change-didnt-come-back-after-a-restart">A <code>sticky</code> change didn't come back after a restart<a class="headerlink" href="#a-sticky-change-didnt-come-back-after-a-restart" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>logctl env</code> shows the state file. If its directory isn't writable by the JVM's user, LogAperture
-  can't save changes: set <code>-Dlogaperture.home</code> to a writable directory. This is common in
-  containers.</li>
+<li><code>logctl env</code> shows the state file. If it is under the system temp directory (<code>/tmp/logaperture-&lt;user&gt;</code>),
+  the default directory wasn't writable and LogAperture fell back; the system may clear it. Set
+  <code>-Dlogaperture.home</code> to a writable directory to keep changes. If you set that option and its
+  directory isn't writable, LogAperture can't save changes at all. This is common in containers.</li>
 <li>Two JVMs started from the same directory share a state file name; the second can't keep <code>sticky</code>
   changes and says so in its log. Set <code>-Dlogaperture.instanceId</code>.</li>
 </ul>

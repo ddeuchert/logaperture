@@ -779,6 +779,8 @@
       
         
       
+        
+      
     
     
     
@@ -1007,6 +1009,34 @@
     
   
     Use recipes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/try-without-restart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Try without a restart
   
 
     
@@ -2035,8 +2065,9 @@ handlers. If a launch needs that held back, see <code>-Dlogaperture.handlerInsta
 </code></pre></div>
 <p>or, when other agents are ahead of it, an <code>INFO</code> finding naming them. It also warns about the same
 jar listed twice. See <a href="../../reference/doctor-checks/#the-agent"><code>agent.order</code> and <code>agent.duplicate</code></a>.
-Neither is reported when LogAperture was attached to a JVM that was already running; a jar listed
-twice still is.</p>
+Neither is reported when LogAperture was attached to a JVM that was already running, and <code>doctor</code>
+says so with an <a href="../../reference/doctor-checks/#the-agent"><code>agent.attached</code></a> line; a jar listed twice
+still is reported.</p>
 <h2 id="the-same-jar-twice">The same jar twice<a class="headerlink" href="#the-same-jar-twice" title="Permanent link">&para;</a></h2>
 <p>Listing <code>logaperture-agent.jar</code> twice does no harm: LogAperture starts once, from the first entry,
 and each later entry writes one warning at startup:</p>
