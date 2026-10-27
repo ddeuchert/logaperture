@@ -60,12 +60,13 @@ capability level).
 
 **Explicitly out of scope for this slice** (deferred, each with what it needs):
 
-- Logback backend-version detection (the `none` container's real adapter), and every other
-  `ContainerIntegration` besides `wildfly` reporting a real version — not because those don't
+- Every other `ContainerIntegration` besides `wildfly` reporting a real version — not because those don't
   exist (the Logback adapter is real and already used by `none`), but the same slice-scoping
   `doctor.md` used for its own adapter coverage: WildFly is "the primary motivating environment"
-  (§16). The new SPI default methods (below) make adding a real Logback implementation later
-  additive, not a spec change.
+  (§16). The new SPI default methods (below) make adding more implementations later additive,
+  not a spec change. (Logback backend detection was added afterwards as issue #283: the Logback
+  adapter overrides `backendInfo()` with `Logback` and the jar manifest's `Implementation-Version`,
+  read off the running `LoggerContext`'s class, version omitted when unavailable.)
 - A JVM that genuinely runs more than one logging backend at once (§15.4's Tomcat scenario —
   JULI plus a webapp's own Logback). No implemented container exhibits this yet (WildFly's
   per-deployment `LogContext`s all share one JBoss LogManager instance, so they never
@@ -367,7 +368,7 @@ Met:
 
 - `logctl env` against a plain `java -jar` process reports agent version, `logctl` version,
   Java, and OS accurately, with backend/container facts absent (the Logback adapter used by
-  `none` doesn't override the new SPI methods this slice) — confirmed unit-tested
+  `none` didn't override the new SPI methods this slice; issue #283 later added its backend line) — confirmed unit-tested
   (`AggregateLevelControlTest`).
 - `logctl env` against standalone WildFly additionally reports the real JBoss LogManager
   backend version and the real WildFly container version — confirmed cross-process against a

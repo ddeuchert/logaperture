@@ -18,6 +18,7 @@ package org.logaperture.adapter.logback;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.LoggerContextListener;
+import org.logaperture.api.BackendInfo;
 import org.logaperture.api.Level;
 import org.logaperture.core.spi.LoggingAdapter;
 
@@ -52,6 +53,18 @@ public final class LogbackLoggingAdapter implements LoggingAdapter {
     LogbackLoggingAdapter(LoggerContext context, boolean configurationEvents) {
         this.context = Objects.requireNonNull(context, "context");
         this.configurationEvents = configurationEvents;
+    }
+
+    /**
+     * doc/specs/environment-report.md "Adapter / container SPI" (issue #283). The version is
+     * the Logback jar's manifest {@code Implementation-Version}, read off the context's own
+     * class so it names the Logback the application runs, not one this adapter was compiled
+     * against; left out when the class has no package info (an unusual classloader setup).
+     */
+    @Override
+    public BackendInfo backendInfo() {
+        Package pkg = context.getClass().getPackage();
+        return new BackendInfo("Logback", pkg == null ? null : pkg.getImplementationVersion());
     }
 
     @Override
