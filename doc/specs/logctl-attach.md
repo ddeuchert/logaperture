@@ -30,11 +30,12 @@ After this feature, the user will be able to:
 An attach lasts until the JVM stops; adding `-javaagent` to the launch line is still the way to
 keep LogAperture permanently.
 
-Guide pages this changes: `reference/logctl.md` (generated from the help); `get-started/
-install-plain-jvm.md` and `get-started/install-wildfly.md` (a "try it without a restart" route);
-`how-to/try-without-restart.md` (new); `concepts/agent-order.md`; `concepts/security.md` (what an
-attach lets `logctl` do); `reference/doctor-checks.md` (the new line); `troubleshooting.md` (the
-JEP 451 messages); `reference/agent-options.md` only if decision #8 adds a property.
+Guide pages this changes: `reference/logctl.md` (generated from the help); `how-to/try-without-restart.md`
+(new); `get-started/install-plain-jvm.md` and `get-started/install-wildfly.md` (a "try it first" pointer);
+`concepts/security.md` (what an attach lets `logctl` do); `concepts/agent-order.md` and
+`reference/doctor-checks.md` (the `agent.attached` line); `reference/agent-options.md` (the state
+directory fallback; no new property); `reference/json-output.md` (`attach --json`, exit code 4);
+`troubleshooting.md` (the attach messages and the state directory fallback); the changelog.
 
 Not part of this feature: publishing `logctl` through JBang, SDKMAN or Homebrew (#274, #275, #276;
 the embedded agent jar means none of them has to ship the agent separately);

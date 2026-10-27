@@ -38,7 +38,7 @@ The same promise covers the agent's management interface; see the
 | `1` | Unexpected error. |
 | `2` | The command line is wrong. |
 | `3` | No JVM with the agent was found. |
-| `4` | Several JVMs with the agent were found, and `logctl` couldn't ask which: pass `--pid`. |
+| `4` | Several JVMs were found, and `logctl` couldn't ask which: pass `--pid` (for `attach`, the process id). |
 | `5` | `logctl` couldn't attach to the JVM: run it as the user running the JVM. |
 | `6` | The agent's policy doesn't allow this operation. |
 
@@ -549,3 +549,21 @@ reports `agent` for it. From the extension on Quarkus:
   "delivery": "extension"
 }
 ```
+
+## Attaching
+
+### attach
+
+```sh
+logctl attach 1344371 --json
+```
+
+```json
+{"pid":1344371,"state":"active","version":"1.1.0","backend":"java.util.logging (JUL)","delivery":null,"agentJar":"/home/dev/.logaperture/agent/logaperture-agent-1.1.0-47ad08a130b3.jar","agentJarSource":"embedded"}
+```
+
+`state` is `active`, `loaded` (the agent is in the JVM but waiting for the application to log) or
+`already-running`. For `already-running`, `delivery` is `agent` or `extension` and `agentJar` is
+`null`. `agentJarSource` is `explicit` (`--agent-jar`), `beside-cli` or `embedded`. `backend` is
+`null` when the agent has not started or does not name one. Without a process id, `--json` never
+asks which JVM: it exits with code 4.
