@@ -7,6 +7,13 @@ that account to use `logctl`. Open a command prompt **as Administrator** and run
 logctl status
 ```
 
+```
+Vendor defaults: C:\wildfly\standalone\configuration\logaperture-vendor-defaults.yaml - loaded, no settings
+Storm detection: disabled
+
+No active overrides.
+```
+
 `logctl` finds the one JVM that runs LogAperture, even when the service started it. Other Java
 processes on the machine are ignored. If several JVMs run LogAperture, `logctl` asks which one in a
 terminal, or stops and asks for `--pid` in a script (see [Work with several
@@ -39,7 +46,7 @@ Image Name                     PID Session Name        Session#    Mem Usage
 java.exe                      7100 Services                   0  7,656,836 K
 ```
 
-The service's JVM is the one in session `Services`.
+The service's JVM is the one in session `Services`. With `--pid` the output is the same as above.
 
 `sc queryex <service name>` gives the PID of the *service wrapper*, not the JVM. The JVM is its
 child process, so use the PID from `tasklist`.

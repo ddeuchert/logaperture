@@ -152,5 +152,7 @@ the fix is the acceptance test.
   profile `hsperfdata` scan, the merge and de-duplication of the sources, the messages, and that
   nothing runs off Windows. They run on Linux in CI.
 - Not tested in CI: anything against a real Windows service. The probe runs on the customer's
-  machine (2026-10-28) are the evidence for the design; the acceptance test is the customer running
-  the built `logctl` there, first with `--pid` and then without.
+  machine (2026-10-28) were the evidence for the design.
+- **Acceptance (2026-10-28):** on that machine (Windows Server 2019, JDK 21.0.4, application as a
+  `LocalSystem` service, elevated Administrator prompt), the built `logctl` ran `status --pid
+  <n>` and then `status` with no `--pid`, and both returned the service's status.
