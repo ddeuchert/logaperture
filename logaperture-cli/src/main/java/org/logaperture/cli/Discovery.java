@@ -79,8 +79,8 @@ final class Discovery {
                         + "is yours, name it with --pid <n>.)";
             }
             if (host.windows()) {
-                message += "\n(A JVM that runs as another account, such as a Windows service, may not be listed — "
-                        + "find its PID and pass --pid <n>.)";
+                message += "\n(If the JVM runs LogAperture as another account, such as a Windows service, but is not "
+                        + "listed, find its PID and pass --pid <n>.)";
             }
             throw new CliError(CliError.NO_JVM, message);
         }
@@ -131,6 +131,9 @@ final class Discovery {
         Probe probe(long pid, String displayName);
     }
 
+    /** An attach that has not answered by now is given up on, so one wedged JVM cannot stall discovery. */
+    static final long PROBE_TIMEOUT_SECONDS = 10;
+
     static final Jvms SYSTEM_JVMS = new Jvms() {
         @Override
         public List<Listed> listed() {
@@ -147,7 +150,7 @@ final class Discovery {
 
         @Override
         public Probe probe(long pid, String displayName) {
-            return Discovery.probe(pid, displayName);
+            return probeWithin(PROBE_TIMEOUT_SECONDS, () -> Discovery.probe(pid, displayName));
         }
     };
 
@@ -229,6 +232,26 @@ final class Discovery {
             return Probe.FAILED;
         } finally {
             Quietly.detach(vm);
+        }
+    }
+
+    /**
+     * Runs one probe on a daemon thread and gives up after {@code seconds}; the abandoned thread
+     * ends with the process. A probe that times out counts as one that could not be inspected.
+     */
+    static Probe probeWithin(long seconds, java.util.concurrent.Callable<Probe> probe) {
+        java.util.concurrent.FutureTask<Probe> task = new java.util.concurrent.FutureTask<>(probe);
+        Thread thread = new Thread(task, "logctl-probe");
+        thread.setDaemon(true);
+        thread.start();
+        try {
+            return task.get(seconds, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Probe.FAILED;
+        } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException e) {
+            task.cancel(true);
+            return Probe.FAILED;
         }
     }
 

@@ -73,9 +73,10 @@ final class HostProcesses {
     }
 
     /**
-     * Whether a process with this PID is running. {@code ProcessHandle.of} is trusted when it
+     * Whether a process with this PID may be running. {@code ProcessHandle.of} is trusted when it
      * finds one; on Windows an empty answer is checked against {@code tasklist}, which lists every
-     * process whoever owns it.
+     * process whoever owns it. When {@code tasklist} cannot run the answer is unknown and this says
+     * {@code true}: the attach then reports its own outcome, instead of a false "no such process".
      */
     boolean exists(long pid) {
         if (handleVisible.test(pid)) {
@@ -84,39 +85,58 @@ final class HostProcesses {
         if (!windows) {
             return false;
         }
-        String out = runner.run("tasklist", "/fo", "csv", "/nh", "/fi", "pid eq " + pid);
-        return out != null && parseTasklist(out).contains(pid);
+        String out = runner.run(tasklist(), "/fo", "csv", "/nh", "/fi", "pid eq " + pid);
+        return out == null || parseTasklist(out).contains(pid);
+    }
+
+    /** {@code tasklist.exe} by its full path, never by name: a bare name can resolve in the working directory. */
+    private String tasklist() {
+        return systemRoot.resolve("System32").resolve("tasklist.exe").toString();
     }
 
     /**
-     * PIDs of JVMs {@code VirtualMachine.list()} may not show: Windows only, {@code java.exe} and
-     * {@code javaw.exe} from {@code tasklist}, plus the pid files in the system profiles'
-     * {@code hsperfdata_*} directories (which also finds a JVM hosted inside a service wrapper).
-     * Only PIDs from these sources are ever probed: attaching on Windows starts a thread in the
-     * target, so an arbitrary process is not a candidate. Sorted, without this process.
+     * PIDs of JVMs {@code VirtualMachine.list()} may not show: Windows only, the {@code java.exe} and
+     * {@code javaw.exe} rows of one {@code tasklist}, plus the pid files in the system profiles'
+     * {@code hsperfdata_*} directories that name a process {@code tasklist} lists (a crashed JVM
+     * leaves its file behind, and the PID may since belong to something else or to nothing). A
+     * file's PID can still have been reused by an unrelated process; that is the one residual risk.
+     * Only PIDs from these sources are probed. Sorted, without this process.
      */
     TreeSet<Long> otherAccountJvmPids() {
         TreeSet<Long> pids = new TreeSet<>();
         if (!windows) {
             return pids;
         }
-        for (String image : List.of("java.exe", "javaw.exe")) {
-            String out = runner.run("tasklist", "/fo", "csv", "/nh", "/fi", "imagename eq " + image);
-            if (out != null) {
-                pids.addAll(parseTasklist(out));
+        String out = runner.run(tasklist(), "/fo", "csv", "/nh");
+        TreeSet<Long> running = new TreeSet<>();
+        if (out != null) {
+            for (TasklistRow row : parseTasklistRows(out)) {
+                running.add(row.pid());
+                String image = row.image().toLowerCase();
+                if (image.equals("java.exe") || image.equals("javaw.exe")) {
+                    pids.add(row.pid());
+                }
             }
         }
-        pids.addAll(hsperfdataPids(systemRoot));
+        for (long pid : hsperfdataPids(systemRoot)) {
+            if (out == null || running.contains(pid)) {
+                pids.add(pid);
+            }
+        }
         pids.remove(currentPid);
         return pids;
     }
 
+    /** One process row of {@code tasklist /fo csv /nh}. */
+    record TasklistRow(String image, long pid) {
+    }
+
     /**
-     * The PIDs in {@code tasklist /fo csv /nh} output: {@code "java.exe","7100","Services","0","7,656,664 K"}.
+     * The rows of {@code tasklist /fo csv /nh} output: {@code "java.exe","7100","Services","0","7,656,664 K"}.
      * A line without a quoted numeric second field (the "no tasks" notice, in any language) is skipped.
      */
-    static List<Long> parseTasklist(String output) {
-        List<Long> pids = new ArrayList<>();
+    static List<TasklistRow> parseTasklistRows(String output) {
+        List<TasklistRow> rows = new ArrayList<>();
         for (String line : output.split("\\R")) {
             String trimmed = line.trim();
             if (!trimmed.startsWith("\"")) {
@@ -127,10 +147,19 @@ final class HostProcesses {
                 continue;
             }
             try {
-                pids.add(Long.parseLong(cells[1].replace("\"", "").trim()));
+                rows.add(new TasklistRow(cells[0].replace("\"", ""), Long.parseLong(cells[1].replace("\"", "").trim())));
             } catch (NumberFormatException notAPid) {
                 // a header or a notice, not a process row
             }
+        }
+        return rows;
+    }
+
+    /** The PIDs of {@link #parseTasklistRows}. */
+    static List<Long> parseTasklist(String output) {
+        List<Long> pids = new ArrayList<>();
+        for (TasklistRow row : parseTasklistRows(output)) {
+            pids.add(row.pid());
         }
         return pids;
     }
@@ -187,16 +216,20 @@ final class HostProcesses {
         }
     }
 
+    /**
+     * Runs a command with its output in a temporary file, so the timeout applies while the command
+     * runs: reading a pipe to its end would block for as long as the command does.
+     */
     private static String runCommand(String... command) {
+        Path output = null;
         Process process = null;
         try {
-            process = new ProcessBuilder(command).redirectErrorStream(true).start();
-            String out = new String(process.getInputStream().readAllBytes(), Charset.defaultCharset());
-            if (!process.waitFor(10, TimeUnit.SECONDS)) {
-                process.destroyForcibly();
+            output = Files.createTempFile("logctl-", ".out");
+            process = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(output.toFile()).start();
+            if (!process.waitFor(COMMAND_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
                 return null;
             }
-            return out;
+            return new String(Files.readAllBytes(output), Charset.defaultCharset());
         } catch (IOException e) {
             return null;
         } catch (InterruptedException e) {
@@ -206,6 +239,15 @@ final class HostProcesses {
             if (process != null && process.isAlive()) {
                 process.destroyForcibly();
             }
+            if (output != null) {
+                try {
+                    Files.deleteIfExists(output);
+                } catch (IOException ignored) {
+                    // a leftover temporary file
+                }
+            }
         }
     }
+
+    private static final long COMMAND_TIMEOUT_SECONDS = 10;
 }

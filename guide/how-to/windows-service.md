@@ -28,7 +28,7 @@ JVMs](several-jvms.md)).
 
 ```
 No LogAperture-enabled JVM found. Start the application with -javaagent:logaperture-agent.jar.
-(A JVM that runs as another account, such as a Windows service, may not be listed — find its PID and pass --pid <n>.)
+(If the JVM runs LogAperture as another account, such as a Windows service, but is not listed, find its PID and pass --pid <n>.)
 ```
 
 Check the prompt says *Administrator* in its title. Then find the JVM's process id and pass it:

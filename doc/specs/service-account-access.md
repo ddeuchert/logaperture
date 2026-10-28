@@ -104,8 +104,11 @@ Customer machine, beta.3, application as a `LocalSystem` service behind a native
      (`...\config\systemprofile\AppData\Local\Temp`, `ServiceProfiles\*\AppData\Local\Temp`,
      `C:\Windows\Temp`), which also finds a JVM hosted inside a service wrapper process such as
      `prunsrv.exe`, where the process image is not `java.exe`.
-  Only PIDs from these sources are probed: attaching on Windows starts a thread in the target, so
-  an arbitrary process is never probed. When nothing is found, the message says that JVMs owned by
+  Only PIDs from these sources are probed, as a precaution: an arbitrary process is not. A pid file
+  counts only if `tasklist` lists that PID (a crashed JVM leaves its file behind); a PID reused by an
+  unrelated process since is the one residual risk. `tasklist` runs once, by its full path under
+  `%SystemRoot%\System32`, with a time limit, and a PID is probed on its own thread with a time limit,
+  so a wedged JVM cannot stall discovery. When nothing is found, the message says that JVMs owned by
   other accounts may not be listed and names `--pid`. Scope is Windows; the Linux and macOS path is
   not touched. **Proposed, not signed off; see open question 5.**
 - **C. Guide page and corrected wording**, as listed above.
@@ -149,8 +152,9 @@ the fix is the acceptance test.
 ## What was tested
 
 - Unit tests with fakes (`HostProcessesTest`, `DiscoveryWindowsTest`): the `tasklist` parser, the
-  profile `hsperfdata` scan, the merge and de-duplication of the sources, the messages, and that
-  nothing runs off Windows. They run on Linux in CI.
+  profile `hsperfdata` scan and its filter against `tasklist`, the merge and de-duplication of the
+  sources, an unknown answer when `tasklist` cannot run, the probe time limit, the messages, and
+  that nothing runs off Windows. They run on Linux in CI.
 - Not tested in CI: anything against a real Windows service. The probe runs on the customer's
   machine (2026-10-28) were the evidence for the design.
 - **Acceptance (2026-10-28):** on that machine (Windows Server 2019, JDK 21.0.4, application as a

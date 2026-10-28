@@ -657,7 +657,7 @@ Detectability is a stronger and cheaper guarantee than prevention, and it degrad
 
 ### 9.8 Authentication comes from the operating system
 
-The local attach path is UID-gated by the JVM: only the account running the JVM, or root, can attach. That set is exactly the set that should be able to control logging, it requires no credential management, and it is already audited by the OS. **Make the local CLI the primary and best-supported surface.**
+The local attach path is UID-gated by the JVM: on Linux and macOS only the account running the JVM, or root, can attach; on Windows an elevated Administrator can also attach to a service running as another account (tested against `LocalSystem`, [`doc/specs/service-account-access.md`](specs/service-account-access.md)). That set is exactly the set that should be able to control logging, it requires no credential management, and it is already audited by the OS. **Make the local CLI the primary and best-supported surface.**
 
 Every other surface is strictly worse and should be treated accordingly. JMX inherits the JVM's JMX authentication and is only as good as that configuration. The HTTP plane is the one that converts a local tool into a remote attack surface: off by default, refuses to start without authentication configured, never binds a wildcard address by default, TLS or loopback only.
 

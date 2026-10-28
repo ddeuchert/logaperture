@@ -77,8 +77,18 @@ class HostProcessesTest {
     }
 
     @Test
-    void anEmptyHandleOnWindows_whenTasklistCannotRun_meansItDoesNotExist() {
-        assertFalse(host(true, false, c -> null, root).exists(7100));
+    void anEmptyHandleOnWindows_whenTasklistCannotRun_isUnknown_soTheAttachDecides() {
+        assertTrue(host(true, false, c -> null, root).exists(7100));
+    }
+
+    @Test
+    void tasklistIsRunByItsFullPath_neverByName() {
+        List<String> ran = new ArrayList<>();
+        host(true, false, c -> {
+            ran.add(c[0]);
+            return "";
+        }, root).exists(7100);
+        assertEquals(root.resolve("System32").resolve("tasklist.exe").toString(), ran.get(0));
     }
 
     @Test
@@ -98,16 +108,42 @@ class HostProcessesTest {
         }, root).otherAccountJvmPids().isEmpty());
     }
 
+    private static final String ALL_ROWS = "\"System\",\"4\",\"Services\",\"0\",\"1 K\"\r\n"
+            + "\"java.exe\",\"6772\",\"RDP-Tcp#19\",\"2\",\"287,436 K\"\r\n"
+            + "\"java.exe\",\"7100\",\"Services\",\"0\",\"7,656,664 K\"\r\n"
+            + "\"javaw.exe\",\"4100\",\"Services\",\"0\",\"100 K\"\r\n"
+            + "\"prunsrv.exe\",\"8200\",\"Services\",\"0\",\"100 K\"\r\n"
+            + "\"postgres.exe\",\"4242\",\"Services\",\"0\",\"100 K\"\r\n"
+            + "\"java.exe\",\"99\",\"Console\",\"1\",\"1 K\"\r\n";
+
     @Test
-    void onWindows_javaAndJavawFromTasklist_andPidFilesFromTheSystemProfile_areMerged_withoutThisProcess() throws IOException {
+    void onWindows_javaAndJavawRows_andPidFilesOfRunningProcesses_areMerged_withoutThisProcess() throws IOException {
         pidFile("System32/config/systemprofile/AppData/Local/Temp/hsperfdata_SYSTEM", "7100", "8200");
-        pidFile("ServiceProfiles/NetworkService/AppData/Local/Temp/hsperfdata_NetworkService", "9300");
+        pidFile("ServiceProfiles/NetworkService/AppData/Local/Temp/hsperfdata_NetworkService", "4");
         pidFile("Temp/hsperfdata_other", "99"); // this process: never a candidate
-        HostProcesses.Runner runner = command -> command[command.length - 1].equals("imagename eq java.exe")
-                ? JAVA_ROWS
-                : "\"javaw.exe\",\"4100\",\"Services\",\"0\",\"100 K\"\r\n";
-        TreeSet<Long> pids = host(true, true, runner, root).otherAccountJvmPids();
-        assertEquals(new TreeSet<>(List.of(4100L, 6772L, 7100L, 8200L, 9300L)), pids);
+        List<String> ran = new ArrayList<>();
+        TreeSet<Long> pids = host(true, true, c -> {
+            ran.add(String.join(" ", c));
+            return ALL_ROWS;
+        }, root).otherAccountJvmPids();
+        // 8200 is a wrapper hosting a JVM (found through its pid file), 4 is a running non-java process
+        // that has a pid file, which is the residual risk the Javadoc names
+        assertEquals(new TreeSet<>(List.of(4L, 4100L, 6772L, 7100L, 8200L)), pids);
+        assertEquals(1, ran.size(), "one tasklist for everything");
+    }
+
+    @Test
+    void aPidFileForAProcessTasklistDoesNotList_isIgnored() throws IOException {
+        pidFile("System32/config/systemprofile/AppData/Local/Temp/hsperfdata_SYSTEM", "7100", "5555");
+        TreeSet<Long> pids = host(true, true, c -> ALL_ROWS, root).otherAccountJvmPids();
+        assertFalse(pids.contains(5555L), "a crashed JVM's leftover file must not be probed");
+        assertTrue(pids.contains(7100L));
+    }
+
+    @Test
+    void whenTasklistCannotRun_thePidFilesAreUsedAsTheyAre() throws IOException {
+        pidFile("System32/config/systemprofile/AppData/Local/Temp/hsperfdata_SYSTEM", "7100");
+        assertEquals(new TreeSet<>(List.of(7100L)), host(true, true, c -> null, root).otherAccountJvmPids());
     }
 
     @Test

@@ -32,6 +32,24 @@ class DiscoveryWindowsTest {
 
     private static final String JAVA_ROWS = "\"java.exe\",\"7100\",\"Services\",\"0\",\"7,656,664 K\"\r\n";
 
+    @Test
+    void aProbeThatDoesNotAnswerInTime_isGivenUpOn_andCountsAsNotInspected() {
+        java.util.concurrent.CountDownLatch never = new java.util.concurrent.CountDownLatch(1);
+        Discovery.Probe probe = Discovery.probeWithin(1, () -> {
+            never.await();
+            return Discovery.Probe.NOT_APPLICABLE;
+        });
+        assertTrue(probe.failed());
+        assertEquals(null, probe.candidate());
+        never.countDown();
+    }
+
+    @Test
+    void aProbeThatAnswers_returnsItsOutcome() {
+        Discovery.Probe answer = Discovery.Probe.of(candidate(7100L, "x"));
+        assertEquals(answer, Discovery.probeWithin(5, () -> answer));
+    }
+
     private static Discovery.Candidate candidate(long pid, String name) {
         return new Discovery.Candidate(pid, name, "1.0.0-beta.3", null, "C:\\app");
     }
