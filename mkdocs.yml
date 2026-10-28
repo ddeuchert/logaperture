@@ -136,6 +136,7 @@ nav:
       - Undo changes: how-to/undo-changes.md
       - Use recipes: how-to/recipes.md
       - Work with several JVMs: how-to/several-jvms.md
+      - Use logctl with a Windows service: how-to/windows-service.md
       - Script logctl: how-to/scripting.md
   - Concepts:
       - Configuration layers: concepts/configuration-layers.md

@@ -657,7 +657,7 @@ Detectability is a stronger and cheaper guarantee than prevention, and it degrad
 
 ### 9.8 Authentication comes from the operating system
 
-The local attach path is UID-gated by the JVM: only the account running the JVM, or root, can attach. That set is exactly the set that should be able to control logging, it requires no credential management, and it is already audited by the OS. **Make the local CLI the primary and best-supported surface.**
+The local attach path is UID-gated by the JVM: on Linux and macOS only the account running the JVM, or root, can attach; on Windows an elevated Administrator can also attach to a service running as another account (tested against `LocalSystem`, [`doc/specs/service-account-access.md`](specs/service-account-access.md)). That set is exactly the set that should be able to control logging, it requires no credential management, and it is already audited by the OS. **Make the local CLI the primary and best-supported surface.**
 
 Every other surface is strictly worse and should be treated accordingly. JMX inherits the JVM's JMX authentication and is only as good as that configuration. The HTTP plane is the one that converts a local tool into a remote attack surface: off by default, refuses to start without authentication configured, never binds a wildcard address by default, TLS or loopback only.
 
@@ -1720,6 +1720,14 @@ Tracked as [#210](https://github.com/ddeuchert/logaperture/issues/210). **Specce
 **Motivation.** After `logctl set logger com.mycompany DEBUG` the records are logged, but the console (usually the one `DEFAULT_HANDLERS` member, at `INFO`) drops them, and the user gets a WARN with a second command to run. In a team demo this two-step was the hardest thing to explain.
 
 **What the user would do.** Just `logctl set logger com.mycompany DEBUG`: the default handlers on its path that would drop DEBUG go to `AUTO` for as long as the change lasts, then back. `--keep-handlers` changes only the logger, as before.
+
+### 18.19 `logctl` against a service running as another account
+
+**Draft, targets `1.0.0` as a freeze exception (maintainer decision 2026-10-28; `logctl` only, agent untouched):** [`doc/specs/service-account-access.md`](specs/service-account-access.md).
+
+**Motivation.** A customer's WildFly runs as a Windows service under `LocalSystem`. `jboss-cli.bat` works from an Administrator prompt; `logctl` did not, and §9.8 said it needs the owner's account.
+
+**Finding (2026-10-28, real Windows service).** The Attach API itself reaches a `LocalSystem` JVM from an elevated Administrator prompt (`jcmd` did). `logctl` failed earlier: discovery does not list a service's JVM, and its `--pid` path reported a live process as "No process with PID". The work is making Windows discovery find that JVM from an elevated prompt (with the existing pick-or-`--pid` rule for several), a fix for the false error (#289) and a guide page, not a new access mechanism.
 
 ---
 

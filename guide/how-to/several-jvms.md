@@ -45,6 +45,9 @@ Can't attach to PID 1 — run as the user that owns that process, or as root.
 
 Exit code 5. Run `logctl` as the user the JVM runs as, for example with `sudo -u jboss logctl …`.
 
+On Windows the message says to open the command prompt as Administrator, or to run as the account
+that owns the process. See [Use logctl with a Windows service](windows-service.md).
+
 ## Two applications from one directory
 
 Each JVM keeps its `sticky` changes in its own state file, named after the directory it was started
