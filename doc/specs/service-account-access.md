@@ -1,85 +1,106 @@
 # `logctl` against a service running as another account
 
-Status: **Draft, not signed off.** Targets `1.0.0`. No freeze exception is needed yet: if open
-question 1 shows that attach from an elevated Administrator prompt already works, the 1.0.0 work is
-a guide page, a corrected "same user" statement and a `doctor` hint, which the beta.1 feature freeze
-(§17.1) allows. Only if it fails, and the fix is a new access mechanism, does the maintainer decide
-between an exception for 1.0.0 (as #210 had) and 1.1.0.
+Status: **Draft, not signed off.** Targets `1.0.0`. The first open question has been answered by a
+real test (below): attach from an elevated Administrator prompt reaches a `LocalSystem` JVM, so
+no new access mechanism is needed and no feature-freeze exception (§17.1). The remaining work is
+two corrections to how `logctl` finds and reports a JVM it cannot see, plus a guide page.
 
 Tracking issue: [#287](https://github.com/ddeuchert/logaperture/issues/287) (milestone `1.0.0`;
-branches from and targets `release/1.0`, see [`release-lines.md`](release-lines.md)).
+branches from and targets `release/1.0`, see [`release-lines.md`](release-lines.md)). The false
+"No process with PID" error is tracked separately as bug [#289](https://github.com/ddeuchert/logaperture/issues/289) (see Findings).
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §8.1 (the CLI over the Attach
 API), §8.2 (the agent never listens), §9.8 (authentication comes from the operating system), §16
 (constrained and customer-hosted environments).
-Builds on: [`cli-transport.md`](cli-transport.md) (the attach transport),
+Builds on: [`cli-transport.md`](cli-transport.md) (the attach transport and "Discovery"),
 [`doctor.md`](doctor.md). Related, on `develop` for 1.1.0 and not yet on this line: `logctl attach`
-(#273), whose refusal for "a JVM owned by another user" would share this feature's ownership rule.
+(#273), which shares the same pre-attach process check.
 
 ## Functional summary
 
 After this feature, the user will be able to:
 
-- Run `logctl` from an Administrator prompt against an application server that runs as a Windows
-  service under `LocalSystem` (or another service account), the way they can already run
-  `jboss-cli.bat`, without first becoming that account.
-- Be told plainly, when `logctl` cannot reach a JVM because it runs as another account, which
-  account that is and what to do about it.
-- Read a guide page that shows how to run `logctl` as a service account when that is the only way.
+- Run `logctl status --pid <n>` (and every other command) from an Administrator prompt against an
+  application server that runs as a Windows service under `LocalSystem`, the way they can already
+  run `jboss-cli.bat`, without first becoming that account.
+- Be told the real reason when `logctl` cannot reach a JVM, instead of "No process with PID" for a
+  process that is running.
+- Be pointed at `--pid` when `logctl` finds no JVM on a machine where a service may be running one.
+- Read a guide page that shows how to find the JVM's PID behind a Windows service wrapper and how
+  to run `logctl` against it.
 
-Exactly which of these needs new behaviour depends on open question 1.
-
-Guide pages this changes (when it lands): `troubleshooting.md` (the "another user" message);
-`concepts/security.md` (who may control a JVM); a new `how-to/` page for service accounts on
-Windows; `reference/logctl.md` if the help changes; the changelog.
+Guide pages this changes (when it lands): `troubleshooting.md` (the messages above);
+`concepts/security.md` and `how-to/try-without-restart.md` ("same user" corrected for Windows
+administrators, once the behaviour is confirmed there); a new `how-to/` page for services on
+Windows; the changelog.
 
 ## Motivation
 
-A customer runs WildFly as a Windows service under `LocalSystem`. Their administrators have an
-Administrator prompt, not a SYSTEM shell, and Sysinternals PsExec is not installed. `jboss-cli.bat`
-works for them because it connects to the management port (`localhost:9990`) and WildFly's local
-authentication trusts anyone who can read the token file under `standalone\tmp\auth`, which
-Administrators can. `logctl` is meant to replace that path for logging changes, but today it
-attaches by process id, and the spec and guide say it needs the same account as the JVM
-(§9.8, `how-to/try-without-restart.md`: "Same machine, same user").
+A customer runs WildFly as a Windows service under `LocalSystem`, through a native service wrapper.
+Their administrators have an Administrator prompt, not a SYSTEM shell, and Sysinternals PsExec is
+not installed. `jboss-cli.bat` works for them because it connects to the management port
+(`localhost:9990`) and WildFly's local authentication trusts anyone who can read the token file
+under `standalone\tmp\auth`, which Administrators can. `logctl` is meant to replace that path for
+logging changes. The spec and guide say `logctl` needs the same account as the JVM (§9.8,
+`how-to/try-without-restart.md`: "Same machine, same user").
 
-The workaround that exists today is a one-off scheduled task running as SYSTEM that runs
-`logctl` and writes its output to a file. It works for non-interactive commands only and is not
-something to ask a customer to do during an incident.
+## Findings (a real Windows service, 2026-10-28)
+
+Customer machine, beta.3, application as a `LocalSystem` service behind a native wrapper, JDK
+21.0.4, commands run from an elevated Administrator `cmd`:
+
+1. `logctl status` printed "No LogAperture-enabled JVM found. Start the application with
+   -javaagent:logaperture-agent.jar." with no "could not be inspected" line, so
+   `VirtualMachine.list()` did not return the JVM at all. On Windows that list is built from the
+   current user's own temporary directory, which is not where a `LocalSystem` process writes. This
+   is a discovery gap, not a refusal.
+2. `sc queryex` gives the wrapper's PID, not the JVM's. The JVM is a child `java.exe` in the
+   Services session; its PID was found by process-tree or command-line lookup.
+3. `logctl status --pid 7100` printed "No process with PID 7100." while `tasklist /fi "pid eq
+   7100"` listed that `java.exe`. The message comes from a `ProcessHandle.of(pid).isEmpty()`
+   check that runs before any attach is tried, in `Discovery.resolveTargetPid` and in
+   `AgentConnection.attachFailure`. The likely cause is that the JDK reports a process the caller
+   may not open as absent on Windows. That cause is **not verified**; the false message is.
+4. `jcmd 7100 VM.version` from the same prompt succeeded. **The Attach API reaches a `LocalSystem`
+   JVM from an elevated Administrator prompt.** `logctl` never got as far as attaching.
+
+## Proposed changes (to be signed off)
+
+- **A. Do not report a live process as missing.** When `--pid` names a process that exists but
+  that `logctl` cannot inspect, try the attach and report its outcome. "No process with PID" is
+  kept for a PID that `tasklist` would not list either. Same change in the pre-attach check that
+  `logctl attach` (#273) adds on `develop`.
+- **B. Say what discovery cannot see.** When no JVM is found, say that JVMs started by other
+  accounts, such as services, are not listed and name `--pid`. On Windows the message could also
+  say how to find the JVM's PID behind a wrapper. Open: whether discovery can safely list more
+  than the per-user directory (for example by also trying the `hsperfdata` directories of other
+  accounts when elevated), or whether naming `--pid` is the whole fix. Deferred.
+- **C. Guide page and corrected wording**, as listed above.
+- **D. A `doctor` hint** is optional and deferred: `doctor` runs after a JVM is found, so it
+  cannot help with the case that started this.
 
 ## Open design questions (deferred to when this is specced)
 
 Nothing below is decided.
 
-1. **Does it already work?** Test first, before designing anything: from an elevated Administrator
-   prompt, does `VirtualMachine.attach` reach a JVM running as a `LocalSystem` service? The
-   Windows attach rules are not verified in this project (the guide lists Windows attach as
-   untested), and the answer changes the scope. If it works, this feature shrinks to the guide
-   page, a corrected "same user" statement and a `doctor` hint, and questions 2 to 5 fall away. If
-   it does not, they apply.
-2. **What grants access without matching the owner?** Candidates, to be named and compared, not
-   chosen: a token file readable by Administrators (WildFly's local authentication is the model);
-   the JVM's own `com.sun.management.jmxremote` local connector; reusing the container's
-   management interface where one exists. Each has a different answer to question 3.
-3. **§8.2 and §9.8.** The agent never listens, and authorization is the operating system's. Any
-   mechanism that lets a different account in changes one of the two. State which, and what a
-   security review would be told. Anything that opens a socket in the customer's JVM is
-   presumed out unless it keeps the §8.2 claim.
-4. **Who counts as an administrator.** Local Administrators, the elevated token only, or a
-   configured group. Whether the answer differs on Linux (root, which attach already allows).
-5. **Audit.** Whether a change made by an account other than the owner is recorded as such
-   (§9.7), and whether `--reason` becomes required for it.
-6. **Scope of the platform.** Windows services only, or the same story for a Linux service run by
-   a dedicated account and an operator who has `sudo` but not that account.
-7. **Interaction with `logctl attach`** (#273): the same ownership rule decides whether an attach
-   can load the agent, so the answer must hold for both.
+1. **Is the same true for a `LocalService` or `NetworkService` account, or a named service
+   account?** Only `LocalSystem` has been tested.
+2. **Is it the elevated token that matters?** A non-elevated administrator was not tested; the
+   guide should say "elevated" only if that is what the test shows.
+3. **Cause of the false "No process".** Verify on Windows whether `ProcessHandle.of` returns empty
+   for an unopenable process, and whether the fix is to skip the check or to treat empty as
+   "unknown".
+4. **Other platforms.** Whether the same pre-attach check misreports on Linux for a process owned
+   by another user (there the attach itself is refused, so it may not).
+5. **Discovery beyond the current user** (change B above).
 
 ## Cost and dependencies
 
 Layer 0, transport only: no new operation and no change to any MXBean signature, so the §11.1
-compatibility promise is untouched. If question 1 comes back "works", the cost is documentation
-and one `doctor` check. Otherwise it is new surface in both the agent and `logctl`, which is the
-reason it is a poor fit for the freeze and the reason an exception would need agreeing.
+compatibility promise is untouched. No new access path is added, so §8.2 and §9.8 are unchanged:
+authorization is still the operating system's, and an elevated Administrator is already allowed by
+it. A fix and a guide page fit the beta.1 freeze (§17.1) as a bug fix and documentation.
 
-Needs a real Windows service run as `LocalSystem` to test; the CI matrix has none, and the
-dev WildFly environment is Linux.
+Needs a real Windows service run as `LocalSystem` to test; the CI matrix has none, and the dev
+WildFly environment is Linux. The customer's machine produced the findings above; a repeat after
+the fix is the acceptance test.
