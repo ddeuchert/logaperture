@@ -20,8 +20,8 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
   also looks at the `java.exe` and `javaw.exe` processes `tasklist` lists, and at the system
   profiles' performance-data files, so a LogAperture JVM running as another account is found. Several
   matches are still asked about, or need `--pid`. When attaching is refused, the message now says
-  to open the prompt as Administrator. See [Use logctl with a Windows
-  service](guide/how-to/windows-service.md) (issue #287; `doc/specs/service-account-access.md`).
+  to open the prompt as Administrator. See the guide page "Use logctl with a Windows service"
+  (issue #287; `doc/specs/service-account-access.md`).
 
 ## [1.0.0-beta.3] — 2026-10-21
 
