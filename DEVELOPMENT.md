@@ -60,7 +60,14 @@ apply to everyone.
   line. Merge `release/1.0` into `develop` first.
   Afterwards, bump the released branch to its next `-SNAPSHOT` and merge `release/*` forward into `develop`. How it works:
   [doc/specs/maven-central-publishing.md](doc/specs/maven-central-publishing.md).
-
+- **The JBang catalog** (`jbang-catalog.json`, [doc/specs/logctl-jbang.md](doc/specs/logctl-jbang.md))
+  is read by JBang from `main` and names one released `logaperture-cli` version. A release cut from
+  `develop` (1.1.0, 1.2.0, ...) sets that version to the release before the pull request into `main`;
+  there is a short window between that merge and the artifacts reaching Central in which the alias
+  cannot resolve, so push the tag straight away. Once the release is on Central, check
+  `jbang logctl@ddeuchert/logaperture --version` on a machine that has not built the project. A patch
+  cut from `release/1.0` after that must not lose the file: merge `release/1.0` into `develop`
+  first, as above, and look for the catalog in the pull request into `main`.
 - **Publishing a snapshot:** to let testers try a pull request before the next
   beta, add the label `deploy snapshot` to it (`gh pr edit <number> --add-label
   "deploy snapshot"`). `.github/workflows/snapshot.yml` then builds that commit

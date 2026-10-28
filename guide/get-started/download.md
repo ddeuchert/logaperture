@@ -12,6 +12,7 @@ Open source under the [Apache License 2.0](https://github.com/ddeuchert/logapert
     version menu at the top of the page.
 
 <!-- /unreleased -->
+
 ## The release zip
 
 Download [`logaperture-{{ logaperture.version }}.zip`]({{ logaperture.release_url }}) from GitHub.
@@ -61,6 +62,11 @@ warning only means you haven't certified the key yourself. The files on Maven Ce
 with the same key.
 
 Next: install it [on WildFly](install-wildfly.md) or [on a plain JVM](install-plain-jvm.md).
+
+## With JBang
+
+If you have [JBang](https://www.jbang.dev/), `jbang logctl@ddeuchert/logaperture status` runs `logctl`
+with no download. See [Run logctl with JBang](../how-to/run-with-jbang.md).
 
 ## Maven Central
 
