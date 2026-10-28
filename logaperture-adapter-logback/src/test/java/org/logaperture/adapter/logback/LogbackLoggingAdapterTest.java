@@ -57,6 +57,8 @@ class LogbackLoggingAdapterTest {
 
         assertEquals("Logback", info.name());
         assertNotNull(info.version(), "the logback-classic jar manifest carries Implementation-Version");
+        assertEquals(LoggerContext.class.getPackage().getImplementationVersion(), info.version());
+        assertTrue(info.version().matches("\\d+\\.\\d+.*"), info.version());
     }
 
     @Test

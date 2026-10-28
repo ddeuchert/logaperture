@@ -66,7 +66,7 @@ capability level).
   (§16). The new SPI default methods (below) make adding more implementations later additive,
   not a spec change. (Logback backend detection was added afterwards as issue #283: the Logback
   adapter overrides `backendInfo()` with `Logback` and the jar manifest's `Implementation-Version`,
-  read off the running `LoggerContext`'s class, version omitted when unavailable.)
+  read off `LoggerContext` itself, version omitted when unavailable.)
 - A JVM that genuinely runs more than one logging backend at once (§15.4's Tomcat scenario —
   JULI plus a webapp's own Logback). No implemented container exhibits this yet (WildFly's
   per-deployment `LogContext`s all share one JBoss LogManager instance, so they never

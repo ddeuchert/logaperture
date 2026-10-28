@@ -57,13 +57,13 @@ public final class LogbackLoggingAdapter implements LoggingAdapter {
 
     /**
      * doc/specs/environment-report.md "Adapter / container SPI" (issue #283). The version is
-     * the Logback jar's manifest {@code Implementation-Version}, read off the context's own
-     * class so it names the Logback the application runs, not one this adapter was compiled
-     * against; left out when the class has no package info (an unusual classloader setup).
+     * the Logback jar's manifest {@code Implementation-Version}, read off {@code LoggerContext}
+     * as the class loader resolved it, so it names the Logback the application runs, not one
+     * this adapter was compiled against, and not a context subclass's own jar; left out when the class has no package info (an unusual classloader setup).
      */
     @Override
     public BackendInfo backendInfo() {
-        Package pkg = context.getClass().getPackage();
+        Package pkg = LoggerContext.class.getPackage();
         return new BackendInfo("Logback", pkg == null ? null : pkg.getImplementationVersion());
     }
 
