@@ -2110,8 +2110,9 @@ environment variable works too:</p>
 logctl<span class="w"> </span>list<span class="w"> </span>loggers<span class="w"> </span>--show-all
 </code></pre></div>
 <p><code>env</code> shows the agent's version and where it keeps its state file. The application's own log
-also has one line from LogAperture at startup, <code>LogAperture &lt;version&gt; active (JVM)</code>. On
-<code>java.util.logging</code>, <code>env</code> shows <code>Logging backend    java.util.logging (JUL)</code>.
+also has one line from LogAperture at startup, <code>LogAperture &lt;version&gt; active (JVM)</code>. <code>env</code> also names
+the logging backend: <code>Logging backend    Logback 1.5.13</code>, or on <code>java.util.logging</code>,
+<code>Logging backend    java.util.logging (JUL)</code>.
 <code>list loggers --show-all</code> lists the application's loggers and their levels.</p>
 <p>Then change one for a few minutes and watch the log:</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>com.example<span class="w"> </span>DEBUG<span class="w"> </span><span class="k">for</span><span class="w"> </span>5m

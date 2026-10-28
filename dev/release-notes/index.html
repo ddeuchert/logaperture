@@ -2605,6 +2605,8 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
 <h2 id="unreleased"><a href="https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.3...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li><strong><code>logctl env</code> names Logback.</strong> An application on Logback now gets a <code>Logging backend</code> line
+  (<code>Logback 1.5.13</code>), as JUL and JBoss LogManager already did (issue #283).</li>
 <li><strong><code>logctl attach</code>.</strong> <code>logctl attach [&lt;pid&gt;]</code> loads the agent into a JVM that was started without
   <code>-javaagent</code>, on Logback, <code>java.util.logging</code> or a standalone WildFly, and takes <code>--vendor-defaults</code>,
   <code>--storm-detection</code> and <code>--agent-jar</code>. The <code>logctl</code> jar now carries the agent jar. <code>doctor</code> explains
