@@ -7,6 +7,9 @@ Logback, on `java.util.logging`, and for a standalone WildFly.
 It lasts until that JVM stops. To keep LogAperture, add the `-javaagent` option to the launch line
 as in the [install guides](../get-started/install-plain-jvm.md).
 
+With [JBang](run-with-jbang.md) installed, the whole trial needs nothing else: write
+`jbang logctl@ddeuchert/logaperture` where this page says `logctl`.
+
 ## Attach
 
 Find the process id of the application (`jps -l` lists Java processes), then:

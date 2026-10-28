@@ -1,0 +1,9 @@
+{
+  "catalogs": {},
+  "aliases": {
+    "logctl": {
+      "script-ref": "org.logaperture:logaperture-cli:1.1.0",
+      "description": "LogAperture: change log levels in a running JVM"
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # `logctl` through JBang — a catalog entry and a guide recipe
 
-Status: **Draft, awaiting sign-off** (decisions #1 to #7 below). Release `1.1.0`.
+Status: **Signed off 2026-10-27** (decisions #1 to #7 below, every recommendation taken). Release `1.1.0`.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §8.1 (the CLI), §17.1 (1.1.0 and
 the distribution paragraph, which this feature reverses for JBang). Evidence:
@@ -23,7 +23,8 @@ After this feature, the user will be able to:
   installed one.
 
 Guide pages this changes: `how-to/run-with-jbang.md` (new, added to the `mkdocs.yml` nav);
-`get-started/download.md` and `how-to/try-without-restart.md` (a pointer to it); the changelog.
+`get-started/download.md` and `how-to/try-without-restart.md` (a pointer to it); the changelog;
+`DEVELOPMENT.md` (a release-cut step for the catalog version).
 `reference/logctl.md` does not change: no command or option is added.
 
 Not part of this feature: SDKMAN and Homebrew (#275, #276); running the agent through JBang

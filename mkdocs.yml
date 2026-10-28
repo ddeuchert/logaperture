@@ -137,6 +137,7 @@ nav:
       - Undo changes: how-to/undo-changes.md
       - Use recipes: how-to/recipes.md
       - Try without a restart: how-to/try-without-restart.md
+      - Run logctl with JBang: how-to/run-with-jbang.md
       - Work with several JVMs: how-to/several-jvms.md
       - Script logctl: how-to/scripting.md
   - Concepts:

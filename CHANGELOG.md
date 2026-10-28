@@ -10,6 +10,9 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ### Added
 
+- **`logctl` through JBang.** `jbang logctl@ddeuchert/logaperture attach` runs `logctl` from Maven
+  Central with nothing installed, and loads LogAperture into a running JVM in the same step. A
+  `jbang-catalog.json` in the repository names the release (issue #274; `doc/specs/logctl-jbang.md`).
 - **`logctl env` names Logback.** An application on Logback now gets a `Logging backend` line
   (`Logback 1.5.13`), as JUL and JBoss LogManager already did (issue #283).
 - **`logctl attach`.** `logctl attach [<pid>]` loads the agent into a JVM that was started without

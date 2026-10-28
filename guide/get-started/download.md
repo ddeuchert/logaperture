@@ -12,6 +12,11 @@ Open source under the [Apache License 2.0](https://github.com/ddeuchert/logapert
     version menu at the top of the page.
 
 <!-- /unreleased -->
+## With JBang
+
+If you have [JBang](https://www.jbang.dev/), `jbang logctl@ddeuchert/logaperture status` runs `logctl`
+with no download. See [Run logctl with JBang](../how-to/run-with-jbang.md).
+
 ## The release zip
 
 Download [`logaperture-{{ logaperture.version }}.zip`]({{ logaperture.release_url }}) from GitHub.

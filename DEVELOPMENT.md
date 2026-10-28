@@ -34,7 +34,9 @@ apply to everyone.
   `release/*` branch. Its
   first-parent history is therefore one merge commit per release, each with the
   same tree as the tagged release commit.
-- **Cutting a release:** first re-record the demo recordings with the release
+- **Cutting a release:** first set the version in `jbang-catalog.json` to the release (it is the file
+  JBang reads from `main`), and once the release is on Central check
+  `jbang logctl@ddeuchert/logaperture --version` on a machine that has not built the project. Then re-record the demo recordings with the release
   version's agent in the dev WildFly (`dev/demos/record.sh all`), watch each one,
   and commit the new `.cast` files; a recording whose output changed may mean the
   guide's example output needs the same update ([dev/demos/README.md](dev/demos/README.md)).
