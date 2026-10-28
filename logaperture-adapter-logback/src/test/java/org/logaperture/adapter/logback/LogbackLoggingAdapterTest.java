@@ -21,6 +21,7 @@ import ch.qos.logback.classic.joran.JoranConfigurator;
 import ch.qos.logback.core.joran.spi.JoranException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.logaperture.api.BackendInfo;
 import org.logaperture.api.Level;
 import org.logaperture.core.spi.LoggingAdapter;
 
@@ -31,6 +32,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -47,6 +49,16 @@ class LogbackLoggingAdapterTest {
     void setUp() {
         context = new LoggerContext();
         adapter = new LogbackLoggingAdapter(context);
+    }
+
+    @Test
+    void backendInfo_namesLogbackWithTheJarsVersion() {
+        BackendInfo info = adapter.backendInfo();
+
+        assertEquals("Logback", info.name());
+        assertNotNull(info.version(), "the logback-classic jar manifest carries Implementation-Version");
+        assertEquals(LoggerContext.class.getPackage().getImplementationVersion(), info.version());
+        assertTrue(info.version().matches("\\d+\\.\\d+.*"), info.version());
     }
 
     @Test
