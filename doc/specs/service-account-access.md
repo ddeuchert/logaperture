@@ -1,12 +1,12 @@
 # `logctl` against a service running as another account
 
-Status: **Draft, not signed off.** Targets `1.0.0`. The first open question has been answered by a
+Status: **Agreed 2026-10-28** (decisions 1 to 4 below); implemented in PR #288. Targets `1.0.0`. The first open question has been answered by a
 real test (below): attach from an elevated Administrator prompt reaches a `LocalSystem` JVM, so
 no new access mechanism is needed. The remaining work is
 making `logctl` find that JVM without `--pid` (Windows), plus a guide page; the false "No process
-with PID" error is a separate bug fix. Whether the discovery change counts as a fix under the beta.1
-feature freeze (§17.1) or needs the exception #210 had is the maintainer's call; it changes what
-`logctl` finds on Windows but adds no command, option or access path.
+with PID" error is a separate bug fix. **Maintainer decision, 2026-10-28:** the whole fix goes into
+1.0.0 as a freeze exception, because it is limited to `logctl`, adds no command, option or access
+path, and touches nothing in the agent.
 
 Tracking issue: [#287](https://github.com/ddeuchert/logaperture/issues/287) (milestone `1.0.0`;
 branches from and targets `release/1.0`, see [`release-lines.md`](release-lines.md)). The false
@@ -112,9 +112,9 @@ Customer machine, beta.3, application as a `LocalSystem` service behind a native
 - **D. A `doctor` hint** is optional and deferred: `doctor` runs after a JVM is found, so it
   cannot help with the case that started this.
 
-## Open design questions (deferred to when this is specced)
+## Open design questions
 
-Nothing below is decided.
+Question 5 is decided (see it). The others are not, and none blocks the change.
 
 1. **Is the same true for a `LocalService` or `NetworkService` account, or a named service
    account?** Only `LocalSystem` has been tested.
@@ -124,11 +124,12 @@ Nothing below is decided.
    and let the attach report its outcome, or treat an empty handle as "unknown" and say so.
 4. **Other platforms.** Whether the same pre-attach check misreports on Linux for a process owned
    by another user (there the attach itself is refused, so it may not).
-5. **Which discovery sources to keep.** Change B proposes all three. Questions: whether source 3
-   (known profile locations) is worth its hard-coded paths now that source 2 finds the customer's
-   JVM; a service account other than `LocalSystem` writes under its own profile, which is not
-   enumerated; and whether probing is bounded (a time limit per JVM, a cap on candidates). A JVM
-   started with `-XX:-UsePerfData` is in source 2 only if its image is `java.exe` or `javaw.exe`.
+5. **Which discovery sources to keep.** *Agreed 2026-10-28:* all three of change B, with no cap
+   or time limit on the probes (the candidate lists are short, they run one after another, and a
+   refused PID is skipped), and no per-user profile scanning, so a named service account is found
+   through `tasklist` when its image is `java.exe` or `javaw.exe`. Other service accounts are
+   untested. A JVM started with `-XX:-UsePerfData` and hosted inside a wrapper process is not found;
+   `--pid` still reaches it.
 6. **Wrapper processes.** A native service wrapper is not a JVM and is never a candidate; only the
    JVM it launches is. Whether a launcher JVM that exits or holds no agent needs any special case.
 
@@ -138,8 +139,18 @@ Layer 0, transport only: no new operation and no change to any MXBean signature,
 compatibility promise is untouched. No new access path is added, so §8.2 and §9.8 are unchanged:
 authorization is still the operating system's, and an elevated Administrator is already allowed by
 it. The false-error fix and the guide page fit the beta.1 freeze (§17.1) as a bug fix and
-documentation. The discovery change (B) is the part to judge against it, see Status.
+documentation. The discovery change (B) is the part that goes beyond a bug fix; Status records the decision to
+include it in 1.0.0.
 
 Needs a real Windows service run as `LocalSystem` to test; the CI matrix has none, and the dev
 WildFly environment is Linux. The customer's machine produced the findings above; a repeat after
 the fix is the acceptance test.
+
+## What was tested
+
+- Unit tests with fakes (`HostProcessesTest`, `DiscoveryWindowsTest`): the `tasklist` parser, the
+  profile `hsperfdata` scan, the merge and de-duplication of the sources, the messages, and that
+  nothing runs off Windows. They run on Linux in CI.
+- Not tested in CI: anything against a real Windows service. The probe runs on the customer's
+  machine (2026-10-28) are the evidence for the design; the acceptance test is the customer running
+  the built `logctl` there, first with `--pid` and then without.

@@ -1723,7 +1723,7 @@ Tracked as [#210](https://github.com/ddeuchert/logaperture/issues/210). **Specce
 
 ### 18.19 `logctl` against a service running as another account
 
-**Draft, targets `1.0.0`; whether the discovery change needs a freeze exception is open:** [`doc/specs/service-account-access.md`](specs/service-account-access.md).
+**Draft, targets `1.0.0` as a freeze exception (maintainer decision 2026-10-28; `logctl` only, agent untouched):** [`doc/specs/service-account-access.md`](specs/service-account-access.md).
 
 **Motivation.** A customer's WildFly runs as a Windows service under `LocalSystem`. `jboss-cli.bat` works from an Administrator prompt; `logctl` did not, and §9.8 said it needs the owner's account.
 
