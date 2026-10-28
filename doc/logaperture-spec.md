@@ -1723,11 +1723,11 @@ Tracked as [#210](https://github.com/ddeuchert/logaperture/issues/210). **Specce
 
 ### 18.19 `logctl` against a service running as another account
 
-**Draft, targets `1.0.0`, no freeze exception needed:** [`doc/specs/service-account-access.md`](specs/service-account-access.md).
+**Draft, targets `1.0.0`; whether the discovery change needs a freeze exception is open:** [`doc/specs/service-account-access.md`](specs/service-account-access.md).
 
 **Motivation.** A customer's WildFly runs as a Windows service under `LocalSystem`. `jboss-cli.bat` works from an Administrator prompt; `logctl` did not, and §9.8 said it needs the owner's account.
 
-**Finding (2026-10-28, real Windows service).** The Attach API itself reaches a `LocalSystem` JVM from an elevated Administrator prompt (`jcmd` did). `logctl` failed earlier: discovery does not list a service's JVM, and its `--pid` path reported a live process as "No process with PID". The work is two corrections to those messages and a guide page, not a new access mechanism.
+**Finding (2026-10-28, real Windows service).** The Attach API itself reaches a `LocalSystem` JVM from an elevated Administrator prompt (`jcmd` did). `logctl` failed earlier: discovery does not list a service's JVM, and its `--pid` path reported a live process as "No process with PID". The work is making Windows discovery find that JVM from an elevated prompt (with the existing pick-or-`--pid` rule for several), a fix for the false error (#289) and a guide page, not a new access mechanism.
 
 ---
 

@@ -2,8 +2,11 @@
 
 Status: **Draft, not signed off.** Targets `1.0.0`. The first open question has been answered by a
 real test (below): attach from an elevated Administrator prompt reaches a `LocalSystem` JVM, so
-no new access mechanism is needed and no feature-freeze exception (§17.1). The remaining work is
-two corrections to how `logctl` finds and reports a JVM it cannot see, plus a guide page.
+no new access mechanism is needed. The remaining work is
+making `logctl` find that JVM without `--pid` (Windows), plus a guide page; the false "No process
+with PID" error is a separate bug fix. Whether the discovery change counts as a fix under the beta.1
+feature freeze (§17.1) or needs the exception #210 had is the maintainer's call; it changes what
+`logctl` finds on Windows but adds no command, option or access path.
 
 Tracking issue: [#287](https://github.com/ddeuchert/logaperture/issues/287) (milestone `1.0.0`;
 branches from and targets `release/1.0`, see [`release-lines.md`](release-lines.md)). The false
@@ -20,14 +23,18 @@ Builds on: [`cli-transport.md`](cli-transport.md) (the attach transport and "Dis
 
 After this feature, the user will be able to:
 
-- Run `logctl status --pid <n>` (and every other command) from an Administrator prompt against an
-  application server that runs as a Windows service under `LocalSystem`, the way they can already
-  run `jboss-cli.bat`, without first becoming that account.
+- On a Windows server, run any `logctl` command from a command prompt opened as Administrator,
+  with no `--pid`, and have it find the one JVM running LogAperture, including one that runs as a
+  Windows service under `LocalSystem`, the way `jboss-cli.bat` already works from that prompt.
+- Have other `java.exe` processes on the machine ignored: only a JVM running the agent counts.
+- Be asked which JVM when several run the agent (in a terminal), or be told to pass `--pid` (in a
+  script), exactly as on any other platform.
 - Be told the real reason when `logctl` cannot reach a JVM, instead of "No process with PID" for a
   process that is running.
-- Be pointed at `--pid` when `logctl` finds no JVM on a machine where a service may be running one.
-- Read a guide page that shows how to find the JVM's PID behind a Windows service wrapper and how
-  to run `logctl` against it.
+- Read a guide page that shows the above, and how to find the JVM's PID behind a Windows service
+  wrapper when `--pid` is needed.
+
+Linux and macOS behaviour does not change.
 
 Guide pages this changes (when it lands): `troubleshooting.md` (the messages above);
 `concepts/security.md` and `how-to/try-without-restart.md` ("same user" corrected for Windows
@@ -70,11 +77,14 @@ Customer machine, beta.3, application as a `LocalSystem` service behind a native
   that `logctl` cannot inspect, try the attach and report its outcome. "No process with PID" is
   kept for a PID that `tasklist` would not list either. Same change in the pre-attach check that
   `logctl attach` (#273) adds on `develop`.
-- **B. Say what discovery cannot see.** When no JVM is found, say that JVMs started by other
-  accounts, such as services, are not listed and name `--pid`. On Windows the message could also
-  say how to find the JVM's PID behind a wrapper. Open: whether discovery can safely list more
-  than the per-user directory (for example by also trying the `hsperfdata` directories of other
-  accounts when elevated), or whether naming `--pid` is the whole fix. Deferred.
+- **B. Discovery finds a service's JVM on Windows.** With no `--pid`, from an elevated prompt,
+  `logctl` enumerates JVMs beyond the current user's, probes each one for the agent the way it does
+  today (attach, read the `logaperture.version` property), and then applies the existing rules
+  unchanged: one match is used, several are asked about in a terminal (`pick-jvm.md`) or exit 4
+  with the table and `--pid` when it cannot ask, none is "No LogAperture-enabled JVM found". When
+  nothing is found, the message says that JVMs owned by other accounts may not be listed and names
+  `--pid`. Scope is Windows; the Linux and macOS path is not touched. **How to enumerate is the open
+  design question 5.**
 - **C. Guide page and corrected wording**, as listed above.
 - **D. A `doctor` hint** is optional and deferred: `doctor` runs after a JVM is found, so it
   cannot help with the case that started this.
@@ -92,14 +102,25 @@ Nothing below is decided.
    "unknown".
 4. **Other platforms.** Whether the same pre-attach check misreports on Linux for a process owned
    by another user (there the attach itself is refused, so it may not).
-5. **Discovery beyond the current user** (change B above).
+5. **How discovery enumerates JVMs owned by other accounts on Windows.** `VirtualMachine.list()`
+   reads only the current user's `hsperfdata` directory, and a JVM started with
+   `-XX:-UsePerfData` is not in any. Candidates, none tried yet: (a) also read the `hsperfdata_*`
+   directories of other accounts (a `LocalSystem` JVM writes under `C:\Windows\Temp`; a service
+   account has its own temporary directory), (b) list `java.exe` and `javaw.exe` processes with
+   `ProcessHandle` and probe each, which cannot rely on the command line being readable for another
+   account's process, (c) a combination. Each must be tested on a real service, and each has a cost
+   when many JVMs run: every probe is an attach. Whether the probe is bounded (a time limit per
+   JVM, a cap on how many) is part of the same question.
+6. **Wrapper processes.** A native service wrapper is not a JVM and is never a candidate; only the
+   JVM it launches is. Whether a launcher JVM that exits or holds no agent needs any special case.
 
 ## Cost and dependencies
 
 Layer 0, transport only: no new operation and no change to any MXBean signature, so the §11.1
 compatibility promise is untouched. No new access path is added, so §8.2 and §9.8 are unchanged:
 authorization is still the operating system's, and an elevated Administrator is already allowed by
-it. A fix and a guide page fit the beta.1 freeze (§17.1) as a bug fix and documentation.
+it. The false-error fix and the guide page fit the beta.1 freeze (§17.1) as a bug fix and
+documentation. The discovery change (B) is the part to judge against it, see Status.
 
 Needs a real Windows service run as `LocalSystem` to test; the CI matrix has none, and the dev
 WildFly environment is Linux. The customer's machine produced the findings above; a repeat after
