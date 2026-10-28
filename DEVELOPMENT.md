@@ -34,9 +34,7 @@ apply to everyone.
   `release/*` branch. Its
   first-parent history is therefore one merge commit per release, each with the
   same tree as the tagged release commit.
-- **Cutting a release:** first set the version in `jbang-catalog.json` to the release (it is the file
-  JBang reads from `main`), and once the release is on Central check
-  `jbang logctl@ddeuchert/logaperture --version` on a machine that has not built the project. Then re-record the demo recordings with the release
+- **Cutting a release:** first re-record the demo recordings with the release
   version's agent in the dev WildFly (`dev/demos/record.sh all`), watch each one,
   and commit the new `.cast` files; a recording whose output changed may mean the
   guide's example output needs the same update ([dev/demos/README.md](dev/demos/README.md)).
@@ -62,7 +60,14 @@ apply to everyone.
   line. Merge `release/1.0` into `develop` first.
   Afterwards, bump the released branch to its next `-SNAPSHOT` and merge `release/*` forward into `develop`. How it works:
   [doc/specs/maven-central-publishing.md](doc/specs/maven-central-publishing.md).
-
+- **The JBang catalog** (`jbang-catalog.json`, [doc/specs/logctl-jbang.md](doc/specs/logctl-jbang.md))
+  is read by JBang from `main` and names one released `logaperture-cli` version. A release cut from
+  `develop` (1.1.0, 1.2.0, ...) sets that version to the release before the pull request into `main`;
+  there is a short window between that merge and the artifacts reaching Central in which the alias
+  cannot resolve, so push the tag straight away. Once the release is on Central, check
+  `jbang logctl@ddeuchert/logaperture --version` on a machine that has not built the project. A patch
+  cut from `release/1.0` after that must not lose the file: merge `release/1.0` into `develop`
+  first, as above, and look for the catalog in the pull request into `main`.
 - **Publishing a snapshot:** to let testers try a pull request before the next
   beta, add the label `deploy snapshot` to it (`gh pr edit <number> --add-label
   "deploy snapshot"`). `.github/workflows/snapshot.yml` then builds that commit

@@ -8,7 +8,8 @@ It lasts until that JVM stops. To keep LogAperture, add the `-javaagent` option 
 as in the [install guides](../get-started/install-plain-jvm.md).
 
 With [JBang](run-with-jbang.md) installed, the whole trial needs nothing else: write
-`jbang logctl@ddeuchert/logaperture` where this page says `logctl`.
+`jbang logctl@ddeuchert/logaperture` where this page says `logctl`. Each command then starts JBang
+again; `jbang app install` on that page makes `logctl` a command of its own.
 
 ## Attach
 

@@ -59,5 +59,5 @@ version of the agent on the JVM exactly.
 - The `logctl.conf` file and the `JAVA_HOME`, `JAVA_OPTS` and `LOGCTL_JAR_HOME` settings of the
   [launcher](../vendors/logctl-launcher.md) do not apply. JBang chooses the Java, and takes options
   of its own: `jbang run -R-Dlogaperture.home=/data/la logctl@ddeuchert/logaperture status`.
-- `logctl attach` writes the agent jar it loads to `~/.logaperture/agent/`, as it does from the zip.
+- `logctl attach` writes the agent jar it loads to `~/.logaperture/agent/`, as it does from the zip (under the directory `logaperture.home` names, when you set it).
 - Other install paths are on the [Download](../get-started/download.md) page.
