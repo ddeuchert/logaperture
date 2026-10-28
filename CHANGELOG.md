@@ -10,6 +10,8 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ### Added
 
+- **`logctl env` names Logback.** An application on Logback now gets a `Logging backend` line
+  (`Logback 1.5.13`), as JUL and JBoss LogManager already did (issue #283).
 - **`logctl attach`.** `logctl attach [<pid>]` loads the agent into a JVM that was started without
   `-javaagent`, on Logback, `java.util.logging` or a standalone WildFly, and takes `--vendor-defaults`,
   `--storm-detection` and `--agent-jar`. The `logctl` jar now carries the agent jar. `doctor` explains

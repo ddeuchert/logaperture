@@ -59,8 +59,9 @@ logctl list loggers --show-all
 ```
 
 `env` shows the agent's version and where it keeps its state file. The application's own log
-also has one line from LogAperture at startup, `LogAperture <version> active (JVM)`. On
-`java.util.logging`, `env` shows `Logging backend    java.util.logging (JUL)`.
+also has one line from LogAperture at startup, `LogAperture <version> active (JVM)`. `env` also names
+the logging backend: `Logging backend    Logback 1.5.13`, or on `java.util.logging`,
+`Logging backend    java.util.logging (JUL)`.
 `list loggers --show-all` lists the application's loggers and their levels.
 
 Then change one for a few minutes and watch the log:
