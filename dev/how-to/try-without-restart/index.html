@@ -16,7 +16,7 @@
         <link rel="prev" href="../recipes/">
       
       
-        <link rel="next" href="../several-jvms/">
+        <link rel="next" href="../run-with-jbang/">
       
       
         
@@ -783,6 +783,8 @@
       
         
       
+        
+      
     
     
     
@@ -1163,6 +1165,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../run-with-jbang/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Run logctl with JBang
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -2063,6 +2093,9 @@ an application without changing its launch line or restarting it. It works for a
 Logback, on <code>java.util.logging</code>, and for a standalone WildFly.</p>
 <p>It lasts until that JVM stops. To keep LogAperture, add the <code>-javaagent</code> option to the launch line
 as in the <a href="../../get-started/install-plain-jvm/">install guides</a>.</p>
+<p>With <a href="../run-with-jbang/">JBang</a> installed, the whole trial needs nothing else: write
+<code>jbang logctl@ddeuchert/logaperture</code> where this page says <code>logctl</code>. Each command then starts JBang
+again; <code>jbang app install</code> on that page makes <code>logctl</code> a command of its own.</p>
 <h2 id="attach">Attach<a class="headerlink" href="#attach" title="Permanent link">&para;</a></h2>
 <p>Find the process id of the application (<code>jps -l</code> lists Java processes), then:</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>attach<span class="w"> </span><span class="m">1344371</span>
@@ -2177,13 +2210,13 @@ because the <code>-javaagent</code> order check has nothing to read.</p>
         
         
           
-          <a href="../several-jvms/" class="md-footer__link md-footer__link--next" aria-label="Next: Work with several JVMs">
+          <a href="../run-with-jbang/" class="md-footer__link md-footer__link--next" aria-label="Next: Run logctl with JBang">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Work with several JVMs
+                Run logctl with JBang
               </div>
             </div>
             <div class="md-footer__button md-icon">
