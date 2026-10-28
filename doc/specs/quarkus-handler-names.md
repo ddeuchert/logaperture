@@ -1,6 +1,6 @@
 # Quarkus: configured handler names
 
-Status: **Draft, awaiting sign-off** (decisions #1 to #8 below). Release `1.1.0`.
+Status: **Signed off 2026-10-28** (decisions #1 to #8 below, every recommendation taken). Release `1.1.0`.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §15.9 (Quarkus), §17.1 (1.1.0).
 Builds on: [`quarkus-support.md`](quarkus-support.md) (Q3, which shipped type-based names and left

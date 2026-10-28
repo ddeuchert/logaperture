@@ -17,7 +17,6 @@ package org.logaperture.container.quarkus;
 
 import org.logaperture.adapter.jul.JulAdapterFactory;
 import org.logaperture.adapter.jul.JulLoggingAdapter;
-import org.logaperture.adapter.jul.TypeHandlerNameResolver;
 import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.Severity;
 import org.logaperture.container.jbosslogmanager.JBossLogManagerContainer;
@@ -29,9 +28,14 @@ import org.logaperture.core.spi.ContextHandle;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.WeakHashMap;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -66,11 +70,42 @@ public final class QuarkusEngine {
      * @return the adapter, for {@link #formatterFindings}
      */
     public static JulLoggingAdapter installSystemContext(JBossLogManagerContainer host,
-            Consumer<AggregateLevelControl> onFirstContextReady) {
-        JulLoggingAdapter adapter = JulAdapterFactory.forCurrentContext(new TypeHandlerNameResolver());
+            Consumer<AggregateLevelControl> onFirstContextReady, Supplier<ClassLoader> configLoader) {
+        DelayedHandlerWatch.Lazy activation = DelayedHandlerWatch.lazy(java.util.logging.Logger.getLogger(""));
+        // Quarkus version that names its delayed handler differently: nothing to wait for.
+        BooleanSupplier handlersAttached = () -> !activation.isLocated() || activation.getAsBoolean();
+        Supplier<Optional<Map<String, String>>> logProperties = () -> QuarkusConfigReader.read(configLoader.get());
+        Function<String, java.util.logging.Logger> existingLogger =
+                name -> java.util.logging.LogManager.getLogManager().getLogger(name);
+        QuarkusHandlerNameResolver names = new QuarkusHandlerNameResolver(logProperties, handlersAttached, existingLogger);
+        JulLoggingAdapter adapter = JulAdapterFactory.forCurrentContext(names);
+        resolvers.put(adapter, names);
         host.installContext(ContextHandle.of(ContextHandle.SYSTEM, CONTAINER_ID, adapter));
         onFirstContextReady.accept(host.operations());
         return adapter;
+    }
+
+    /** The adapter's name resolver, for {@link #handlerNameFindings}. */
+    private static final Map<JulLoggingAdapter, QuarkusHandlerNameResolver> resolvers =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    /** The {@code doctor} check id for configured handler names that could not be worked out. */
+    public static final String HANDLER_NAMES_CHECK = "quarkus.handler-names";
+
+    /**
+     * doc/specs/quarkus-handler-names.md, design step 4: one {@code doctor} line when Quarkus's
+     * configuration could not be read, so handlers keep their type names.
+     */
+    public static List<DoctorFinding> handlerNameFindings(JulLoggingAdapter adapter) {
+        QuarkusHandlerNameResolver names = resolvers.get(adapter);
+        if (names == null || !names.configUnreadable()) {
+            return List.of();
+        }
+        return List.of(new DoctorFinding(HANDLER_NAMES_CHECK, Severity.INFO, "quarkus",
+                "The handler names in application.properties could not be read, so handlers are named by type "
+                        + "(console, file, ...).",
+                "Use the type names, for example logctl set handler file DEBUG. This is expected on a Quarkus "
+                        + "version other than the tested ones.", null));
     }
 
     /** The {@code doctor} check id for a handler whose formatter was left alone. */

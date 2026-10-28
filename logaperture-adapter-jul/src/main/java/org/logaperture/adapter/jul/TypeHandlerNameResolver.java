@@ -52,9 +52,18 @@ public final class TypeHandlerNameResolver implements HandlerNameResolver {
     private final Map<Handler, String> given = Collections.synchronizedMap(new WeakHashMap<>());
 
     @Override
-    public synchronized Map<Handler, String> resolve(List<Handler> handlers) {
+    public Map<Handler, String> resolve(List<Handler> handlers) {
+        return resolve(handlers, Set.of());
+    }
+
+    /**
+     * As {@link #resolve(List)}, but never gives a name in {@code reserved}: names a caller has
+     * already given to other handlers (Quarkus's configured names, doc/specs/quarkus-handler-names.md
+     * #3, win over a type name).
+     */
+    public synchronized Map<Handler, String> resolve(List<Handler> handlers, Set<String> reserved) {
         Map<Handler, String> names = new IdentityHashMap<>();
-        Set<String> taken = new HashSet<>();
+        Set<String> taken = new HashSet<>(reserved);
         List<Handler> unnamed = new java.util.ArrayList<>();
         for (Handler handler : handlers) {
             String kept = given.get(handler);
@@ -79,7 +88,7 @@ public final class TypeHandlerNameResolver implements HandlerNameResolver {
     }
 
     /** {@code console}, {@code file}, {@code syslog} or {@code socket} for a handler of that kind (or a subclass of it), else {@code null}. */
-    static String typeOf(Handler handler) {
+    public static String typeOf(Handler handler) {
         for (Class<?> type = handler.getClass(); type != null; type = type.getSuperclass()) {
             String known = TYPE_BY_CLASS_NAME.get(type.getSimpleName());
             if (known != null) {

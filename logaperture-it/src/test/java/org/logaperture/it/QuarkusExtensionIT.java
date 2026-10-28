@@ -120,6 +120,11 @@ class QuarkusExtensionIT {
 
         String handlers = logctl(app, "list", "handlers", "--show-all").stdout();
         assertTrue(handlers.contains("console") && handlers.contains("file"), handlers);
+        // doc/specs/quarkus-handler-names.md: the name written in application.properties, on the
+        // handler that writes the audit file, and a change by that name reaches it.
+        assertTrue(handlers.contains("AUDIT") && handlers.contains("audit.log"), handlers);
+        Logctl raised = logctl(app, "set", "handler", "AUDIT", "DEBUG");
+        assertEquals(0, raised.exitCode(), raised.stderr());
         assertTrue(pollUntil(() -> logctl(app, "top").stdout().contains(WORKER)), "top counted the log file");
 
         Logctl added = logctl(app, "add", "rule", "drop", WORKER, "--message-contains", "REPEAT-line",
@@ -243,6 +248,9 @@ class QuarkusExtensionIT {
                     "-Dquarkus.http.host=127.0.0.1",
                     "-Dquarkus.log.file.enabled=true",
                     "-Dquarkus.log.file.path=" + logFile,
+                    "-Dquarkus.log.handler.file.\"AUDIT\".enable=true",
+                    "-Dquarkus.log.handler.file.\"AUDIT\".path=" + logFile.resolveSibling("audit.log"),
+                    "-Dquarkus.log.category.\"org.logaperture.sample.quarkus\".handlers=AUDIT",
                     "-jar", runJar.toString()));
             ProcessBuilder builder = new ProcessBuilder(command)
                     .redirectErrorStream(true)

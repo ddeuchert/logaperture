@@ -138,20 +138,37 @@ the same user as the application (in Quarkus's own images, user `185`); set it w
 ## Handler names
 
 Quarkus keeps its console and file handlers inside one internal handler. LogAperture looks inside
-it, and names the handlers by what they are (paths here are from a test run):
+it. A handler you named in `application.properties` shows under that name, and Quarkus's own
+console and file handlers show by what they are (paths here are from a test run):
+
+```properties
+quarkus.log.handler.file."AUDIT".enable=true
+quarkus.log.handler.file."AUDIT".path=/tmp/cap/audit.log
+quarkus.log.category."org.example".handlers=AUDIT
+```
 
 ```
-HANDLER           LEVEL  PERSISTS  TARGET            OVERRIDE
-ALL_HANDLERS      —      —         —                 —
-console           ALL    no        —                 —
-file              ALL    file      /tmp/cap/app.log  —
-DEFAULT_HANDLERS  —      —         (auto: console)   —
+HANDLER           LEVEL  PERSISTS  TARGET                     OVERRIDE
+ALL_HANDLERS      —      —         —                          —
+console           ALL    no        —                          —
+file              ALL    file      /tmp/cap/quarkus-file.log  —
+AUDIT             DEBUG  file      /tmp/cap/audit.log         DEBUG (FOR, reverts in 3h 59m)
+DEFAULT_HANDLERS  —      —         (auto: console)            —
 ```
 
-The names are `console`, `file`, `syslog` and `socket`. A second handler of one type is numbered:
-`file-2`. The names you gave handlers in `application.properties`
-(`quarkus.log.handler.file."AUDIT"`) aren't used. Use `logctl set handler file DEBUG`, for example,
-to let a raised logger's lines through a handler that is set higher.
+`logctl set handler AUDIT DEBUG` changes that handler, as `FILE` is changed on WildFly. A handler
+listed under `quarkus.log.handlers` (the root) is named the same way. A named file handler needs
+`enable=true`: without it Quarkus attaches nothing and logs "linked to a category but not
+configured".
+
+The handlers Quarkus creates itself are `console`, `file`, `syslog` and `socket`. A handler whose
+name could not be matched is numbered by type, for example `file-2`, and so is a handler whose
+`handlers` list does not line up with the handlers Quarkus attached. If you name a handler
+`console`, that name is yours and Quarkus's own console handler becomes `console-2`. Names are
+case-sensitive, as written in the configuration. `logctl doctor` reports
+[`quarkus.handler-names`](../reference/doctor-checks.md#quarkushandler-names) if the names could not
+be read at all. Use `logctl set handler file DEBUG`, for example, to let a raised logger's lines
+through a handler that is set higher.
 
 ## The build's minimum level
 
@@ -202,7 +219,7 @@ With the agent, dev mode works but isn't a supported target.
 - `logctl top` measures bytes written to files, and Quarkus logs to the console by default. Turn on
   the file handler (`quarkus.log.file.enabled=true`) to give `top` something to measure.
 - Asynchronous handlers (`quarkus.log.*.async.enable`) aren't supported.
-- `syslog` and `socket` handlers are named and listed, but not otherwise tested.
+- `syslog` and `socket` handlers, named or not, are listed but not otherwise tested.
 - A plain `java -jar` application that logs through `java.util.logging` alone, without Quarkus, is
   not covered by this page.
 

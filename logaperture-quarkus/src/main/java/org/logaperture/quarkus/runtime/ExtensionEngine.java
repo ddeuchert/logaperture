@@ -73,9 +73,14 @@ final class ExtensionEngine {
             Consumer<AggregateLevelControl> onFirstContextReady = EngineStartup.onFirstContextReady(
                     QuarkusEngine.CONTAINER_ID, EngineStartup.Delivery.EXTENSION, policy, auditLog, vendorDefaults,
                     recipeScanner());
-            adapter = QuarkusEngine.installSystemContext(host, onFirstContextReady);
+            Supplier<ClassLoader> appLoader = ExtensionEngine.class::getClassLoader;
+            adapter = QuarkusEngine.installSystemContext(host, onFirstContextReady, appLoader);
             JulLoggingAdapter installed = adapter;
-            Supplier<List<DoctorFinding>> containerFindings = () -> QuarkusEngine.formatterFindings(installed);
+            Supplier<List<DoctorFinding>> containerFindings = () -> {
+                List<DoctorFinding> findings = new java.util.ArrayList<>(QuarkusEngine.formatterFindings(installed));
+                findings.addAll(QuarkusEngine.handlerNameFindings(installed));
+                return findings;
+            };
             host.setContainerFindings(containerFindings);
             JBossLogManagerContainer running = host;
             Runnable stopEngine = () -> stop(running, installed, propertiesSet);

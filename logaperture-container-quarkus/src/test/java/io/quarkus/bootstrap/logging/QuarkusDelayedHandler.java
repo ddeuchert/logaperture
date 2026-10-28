@@ -15,13 +15,24 @@
  */
 package io.quarkus.bootstrap.logging;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.logging.Handler;
 import java.util.logging.LogRecord;
 
-/** Test stand-in with the real class's name and its public {@code isActivated()}; see DelayedHandlerWatchTest. */
+/** Test stand-in with the real class's name, its public {@code isActivated()} and the child handlers it holds; see DelayedHandlerWatchTest. */
 public class QuarkusDelayedHandler extends Handler {
 
     private volatile boolean activated;
+    private final List<Handler> children = new ArrayList<>();
+
+    public Handler[] getHandlers() {
+        return children.toArray(new Handler[0]);
+    }
+
+    public void addHandler(Handler handler) {
+        children.add(handler);
+    }
 
     public final boolean isActivated() {
         return activated;

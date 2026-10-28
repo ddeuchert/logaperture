@@ -62,6 +62,15 @@ log stream (`MutinyLogHandler`), present in `quarkus dev` only.
 
 **Fix:** nothing to do.
 
+### `quarkus.handler-names`
+
+On Quarkus: the handler names in `application.properties` (`quarkus.log.handler.file."AUDIT"`) could
+not be read, so handlers are named by type (`console`, `file`, `file-2`), as before. `INFO`. Expected
+on a Quarkus version other than the tested ones; a list of handlers that does not line up with its
+names is skipped without a finding, and those handlers keep their type names.
+
+**Fix:** use the type names, for example `logctl set handler file DEBUG`.
+
 ### `logger.below-floor`
 
 A logger set to a level the logging backend will not emit, because the backend enforces a floor
