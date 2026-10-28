@@ -14,6 +14,8 @@ No LogAperture-enabled JVM found. Start the application with -javaagent:logapert
 - Run `logctl` as the operating-system user the JVM runs as, on the same machine. `logctl` only sees
   JVMs it could attach to.
 - In a container, run `logctl` inside the same container.
+- On Windows, if the application runs as a service, open the command prompt as Administrator. See
+  [Use logctl with a Windows service](how-to/windows-service.md).
 
 See [Work with several JVMs](how-to/several-jvms.md) for "Several candidates" and attach errors.
 

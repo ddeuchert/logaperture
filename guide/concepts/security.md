@@ -14,8 +14,10 @@ without it.
 
 `logctl` reaches the agent through the JVM's **attach mechanism**, the same one `jcmd` and
 debuggers use. It works only on the same machine, and only for the operating-system user the JVM
-runs as. LogAperture adds no accounts or passwords of its own: whoever can run commands as the
-JVM's user can use `logctl`, and nobody else can.
+runs as. On Windows an Administrator, from an elevated command prompt, can also reach a JVM that
+runs as a service under another account (see [Use logctl with a Windows
+service](../how-to/windows-service.md)). LogAperture adds no accounts or passwords of its own:
+whoever the operating system allows to attach to the JVM can use `logctl`, and nobody else can.
 
 If you can already attach a debugger to the JVM, LogAperture gives you no access you didn't have.
 

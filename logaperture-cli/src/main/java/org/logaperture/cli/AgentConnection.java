@@ -52,7 +52,7 @@ final class AgentConnection implements ControlPlane {
         try {
             vm = VirtualMachine.attach(Long.toString(pid));
         } catch (Exception e) {
-            throw attachFailure(pid, e);
+            throw attachFailure(pid, e, HostProcesses.system());
         }
 
         JMXConnector connector = null;
@@ -95,10 +95,13 @@ final class AgentConnection implements ControlPlane {
         Quietly.detach(vm);
     }
 
-    static CliError attachFailure(long pid, Exception cause) {
-        if (ProcessHandle.of(pid).isEmpty()) {
+    static CliError attachFailure(long pid, Exception cause, HostProcesses host) {
+        if (!host.exists(pid)) {
             return new CliError(CliError.NO_JVM, "No process with PID " + pid + ".");
         }
+        String owner = host.windows()
+                ? "open the command prompt as Administrator, or run as the account that owns that process"
+                : "run as the user that owns that process, or as root";
         if (cause instanceof AttachNotSupportedException) {
             // On Linux+HotSpot a cross-user attach commonly surfaces here rather than as an
             // IOException: the QUIT signal that would create the attach socket is dropped for
@@ -106,12 +109,12 @@ final class AgentConnection implements ControlPlane {
             // Permissions is therefore the first thing to check; a genuinely disabled or
             // non-HotSpot attach mechanism is the same exit code and the fallback explanation.
             return new CliError(CliError.ATTACH_DENIED, "Can't attach to PID " + pid
-                    + " — run as the user that owns that process, or as root. If you already are, "
+                    + " — " + owner + ". If you already are, "
                     + "that JVM has the attach mechanism disabled (-XX:+DisableAttachMechanism) "
                     + "or is not a HotSpot JVM.");
         }
         return new CliError(CliError.ATTACH_DENIED,
-                "Can't attach to PID " + pid + " — run as the user that owns that process, or as root.");
+                "Can't attach to PID " + pid + " — " + owner + ".");
     }
 
     private static String describe(Throwable t) {
