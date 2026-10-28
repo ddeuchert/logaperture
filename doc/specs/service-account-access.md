@@ -66,10 +66,26 @@ Customer machine, beta.3, application as a `LocalSystem` service behind a native
 3. `logctl status --pid 7100` printed "No process with PID 7100." while `tasklist /fi "pid eq
    7100"` listed that `java.exe`. The message comes from a `ProcessHandle.of(pid).isEmpty()`
    check that runs before any attach is tried, in `Discovery.resolveTargetPid` and in
-   `AgentConnection.attachFailure`. The likely cause is that the JDK reports a process the caller
-   may not open as absent on Windows. That cause is **not verified**; the false message is.
-4. `jcmd 7100 VM.version` from the same prompt succeeded. **The Attach API reaches a `LocalSystem`
-   JVM from an elevated Administrator prompt.** `logctl` never got as far as attaching.
+   `AgentConnection.attachFailure`. **Verified by probe:** `ProcessHandle.of(7100)` is empty for the
+   service's JVM while `tasklist` lists it and attach succeeds, so the JDK reports a process the
+   caller cannot open as absent.
+4. `jcmd 7100 VM.version` from the same prompt succeeded, and a probe's
+   `VirtualMachine.attach("7100")` read `logaperture.version=1.0.0-beta.3` and `user.name=SYSTEM`.
+   **The Attach API reaches a `LocalSystem` JVM from an elevated Administrator prompt.** `logctl`
+   never got as far as attaching.
+5. Discovery probes, same machine:
+   - `VirtualMachine.list()` and `ProcessHandle.allProcesses()` did not return the service JVM. The
+     latter reports the command of other accounts' processes as unreadable (142 of them), so it
+     cannot pick out `java.exe`.
+   - `tasklist /fo csv /nh /fi "imagename eq java.exe"` listed it (PID 7100, Services session),
+     whoever owns it.
+   - Its `hsperfdata` file is at
+     `C:\Windows\System32\config\systemprofile\AppData\Local\Temp\hsperfdata_SYSTEM\7100`, readable by
+     the Administrator. Not under `C:\Windows\Temp`, and not under the JVM's own `java.io.tmpdir`,
+     which is the relative path `../../jvmtemp/`.
+   - Attaching only to PIDs that `tasklist` named: the Jenkins agent under the Administrator's own
+     account attached (`logaperture.version` null, so correctly not a candidate), the service JVM
+     attached (marker present), and the probe's own JVM was refused as expected.
 
 ## Proposed changes (to be signed off)
 
@@ -78,13 +94,20 @@ Customer machine, beta.3, application as a `LocalSystem` service behind a native
   kept for a PID that `tasklist` would not list either. Same change in the pre-attach check that
   `logctl attach` (#273) adds on `develop`.
 - **B. Discovery finds a service's JVM on Windows.** With no `--pid`, from an elevated prompt,
-  `logctl` enumerates JVMs beyond the current user's, probes each one for the agent the way it does
-  today (attach, read the `logaperture.version` property), and then applies the existing rules
-  unchanged: one match is used, several are asked about in a terminal (`pick-jvm.md`) or exit 4
-  with the table and `--pid` when it cannot ask, none is "No LogAperture-enabled JVM found". When
-  nothing is found, the message says that JVMs owned by other accounts may not be listed and names
-  `--pid`. Scope is Windows; the Linux and macOS path is not touched. **How to enumerate is the open
-  design question 5.**
+  `logctl` collects candidate PIDs from three sources, probes each once the way it does today
+  (attach, read the `logaperture.version` property), and then applies the existing rules unchanged:
+  one match is used, several are asked about in a terminal (`pick-jvm.md`) or exit 4 with the table
+  and `--pid` when it cannot ask, none is "No LogAperture-enabled JVM found". The sources:
+  1. `VirtualMachine.list()`, as today.
+  2. `tasklist` for `java.exe` and `javaw.exe`, which names them whoever owns them.
+  3. Pid files in the `hsperfdata_*` directories under the system profile locations
+     (`...\config\systemprofile\AppData\Local\Temp`, `ServiceProfiles\*\AppData\Local\Temp`,
+     `C:\Windows\Temp`), which also finds a JVM hosted inside a service wrapper process such as
+     `prunsrv.exe`, where the process image is not `java.exe`.
+  Only PIDs from these sources are probed: attaching on Windows starts a thread in the target, so
+  an arbitrary process is never probed. When nothing is found, the message says that JVMs owned by
+  other accounts may not be listed and names `--pid`. Scope is Windows; the Linux and macOS path is
+  not touched. **Proposed, not signed off; see open question 5.**
 - **C. Guide page and corrected wording**, as listed above.
 - **D. A `doctor` hint** is optional and deferred: `doctor` runs after a JVM is found, so it
   cannot help with the case that started this.
@@ -97,20 +120,15 @@ Nothing below is decided.
    account?** Only `LocalSystem` has been tested.
 2. **Is it the elevated token that matters?** A non-elevated administrator was not tested; the
    guide should say "elevated" only if that is what the test shows.
-3. **Cause of the false "No process".** Verify on Windows whether `ProcessHandle.of` returns empty
-   for an unopenable process, and whether the fix is to skip the check or to treat empty as
-   "unknown".
+3. **The fix for the false "No process"** (bug #289; the cause is verified above): skip the check
+   and let the attach report its outcome, or treat an empty handle as "unknown" and say so.
 4. **Other platforms.** Whether the same pre-attach check misreports on Linux for a process owned
    by another user (there the attach itself is refused, so it may not).
-5. **How discovery enumerates JVMs owned by other accounts on Windows.** `VirtualMachine.list()`
-   reads only the current user's `hsperfdata` directory, and a JVM started with
-   `-XX:-UsePerfData` is not in any. Candidates, none tried yet: (a) also read the `hsperfdata_*`
-   directories of other accounts (a `LocalSystem` JVM writes under `C:\Windows\Temp`; a service
-   account has its own temporary directory), (b) list `java.exe` and `javaw.exe` processes with
-   `ProcessHandle` and probe each, which cannot rely on the command line being readable for another
-   account's process, (c) a combination. Each must be tested on a real service, and each has a cost
-   when many JVMs run: every probe is an attach. Whether the probe is bounded (a time limit per
-   JVM, a cap on how many) is part of the same question.
+5. **Which discovery sources to keep.** Change B proposes all three. Questions: whether source 3
+   (known profile locations) is worth its hard-coded paths now that source 2 finds the customer's
+   JVM; a service account other than `LocalSystem` writes under its own profile, which is not
+   enumerated; and whether probing is bounded (a time limit per JVM, a cap on candidates). A JVM
+   started with `-XX:-UsePerfData` is in source 2 only if its image is `java.exe` or `javaw.exe`.
 6. **Wrapper processes.** A native service wrapper is not a JVM and is never a candidate; only the
    JVM it launches is. Whether a launcher JVM that exits or holds no agent needs any special case.
 
