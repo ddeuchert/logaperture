@@ -783,6 +783,8 @@
       
         
       
+        
+      
     
     
     
@@ -1095,6 +1097,34 @@
     
   
     Work with several JVMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/windows-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use logctl with a Windows service
   
 
     
@@ -2076,8 +2106,10 @@ without it.</p>
 <h2 id="who-can-use-logctl">Who can use <code>logctl</code><a class="headerlink" href="#who-can-use-logctl" title="Permanent link">&para;</a></h2>
 <p><code>logctl</code> reaches the agent through the JVM's <strong>attach mechanism</strong>, the same one <code>jcmd</code> and
 debuggers use. It works only on the same machine, and only for the operating-system user the JVM
-runs as. LogAperture adds no accounts or passwords of its own: whoever can run commands as the
-JVM's user can use <code>logctl</code>, and nobody else can.</p>
+runs as. On Windows an Administrator, from an elevated command prompt, can also reach a JVM that
+runs as a service under another account (see <a href="../../how-to/windows-service/">Use logctl with a Windows
+service</a>). LogAperture adds no accounts or passwords of its own:
+whoever the operating system allows to attach to the JVM can use <code>logctl</code>, and nobody else can.</p>
 <p>If you can already attach a debugger to the JVM, LogAperture gives you no access you didn't have.</p>
 <p><code>logctl attach</code> goes one step further than the other commands: it loads LogAperture's agent into a
 JVM that doesn't have it. That is the same operation a debugger or <code>jcmd</code> can do, so it needs the same

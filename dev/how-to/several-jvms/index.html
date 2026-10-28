@@ -16,7 +16,7 @@
         <link rel="prev" href="../run-with-jbang/">
       
       
-        <link rel="next" href="../scripting/">
+        <link rel="next" href="../windows-service/">
       
       
         
@@ -785,6 +785,8 @@
       
         
       
+        
+      
     
     
     
@@ -1199,6 +1201,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../windows-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use logctl with a Windows service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -2076,6 +2106,8 @@ processes too.</p>
 <div class="highlight"><pre><span></span><code>Can't attach to PID 1 — run as the user that owns that process, or as root.
 </code></pre></div>
 <p>Exit code 5. Run <code>logctl</code> as the user the JVM runs as, for example with <code>sudo -u jboss logctl …</code>.</p>
+<p>On Windows the message says to open the command prompt as Administrator, or to run as the account
+that owns the process. See <a href="../windows-service/">Use logctl with a Windows service</a>.</p>
 <h2 id="two-applications-from-one-directory">Two applications from one directory<a class="headerlink" href="#two-applications-from-one-directory" title="Permanent link">&para;</a></h2>
 <p>Each JVM keeps its <code>sticky</code> changes in its own state file, named after the directory it was started
 from. Two JVMs started from the same directory can't share one: the second to start can't keep
@@ -2133,13 +2165,13 @@ from. Two JVMs started from the same directory can't share one: the second to st
         
         
           
-          <a href="../scripting/" class="md-footer__link md-footer__link--next" aria-label="Next: Script logctl">
+          <a href="../windows-service/" class="md-footer__link md-footer__link--next" aria-label="Next: Use logctl with a Windows service">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Script logctl
+                Use logctl with a Windows service
               </div>
             </div>
             <div class="md-footer__button md-icon">
