@@ -72,7 +72,7 @@ final class VmAttacher implements JvmAttacher {
         } catch (LinkageError noAttachModule) {
             throw noJdkAttach();
         } catch (Exception e) {
-            throw AgentConnection.attachFailure(pid, e);
+            throw AgentConnection.attachFailure(pid, e, HostProcesses.system());
         } finally {
             Quietly.detach(vm);
         }
@@ -170,6 +170,6 @@ final class VmAttacher implements JvmAttacher {
             return new CliError(CliError.UNEXPECTED, "The agent was loaded into PID " + pid + " but failed to start: "
                     + message);
         }
-        return AgentConnection.attachFailure(pid, cause);
+        return AgentConnection.attachFailure(pid, cause, HostProcesses.system());
     }
 }
