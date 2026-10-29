@@ -8,6 +8,10 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ## [Unreleased]
 
+## [1.0.0-beta.4] — 2026-10-28
+
+`logctl` now finds a LocalSystem Windows service's JVM from an Administrator prompt. **Not for production yet.**
+
 ### Fixed
 
 - **Windows: `logctl --pid` no longer says "No process with PID" for a running process.** The JDK
@@ -578,7 +582,8 @@ store's on-disk format may still change between builds without a migration path.
   `/subsystem=logging` reconfiguration
   ([#31](https://github.com/ddeuchert/logaperture/issues/31)).
 
-[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.3...HEAD
+[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.4...HEAD
+[1.0.0-beta.4]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.4
 [1.0.0-beta.3]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.3
 [1.0.0-beta.2]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.2
 [1.0.0-beta.1]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.1
