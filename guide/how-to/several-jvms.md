@@ -21,8 +21,8 @@ on the same machine, run by the same operating-system user.
 
     ```
     PID    VERSION       STARTED           DIRECTORY   COMMAND
-    28337  1.0.0-beta.3  2026-10-15 20:45  /srv/app-a  org.logaperture.agent.it.FixtureApp
-    28342  1.0.0-beta.3  2026-10-15 20:45  /srv/app-b  org.logaperture.agent.it.FixtureApp
+    28337  1.0.0-beta.4  2026-10-15 20:45  /srv/app-a  org.logaperture.agent.it.FixtureApp
+    28342  1.0.0-beta.4  2026-10-15 20:45  /srv/app-b  org.logaperture.agent.it.FixtureApp
     Several candidates — pass --pid <n>.
     ```
 
@@ -44,6 +44,9 @@ Can't attach to PID 1 — run as the user that owns that process, or as root.
 ```
 
 Exit code 5. Run `logctl` as the user the JVM runs as, for example with `sudo -u jboss logctl …`.
+
+On Windows the message says to open the command prompt as Administrator, or to run as the account
+that owns the process. See [Use logctl with a Windows service](windows-service.md).
 
 ## Two applications from one directory
 

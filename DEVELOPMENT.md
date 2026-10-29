@@ -8,19 +8,30 @@ apply to everyone.
 
 ## Branches and releases
 
-- **`develop` is the working trunk.** All feature branches merge here, and it is
-  where day-to-day work lands. **Target your pull requests at `develop`**, not
-  `main` (the repo's default branch is `main`, so the PR base needs changing).
+- **`develop` is the working trunk for the next minor release.** Feature branches for
+  it merge here. **Target your pull requests at `develop`**, not `main` (the repo's
+  default branch is `main`, so the PR base needs changing) — unless the change is for
+  a release line, below.
+- **`release/<major>.<minor>` carries a shipped or shipping line** (`release/1.0` for
+  1.0.0 and the 1.0.x patches), fixes only. A change whose issue is in a `1.0.x`
+  milestone branches from `release/1.0` and uses `--base release/1.0`. After it merges,
+  open a pull request `release/1.0` → `develop` and merge it with a merge commit
+  (`gh pr merge --merge`), so the fix reaches the next minor; do it whenever the release
+  line has commits `develop` lacks, and always before a release from either line. Ordinary
+  fixes merge without conflict; the release commit and the bump after it change the
+  `pom.xml` versions, so resolve those by keeping `develop`'s version.
+  Spec: [doc/specs/release-lines.md](doc/specs/release-lines.md).
 - **`main` matches the most recent release.** It advances *only* when a release
-  is cut, by merging a pull request from `develop` once `develop` sits on the
-  release commit. Between releases it does not move, so a clone, the landing
+  is cut, by merging a pull request from `develop` or a `release/*` branch once that
+  branch sits on the release commit. Between releases it does not move, so a clone, the landing
   page, and tooling always show the last shipped state (not in-progress work on
   `develop`). It is the default branch.
 - **`main` is protected** by a repository ruleset: no direct pushes, force
   pushes or deletion; changes arrive only through a pull request, merged with a
   merge commit (squash and rebase would rewrite `develop`'s commits); and the
   `from-develop` check (`.github/workflows/release-pr-source.yml`) fails any
-  pull request into `main` whose head isn't this repository's `develop`. Its
+  pull request into `main` whose head isn't this repository's `develop` or a
+  `release/*` branch. Its
   first-parent history is therefore one merge commit per release, each with the
   same tree as the tagged release commit.
 - **Cutting a release:** first re-record the demo recordings with the release
@@ -28,7 +39,7 @@ apply to everyone.
   and commit the new `.cast` files; a recording whose output changed may mean the
   guide's example output needs the same update ([dev/demos/README.md](dev/demos/README.md)).
   Then run the **Maven Central dry run** (Actions →
-  *Maven Central dry run* → Run workflow, on `develop`; or add the label
+  *Maven Central dry run* → Run workflow, on the branch being released; or add the label
   `central dry run` to a pull request): it builds and signs the
   release version, uploads it to the Central Portal, waits for Central to
   validate it, then drops it, so nothing is published. To add the label, open
@@ -36,15 +47,18 @@ apply to everyone.
   right-hand sidebar and tick **central dry run** (or run
   `gh pr edit <number> --add-label "central dry run"`). The run shows on the
   pull request's Checks tab and under Actions. To run it again, remove the
-  label and add it back. Then open a pull request from `develop` into `main`
-  (`gh pr create --base main --head develop`), wait for its checks, merge it
+  label and add it back. Then open a pull request from the branch being released into
+  `main` (`gh pr create --base main --head develop`, or `--head release/1.0`), wait for its checks, merge it
   with a merge commit (`gh pr merge --merge`), and push a tag on the release
-  commit on `develop` (`v1.0.0-beta.1`, …). `.github/workflows/release.yml` builds, tests and signs
+  commit on that branch (`v1.0.0-beta.1`, …). `.github/workflows/release.yml` builds, tests and signs
   the release, publishes it to Maven Central (`org.logaperture`: the parent POM,
   `logaperture-agent`, `logaperture-cli` and the `logaperture` zip), then
   publishes a GitHub Release with the zip attached. Publishing to Central is
   permanent; everything before it can be fixed and the tag pushed again.
-  Afterwards, bump `develop` to the next `-SNAPSHOT`. How it works:
+  A pre-release of a *later* minor (`1.1.0-alpha.1` while 1.0 is still shipping) is cut the same
+  way on `develop` but **skips the pull request into `main`**: `main` moves only for the current
+  line. Merge `release/1.0` into `develop` first.
+  Afterwards, bump the released branch to its next `-SNAPSHOT` and merge `release/*` forward into `develop`. How it works:
   [doc/specs/maven-central-publishing.md](doc/specs/maven-central-publishing.md).
 
 - **Publishing a snapshot:** to let testers try a pull request before the next

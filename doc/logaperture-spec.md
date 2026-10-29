@@ -657,7 +657,7 @@ Detectability is a stronger and cheaper guarantee than prevention, and it degrad
 
 ### 9.8 Authentication comes from the operating system
 
-The local attach path is UID-gated by the JVM: only the account running the JVM, or root, can attach. That set is exactly the set that should be able to control logging, it requires no credential management, and it is already audited by the OS. **Make the local CLI the primary and best-supported surface.**
+The local attach path is UID-gated by the JVM: on Linux and macOS only the account running the JVM, or root, can attach; on Windows an elevated Administrator can also attach to a service running as another account (tested against `LocalSystem`, [`doc/specs/service-account-access.md`](specs/service-account-access.md)). That set is exactly the set that should be able to control logging, it requires no credential management, and it is already audited by the OS. **Make the local CLI the primary and best-supported surface.**
 
 Every other surface is strictly worse and should be treated accordingly. JMX inherits the JVM's JMX authentication and is only as good as that configuration. The HTTP plane is the one that converts a local tool into a remote attack surface: off by default, refuses to start without authentication configured, never binds a wildcard address by default, TLS or loopback only.
 
@@ -818,6 +818,8 @@ Every client must tolerate an **unknown enum member** (a newer agent returning a
 - **Better (deferred — open question):** a single `describeOperations()` / `capabilities()` probe on a stable MBean returning a contract version and the supported-operation set, so `logctl` can refuse *before* invoking and state the minimum agent version. New surface; to be designed if and when the floor proves insufficient.
 
 **No guarantee before 1.0.** Alpha and beta releases make **no skew promise**. The only supported pairing pre-1.0 is an agent and a `logctl` from the *same build*. The contract in this section takes effect at 1.0.0.
+
+**Release lines.** 1.0.x patches are cut from a `release/1.0` branch while `develop` carries 1.1.0 and later: [`doc/specs/release-lines.md`](specs/release-lines.md) (#257).
 
 ---
 
@@ -1233,6 +1235,7 @@ The M0–M6 plan above stays the long-term map. It is too much to build before a
 | `1.0.0-beta.1` | Oct 15 | **Feature freeze.** Adds library recipes (#92), whose spec was signed off in time. First Maven Central publish; docs site live. Released 2026-10-15. |
 | `1.0.0-beta.2` | Oct 20 | Fixes and guide only: WildFly `jboss.as` MBeans (#237), override re-apply on WildFly (#232) and Logback (#231), zip file dates (#207), the launcher conf file (#238), Now Showing and the trim recording. Released 2026-10-20. |
 | `1.0.0-beta.3` | Oct 21 | `set logger` brings the default handlers along (#210), WildFly handler names within seconds of start (#246), snapshot builds on Maven Central (#248), the Discussions links (#243), and two resume fixes (#251, #253). Released 2026-10-21. |
+| `1.0.0-beta.4` | Oct 28 | `logctl` finds a Windows service's JVM from an Administrator prompt (#287, #289). First release cut from `release/1.0`. Released 2026-10-28. |
 | `1.0.0-beta.N`, `-rc.1` | rc by Nov 9 | Fixes only, plus renames from the contract review. |
 | `1.0.0` | Nov 16 | The §11.1 compatibility promise starts; the "not for production" warning comes off within the §11 1.0 matrix. |
 | `1.1.0` | Dec 2026 – early 2027 | Quarkus JVM mode (#114), then plain-JVM JUL (#221). Not in 1.0.0. Then Release 2: Spring Boot, Logback depth (rules, `top`, `doctor`, storms), configurable storm suppression (#27), Tomcat with per-webapp Logback. If Quarkus takes 1.1, Release 2 becomes 1.2. |
@@ -1315,6 +1318,7 @@ On ordering: **IntelliJ IDEA is missing from the original list and probably has 
 - **Metrics export** — the per-rule and per-logger counters through Micrometer or OpenTelemetry, for deployments that do have a pipeline.
 - **A container and Kubernetes story.** Ephemeral filesystems break the §6.3 file-based state store, and logs go to stdout rather than to a disk that can fill — the volume concern survives but its symptom becomes cost rather than outage.
 - **`logctl listen`: stream a logger's output to the terminal or a file** ([#195](https://github.com/ddeuchert/logaperture/issues/195)), post-1.0. `listen` attaches like a native handler to one or more loggers with its own threshold, for as long as `logctl` holds a lease, and a later step adds a lasting `add handler`. Spiked 2026-10-18: [`doc/spikes/logctl-listen.md`](spikes/logctl-listen.md). The agent keeps a bounded ring that `logctl` drains over the existing JMX connection, so the agent still never listens or transmits (§8.2, §9.9). It also needs its own deniable `stream` capability, and listening below the configured level needs a `listen` layer inside level control (on JUL and WildFly) so it can't leave a raised level behind.
+- **Time-windowed `logctl top`.** `logctl top 5`, `logctl top 30` rank the worst offenders over the last N minutes from a small fixed set (e.g. 5, 15, 30, 60) rather than only since the context was installed, so a logger that just turned noisy is not hidden by hours of history. Needs per-bucket counters in place of one running total (bounded-state cost, §16.7). Design questions deferred: the window set, the default with no argument, bucket granularity, and short-context behaviour. See [`doc/specs/top.md`](specs/top.md) (deferred scope).
 - **Upstream contribution.** As noted in §3.2, if storm collapse belongs in Log4j 2 or Logback core, contributing it there reaches far more users than this project will.
 
 ### 18.7 Pattern-based level targeting
@@ -1717,6 +1721,14 @@ Tracked as [#210](https://github.com/ddeuchert/logaperture/issues/210). **Specce
 **Motivation.** After `logctl set logger com.mycompany DEBUG` the records are logged, but the console (usually the one `DEFAULT_HANDLERS` member, at `INFO`) drops them, and the user gets a WARN with a second command to run. In a team demo this two-step was the hardest thing to explain.
 
 **What the user would do.** Just `logctl set logger com.mycompany DEBUG`: the default handlers on its path that would drop DEBUG go to `AUTO` for as long as the change lasts, then back. `--keep-handlers` changes only the logger, as before.
+
+### 18.19 `logctl` against a service running as another account
+
+**Draft, targets `1.0.0` as a freeze exception (maintainer decision 2026-10-28; `logctl` only, agent untouched):** [`doc/specs/service-account-access.md`](specs/service-account-access.md).
+
+**Motivation.** A customer's WildFly runs as a Windows service under `LocalSystem`. `jboss-cli.bat` works from an Administrator prompt; `logctl` did not, and §9.8 said it needs the owner's account.
+
+**Finding (2026-10-28, real Windows service).** The Attach API itself reaches a `LocalSystem` JVM from an elevated Administrator prompt (`jcmd` did). `logctl` failed earlier: discovery does not list a service's JVM, and its `--pid` path reported a live process as "No process with PID". The work is making Windows discovery find that JVM from an elevated prompt (with the existing pick-or-`--pid` rule for several), a fix for the false error (#289) and a guide page, not a new access mechanism.
 
 ---
 

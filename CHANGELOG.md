@@ -8,6 +8,25 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ## [Unreleased]
 
+## [1.0.0-beta.4] — 2026-10-28
+
+`logctl` now finds a LocalSystem Windows service's JVM from an Administrator prompt. **Not for production yet.**
+
+### Fixed
+
+- **Windows: `logctl --pid` no longer says "No process with PID" for a running process.** The JDK
+  reports a process it may not open, such as a `LocalSystem` service's JVM, as absent, so `logctl`
+  refused a PID that attach accepts. It now checks `tasklist` before giving up (issue #289).
+
+### Changed
+
+- **Windows: `logctl` finds a service's JVM from an Administrator prompt.** With no `--pid`, it
+  also looks at the `java.exe` and `javaw.exe` processes `tasklist` lists, and at the system
+  profiles' performance-data files, so a LogAperture JVM running as another account is found. Several
+  matches are still asked about, or need `--pid`. When attaching is refused, the message now says
+  to open the prompt as Administrator. See the guide page "Use logctl with a Windows service"
+  (issue #287; `doc/specs/service-account-access.md`).
+
 ## [1.0.0-beta.3] — 2026-10-21
 
 `set logger` now shows its result on the console, and WildFly's handler names are available while the server is still starting. **Not for production yet.**
@@ -563,7 +582,8 @@ store's on-disk format may still change between builds without a migration path.
   `/subsystem=logging` reconfiguration
   ([#31](https://github.com/ddeuchert/logaperture/issues/31)).
 
-[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.3...HEAD
+[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.4...HEAD
+[1.0.0-beta.4]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.4
 [1.0.0-beta.3]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.3
 [1.0.0-beta.2]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.2
 [1.0.0-beta.1]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.1

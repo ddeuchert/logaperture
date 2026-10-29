@@ -138,8 +138,25 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin gh-pages:gh-pages || true
           if [ "${{ steps.v.outputs.release }}" = "true" ]; then
-            mike deploy --push --update-aliases "${{ steps.v.outputs.version }}" latest
-            mike set-default --push latest
+            version="${{ steps.v.outputs.version }}"
+            # "latest" moves only for a release of the current line: the tagged commit is on main
+            # (a pre-release of a later minor is tagged on develop and never visits main), and its
+            # minor is not older than the current latest (a late 1.0.x patch after 1.1.0 shipped).
+            # doc/specs/release-lines.md, R5.
+            move_latest=false
+            if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+              move_latest=true
+              current="$(mike list --json | jq -r '.[] | select(.aliases | index("latest")) | .version' | head -1 || true)"
+              if [ -n "$current" ] && [ "$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -1)" != "$version" ]; then
+                move_latest=false
+              fi
+            fi
+            if [ "$move_latest" = true ]; then
+              mike deploy --push --update-aliases "$version" latest
+              mike set-default --push latest
+            else
+              mike deploy --push "$version"
+            fi
           else
             mike deploy --push "${{ steps.v.outputs.version }}"
             # Until the first release there is no "latest"; / goes to dev meanwhile.
