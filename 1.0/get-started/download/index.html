@@ -92,7 +92,7 @@
             
             
   
-    This guide is for <strong>1.0.0-beta.3</strong>, a pre-release. Commands
+    This guide is for <strong>1.0.0-beta.4</strong>, a pre-release. Commands
     and options may still change before 1.0.0.
   
 
@@ -893,6 +893,8 @@
       
         
       
+        
+      
     
     
     
@@ -1149,6 +1151,34 @@
     
   
     Work with several JVMs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/windows-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use logctl with a Windows service
   
 
     
@@ -2021,7 +2051,7 @@
 the command-line tool. Both are in the release zip, and both are on Maven Central.</p>
 <p>Open source under the <a href="https://github.com/ddeuchert/logaperture/blob/main/LICENSE">Apache License 2.0</a>.</p>
 <h2 id="the-release-zip">The release zip<a class="headerlink" href="#the-release-zip" title="Permanent link">&para;</a></h2>
-<p>Download <a href="https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.3"><code>logaperture-1.0.0-beta.3.zip</code></a> from GitHub.
+<p>Download <a href="https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.4"><code>logaperture-1.0.0-beta.4.zip</code></a> from GitHub.
 It is everything you need on one machine, and what the install pages start from:</p>
 <table>
 <thead>
@@ -2054,18 +2084,18 @@ It is everything you need on one machine, and what the install pages start from:
 </tbody>
 </table>
 <h3 id="check-the-download">Check the download<a class="headerlink" href="#check-the-download" title="Permanent link">&para;</a></h3>
-<p>Next to the zip on the release page are <code>logaperture-1.0.0-beta.3.zip.sha256</code>, its
-SHA-256 checksum, and <code>logaperture-1.0.0-beta.3.zip.asc</code>, its GPG signature. Download
+<p>Next to the zip on the release page are <code>logaperture-1.0.0-beta.4.zip.sha256</code>, its
+SHA-256 checksum, and <code>logaperture-1.0.0-beta.4.zip.asc</code>, its GPG signature. Download
 them into the same directory as the zip.</p>
 <p>To check that the zip arrived intact:</p>
-<div class="highlight"><pre><span></span><code>sha256sum<span class="w"> </span>-c<span class="w"> </span>logaperture-1.0.0-beta.3.zip.sha256
+<div class="highlight"><pre><span></span><code>sha256sum<span class="w"> </span>-c<span class="w"> </span>logaperture-1.0.0-beta.4.zip.sha256
 </code></pre></div>
-<p>On macOS, use <code>shasum -a 256 -c</code> instead. It prints <code>logaperture-1.0.0-beta.3.zip: OK</code>.</p>
+<p>On macOS, use <code>shasum -a 256 -c</code> instead. It prints <code>logaperture-1.0.0-beta.4.zip: OK</code>.</p>
 <p>To check that the zip is the one the project released, verify the signature. Releases are
 signed with the key <code>7405 3993 02DB FD10 0BB7  C2C6 70F9 EFA2 295F D26E</code>, which is on
 <code>keyserver.ubuntu.com</code>:</p>
 <div class="highlight"><pre><span></span><code>gpg<span class="w"> </span>--keyserver<span class="w"> </span>hkps://keyserver.ubuntu.com<span class="w"> </span>--recv-keys<span class="w"> </span>7405399302DBFD100BB7C2C670F9EFA2295FD26E
-gpg<span class="w"> </span>--verify<span class="w"> </span>logaperture-1.0.0-beta.3.zip.asc<span class="w"> </span>logaperture-1.0.0-beta.3.zip
+gpg<span class="w"> </span>--verify<span class="w"> </span>logaperture-1.0.0-beta.4.zip.asc<span class="w"> </span>logaperture-1.0.0-beta.4.zip
 </code></pre></div>
 <div class="highlight"><pre><span></span><code>gpg:                using RSA key 7405399302DBFD100BB7C2C670F9EFA2295FD26E
 gpg: Good signature from "Logaperture Release (org.logaperture release artifact signing key) &lt;releases@logaperture.org&gt;" [unknown]
@@ -2079,7 +2109,7 @@ with the same key.</p>
 <p>Next: install it <a href="../install-wildfly/">on WildFly</a> or <a href="../install-plain-jvm/">on a plain JVM</a>.</p>
 <h2 id="maven-central">Maven Central<a class="headerlink" href="#maven-central" title="Permanent link">&para;</a></h2>
 <p>From 1.0.0-beta.1, each release is on Maven Central with the group <code>org.logaperture</code> and the
-version <code>1.0.0-beta.3</code>:</p>
+version <code>1.0.0-beta.4</code>:</p>
 <table>
 <thead>
 <tr>
@@ -2116,7 +2146,7 @@ image, and the <code>-javaagent:</code> line points there. The examples below do
 </div>
 <h3 id="command-line">Command line<a class="headerlink" href="#command-line" title="Permanent link">&para;</a></h3>
 <p>To fetch the agent into a directory, for example while building a container image:</p>
-<div class="highlight"><pre><span></span><code>mvn<span class="w"> </span>dependency:copy<span class="w"> </span>-Dartifact<span class="o">=</span>org.logaperture:logaperture-agent:1.0.0-beta.3<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code>mvn<span class="w"> </span>dependency:copy<span class="w"> </span>-Dartifact<span class="o">=</span>org.logaperture:logaperture-agent:1.0.0-beta.4<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>-DoutputDirectory<span class="o">=</span>/opt/logaperture/lib<span class="w"> </span>-Dmdep.stripVersion<span class="o">=</span><span class="nb">true</span>
 </code></pre></div>
 <p><code>-Dmdep.stripVersion=true</code> names it <code>logaperture-agent.jar</code>, as in the zip.</p>
@@ -2139,7 +2169,7 @@ the project is packaged:</p>
 <span class="w">          </span><span class="nt">&lt;artifactItem&gt;</span>
 <span class="w">            </span><span class="nt">&lt;groupId&gt;</span>org.logaperture<span class="nt">&lt;/groupId&gt;</span>
 <span class="w">            </span><span class="nt">&lt;artifactId&gt;</span>logaperture-agent<span class="nt">&lt;/artifactId&gt;</span>
-<span class="w">            </span><span class="nt">&lt;version&gt;</span>1.0.0-beta.3<span class="nt">&lt;/version&gt;</span>
+<span class="w">            </span><span class="nt">&lt;version&gt;</span>1.0.0-beta.4<span class="nt">&lt;/version&gt;</span>
 <span class="w">          </span><span class="nt">&lt;/artifactItem&gt;</span>
 <span class="w">        </span><span class="nt">&lt;/artifactItems&gt;</span>
 <span class="w">        </span><span class="nt">&lt;outputDirectory&gt;</span>${project.build.directory}/agent<span class="nt">&lt;/outputDirectory&gt;</span>
@@ -2161,7 +2191,7 @@ the project is packaged:</p>
 <span class="p">}</span>
 
 <span class="n">dependencies</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="n">logapertureAgent</span><span class="p">(</span><span class="s">"org.logaperture:logaperture-agent:1.0.0-beta.3"</span><span class="p">)</span>
+<span class="w">    </span><span class="n">logapertureAgent</span><span class="p">(</span><span class="s">"org.logaperture:logaperture-agent:1.0.0-beta.4"</span><span class="p">)</span>
 <span class="p">}</span>
 
 <span class="kd">val</span><span class="w"> </span><span class="nv">copyLogapertureAgent</span><span class="w"> </span><span class="k">by</span><span class="w"> </span><span class="n">tasks</span><span class="p">.</span><span class="na">registering</span><span class="p">(</span><span class="n">Copy</span><span class="o">::</span><span class="n">class</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
@@ -2183,7 +2213,7 @@ the project is packaged:</p>
 <span class="o">}</span>
 
 <span class="n">dependencies</span><span class="w"> </span><span class="o">{</span>
-<span class="w">    </span><span class="n">logapertureAgent</span><span class="w"> </span><span class="s1">'org.logaperture:logaperture-agent:1.0.0-beta.3'</span>
+<span class="w">    </span><span class="n">logapertureAgent</span><span class="w"> </span><span class="s1">'org.logaperture:logaperture-agent:1.0.0-beta.4'</span>
 <span class="o">}</span>
 
 <span class="kt">def</span><span class="w"> </span><span class="n">copyLogapertureAgent</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tasks</span><span class="o">.</span><span class="na">register</span><span class="o">(</span><span class="s1">'copyLogapertureAgent'</span><span class="o">,</span><span class="w"> </span><span class="n">Copy</span><span class="o">)</span><span class="w"> </span><span class="o">{</span>
@@ -2286,7 +2316,7 @@ container, as the JVM: see <a href="../install-plain-jvm/">Install on a plain JV
   <div class="md-copyright__highlight">
     Copyright 2026 David Deuchert · Apache License 2.0
   </div>
-  Guide for LogAperture 1.0.0-beta.3
+  Guide for LogAperture 1.0.0-beta.4
 </div>
       
     </div>
