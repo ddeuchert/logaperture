@@ -43,7 +43,7 @@ logctl export vendor-defaults --out logging.yaml
 ```
 
 ```yaml
-# Exported by logctl export vendor-defaults, 2026-10-16T01:45:07Z, agent 1.0.0-beta.3
+# Exported by logctl export vendor-defaults, 2026-10-16T01:45:07Z, agent 1.0.0-beta.4
 # Started from: no vendor defaults file
 schemaVersion: 1
 loggers:
