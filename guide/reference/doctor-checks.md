@@ -65,11 +65,22 @@ log stream (`MutinyLogHandler`), present in `quarkus dev` only.
 ### `quarkus.handler-names`
 
 On Quarkus: the handler names in `application.properties` (`quarkus.log.handler.file."AUDIT"`) could
-not be read, so handlers are named by type (`console`, `file`, `file-2`), as before. `INFO`. Expected
-on a Quarkus version other than the tested ones; a list of handlers that does not line up with its
-names is skipped without a finding, and those handlers keep their type names.
+not all be given to their handlers. One finding per case:
 
-**Fix:** use the type names, for example `logctl set handler file DEBUG`.
+- The configuration could not be read, so every handler is named by type (`console`, `file`,
+  `file-2`). `INFO`. Expected on a Quarkus version other than the tested ones.
+- A `handlers` list (`quarkus.log.handlers`, or a category's) could not be matched to the handlers on
+  its logger: there are fewer than it names, one is of another type, or one writes to a different path,
+  endpoint or console format than the configuration says. The finding names the list and what did not
+  match. Its handlers keep their type names, so `logctl set handler AUDIT` fails with an unknown
+  handler. `WARNING`.
+- A list was matched by position and type alone (no path, endpoint or console format to check) while
+  its logger has other handlers too, such as one the application added. The names are probably right.
+  `INFO`.
+
+**Fix:** use the type names `logctl list handlers` shows, for example `logctl set handler file-2 DEBUG`.
+For a list matched by type alone, configure what tells its handlers apart (a console handler's
+`format`) and LogAperture checks it.
 
 ### `logger.below-floor`
 

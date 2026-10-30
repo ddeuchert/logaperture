@@ -38,6 +38,7 @@ final class QuarkusLogConfig {
     private static final Pattern CATEGORY_HANDLERS_KEY = Pattern.compile(
             "quarkus\\.log\\.category\\.(?:\"(.+)\"|([^.\"]+))\\.handlers");
     private static final String ROOT_HANDLERS_KEY = "quarkus.log.handlers";
+    private static final Set<String> CHECKED_ATTRIBUTES = Set.of("path", "endpoint", "format");
 
     /**
      * Configured name to its handler type; a name configured under two types is left out ({@link #ambiguous}).
@@ -48,6 +49,8 @@ final class QuarkusLogConfig {
     private final Map<String, String> typeByName = new HashMap<>();
     private final Set<String> ambiguous = new HashSet<>();
     private final Map<String, Boolean> enabledByName = new HashMap<>();
+    /** Folded name to the attributes a pair is checked on (#10): {@code path}, {@code endpoint}, {@code format}. */
+    private final Map<String, Map<String, String>> attributesByName = new HashMap<>();
     private final Map<String, List<String>> categoryLists = new LinkedHashMap<>();
     private List<String> rootList = List.of();
 
@@ -83,7 +86,18 @@ final class QuarkusLogConfig {
         }
         if ("enable".equals(property) || "enabled".equals(property)) {
             enabledByName.put(name, Boolean.parseBoolean(value.trim()));
+        } else if (CHECKED_ATTRIBUTES.contains(property) && !value.isBlank()) {
+            attributesByName.computeIfAbsent(name, n -> new HashMap<>()).put(property, value.trim());
         }
+    }
+
+    /**
+     * The attributes the configuration states for {@code listed}, by property ({@code path},
+     * {@code endpoint}, {@code format}); empty when it states none. Only what is written is here:
+     * Quarkus's defaults differ between versions, so they are not checked (#10).
+     */
+    Map<String, String> attributesOf(String listed) {
+        return attributesByName.getOrDefault(fold(listed), Map.of());
     }
 
     private static List<String> names(String value) {

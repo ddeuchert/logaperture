@@ -93,19 +93,39 @@ public final class QuarkusEngine {
     public static final String HANDLER_NAMES_CHECK = "quarkus.handler-names";
 
     /**
-     * doc/specs/quarkus-handler-names.md, design step 4: one {@code doctor} line when Quarkus's
-     * configuration could not be read, so handlers keep their type names.
+     * doc/specs/quarkus-handler-names.md: one {@code doctor} line when Quarkus's configuration could
+     * not be read, so handlers keep their type names (design step 4); and, from the #294 amendment
+     * (#12), one per {@code handlers} list that was skipped ({@code WARNING}) or matched by position
+     * and type alone next to other handlers ({@code INFO}).
      */
     public static List<DoctorFinding> handlerNameFindings(JulLoggingAdapter adapter) {
         QuarkusHandlerNameResolver names = resolvers.get(adapter);
-        if (names == null || !names.configUnreadable()) {
-            return List.of();
+        return names == null ? List.of() : handlerNameFindings(names);
+    }
+
+    static List<DoctorFinding> handlerNameFindings(QuarkusHandlerNameResolver names) {
+        if (names.configUnreadable()) {
+            return List.of(new DoctorFinding(HANDLER_NAMES_CHECK, Severity.INFO, "quarkus",
+                    "The handler names in application.properties could not be read, so handlers are named by type "
+                            + "(console, file, ...).",
+                    "Use the type names, for example logctl set handler file DEBUG. This is expected on a Quarkus "
+                            + "version other than the tested ones.", null));
         }
-        return List.of(new DoctorFinding(HANDLER_NAMES_CHECK, Severity.INFO, "quarkus",
-                "The handler names in application.properties could not be read, so handlers are named by type "
-                        + "(console, file, ...).",
-                "Use the type names, for example logctl set handler file DEBUG. This is expected on a Quarkus "
-                        + "version other than the tested ones.", null));
+        List<DoctorFinding> findings = new ArrayList<>();
+        for (QuarkusHandlerNameResolver.ListProblem problem : names.problems()) {
+            findings.add(switch (problem.kind()) {
+                case SKIPPED -> new DoctorFinding(HANDLER_NAMES_CHECK, Severity.WARNING, problem.list(),
+                        "The handler names in " + problem.list() + " could not be matched to its handlers: "
+                                + problem.detail() + ".",
+                        "Those handlers keep their type names (file-2, console-2, ...): see logctl list handlers, and "
+                                + "use those names with logctl set handler.", null);
+                case TYPE_ONLY -> new DoctorFinding(HANDLER_NAMES_CHECK, Severity.INFO, problem.list(),
+                        "In " + problem.list() + ", " + problem.detail() + ".",
+                        "The names are probably right. To have them checked, configure what tells the handlers "
+                                + "apart: a path, an endpoint, or a console format.", null);
+            });
+        }
+        return findings;
     }
 
     /** The {@code doctor} check id for a handler whose formatter was left alone. */

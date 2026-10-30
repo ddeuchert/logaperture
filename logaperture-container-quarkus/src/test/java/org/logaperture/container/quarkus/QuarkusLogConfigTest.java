@@ -97,4 +97,18 @@ class QuarkusLogConfigTest {
         assertTrue(config.isBuilt("AUDIT"));
         assertEquals(List.of("AUDIT"), config.categories().get("org.example"));
     }
+
+    @Test
+    void attributesOf_keepsWhatIsWrittenForTheCheckedProperties_foldingTheName() {
+        QuarkusLogConfig config = QuarkusLogConfig.parse(Map.of(
+                "quarkus.log.handler.file.\"AUDIT\".path", " audit.log ",
+                "quarkus.log.handler.file.audit.level", "DEBUG",
+                "quarkus.log.handler.syslog.\"S\".endpoint", "logs:514",
+                "quarkus.log.handler.console.\"C\".format", "%m%n"));
+
+        assertEquals(Map.of("path", "audit.log"), config.attributesOf("AUDIT"));
+        assertEquals(Map.of("endpoint", "logs:514"), config.attributesOf("s"));
+        assertEquals(Map.of("format", "%m%n"), config.attributesOf("C"));
+        assertEquals(Map.of(), config.attributesOf("unknown"));
+    }
 }
