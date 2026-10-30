@@ -23,7 +23,9 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 /**
@@ -31,7 +33,9 @@ import java.util.Properties;
  * (doc/logaperture-spec.md §14.5). A candidate is a JVM this OS user can
  * attach to whose system properties carry the {@code logaperture.version}
  * marker the agent sets once it has installed
- * (doc/specs/cli-transport.md "Discovery").
+ * (doc/specs/cli-transport.md "Discovery"). On Windows the JVMs of other accounts, such as a
+ * service running as {@code LocalSystem}, are added to the candidates from {@link HostProcesses}
+ * (doc/specs/service-account-access.md).
  */
 final class Discovery {
 
@@ -55,35 +59,100 @@ final class Discovery {
      *                    {@code null} when nothing may be asked -- several is then exit 4, as before
      */
     static long resolveTargetPid(Long explicitPid, Prompter jvmQuestion) {
+        return resolveTargetPid(explicitPid, jvmQuestion, HostProcesses.system(), SYSTEM_JVMS);
+    }
+
+    static long resolveTargetPid(Long explicitPid, Prompter jvmQuestion, HostProcesses host, Jvms jvms) {
         if (explicitPid != null) {
-            if (ProcessHandle.of(explicitPid).isEmpty()) {
+            if (!host.exists(explicitPid)) {
                 throw new CliError(CliError.NO_JVM, "No process with PID " + explicitPid + ".");
             }
             return explicitPid;
         }
 
+        Found found = find(host, jvms);
+        if (found.candidates().isEmpty()) {
+            String message =
+                    "No LogAperture-enabled JVM found. Start the application with -javaagent:logaperture-agent.jar.";
+            if (found.uninspectable() > 0) {
+                message += "\n(" + found.uninspectable() + " running JVM(s) could not be inspected — if one of them "
+                        + "is yours, name it with --pid <n>.)";
+            }
+            if (host.windows()) {
+                message += "\n(If the JVM runs LogAperture as another account, such as a Windows service, but is not "
+                        + "listed, find its PID and pass --pid <n>.)";
+            }
+            throw new CliError(CliError.NO_JVM, message);
+        }
+        return choose(found.candidates(), jvmQuestion);
+    }
+
+    /**
+     * The JVMs running our agent, and how many JVMs could not be inspected. The JDK's list comes
+     * first; on Windows the other accounts' JVMs from {@link HostProcesses#otherAccountJvmPids} are
+     * added, each PID probed once. The CLI's own JVM is never a candidate.
+     */
+    static Found find(HostProcesses host, Jvms jvms) {
+        Map<Long, String> targets = new LinkedHashMap<>();
+        for (Listed listed : jvms.listed()) {
+            targets.putIfAbsent(listed.pid(), listed.displayName());
+        }
+        for (long pid : host.otherAccountJvmPids()) {
+            targets.putIfAbsent(pid, null);
+        }
+        targets.remove(host.currentPid());
+
         List<Candidate> candidates = new ArrayList<>();
         int uninspectable = 0;
-        for (VirtualMachineDescriptor descriptor : VirtualMachine.list()) {
-            Probe probe = probe(descriptor);
+        for (Map.Entry<Long, String> target : targets.entrySet()) {
+            Probe probe = jvms.probe(target.getKey(), target.getValue());
             if (probe.candidate() != null) {
                 candidates.add(probe.candidate());
             } else if (probe.failed()) {
                 uninspectable++;
             }
         }
-
-        if (candidates.isEmpty()) {
-            String message =
-                    "No LogAperture-enabled JVM found. Start the application with -javaagent:logaperture-agent.jar.";
-            if (uninspectable > 0) {
-                message += "\n(" + uninspectable + " running JVM(s) could not be inspected — if one of them "
-                        + "is yours, name it with --pid <n>.)";
-            }
-            throw new CliError(CliError.NO_JVM, message);
-        }
-        return choose(candidates, jvmQuestion);
+        return new Found(candidates, uninspectable);
     }
+
+    /** What {@link #find} saw: the candidates, and the count of JVMs it could not look into. */
+    record Found(List<Candidate> candidates, int uninspectable) {
+    }
+
+    /** A JVM the JDK's list names. */
+    record Listed(long pid, String displayName) {
+    }
+
+    /** The JDK end of discovery: its list of JVMs, and attaching to one to read the marker property. */
+    interface Jvms {
+        List<Listed> listed();
+
+        /** @param displayName the list's name for the JVM, or {@code null} to ask the JVM itself */
+        Probe probe(long pid, String displayName);
+    }
+
+    /** An attach that has not answered by now is given up on, so one wedged JVM cannot stall discovery. */
+    static final long PROBE_TIMEOUT_SECONDS = 10;
+
+    static final Jvms SYSTEM_JVMS = new Jvms() {
+        @Override
+        public List<Listed> listed() {
+            List<Listed> listed = new ArrayList<>();
+            for (VirtualMachineDescriptor descriptor : VirtualMachine.list()) {
+                try {
+                    listed.add(new Listed(Long.parseLong(descriptor.id()), descriptor.displayName()));
+                } catch (NumberFormatException notAPid) {
+                    // not a local process
+                }
+            }
+            return listed;
+        }
+
+        @Override
+        public Probe probe(long pid, String displayName) {
+            return probeWithin(PROBE_TIMEOUT_SECONDS, () -> Discovery.probe(pid, displayName));
+        }
+    };
 
     /**
      * One of one or more candidates, in PID order: the only one, the one the operator picks when
@@ -142,29 +211,18 @@ final class Discovery {
         return null;
     }
 
-    private static Probe probe(VirtualMachineDescriptor descriptor) {
-        long pid;
-        try {
-            pid = Long.parseLong(descriptor.id());
-        } catch (NumberFormatException notAPid) {
-            return Probe.NOT_APPLICABLE;
-        }
-        if (pid == ProcessHandle.current().pid()) {
-            // The CLI's own JVM: attaching to self fails on most platforms. Not a candidate,
-            // and not an "un-attachable" one worth counting either.
-            return Probe.NOT_APPLICABLE;
-        }
+    private static Probe probe(long pid, String displayName) {
         VirtualMachine vm = null;
         try {
-            vm = VirtualMachine.attach(descriptor);
+            vm = VirtualMachine.attach(Long.toString(pid));
             Properties properties = vm.getSystemProperties();
             String version = properties.getProperty(MARKER_PROPERTY);
             if (version == null) {
                 return Probe.NOT_APPLICABLE;
             }
             Instant startedAt = ProcessHandle.of(pid).flatMap(process -> process.info().startInstant()).orElse(null);
-            return Probe.of(new Candidate(pid, descriptor.displayName(), version, startedAt,
-                    properties.getProperty("user.dir")));
+            String name = displayName != null ? displayName : properties.getProperty("sun.java.command", "?");
+            return Probe.of(new Candidate(pid, name, version, startedAt, properties.getProperty("user.dir")));
         } catch (Exception cannotInspect) {
             // A JVM we can't attach to (a race, a different user, this same VM) can't be a candidate.
             // Still count it: if discovery then finds nothing, the message should own up to the JVMs
@@ -174,6 +232,26 @@ final class Discovery {
             return Probe.FAILED;
         } finally {
             Quietly.detach(vm);
+        }
+    }
+
+    /**
+     * Runs one probe on a daemon thread and gives up after {@code seconds}; the abandoned thread
+     * ends with the process. A probe that times out counts as one that could not be inspected.
+     */
+    static Probe probeWithin(long seconds, java.util.concurrent.Callable<Probe> probe) {
+        java.util.concurrent.FutureTask<Probe> task = new java.util.concurrent.FutureTask<>(probe);
+        Thread thread = new Thread(task, "logctl-probe");
+        thread.setDaemon(true);
+        thread.start();
+        try {
+            return task.get(seconds, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Probe.FAILED;
+        } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException e) {
+            task.cancel(true);
+            return Probe.FAILED;
         }
     }
 
@@ -239,7 +317,7 @@ final class Discovery {
     }
 
     /** One descriptor's outcome: our agent (a {@link Candidate}), not ours, or un-attachable. */
-    private record Probe(Candidate candidate, boolean failed) {
+    record Probe(Candidate candidate, boolean failed) {
         static final Probe NOT_APPLICABLE = new Probe(null, false);
         static final Probe FAILED = new Probe(null, true);
 
