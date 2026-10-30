@@ -39,7 +39,12 @@ final class QuarkusLogConfig {
             "quarkus\\.log\\.category\\.(?:\"(.+)\"|([^.\"]+))\\.handlers");
     private static final String ROOT_HANDLERS_KEY = "quarkus.log.handlers";
 
-    /** Configured name to its handler type; a name configured under two types is left out ({@link #ambiguous}). */
+    /**
+     * Configured name to its handler type; a name configured under two types is left out ({@link #ambiguous}).
+     * Keyed by {@link #fold}: an environment variable cannot carry case, so MicroProfile Config reports
+     * {@code QUARKUS_LOG_HANDLER_FILE__AUDIT__ENABLE} as the handler {@code "audit"} while the
+     * {@code handlers} list says {@code AUDIT}.
+     */
     private final Map<String, String> typeByName = new HashMap<>();
     private final Set<String> ambiguous = new HashSet<>();
     private final Map<String, Boolean> enabledByName = new HashMap<>();
@@ -71,6 +76,7 @@ final class QuarkusLogConfig {
     }
 
     private void addHandlerProperty(String type, String name, String property, String value) {
+        name = fold(name);
         String known = typeByName.putIfAbsent(name, type);
         if (known != null && !known.equals(type)) {
             ambiguous.add(name);
@@ -95,7 +101,8 @@ final class QuarkusLogConfig {
      * named console handler is on and the other types are off (Quarkus logs "linked to a category but
      * not configured" for a named file handler without {@code enable=true}).
      */
-    boolean isBuilt(String name) {
+    boolean isBuilt(String listed) {
+        String name = fold(listed);
         String type = typeByName.get(name);
         if (type == null || ambiguous.contains(name)) {
             return false;
@@ -105,8 +112,13 @@ final class QuarkusLogConfig {
     }
 
     /** The type a name was configured under, or {@code null} when it is unknown or ambiguous. */
-    String typeOf(String name) {
+    String typeOf(String listed) {
+        String name = fold(listed);
         return ambiguous.contains(name) ? null : typeByName.get(name);
+    }
+
+    private static String fold(String name) {
+        return name.toLowerCase(java.util.Locale.ROOT);
     }
 
     /** Category to the names it lists, in configured order. */

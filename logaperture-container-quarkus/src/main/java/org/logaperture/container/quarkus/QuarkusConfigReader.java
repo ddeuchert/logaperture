@@ -15,6 +15,7 @@
  */
 package org.logaperture.container.quarkus;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
@@ -51,13 +52,25 @@ final class QuarkusConfigReader {
             for (Object name : (Iterable<?>) names.invoke(config)) {
                 String key = String.valueOf(name);
                 if (key.startsWith(PREFIX)) {
-                    Optional<?> found = (Optional<?>) value.invoke(config, key, String.class);
-                    found.ifPresent(v -> out.put(key, String.valueOf(v)));
+                    readOne(config, value, key, out);
                 }
             }
             return Optional.of(out);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError unreachable) {
             return Optional.empty();
+        }
+    }
+
+    /** One property; a value that cannot be read (an unexpandable {@code ${...}}) costs that key, not the rest. */
+    private static void readOne(Object config, Method value, String key, Map<String, String> out)
+            throws ReflectiveOperationException {
+        try {
+            Optional<?> found = (Optional<?>) value.invoke(config, key, String.class);
+            found.ifPresent(v -> out.put(key, String.valueOf(v)));
+        } catch (InvocationTargetException badValue) {
+            if (badValue.getCause() instanceof Error error) {
+                throw error;
+            }
         }
     }
 

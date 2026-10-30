@@ -59,7 +59,7 @@ public final class TypeHandlerNameResolver implements HandlerNameResolver {
     /**
      * As {@link #resolve(List)}, but never gives a name in {@code reserved}: names a caller has
      * already given to other handlers (Quarkus's configured names, doc/specs/quarkus-handler-names.md
-     * #3, win over a type name).
+     * #3, win over a type name). A handler that already holds a reserved name is renamed.
      */
     public synchronized Map<Handler, String> resolve(List<Handler> handlers, Set<String> reserved) {
         Map<Handler, String> names = new IdentityHashMap<>();
@@ -67,7 +67,7 @@ public final class TypeHandlerNameResolver implements HandlerNameResolver {
         List<Handler> unnamed = new java.util.ArrayList<>();
         for (Handler handler : handlers) {
             String kept = given.get(handler);
-            if (kept != null) {
+            if (kept != null && !reserved.contains(kept)) {
                 names.put(handler, kept);
                 taken.add(kept);
             } else if (typeOf(handler) != null) {

@@ -85,4 +85,16 @@ class QuarkusLogConfigTest {
         assertEquals("console", config.typeOf("AUDIT"));
         assertEquals(List.of("AUDIT"), config.categories().get("app"));
     }
+
+    @Test
+    void anEnvironmentVariableHandlerNameMatchesTheListedNameIgnoringCase() {
+        // QUARKUS_LOG_HANDLER_FILE__AUDIT__ENABLE reaches us as the handler "audit"; the list says AUDIT
+        QuarkusLogConfig config = QuarkusLogConfig.parse(Map.of(
+                "quarkus.log.handler.file.\"audit\".enable", "true",
+                "quarkus.log.category.\"org.example\".handlers", "AUDIT"));
+
+        assertEquals("file", config.typeOf("AUDIT"));
+        assertTrue(config.isBuilt("AUDIT"));
+        assertEquals(List.of("AUDIT"), config.categories().get("org.example"));
+    }
 }

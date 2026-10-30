@@ -55,6 +55,8 @@ final class QuarkusHandlerNameResolver implements HandlerNameResolver {
     private final Function<String, Logger> loggers;
     private final TypeHandlerNameResolver typeNames = new TypeHandlerNameResolver();
     private volatile boolean unreadable;
+    /** The parsed configuration once it has been read; it does not change while the JVM runs. */
+    private volatile QuarkusLogConfig parsed;
 
     /**
      * @param properties the {@code quarkus.log.*} properties, empty when they cannot be read
@@ -79,9 +81,16 @@ final class QuarkusHandlerNameResolver implements HandlerNameResolver {
             return Map.of(); // Quarkus has not attached its handlers yet: the caller asks again
         }
         Map<Handler, String> configured = new IdentityHashMap<>();
-        Optional<Map<String, String>> read = readQuietly();
-        unreadable = read.isEmpty();
-        read.ifPresent(values -> configured.putAll(configuredNames(QuarkusLogConfig.parse(values))));
+        QuarkusLogConfig config = parsed;
+        if (config == null) {
+            Optional<Map<String, String>> read = readQuietly();
+            config = read.map(QuarkusLogConfig::parse).orElse(null);
+            parsed = config;
+        }
+        unreadable = config == null;
+        if (config != null) {
+            configured.putAll(configuredNames(config));
+        }
         Set<String> reserved = new HashSet<>(configured.values());
         List<Handler> others = new ArrayList<>();
         for (Handler handler : handlers) {

@@ -222,4 +222,37 @@ class QuarkusHandlerNameResolverTest {
 
         assertEquals("console", names.get(defaultConsole));
     }
+
+    @Test
+    void theConfigurationIsReadOnceOnceItWasReadable() {
+        FileHandler alpha = new FileHandler();
+        file("ALPHA");
+        config.put("quarkus.log.category.\"a\".handlers", "ALPHA");
+        category("a", alpha);
+        int[] reads = {0};
+        BooleanSupplier isReady = () -> true;
+        QuarkusHandlerNameResolver counting = new QuarkusHandlerNameResolver(
+                () -> { reads[0]++; return Optional.of(config); }, isReady, loggers::get);
+
+        counting.resolve(all(alpha));
+        counting.resolve(all(alpha));
+
+        assertEquals(1, reads[0]);
+    }
+
+    @Test
+    void aTypeNameKeptWhileUnreadableYieldsToALaterConfiguredNameThatEqualsIt() {
+        FileHandler audit = new FileHandler();
+        file("file");
+        config.put("quarkus.log.category.\"a\".handlers", "file");
+        category("a", audit);
+        readable = false;
+        assertEquals("file-2", resolver.resolve(all(audit)).get(audit)); // defaultFile took "file"
+
+        readable = true;
+        Map<Handler, String> names = resolver.resolve(all(audit));
+
+        assertEquals("file", names.get(audit));
+        assertEquals("file-2", names.get(defaultFile)); // no two handlers share a name
+    }
 }
