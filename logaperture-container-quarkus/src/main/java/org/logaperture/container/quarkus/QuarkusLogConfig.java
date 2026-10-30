@@ -87,7 +87,9 @@ final class QuarkusLogConfig {
         if ("enable".equals(property) || "enabled".equals(property)) {
             enabledByName.put(name, Boolean.parseBoolean(value.trim()));
         } else if (CHECKED_ATTRIBUTES.contains(property) && !value.isBlank()) {
-            attributesByName.computeIfAbsent(name, n -> new HashMap<>()).put(property, value.trim());
+            // Quarkus uses a format exactly as written, spaces included; a path or endpoint it trims.
+            String kept = "format".equals(property) ? value : value.trim();
+            attributesByName.computeIfAbsent(name, n -> new HashMap<>()).put(property, kept);
         }
     }
 

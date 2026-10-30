@@ -368,6 +368,79 @@ class QuarkusHandlerNameResolverTest {
     }
 
     @Test
+    void anEmptyRootIsNotKeptAsTheSnapshot() {
+        delayed.setHandlers(new Handler[0]); // looked at before Quarkus attached anything
+        file("ROOTF");
+        config.put("quarkus.log.handlers", "ROOTF");
+        resolver.resolve(List.of());
+
+        FileHandler rootF = new FileHandler();
+        delayed.setHandlers(new Handler[] {defaultConsole, defaultFile, rootF});
+
+        assertEquals("ROOTF", resolver.resolve(all(rootF)).get(rootF));
+    }
+
+    @Test
+    void aPartlyRemovedRootKeepsItsSnapshot() {
+        FileHandler a = new FileHandler();
+        FileHandler b = new FileHandler();
+        delayed.addHandler(a);
+        delayed.addHandler(b);
+        file("ROOTA");
+        file("ROOTB");
+        config.put("quarkus.log.handlers", "ROOTA,ROOTB");
+        resolver.resolve(all(a, b));
+
+        FileHandler later = new FileHandler();
+        delayed.addHandler(later);
+        delayed.setHandlers(new Handler[] {defaultFile, a, b, later}); // Quarkus's console removed
+        Map<Handler, String> names = resolver.resolve(List.of(defaultFile, a, b, later));
+
+        assertEquals("ROOTA", names.get(a));
+        assertEquals("ROOTB", names.get(b));
+    }
+
+    @Test
+    void aRootWithoutTheDelayedHandlerIsReportedAsNotFoundNotAsTheUsersList() {
+        loggers.put("", Logger.getAnonymousLogger()); // a Quarkus that names its delayed handler differently
+        file("ROOTF");
+        config.put("quarkus.log.handlers", "ROOTF");
+
+        resolver.resolve(all());
+
+        assertEquals(List.of(ListProblem.Kind.NOT_FOUND), kinds());
+        assertEquals(Severity.INFO, QuarkusEngine.handlerNameFindings(resolver).get(0).severity());
+    }
+
+    @Test
+    void anInvalidConfiguredPathIsMatchedByTypeAndCostsNoOtherList() {
+        FileHandler bad = new PathFileHandler("/logs/bad.log");
+        PathFileHandler audit = new PathFileHandler("/logs/audit.log");
+        file("BAD", "bad\u0000.log");
+        file("AUDIT", "/logs/audit.log");
+        config.put("quarkus.log.category.\"a\".handlers", "BAD");
+        config.put("quarkus.log.category.\"b\".handlers", "AUDIT");
+        category("a", bad);
+        category("b", audit);
+
+        Map<Handler, String> names = resolver.resolve(all(bad, audit));
+
+        assertEquals("BAD", names.get(bad));
+        assertEquals("AUDIT", names.get(audit));
+    }
+
+    @Test
+    void aConsoleFormatIsComparedAsWrittenWithoutTrimming() {
+        ConsoleHandler side = consoleWithPattern(new Pattern("%d %m%n "));
+        config.put("quarkus.log.handler.console.\"SIDE\".format", "%d %m%n ");
+        config.put("quarkus.log.category.\"x\".handlers", "SIDE");
+        category("x", side);
+
+        assertEquals("SIDE", resolver.resolve(all(side)).get(side));
+        assertTrue(resolver.problems().isEmpty(), resolver.problems().toString());
+    }
+
+    @Test
     void doctorReportsASkippedListAsAWarningAndATypeOnlyMatchAsInfo() {
         console("SIDE");
         file("AUDIT", "/logs/audit.log");

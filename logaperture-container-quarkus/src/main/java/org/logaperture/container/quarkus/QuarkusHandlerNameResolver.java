@@ -77,7 +77,9 @@ final class QuarkusHandlerNameResolver implements HandlerNameResolver {
             /** Not matched: its handlers keep their type names. */
             SKIPPED,
             /** Matched, but by position and type alone while the logger has other handlers. */
-            TYPE_ONLY
+            TYPE_ONLY,
+            /** The root's handlers could not be looked at: no delayed handler where Quarkus keeps it. */
+            NOT_FOUND
         }
     }
 
@@ -164,9 +166,15 @@ final class QuarkusHandlerNameResolver implements HandlerNameResolver {
         List<String> rootNames = config.builtAmong(config.root());
         if (!rootNames.isEmpty()) {
             List<Handler> inside = rootChildren();
-            List<Handler> snapshot = snapshotOf(inside);
-            List<Handler> window = snapshot.subList(Math.max(0, snapshot.size() - rootNames.size()), snapshot.size());
-            align(config, "quarkus.log.handlers", rootNames, window, addedAfter(inside, window), byName, problems);
+            if (inside == null) {
+                problems.add(new ListProblem("quarkus.log.handlers", ListProblem.Kind.NOT_FOUND,
+                        "Quarkus's delayed handler is not on the root logger"));
+            } else {
+                List<Handler> snapshot = snapshotOf(inside, rootNames.size());
+                List<Handler> window = snapshot.subList(Math.max(0, snapshot.size() - rootNames.size()),
+                        snapshot.size());
+                align(config, "quarkus.log.handlers", rootNames, window, addedAfter(inside, window), byName, problems);
+            }
         }
         Map<Handler, String> result = new IdentityHashMap<>();
         for (Map.Entry<String, List<Handler>> entry : byName.entrySet()) {
@@ -180,22 +188,30 @@ final class QuarkusHandlerNameResolver implements HandlerNameResolver {
 
     /**
      * The root's children as they were when names were first resolved (#9): handlers added since go
-     * after them and must not shift the names. Taken again when one of them is gone, as after a
-     * dev-mode reload, which replaces them all.
+     * after them and must not shift the names, and one removed since keeps its place, so the others
+     * keep theirs. Taken again only when none of its last {@code named} handlers (the ones the names
+     * went to) is left, as after a dev-mode reload, which replaces them. An empty list is never kept:
+     * Quarkus has attached nothing yet.
      */
-    private List<Handler> snapshotOf(List<Handler> current) {
+    private List<Handler> snapshotOf(List<Handler> current, int named) {
         List<Handler> snapshot = rootSnapshot;
-        if (snapshot == null || !containsAll(current, snapshot)) {
+        if (snapshot == null
+                || !containsAny(current, snapshot.subList(Math.max(0, snapshot.size() - named), snapshot.size()))) {
             snapshot = List.copyOf(current);
-            rootSnapshot = snapshot;
+            rootSnapshot = snapshot.isEmpty() ? null : snapshot;
         }
         return snapshot;
     }
 
-    private static boolean containsAll(List<Handler> current, List<Handler> wanted) {
+    private static boolean containsAny(List<Handler> current, List<Handler> wanted) {
         Set<Handler> present = Collections.newSetFromMap(new IdentityHashMap<>());
         present.addAll(current);
-        return present.containsAll(wanted);
+        for (Handler handler : wanted) {
+            if (present.contains(handler)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Whether {@code current} holds a handler after the last one of {@code window}. */
@@ -287,11 +303,14 @@ final class QuarkusHandlerNameResolver implements HandlerNameResolver {
         return out;
     }
 
-    /** The handlers inside the root logger's {@code QuarkusDelayedHandler}, in attachment order. */
+    /**
+     * The handlers inside the root logger's {@code QuarkusDelayedHandler}, in attachment order;
+     * {@code null} when there is no such handler to look into.
+     */
     private List<Handler> rootChildren() {
         Logger root = loggers.apply("");
         if (root == null) {
-            return List.of();
+            return null;
         }
         for (Handler handler : root.getHandlers()) {
             if (!DelayedHandlerWatch.DELAYED_HANDLER_CLASS.equals(handler.getClass().getName())) {
@@ -300,11 +319,11 @@ final class QuarkusHandlerNameResolver implements HandlerNameResolver {
             try {
                 Method getHandlers = handler.getClass().getMethod("getHandlers");
                 Object inside = getHandlers.invoke(handler);
-                return inside instanceof Handler[] children ? List.of(children) : List.of();
+                return inside instanceof Handler[] children ? List.of(children) : null;
             } catch (ReflectiveOperationException | RuntimeException notThere) {
-                return List.of();
+                return null;
             }
         }
-        return List.of();
+        return null;
     }
 }

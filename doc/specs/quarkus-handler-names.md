@@ -165,7 +165,12 @@ Three changes to design step 2, so the risk is both reduced and reported:
    activated it*. Handlers added later go after that snapshot, so they no longer shift the names. A
    category list is matched against the first *n* handlers on its logger, which is where Quarkus puts
    them, so a handler added after them no longer makes the list fail. The snapshot is taken again only
-   when its handlers are gone (a dev-mode reload replaces them all), not when handlers are added.
+   when none of the handlers the names went to is left (a dev-mode reload replaces them), not when
+   handlers are added, and not when some other handler is removed: a removed handler keeps its place in
+   the snapshot, so the others keep theirs. An empty root is never kept as the snapshot. Names are
+   resolved only once Quarkus has activated the delayed handler (#6); when there is no delayed handler
+   to look into (a Quarkus version that names it differently), `doctor` says so at `INFO` instead of
+   blaming the list.
 2. **Check attributes the configuration states (#10).** A pair must agree on type, as now, and also on
    each attribute the configuration gives for that name: a file handler's path, a syslog or socket
    handler's host and port, and a console handler's format if the name sets one. An attribute that is
@@ -194,11 +199,14 @@ When a pair fails a check, the whole list keeps type names, as now (#11).
   catches it for file, syslog and socket handlers; for console handlers it can still go wrong, and
   `doctor` reports that list at `INFO` (#12). The root does not have this case: Quarkus sets the delayed
   handler's children in one call, replacing anything there before.
-- A host is compared without a DNS lookup: an address literal by its bytes, a host name with the name
-  the handler's address was made for. When that cannot be told, only the port is checked.
-- The root snapshot is taken the first time names are resolved. When LogAperture starts after the
-  application has added a root handler, that handler is in the snapshot; the attribute check, and the
-  `INFO` line for a list matched by type alone, cover it as for a category.
+- The root snapshot is taken the first time names are resolved after Quarkus activates its delayed
+  handler, which is as Quarkus's own start-up finishes and before application code runs. A root handler
+  that gets in before that (application code running inside Quarkus's logging set-up) is in the
+  snapshot. The attribute check catches it for file, syslog and socket handlers. For a console handler
+  matched by type alone it can still take a name, and `doctor` does not report it: the `INFO` line
+  (#12) looks for handlers after the matched ones, and this one is among them. Rare enough to leave.
+- A host is compared without a DNS lookup, so a configured endpoint whose host is a name, on a handler
+  made from an address literal, is checked by port alone.
 
 ### Testing
 
@@ -206,7 +214,11 @@ When a pair fails a check, the whole list keeps type names, as now (#11).
   were; a handler added to a category after its list still names the list; a file pair whose path does
   not match skips the list; a console pair with a configured format that does not match skips the list;
   an unconfigured attribute is not checked; a reload that replaces the root handlers takes the snapshot
-  again; and the `doctor` findings for each case (#12), with their severities.
-- `QuarkusIT`, on 3.39.x and 3.33: the sample application adds a file handler to the root after start-up
-  (a `@Startup` bean), and `set handler <name> DEBUG` still reaches the right file.
+  again, while removing some other root handler does not; a root seen empty before Quarkus attached
+  anything is not kept; a missing delayed handler is reported at `INFO`; an invalid configured path
+  costs only that pair its check; a console format is compared as written, spaces included; and the
+  `doctor` findings for each case (#12), with their severities.
+- `QuarkusIT`, on 3.39.x and 3.33: the test asks the sample application, through an HTTP endpoint it
+  has for this, to add a file handler to the root after start-up, and `set handler <name> DEBUG` still
+  reaches the right file.
 - A real run on the dev environment, for the updated guide text and the `doctor` example output.

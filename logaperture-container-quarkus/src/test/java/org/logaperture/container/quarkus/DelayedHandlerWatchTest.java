@@ -89,4 +89,21 @@ class DelayedHandlerWatchTest {
         delayed.activate();
         assertTrue(signal.getAsBoolean());
     }
+
+    @Test
+    void handlersAttached_waitsForActivationOnceTheHandlerIsThere() {
+        Logger root = Logger.getAnonymousLogger();
+        QuarkusDelayedHandler delayed = new QuarkusDelayedHandler();
+        root.addHandler(delayed);
+        DelayedHandlerWatch.Lazy signal = DelayedHandlerWatch.lazy(root);
+
+        assertFalse(signal.handlersAttached(), "found but not activated: Quarkus has not attached its handlers");
+        delayed.activate();
+        assertTrue(signal.handlersAttached());
+    }
+
+    @Test
+    void handlersAttached_isTrueWhenThereIsNoDelayedHandlerToWaitFor() {
+        assertTrue(DelayedHandlerWatch.lazy(Logger.getAnonymousLogger()).handlersAttached());
+    }
 }

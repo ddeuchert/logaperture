@@ -99,7 +99,7 @@ final class JulHandlerDiagnostics {
         return false;
     }
 
-    private static Path targetPathOf(Handler handler) {
+    static Path targetPathOf(Handler handler) {
         try {
             Method getFile = handler.getClass().getMethod("getFile");
             Object file = getFile.invoke(handler);

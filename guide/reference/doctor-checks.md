@@ -68,7 +68,8 @@ On Quarkus: the handler names in `application.properties` (`quarkus.log.handler.
 not all be given to their handlers. One finding per case:
 
 - The configuration could not be read, so every handler is named by type (`console`, `file`,
-  `file-2`). `INFO`. Expected on a Quarkus version other than the tested ones.
+  `file-2`), or the root's handlers could not be looked at, so the names in `quarkus.log.handlers`
+  are not given. `INFO`. Expected on a Quarkus version other than the tested ones.
 - A `handlers` list (`quarkus.log.handlers`, or a category's) could not be matched to the handlers on
   its logger: there are fewer than it names, one is of another type, or one writes to a different path,
   endpoint or console format than the configuration says. The finding names the list and what did not

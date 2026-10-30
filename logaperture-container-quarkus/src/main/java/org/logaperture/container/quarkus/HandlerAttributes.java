@@ -17,7 +17,6 @@ package org.logaperture.container.quarkus;
 
 import org.logaperture.adapter.jul.JulLoggingAdapter;
 
-import java.io.File;
 import java.lang.reflect.Field;
 import java.net.InetAddress;
 import java.nio.file.Path;
@@ -64,13 +63,18 @@ final class HandlerAttributes {
         if (configured == null) {
             return Result.TYPE_ONLY;
         }
-        Object file = call(handler, "getFile");
-        if (!(file instanceof File actual)) {
+        Path actual = JulLoggingAdapter.targetPathOf(handler);
+        if (actual == null) {
             return Result.TYPE_ONLY;
         }
-        // Quarkus opens a relative path against the working directory, as toAbsolutePath does.
-        Path expected = Path.of(configured).toAbsolutePath().normalize();
-        Path written = actual.toPath().toAbsolutePath().normalize();
+        Path expected;
+        try {
+            // Quarkus opens a relative path against the working directory, as toAbsolutePath does.
+            expected = Path.of(configured).toAbsolutePath().normalize();
+        } catch (RuntimeException notAPath) { // InvalidPathException: Quarkus could not open it either
+            return Result.TYPE_ONLY;
+        }
+        Path written = actual.toAbsolutePath().normalize();
         if (expected.equals(written)) {
             return new Result(true, null);
         }

@@ -72,8 +72,7 @@ public final class QuarkusEngine {
     public static JulLoggingAdapter installSystemContext(JBossLogManagerContainer host,
             Consumer<AggregateLevelControl> onFirstContextReady, Supplier<ClassLoader> configLoader) {
         DelayedHandlerWatch.Lazy activation = DelayedHandlerWatch.lazy(java.util.logging.Logger.getLogger(""));
-        // Quarkus version that names its delayed handler differently: nothing to wait for.
-        BooleanSupplier handlersAttached = () -> !activation.isLocated() || activation.getAsBoolean();
+        BooleanSupplier handlersAttached = activation::handlersAttached;
         Supplier<Optional<Map<String, String>>> logProperties = () -> QuarkusConfigReader.read(configLoader.get());
         Function<String, java.util.logging.Logger> existingLogger =
                 name -> java.util.logging.LogManager.getLogManager().getLogger(name);
@@ -123,6 +122,10 @@ public final class QuarkusEngine {
                         "In " + problem.list() + ", " + problem.detail() + ".",
                         "The names are probably right. To have them checked, configure what tells the handlers "
                                 + "apart: a path, an endpoint, or a console format.", null);
+                case NOT_FOUND -> new DoctorFinding(HANDLER_NAMES_CHECK, Severity.INFO, problem.list(),
+                        "The handlers named in " + problem.list() + " could not be found: " + problem.detail() + ".",
+                        "Use the type names, for example logctl set handler file DEBUG. This is expected on a Quarkus "
+                                + "version other than the tested ones.", null);
             });
         }
         return findings;
