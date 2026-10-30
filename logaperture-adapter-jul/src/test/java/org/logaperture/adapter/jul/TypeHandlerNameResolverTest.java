@@ -95,4 +95,15 @@ class TypeHandlerNameResolverTest {
         assertEquals("file-2", names.get(later));
         assertNotEquals(names.get(first), names.get(later));
     }
+
+    @Test
+    void aHandlerHoldingAReservedNameIsRenamed() {
+        TypeHandlerNameResolver resolver = new TypeHandlerNameResolver();
+        Handler handler = new FileHandler();
+        assertEquals("file", resolver.resolve(List.of(handler)).get(handler));
+
+        Map<Handler, String> names = resolver.resolve(List.of(handler), java.util.Set.of("file"));
+
+        assertEquals("file-2", names.get(handler));
+    }
 }

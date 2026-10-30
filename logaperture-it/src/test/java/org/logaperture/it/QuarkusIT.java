@@ -130,7 +130,7 @@ class QuarkusIT {
     }
 
     @Test
-    void handlersAreCataloguedByType_andTopCountsTheMainLogFile() throws Exception {
+    void handlersAreCataloguedByNameOrType_andTopCountsTheMainLogFile() throws Exception {
         App app = start("handlers");
         for (int i = 0; i < 5; i++) {
             app.get("/log?tag=top" + i);
@@ -140,6 +140,11 @@ class QuarkusIT {
         assertTrue(handlers.contains("console"), handlers);
         assertTrue(handlers.contains("file"), handlers);
         assertFalse(handlers.contains("QuarkusDelayedHandler"), handlers);
+        // doc/specs/quarkus-handler-names.md: the name written in application.properties, on the
+        // handler that writes the audit file, and a change by that name reaches it.
+        assertTrue(handlers.contains("AUDIT") && handlers.contains("audit.log"), handlers);
+        Logctl raised = logctl(app, "set", "handler", "AUDIT", "DEBUG");
+        assertEquals(0, raised.exitCode(), raised.stderr());
 
         assertTrue(pollUntil(() -> logctl(app, "top").stdout().contains(WORKER)),
                 "top counted the sample's logger in the main log file");
@@ -214,6 +219,9 @@ class QuarkusIT {
                     "-Dquarkus.http.host=127.0.0.1",
                     "-Dquarkus.log.file.enabled=true",
                     "-Dquarkus.log.file.path=" + logFile,
+                    "-Dquarkus.log.handler.file.\"AUDIT\".enable=true",
+                    "-Dquarkus.log.handler.file.\"AUDIT\".path=" + logFile.resolveSibling("audit.log"),
+                    "-Dquarkus.log.category.\"org.logaperture.sample.quarkus\".handlers=AUDIT",
                     "-jar", runJar.toString());
             process = new ProcessBuilder(command)
                     .redirectErrorStream(true)

@@ -35,6 +35,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -95,7 +97,8 @@ public final class QuarkusContainerIntegration implements ContainerIntegration {
 
         Runnable install = () -> {
             try {
-                JulLoggingAdapter adapter = QuarkusEngine.installSystemContext(host, onFirstContextReady);
+                JulLoggingAdapter adapter = QuarkusEngine.installSystemContext(host, onFirstContextReady,
+                        configLoader(inst));
                 startEarlyResweep(host, adapter);
                 Diagnostics.debug("level control installed (quarkus container, system LogContext)");
             } catch (Throwable t) {
@@ -122,10 +125,32 @@ public final class QuarkusContainerIntegration implements ContainerIntegration {
         Supplier<List<DoctorFinding>> containerFindings = () -> {
             List<DoctorFinding> findings = new java.util.ArrayList<>(earlySweepFindings(activation, installed));
             findings.addAll(QuarkusEngine.formatterFindings(adapter));
+            findings.addAll(QuarkusEngine.handlerNameFindings(adapter));
             return findings;
         };
         host.setContainerFindings(containerFindings);
         host.startEarlyResweep(SweepPolicy.startupWindow(), activation, Duration.ofMillis(50), Duration.ofMinutes(2));
+    }
+
+    private static final long CONFIG_LOADER_RESCAN_NANOS = Duration.ofSeconds(2).toNanos();
+
+    /**
+     * The class loader that defines MicroProfile Config's {@code ConfigProvider}, found among the
+     * loaded classes (it is the application's, not the agent's) and remembered once found.
+     */
+    private static Supplier<ClassLoader> configLoader(Instrumentation inst) {
+        AtomicReference<ClassLoader> found = new AtomicReference<>();
+        AtomicLong nextScan = new AtomicLong();
+        return () -> {
+            ClassLoader loader = found.get();
+            long now = System.nanoTime();
+            if (loader == null && now - nextScan.get() >= 0) {
+                loader = QuarkusConfigReader.definingLoader(inst.getAllLoadedClasses());
+                found.set(loader);
+                nextScan.set(now + CONFIG_LOADER_RESCAN_NANOS); // a full class scan: not on every sweep tick
+            }
+            return loader;
+        };
     }
 
     /** How long after install the delayed handler may still be missing before {@code doctor} says so. */
