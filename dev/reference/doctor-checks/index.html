@@ -1882,6 +1882,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#quarkushandler-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        quarkus.handler-names
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#loggerbelow-floor" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2249,6 +2260,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#quarkushandler-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        quarkus.handler-names
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#loggerbelow-floor" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2485,6 +2507,12 @@ keeps the <code>WARNING</code>.</p>
 rules and <code>top</code> don't apply to what that handler writes. <code>INFO</code>. In practice this is Quarkus's Dev UI
 log stream (<code>MutinyLogHandler</code>), present in <code>quarkus dev</code> only.</p>
 <p><strong>Fix:</strong> nothing to do.</p>
+<h3 id="quarkushandler-names"><code>quarkus.handler-names</code><a class="headerlink" href="#quarkushandler-names" title="Permanent link">&para;</a></h3>
+<p>On Quarkus: the handler names in <code>application.properties</code> (<code>quarkus.log.handler.file."AUDIT"</code>) could
+not be read, so handlers are named by type (<code>console</code>, <code>file</code>, <code>file-2</code>), as before. <code>INFO</code>. Expected
+on a Quarkus version other than the tested ones; a list of handlers that does not line up with its
+names is skipped without a finding, and those handlers keep their type names.</p>
+<p><strong>Fix:</strong> use the type names, for example <code>logctl set handler file DEBUG</code>.</p>
 <h3 id="loggerbelow-floor"><code>logger.below-floor</code><a class="headerlink" href="#loggerbelow-floor" title="Permanent link">&para;</a></h3>
 <p>A logger set to a level the logging backend will not emit, because the backend enforces a floor
 that is less verbose. On Quarkus this is the build-time <code>quarkus.log.min-level</code>: an application

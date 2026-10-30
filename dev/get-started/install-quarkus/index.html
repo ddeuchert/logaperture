@@ -2402,17 +2402,31 @@ cluster.</p>
 </div>
 <h2 id="handler-names">Handler names<a class="headerlink" href="#handler-names" title="Permanent link">&para;</a></h2>
 <p>Quarkus keeps its console and file handlers inside one internal handler. LogAperture looks inside
-it, and names the handlers by what they are (paths here are from a test run):</p>
-<div class="highlight"><pre><span></span><code>HANDLER           LEVEL  PERSISTS  TARGET            OVERRIDE
-ALL_HANDLERS      —      —         —                 —
-console           ALL    no        —                 —
-file              ALL    file      /tmp/cap/app.log  —
-DEFAULT_HANDLERS  —      —         (auto: console)   —
+it. A handler you named in <code>application.properties</code> shows under that name, and Quarkus's own
+console and file handlers show by what they are (paths here are from a test run):</p>
+<div class="highlight"><pre><span></span><code><span class="na">quarkus.log.handler.file."AUDIT".enable</span><span class="o">=</span><span class="s">true</span>
+<span class="na">quarkus.log.handler.file."AUDIT".path</span><span class="o">=</span><span class="s">/tmp/cap/audit.log</span>
+<span class="na">quarkus.log.category."org.example".handlers</span><span class="o">=</span><span class="s">AUDIT</span>
 </code></pre></div>
-<p>The names are <code>console</code>, <code>file</code>, <code>syslog</code> and <code>socket</code>. A second handler of one type is numbered:
-<code>file-2</code>. The names you gave handlers in <code>application.properties</code>
-(<code>quarkus.log.handler.file."AUDIT"</code>) aren't used. Use <code>logctl set handler file DEBUG</code>, for example,
-to let a raised logger's lines through a handler that is set higher.</p>
+<div class="highlight"><pre><span></span><code>HANDLER           LEVEL  PERSISTS  TARGET                     OVERRIDE
+ALL_HANDLERS      —      —         —                          —
+console           ALL    no        —                          —
+file              ALL    file      /tmp/cap/quarkus-file.log  —
+AUDIT             DEBUG  file      /tmp/cap/audit.log         DEBUG (FOR, reverts in 3h 59m)
+DEFAULT_HANDLERS  —      —         (auto: console)            —
+</code></pre></div>
+<p><code>logctl set handler AUDIT DEBUG</code> changes that handler, as <code>FILE</code> is changed on WildFly. A handler
+listed under <code>quarkus.log.handlers</code> (the root) is named the same way. A named file handler needs
+<code>enable=true</code>: without it Quarkus attaches nothing and logs "linked to a category but not
+configured".</p>
+<p>The handlers Quarkus creates itself are <code>console</code>, <code>file</code>, <code>syslog</code> and <code>socket</code>. A handler whose
+name could not be matched is numbered by type, for example <code>file-2</code>, and so is a handler whose
+<code>handlers</code> list does not line up with the handlers Quarkus attached. If you name a handler
+<code>console</code>, that name is yours and Quarkus's own console handler becomes <code>console-2</code>. Names are
+case-sensitive, as written in the configuration. <code>logctl doctor</code> reports
+<a href="../../reference/doctor-checks/#quarkushandler-names"><code>quarkus.handler-names</code></a> if the names could not
+be read at all. Use <code>logctl set handler file DEBUG</code>, for example, to let a raised logger's lines
+through a handler that is set higher.</p>
 <h2 id="the-builds-minimum-level">The build's minimum level<a class="headerlink" href="#the-builds-minimum-level" title="Permanent link">&para;</a></h2>
 <p><code>quarkus.log.min-level</code> is fixed when you build the application, and Quarkus then lets nothing more
 verbose through, whatever a logger's level says.</p>
@@ -2449,7 +2463,7 @@ stream is left out of <code>trim</code> rules and <code>top</code>
 <li><code>logctl top</code> measures bytes written to files, and Quarkus logs to the console by default. Turn on
   the file handler (<code>quarkus.log.file.enabled=true</code>) to give <code>top</code> something to measure.</li>
 <li>Asynchronous handlers (<code>quarkus.log.*.async.enable</code>) aren't supported.</li>
-<li><code>syslog</code> and <code>socket</code> handlers are named and listed, but not otherwise tested.</li>
+<li><code>syslog</code> and <code>socket</code> handlers, named or not, are listed but not otherwise tested.</li>
 <li>A plain <code>java -jar</code> application that logs through <code>java.util.logging</code> alone, without Quarkus, is
   not covered by this page.</li>
 </ul>
