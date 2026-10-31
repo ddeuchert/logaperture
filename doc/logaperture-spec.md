@@ -82,13 +82,14 @@ Worth auditing carefully before writing code, and worth stating plainly in the R
 
 These two rows are the whole problem in miniature. WildFly offers a mechanism that persists when you don't want it to and a mechanism that doesn't persist when you do, with no indication of which is which, and the user is expected to know that changing a log level involves choosing between them. **What is missing is the third option**: sticky, but recorded outside the server's own configuration, revocable in one command, and optionally self-expiring (§6.1).
 | Cross-framework level change from a CLI | **Arthas** `logger --name X --level debug` | Requires naming the classloader by hashcode in war/fat-jar deployments; heavyweight interactive console; no persistence, no rules |
+| Runtime level change (Quarkus), with expiry | **Quarkus Logging Manager** (Quarkiverse extension): REST endpoints under `/q/logging-manager`; `POST ?temporary=true` reverts after a set duration | Quarkus only; a build dependency; adds an HTTP endpoint the app must secure; not persistent across restart; no rules |
 | Runtime method tracing (the real println replacement) | **Arthas** `trace`/`watch`, **Byteman**, **BTrace** | Mature and out of this project's scope — integrate or defer to them rather than rebuild |
 
 ### 3.1 Surveyed landscape (as of mid-2026)
 
 A search across the obvious categories turns up plenty of adjacent work and nothing that occupies this position. Grouped by which of your features it touches:
 
-**Runtime level control — crowded.** Arthas (`logger --name X --level debug`, cross-framework, attach-based), Spring Boot Actuator `/loggers`, Log4j 2's JMX support, Logback's `JMXConfigurator`, the WildFly management CLI and MBean paths. All of them are ephemeral, none expire, none persist outside the app's own config. This is the least differentiated part of the project and should not lead the pitch.
+**Runtime level control — crowded.** Arthas (`logger --name X --level debug`, cross-framework, attach-based), Spring Boot Actuator `/loggers`, Quarkus Logging Manager (`/q/logging-manager`), Log4j 2's JMX support, Logback's `JMXConfigurator`, the WildFly management CLI and MBean paths. All of them are ephemeral and none persist outside the app's own config; only Quarkus Logging Manager offers expiry (`temporary=true`), and only for a change that is lost on restart anyway. This is the least differentiated part of the project and should not lead the pitch.
 
 **Dynamic tracing — mature, and someone else's problem.** Byteman (JBoss), BTrace, Arthas `trace`/`watch`, and smaller efforts like `d-akara/java-tracing-agent`, which injects logging into a running application from a JSON config. This is the real `println` replacement (§14.1) and there is no case for building a fourth one.
 
