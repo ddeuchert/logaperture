@@ -3,6 +3,8 @@
 Status: **Signed off 2026-10-28** (decisions #1 to #8 below, every recommendation taken). Release `1.1.0`.
 Amendment for [#294](https://github.com/ddeuchert/logaperture/issues/294) (decisions #9 to #13, and a change to #1):
 **signed off 2026-10-30**, every recommendation taken. See [Amendment: lists with extra handlers](#amendment-lists-with-extra-handlers-issue-294).
+Amendment for [#295](https://github.com/ddeuchert/logaperture/issues/295) (decisions #14 and #15): **signed off 2026-10-30**, every recommendation taken.
+See [Amendment: whether a named handler is built](#amendment-whether-a-named-handler-is-built-issue-295).
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §15.9 (Quarkus), §17.1 (1.1.0).
 Builds on: [`quarkus-support.md`](quarkus-support.md) (Q3, which shipped type-based names and left
@@ -107,7 +109,8 @@ get it. It implements the existing `HandlerNameResolver` and wraps `TypeHandlerN
   handler, so a handler added there after start-up can shift them; a category whose logger carries an extra
   handler is skipped (its handlers keep type names, with no `doctor` line). *Addressed by the amendment below
   (#294).*
-- Whether a named `socket`/`syslog` handler is on by default is assumed from the tested versions.
+- Whether a named `socket`/`syslog` handler is on by default is assumed from the tested versions. *Addressed by
+  the amendment for #295.*
 - `TypeHandlerNameResolver.resolve(List, Set)` is public because the Quarkus module is in another package.
 
 ## Testing
@@ -222,3 +225,54 @@ When a pair fails a check, the whole list keeps type names, as now (#11).
   has for this, to add a file handler to the root after start-up, and `set handler <name> DEBUG` still
   reaches the right file.
 - A real run on the dev environment, for the updated guide text and the `doctor` example output.
+
+## Amendment: whether a named handler is built (issue #295)
+
+Tracking issue: [#295](https://github.com/ddeuchert/logaperture/issues/295). Release `1.1.0`.
+
+### Functional summary
+
+After this amendment, the user will be able to:
+
+- Rely on a named syslog or socket handler getting its configured name, on any Quarkus version, without
+  `enable=true` written out when Quarkus turns it on by default.
+- Set both `enable` and `enabled` on a handler and have LogAperture follow the one Quarkus follows.
+
+Guide pages this changes: none. `get-started/install-quarkus.md` already says a named file handler needs
+`enable=true`; that stays true. The changelog entry for #222 covers it.
+
+### What is established
+
+Read from `quarkus-core` 3.39.5 and 3.33.4, and checked on a running application on both:
+
+- Each handler type has two flags: `enable` (no default) and `enabled` (with a default). Quarkus builds a
+  named handler when `enable.orElse(enabled)` is true (`LoggingSetupRecorder.createNamedHandlers`, once per
+  type). So `enable` wins when both are set.
+- The defaults of `enabled` are `true` for console and `false` for file, syslog and socket, in both
+  versions. That is what `QuarkusLogConfig.isBuilt` assumes today, so it is right on the tested versions.
+- The application's configuration answers `quarkus.log.handler.syslog."SYS".enabled` with that default
+  (`false`) even when nobody set it, and even though the key is not among its property names. The same
+  holds for every type, on both versions.
+- Today, when both flags are set, whichever is read last decides, and the order is arbitrary. With
+  `enable=true` and `enabled=false` Quarkus builds the handler, while LogAperture may count it as not
+  built and skip the list.
+
+Since #294, a wrong guess is no longer silent: the list is skipped and `doctor` reports it as a
+`WARNING` (#12).
+
+### Decisions
+
+| # | Question | Options | Recommendation |
+|---|---|---|---|
+| #14 | How LogAperture decides that Quarkus built a named handler | (a) Keep the defaults written into LogAperture (console on, the rest off), verified on the tested versions; (b) ask the application's configuration for each listed name's `enabled`, which carries Quarkus's own default for that version, falling back to (a) when it cannot be read; (c) as (a), and when a list fails to match, try again counting the names without an explicit flag as built | **(b)**. Asked for every named handler the configuration has a property for. It reads the default from the Quarkus that is running, so a version that changes a default is followed rather than guessed. It costs one config lookup per listed name, once (the configuration is read once, #6). (c) guesses twice and can match a list by accident. |
+| #15 | Which flag wins when both are set | (a) `enable`, as Quarkus does; (b) whichever is read last, as today | **(a)**. LogAperture has to count the handlers Quarkus builds, so it uses Quarkus's rule. |
+
+### Testing
+
+- `QuarkusLogConfig`: `enable` wins over `enabled` either way round; a name with neither flag uses the
+  default the configuration reports; and the defaults written into LogAperture when it reports none.
+- `QuarkusConfigReader`: it adds `enabled` for each named handler the configuration has a property
+  for, from the configuration (so with Quarkus's default when nobody set it), without putting other
+  unlisted keys in.
+- `QuarkusIT`, on 3.39.x and 3.33: the sample's category lists a named syslog handler that is configured
+  but not enabled ahead of `AUDIT`. Quarkus does not build it, and `AUDIT` still gets its name.

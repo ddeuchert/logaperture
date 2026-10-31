@@ -18,8 +18,12 @@ package org.logaperture.container.quarkus;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Reads the {@code quarkus.log.*} properties from the application's MicroProfile Config
@@ -33,6 +37,9 @@ final class QuarkusConfigReader {
     private static final String CONFIG_PROVIDER = "org.eclipse.microprofile.config.ConfigProvider";
     private static final String CONFIG = "org.eclipse.microprofile.config.Config";
     private static final String PREFIX = "quarkus.log.";
+    /** A named handler's key, up to its name: {@code quarkus.log.handler.file."AUDIT"}. */
+    private static final Pattern NAMED_HANDLER = Pattern.compile(
+            "(quarkus\\.log\\.handler\\.(?:console|file|syslog|socket)\\.(?:\"[^\"]+\"|[^.\"]+))\\..+");
 
     private QuarkusConfigReader() {
     }
@@ -55,10 +62,33 @@ final class QuarkusConfigReader {
                     readOne(config, value, key, out);
                 }
             }
+            for (String handler : namedHandlers(out.keySet())) {
+                String enabled = handler + ".enabled";
+                if (!out.containsKey(enabled)) {
+                    readOne(config, value, enabled, out);
+                }
+            }
             return Optional.of(out);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError unreachable) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * The named handlers among {@code keys}, as the prefix of their keys. For each, {@link #read}
+     * asks for its {@code enabled} too: it is not among the property names unless someone set it,
+     * but the configuration answers it with Quarkus's own default for that handler type, so whether
+     * Quarkus built the handler follows the running version (doc/specs/quarkus-handler-names.md #14).
+     */
+    static Set<String> namedHandlers(Set<String> keys) {
+        Set<String> handlers = new LinkedHashSet<>();
+        for (String key : keys) {
+            Matcher named = NAMED_HANDLER.matcher(key);
+            if (named.matches()) {
+                handlers.add(named.group(1));
+            }
+        }
+        return handlers;
     }
 
     /** One property; a value that cannot be read (an unexpandable {@code ${...}}) costs that key, not the rest. */

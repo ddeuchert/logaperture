@@ -251,7 +251,10 @@ class QuarkusIT {
                     "-Dquarkus.log.file.path=" + logFile,
                     "-Dquarkus.log.handler.file.\"AUDIT\".enable=true",
                     "-Dquarkus.log.handler.file.\"AUDIT\".path=" + logFile.resolveSibling("audit.log"),
-                    "-Dquarkus.log.category.\"org.logaperture.sample.quarkus\".handlers=AUDIT",
+                    // doc/specs/quarkus-handler-names.md #14: SYS is configured but not enabled, so
+                    // Quarkus does not build it, and AUDIT must still get its name.
+                    "-Dquarkus.log.handler.syslog.\"SYS\".app-name=sample",
+                    "-Dquarkus.log.category.\"org.logaperture.sample.quarkus\".handlers=SYS,AUDIT",
                     "-Dquarkus.log.handler.file.\"ROOTA\".enable=true",
                     "-Dquarkus.log.handler.file.\"ROOTA\".path=" + logFile.resolveSibling("roota.log"),
                     "-Dquarkus.log.handler.file.\"ROOTB\".enable=true",

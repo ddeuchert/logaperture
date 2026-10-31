@@ -17,7 +17,9 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
   path, endpoint or console format the configuration gives, so a handler added after start-up does not
   move the names. `doctor` reports `quarkus.handler-names` when the names cannot be read, when a
   `handlers` list cannot be matched (`WARNING`), and when one was matched by position alone next to
-  other handlers (`INFO`) (issues #222, #294; `doc/specs/quarkus-handler-names.md`).
+  other handlers (`INFO`). Whether Quarkus built a named handler is read from the running Quarkus's
+  own `enable`/`enabled` and their defaults (issues #222, #294, #295;
+  `doc/specs/quarkus-handler-names.md`).
 - **`logctl` through JBang.** `jbang logctl@ddeuchert/logaperture attach` runs `logctl` from Maven
   Central with nothing installed, and loads LogAperture into a running JVM in the same step. A
   `jbang-catalog.json` in the repository names the release (issue #274; `doc/specs/logctl-jbang.md`).
