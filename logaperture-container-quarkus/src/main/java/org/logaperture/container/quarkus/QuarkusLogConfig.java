@@ -48,6 +48,8 @@ final class QuarkusLogConfig {
      */
     private final Map<String, String> typeByName = new HashMap<>();
     private final Set<String> ambiguous = new HashSet<>();
+    /** The two flags Quarkus reads, kept apart: {@code enable} wins over {@code enabled} (#15). */
+    private final Map<String, Boolean> enableByName = new HashMap<>();
     private final Map<String, Boolean> enabledByName = new HashMap<>();
     /** Folded name to the attributes a pair is checked on (#10): {@code path}, {@code endpoint}, {@code format}. */
     private final Map<String, Map<String, String>> attributesByName = new HashMap<>();
@@ -57,14 +59,38 @@ final class QuarkusLogConfig {
     private QuarkusLogConfig() {
     }
 
+    /**
+     * A named handler's property key taken apart: {@code quarkus.log.handler.file."AUDIT".path}.
+     *
+     * @param prefix   the key up to the name, {@code quarkus.log.handler.file."AUDIT"}
+     * @param type     {@code console}, {@code file}, {@code syslog} or {@code socket}
+     * @param name     the name as spelled in this key, without quotes
+     * @param property what follows the name, {@code path}
+     */
+    record HandlerKey(String prefix, String type, String name, String property) {
+        /** The type and the name folded: every spelling of one handler has the same identity. */
+        String identity() {
+            return type + "." + fold(name);
+        }
+    }
+
+    /** {@code key} as a named handler's property, or {@code null} when it is not one. */
+    static HandlerKey handlerKey(String key) {
+        Matcher handler = HANDLER_KEY.matcher(key);
+        if (!handler.matches()) {
+            return null;
+        }
+        return new HandlerKey(key.substring(0, handler.start(4) - 1), handler.group(1),
+                handler.group(2) != null ? handler.group(2) : handler.group(3), handler.group(4));
+    }
+
     static QuarkusLogConfig parse(Map<String, String> properties) {
         QuarkusLogConfig config = new QuarkusLogConfig();
         for (Map.Entry<String, String> property : properties.entrySet()) {
             String key = property.getKey();
-            Matcher handler = HANDLER_KEY.matcher(key);
-            if (handler.matches()) {
-                config.addHandlerProperty(handler.group(1), handler.group(2) != null ? handler.group(2) : handler.group(3),
-                        handler.group(4), property.getValue());
+            HandlerKey handler = handlerKey(key);
+            if (handler != null) {
+                config.addHandlerProperty(handler.type(), handler.name(), handler.property(), property.getValue());
                 continue;
             }
             Matcher category = CATEGORY_HANDLERS_KEY.matcher(key);
@@ -84,7 +110,9 @@ final class QuarkusLogConfig {
         if (known != null && !known.equals(type)) {
             ambiguous.add(name);
         }
-        if ("enable".equals(property) || "enabled".equals(property)) {
+        if ("enable".equals(property)) {
+            enableByName.put(name, Boolean.parseBoolean(value.trim()));
+        } else if ("enabled".equals(property)) {
             enabledByName.put(name, Boolean.parseBoolean(value.trim()));
         } else if (CHECKED_ATTRIBUTES.contains(property) && !value.isBlank()) {
             // Quarkus uses a format exactly as written, spaces included; a path or endpoint it trims.
@@ -113,9 +141,12 @@ final class QuarkusLogConfig {
     }
 
     /**
-     * Whether Quarkus builds a handler for {@code name}: an explicit {@code enable} wins; otherwise a
-     * named console handler is on and the other types are off (Quarkus logs "linked to a category but
-     * not configured" for a named file handler without {@code enable=true}).
+     * Whether Quarkus builds a handler for {@code name}, by Quarkus's own rule:
+     * {@code enable.orElse(enabled)} (#15). {@code enabled} is normally in the properties even when
+     * nobody set it, as the configuration reports Quarkus's default for it (#14, see
+     * {@link QuarkusConfigReader}); when it is not, a named console handler is on and the other types
+     * are off, the defaults of the tested versions (Quarkus logs "linked to a category but not
+     * configured" for a named file handler that is off).
      */
     boolean isBuilt(String listed) {
         String name = fold(listed);
@@ -123,8 +154,12 @@ final class QuarkusLogConfig {
         if (type == null || ambiguous.contains(name)) {
             return false;
         }
-        Boolean explicit = enabledByName.get(name);
-        return explicit != null ? explicit : "console".equals(type);
+        Boolean enable = enableByName.get(name);
+        if (enable != null) {
+            return enable;
+        }
+        Boolean enabled = enabledByName.get(name);
+        return enabled != null ? enabled : "console".equals(type);
     }
 
     /** The type a name was configured under, or {@code null} when it is unknown or ambiguous. */

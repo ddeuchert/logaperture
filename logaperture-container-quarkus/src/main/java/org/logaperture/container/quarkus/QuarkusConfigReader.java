@@ -18,8 +18,12 @@ package org.logaperture.container.quarkus;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Reads the {@code quarkus.log.*} properties from the application's MicroProfile Config
@@ -55,10 +59,39 @@ final class QuarkusConfigReader {
                     readOne(config, value, key, out);
                 }
             }
+            for (String handler : handlersWithoutAFlag(out.keySet())) {
+                readOne(config, value, handler + ".enabled", out);
+            }
             return Optional.of(out);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError unreachable) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * The named handlers among {@code keys} that no spelling of their name sets {@code enable} or
+     * {@code enabled} for, one key prefix each. For these, {@link #read} asks for {@code enabled}:
+     * it is not among the property names unless someone set it, but the configuration answers it
+     * with Quarkus's own default for that handler type, so whether Quarkus built the handler follows
+     * the running version (doc/specs/quarkus-handler-names.md #14). A handler with a flag set is left
+     * alone: an environment variable spells the name in lower case, and a default looked up under that
+     * spelling must not compete with the value set under the other.
+     */
+    static Set<String> handlersWithoutAFlag(Set<String> keys) {
+        Map<String, String> prefixByHandler = new LinkedHashMap<>();
+        Set<String> flagged = new HashSet<>();
+        for (String key : keys) {
+            QuarkusLogConfig.HandlerKey handler = QuarkusLogConfig.handlerKey(key);
+            if (handler == null) {
+                continue;
+            }
+            prefixByHandler.putIfAbsent(handler.identity(), handler.prefix());
+            if ("enable".equals(handler.property()) || "enabled".equals(handler.property())) {
+                flagged.add(handler.identity());
+            }
+        }
+        prefixByHandler.keySet().removeAll(flagged);
+        return new LinkedHashSet<>(prefixByHandler.values());
     }
 
     /** One property; a value that cannot be read (an unexpandable {@code ${...}}) costs that key, not the rest. */

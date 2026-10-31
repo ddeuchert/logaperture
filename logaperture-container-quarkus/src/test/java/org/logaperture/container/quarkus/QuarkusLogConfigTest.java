@@ -111,4 +111,35 @@ class QuarkusLogConfigTest {
         assertEquals(Map.of("format", "%m%n"), config.attributesOf("C"));
         assertEquals(Map.of(), config.attributesOf("unknown"));
     }
+
+    @Test
+    void isBuilt_enableWinsOverEnabledEitherWayRound_asQuarkusDoes() {
+        QuarkusLogConfig config = QuarkusLogConfig.parse(Map.of(
+                "quarkus.log.handler.file.\"A\".enable", "true",
+                "quarkus.log.handler.file.\"A\".enabled", "false",
+                "quarkus.log.handler.file.\"B\".enable", "false",
+                "quarkus.log.handler.file.\"B\".enabled", "true"));
+
+        assertTrue(config.isBuilt("A"));
+        assertFalse(config.isBuilt("B"));
+    }
+
+    @Test
+    void isBuilt_followsTheEnabledTheConfigurationReports_elseTheTestedDefaults() {
+        QuarkusLogConfig reported = QuarkusLogConfig.parse(Map.of(
+                "quarkus.log.handler.syslog.\"S\".app-name", "x",
+                "quarkus.log.handler.syslog.\"S\".enabled", "true",
+                "quarkus.log.handler.console.\"C\".format", "x",
+                "quarkus.log.handler.console.\"C\".enabled", "false"));
+        QuarkusLogConfig unreported = QuarkusLogConfig.parse(Map.of(
+                "quarkus.log.handler.syslog.\"S\".app-name", "x",
+                "quarkus.log.handler.socket.\"K\".endpoint", "localhost:4560",
+                "quarkus.log.handler.console.\"C\".format", "x"));
+
+        assertTrue(reported.isBuilt("S"));
+        assertFalse(reported.isBuilt("C"));
+        assertFalse(unreported.isBuilt("S"));
+        assertFalse(unreported.isBuilt("K"));
+        assertTrue(unreported.isBuilt("C"));
+    }
 }
