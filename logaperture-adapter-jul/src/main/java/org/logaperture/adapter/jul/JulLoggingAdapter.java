@@ -544,18 +544,35 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             unwrapFormatters(nested, seen);
         }
         Formatter current = handler.getFormatter();
-        Formatter original = current;
+        Formatter original = originalFormatter(current);
+        if (original != current) {
+            handler.setFormatter(original);
+        }
+    }
+
+    /**
+     * The file {@code handler} writes to, read as {@code list handlers} reads it; {@code null} for a
+     * handler that is not file-backed or does not say.
+     */
+    public static java.nio.file.Path targetPathOf(Handler handler) {
+        return JulHandlerDiagnostics.targetPathOf(handler);
+    }
+
+    /**
+     * {@code formatter} without the wraps this adapter puts around a handler's formatter ({@code trim},
+     * {@code top}): the formatter the handler was configured with. {@code formatter} itself when it
+     * is not wrapped, {@code null} for {@code null}.
+     */
+    public static Formatter originalFormatter(Formatter formatter) {
+        Formatter original = formatter;
         while (true) {
             if (original instanceof ByteCountingFormatter counting) {
                 original = counting.delegate();
             } else if (original instanceof JulTrimFormatter trim) {
                 original = trim.delegate();
             } else {
-                break;
+                return original;
             }
-        }
-        if (original != current) {
-            handler.setFormatter(original);
         }
     }
 

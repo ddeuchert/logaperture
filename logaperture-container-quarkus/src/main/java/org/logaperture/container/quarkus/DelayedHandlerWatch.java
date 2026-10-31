@@ -90,5 +90,15 @@ final class DelayedHandlerWatch {
         boolean isLocated() {
             return found != null;
         }
+
+        /**
+         * Whether Quarkus has attached its handlers: the delayed handler is activated, or there is no
+         * delayed handler to wait for (a Quarkus version that names it differently). Polls first, as
+         * the poll is what finds the handler.
+         */
+        boolean handlersAttached() {
+            boolean activated = getAsBoolean();
+            return activated || !isLocated();
+        }
     }
 }

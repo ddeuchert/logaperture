@@ -161,14 +161,33 @@ listed under `quarkus.log.handlers` (the root) is named the same way. A named fi
 `enable=true`: without it Quarkus attaches nothing and logs "linked to a category but not
 configured".
 
-The handlers Quarkus creates itself are `console`, `file`, `syslog` and `socket`. A handler whose
-name could not be matched is numbered by type, for example `file-2`, and so is a handler whose
-`handlers` list does not line up with the handlers Quarkus attached. If you name a handler
-`console`, that name is yours and Quarkus's own console handler becomes `console-2`. Names are
-case-sensitive, as written in the configuration. `logctl doctor` reports
-[`quarkus.handler-names`](../reference/doctor-checks.md#quarkushandler-names) if the names could not
-be read at all. Use `logctl set handler file DEBUG`, for example, to let a raised logger's lines
-through a handler that is set higher.
+The handlers Quarkus creates itself are `console`, `file`, `syslog` and `socket`. If you name a
+handler `console`, that name is yours and Quarkus's own console handler becomes `console-2`. Names
+are case-sensitive, as written in the configuration.
+
+LogAperture gives each name in a `handlers` list to the handler Quarkus attached in that place, and
+checks it against the `path`, `endpoint` or console `format` you configured for it. A handler your
+application adds later doesn't move the names. When a list can't be matched (a handler of another
+type, or one writing somewhere else), its handlers are numbered by type, for example `file-2`, and
+`logctl doctor` reports
+[`quarkus.handler-names`](../reference/doctor-checks.md#quarkushandler-names) with the list and what
+didn't match. When a list could only be matched by position, because nothing configured tells its
+handlers apart and the logger has another handler too, the check says so at `INFO`. Here the root
+names a console handler with no `format`, and the application added a file handler after start-up:
+
+```properties
+quarkus.log.handler.console."ROOTC".enable=true
+quarkus.log.handlers=ROOTC
+```
+
+```
+[INFO]  In quarkus.log.handlers, ROOTC was matched by position and type only, and the logger has other handlers too.
+        The names are probably right. To have them checked, configure what tells the handlers apart: a path, an endpoint, or a console format.
+```
+
+It reports the same check if the names couldn't be read at all. Use
+`logctl set handler file DEBUG`, for example, to let a raised logger's lines through a handler that
+is set higher.
 
 ## The build's minimum level
 

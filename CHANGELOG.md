@@ -13,8 +13,11 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 - **Quarkus handler names.** A handler named in `application.properties`
   (`quarkus.log.handler.file."AUDIT"`) now shows in `logctl list handlers` under that name, and
   `logctl set handler AUDIT DEBUG` works, as on WildFly. Quarkus's own handlers keep `console`,
-  `file`, `syslog` and `socket`. `doctor` reports `quarkus.handler-names` when the names cannot be
-  read (issue #222; `doc/specs/quarkus-handler-names.md`).
+  `file`, `syslog` and `socket`. A name is matched where Quarkus attached it, and checked against the
+  path, endpoint or console format the configuration gives, so a handler added after start-up does not
+  move the names. `doctor` reports `quarkus.handler-names` when the names cannot be read, when a
+  `handlers` list cannot be matched (`WARNING`), and when one was matched by position alone next to
+  other handlers (`INFO`) (issues #222, #294; `doc/specs/quarkus-handler-names.md`).
 - **`logctl` through JBang.** `jbang logctl@ddeuchert/logaperture attach` runs `logctl` from Maven
   Central with nothing installed, and loads LogAperture into a running JVM in the same step. A
   `jbang-catalog.json` in the repository names the release (issue #274; `doc/specs/logctl-jbang.md`).

@@ -151,6 +151,36 @@ class QuarkusIT {
     }
 
     @Test
+    void rootHandlerNamesStayOnTheirFiles_whenAHandlerIsAddedAfterStartUp() throws Exception {
+        App app = start("root-names");
+        String before = logctl(app, "list", "handlers", "--show-all").stdout();
+        assertRow(before, "ROOTA", "roota.log");
+        assertRow(before, "ROOTB", "rootb.log");
+
+        // doc/specs/quarkus-handler-names.md, amendment for #294: a handler added to the root after
+        // start-up goes after the named ones; matched by position alone, it would shift both names.
+        Path late = work.resolve("logs").resolve("late.log");
+        assertEquals("added", app.get("/handlers/add-root-file?path=" + java.net.URLEncoder.encode(late.toString(), StandardCharsets.UTF_8)));
+        assertTrue(pollUntil(() -> logctl(app, "list", "handlers", "--show-all").stdout().contains("late.log")),
+                "LogAperture saw the added handler");
+
+        String after = logctl(app, "list", "handlers", "--show-all").stdout();
+        assertRow(after, "ROOTA", "roota.log");
+        assertRow(after, "ROOTB", "rootb.log");
+        assertFalse(logctl(app, "doctor").stdout().contains("quarkus.handler-names"),
+                "every list was matched, by path");
+        Logctl raised = logctl(app, "set", "handler", "ROOTB", "DEBUG");
+        assertEquals(0, raised.exitCode(), raised.stderr());
+        assertRow(logctl(app, "list", "handlers", "--show-all").stdout(), "ROOTB", "DEBUG");
+    }
+
+    /** The {@code list handlers} row for {@code name} contains {@code expected}. */
+    private static void assertRow(String table, String name, String expected) {
+        String row = table.lines().filter(line -> line.startsWith(name + " ")).findFirst().orElse("");
+        assertTrue(row.contains(expected), name + " row should contain " + expected + ":\n" + table);
+    }
+
+    @Test
     void stickyOverride_survivesARestart() throws Exception {
         App first = start("sticky");
         assertEquals(0, logctl(first, "set", "logger", WORKER, "DEBUG", "sticky").exitCode());
@@ -222,6 +252,11 @@ class QuarkusIT {
                     "-Dquarkus.log.handler.file.\"AUDIT\".enable=true",
                     "-Dquarkus.log.handler.file.\"AUDIT\".path=" + logFile.resolveSibling("audit.log"),
                     "-Dquarkus.log.category.\"org.logaperture.sample.quarkus\".handlers=AUDIT",
+                    "-Dquarkus.log.handler.file.\"ROOTA\".enable=true",
+                    "-Dquarkus.log.handler.file.\"ROOTA\".path=" + logFile.resolveSibling("roota.log"),
+                    "-Dquarkus.log.handler.file.\"ROOTB\".enable=true",
+                    "-Dquarkus.log.handler.file.\"ROOTB\".path=" + logFile.resolveSibling("rootb.log"),
+                    "-Dquarkus.log.handlers=ROOTA,ROOTB",
                     "-jar", runJar.toString());
             process = new ProcessBuilder(command)
                     .redirectErrorStream(true)

@@ -34,6 +34,14 @@ public class QuarkusDelayedHandler extends Handler {
         children.add(handler);
     }
 
+    /** As the real one: replaces every child at once (Quarkus's start-up, and a dev-mode reload). */
+    public Handler[] setHandlers(Handler[] handlers) {
+        Handler[] old = getHandlers();
+        children.clear();
+        children.addAll(List.of(handlers));
+        return old;
+    }
+
     public final boolean isActivated() {
         return activated;
     }
