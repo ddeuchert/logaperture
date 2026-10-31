@@ -2746,8 +2746,11 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
 <li><strong>Quarkus handler names.</strong> A handler named in <code>application.properties</code>
   (<code>quarkus.log.handler.file."AUDIT"</code>) now shows in <code>logctl list handlers</code> under that name, and
   <code>logctl set handler AUDIT DEBUG</code> works, as on WildFly. Quarkus's own handlers keep <code>console</code>,
-  <code>file</code>, <code>syslog</code> and <code>socket</code>. <code>doctor</code> reports <code>quarkus.handler-names</code> when the names cannot be
-  read (issue #222; <code>doc/specs/quarkus-handler-names.md</code>).</li>
+  <code>file</code>, <code>syslog</code> and <code>socket</code>. A name is matched where Quarkus attached it, and checked against the
+  path, endpoint or console format the configuration gives, so a handler added after start-up does not
+  move the names. <code>doctor</code> reports <code>quarkus.handler-names</code> when the names cannot be read, when a
+  <code>handlers</code> list cannot be matched (<code>WARNING</code>), and when one was matched by position alone next to
+  other handlers (<code>INFO</code>) (issues #222, #294; <code>doc/specs/quarkus-handler-names.md</code>).</li>
 <li><strong><code>logctl</code> through JBang.</strong> <code>jbang logctl@ddeuchert/logaperture attach</code> runs <code>logctl</code> from Maven
   Central with nothing installed, and loads LogAperture into a running JVM in the same step. A
   <code>jbang-catalog.json</code> in the repository names the release (issue #274; <code>doc/specs/logctl-jbang.md</code>).</li>

@@ -2509,10 +2509,23 @@ log stream (<code>MutinyLogHandler</code>), present in <code>quarkus dev</code> 
 <p><strong>Fix:</strong> nothing to do.</p>
 <h3 id="quarkushandler-names"><code>quarkus.handler-names</code><a class="headerlink" href="#quarkushandler-names" title="Permanent link">&para;</a></h3>
 <p>On Quarkus: the handler names in <code>application.properties</code> (<code>quarkus.log.handler.file."AUDIT"</code>) could
-not be read, so handlers are named by type (<code>console</code>, <code>file</code>, <code>file-2</code>), as before. <code>INFO</code>. Expected
-on a Quarkus version other than the tested ones; a list of handlers that does not line up with its
-names is skipped without a finding, and those handlers keep their type names.</p>
-<p><strong>Fix:</strong> use the type names, for example <code>logctl set handler file DEBUG</code>.</p>
+not all be given to their handlers. One finding per case:</p>
+<ul>
+<li>The configuration could not be read, so every handler is named by type (<code>console</code>, <code>file</code>,
+  <code>file-2</code>), or the root's handlers could not be looked at, so the names in <code>quarkus.log.handlers</code>
+  are not given. <code>INFO</code>. Expected on a Quarkus version other than the tested ones.</li>
+<li>A <code>handlers</code> list (<code>quarkus.log.handlers</code>, or a category's) could not be matched to the handlers on
+  its logger: there are fewer than it names, one is of another type, or one writes to a different path,
+  endpoint or console format than the configuration says. The finding names the list and what did not
+  match. Its handlers keep their type names, so <code>logctl set handler AUDIT</code> fails with an unknown
+  handler. <code>WARNING</code>.</li>
+<li>A list was matched by position and type alone (no path, endpoint or console format to check) while
+  its logger has other handlers too, such as one the application added. The names are probably right.
+  <code>INFO</code>.</li>
+</ul>
+<p><strong>Fix:</strong> use the type names <code>logctl list handlers</code> shows, for example <code>logctl set handler file-2 DEBUG</code>.
+For a list matched by type alone, configure what tells its handlers apart (a console handler's
+<code>format</code>) and LogAperture checks it.</p>
 <h3 id="loggerbelow-floor"><code>logger.below-floor</code><a class="headerlink" href="#loggerbelow-floor" title="Permanent link">&para;</a></h3>
 <p>A logger set to a level the logging backend will not emit, because the backend enforces a floor
 that is less verbose. On Quarkus this is the build-time <code>quarkus.log.min-level</code>: an application

@@ -2419,14 +2419,27 @@ DEFAULT_HANDLERS  —      —         (auto: console)            —
 listed under <code>quarkus.log.handlers</code> (the root) is named the same way. A named file handler needs
 <code>enable=true</code>: without it Quarkus attaches nothing and logs "linked to a category but not
 configured".</p>
-<p>The handlers Quarkus creates itself are <code>console</code>, <code>file</code>, <code>syslog</code> and <code>socket</code>. A handler whose
-name could not be matched is numbered by type, for example <code>file-2</code>, and so is a handler whose
-<code>handlers</code> list does not line up with the handlers Quarkus attached. If you name a handler
-<code>console</code>, that name is yours and Quarkus's own console handler becomes <code>console-2</code>. Names are
-case-sensitive, as written in the configuration. <code>logctl doctor</code> reports
-<a href="../../reference/doctor-checks/#quarkushandler-names"><code>quarkus.handler-names</code></a> if the names could not
-be read at all. Use <code>logctl set handler file DEBUG</code>, for example, to let a raised logger's lines
-through a handler that is set higher.</p>
+<p>The handlers Quarkus creates itself are <code>console</code>, <code>file</code>, <code>syslog</code> and <code>socket</code>. If you name a
+handler <code>console</code>, that name is yours and Quarkus's own console handler becomes <code>console-2</code>. Names
+are case-sensitive, as written in the configuration.</p>
+<p>LogAperture gives each name in a <code>handlers</code> list to the handler Quarkus attached in that place, and
+checks it against the <code>path</code>, <code>endpoint</code> or console <code>format</code> you configured for it. A handler your
+application adds later doesn't move the names. When a list can't be matched (a handler of another
+type, or one writing somewhere else), its handlers are numbered by type, for example <code>file-2</code>, and
+<code>logctl doctor</code> reports
+<a href="../../reference/doctor-checks/#quarkushandler-names"><code>quarkus.handler-names</code></a> with the list and what
+didn't match. When a list could only be matched by position, because nothing configured tells its
+handlers apart and the logger has another handler too, the check says so at <code>INFO</code>. Here the root
+names a console handler with no <code>format</code>, and the application added a file handler after start-up:</p>
+<div class="highlight"><pre><span></span><code><span class="na">quarkus.log.handler.console."ROOTC".enable</span><span class="o">=</span><span class="s">true</span>
+<span class="na">quarkus.log.handlers</span><span class="o">=</span><span class="s">ROOTC</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>[INFO]  In quarkus.log.handlers, ROOTC was matched by position and type only, and the logger has other handlers too.
+        The names are probably right. To have them checked, configure what tells the handlers apart: a path, an endpoint, or a console format.
+</code></pre></div>
+<p>It reports the same check if the names couldn't be read at all. Use
+<code>logctl set handler file DEBUG</code>, for example, to let a raised logger's lines through a handler that
+is set higher.</p>
 <h2 id="the-builds-minimum-level">The build's minimum level<a class="headerlink" href="#the-builds-minimum-level" title="Permanent link">&para;</a></h2>
 <p><code>quarkus.log.min-level</code> is fixed when you build the application, and Quarkus then lets nothing more
 verbose through, whatever a logger's level says.</p>
