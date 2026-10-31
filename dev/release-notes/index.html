@@ -2750,7 +2750,9 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
   path, endpoint or console format the configuration gives, so a handler added after start-up does not
   move the names. <code>doctor</code> reports <code>quarkus.handler-names</code> when the names cannot be read, when a
   <code>handlers</code> list cannot be matched (<code>WARNING</code>), and when one was matched by position alone next to
-  other handlers (<code>INFO</code>) (issues #222, #294; <code>doc/specs/quarkus-handler-names.md</code>).</li>
+  other handlers (<code>INFO</code>). Whether Quarkus built a named handler is read from the running Quarkus's
+  own <code>enable</code>/<code>enabled</code> and their defaults (issues #222, #294, #295;
+  <code>doc/specs/quarkus-handler-names.md</code>).</li>
 <li><strong><code>logctl</code> through JBang.</strong> <code>jbang logctl@ddeuchert/logaperture attach</code> runs <code>logctl</code> from Maven
   Central with nothing installed, and loads LogAperture into a running JVM in the same step. A
   <code>jbang-catalog.json</code> in the repository names the release (issue #274; <code>doc/specs/logctl-jbang.md</code>).</li>
