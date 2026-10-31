@@ -87,4 +87,20 @@ class QuarkusConfigReaderTest {
 
         assertEquals("true", read.get("quarkus.log.handler.file.\"AUDIT\".enabled"));
     }
+
+    @Test
+    void read_doesNotLookUpADefaultWhenAnotherSpellingOfTheNameSetsAFlag() {
+        // application.properties sets enabled; an environment variable, which cannot carry case,
+        // gives the path, so the configuration lists the handler under both spellings.
+        ConfigProvider.current = config(
+                Map.of("quarkus.log.handler.file.\"AUDIT\".enabled", "true",
+                        "quarkus.log.handler.file.\"audit\".path", "audit.log"),
+                Map.of("quarkus.log.handler.file.\"audit\".enabled", "false",
+                        "quarkus.log.handler.file.\"AUDIT\".enabled", "false"));
+
+        Map<String, String> read = QuarkusConfigReader.read(getClass().getClassLoader()).orElseThrow();
+
+        assertFalse(read.containsKey("quarkus.log.handler.file.\"audit\".enabled"), read.toString());
+        assertTrue(QuarkusLogConfig.parse(read).isBuilt("AUDIT"));
+    }
 }

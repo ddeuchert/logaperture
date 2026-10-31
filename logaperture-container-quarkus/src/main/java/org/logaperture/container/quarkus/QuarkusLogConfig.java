@@ -59,14 +59,38 @@ final class QuarkusLogConfig {
     private QuarkusLogConfig() {
     }
 
+    /**
+     * A named handler's property key taken apart: {@code quarkus.log.handler.file."AUDIT".path}.
+     *
+     * @param prefix   the key up to the name, {@code quarkus.log.handler.file."AUDIT"}
+     * @param type     {@code console}, {@code file}, {@code syslog} or {@code socket}
+     * @param name     the name as spelled in this key, without quotes
+     * @param property what follows the name, {@code path}
+     */
+    record HandlerKey(String prefix, String type, String name, String property) {
+        /** The type and the name folded: every spelling of one handler has the same identity. */
+        String identity() {
+            return type + "." + fold(name);
+        }
+    }
+
+    /** {@code key} as a named handler's property, or {@code null} when it is not one. */
+    static HandlerKey handlerKey(String key) {
+        Matcher handler = HANDLER_KEY.matcher(key);
+        if (!handler.matches()) {
+            return null;
+        }
+        return new HandlerKey(key.substring(0, handler.start(4) - 1), handler.group(1),
+                handler.group(2) != null ? handler.group(2) : handler.group(3), handler.group(4));
+    }
+
     static QuarkusLogConfig parse(Map<String, String> properties) {
         QuarkusLogConfig config = new QuarkusLogConfig();
         for (Map.Entry<String, String> property : properties.entrySet()) {
             String key = property.getKey();
-            Matcher handler = HANDLER_KEY.matcher(key);
-            if (handler.matches()) {
-                config.addHandlerProperty(handler.group(1), handler.group(2) != null ? handler.group(2) : handler.group(3),
-                        handler.group(4), property.getValue());
+            HandlerKey handler = handlerKey(key);
+            if (handler != null) {
+                config.addHandlerProperty(handler.type(), handler.name(), handler.property(), property.getValue());
                 continue;
             }
             Matcher category = CATEGORY_HANDLERS_KEY.matcher(key);
