@@ -1,6 +1,6 @@
 # Spike — Log4j 2 adapter
 
-Status: **in progress.** Plain JVM, Spring Boot and Tomcat done (containers 1–3 of 4). WildFly pending. Spring Boot, Tomcat and WildFly pending.
+Status: **done.** All four containers probed; open items are under "Not established". Spring Boot, Tomcat and WildFly pending.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §4.3 (the per-framework hook
 table), §13 open questions 1 and 2 and item 7, §15.1 (backend × container axes), §17.1 (Log4j 2
@@ -39,7 +39,8 @@ item 7).
 
 One machine. Every result below comes from it.
 
-- Linux (Fedora, kernel 7.2), Temurin JDK 21.0.12.
+- Linux (Fedora, kernel 7.2), Temurin JDK 21.0.12 for the plain JVM, Spring Boot and Tomcat; WildFly ran
+  in its image's OpenJDK 17.0.5. Each container section names its own versions.
 - Log4j 2.17.2 (the §11 floor) and 2.26.1 (current), each with `disruptor` 3.4.4. A version
   difference is called out where there is one; otherwise both versions gave the same result.
 - Each version run three ways: synchronous loggers; all-async loggers
@@ -318,17 +319,122 @@ probe: the bridge class loader must be narrow (TC6).
    absent (no context name, and no clean shutdown on undeploy); Tomcat 10.1 / `javax`-era
    `log4j-web`.
 
-### 4. WildFly deployment with `use-deployment-logging-config`
+### 4. WildFly deployment with its own `log4j-core` — done
 
-_Pending._
+WildFly **26.1.3.Final** on **JDK 17.0.5** (the `quay.io/wildfly/wildfly:26.1.3.Final-jdk17` image the
+dev environment and `WildFlyContainerIT` use), started under Podman with **both** the real
+LogAperture agent (`1.1.0-SNAPSHOT`, built from this branch) and the probe agent. Three
+`javax.servlet` WARs with the same ticker as Tomcat, logging to `app.<war>.Worker`.
+
+**Scope correction.** The issue named `use-deployment-logging-config`. That attribute covers a
+deployment's `logging.properties` and Log4j 1 configuration, **not `log4j2.xml`**. WildFly routes a
+deployment's Log4j 2 API calls into JBoss LogManager through its own
+`org.apache.logging.log4j.api` module (log4j-api **2.17.2** plus `org.jboss.logmanager.log4j2` in
+this image). A deployment's own `log4j-core` runs only when the deployment excludes that module in
+`jboss-deployment-structure.xml`. So the three WARs are:
+
+| WAR | Contents | What happened |
+|---|---|---|
+| `w1` | log4j-api `provided` | `LogManager` from WildFly's module, context `JBossLoggerContext`; events in `server.log`. The shipping agent's JBoss LogManager adapter covers it: `logctl list loggers 'app.*'` showed `app.w1.Worker`, and `set logger app.w1.Worker DEBUG session` produced `debug` lines. **No Log4j 2 adapter needed.** |
+| `w1b` | bundles log4j-api, log4j-core, log4j-web 2.26.1 and `log4j2.xml`, **no** exclusion | WildFly's log4j-api 2.17.2 wins over the bundled one. The bundled core fails to start (`log4j-web`: `NoSuchMethodError … LoaderUtil.newCheckedInstanceOfProperty`, then "LogManager returned an instance of …JBossLoggerContextFactory … Unable to initialize Log4j"). Events go to JBoss LogManager as for `w1`, and `logctl` sees them. The bundled `log4j2.xml` is ignored. |
+| `w2` | the same bundle **plus** a `jboss-deployment-structure.xml` excluding `org.apache.logging.log4j.api` | The deployment's own Log4j 2.26.1 runs (`LoggerContext` from `vfs:/content/w2.war/WEB-INF/lib/log4j-api-2.26.1.jar`), writing to `w2.log`. **This is the case the Log4j 2 adapter is for.** |
+
+| # | Probe (`w2`) | Result |
+|---|---|---|
+| WF1 | Detection and binding | log4j-core seen in `ModuleClassLoader for Module "deployment.w2.war"`; bound through the narrow bridge loader (TC6), with no `jboss.modules.system.pkgs` change. The adapter's classes are never seen by the deployment's module. Context named `/w2` (by `log4j-web`). |
+| WF2 | Hooks | Override, gate and trim all held: `w2.log` had 22 `debug` lines, no `DROPME`, and 22 of 22 `TRIMME` trimmed. |
+| WF3 | Next to the real agent | Both agents ran in one JVM without interfering. The real agent's `logctl list loggers 'app.*'` shows `app.w1.Worker` and `app.w1b.Worker`, **not `app.w2.Worker`**. And `logctl set logger app.w2.Worker DEBUG session` **reports success** (`app.w2.Worker → DEBUG`), because it pre-sets a level on a JBoss LogManager name that `w2` never logs through. Today a `w2`-style deployment gets a reassuring answer that does nothing. |
+| WF4 | Redeploy | As on Tomcat: shutdown listener, adapter instance exits, the detector binds the new loader about 0.7 s later, override re-applied by the context's name. |
+| WF5 | **`ModuleClassLoader` equality** | JBoss Modules' `ModuleClassLoader` overrides `equals` and `hashCode` (final), and the old and new loaders of a redeployed `deployment.w2.war` compare equal. A `WeakHashMap`-backed "already bound" set therefore kept the old loader as the key, never recorded the new one, and lost both once the old one was collected. The detector must track bound loaders **by identity** (weak references compared with `==`). Checked: no shipping code keys a weak map by class loader today. |
+| WF6 | **Dead loaders brought back by the scan** | After a redeploy and after the undeploy, the detector "saw" log4j-core again in the **old** loader. A `System.gc()` had already cleared the weak reference to it, but `Instrumentation.getAllLoadedClasses()` still returned its `LoggerContext` class: the JVM clears weak references before it unloads the classes. That gives the dead loader a strong reference again, and an adapter instance bound to it waited forever for a context that never came, which kept the loader alive (two loaders leaked in that run). Fix: the adapter instance binds only once its copy of Log4j has a context, and **gives up after 3 s with none**, closing its bridge loader. Then each dead loader came back once, was released, and every loader was collected (4 of 4). |
+| WF7 | Errors | With the fixes, no probe failures, no linkage errors and no stopped-loader messages in the server log. |
+
+**Design consequences for WildFly**
+
+1. **The Log4j 2 adapter only matters for deployments that exclude WildFly's Log4j API module.**
+   Everything else is already JBoss LogManager's. That makes WildFly a lower-priority target than
+   Spring Boot or Tomcat.
+2. **`doctor` and `set logger` should say when a name isn't reachable.** With no Log4j 2 adapter,
+   a deployment that excludes `org.apache.logging.log4j.api` should be detectable: a
+   `jboss-deployment-structure.xml` exclusion, or a `LoggerContext` class in a deployment module. A
+   `doctor` finding could name it, and `set logger` on a name LogAperture has never seen could warn.
+   This is independent of the adapter and could come earlier. *Open.*
+3. **WF5 and WF6 apply to every redeploying container**, Tomcat included; the Tomcat run just
+   didn't trip them. Identity-tracked loaders and a bounded wait belong in the shared detector,
+   not in a container integration. The same resurrection risk applies to any detector that scans
+   `getAllLoadedClasses()` for an application-loaded class (the Logback gate in a webapp, later). The
+   JUL detector looks for a JDK class, so it isn't affected.
+4. **Not tested:** WildFly 27+ (Jakarta EE, `log4j-jakarta-web`), domain mode, and a Log4j 2 shipped
+   as a global or static module shared by several deployments.
 
 ## Answers
 
-_One per question above, with the evidence behind it._
+1. **Level control and reload: yes, through the public API.** Levels live on `LoggerConfig` and are
+   set on the context the adapter holds, not through `Configurator`'s static helpers. A level can
+   be pre-set on a name that doesn't exist yet. Explicit vs. inherited needs `getExplicitLevel()`
+   (2.19+). Every reconfiguration wipes LogAperture's state. The context's `"config"` property
+   listener re-applies it: real swaps have `old != new`, and `old == new` events come from every
+   `updateLoggers()`. The same events show drift, which lets the adapter re-assert overrides
+   against Spring's `logging.level` and Actuator. **Floor: 2.20.0** (decided 2026-11-01).
+2. **Gate and render hooks: yes, but not the ones §4.3 named.** Gate: one context-wide `Filter`
+   (`config.addFilter`). It denies before the message or event is built, it runs **before** the
+   level check, so it needs a level fast path, and it must never return `ACCEPT`. Render: the
+   layout can't be replaced, so wrap each appender in its `LoggerConfig` slot (answers §13 open
+   question 1). The trimmed event carries the synthetic `Throwable` and a `ThrowableProxy`
+   subclass, because `%xEx` renders the class name on 2.20–2.24. Trim must be a no-op on
+   **2.25.0–2.25.3**, where no public hook reaches the rendering.
+3. **Async: works.** The gate always runs on the caller thread. The slot wrapper runs on the
+   async-logger thread or, with an `<Async>` appender, before the queue. A `ContextDataProvider`
+   can carry the verdict on the event, with a per-thread stack for nested logging. But it only
+   links when the agent jar can see Log4j: not in a fat jar or a webapp, and not under `logctl
+   attach`. **Recommended:** the gate computes the full verdict once and does all the counting; the
+   wrapper recomputes only the trim choice, without counting.
+4. **Discovery: a detector, then one adapter instance per Log4j copy.** A daemon thread scans
+   `getAllLoadedClasses()` for `org.apache.logging.log4j.core.LoggerContext`, indefinitely. For each
+   new owning loader, compared by identity, it creates a narrow bridge loader (platform parent,
+   adapter jar, `org.apache.logging.log4j.*` from the owner) and starts an adapter instance in it.
+   The instance binds once a context is `STARTED`, gives up after a few seconds with no context,
+   and lets go when Log4j's shutdown listener fires. Nothing may touch Log4j, or JUL when
+   `log4j-jul` is the JUL manager, before that. Contexts are named stably by `log4j-web`
+   (`/appA`, `/w2`); without it the name is a hash (not tested). Every copy tested had exactly one
+   context.
 
 ## Recommendation
 
-_Adapter shape, size estimate, milestone, and the spec it feeds._
+**Build the Log4j 2 adapter**: nothing found blocks it. Its parts, with a rough size from the
+existing adapters (Logback is about 410 lines; JUL is larger, with handler work):
+
+| Part | Rough size |
+|---|---|
+| Levels, baselines, re-apply and drift re-assert | ~300 lines |
+| Gate: `Filter`, level fast path, `RuleCandidateEvent` from pattern, params and throwable | ~250 |
+| Slot wrapper: trim, `ThrowableProxy` subclass, version gate for 2.25.0–2.25.3; later `top` byte counting | ~300 |
+| Handler levels through `AppenderRef` levels | ~200 |
+| Shared detector, bridge loader, identity tracking, bounded wait, shutdown handling (`logaperture-agent` / `logaperture-container-none`) | ~300 |
+| Tests: a version matrix (2.20, 2.24.x, 2.25.0–3, 2.25.4+, latest), async modes, class-loader leak tests | the largest part |
+
+Very roughly **2–3 weeks**, most of it in the version-matrix and leak tests, on the scale of the
+Quarkus JVM-mode estimate (§17.1). The split matters more than the number:
+
+- **The detector and bridge loader are not Log4j-specific.** Logback in a Spring Boot fat jar or a
+  Tomcat webapp, which is `1.2.0` work (§17.1), needs exactly the same machinery, WF5 and WF6
+  included. **Recommended:** spec and build that machinery with the 1.2 Spring Boot / Tomcat work,
+  and keep the Log4j 2 adapter itself at `1.3+`, where it then costs mostly the adapter rows
+  above. Alternatively, pull Log4j 2 into 1.2 next to Logback if demand shows up first.
+- **Independently and earlier:** a `doctor` finding and a `set logger` warning for names that no
+  bound backend can reach (WildFly consequence 2).
+
+**What this feeds:**
+
+- A Log4j 2 adapter spec, `doc/specs/log4j2-adapter.md`, carrying these decisions: the 2.20.0 floor;
+  re-assert on drift; the gate-counts / render-recomputes split; trim off on 2.25.0–2.25.3.
+- §11's version table: Log4j 2 `2.20+`, replacing `2.17+`.
+- §4.3's hook table: Log4j 2's render stage is slot wrapping, not `Layout` or `RewriteAppender`.
+- A shared class-loader detector spec (or a section of the 1.2 Spring Boot spec): identity
+  tracking, the narrow bridge loader, the bounded wait.
+- Open decisions for those specs: Actuator vs. an override (Spring Boot consequence 2); binding JUL
+  and Log4j 2 in one JVM (`plain-jvm-jul.md` decision #1, Tomcat consequence 3); the unreachable-name
+  warning (WildFly consequence 2).
 
 ## Not established
 
@@ -338,9 +444,11 @@ _Adapter shape, size estimate, milestone, and the spec it feeds._
 - An app whose `log4j-api` and `log4j-core` versions differ (I-F).
 - `logctl attach` into a running Log4j 2 app: the provider can't be registered then (hand-off).
 - The single extra provider call on the async-logger thread on 2.17.2.
-- JDK 17 and 25: every run so far used JDK 21.
+- JDK 25. Plain JVM, Spring Boot and Tomcat ran on JDK 21, WildFly on JDK 17.0.5.
 - Spring Boot: an app's own `log4j2-spring.xml`, devtools restart, structured logging.
 - Tomcat: Log4j in the shared `lib/`, a webapp without `log4j-jakarta-web`, Tomcat 10.1.
+- WildFly: 27+ (Jakarta EE), domain mode, Log4j 2 as a shared module.
+- A context name without `log4j-web` / `log4j-jakarta-web`, and more than one context per Log4j copy.
 
 ## Harness
 
@@ -370,3 +478,11 @@ Spring Boot one with three changes: a weakly keyed detector with a leak check, t
 loader (TC6), and a shutdown listener that ends each adapter instance. A script deploys,
 redeploys, undeploys and stops, and the run is judged on the probe's lines, Tomcat's
 `catalina.<date>.log` and each app's own log file.
+
+WildFly: the dev environment's image run directly under Podman (`--userns=keep-id`, so the
+deployment scanner can read a scratch directory), with both agents on `JAVA_OPTS` in
+`standalone.conf`, the way `docker-compose.yml` does it. Three WARs from one Maven project
+(`-Dlog4j.scope`, and a webapp directory with or without `jboss-deployment-structure.xml`). The
+probe is the Tomcat one with identity-tracked loaders (WF5) and the bounded wait (WF6), with
+identity hashes printed so a rebind can be traced to its loader. `logctl` ran inside the
+container (`java -jar /opt/logctl.jar …`), as `wildflyctl logctl` does.
