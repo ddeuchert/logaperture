@@ -1,6 +1,6 @@
 # Spike — Log4j 2 adapter
 
-Status: **in progress.** Plain JVM done (container 1 of 4), including init timing and the async hand-off. Spring Boot, Tomcat and WildFly pending.
+Status: **in progress.** Plain JVM and Spring Boot done (containers 1 and 2 of 4). Tomcat and WildFly pending. Spring Boot, Tomcat and WildFly pending.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §4.3 (the per-framework hook
 table), §13 open questions 1 and 2 and item 7, §15.1 (backend × container axes), §17.1 (Log4j 2
@@ -70,7 +70,7 @@ public listener re-applies them. The traps are listed after the table.
 | H1 | Handler levels | The handler-level analogue is the **`AppenderRef` level** on each `LoggerConfig`. No setter: `lc.removeAppender(name)` + `lc.addAppender(appender, level, filter)` changes it, and INFO then reaches `WARNONLY`. `lc.getAppenderRefs()` still reports `WARN` afterward, so the adapter must track the current value itself. |
 | G1 | Gate | `config.addFilter(filter)` takes effect at once, even without `updateLoggers()`. A `DENY` stops plain, parameterised and with-throwable events before any `Message` or `LogEvent` is built, so the layout never runs (§7.1). The filter sees logger, level, the **unformatted pattern** and params (`"param {} {}"`, `[a, 7]`), and the `Throwable`: through the `(Object, Throwable)` overload, or as the trailing param for `"… {}", x, ex`. A `Message` object comes through the `(Message, Throwable)` overload. `filter(LogEvent)` was never called: one evaluation per log call. Runs on the caller thread in all three modes. |
 | G2 | Gate cost | The context-wide filter runs **before the level check**: 1000 `trace()` calls on an INFO logger invoked it 1000 times. A filter that returns `ACCEPT` **skips the level check**: with one installed, `trace("… {}", 1)` on an INFO logger was written to the file, on both versions. |
-| T1 | Trim | `AbstractAppender` has no `setLayout`; the layout is final, so §4.3's "wrap `Layout`" isn't possible without rebuilding appenders. What works is wrapping each appender **in its `LoggerConfig` slot**, keeping the original's name, with the `AppenderRef`'s level and filter carried over. On a matching event the wrapper rebuilds it with `new Log4jLogEvent.Builder(e).setThrown(synthetic).setThrownProxy(null)`. Both `%xEx` and `%ex` print the synthetic throwable's `toString()` (`…: outer failure [stack trace trimmed: 5 frames omitted]`) on both versions, so the JUL adapter's synthetic-`Throwable` approach carries over. `config.getAppenders()` still lists the originals, so the handler listing is unaffected. `setThrownProxy` is deprecated in 2.26 but works. |
+| T1 | Trim | `AbstractAppender` has no `setLayout`; the layout is final, so §4.3's "wrap `Layout`" isn't possible without rebuilding appenders. What works is wrapping each appender **in its `LoggerConfig` slot**, keeping the original's name, with the `AppenderRef`'s level and filter carried over. On a matching event the wrapper rebuilds it with `new Log4jLogEvent.Builder(e).setThrown(synthetic).setThrownProxy(null)`. On 2.17.2 and 2.26.1 both `%xEx` and `%ex` print the synthetic throwable's `toString()` (`…: outer failure [stack trace trimmed: 5 frames omitted]`). **That does not hold on every version in between**; see "Trim rendering across versions" below. `config.getAppenders()` still lists the originals, so the handler listing is unaffected. `setThrownProxy` is deprecated in 2.26 but works. |
 | T1 | Trim, async | Sync: wrapper on `main`, event type `MutableLogEvent`. Async loggers: wrapper on the `AsyncLogger` thread, event type `RingBufferLogEvent`; output identical. `<Async>` appender: the root's slot holds `ASYNC`, so the wrapper sits in front of the queue and trims on the caller thread before enqueueing. Output identical in all three. |
 | R0 | Listener noise | `ctx.addPropertyChangeListener` gets `"config"` events from **every `updateLoggers()`**, with `oldValue == newValue`, so every `Configurator.setLevel` produces one. A re-apply listener that doesn't skip those recurses forever (seen: stack overflow). |
 | R1 | Reconfigure | `ctx.reconfigure()` drops all four kinds of state: level overrides, the gate, the trim wrappers and changed `AppenderRef` levels. The listener fires once with `old != new`, after the new config is started and installed, on the reconfiguring thread. Re-applying all of it inside the listener works: override back, gate back, wrappers back. |
@@ -97,10 +97,39 @@ public listener re-applies them. The traps are listed after the table.
 4. **Trim = slot wrapping, not `Layout` or `RewriteAppender`.** This answers §13 open question 1
    for Log4j 2. `RewriteAppender` is the same idea routed through config and named appenders,
    with nothing gained. The same wrapper is the natural home for `top`'s byte counting (not
-   probed yet).
+   probed yet). The trimmed event also needs its own `ThrowableProxy` (below), and trim has to be
+   off on 2.25.0–2.25.3.
 5. **The reset listener must filter `old == new`**, and re-apply levels, gate, wrappers and handler
    levels in one place. Between the swap and the re-apply, events can pass unfiltered. The
    window is the listener's own run time; not measured.
+
+#### Trim rendering across versions
+
+Found under Spring Boot 3.5 (Log4j 2.24.3): its `%xwEx` printed `Impl$Synthetic: boom 3`. The
+frames were cut, but the original exception type and the trim marker were gone. Rerun on the
+plain-JVM harness, first line of the trimmed `T1` event:
+
+| Log4j | `%xEx` (and Spring Boot's `%xwEx`) | `%ex` | With a `ThrowableProxy` subclass |
+|---|---|---|---|
+| 2.17.2 | correct | correct | correct |
+| 2.20.0, 2.23.0, 2.24.0–2.24.3 | **synthetic class name** | correct | **correct** |
+| 2.25.0–2.25.3 | **synthetic class name** | **synthetic class name** | still wrong |
+| 2.25.4, 2.25.5, 2.26.1 | correct | correct | correct |
+
+- Through 2.24.x and from 2.25.4, `%xEx` renders from `event.getThrownProxy()` and calls
+  `ThrowableProxy.formatExtendedStackTraceTo`. `ThrowableProxy` is not final, so the trim wrapper
+  sets a subclass on the rebuilt event (`Builder.setThrownProxy`). The subclass calls `super`,
+  then rewrites the first line to the synthetic throwable's `toString()`. With it, every version
+  outside 2.25.0–2.25.3 renders `java.lang.IllegalStateException: … [stack trace trimmed: …]` under
+  both converters. Confirmed on Spring Boot 3.5.16 (2.24.3) and 4.1.2 (2.25.5): 10 of 10 trimmed,
+  no synthetic name in the output.
+- **2.25.0–2.25.3** render both converters straight from the `Throwable`'s class, with no proxy
+  in the path, so there is no public hook. The adapter should make trim a **no-op on those four
+  versions** and say so in `doctor`. That's the same fail-safe as the JUL adapter's no-op on
+  structured formatters (#83).
+- The proxy subclass is a deprecated-API dependency in 2.26 (`setThrownProxy`) and patches text, so it
+  is the most version-sensitive piece of the adapter. The adapter spec should give it a
+  per-version rendering test against every supported minor.
 
 #### Init timing: when the agent may touch Log4j
 
@@ -173,14 +202,78 @@ was run with matching `log4j-api` and `log4j-core`. The fluent API lives in `log
 mixing versions may differ; not tested. Below 2.20, `drop` and counted rules cannot see
 fluent-API events.
 
-**Remaining hand-off safeguards for the spec:** the verdict carries a hash of the message format,
+**Not available in a Spring Boot fat jar.** The agent jar's service entry is found but can't be
+linked there. Log4j lives in Spring's `LaunchedClassLoader`, so the provider class (on the system
+class path) can't see the `ContextDataProvider` interface. With `-Dlog4j2.debug=true` this shows as
+`WARN Unable to load implementation for service …ContextDataProvider` /
+`NoClassDefFoundError`. Without that flag it's silent, and the app runs normally. The same will
+apply to any container where log4j-core is not on the system class path.
+
+**Recommended instead: count at the gate, recompute trim at render.** In `RuleService`, the only
+counted state is in the drop pass (hit counters, sampling, tallies). Choosing a trim
+(`mostRestrictiveTrim`) is a pure function of the rules and the event, apart from its hit counter.
+So the Log4j 2 gate can run the full verdict once per call and do all the counting, trim hit
+included. The slot wrapper then recomputes only the trim choice, without counting, from the same
+logger, level, throwable and message. No hand-off, so it works in a fat jar, under `logctl
+attach`, and with async loggers, and nothing reserved appears in `%X`. Costs: trim matching runs
+at the gate and again in each wrapper for events that have a throwable and are on loggers with a
+trim rule. The gate has to format the message itself (`ParameterizedMessage.format`) when a rule
+matches on message text. A rule change between gate and render can split one event's decisions.
+This is a design recommendation from reading `RuleService`, not a probe. The Spring Boot runs used
+a stateless trim in the wrapper, which is its render half.
+
+**Hand-off safeguards, if the provider route is kept:** the verdict carries a hash of the message format,
 and the wrapper fails open (no trim) on a mismatch, so a desynced stack can't trim the wrong event.
 On 2.17.2 with async loggers the provider ran once on the background thread (101 calls for 100
 events). The cause wasn't identified. It popped an empty stack, so it did no harm.
 
-### 2. Spring Boot fat jar (`spring-boot-starter-log4j2`)
+### 2. Spring Boot fat jar (`spring-boot-starter-log4j2`) — done
 
-_Pending._
+Spring Boot **4.1.2** (Log4j 2.25.5) and **3.5.16** (Log4j 2.24.3). A Spring MVC app with
+Actuator, `spring-boot-starter-log4j2` in place of `spring-boot-starter-logging`, Spring's
+built-in Log4j 2 configuration, and `logging.level.app.demo=INFO` and `logging.level.com.vendor=WARN`
+in `application.properties`. A scheduled task logs a `debug`, an `info`, an `info("DROPME …")` and an
+`error("TRIMME …", ex)` every second. Run as `java -javaagent:… -jar app.jar`. Both versions behaved
+the same except for trim rendering (above).
+
+**Result: the plain-JVM hooks work unchanged, once the adapter code is loaded on top of Spring's
+class loader. Spring itself adds two things to handle:** it swaps the configuration during
+startup, and it sets levels through Log4j's own API.
+
+| # | Probe | Result |
+|---|---|---|
+| SB1 | Who owns Log4j | `org.springframework.boot.loader.launch.LaunchedClassLoader`; the system class loader can't see log4j-core. The jar also bundles `log4j-jul` and `log4j-slf4j2-impl`; `java.util.logging.manager` is not set. |
+| SB2 | Loading adapter code | The detector (system class path, no Log4j types) saw `LoggerContext` load in `LaunchedClassLoader`. It then created a `URLClassLoader` over a separate jar, **not on the system class path**, with `LaunchedClassLoader` as parent, and loaded the Log4j-facing code from it. That code links against Spring's copy of Log4j and installs levels, the gate and the wrappers. This is §4.4's per-context adapter instance. The adapter jar must not be on the system class path, or parent-first delegation would load it there, where it can't link. |
+| SB3 | `Configurator` | `Configurator.setLevel` finds its context from the **caller's** class loader, the adapter's child loader, which only reaches the right context because `ClassLoaderContextSelector` walks up to the parent. The adapter should set levels on the `LoggerContext` it holds (`getLoggerConfig` / `addLogger` / `updateLoggers`), never through `Configurator`'s static helpers. |
+| SB4 | Startup sequence | Log4j starts on its `DefaultConfiguration` (seen `STARTING` twice, then `STARTED`) about 0.9–1.15 s after launch, and the detector binds to that. About 0.8 s later Spring's `Log4J2LoggingSystem` swaps in its own `log4j2.xml` (from inside `spring-boot-<v>.jar`). The listener fires on `main` and re-applies everything: wrappers, gate and override back. One context throughout. |
+| SB5 | Swap ordering | `setConfiguration` runs `updateLoggers()` on the **new** config before it fires the swap event. So the first event after a swap is an `old == new` event already on the new config. Harmless with an idempotent re-apply; the adapter must not assume the swap event comes first. |
+| SB6 | Spring's `logging.level` | About 30 ms after the swap, Spring applies `logging.level.*` through `updateLoggers()`. It sets the level **on LogAperture's own `LoggerConfig`** for `app.demo` (DEBUG → INFO), and creates a `LevelSetLoggerConfig` (Spring's subclass) for `com.vendor`. Without a counter-measure the override is lost: zero `debug` lines for the whole run. |
+| SB7 | Re-assert on drift | On every `old == new` event, compare each overridden name with its override and re-apply it if it differs. Spring's change is then undone within the same call: no loop, no errors, `debug` lines from the first tick on (10–11 per run). This is the core's existing re-establish-at-any-moment invariant (§15.5), triggered by Log4j's event instead of a sweep. |
+| SB8 | Actuator | `POST /actuator/loggers/app.demo {"configuredLevel":"WARN"}` returned `204`, and showed up as an `old == new` event on the HTTP thread. With SB7's re-assert, a following `GET` reports `DEBUG`: **the Actuator change is undone with no message to its caller.** `com.vendor`, which LogAperture doesn't override, kept Spring's `WARN`. |
+| SB9 | Gate and trim | Gate: no `DROPME` line in either version. Trim: 10/10 on 4.1.2; on 3.5.16, 0/10 rendered correctly until the `ThrowableProxy` subclass was added, then 10/10 (see "Trim rendering across versions"). |
+| SB10 | Shutdown | Spring's shutdown hook calls `updateLoggers()` while Log4j is stopping (root at `OFF`), and SB7 re-asserted into a stopping context. The adapter must skip re-assert once the context is stopping. |
+| SB11 | Service file | The `ContextDataProvider` entry from the agent jar fails to link (see "Gate-to-render hand-off"). |
+
+**Design consequences for a Spring Boot integration**
+
+1. **Spring is a native configuration source.** `logging.level.*` and Actuator both write
+   Log4j's `LoggerConfig`s, which is the same surface LogAperture overrides. Re-asserting on drift
+   (SB7) is what keeps LogAperture's existing contract, that an override holds until reset or
+   expiry. What Spring wrote at that moment should become the target's **baseline**, so that
+   `reset` restores Spring's value rather than the pre-Spring one.
+2. **Actuator conflicts need a decision** (*open, for the Spring Boot integration spec*). With
+   SB7, an Actuator change to an overridden logger returns success and is silently undone. Options:
+   keep re-asserting and log a WARN naming the override; treat an Actuator change as a native
+   change and follow it, like `reset --to-native`; or let Actuator win and drop the override. The
+   WildFly integration faces the same question with the management CLI. Its answer should apply
+   here.
+3. **Binding to Log4j's default configuration is fine, given the re-apply.** No Spring-specific
+   readiness signal is needed. An override set from a sticky state file lands on the default
+   config, is wiped by Spring's swap, re-applied by the listener, overwritten by `logging.level`,
+   and re-asserted by SB7. A lot of churn, but it converges within about 30 ms of Spring's swap.
+4. **Not tested yet:** an app's own `log4j2-spring.xml`, devtools restarts (a second class loader),
+   Spring Boot's structured logging (`logging.structured.format.console`), and the WAR form of a Spring Boot app
+   (Tomcat, next).
 
 ### 3. Tomcat webapp with its own `log4j-core`
 
@@ -206,7 +299,8 @@ _Adapter shape, size estimate, milestone, and the spec it feeds._
 - An app whose `log4j-api` and `log4j-core` versions differ (I-F).
 - `logctl attach` into a running Log4j 2 app: the provider can't be registered then (hand-off).
 - The single extra provider call on the async-logger thread on 2.17.2.
-- JDK 17 and 25: every plain-JVM run used JDK 21.
+- JDK 17 and 25: every run so far used JDK 21.
+- Spring Boot: an app's own `log4j2-spring.xml`, devtools restart, structured logging.
 
 ## Harness
 
@@ -223,3 +317,9 @@ app that sets its Log4j properties in `main()`. The real agent was checked with
 program with the stack-based gate, a `ContextDataProvider` registered by a service file, and the
 slot wrapper reading and stripping the reserved key; the layout prints `%X` so a leaked key shows.
 The fluent-API check ran one class against `log4j-api` + `log4j-core` 2.17.2 to 2.26.1.
+
+Spring Boot: an app built with `spring-boot-maven-plugin` against 4.1.2 and 3.5.16. The probe agent
+is two jars. `agent.jar` holds only the detector; `impl.jar`, passed as the agent argument and kept
+off the class path, is loaded through a `URLClassLoader` whose parent is the loader that owns
+log4j-core. A script starts the app, waits for `Started DemoApp`, posts the Actuator level
+change, and reads it back. `-Dprobe.reassert=true` turns SB7 on.
