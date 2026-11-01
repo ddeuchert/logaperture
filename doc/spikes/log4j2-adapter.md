@@ -1,6 +1,6 @@
 # Spike — Log4j 2 adapter
 
-Status: **in progress.** Plain JVM done (container 1 of 4). Spring Boot, Tomcat and WildFly pending.
+Status: **in progress.** Plain JVM done (container 1 of 4), including init timing and the async hand-off. Spring Boot, Tomcat and WildFly pending.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §4.3 (the per-framework hook
 table), §13 open questions 1 and 2 and item 7, §15.1 (backend × container axes), §17.1 (Log4j 2
@@ -13,7 +13,8 @@ not the harness that produced it. The harness is not committed. See "Harness" be
 
 ## Scope
 
-Log4j 2, 2.17 and later. Log4j 1 and reload4j are out of scope; they follow separately (§13
+Log4j 2, 2.17 and later, as §11 states; the spike recommends a 2.20.0 floor (plain JVM,
+consequence 2). Log4j 1 and reload4j are out of scope; they follow separately (§13
 item 7).
 
 ## Questions
@@ -82,8 +83,12 @@ public listener re-applies them. The traps are listed after the table.
    `null`). Reset either restores that level or removes a `LoggerConfig` that LogAperture created.
    Pre-setting creates a `LoggerConfig`, so `list logger` must not report a created config as a
    native one.
-2. **Explicit level below 2.19.** Either read `LoggerConfig.level` reflectively on 2.17–2.18
-   (fail-open to "explicit" when that fails), or raise the floor to 2.19. *Open decision.*
+2. **Version floor.** Two gaps below 2.20: no `getExplicitLevel()` before 2.19 (L2), and the
+   fluent API skipping the gate before 2.20 (I-F below). The first has a reflective fallback; the
+   second has none from the public API. **Decided 2026-11-01: the Log4j 2 adapter's floor is
+   2.20.0**, not §11's 2.17. Below it, `drop` and counted rules can't see fluent-API events, and
+   the explicit-level fallback would need reflection. The adapter spec and §11's version table
+   take this up. The 2.17.2 results above stay as evidence for the decision.
 3. **The gate needs a fast path.** Because it runs ahead of the level check on every call,
    including disabled `debug()` in hot loops, its first test has to be a level compare against
    `logger.getLevel()` before any rule lookup. It must never return `ACCEPT` (G2: that skips the level
@@ -94,20 +99,84 @@ public listener re-applies them. The traps are listed after the table.
    with nothing gained. The same wrapper is the natural home for `top`'s byte counting (not
    probed yet).
 5. **The reset listener must filter `old == new`**, and re-apply levels, gate, wrappers and handler
-   levels in one place. Between the swap and the re-apply, a handful of events can pass
-   unfiltered; that matches Logback's window.
+   levels in one place. Between the swap and the re-apply, events can pass unfiltered. The
+   window is the listener's own run time; not measured.
 
-**Open from this point** (feeds question 3, Async):
+#### Init timing: when the agent may touch Log4j
 
-- **No event identity at the gate.** The gate runs before any `LogEvent` exists, and with async
-  loggers trim runs on another thread against a `RingBufferLogEvent`. The JUL formatter passes a
-  record identity to `RuleGate.evaluate`; Log4j 2 has none to pass at gate stage. Either trim
-  re-evaluates the gate statelessly at render time (fine for `trim`, but wrong for anything that
-  counts, such as storms), or the decision is carried on the event (§4.2: ThreadContext/context
-  data, which async loggers snapshot). Not probed yet.
-- **Init timing.** `LogManager.getContext(false)` initialises Log4j if nothing has yet. An agent
-  that calls it from `premain` would configure Log4j before the app has set its properties.
-  Needs the readiness-gate treatment `plain-jvm-jul.md` gives JUL. Not probed yet.
+A `-javaagent` jar with four premain strategies, against an app that sets
+`log4j2.configurationFile` and `log4j2.contextSelector` (async) in `main()` before its first
+logger. Same result on 2.17.2 and 2.26.1 unless noted.
+
+| # | Agent does in premain | App's config file | App's async selector |
+|---|---|---|---|
+| I-1 | `LogManager.getContext(false)` | **lost** (`Default@…`, INFO output gone) | **lost** |
+| I-2 | `LogManager.getFactory()` + `getLoggerContexts()` only | **lost on 2.17.2**, kept on 2.26.1 | **lost** |
+| I-3 | Touches JUL while `-Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager` | **lost** | **lost** |
+| I-4 | Daemon thread polls `Instrumentation.getAllLoadedClasses()` for `org.apache.logging.log4j.core.LoggerContext` every 20 ms, then waits for `ctx.isStarted()` | kept | kept |
+
+- I-4 first saw the context in state `INITIALIZED` (class loaded, config not yet read), so
+  "class loaded" alone is not the signal: bind only once the context is `STARTED`. It bound 560–750
+  ms after premain, after the app's own config was in effect.
+- I-3 matters because the agent's own MBean registration initialises JUL (`plain-jvm-jul.md`).
+  The shipped agent (`1.1.0-SNAPSHOT`, built from this branch) left the app alone in all four
+  combinations (2.17.2 and 2.26.1, with and without `log4j-jul` as the JUL manager), because its
+  JUL use comes after the app has started. So 1.0 has no bug here. The constraint is on the
+  adapter: **no `org.apache.logging.log4j` class, and no JUL when `log4j-jul` is the JUL manager,
+  may be touched before the readiness check passes.** Log4j types belong in classes loaded only
+  after it.
+- The detector is the same mechanism `plain-jvm-jul.md` decision #2 chose for JUL, watching a
+  different class.
+
+#### Gate-to-render hand-off (question 3)
+
+The rule pipeline needs **one verdict per event** across every handler (`RuleService.evaluateGate`
+caches by record identity so a rule never double-counts). Log4j 2 offers no record identity at the
+gate: the gate runs before any `LogEvent` exists. Keying on the event object later is unsafe,
+because `MutableLogEvent` and `RingBufferLogEvent` are reused across events (§9). Re-evaluating
+at render would double-count. So the verdict has to be computed once at the gate and carried on
+the event.
+
+**What works:** a `ContextDataProvider` (log4j-core SPI, present in 2.17.2 and 2.26.1). The gate
+pushes one frame onto a per-thread stack for every call that will build an event: the verdict, or
+an empty marker. It pushes nothing for an `isXxxEnabled()` guard (`msg == null`) or a level-disabled
+call. The provider pops the top frame when the event is built, on the caller thread, and returns it
+as a reserved context-data key. Async loggers copy context data into the ring buffer, so the trim
+wrapper reads the verdict from `e.getContextData()` on whichever thread renders. The wrapper then
+strips the key before delegating.
+
+| # | Case | Result (2.17.2 and 2.26.1; sync, async loggers, `<Async>` appender) |
+|---|---|---|
+| H1 | Marked event | Trimmed. |
+| H2, H4, H5, H7, H9, H12 | Plain event after a marked one, a level-disabled one, two `isEnabled` guards, a logger-wide rule, a nested call, a fluent call | Not trimmed; no stale verdict. |
+| H6 | Logger-wide rule | Trimmed. |
+| H8 | Marked outer event whose param's `toString()` logs an inner event | Outer trimmed, inner not. A **single** thread-local slot got this wrong (the inner event took the outer's verdict), because Log4j formats the message while building the event, before it attaches context data. The LIFO stack gets it right. |
+| H11 | Fluent API, `atError().withThrowable(ex).log("TRIMME …")` | Trimmed on 2.26.1. **Not seen by the gate at all on 2.17.2**; see I-F. |
+| — | Verdict key in output | Visible in `%X` (`{logaperture.verdict=rule-7, user=bob}`) unless stripped; with stripping, absent, and the app's own `user=bob` kept. |
+| — | Leftovers | Stack empty on the caller thread after every run; zero format mismatches. |
+| — | Cost | One provider call per event built (100 for 100 events), plus one push per enabled call. |
+
+**Registration has to be by service file.** Adding the provider at runtime to the public
+`ThreadContextDataInjector.contextDataProviders` had no effect on either version, even followed
+by `ctx.reconfigure()`. A `META-INF/services/org.apache.logging.log4j.core.util.ContextDataProvider`
+entry on the class path worked. For a `-javaagent` jar on a plain JVM that's free: the agent jar
+is on the system class path when Log4j initialises. The provider must stay inert until the
+adapter binds. **`logctl attach` (#273) can't register it**, because Log4j has already read its
+providers. An attached agent would get levels, `drop` and stateless `trim`, but no counted
+rules. Not probed further.
+
+**I-F. The fluent API skips the gate before 2.20.0.** With a `DENY` filter installed,
+`log.atError().log("DROPME …")` was still written on 2.17.2, 2.18.0 and 2.19.0: the filter is
+called once at `atError()` with a `null` message and never again. From 2.20.0 (checked 2.20.0 to
+2.25.0 and 2.26.1) it is called with the message at `log()`, and the event is denied. Each version
+was run with matching `log4j-api` and `log4j-core`. The fluent API lives in `log4j-api`, so an app
+mixing versions may differ; not tested. Below 2.20, `drop` and counted rules cannot see
+fluent-API events.
+
+**Remaining hand-off safeguards for the spec:** the verdict carries a hash of the message format,
+and the wrapper fails open (no trim) on a mismatch, so a desynced stack can't trim the wrong event.
+On 2.17.2 with async loggers the provider ran once on the background thread (101 calls for 100
+events). The cause wasn't identified. It popped an empty stack, so it did no harm.
 
 ### 2. Spring Boot fat jar (`spring-boot-starter-log4j2`)
 
@@ -131,7 +200,13 @@ _Adapter shape, size estimate, milestone, and the spec it feeds._
 
 ## Not established
 
-_Pending._
+- `top`'s byte counting through the slot wrapper.
+- The gate's cost with the level fast path, against a bare Log4j 2 baseline (`logaperture-bench`).
+- How long the reconfiguration window lasts (events between a config swap and the re-apply).
+- An app whose `log4j-api` and `log4j-core` versions differ (I-F).
+- `logctl attach` into a running Log4j 2 app: the provider can't be registered then (hand-off).
+- The single extra provider call on the async-logger thread on 2.17.2.
+- JDK 17 and 25: every plain-JVM run used JDK 21.
 
 ## Harness
 
@@ -141,3 +216,10 @@ fetched with `mvn dependency:copy-dependencies`. Each probe logs a unique token 
 appender's output file back to check where it landed. The gate is an `AbstractFilter` that
 denies messages starting `DROPME` and records what each overload receives. The trim wrapper is
 an `AbstractAppender` named like the appender it wraps.
+
+Init timing: a small `-javaagent` jar whose agent argument picks the premain strategy, and an
+app that sets its Log4j properties in `main()`. The real agent was checked with
+`logaperture-agent/target/logaperture-agent.jar` built from this branch. Hand-off: a second
+program with the stack-based gate, a `ContextDataProvider` registered by a service file, and the
+slot wrapper reading and stripping the reserved key; the layout prints `%X` so a leaked key shows.
+The fluent-API check ran one class against `log4j-api` + `log4j-core` 2.17.2 to 2.26.1.
