@@ -1,6 +1,6 @@
 # Spike — Log4j 2 adapter
 
-Status: **in progress.** Plain JVM and Spring Boot done (containers 1 and 2 of 4). Tomcat and WildFly pending. Spring Boot, Tomcat and WildFly pending.
+Status: **in progress.** Plain JVM, Spring Boot and Tomcat done (containers 1–3 of 4). WildFly pending. Spring Boot, Tomcat and WildFly pending.
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §4.3 (the per-framework hook
 table), §13 open questions 1 and 2 and item 7, §15.1 (backend × container axes), §17.1 (Log4j 2
@@ -275,9 +275,48 @@ startup, and it sets levels through Log4j's own API.
    Spring Boot's structured logging (`logging.structured.format.console`), and the WAR form of a Spring Boot app
    (Tomcat, next).
 
-### 3. Tomcat webapp with its own `log4j-core`
+### 3. Tomcat webapp with its own `log4j-core` — done
 
-_Pending._
+Tomcat **11.0.27** (unpacked from the Maven Central distribution, checksum verified), JDK 21. Two
+WARs, each bundling `log4j-api`, `log4j-core` and `log4j-jakarta-web` and its own `log4j2.xml`,
+which writes to its own file: **`appA` on 2.26.1, `appB` on 2.24.3**. A `@WebListener` logs the same
+four lines every second as the Spring Boot app. The probe overrides `app.demo` to DEBUG in `appA`
+only, keyed by the context's name. The script deploys both, redeploys `appA` (touches the WAR)
+after 12 s, undeploys `appB` (removes the WAR) 22 s later, and stops Tomcat.
+
+**Result: one adapter instance per webapp works, including across a redeploy, and nothing
+LogAperture holds keeps a webapp's class loader alive.** It needs one change from the Spring Boot
+probe: the bridge class loader must be narrow (TC6).
+
+| # | Probe | Result |
+|---|---|---|
+| TC1 | Detection | The detector saw two `LoggerContext` classes, one in each webapp's `ParallelWebappClassLoader`, and bound an adapter instance to each, 1.9 s and 2.5 s after launch. Each instance's `LogManager.getFactory()` resolves to its own webapp's copy of Log4j, and lists exactly one context. |
+| TC2 | Two versions side by side | 2.24.3 and 2.26.1 ran in the same JVM, each with its own adapter instance compiled against one API. No linkage errors; the trim proxy (`LabelProxy`) worked under both. |
+| TC3 | Context identity | `log4j-jakarta-web` names each context after the webapp's context path (`/appA`, `/appB`). That's a stable key across a redeploy (`ContextHandle.stableKey()`, §15.2). `appB` bound first to a `DefaultConfiguration`, and the listener re-applied when the webapp's own config replaced it; `appA` bound straight to its own config. |
+| TC4 | Isolation | `appA`: 49 `debug` lines; `appB`: none. Each webapp's gate and trim counted only its own events. In both logs: no `DROPME`, and every `TRIMME` trimmed (49/49 and 41/41), with no synthetic class name. |
+| TC5 | Redeploy | `appA`'s context shutdown listener (`LoggerContext.addShutdownListener`, present from 2.20 at least) fired. The adapter instance removed its listener, ended its thread and closed its loader. About 0.6 s later the detector found the new webapp loader's `LoggerContext` class, bound a fresh instance, and re-applied the override by the context's name. |
+| TC6 | Stopped-loader trap | The first run's bridge loader (a plain `URLClassLoader` with the webapp's loader as parent) failed during shutdown with `NoClassDefFoundError: java/net/URLClassLoader`, and Tomcat logged `Illegal access: this web application instance has been stopped already`. A stopped `WebappClassLoader` refuses to load **any** class, JDK classes included. Fixed by a bridge loader whose parent is the platform loader, which sends only `org.apache.logging.log4j.*` to the webapp's loader: then zero "Illegal access" messages. |
+| TC7 | Leaks | The detector holds the loaders it has bound in a `WeakHashMap`, and checks with `System.gc()` and weak references every 5 s. After the redeploy, the old `appA` loader was collected within one check, and so was `appB`'s after the undeploy. Tomcat logged no leak warnings (no "failed to stop thread", no memory-leak notice). The adapter's threads take their context class loader from the detector thread, the system loader, so Tomcat doesn't attribute them to the webapp. |
+
+**Design consequences for Tomcat**
+
+1. **The bridge loader is narrow by design:** platform parent, adapter classes from the adapter
+   jar, only `org.apache.logging.log4j.*` delegated to the loader that owns Log4j. This applies to
+   Spring Boot too. There it didn't matter only because the fat-jar loader never stops before the
+   JVM exits.
+2. **Lifecycle comes from Log4j, not from Tomcat.** The context's shutdown listener tells the
+   adapter instance to let go, and the detector's next sweep binds the new instance. No Tomcat API
+   is needed. This works only if the detector re-scans indefinitely (`plain-jvm-jul.md` decision #2
+   already never gives up) and keys the loaders it has bound weakly.
+3. **Backend choice in the `none` integration.** `plain-jvm-jul.md` decision #1 binds **one**
+   backend chosen up front. Tomcat's own logging is JUL (JULI), and the webapps here log through
+   Log4j 2. Supporting both means binding JUL and every Log4j context in the same JVM. That's
+   option (b) of that decision ("bind both, each when it is initialised"), and §15.4's "one JVM,
+   several frameworks, at once". The Log4j 2 adapter spec has to revisit the decision. *Open.*
+4. **Not tested yet:** Log4j in Tomcat's shared `lib/`, one copy serving every webapp (contexts
+   then come from one `ClassLoaderContextSelector` keyed by webapp loader); `log4j-jakarta-web`
+   absent (no context name, and no clean shutdown on undeploy); Tomcat 10.1 / `javax`-era
+   `log4j-web`.
 
 ### 4. WildFly deployment with `use-deployment-logging-config`
 
@@ -301,6 +340,7 @@ _Adapter shape, size estimate, milestone, and the spec it feeds._
 - The single extra provider call on the async-logger thread on 2.17.2.
 - JDK 17 and 25: every run so far used JDK 21.
 - Spring Boot: an app's own `log4j2-spring.xml`, devtools restart, structured logging.
+- Tomcat: Log4j in the shared `lib/`, a webapp without `log4j-jakarta-web`, Tomcat 10.1.
 
 ## Harness
 
@@ -323,3 +363,10 @@ is two jars. `agent.jar` holds only the detector; `impl.jar`, passed as the agen
 off the class path, is loaded through a `URLClassLoader` whose parent is the loader that owns
 log4j-core. A script starts the app, waits for `Started DemoApp`, posts the Actuator level
 change, and reads it back. `-Dprobe.reassert=true` turns SB7 on.
+
+Tomcat: the Tomcat 11.0.27 distribution with its default webapps removed and its ports moved, and
+two WARs built from one Maven project with `-Dapp.name` and `-Dlog4j.version`. The probe is the
+Spring Boot one with three changes: a weakly keyed detector with a leak check, the narrow bridge
+loader (TC6), and a shutdown listener that ends each adapter instance. A script deploys,
+redeploys, undeploys and stops, and the run is judged on the probe's lines, Tomcat's
+`catalina.<date>.log` and each app's own log file.
