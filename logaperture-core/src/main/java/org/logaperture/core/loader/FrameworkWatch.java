@@ -31,9 +31,17 @@ import java.util.Objects;
  * @param ownerPackages package prefixes the owning loader supplies to the bridge loader (C3), each
  *                      ending in a dot, e.g. {@code "org.apache.logging.log4j."}
  * @param entryClass    the adapter entry class inside the bridge jar (C2)
+ * @param julManagerPrefix class-name prefix of the {@code java.util.logging.manager} this framework
+ *                      supplies (Log4j: {@code org.apache.logging.log4j.jul.}), or {@code null}; when
+ *                      the JVM's manager starts with it, the JUL tree is only a front for this framework
+ *                      and is not bound as a context of its own (C1)
  */
 public record FrameworkWatch(String framework, String markerClass, List<String> ownerPackages,
-                             String entryClass) {
+                             String entryClass, String julManagerPrefix) {
+
+    public FrameworkWatch(String framework, String markerClass, List<String> ownerPackages, String entryClass) {
+        this(framework, markerClass, ownerPackages, entryClass, null);
+    }
 
     public FrameworkWatch {
         Objects.requireNonNull(framework, "framework");
