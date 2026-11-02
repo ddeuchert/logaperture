@@ -156,6 +156,25 @@ public final class NoneContainer implements AutoCloseable {
      * AggregateLevelControl#register}.
      */
     public void installContext(ContextHandle handle) {
+        install(handle, false);
+    }
+
+    /**
+     * {@link #installContext}, for a context that appears <em>after</em> the container's own: one
+     * the class-loader detector bound (doc/specs/class-loader-detector.md C6). It registers through
+     * {@link AggregateLevelControl#addContext}, so every override already in force is re-broadcast
+     * onto it and a redeployed webapp gets its overrides back without being asked.
+     */
+    public void adoptContext(ContextHandle handle) {
+        install(handle, true);
+    }
+
+    /** Drops a context the detector bound (its framework shut down, or its webapp went away). */
+    public void releaseContext(String stableKey) {
+        aggregate.removeContext(stableKey);
+    }
+
+    private void install(ContextHandle handle, boolean late) {
         LoggingAdapter adapter = handle.adapter();
 
         BaselineRegistry baselines =
@@ -283,8 +302,13 @@ public final class NoneContainer implements AutoCloseable {
             Diagnostics.warn("failed to install the rule pipeline for this context, continuing without it", e);
         }
 
-        aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService,
-                stormService, ruleService, environmentReportService));
+        ContextControl control = new ContextControl(handle, service, handlerService, doctorService, topService,
+                stormService, ruleService, environmentReportService);
+        if (late) {
+            aggregate.addContext(control);
+        } else {
+            aggregate.register(control);
+        }
     }
 
     /**

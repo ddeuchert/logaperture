@@ -228,6 +228,24 @@ public final class JBossLogManagerContainer implements AutoCloseable {
      * JBoss LogManager has no reset event; the verification sweep covers it.
      */
     public void installContext(ContextHandle handle) {
+        install(handle, false);
+    }
+
+    /**
+     * {@link #installContext}, for a context that appears after the container's own: one the
+     * class-loader detector bound (doc/specs/class-loader-detector.md C6). Registers through
+     * {@link AggregateLevelControl#addContext}, so overrides already in force are re-broadcast onto it.
+     */
+    public void adoptContext(ContextHandle handle) {
+        install(handle, true);
+    }
+
+    /** Drops a context the detector bound. */
+    public void releaseContext(String stableKey) {
+        aggregate.removeContext(stableKey);
+    }
+
+    private void install(ContextHandle handle, boolean late) {
         startHandlerInstallFloor();
         LoggingAdapter adapter = handle.adapter();
 
@@ -298,8 +316,13 @@ public final class JBossLogManagerContainer implements AutoCloseable {
         TopService topService = new TopService(adapter, policy);
         StormService stormService = new StormService(adapter, policy, aggregate.stormDetectionSwitch());
 
-        aggregate.register(new ContextControl(handle, service, handlerService, doctorService, topService,
-                stormService, ruleService, environmentReportService));
+        ContextControl control = new ContextControl(handle, service, handlerService, doctorService, topService,
+                stormService, ruleService, environmentReportService);
+        if (late) {
+            aggregate.addContext(control);
+        } else {
+            aggregate.register(control);
+        }
 
         // With no deferral configured (delay 0) this installs immediately, as before this change.
         installHandlerLevelNow();

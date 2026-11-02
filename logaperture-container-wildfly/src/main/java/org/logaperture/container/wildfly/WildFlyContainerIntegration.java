@@ -62,6 +62,7 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
     private static final String JBOSS_HOME_PROPERTY = "jboss.home.dir";
 
     private final Duration sweepInterval;
+    private volatile JBossLogManagerContainer activeHost;
 
     public WildFlyContainerIntegration() {
         this(SweepPolicy.interval());
@@ -112,6 +113,7 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
         // bootstrap has set it.
         JBossLogManagerContainer host = new JBossLogManagerContainer("WildFly", policy, auditLog, sweepInterval, this::version, vendorDefaults,
                 stormDetectionEnabled);
+        this.activeHost = host;
 
         Runnable install = () -> {
             // issue #237: let jboss-modules set javax.management.builder.initial before we touch the MBean server
@@ -134,6 +136,24 @@ public final class WildFlyContainerIntegration implements ContainerIntegration {
         detector.start();
 
         return host.operations();
+    }
+
+    @Override
+    public void adoptContext(ContextHandle context) {
+        requireHost().adoptContext(context);
+    }
+
+    @Override
+    public void releaseContext(String stableKey) {
+        requireHost().releaseContext(stableKey);
+    }
+
+    private JBossLogManagerContainer requireHost() {
+        JBossLogManagerContainer host = activeHost;
+        if (host == null) {
+            throw new IllegalStateException("the wildfly integration has not been activated");
+        }
+        return host;
     }
 
     /**

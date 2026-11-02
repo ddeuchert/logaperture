@@ -100,6 +100,23 @@ public interface ContainerIntegration {
             Instrumentation inst, CapabilityPolicy policy, AuditLog auditLog, VendorDefaults vendorDefaults,
             boolean stormDetectionEnabled, Consumer<AggregateLevelControl> onFirstContextReady);
 
+    /**
+     * Installs level control for a context that appeared <em>after</em> {@link #activate}: one the
+     * class-loader detector bound in a loader of its own -- a Spring Boot fat jar, a Tomcat webapp, a
+     * WildFly deployment with a framework of its own (doc/specs/class-loader-detector.md, C6).
+     * Same install as the container's own context, except that every override already in force is
+     * re-broadcast onto it. Never called before {@link #activate} returned.
+     *
+     * <p>The default does nothing, so an integration that has no host to install into simply does
+     * not offer these contexts.
+     */
+    default void adoptContext(ContextHandle context) {
+    }
+
+    /** Drops a context {@link #adoptContext} installed; unknown keys are ignored. */
+    default void releaseContext(String stableKey) {
+    }
+
     /** Where the {@code -javaagent} flag goes, for diagnostics and help. Default {@link InstallGuidance#NONE}. */
     default InstallGuidance guidance() {
         return InstallGuidance.NONE;

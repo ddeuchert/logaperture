@@ -52,6 +52,7 @@ public final class NoneContainerIntegration implements ContainerIntegration {
     static final String LOGBACK_CONTEXT_RESOURCE = "ch/qos/logback/classic/LoggerContext.class";
 
     private final Duration sweepInterval;
+    private volatile NoneContainer host;
 
     public NoneContainerIntegration() {
         this(SweepPolicy.interval());
@@ -78,6 +79,7 @@ public final class NoneContainerIntegration implements ContainerIntegration {
             boolean stormDetectionEnabled, Consumer<AggregateLevelControl> onFirstContextReady) {
         NoneContainer root = new NoneContainer(policy, auditLog, sweepInterval, vendorDefaults,
                 stormDetectionEnabled);
+        this.host = root;
 
         boolean logback = logbackOnClassPath(ClassLoader.getSystemClassLoader());
         Diagnostics.debug("none integration: binding " + (logback ? "Logback" : "java.util.logging")
@@ -103,6 +105,24 @@ public final class NoneContainerIntegration implements ContainerIntegration {
             JulLoadDetector.awaitJulThen(inst, installSystemContext);
         }
         return root.operations();
+    }
+
+    @Override
+    public void adoptContext(ContextHandle context) {
+        requireHost().adoptContext(context);
+    }
+
+    @Override
+    public void releaseContext(String stableKey) {
+        requireHost().releaseContext(stableKey);
+    }
+
+    private NoneContainer requireHost() {
+        NoneContainer active = host;
+        if (active == null) {
+            throw new IllegalStateException("the none integration has not been activated");
+        }
+        return active;
     }
 
     /** doc/specs/plain-jvm-jul.md #1. Package-visible for the test. */

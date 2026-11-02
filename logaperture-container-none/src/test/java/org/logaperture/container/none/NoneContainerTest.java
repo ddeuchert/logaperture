@@ -153,6 +153,52 @@ class NoneContainerTest {
         }
     }
 
+    // --- a context the class-loader detector bound (doc/specs/class-loader-detector.md C6) ------------
+
+    @Test
+    void adoptContext_addsASecondContextThatReleaseContextRemoves() {
+        try (NoneContainer root = newRoot()) {
+            AggregateLevelControl ops = install(root);
+            assertEquals(1, ops.contextCount());
+
+            root.adoptContext(ContextHandle.of("fake:/appA", "fake:/appA", LogbackAdapterFactory.forCurrentContext()));
+
+            assertEquals(2, ops.contextCount());
+            assertTrue(ops.hasContext("fake:/appA"));
+            root.releaseContext("fake:/appA");
+            assertEquals(1, ops.contextCount());
+            assertTrue(ops.hasContext(ContextHandle.SYSTEM));
+        }
+    }
+
+    @Test
+    void adoptContext_reBroadcastsAnOverrideAlreadyInForce() {
+        String loggerName = "org.logaperture.container.none.adopt.Worker";
+        try (NoneContainer root = newRoot()) {
+            AggregateLevelControl ops = install(root);
+            ops.setLogger(loggerName, Level.DEBUG, SetLevelOptions.defaults());
+
+            root.adoptContext(ContextHandle.of("fake:/appA", "fake:/appA", LogbackAdapterFactory.forCurrentContext()));
+
+            AggregateLevelControl.ContextControl adopted = ops.contexts().stream()
+                    .filter(c -> c.handle().stableKey().equals("fake:/appA")).findFirst().orElseThrow();
+            assertTrue(adopted.service().activeOverrides().stream().anyMatch(o -> o.loggerName().equals(loggerName)),
+                    "the adopted context should have been given the override already in force");
+            ops.resetLogger(loggerName, false);
+        }
+    }
+
+    @Test
+    void releaseContext_ignoresAKeyItNeverHad() {
+        try (NoneContainer root = newRoot()) {
+            AggregateLevelControl ops = install(root);
+
+            root.releaseContext("fake:/never-added");
+
+            assertEquals(1, ops.contextCount());
+        }
+    }
+
     // --- persistence: resume across a simulated restart -----------------------------------------
 
     @Test
