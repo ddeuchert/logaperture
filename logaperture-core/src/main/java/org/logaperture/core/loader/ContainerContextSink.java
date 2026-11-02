@@ -20,7 +20,9 @@ import org.logaperture.core.AggregateLevelControl;
 import org.logaperture.core.spi.ContainerIntegration;
 import org.logaperture.core.spi.ContextHandle;
 
+import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -37,6 +39,8 @@ public final class ContainerContextSink implements ContextSink {
     private final ContainerIntegration container;
     private final AggregateLevelControl aggregate;
     private final Consumer<AggregateLevelControl> onContextReady;
+    /** The handle currently registered under each key, so a stale remove can be told from a live one. */
+    private final Map<String, ContextHandle> current = new ConcurrentHashMap<>();
 
     /**
      * @param onContextReady called after each successful install; pass the agent's
@@ -51,12 +55,21 @@ public final class ContainerContextSink implements ContextSink {
         this.onContextReady = Objects.requireNonNull(onContextReady, "onContextReady");
     }
 
-    /** {@code callback}, but only the first time: for sharing one "first context ready" between sources. */
+    /**
+     * {@code callback}, but only the first time it succeeds: for sharing one "first context ready"
+     * between sources. A callback that throws is tried again by the next caller, so one failed
+     * publication of the control surface does not leave the JVM without it for good.
+     */
     public static Consumer<AggregateLevelControl> once(Consumer<AggregateLevelControl> callback) {
         AtomicBoolean called = new AtomicBoolean();
         return operations -> {
             if (called.compareAndSet(false, true)) {
-                callback.accept(operations);
+                try {
+                    callback.accept(operations);
+                } catch (RuntimeException | Error e) {
+                    called.set(false);
+                    throw e;
+                }
             }
         };
     }
@@ -65,18 +78,29 @@ public final class ContainerContextSink implements ContextSink {
     public void add(ContextHandle context) {
         try {
             container.adoptContext(context);
-            onContextReady.accept(aggregate);
         } catch (Throwable t) {
             Diagnostics.error("LogAperture could not install level control for " + context.stableKey(), t);
+            return;
+        }
+        current.put(context.stableKey(), context);
+        try {
+            onContextReady.accept(aggregate);
+        } catch (Throwable t) {
+            // the context is installed; it is the control surface that did not come up
+            Diagnostics.error("LogAperture installed " + context.stableKey()
+                    + " but could not publish its control surface", t);
         }
     }
 
     @Override
-    public void remove(String stableKey) {
+    public void remove(ContextHandle context) {
+        if (!current.remove(context.stableKey(), context)) {
+            return; // never added, already removed, or replaced by a newer copy under the same key
+        }
         try {
-            container.releaseContext(stableKey);
+            container.releaseContext(context.stableKey());
         } catch (Throwable t) {
-            Diagnostics.error("LogAperture could not remove " + stableKey, t);
+            Diagnostics.error("LogAperture could not remove " + context.stableKey(), t);
         }
     }
 }

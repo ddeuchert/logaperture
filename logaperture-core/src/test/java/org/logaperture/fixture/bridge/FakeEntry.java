@@ -38,10 +38,12 @@ public final class FakeEntry implements BridgedFramework {
     public List<ContextHandle> open(Runnable onShutdown) {
         FakeFrameworkState.opened.incrementAndGet();
         FakeFrameworkState.shutdown.set(onShutdown);
+        // build the handles first: once the shutdown has closed the bridge, this class can load nothing more
+        List<ContextHandle> handles = FakeFrameworkState.keys.stream().map(FakeFrameworkState::handle).toList();
         if (FakeFrameworkState.shutdownDuringOpen.get()) {
             onShutdown.run();
         }
-        return FakeFrameworkState.keys.stream().map(FakeFrameworkState::handle).toList();
+        return handles;
     }
 
     @Override

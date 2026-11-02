@@ -27,6 +27,11 @@ public interface ContextSink {
     /** A framework context is ready to be controlled. */
     void add(ContextHandle context);
 
-    /** The context with this key has gone; removing a key twice, or one never added, is a no-op. */
-    void remove(String stableKey);
+    /**
+     * This context has gone. Removing one twice, or one never added, is a no-op, and so is removing
+     * one that a later {@link #add} has since replaced under the same key: a redeploy can register
+     * the new copy before the old copy's shutdown listener fires, and the old one must not take the
+     * live one with it.
+     */
+    void remove(ContextHandle context);
 }

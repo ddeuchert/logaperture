@@ -60,7 +60,7 @@ public final class BoundInstance {
     private final Timing timing;
     private final AtomicReference<State> state = new AtomicReference<>(State.WAITING);
     private volatile BridgedFramework entry;
-    private volatile List<String> keys = List.of();
+    private volatile List<ContextHandle> handles = List.of();
     private volatile boolean registered;
 
     private BoundInstance(FrameworkWatch watch, ClassLoader owner, BridgeSource source, ClassLoader system,
@@ -148,18 +148,22 @@ public final class BoundInstance {
             fail("opening it failed (" + t + ")", t);
             return;
         }
-        List<String> added = new ArrayList<>();
+        List<ContextHandle> added = new ArrayList<>();
         for (ContextHandle context : contexts) {
+            if (state.get() != State.BOUND) {
+                break; // the framework shut down while open() or this loop was running: add no more
+            }
             sink.add(context);
-            added.add(context.stableKey());
+            added.add(context);
         }
-        keys = added;
+        handles = added;
         registered = true;
         if (state.get() == State.CLOSED) {
-            // the framework shut down while open() was still running: letGo saw no keys
+            // a shutdown landed after the check above: letGo may have seen no handles yet
             added.forEach(sink::remove);
         } else {
-            Diagnostics.debug(watch.framework() + " bound in " + ownerName + ": " + added);
+            Diagnostics.debug(watch.framework() + " bound in " + ownerName + ": "
+                    + added.stream().map(ContextHandle::stableKey).toList());
         }
     }
 
@@ -191,10 +195,10 @@ public final class BoundInstance {
         } catch (Throwable t) {
             Diagnostics.warn("LogAperture could not close its " + watch.framework() + " adapter cleanly", t);
         }
-        for (String key : keys) {
-            sink.remove(key);
+        for (ContextHandle handle : handles) {
+            sink.remove(handle);
         }
-        keys = List.of();
+        handles = List.of();
         bridge.close();
     }
 

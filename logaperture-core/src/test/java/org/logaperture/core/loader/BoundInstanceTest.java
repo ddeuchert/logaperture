@@ -64,7 +64,7 @@ class BoundInstanceTest {
     private final List<String> removed = new CopyOnWriteArrayList<>();
     private final ContextSink sink = new ContextSink() {
         @Override public void add(ContextHandle context) { added.add(context.stableKey()); }
-        @Override public void remove(String stableKey) { removed.add(stableKey); }
+        @Override public void remove(ContextHandle context) { removed.add(context.stableKey()); }
     };
     private final ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
 
@@ -89,6 +89,20 @@ class BoundInstanceTest {
             Thread.sleep(5);
         }
         assertTrue(condition.getAsBoolean(), "condition not reached within 5 s");
+    }
+
+    /** The instance closes itself before its thread has finished with the contexts: wait for the thread. */
+    private static void awaitBindThreadFinished() throws InterruptedException {
+        long deadline = System.nanoTime() + 5_000_000_000L;
+        while (System.nanoTime() < deadline) {
+            Thread bind = Thread.getAllStackTraces().keySet().stream()
+                    .filter(t -> t.getName().equals("logaperture-fake-bind")).findFirst().orElse(null);
+            if (bind == null) {
+                return;
+            }
+            bind.join(50);
+        }
+        throw new AssertionError("the bind thread did not finish within 5 s");
     }
 
     private String diagnosticsText() {
@@ -139,16 +153,40 @@ class BoundInstanceTest {
 
     /** TC5 race: the framework's shutdown fires while open() is still running. */
     @Test
-    void aShutdownDuringOpenLeavesNothingRegistered() throws Exception {
+    void aShutdownDuringOpenRegistersNothingAtAll() throws Exception {
         FakeFrameworkState.shutdownDuringOpen.set(true);
         FakeFrameworkState.ready.set(true);
 
         BoundInstance instance = start(new FixtureOwnerLoader(), FAST, ADAPTER_CLASSES);
 
         await(instance::isClosed);
-        await(() -> removed.size() >= added.size());
-        assertEquals(added, removed);
-        assertEquals(1, FakeFrameworkState.closed.get());
+        awaitBindThreadFinished();
+        // no adopt, no "first context ready" callback, no remove to undo it
+        assertTrue(added.isEmpty(), "added: " + added);
+        assertTrue(removed.isEmpty(), "removed: " + removed);
+    }
+
+    /** The shutdown lands between two contexts: the one already added is taken back, no more are added. */
+    @Test
+    void aShutdownBetweenContextsRemovesWhatWasAddedAndAddsNoMore() throws Exception {
+        FakeFrameworkState.keys.clear();
+        FakeFrameworkState.keys.addAll(List.of("fake:one", "fake:two"));
+        FakeFrameworkState.ready.set(true);
+        ContextSink shutsDownAfterTheFirst = new ContextSink() {
+            @Override public void add(ContextHandle context) {
+                added.add(context.stableKey());
+                FakeFrameworkState.shutdown.get().run();
+            }
+            @Override public void remove(ContextHandle context) { removed.add(context.stableKey()); }
+        };
+
+        BoundInstance instance = BoundInstance.start(WATCH, new FixtureOwnerLoader(), ADAPTER_CLASSES,
+                ClassLoader.getSystemClassLoader(), shutsDownAfterTheFirst, FAST);
+
+        await(instance::isClosed);
+        await(() -> !removed.isEmpty());
+        assertEquals(List.of("fake:one"), added);
+        assertEquals(List.of("fake:one"), removed);
     }
 
     @Test

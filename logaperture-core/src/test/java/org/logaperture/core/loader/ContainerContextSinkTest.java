@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** doc/specs/class-loader-detector.md C6. */
 class ContainerContextSinkTest {
@@ -60,11 +61,38 @@ class ContainerContextSinkTest {
         AtomicInteger ready = new AtomicInteger();
         ContainerContextSink sink = new ContainerContextSink(container, aggregate, ops -> ready.incrementAndGet());
 
-        sink.add(FakeFrameworkState.handle("fake:/appA"));
-        sink.remove("fake:/appA");
+        ContextHandle appA = FakeFrameworkState.handle("fake:/appA");
+        sink.add(appA);
+        sink.remove(appA);
 
         assertEquals(List.of("adopt fake:/appA", "release fake:/appA"), calls);
         assertEquals(1, ready.get());
+    }
+
+    /** A redeploy registers the new copy before the old copy's shutdown listener fires. */
+    @Test
+    void aStaleRemoveDoesNotTakeAwayTheContextThatReplacedIt() {
+        ContainerContextSink sink = new ContainerContextSink(container, aggregate, ops -> { });
+        ContextHandle oldCopy = FakeFrameworkState.handle("fake:/appA");
+        ContextHandle newCopy = FakeFrameworkState.handle("fake:/appA");
+
+        sink.add(oldCopy);
+        sink.add(newCopy);
+        sink.remove(oldCopy);   // the old instance lets go: must not release the live one
+        assertEquals(List.of("adopt fake:/appA", "adopt fake:/appA"), calls);
+
+        sink.remove(newCopy);
+        sink.remove(newCopy);   // and removing it twice releases once
+        assertEquals(List.of("adopt fake:/appA", "adopt fake:/appA", "release fake:/appA"), calls);
+    }
+
+    @Test
+    void removingAContextThatWasNeverAddedReleasesNothing() {
+        ContainerContextSink sink = new ContainerContextSink(container, aggregate, ops -> { });
+
+        sink.remove(FakeFrameworkState.handle("fake:/never"));
+
+        assertTrue(calls.isEmpty());
     }
 
     @Test
@@ -76,6 +104,25 @@ class ContainerContextSinkTest {
         sink.add(FakeFrameworkState.handle("fake:/appA")); // must not throw
 
         assertEquals(0, ready.get()); // nothing came up, so no control surface is announced for it
+    }
+
+    /** A first publication that throws is not the last chance: the next context tries again. */
+    @Test
+    void aControlSurfaceThatFailedToComeUpIsTriedAgainByTheNextContext() {
+        AtomicInteger attempts = new AtomicInteger();
+        Consumer<AggregateLevelControl> publish = ContainerContextSink.once(ops -> {
+            if (attempts.incrementAndGet() == 1) {
+                throw new IllegalStateException("MBean server not ready");
+            }
+        });
+        ContainerContextSink sink = new ContainerContextSink(container, aggregate, publish);
+
+        sink.add(FakeFrameworkState.handle("fake:/appA")); // installs, publishing fails: must not throw
+        sink.add(FakeFrameworkState.handle("fake:/appB")); // tries again, succeeds
+        sink.add(FakeFrameworkState.handle("fake:/appC")); // and is then done
+
+        assertEquals(2, attempts.get());
+        assertEquals(List.of("adopt fake:/appA", "adopt fake:/appB", "adopt fake:/appC"), calls);
     }
 
     @Test
