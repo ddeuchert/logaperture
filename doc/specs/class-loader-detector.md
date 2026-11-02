@@ -34,6 +34,12 @@ deployment that excludes the server's own Log4j API), `troubleshooting.md` (a fr
 found but could not bind), and `index.md` (the support table). `reference/agent-options.md` does
 not change (no new property or argument, see C4).
 
+**These pages land with the Log4j 2 adapter's PR (#302), not this one.** Until a framework adapter
+registers a watch the detector finds nothing, so nothing a user can see changes, and the guide's
+standard that example output is captured from a real run cannot be met: there is no framework to
+bind in a fat jar, a webapp or a deployment. The one guide edit that does not wait, the `index.md`
+support-table line naming Log4j 2 and Tomcat as "from 1.1", is already on `develop`.
+
 Not part of this feature: the Log4j 2 adapter itself (#302); Logback in a fat jar or a webapp
 (1.2.0); a warning for logger names no bound backend can reach (#303).
 
@@ -139,6 +145,38 @@ against it. All are in the 1.1.0 CI.
 - A webapp's overrides are broadcast like every other (`wildfly-support.md`, "Broadcast
   semantics"): a name set on one context is pre-set on all.
 
+## As built
+
+Built in #301, in `logaperture-core` (`org.logaperture.core.loader`), with the hand-off in the
+containers. Everything below is exercised by unit tests with fake frameworks (a fixture entry class
+the bridge loader defines, a loader that claims to equal every other); no real framework is bound
+until #302.
+
+| Part | Class | Notes |
+|---|---|---|
+| Scanner (Scope 1, C4, C5) | `LoaderScanner`, `FrameworkWatch` | One daemon thread, one `getAllLoadedClasses()` per tick, 100 ms for 60 s then 1 s. The thread takes the system loader as context loader. A listener that throws does not end the scan. |
+| Identity tracking (Scope 3) | `LoaderIdentitySet` | Weak references compared with `==`; tested with two loaders that are `equals` to each other (WF5) and for not keeping a loader alive. |
+| Bridge loader (C2, C3) | `BridgeClassLoader`, `BridgeSource` | Parent is the bootstrap loader. `BridgeSource.underPrefix` reads class files from a folder in the agent jar, `META-INF/logaperture/<framework>/`, through a resource stream. `close()` drops the references to the owner and the system loader. |
+| Bound instance (Scope 5, C8) | `BoundInstance`, `BridgedFramework` | The adapter's entry class implements `BridgedFramework` (`ready()`, `open(onShutdown)`, `close()`), which is in `core` so the bridge takes it from the system loader. Gives up after 3 s with a `Diagnostics` line naming the framework and the owner's loader class and name. |
+| Hand-off (Scope 6, C6) | `ContainerIntegration.adoptContext` / `releaseContext`, `ContainerContextSink` | A bound context is installed as the container's own is, but registered through `addContext`, so overrides already in force are re-broadcast onto it. The "first context ready" callback is shared with the integration through `once(...)`. |
+| Agent (Scope 1, C6) | `FrameworkDetection`, `AgentBootstrap` | Starts after `activate`, whatever the integration. With no watches it starts no thread. |
+| C1 | `KnownFrameworks`, `NoneContainerIntegration` | `KnownFrameworks.all()` is empty until #302 registers Log4j 2, so `java.util.logging` is bound exactly as before. The check is on a watch's `julManagerPrefix`, so it goes live with the watch. |
+
+Choices the spec left open:
+
+- **No retry after giving up.** A loader that gave up is not offered again, because the scanner
+  remembers it. A context that starts more than 3 s after its marker class is found is not bound.
+- **No re-bind after letting go.** Letting go does not make the scanner forget the owner, so a
+  framework stopped and started again inside the same loader is not re-bound, and a JVM shutting down
+  does not trigger a bind attempt on a stopped framework.
+- **`isBound()` means registered**, not only opened: it turns true after every context has been
+  handed to the sink. A shutdown that fires while `open()` is still running removes what was added.
+
+Not built in #301, because each needs the first adapter: the build step that moves the adapter's
+classes under the agent jar's folder (with the test that none load from the system class path), the
+`logaperture-it` harnesses (fat jar, Tomcat with two webapps, WildFly, the leak test repeated 10
+times, the untouched application), and the guide pages above.
+
 ## Out of scope
 
 The Log4j 2 adapter (#302); Logback in a fat jar or a webapp (1.2.0); the warning for names no
@@ -153,6 +191,8 @@ scanner (C5); OSGi; a framework installed as a shared or global module several d
   owner, many contexts. The contract assumes one instance per owner and several contexts per
   instance are allowed, but nothing exercised it.
 - Spring Boot devtools restarts (a second loader in the same JVM).
+- A context that starts more than 3 s after its marker class is loaded, in a loader that stays alive
+  (see "As built": it is not retried).
 - JDK 25 (every measurement was JDK 21, WildFly JDK 17).
 - Whether the system class loader delegation in C3 holds under JPMS with the agent on the module
   path; the agent jar is on the class path in every setup tried.
