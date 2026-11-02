@@ -27,6 +27,7 @@ import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.SweepPolicy;
 import org.logaperture.core.VendorDefaults;
 import org.logaperture.core.spi.ContainerIntegration;
+import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.InstallGuidance;
 
 import java.lang.instrument.Instrumentation;
@@ -59,6 +60,7 @@ import java.util.function.Supplier;
 public final class QuarkusContainerIntegration implements ContainerIntegration {
 
     private final Duration sweepInterval;
+    private volatile JBossLogManagerContainer activeHost;
     private final Supplier<String> javaCommand;
     private final Supplier<String> classPath;
     private final Supplier<Boolean> entryPointPresent;
@@ -94,6 +96,7 @@ public final class QuarkusContainerIntegration implements ContainerIntegration {
         // A supplier, re-resolved on every logctl env: a file read, so nothing is baked in at premain.
         JBossLogManagerContainer host = QuarkusEngine.newHost(policy, auditLog, vendorDefaults, stormDetectionEnabled,
                 sweepInterval, this::version);
+        this.activeHost = host;
 
         Runnable install = () -> {
             try {
@@ -112,6 +115,24 @@ public final class QuarkusContainerIntegration implements ContainerIntegration {
         detector.start();
 
         return host.operations();
+    }
+
+    @Override
+    public void adoptContext(ContextHandle context) {
+        requireHost().adoptContext(context);
+    }
+
+    @Override
+    public void releaseContext(String stableKey) {
+        requireHost().releaseContext(stableKey);
+    }
+
+    private JBossLogManagerContainer requireHost() {
+        JBossLogManagerContainer host = activeHost;
+        if (host == null) {
+            throw new IllegalStateException("the quarkus integration has not been activated");
+        }
+        return host;
     }
 
     /**

@@ -20,7 +20,10 @@ import org.junit.jupiter.api.Test;
 import java.net.URL;
 import java.net.URLClassLoader;
 
+import org.logaperture.core.spi.ContextHandle;
+
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** doc/specs/plain-jvm-jul.md #1: the backend is chosen by whether Logback is on the class path. */
@@ -42,5 +45,19 @@ class NoneContainerIntegrationTest {
     @Test
     void noLoaderChoosesJul() {
         assertFalse(NoneContainerIntegration.logbackOnClassPath(null));
+    }
+
+    /** doc/specs/class-loader-detector.md C6: nothing to install into before activate(). */
+    @Test
+    void adoptingAContextBeforeActivationIsAnError() {
+        NoneContainerIntegration integration = new NoneContainerIntegration();
+        ContextHandle untouched = new ContextHandle() {
+            @Override public String stableKey() { return "fake:x"; }
+            @Override public String displayName() { return "fake:x"; }
+            @Override public org.logaperture.core.spi.LoggingAdapter adapter() { return null; }
+        };
+
+        assertThrows(IllegalStateException.class, () -> integration.adoptContext(untouched));
+        assertThrows(IllegalStateException.class, () -> integration.releaseContext("fake:x"));
     }
 }

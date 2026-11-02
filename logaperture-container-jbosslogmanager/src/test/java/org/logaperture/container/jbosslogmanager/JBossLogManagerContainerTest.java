@@ -114,6 +114,25 @@ class JBossLogManagerContainerTest {
         }
     }
 
+    /** doc/specs/class-loader-detector.md C6: a context the detector bound joins the host's own. */
+    @Test
+    void adoptContext_addsAContextWithTheOverridesAlreadyInForce_andReleaseContextRemovesIt() {
+        try (JBossLogManagerContainer host = newHost()) {
+            AggregateLevelControl ops = install(host);
+            ops.setLogger(logger, Level.DEBUG, SetLevelOptions.sticky());
+
+            host.adoptContext(ContextHandle.of("fake:/appA", "fake:/appA", JulAdapterFactory.forCurrentContext()));
+
+            assertEquals(2, ops.contextCount());
+            AggregateLevelControl.ContextControl adopted = ops.contexts().stream()
+                    .filter(c -> c.handle().stableKey().equals("fake:/appA")).findFirst().orElseThrow();
+            assertTrue(adopted.service().activeOverrides().stream().anyMatch(o -> o.loggerName().equals(logger)));
+            host.releaseContext("fake:/appA");
+            assertEquals(1, ops.contextCount());
+            ops.resetLogger(logger, true);
+        }
+    }
+
     @Test
     void verificationSweep_reAppliesAnOverrideThatWasResetOutFromUnderUs() {
         try (JBossLogManagerContainer host = newHost()) {

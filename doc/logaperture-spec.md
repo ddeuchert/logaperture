@@ -168,7 +168,8 @@ This is where agents of this kind usually go wrong. Proposed structure:
 
 - **Bootstrap classloader**: a tiny bridge package — interfaces plus a static registry — visible to everything. No third-party types.
 - **Agent classloader** (isolated, child of bootstrap): agent core, rule engine, config parsing, state store, control plane. Shaded/relocated dependencies.
-- **Per-context adapter instances**: an adapter is instantiated *per detected framework context*, holding reflective or direct references into the classloader that owns the framework classes. Keyed by `(frameworkId, classloader identity)` in a weak map so redeployed webapps don't leak.
+- **Per-context adapter instances**: an adapter is instantiated *per detected framework context*, holding reflective or direct references into the classloader that owns the framework classes. Keyed by `(frameworkId, classloader identity)` and held by weak reference so redeployed webapps don't leak. Compared with `==`, never through a `WeakHashMap` or any structure that calls `equals`/`hashCode` on a loader: JBoss Modules' `ModuleClassLoader` overrides both, so the old and new loader of a redeployed deployment compare equal.
+- **Bridge loader** (1.1.0, [`class-loader-detector.md`](specs/class-loader-detector.md)): a framework bundled in a deployment (a Spring Boot fat jar, a Tomcat webapp, a WildFly module) is invisible to the system class loader that holds the agent, and the agent cannot define its adapter in the framework's own loader. So each bound owner gets a narrow loader beside both, whose parent is the bootstrap loader: the JDK from the platform loader, the framework's packages from the owner, LogAperture's `api`, `core` and `bridge` packages from the system loader, and the adapter's own class files from a folder inside the agent jar that the system loader never reads. A class in none of those sets is an error, not a fall-through, because a stopped webapp loader refuses even JDK classes. The framework's own shutdown listener tells the adapter to let go; no Tomcat or WildFly API is involved.
 
 The agent must never load framework classes into its own classloader, and must never assume there is exactly one logging context. Application servers, OSGi containers, and Spring Boot's `LaunchedURLClassLoader` all break that assumption.
 
@@ -763,9 +764,9 @@ Every gate-stage evaluation happens on the caller's thread inside the logging ca
 |---|---|
 | JDK | 17, 21, 25. The codebase uses records and switch expressions throughout, so a lower floor is a port, not a flag change. EAP 7.4 on JDK 8/11 is a known gap. |
 | WildFly | Standalone mode, 26.1 through current. Every feature: level and handler control, vendor defaults, recipes, `drop` / `trim`, `top`, `doctor`, storm detection. No domain mode; no EAP claim until one is tested. |
-| Plain `java -jar` | Logback: level control, plus the level settings in vendor defaults and recipes. `java.util.logging` alone: from 1.1.0, every WildFly feature, except that `doctor`'s file checks skip a JDK `FileHandler` ([`plain-jvm-jul.md`](specs/plain-jvm-jul.md), #221). |
+| Plain `java -jar` | Logback: level control, plus the level settings in vendor defaults and recipes. `java.util.logging` alone: from 1.1.0, every WildFly feature, except that `doctor`'s file checks skip a JDK `FileHandler` ([`plain-jvm-jul.md`](specs/plain-jvm-jul.md), #221). A framework bundled inside the application (a fat jar) is found by the class-loader detector from 1.1.0 ([`class-loader-detector.md`](specs/class-loader-detector.md)); the first one is Log4j 2. |
 | Quarkus JVM mode | Not in 1.0.0. Planned for 1.1.0 ([`quarkus-support.md`](specs/quarkus-support.md), signed off 2026-10-18). |
-| Log4j 2 | Not in 1.0.0. Planned for 1.1.0, 2.20.0 and later: plain JVM, a Spring Boot fat jar, a Tomcat webapp, and a WildFly deployment with its own `log4j-core` ([#302](https://github.com/ddeuchert/logaperture/issues/302); findings in [`doc/spikes/log4j2-adapter.md`](spikes/log4j2-adapter.md); spec pending). |
+| Log4j 2 | Not in 1.0.0. Planned for 1.1.0, 2.20.0 and later: plain JVM, a Spring Boot fat jar, a Tomcat webapp, and a WildFly deployment with its own `log4j-core` ([#302](https://github.com/ddeuchert/logaperture/issues/302); findings in [`doc/spikes/log4j2-adapter.md`](spikes/log4j2-adapter.md); spec [`log4j2-adapter.md`](specs/log4j2-adapter.md), signed off 2026-11-01). |
 | Not supported | Spring Boot and Tomcat with Logback, Jetty, Quarkus native image. |
 
 **Long-term target:**
@@ -999,6 +1000,8 @@ Consequences, which §4.4 treated as a classloader concern but which is really a
 - `top`, `doctor`, and `status` aggregate across every adapter into a single view. A user must never have to ask the same question twice for two frameworks.
 - A level change resolves to whichever context owns that logger name, with explicit disambiguation syntax only when more than one does.
 
+**Which backends bind in one JVM** (1.1.0, [`class-loader-detector.md`](specs/class-loader-detector.md) C1). The backend on the *system class path* is still chosen once, up front (Logback if present, else `java.util.logging`; [`plain-jvm-jul.md`](specs/plain-jvm-jul.md) #1). On top of that, the class-loader detector binds every framework it finds in a loader of its own, each when it initialises. One refinement: `java.util.logging` is not bound when `java.util.logging.manager` names the manager of a framework the detector binds (Log4j's `log4j-jul`), because that JUL tree is only a front for it and a second context would list every logger twice.
+
 ### 15.5 Assume the hooks will be discarded
 
 Every environment on the list throws away installed filters and wrapped formatters at some point:
@@ -1060,12 +1063,14 @@ The agent's overrides live in memory, expire on a timer, and never touch `standa
 - Actuator's `/loggers` endpoint already provides level control, so the overlap here is the largest of any container. The differentiators are the persistence tiers, expiry, storm collapse, rules, and not requiring Actuator to be present and exposed. Say so honestly rather than pretending the gap is bigger than it is.
 - Devtools' restart classloader is another discard event, and a good cheap test of the sweep.
 - An executable WAR deployed into Tomcat or WildFly is a hybrid: detect on the *container*, never on the packaging.
+- A framework inside the fat jar's nested-jar loader is found by the class-loader detector ([`class-loader-detector.md`](specs/class-loader-detector.md), 1.1.0), not by anything specific to Spring Boot. Logback in a fat jar follows in 1.2.0.
 
 ### 15.8 Tomcat
 
 - JULI (`org.apache.juli.ClassLoaderLogManager`) keys logging configuration by classloader, giving per-webapp contexts structurally similar to WildFly's `LogContext`. Much of the WildFly discovery logic generalises.
 - Expect mixed frameworks (§15.4) as the normal case, not the exception.
 - Install via `CATALINA_OPTS` in `setenv.sh`.
+- A framework bundled in a webapp is found by the class-loader detector ([`class-loader-detector.md`](specs/class-loader-detector.md), 1.1.0): one adapter per webapp loader, released when the framework's own shutdown listener fires, so a redeploy rebinds the new copy. Tomcat's JULI stays the container's own context.
 - Webapp reload discards the context. Usefully, Tomcat's own classloader-leak detection will complain loudly if the agent retains references — which makes the weak-reference discipline of §4.4 empirically testable rather than theoretical. **Tomcat is therefore the best environment in which to catch agent memory leaks**, and worth adding to CI early for that reason alone, independent of how many customers run it.
 
 ### 15.9 Quarkus

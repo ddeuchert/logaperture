@@ -26,6 +26,7 @@ import org.logaperture.core.VendorDefaults;
 import org.logaperture.core.spi.ContainerIntegration;
 import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.LoggingAdapter;
+import org.logaperture.core.loader.KnownFrameworks;
 
 import java.lang.instrument.Instrumentation;
 import java.time.Duration;
@@ -51,7 +52,11 @@ public final class NoneContainerIntegration implements ContainerIntegration {
     /** Found by resource lookup, which loads no class and touches no JUL. */
     static final String LOGBACK_CONTEXT_RESOURCE = "ch/qos/logback/classic/LoggerContext.class";
 
+    /** The JDK's property naming the {@code LogManager} subclass. */
+    static final String JUL_MANAGER_PROPERTY = "java.util.logging.manager";
+
     private final Duration sweepInterval;
+    private volatile NoneContainer host;
 
     public NoneContainerIntegration() {
         this(SweepPolicy.interval());
@@ -78,6 +83,7 @@ public final class NoneContainerIntegration implements ContainerIntegration {
             boolean stormDetectionEnabled, Consumer<AggregateLevelControl> onFirstContextReady) {
         NoneContainer root = new NoneContainer(policy, auditLog, sweepInterval, vendorDefaults,
                 stormDetectionEnabled);
+        this.host = root;
 
         boolean logback = logbackOnClassPath(ClassLoader.getSystemClassLoader());
         Diagnostics.debug("none integration: binding " + (logback ? "Logback" : "java.util.logging")
@@ -99,10 +105,35 @@ public final class NoneContainerIntegration implements ContainerIntegration {
         };
         if (logback) {
             LogbackLoadDetector.awaitLogbackAndThen(inst, installSystemContext);
+        } else if (KnownFrameworks.julManagerFrontsABoundFramework(
+                System.getProperty(JUL_MANAGER_PROPERTY), KnownFrameworks.all())) {
+            // doc/specs/class-loader-detector.md C1: JUL is only a front for a framework the detector
+            // binds, and a second context for it would list every logger twice. Read as a property,
+            // which touches no JUL.
+            Diagnostics.debug("none integration: java.util.logging is managed by "
+                    + System.getProperty(JUL_MANAGER_PROPERTY) + "; leaving it to the detector");
         } else {
             JulLoadDetector.awaitJulThen(inst, installSystemContext);
         }
         return root.operations();
+    }
+
+    @Override
+    public void adoptContext(ContextHandle context) {
+        requireHost().adoptContext(context);
+    }
+
+    @Override
+    public void releaseContext(String stableKey) {
+        requireHost().releaseContext(stableKey);
+    }
+
+    private NoneContainer requireHost() {
+        NoneContainer active = host;
+        if (active == null) {
+            throw new IllegalStateException("the none integration has not been activated");
+        }
+        return active;
     }
 
     /** doc/specs/plain-jvm-jul.md #1. Package-visible for the test. */

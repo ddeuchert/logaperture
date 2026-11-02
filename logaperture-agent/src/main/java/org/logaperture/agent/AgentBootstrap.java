@@ -26,6 +26,9 @@ import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.LibraryRecipeScanner;
 import org.logaperture.core.StderrAuditLog;
 import org.logaperture.core.VendorDefaults;
+import org.logaperture.core.loader.ContainerContextSink;
+import org.logaperture.core.loader.FrameworkDetection;
+import org.logaperture.core.loader.KnownFrameworks;
 import org.logaperture.core.spi.ContainerIntegration;
 import org.logaperture.startup.EngineStartup;
 
@@ -126,14 +129,35 @@ final class AgentBootstrap {
             // aggregate directly, so there is no return value to race against the async install.
             // The vendor defaults load is audited there too, not in premain: only an installed
             // context actually applies the file (a container that never installs one applied nothing).
-            Consumer<AggregateLevelControl> onFirstContextReady = EngineStartup.onFirstContextReady(container.id(),
-                    EngineStartup.Delivery.AGENT, policy, auditLog, vendorDefaults, recipeScanner(inst));
-            container.activate(inst, policy, auditLog, vendorDefaults, stormDetection, onFirstContextReady);
+            // Shared with the class-loader detector: a JVM whose only context is a framework bundled in a
+            // deployment still gets its control surface, and one that has the container's own does not
+            // publish it twice (doc/specs/class-loader-detector.md C6).
+            Consumer<AggregateLevelControl> onFirstContextReady = ContainerContextSink.once(
+                    EngineStartup.onFirstContextReady(container.id(), EngineStartup.Delivery.AGENT, policy, auditLog,
+                            vendorDefaults, recipeScanner(inst)));
+            AggregateLevelControl aggregate = container.activate(inst, policy, auditLog, vendorDefaults,
+                    stormDetection, onFirstContextReady);
+            startFrameworkDetection(inst, container, aggregate, onFirstContextReady);
             if (entry == Entry.AGENTMAIN) {
                 AttachWatch.start(container.id()); // doc/specs/logctl-attach.md #6: say why, if nothing comes up
             }
         } catch (Throwable t) {
             Diagnostics.error("LogAperture agent bootstrap failed to start", t);
+        }
+    }
+
+    /**
+     * Scans for logging frameworks outside the system class path (doc/specs/class-loader-detector.md).
+     * Never throws: detection is an addition to the container's own context, and failing to start it
+     * must not stop the agent.
+     */
+    private static void startFrameworkDetection(Instrumentation inst, ContainerIntegration container,
+            AggregateLevelControl aggregate, Consumer<AggregateLevelControl> onFirstContextReady) {
+        try {
+            FrameworkDetection.start(inst, container, aggregate, onFirstContextReady, KnownFrameworks.all(),
+                    AgentBootstrap.class.getClassLoader());
+        } catch (Throwable t) {
+            Diagnostics.warn("LogAperture could not start the search for bundled logging frameworks", t);
         }
     }
 
