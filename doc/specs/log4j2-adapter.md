@@ -160,6 +160,46 @@ integration (1.2.0).
   a mixed-version app (A10).
 - A Spring Boot app's `log4j2-spring.xml`, devtools restarts and structured logging are not
   tested.
+- A rule that matches on message text makes the gate format the message itself, so a parameter's
+  `toString()` runs one extra time (A3 prototype, "As built"). A `toString()` with side effects,
+  such as one that logs, repeats them. Rules that match on the unformatted pattern, the logger or
+  the level never format.
+- A rule changed between the gate and the render can split one event's decisions: counted at the
+  gate, not trimmed at render (A3 prototype, case c11).
+
+## As built
+
+### A3 prototype (2026-11-01): passed, A3(a) stands
+
+A throwaway harness (not committed) with a stand-in rule engine: one context-wide `Filter` that
+counts, and a wrapper in each `LoggerConfig` slot that recomputes the trim choice and never counts.
+Run on Log4j 2.20.0 and 2.25.5 (both ends of the supported range), each in synchronous,
+all-async-loggers and `<Async>`-appender modes: six runs, identical results. Each case logs a
+unique token, and the harness reads the output file back to check how often it was written and
+whether it was trimmed, and compares the gate's hit count per token.
+
+| Case | Result, all six runs |
+|---|---|
+| Pattern rule; text rule (gate formats); logger-wide rule | Trimmed, counted once. |
+| Unmarked event with a throwable; logger-wide rule with no throwable | Not trimmed, not counted. |
+| Level-disabled marked call; `isErrorEnabled()` guards before marked and unmarked calls | Not written or not counted; no stale verdict. |
+| Fluent API (`atError().withThrowable(ex).log(…)`), 2.20.0 and 2.25.5 | Trimmed, counted once. |
+| Nested: outer marked, inner unmarked; both marked (the `toString()` of a parameter logs the inner event) | Each event trimmed as its own rule says, counted once, written once (the spike's H8). |
+| Rule switched off between gate and render | Counted once, not trimmed: a split decision, as expected. |
+
+`filter(LogEvent)` was never called on the gate in any mode, so there is no second counting path.
+The wrapper made one query per event with a throwable, none counted.
+
+**One finding, not a failure of A3:** when a rule matches on message text, the gate formats the
+message itself with `ParameterizedMessage.format`, and Log4j formats it again when it builds the
+event, so a parameter's `toString()` ran twice (and the inner event it logged was written and
+counted twice) in all six runs. Log4j gives the gate no formatted message to share. The provider
+route (A3(b)) has to compute the same verdict at the gate, so it would format the same way; this
+was reasoned, not probed. It is recorded under "Behaviour to document rather than change".
+
+Not covered: the real `RuleGate` (the prototype used a stand-in; the `core` change A3 asks for
+is still to build), 2.24.3 and 2.25.3 (the per-PR matrix will run them), the cost of the gate,
+and the `ThrowableProxy` subclass of A4 (the prototype swapped in a plain `Throwable`).
 
 ## Out of scope
 
