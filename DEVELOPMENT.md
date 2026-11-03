@@ -164,6 +164,12 @@ The module list and its rationale are in
 - `logaperture-api`, `logaperture-core` — the model and the level-control engine.
 - `logaperture-adapter-logback`, `logaperture-adapter-jul` — per-backend
   `LoggingAdapter`s (JUL covers JBoss LogManager and plain `java.util.logging`).
+- `logaperture-adapter-log4j2` — the Log4j 2 `LoggingAdapter` and its entry class. Unlike the others
+  it is not on the agent jar's class path: its class files are stored in the agent jar under
+  `META-INF/logaperture/log4j2/` and defined only by the class-loader detector's bridge loader, so
+  it can link against a Log4j that the system class loader cannot see
+  ([doc/specs/class-loader-detector.md](doc/specs/class-loader-detector.md), C2). Build the agent
+  with `-am` so the adapter is built first.
 - `logaperture-container-none`, `logaperture-container-wildfly`, `logaperture-container-quarkus` —
   per-environment `ContainerIntegration`s (detect, discover contexts, wire lifecycle).
 - `logaperture-container-jbosslogmanager` — what the JBoss LogManager containers (WildFly, Quarkus)

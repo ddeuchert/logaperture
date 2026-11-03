@@ -214,6 +214,76 @@ wrapper's counted-once, recomputed-at-render behaviour is tested only when the a
 2.25.3 (the per-PR matrix will run them), the cost of the gate,
 and the `ThrowableProxy` subclass of A4 (the prototype swapped in a plain `Throwable`).
 
+### Slice 1: detection and binding (built, 2026-11-02)
+
+The first PR of the adapter, issue #302. The agent now finds a Log4j 2 that is not on the system
+class path, binds it once it has a started context, and offers level control on it. In the order
+of "Scope":
+
+- **Module `logaperture-adapter-log4j2`**, compiled against Log4j 2.20.0 (`provided`), with the
+  entry `Log4j2Framework`, the levels in `Log4j2LoggingAdapter`, and the context names of A7. Its
+  class files are copied into the agent jar under `META-INF/logaperture/log4j2/` only, by path at
+  `process-classes`; the agent's shade step does not bundle the module, so nothing of it sits at the
+  jar's root (checked on the built jar: no `org/logaperture/adapter/log4j2` outside that folder).
+  The system class loader cannot load it by accident (C2).
+- **The watch** (`KnownFrameworks.LOG4J2`): marker `LoggerContext`, owner packages
+  `org.apache.logging.log4j.`, `log4j-jul`'s manager as a front for it (C1). `WatchMatchesAdapterTest`
+  keeps the strings true.
+- **Readiness.** `ready()` asks `LogManager.getFactory()` for the contexts the factory already has
+  (`getSelector().getLoggerContexts()`) and is true once one is `isStarted()`. It creates none.
+  This is called only after the detector has seen `LoggerContext` loaded, which is the I-4 condition;
+  `BundledLog4j2EndToEndIT` shows an application's own `log4j2.configurationFile`, set in `main`,
+  stays in force with Log4j in the application's own loader.
+- **Version (A10).** Read from the package of the loaded context class; below 2.20.0 `ready()`
+  throws, and the detector's C8 line says why. The version is believed only when the package's
+  manifest title names Log4j: in a shaded or assembled jar the manifest is the application's own, and
+  its version (`1.4.0`) must not read as "too old". With no believable version the entry checks that
+  `LoggerConfig.getExplicitLevel()` exists (added in 2.19.0) and refuses without it, so an old Log4j
+  in a shaded jar is not bound blind. The `log4j2.version` `doctor` check is not in this slice (see below).
+- **Levels (A2, A8).** On the context held, never through `Configurator`. `configuredLevel` is
+  `getExplicitLevel()`; a name with no `LoggerConfig` of its own reports none. A pre-set creates a
+  `LoggerConfig` of its own, and clearing it removes that `LoggerConfig` again, but only the object
+  it created: after a reconfiguration the name may be a config the application declared, which is
+  left alone. A declared one is given back its inheritance with `setLevel(null)`. `applyLevel` is
+  synchronised. The root is `ROOT`, as on Logback and JUL.
+- **A limit: `FATAL`.** `FATAL` (and a custom level) reads back as the nearest API level, `ERROR`, so
+  a reset that writes the captured baseline back turns a declared `fatal` into `error`. The adapter
+  cannot fix it alone: a reset and a deliberate `set logger x error` reach `applyLevel` as the same
+  call, and remembering the native level (tried, reverted) turned the deliberate `error` into
+  `FATAL`. Exact restoration needs the baseline to carry the native level:
+  [#312](https://github.com/ddeuchert/logaperture/issues/312).
+- **Contexts.** Taken in order of config location, then name, because the selector keeps them in a
+  hash map in no stable order. A web path (`/appA`) is the name; a repeat of one becomes `/appA#2`.
+  Only contexts without a web path are numbered (`log4j2`, `log4j2-2`), so a web context more or less
+  never renames them. A default context name is a class-loader identity hash, so two contexts in one
+  Log4j copy with the same config location and no web path cannot be named stably across runs. `open()` registers the shutdown
+  listener before checking that a context is still started, and fails if none is, so the detector
+  reports it and no instance is left bound to nothing.
+- **Shutdown (TC5).** Log4j's own `addShutdownListener` calls the detector's callback; the listener
+  cannot be removed, so it goes inert once the entry has been closed.
+
+**Not in this slice, each its own PR under #302:** re-applying after a reconfiguration and
+re-asserting after a native change (A1, A2: until then a reconfiguration discards a level set
+here); the gate; the slot wrapper and trim; handler levels; the three `doctor` checks (A12) and
+`handler.unbounded-growth`; the version matrix, the Spring Boot, Tomcat and WildFly setups; the
+benchmark; and the guide pages and changelog entry, which land with the last slice because
+the feature is not usable as a whole before it.
+
+**A limit to know about (C4):** the detector gives up three seconds after it finds a framework with
+no started context, once, and does not look at that loader again for the life of the JVM. A Log4j
+copy whose first context has not started three seconds after its `LoggerContext` class is loaded,
+for example because an appender is slow to initialise, is warned about (C8) and then stays
+uncontrolled. Nothing in the setups tried comes near it (the spike bound at 0.56 to 0.75 s), so C4
+stands; there is no retry and no workaround other than a faster start. Recorded under "Not
+established".
+
+**A regression in a corner, accepted for now (C1):** with `-Djava.util.logging.manager` naming
+`log4j-jul` the `none` integration does not install the JUL context, whether or not the Log4j bind
+succeeds. An application on `log4j-jul` with a Log4j older than 2.20.0 (refused, A10), or one that
+gives up (above), therefore has no level control at all, where before this slice it had the JUL
+context. Binding JUL as a fallback when the Log4j bind fails is a follow-up
+([#311](https://github.com/ddeuchert/logaperture/issues/311)).
+
 ## Out of scope
 
 `top` on Log4j 2 (A6); Log4j 1 and reload4j; the warning for names no backend can reach (#303);
@@ -231,6 +301,11 @@ From the spike, carried here because they bound what is promised:
 - JDK 25; Spring Boot's `log4j2-spring.xml`, devtools restart and structured logging; Tomcat 10.1
   and a webapp without `log4j-jakarta-web` (the context name is then a hash, A7); WildFly 27+;
   more than one context in one Log4j copy.
+- Several webapps sharing one Log4j copy (Tomcat's `lib/`, out of scope): the entry has one shutdown
+  callback, so stopping any one context unbinds every context it bound, and the bridge loader is
+  pinned by the listener Log4j cannot remove for as long as another context lives. Both need a
+  per-context callback in `BridgedFramework`; neither arises with one context per Log4j copy.
+- A second context in the same Log4j copy created after the first was bound (the entry binds the contexts that are started when it opens), and a first context created more than 3 s after the class is loaded (C4).
 - The one extra `ContextDataProvider` call on the async-logger thread on 2.17.2 (moot under A3(a)).
 
 ## Estimate and slot

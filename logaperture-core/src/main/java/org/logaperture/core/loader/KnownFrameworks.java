@@ -20,16 +20,26 @@ import java.util.List;
 /**
  * The frameworks the detector looks for (doc/specs/class-loader-detector.md). One list, read by both
  * the agent (to scan for them) and the {@code none} integration (to leave a JUL tree alone when its
- * manager is only a front for one of them, C1). Empty until a framework adapter registers its watch:
- * Log4j 2 is the first (doc/specs/log4j2-adapter.md).
+ * manager is only a front for one of them, C1). Log4j 2 is the first (doc/specs/log4j2-adapter.md).
  */
 public final class KnownFrameworks {
+
+    /**
+     * Log4j 2 (doc/specs/log4j2-adapter.md, "Scope" 1): the marker is a context's class, the owner
+     * supplies every {@code org.apache.logging.log4j.} package, and the entry lives in the bridge
+     * jar. {@code log4j-jul}'s manager is a front for it (C1).
+     */
+    public static final FrameworkWatch LOG4J2 = new FrameworkWatch("log4j2",
+            "org.apache.logging.log4j.core.LoggerContext",
+            List.of("org.apache.logging.log4j."),
+            "org.logaperture.adapter.log4j2.Log4j2Framework",
+            "org.apache.logging.log4j.jul.");
 
     private KnownFrameworks() {
     }
 
     public static List<FrameworkWatch> all() {
-        return List.of();
+        return List.of(LOG4J2);
     }
 
     /**
