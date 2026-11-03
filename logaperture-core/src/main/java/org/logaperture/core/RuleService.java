@@ -134,6 +134,16 @@ public final class RuleService implements RuleOperations {
         }
 
         @Override
+        public GateVerdict evaluateOnce(RuleCandidateEvent event) {
+            GatePlan plan = gatePlan(event.loggerName());
+            // R4 as in evaluateGate; then straight to the verdict, no decision cache to stripe or weaken.
+            if (plan.rules().isEmpty() || !plan.anyCandidateMatches(event)) {
+                return GateVerdict.allow();
+            }
+            return computeVerdict(plan.rules(), event);
+        }
+
+        @Override
         public TrimDecision trimChoice(RuleCandidateEvent event) {
             if (event.thrown() == null) {
                 return null; // nothing to trim: skip the plan lookup too

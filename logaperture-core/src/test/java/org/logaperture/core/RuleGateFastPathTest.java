@@ -136,4 +136,20 @@ class RuleGateFastPathTest {
         }
         assertEquals(1L, service.hitCount(rule.id()));
     }
+
+    @Test
+    void evaluateOnce_givesTheVerdictEvaluateDoes_andCountsTheHitOnce() {
+        LogRule rule = drop(WORKER, "noisy");
+        RuleCandidateEvent event = new RuleCandidateEvent(WORKER, Level.INFO, null, () -> "noisy", Instant.now());
+
+        GateVerdict once = gate.evaluateOnce(event);
+
+        assertTrue(once.deny());
+        assertEquals(rule.id(), once.matchedRuleId());
+        assertEquals(1, service.hitCount(rule.id()));
+        assertFalse(gate.evaluateOnce(new RuleCandidateEvent(WORKER, Level.INFO, null, () -> "quiet", Instant.now())).deny());
+        assertSame(GateVerdict.allow(),
+                gate.evaluateOnce(new RuleCandidateEvent("org.other.Thing", Level.INFO, null, () -> "noisy", Instant.now())));
+        assertEquals(1, service.hitCount(rule.id()), "a non-matching event is not counted");
+    }
 }
