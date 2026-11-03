@@ -197,8 +197,21 @@ counted twice) in all six runs. Log4j gives the gate no formatted message to sha
 route (A3(b)) has to compute the same verdict at the gate, so it would format the same way; this
 was reasoned, not probed. It is recorded under "Behaviour to document rather than change".
 
-Not covered: the real `RuleGate` (the prototype used a stand-in; the `core` change A3 asks for
-is still to build), 2.24.3 and 2.25.3 (the per-PR matrix will run them), the cost of the gate,
+**Second run (2026-11-02), independent harness:** reproduced the result above and added 2.23.1
+(2.20.0, 2.23.1 and 2.25.5, three modes each, nine runs, no mismatch between gate and render counts).
+One observation for the wrapper: with an `<Async>` appender, the slot holds the `AsyncAppender`, so
+the wrapper runs on the caller thread, before the queue. There is no gap between gate and render in
+that mode, so the "rule changed between gate and render" split only arises with async loggers.
+
+**The `core` change A3 asks for (built, 2026-11-02):** `RuleGate.trimChoice(RuleCandidateEvent)`
+returns the trim the gate would choose, with no hit counted; `RuleService` shares one selection
+routine between it and the counting `evaluate`. A default of `null` (no trim) keeps the other
+adapters unchanged. `TrimChoiceTest` covers it never counting, the most-restrictive rule, no
+throwable, drop-only rules, and a rule reset between gate and render.
+
+Not covered: the real `RuleGate` driven from a Log4j 2 gate (the prototype used a stand-in; the
+wrapper's counted-once, recomputed-at-render behaviour is tested only when the adapter lands), 2.24.3 and
+2.25.3 (the per-PR matrix will run them), the cost of the gate,
 and the `ThrowableProxy` subclass of A4 (the prototype swapped in a plain `Throwable`).
 
 ## Out of scope

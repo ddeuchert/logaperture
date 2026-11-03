@@ -132,6 +132,20 @@ public final class RuleService implements RuleOperations {
         public boolean appliesTo(String loggerName) {
             return !effectiveRules(loggerName).isEmpty();
         }
+
+        @Override
+        public TrimDecision trimChoice(RuleCandidateEvent event) {
+            if (event.thrown() == null) {
+                return null; // nothing to trim: skip the plan lookup too
+            }
+            GatePlan plan = gatePlan(event.loggerName());
+            // R4/R5: the same pre-filter evaluate uses, so a render stage pays nothing for an
+            // event no rule can touch. false guarantees selectTrim would find no trim.
+            if (plan.rules().isEmpty() || !plan.anyCandidateMatches(event)) {
+                return null;
+            }
+            return decisionFor(selectTrim(plan.rules(), event));
+        }
     };
     private final Map<String, LongAdder> hitCounters = new ConcurrentHashMap<>();
     /**
@@ -1195,22 +1209,39 @@ public final class RuleService implements RuleOperations {
     }
 
     /**
-     * The matching {@link Trim} with the fewest {@code frames} among {@code
-     * effective} -- doc/specs/filtering-epic.md "Evaluation": "among several
-     * trims, the most restrictive wins (fewest frames)". {@code null} if
-     * none matches, so {@link GateVerdict#allowWithTrim} carries a {@code
-     * null} trim exactly like {@link GateVerdict#allow()} would.
-     *
-     * <p>An event with no throwable at all is never a candidate, regardless
-     * of matchers -- there is nothing for the render stage to trim (a bare
-     * level-bounded {@code Trim} matches every qualifying event on its
-     * logger, throwable or not), so this returns before touching a rule's
-     * hit counter: a code-review finding against the first cut of this
-     * method, which counted a "hit" for events {@code JulTrimFormatter}
-     * would never actually apply the decision to, inflating {@code list
-     * rules}' hit count with ordinary non-exception log traffic.
+     * The trim to apply and count: {@link #selectTrim}'s choice, with its rule's hit counter
+     * incremented. {@code null} if none matches, so {@link GateVerdict#allowWithTrim} carries a
+     * {@code null} trim exactly like {@link GateVerdict#allow()} would.
      */
     private TrimDecision mostRestrictiveTrim(List<LogRule> effective, RuleCandidateEvent event) {
+        Trim winner = selectTrim(effective, event);
+        if (winner == null) {
+            return null;
+        }
+        hitCounters.computeIfAbsent(winner.id(), id -> new LongAdder()).increment();
+        return decisionFor(winner);
+    }
+
+    /** The one place a {@link TrimDecision} is built, so the gate's and the render stage's cannot drift. */
+    private static TrimDecision decisionFor(Trim winner) {
+        return winner == null ? null : new TrimDecision(winner.id(), winner.frames(), winner.collapseCauses());
+    }
+
+    /**
+     * The matching {@link Trim} with the fewest {@code frames} among {@code effective} --
+     * doc/specs/filtering-epic.md "Evaluation": "among several trims, the most restrictive wins
+     * (fewest frames)". {@code null} if none matches. No side effects: shared by the counting gate
+     * ({@link #mostRestrictiveTrim}) and the non-counting {@link RuleGate#trimChoice}.
+     *
+     * <p>An event with no throwable at all is never a candidate, regardless of matchers -- there
+     * is nothing for the render stage to trim (a bare level-bounded {@code Trim} matches every
+     * qualifying event on its logger, throwable or not), so this returns before any rule is
+     * considered and the counting caller never touches a hit counter: a code-review finding against
+     * the first cut, which counted a "hit" for events {@code JulTrimFormatter} would never actually
+     * apply the decision to, inflating {@code list rules}' hit count with ordinary non-exception
+     * log traffic.
+     */
+    private static Trim selectTrim(List<LogRule> effective, RuleCandidateEvent event) {
         if (event.thrown() == null) {
             return null;
         }
@@ -1226,11 +1257,7 @@ public final class RuleService implements RuleOperations {
                 winner = trim;
             }
         }
-        if (winner == null) {
-            return null;
-        }
-        hitCounters.computeIfAbsent(winner.id(), id -> new LongAdder()).increment();
-        return new TrimDecision(winner.id(), winner.frames(), winner.collapseCauses());
+        return winner;
     }
 
     /**
