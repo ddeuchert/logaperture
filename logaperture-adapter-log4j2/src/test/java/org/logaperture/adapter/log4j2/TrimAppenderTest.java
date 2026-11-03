@@ -20,7 +20,9 @@ import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.AppenderRef;
 import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.apache.logging.log4j.core.config.Property;
 import org.apache.logging.log4j.core.config.builder.api.AppenderComponentBuilder;
@@ -89,12 +91,19 @@ class TrimAppenderTest {
     };
 
     /** The rooted configuration a file would give: Console + PatternLayout, optionally behind an Async appender. */
-    private static BuiltConfiguration configuration(String pattern, Level referenceLevel, boolean async,
+    /** When set, the Console appender carries its own filter that denies everything below FATAL. */
+    private boolean consoleDeniesBelowFatal;
+
+    private BuiltConfiguration configuration(String pattern, Level referenceLevel, boolean async,
             String layoutPlugin) {
         ConfigurationBuilder<BuiltConfiguration> builder = ConfigurationBuilderFactory.newConfigurationBuilder();
         AppenderComponentBuilder console = builder.newAppender("Con", "Console").addAttribute("target", "SYSTEM_OUT");
         console.add(layoutPlugin == null ? builder.newLayout("PatternLayout").addAttribute("pattern", pattern)
                 : builder.newLayout(layoutPlugin));
+        if (consoleDeniesBelowFatal) {
+            console.add(builder.newFilter("ThresholdFilter", org.apache.logging.log4j.core.Filter.Result.NEUTRAL,
+                    org.apache.logging.log4j.core.Filter.Result.DENY).addAttribute("level", "FATAL"));
+        }
         builder.add(console);
         String reference = "Con";
         if (async) {
@@ -297,12 +306,86 @@ class TrimAppenderTest {
     }
 
     @Test
-    void afterDetach_aWrapperPassesEverythingStraightThrough() throws Exception {
+    void detach_putsTheOriginalAppendersBackInTheirSlots() throws Exception {
         start("%m|%ex%n", null, false, null);
+        assumeTrue(trimWorksHere(), "trim is off on this Log4j");
+        Appender original = context.getConfiguration().getAppender("Con");
         adapter.installTrimRendering(gate);
+        assertInstanceOf(TrimAppender.class, context.getConfiguration().getRootLogger().getAppenders().get("Con"));
         adapter.detach();
+        assertEquals(original, context.getConfiguration().getRootLogger().getAppenders().get("Con"),
+                "the slot holds the appender it held before");
         log.error("TRIMME", deepThrowable());
-        assertFalse(written().contains("stack trace trimmed"));
+        String text = written();
+        assertTrue(text.startsWith("TRIMME|"), "still written: " + text);
+        assertFalse(text.contains("stack trace trimmed"), text);
+    }
+
+    @Test
+    void anAppendersOwnFilter_keepsDenying_throughTheWrapper() throws Exception {
+        consoleDeniesBelowFatal = true;
+        start("%m|%ex%n", null, false, null);
+        assumeTrue(trimWorksHere(), "trim is off on this Log4j");
+        log.error("denied before the wrapper", deepThrowable());
+        Thread.sleep(100);
+        assertEquals(0, console.size(), "the appender's own ThresholdFilter denies an ERROR: " + console);
+        adapter.installTrimRendering(gate);
+        assertInstanceOf(TrimAppender.class, context.getConfiguration().getRootLogger().getAppenders().get("Con"));
+        log.error("TRIMME denied after the wrapper too", deepThrowable());
+        Thread.sleep(100);
+        assertEquals(0, console.size(), "wrapping must not lose the appender's filter: " + console);
+    }
+
+    @Test
+    void aMultiLineExceptionMessage_rendersTheSameUnderBothConverters() throws Exception {
+        start("%m|%xEx%n", null, false, null);
+        assumeTrue(trimWorksHere(), "trim is off on this Log4j");
+        adapter.installTrimRendering(gate);
+        log.error("TRIMME", new RuntimeException("first line\nsecond line"));
+        String text = written();
+        assertTrue(text.contains("java.lang.RuntimeException: first line\nsecond line [stack trace trimmed: "), text);
+        assertFalse(text.contains(": null"), "no tail after a multi-line name: " + text);
+    }
+
+    @Test
+    void aFailedSwap_putsTheOriginalBack_andCarriesOn() {
+        start("%m|%ex%n", null, false, null);
+        Configuration config = context.getConfiguration();
+        Appender original = config.getAppender("Con");
+        java.util.List<AppenderRef> references = java.util.List.of(AppenderRef.createAppenderRef("Con", null, null));
+        LoggerConfig failing = new LoggerConfig("failing", references, null, Level.INFO, true,
+                Property.EMPTY_ARRAY, config, false) {
+            @Override
+            public void addAppender(Appender appender, Level level, org.apache.logging.log4j.core.Filter filter) {
+                if (appender instanceof TrimAppender) {
+                    throw new IllegalStateException("simulated failure to add the wrapper");
+                }
+                super.addAppender(appender, level, filter);
+            }
+        };
+        failing.addAppender(original, null, null);
+        config.addLogger("failing", failing);
+
+        int wrapped = TrimSlots.wrapAll(config, new TrimAppender.Shared());
+
+        assertEquals(original, failing.getAppenders().get("Con"), "the logger did not lose its appender");
+        assertTrue(wrapped >= 0);
+        assertInstanceOf(TrimAppender.class, config.getRootLogger().getAppenders().get("Con"),
+                "the other slots are still wrapped");
+    }
+
+    @Test
+    void theProbeRunsOncePerAdapter() {
+        start("%m|%ex%n", null, false, null);
+        AtomicInteger probes = new AtomicInteger();
+        adapter.trimProbe = configuration -> {
+            probes.incrementAndGet();
+            return null;
+        };
+        adapter.installTrimRendering(gate);
+        adapter.installTrimRendering(gate);
+        adapter.installTrimRendering(gate);
+        assertEquals(1, probes.get(), "a reset-hook call must not probe again");
     }
 
     @Test

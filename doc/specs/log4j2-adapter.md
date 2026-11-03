@@ -476,9 +476,22 @@ The fifth PR of the adapter under #302: a trim rule cuts the stack trace of a Lo
   for `doctor` (`log4j2.trim`, A12, a later slice).
 - **`TrimmedThrowables`** (core, moved from the JUL adapter): the builder of the synthetic chain, now
   shared. JUL keeps its names and its tests.
-- **Detach** leaves the wrappers in their slots, passing every event straight through.
+- **The appender's own filter is carried too.** Log4j checks an appender's own filter on the object in the
+  slot, and `delegate.append` never does, so the wrapper takes the delegate's filter (a `ThresholdFilter`
+  inside a `<Console>`, a `BurstFilter` on a file appender), not only the reference's. Without it every
+  event such a filter denies would be written, in any configuration with a filtered text appender, with or
+  without a trim rule. The delegate keeps ownership: stopping the wrapper stops neither it nor the filter.
+- **A failed swap puts the appender back.** If adding the wrapper throws after the original was removed,
+  the original is added again and wrapping goes on with the other slots; a logger that has silently lost
+  an appender is worse than one that is not trimmed.
+- **Detach takes the wrappers out**: each slot gets its original appender back, with the reference's level
+  and filter, while the context lives. A context that is stopping takes its wrappers with it. A wrapper still in
+  flight passes its event straight through.
+- **The probe runs once per adapter**, not on every reset-hook call. `TrimmedProxy` strips the `: null` tail
+  right after its known name, so a multi-line exception message renders as `%ex` does, and builds its
+  cause proxy lazily, so `%ex` layouts never pay for it.
 
-Verified on 2.20.0, 2.23.1, 2.25.2 and 2.25.5 (`-Dlog4j2.version`, the same 77 tests): the trim tests pass on
+Verified on 2.20.0, 2.23.1, 2.25.2 and 2.25.5 (`-Dlog4j2.version`, the same tests on each): the trim tests pass on
 2.20.0, 2.23.1 and 2.25.5, on 2.25.2 they are skipped and a test asserts nothing is wrapped and the
 reason is kept. `BundledLog4j2EndToEndIT`, in a real process: a trim rule cuts the trace and its cause,
 no synthetic class in the output, hits counted once per trimmed event, and the same after a reload.

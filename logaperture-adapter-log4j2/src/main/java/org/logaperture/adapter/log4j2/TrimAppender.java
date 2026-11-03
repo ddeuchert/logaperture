@@ -16,6 +16,8 @@
 package org.logaperture.adapter.log4j2;
 
 import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.Filter;
+import org.apache.logging.log4j.core.filter.Filterable;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
 import org.apache.logging.log4j.core.config.Property;
@@ -27,6 +29,7 @@ import org.logaperture.core.TrimDecision;
 import org.logaperture.core.TrimmedThrowables;
 
 import java.time.Instant;
+import java.util.concurrent.TimeUnit;
 
 /**
  * An appender in a {@code LoggerConfig} slot wearing the original's name, layout and error policy, that
@@ -50,13 +53,27 @@ final class TrimAppender extends AbstractAppender {
     private final Shared shared;
 
     TrimAppender(Appender delegate, Shared shared) {
-        super(delegate.getName(), null, delegate.getLayout(), delegate.ignoreExceptions(), Property.EMPTY_ARRAY);
+        super(delegate.getName(), filterOf(delegate), delegate.getLayout(), delegate.ignoreExceptions(),
+                Property.EMPTY_ARRAY);
         this.delegate = delegate;
         this.shared = shared;
     }
 
+    /**
+     * The appender's own filter (a {@code ThresholdFilter} inside a {@code <Console>}, say). Log4j checks it on
+     * the object in the slot, and {@code delegate.append} never does, so the wrapper has to carry it or every
+     * event it should deny would be written. The delegate keeps ownership: this one is not stopped with it.
+     */
+    private static Filter filterOf(Appender appender) {
+        return appender instanceof Filterable filterable ? filterable.getFilter() : null;
+    }
+
     Appender delegate() {
         return delegate;
+    }
+
+    Shared shared() {
+        return shared;
     }
 
     @Override
@@ -89,7 +106,7 @@ final class TrimAppender extends AbstractAppender {
 
     /** Stopping the wrapper must not stop the appender it stands in front of: the configuration owns that. */
     @Override
-    public boolean stop(long timeout, java.util.concurrent.TimeUnit timeUnit) {
+    public boolean stop(long timeout, TimeUnit timeUnit) {
         setStopped();
         return true;
     }

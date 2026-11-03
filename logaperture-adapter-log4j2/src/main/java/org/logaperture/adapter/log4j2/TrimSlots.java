@@ -23,6 +23,7 @@ import org.apache.logging.log4j.core.config.AppenderRef;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.apache.logging.log4j.core.layout.PatternLayout;
+import org.logaperture.bridge.Diagnostics;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,8 +34,8 @@ import java.util.List;
  *
  * <p>A slot is one {@code LoggerConfig}'s reference to an appender, as its {@code AppenderRef} lists it:
  * the reference is the only place the slot's level and filter can be read, so an appender added to a
- * {@code LoggerConfig} in code with no reference is left alone rather than rewrapped with a guess. The wrapper replaces the appender in
- * the slot only, keeping its name and the reference's level and filter; {@code config.getAppenders()}
+ * {@code LoggerConfig} in code with no reference is left alone rather than rewrapped with a guess. The
+ * wrapper replaces the appender in the slot only, keeping its name and the reference's level and filter; {@code config.getAppenders()}
  * still lists the originals, so the handler listing is unaffected. Swapping an appender takes a
  * {@code remove} and an {@code add} (the set is keyed by name), so a call on that logger can miss that
  * appender for the microseconds between them.
@@ -54,19 +55,59 @@ final class TrimSlots {
                 if (appender == null || appender instanceof TrimAppender || !writesText(appender, configuration)) {
                     continue;
                 }
-                TrimAppender wrapper = new TrimAppender(appender, shared);
-                wrapper.start();
-                Level level = reference.getLevel();
-                Filter filter = reference.getFilter();
-                loggerConfig.removeAppender(reference.getRef()); // stops the reference's filter
-                if (filter != null && filter.isStopped()) {
-                    filter.start();
+                if (swap(loggerConfig, reference, appender, new TrimAppender(appender, shared))) {
+                    wrapped++;
                 }
-                loggerConfig.addAppender(wrapper, level, filter);
-                wrapped++;
             }
         }
         return wrapped;
+    }
+
+    /**
+     * Gives every slot that holds one of {@code shared}'s wrappers its appender back. For an adapter that
+     * lets go of a context that lives on; a context that is stopping takes its wrappers with it.
+     */
+    static void unwrapAll(Configuration configuration, TrimAppender.Shared shared) {
+        List<LoggerConfig> loggers = new ArrayList<>(configuration.getLoggers().values());
+        for (LoggerConfig loggerConfig : loggers) {
+            for (AppenderRef reference : new ArrayList<>(loggerConfig.getAppenderRefs())) {
+                Appender slot = loggerConfig.getAppenders().get(reference.getRef());
+                if (slot instanceof TrimAppender wrapper && wrapper.shared() == shared) {
+                    swap(loggerConfig, reference, wrapper, wrapper.delegate());
+                }
+            }
+        }
+    }
+
+    /**
+     * Puts {@code replacement} in the slot of {@code current}, with the reference's level and filter. The set is
+     * keyed by name, so this is a remove and an add; if the add fails the slot gets {@code current} back rather
+     * than staying empty (a logger that has silently lost an appender is worse than one that is not trimmed).
+     */
+    private static boolean swap(LoggerConfig loggerConfig, AppenderRef reference, Appender current,
+            Appender replacement) {
+        Level level = reference.getLevel();
+        Filter filter = reference.getFilter();
+        if (replacement instanceof TrimAppender) {
+            replacement.start();
+        }
+        loggerConfig.removeAppender(reference.getRef()); // stops the reference's filter
+        try {
+            if (filter != null && filter.isStopped()) {
+                filter.start();
+            }
+            loggerConfig.addAppender(replacement, level, filter);
+            return true;
+        } catch (RuntimeException e) {
+            try {
+                loggerConfig.addAppender(current, level, filter);
+            } catch (RuntimeException restoring) {
+                Diagnostics.error("LogAperture could not put appender '" + reference.getRef() + "' back after a failed "
+                        + "swap in logger '" + loggerConfig.getName() + "': " + restoring);
+            }
+            Diagnostics.warn("LogAperture could not wrap appender '" + reference.getRef() + "' for trim: " + e);
+            return false;
+        }
     }
 
     /**

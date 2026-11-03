@@ -35,13 +35,12 @@ final class TrimmedProxy extends ThrowableProxy {
     private static final String NULL_MESSAGE_SUFFIX = ": null";
 
     private final Throwable trimmed;
-    private final TrimmedProxy cause;
+    private TrimmedProxy cause;
+    private boolean causeBuilt;
 
     TrimmedProxy(Throwable trimmed) {
         super(trimmed);
         this.trimmed = trimmed;
-        Throwable next = trimmed.getCause();
-        this.cause = next == null ? null : new TrimmedProxy(next);
     }
 
     @Override
@@ -60,25 +59,30 @@ final class TrimmedProxy extends ThrowableProxy {
     }
 
     @Override
-    public ThrowableProxy getCauseProxy() {
+    public synchronized ThrowableProxy getCauseProxy() {
+        if (!causeBuilt) {
+            // Lazily, and once: only a converter that walks the proxy (%xEx) asks, so %ex never pays for it.
+            Throwable next = trimmed.getCause();
+            cause = next == null ? null : new TrimmedProxy(next);
+            causeBuilt = true;
+        }
         return cause;
     }
 
     /**
      * The top level is written by a path that appends {@code ": " + message} even for a null message on
-     * 2.20 to 2.24 (a cause is not); take that tail off the first line.
+     * 2.20 to 2.24 (a cause is not); take that tail off, right after the name. The name is the whole
+     * trimmed text, which spans several lines when the exception's message does, so it is looked for as
+     * the known text and not as "the first line".
      */
     @Override
     public void formatExtendedStackTraceTo(StringBuilder output, List<String> ignorePackages,
             TextRenderer textRenderer, String suffix, String lineSeparator) {
         StringBuilder rendered = new StringBuilder();
         super.formatExtendedStackTraceTo(rendered, ignorePackages, textRenderer, suffix, lineSeparator);
-        String separator = lineSeparator == null ? "\n" : lineSeparator;
-        int endOfFirstLine = rendered.indexOf(separator);
-        int firstLineEnd = endOfFirstLine < 0 ? rendered.length() : endOfFirstLine;
-        int tail = firstLineEnd - NULL_MESSAGE_SUFFIX.length();
-        if (tail >= 0 && rendered.substring(tail, firstLineEnd).equals(NULL_MESSAGE_SUFFIX)) {
-            rendered.delete(tail, firstLineEnd);
+        String name = getName();
+        if (rendered.indexOf(name + NULL_MESSAGE_SUFFIX) == 0) {
+            rendered.delete(name.length(), name.length() + NULL_MESSAGE_SUFFIX.length());
         }
         output.append(rendered);
     }
