@@ -488,8 +488,34 @@ The fifth PR of the adapter under #302: a trim rule cuts the stack trace of a Lo
   and filter, while the context lives. A context that is stopping takes its wrappers with it. A wrapper still in
   flight passes its event straight through.
 - **The probe runs once per adapter**, not on every reset-hook call. `TrimmedProxy` strips the `: null` tail
-  right after its known name, so a multi-line exception message renders as `%ex` does, and builds its
-  cause proxy lazily, so `%ex` layouts never pay for it.
+  right after its known name, so a multi-line exception message renders as `%ex` does. A styled
+  `TextRenderer` (ANSI colour around the name) defeats that match on 2.20 to 2.24 and leaves the `: null`
+  tail: cosmetic, not fixed.
+- **The proxy is built only where a layout can read it.** `ThrowableProxy`'s constructor is eager (a stack
+  walk and the whole cause chain), so building one per trimmed event for every appender would be the cost a
+  storm is worst placed to pay. An appender whose pattern has an explicit plain converter (`%ex`) and no
+  extended one (`%xEx`, `%rEx`, `%xThrowable`, `%rootException` and their kin, Spring Boot's `%xwEx` among
+  them) reads the throwable itself and gets none. A pattern with *no* throwable converter at all gets one:
+  `PatternLayout` adds its own (`alwaysWriteExceptions` defaults to true) and that one reads the proxy, which
+  the end-to-end test's own pattern (`%level %logger %msg%n`) showed; an `<Async>` appender gets one if anything behind it might read it; when in doubt,
+  yes. The cause proxy inside it is built when a converter first walks to it.
+- **The wrapper answers as the appender it stands for.** Log4j asks the slot object, not the appender, for
+  the error handler, `requiresLocation()` and whether it is started, so the wrapper forwards all three; a
+  wrapper in front of an appender the configuration stopped does not claim to be started.
+- **The probe covers `%ex`, `%xEx`, `%rEx` and `%ex{short}`**, which render correctly on every version
+  where the first two do (checked on 2.20.0, 2.23.1 and 2.25.5). Spring Boot's `%xwEx` is not in Log4j and
+  is not probed; it was checked on real Spring Boot 3.5 and 4.1 applications (spike SB9) and renders as `%xEx`.
+- **What a swap costs (real, and not avoidable with `LoggerConfig`).** The set is keyed by name, so wrapping,
+  and unwrapping on detach, is a remove and an add. A call on that logger landing between the two is not
+  written to that appender, and nothing counts it; it happens at install, after each reconfiguration
+  (when core re-installs) and on detach. The add also puts the wrapper after the logger's other appenders,
+  so the order in which they write one event can change.
+- **Per exception, per wrapped appender.** The trim choice, the synthetic chain and the proxy are built
+  once for each wrapped text appender, not once per event: caching by event identity is unsafe because
+  events are reused. It scales with the number of text appenders, not with the number of rules; a trim
+  pre-check on `RuleGate` is for the gate benchmark to ask for. Wrapping starts at install, not at the
+  first trim rule, as every other always-on seam does (JUL, top, storm detection, the rule pipeline), so a
+  rule added later needs no swap.
 
 Verified on 2.20.0, 2.23.1, 2.25.2 and 2.25.5 (`-Dlog4j2.version`, the same tests on each): the trim tests pass on
 2.20.0, 2.23.1 and 2.25.5, on 2.25.2 they are skipped and a test asserts nothing is wrapped and the

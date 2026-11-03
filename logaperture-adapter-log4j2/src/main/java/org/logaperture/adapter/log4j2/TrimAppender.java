@@ -51,12 +51,42 @@ final class TrimAppender extends AbstractAppender {
 
     private final Appender delegate;
     private final Shared shared;
+    private final boolean buildsProxy;
 
-    TrimAppender(Appender delegate, Shared shared) {
+    /**
+     * @param buildsProxy whether this appender's layout can render from the event's {@code ThrowableProxy}
+     *                    ({@code %xEx} and the like): only then is the {@link TrimmedProxy} built, since the
+     *                    proxy's constructor is eager and costs a stack walk per trimmed event
+     */
+    TrimAppender(Appender delegate, Shared shared, boolean buildsProxy) {
         super(delegate.getName(), filterOf(delegate), delegate.getLayout(), delegate.ignoreExceptions(),
                 Property.EMPTY_ARRAY);
         this.delegate = delegate;
         this.shared = shared;
+        this.buildsProxy = buildsProxy;
+    }
+
+    boolean buildsProxy() {
+        return buildsProxy;
+    }
+
+    // What the slot object must answer as the appender it stands in for (the control asks the slot):
+
+    @Override
+    public org.apache.logging.log4j.core.ErrorHandler getHandler() {
+        return delegate.getHandler();
+    }
+
+    @Override
+    public boolean requiresLocation() {
+        return delegate instanceof org.apache.logging.log4j.core.impl.LocationAware aware
+                ? aware.requiresLocation() : super.requiresLocation();
+    }
+
+    /** A wrapper in front of an appender the configuration has stopped must not claim to be started. */
+    @Override
+    public boolean isStarted() {
+        return delegate.isStarted();
     }
 
     /**
@@ -96,8 +126,9 @@ final class TrimAppender extends AbstractAppender {
                 return event;
             }
             Throwable trimmed = TrimmedThrowables.build(thrown, decision);
-            return new Log4jLogEvent.Builder(event).setThrown(trimmed).setThrownProxy(new TrimmedProxy(trimmed))
-                    .build();
+            // Without the proxy the rebuilt event must not carry the original's (untrimmed) one over.
+            return new Log4jLogEvent.Builder(event).setThrown(trimmed)
+                    .setThrownProxy(buildsProxy ? new TrimmedProxy(trimmed) : null).build();
         } catch (RuntimeException e) {
             Diagnostics.warnThrottled("log4j2-trim", "trim failed, event written untrimmed: " + e, null);
             return event;

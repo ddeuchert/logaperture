@@ -375,6 +375,72 @@ class TrimAppenderTest {
     }
 
     @Test
+    void theProxyIsBuiltOnlyForAnAppenderWhoseLayoutCanReadIt() {
+        assumeTrue(true);
+        start("%m|%ex%n", null, false, null);
+        Appender plain = context.getConfiguration().getAppender("Con");
+        assertFalse(new TrimAppender(plain, new TrimAppender.Shared(),
+                TrimSlots.rendersFromProxy(plain, context.getConfiguration())).buildsProxy(), "%ex reads the throwable");
+        for (String pattern : new String[] {"%m|%xEx%n", "%m %rEx", "%d %xwEx{short}", "%-5p %xThrowable", "%m %rootException",
+                "%level %logger %msg%n" /* no throwable converter: PatternLayout adds one, which reads the proxy */}) {
+            context.stop();
+            start(pattern, null, false, null);
+            assertTrue(TrimSlots.rendersFromProxy(context.getConfiguration().getAppender("Con"),
+                    context.getConfiguration()), pattern + " reads the proxy");
+        }
+    }
+
+    @Test
+    void anAppenderWithoutAnExtendedConverter_stillTrimsThroughPercentEx_withoutBuildingTheProxy() throws Exception {
+        start("%m|%ex%n", null, false, null);
+        assumeTrue(trimWorksHere(), "trim is off on this Log4j");
+        adapter.installTrimRendering(gate);
+        TrimAppender wrapper = assertInstanceOf(TrimAppender.class,
+                context.getConfiguration().getRootLogger().getAppenders().get("Con"));
+        assertFalse(wrapper.buildsProxy());
+        log.error("TRIMME", deepThrowable());
+        assertTrue(written().contains("[stack trace trimmed: "));
+    }
+
+    @Test
+    void anAsyncAppender_buildsTheProxyIfAnythingBehindItCanRead() {
+        start("%m|%xEx%n", null, true, null);
+        assumeTrue(trimWorksHere(), "trim is off on this Log4j");
+        adapter.installTrimRendering(gate);
+        assertTrue(assertInstanceOf(TrimAppender.class,
+                context.getConfiguration().getRootLogger().getAppenders().get("Async")).buildsProxy());
+    }
+
+    @Test
+    void theWrapperAnswersForTheAppenderItStandsFor() {
+        start("%m|%ex%n", null, false, null);
+        assumeTrue(trimWorksHere(), "trim is off on this Log4j");
+        Appender original = context.getConfiguration().getAppender("Con");
+        org.apache.logging.log4j.core.ErrorHandler custom = new org.apache.logging.log4j.core.ErrorHandler() {
+            @Override
+            public void error(String msg) {
+            }
+
+            @Override
+            public void error(String msg, Throwable t) {
+            }
+
+            @Override
+            public void error(String msg, LogEvent event, Throwable t) {
+            }
+        };
+        original.stop(); // older Log4j refuses a new handler on a started appender
+        original.setHandler(custom);
+        original.start();
+        adapter.installTrimRendering(gate);
+        Appender slot = context.getConfiguration().getRootLogger().getAppenders().get("Con");
+        assertEquals(custom, slot.getHandler(), "AppenderControl asks the slot for the error handler");
+        assertTrue(slot.isStarted());
+        original.stop();
+        assertFalse(slot.isStarted(), "a wrapper in front of a stopped appender is not started");
+    }
+
+    @Test
     void theProbeRunsOncePerAdapter() {
         start("%m|%ex%n", null, false, null);
         AtomicInteger probes = new AtomicInteger();

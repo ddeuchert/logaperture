@@ -46,7 +46,10 @@ final class TrimProbe {
             LogEvent event = new Log4jLogEvent.Builder().setLevel(Level.ERROR).setLoggerName("probe")
                     .setMessage(new SimpleMessage("probe")).setThrown(trimmed)
                     .setThrownProxy(new TrimmedProxy(trimmed)).build();
-            for (String pattern : new String[] {"%ex", "%xEx"}) {
+            // %ex reads the throwable; %xEx reads the proxy; %rEx reads the proxy root-first; %ex{short} is the
+            // throwable cut to a line. Spring Boot's %xwEx is %xEx with whitespace, and was checked on real
+            // Spring Boot 3.5 and 4.1 applications (spike SB9), which this cannot reproduce without Spring.
+            for (String pattern : new String[] {"%ex", "%xEx", "%rEx", "%ex{short}"}) {
                 PatternLayout layout = PatternLayout.newBuilder().withPattern(pattern)
                         .withConfiguration(configuration).build();
                 String rendered = layout.toSerializable(event);

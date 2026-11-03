@@ -55,7 +55,8 @@ final class TrimSlots {
                 if (appender == null || appender instanceof TrimAppender || !writesText(appender, configuration)) {
                     continue;
                 }
-                if (swap(loggerConfig, reference, appender, new TrimAppender(appender, shared))) {
+                if (swap(loggerConfig, reference, appender,
+                        new TrimAppender(appender, shared, rendersFromProxy(appender, configuration)))) {
                     wrapped++;
                 }
             }
@@ -108,6 +109,40 @@ final class TrimSlots {
             Diagnostics.warn("LogAperture could not wrap appender '" + reference.getRef() + "' for trim: " + e);
             return false;
         }
+    }
+
+    /**
+     * The converters that render a throwable from the event's {@code ThrowableProxy}: {@code %xEx} and its
+     * kin ({@code xThrowable}, {@code xException}, {@code rEx} and so on, Spring Boot's {@code xwEx} among
+     * them). A pattern with none reads the throwable itself ({@code %ex}), which needs no proxy.
+     */
+    private static final java.util.regex.Pattern PROXY_CONVERTER =
+            java.util.regex.Pattern.compile("%[-0-9.]*[xr]w?(Ex|Throwable|Exception)(?![A-Za-z])|%[-0-9.]*rootException");
+
+    /** An explicit plain throwable converter: {@code %ex}, {@code %exception}, {@code %throwable}. */
+    private static final java.util.regex.Pattern PLAIN_CONVERTER =
+            java.util.regex.Pattern.compile("%[-0-9.]*(ex|exception|throwable)(?![A-Za-z])");
+
+    /**
+     * Whether any layout behind the appender may read the proxy; when in doubt, yes. A pattern with no
+     * throwable converter at all counts: {@code PatternLayout} adds one itself ({@code alwaysWriteExceptions}
+     * defaults to true), and that one reads the proxy.
+     */
+    static boolean rendersFromProxy(Appender appender, Configuration configuration) {
+        if (appender instanceof AsyncAppender async) {
+            for (String name : async.getAppenderRefStrings()) {
+                Appender inner = configuration.getAppender(name);
+                if (inner == null || rendersFromProxy(inner, configuration)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (!(appender.getLayout() instanceof PatternLayout layout)) {
+            return true;
+        }
+        String pattern = layout.getConversionPattern();
+        return PROXY_CONVERTER.matcher(pattern).find() || !PLAIN_CONVERTER.matcher(pattern).find();
     }
 
     /**

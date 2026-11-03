@@ -15,6 +15,8 @@
  */
 package org.logaperture.adapter.jul;
 
+import org.logaperture.core.TrimmedThrowables;
+
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
@@ -128,20 +130,20 @@ final class ByteCountingFormatter extends Formatter {
         return -1;
     }
 
-    /** The index just past a trim marker ({@link TrimRendering#MARKER_OPEN} digits {@link TrimRendering#MARKER_CLOSE}) at {@code at}, or {@code -1}. */
+    /** The index just past a trim marker ({@link TrimmedThrowables#MARKER_OPEN} digits {@link TrimmedThrowables#MARKER_CLOSE}) at {@code at}, or {@code -1}. */
     private static int afterTrimMarker(String text, int at) {
-        if (!text.startsWith(TrimRendering.MARKER_OPEN, at)) {
+        if (!text.startsWith(TrimmedThrowables.MARKER_OPEN, at)) {
             return -1;
         }
-        int digits = at + TrimRendering.MARKER_OPEN.length();
+        int digits = at + TrimmedThrowables.MARKER_OPEN.length();
         int end = digits;
         while (end < text.length() && text.charAt(end) >= '0' && text.charAt(end) <= '9') {
             end++;
         }
-        if (end == digits || !text.startsWith(TrimRendering.MARKER_CLOSE, end)) {
+        if (end == digits || !text.startsWith(TrimmedThrowables.MARKER_CLOSE, end)) {
             return -1;
         }
-        return end + TrimRendering.MARKER_CLOSE.length();
+        return end + TrimmedThrowables.MARKER_CLOSE.length();
     }
 
     /** The index just past a {@code \n} or {@code \r\n} at {@code at}, or {@code -1} if there is none. */

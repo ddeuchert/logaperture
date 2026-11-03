@@ -18,6 +18,7 @@ package org.logaperture.adapter.jul;
 import org.junit.jupiter.api.Test;
 import org.logaperture.api.LoggerByteCount;
 import org.logaperture.core.TrimDecision;
+import org.logaperture.core.TrimmedThrowables;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -134,7 +135,7 @@ class ByteCountingFormatterTest {
     @Test
     void stackTraceShare_trimmedTrace_skipsTheTrimMarker() {
         RuntimeException thrown = new RuntimeException("outer", new IllegalStateException("inner"));
-        Throwable trimmed = TrimRendering.buildTrimmed(thrown, new TrimDecision("r1", 2, false));
+        Throwable trimmed = TrimmedThrowables.build(thrown, new TrimDecision("r1", 2, false));
         String formatted = "SEVERE: boom\n" + render(trimmed);
 
         assertEquals("SEVERE: boom\n".length(), ByteCountingFormatter.traceStart(formatted, thrown),
@@ -146,7 +147,7 @@ class ByteCountingFormatterTest {
     @Test
     void stackTraceShare_trimmedToNoFrames_headerAndMarkerAreEnough() {
         RuntimeException thrown = new RuntimeException("outer");
-        Throwable trimmed = TrimRendering.buildTrimmed(thrown, new TrimDecision("r1", 0, true));
+        Throwable trimmed = TrimmedThrowables.build(thrown, new TrimDecision("r1", 0, true));
         String formatted = "SEVERE: failed: " + thrown + "\n" + render(trimmed);
 
         assertEquals(formatted.lastIndexOf(String.valueOf(thrown)), ByteCountingFormatter.traceStart(formatted, thrown),
@@ -156,7 +157,7 @@ class ByteCountingFormatterTest {
     @Test
     void stackTraceShare_markerWithoutDigits_isNotAMarker() {
         RuntimeException thrown = new RuntimeException("outer");
-        String formatted = "SEVERE: " + thrown + TrimRendering.MARKER_OPEN + "x" + TrimRendering.MARKER_CLOSE + "\n";
+        String formatted = "SEVERE: " + thrown + TrimmedThrowables.MARKER_OPEN + "x" + TrimmedThrowables.MARKER_CLOSE + "\n";
 
         assertEquals(-1, ByteCountingFormatter.traceStart(formatted, thrown),
                 "no digits: not a marker, so the header alone isn't taken for a throwable with frames");
@@ -165,7 +166,7 @@ class ByteCountingFormatterTest {
     @Test
     void stackTraceShare_messageRepeatsATrimmedHeader_theTraceAfterItIsTaken() {
         RuntimeException thrown = new RuntimeException("outer");
-        Throwable trimmed = TrimRendering.buildTrimmed(thrown, new TrimDecision("r1", 2, false));
+        Throwable trimmed = TrimmedThrowables.build(thrown, new TrimDecision("r1", 2, false));
         String message = "SEVERE: last time: " + trimmed + "\n";
         String formatted = message + render(trimmed);
 
