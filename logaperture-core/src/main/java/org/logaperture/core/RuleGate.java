@@ -43,4 +43,23 @@ public interface RuleGate {
     default boolean appliesTo(String loggerName) {
         return true;
     }
+
+    /**
+     * doc/specs/log4j2-adapter.md A3: the trim a render stage should apply to {@code event}, chosen
+     * the same way {@link #evaluate} chooses it, but <em>never counted</em>. For a backend whose
+     * gate runs before the event exists and whose render stage sees the event on another thread
+     * (Log4j 2): the gate's {@link #evaluate} counts the hit once; each render stage that needs
+     * the decision calls this instead of {@link #evaluate}, so a hit is never counted twice.
+     *
+     * <p>Considers {@link org.logaperture.api.LogRule trim} rules only. A drop rule that matched
+     * has already stopped the event at the gate, and one that sampled it through leaves it a
+     * survivor, which is exactly what this answers for. The result can differ from what the gate
+     * chose if a rule changed in between; that split is accepted (A3, "As built").
+     *
+     * @return the decision, or {@code null} if no trim applies (including an event with no
+     *         throwable)
+     */
+    default TrimDecision trimChoice(RuleCandidateEvent event) {
+        return null;
+    }
 }

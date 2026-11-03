@@ -132,6 +132,16 @@ public final class RuleService implements RuleOperations {
         public boolean appliesTo(String loggerName) {
             return !effectiveRules(loggerName).isEmpty();
         }
+
+        @Override
+        public TrimDecision trimChoice(RuleCandidateEvent event) {
+            GatePlan plan = gatePlan(event.loggerName());
+            if (plan.rules().isEmpty()) {
+                return null;
+            }
+            Trim winner = selectTrim(plan.rules(), event);
+            return winner == null ? null : new TrimDecision(winner.id(), winner.frames(), winner.collapseCauses());
+        }
     };
     private final Map<String, LongAdder> hitCounters = new ConcurrentHashMap<>();
     /**
@@ -1211,6 +1221,19 @@ public final class RuleService implements RuleOperations {
      * rules}' hit count with ordinary non-exception log traffic.
      */
     private TrimDecision mostRestrictiveTrim(List<LogRule> effective, RuleCandidateEvent event) {
+        Trim winner = selectTrim(effective, event);
+        if (winner == null) {
+            return null;
+        }
+        hitCounters.computeIfAbsent(winner.id(), id -> new LongAdder()).increment();
+        return new TrimDecision(winner.id(), winner.frames(), winner.collapseCauses());
+    }
+
+    /**
+     * The choice itself, with no side effects: shared by the counting gate ({@link
+     * #mostRestrictiveTrim}) and the non-counting {@link RuleGate#trimChoice}.
+     */
+    private static Trim selectTrim(List<LogRule> effective, RuleCandidateEvent event) {
         if (event.thrown() == null) {
             return null;
         }
@@ -1226,11 +1249,7 @@ public final class RuleService implements RuleOperations {
                 winner = trim;
             }
         }
-        if (winner == null) {
-            return null;
-        }
-        hitCounters.computeIfAbsent(winner.id(), id -> new LongAdder()).increment();
-        return new TrimDecision(winner.id(), winner.frames(), winner.collapseCauses());
+        return winner;
     }
 
     /**
