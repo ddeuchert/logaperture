@@ -76,72 +76,72 @@ final class GateFilter extends AbstractFilter {
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object... params) {
-        return skip(logger, level, message) ? Result.NEUTRAL : run(logger, level, message, params, null);
+        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, params, null);
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message) {
-        return skip(logger, level, message) ? Result.NEUTRAL : run(logger, level, message, null, null);
+        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, null, null);
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0) {
-        return skip(logger, level, message) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0}, null);
+        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0}, null);
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1) {
-        return skip(logger, level, message) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1}, null);
+        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1}, null);
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1, Object p2) {
-        return skip(logger, level, message) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2}, null);
+        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2}, null);
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1, Object p2, Object p3) {
-        return skip(logger, level, message) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3}, null);
+        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3}, null);
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1, Object p2, Object p3, Object p4) {
-        return skip(logger, level, message) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4}, null);
+        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4}, null);
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1, Object p2, Object p3, Object p4, Object p5) {
-        return skip(logger, level, message) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5}, null);
+        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5}, null);
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1, Object p2, Object p3, Object p4, Object p5, Object p6) {
-        return skip(logger, level, message) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5, p6}, null);
+        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5, p6}, null);
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1, Object p2, Object p3, Object p4, Object p5, Object p6, Object p7) {
-        return skip(logger, level, message) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5, p6, p7}, null);
+        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5, p6, p7}, null);
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1, Object p2, Object p3, Object p4, Object p5, Object p6, Object p7, Object p8) {
-        return skip(logger, level, message) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5, p6, p7, p8}, null);
+        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5, p6, p7, p8}, null);
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1, Object p2, Object p3, Object p4, Object p5, Object p6, Object p7, Object p8, Object p9) {
-        return skip(logger, level, message) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5, p6, p7, p8, p9}, null);
+        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5, p6, p7, p8, p9}, null);
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, Object message, Throwable thrown) {
-        return skip(logger, level, message) ? Result.NEUTRAL : run(logger, level, message, null, thrown);
+        return skip(logger, level, message, thrown) ? Result.NEUTRAL : run(logger, level, message, null, thrown);
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, Message message, Throwable thrown) {
-        return skip(logger, level, message) ? Result.NEUTRAL : run(logger, level, message, null, thrown);
+        return skip(logger, level, message, thrown) ? Result.NEUTRAL : run(logger, level, message, null, thrown);
     }
 
     /** Never called by Log4j for a context-wide filter (spike G1: one evaluation per log call). */
@@ -153,11 +153,13 @@ final class GateFilter extends AbstractFilter {
     // --- the work -------------------------------------------------------------------------------------
 
     /**
-     * Leave without allocating if there is nothing to do: an {@code isXxxEnabled()} guard (no message),
-     * a call the logger's level would not write (G2), or no seam interested in this logger.
+     * Leave without allocating if there is nothing to do: an {@code isXxxEnabled()} guard (no message and
+     * no throwable), a call the logger's level would not write (G2), or no seam interested in this logger.
+     * A null message <em>with</em> a throwable ({@code logger.error(null, ex)}) is a real call, which Log4j
+     * writes; a null message alone cannot be told from a guard and is treated as one.
      */
-    private boolean skip(Logger logger, Level level, Object message) {
-        if (message == null || !level.isMoreSpecificThan(logger.getLevel())) {
+    private boolean skip(Logger logger, Level level, Object message, Throwable thrown) {
+        if ((message == null && thrown == null) || !level.isMoreSpecificThan(logger.getLevel())) {
             return true;
         }
         RuleGate rules = gate;
@@ -170,8 +172,8 @@ final class GateFilter extends AbstractFilter {
         RuleGate rules = gate;
         StormObserver observer = storm;
         try {
-            Call call = Call.of(logger.getName(), level, message, params, thrown);
-            Instant now = Instant.now(); // one clock read, shared by both seams
+            Instant now = Instant.now(); // one clock read, shared by both seams and the storm's sample
+            Call call = Call.of(logger.getName(), level, message, params, thrown, now);
             if (rules != null && rules.appliesTo(call.loggerName)) {
                 GateVerdict verdict = rules.evaluateOnce(new RuleCandidateEvent(call.loggerName,
                         LevelMapper.toApi(level), call.thrown, call::formatted, now));
@@ -204,11 +206,15 @@ final class GateFilter extends AbstractFilter {
         final Object message;
         final Object[] params;
         final Throwable thrown;
+        final Instant timestamp;
         private String resolvedFormat;
         private String resolvedText;
         private boolean resolved;
+        private String formattedText;
 
-        private Call(String loggerName, Level level, Object message, Object[] params, Throwable thrown) {
+        private Call(String loggerName, Level level, Object message, Object[] params, Throwable thrown,
+                     Instant timestamp) {
+            this.timestamp = timestamp;
             this.loggerName = loggerName;
             this.level = level;
             this.message = message;
@@ -216,7 +222,8 @@ final class GateFilter extends AbstractFilter {
             this.thrown = thrown;
         }
 
-        static Call of(String loggerName, Level level, Object message, Object[] params, Throwable thrown) {
+        static Call of(String loggerName, Level level, Object message, Object[] params, Throwable thrown,
+                       Instant timestamp) {
             Throwable effective = thrown;
             if (effective == null) {
                 if (message instanceof Message m) {
@@ -225,23 +232,38 @@ final class GateFilter extends AbstractFilter {
                     effective = trailingThrowable(pattern, params);
                 }
             }
-            return new Call(loggerName, level, message, params, effective);
+            return new Call(loggerName, level, message, params, effective, timestamp);
         }
 
         /** The unformatted pattern: what storm detection fingerprints. Never null. */
         String format() {
-            if (message instanceof String pattern) {
-                return pattern;
+            String pattern;
+            if (message instanceof String text) {
+                pattern = text;
+            } else if (message instanceof Message m) {
+                pattern = m.getFormat();
+                if (pattern == null) {
+                    pattern = m.getFormattedMessage(); // a custom Message may have no pattern
+                }
+            } else {
+                resolve();
+                pattern = resolvedFormat;
             }
-            if (message instanceof Message m) {
-                return m.getFormat();
-            }
-            resolve();
-            return resolvedFormat;
+            return pattern == null ? "" : pattern;
         }
 
-        /** The message with its parameters filled in, as an appender would write it: for a rule that matches text. */
+        /**
+         * The message with its parameters filled in, as an appender would write it: for a rule that matches
+         * text, and for a storm's sample. Formatted once per call, however many seams ask.
+         */
         String formatted() {
+            if (formattedText == null) {
+                formattedText = format0();
+            }
+            return formattedText;
+        }
+
+        private String format0() {
             if (message instanceof Message m) {
                 return m.getFormattedMessage();
             }
@@ -304,7 +326,7 @@ final class GateFilter extends AbstractFilter {
         @Override
         public String firstOccurrence(Call call) {
             StringBuilder text = new StringBuilder();
-            text.append(Instant.now()).append(' ').append(call.level).append(" [").append(call.loggerName).append("] ")
+            text.append(call.timestamp).append(' ').append(call.level).append(" [").append(call.loggerName).append("] ")
                     .append(call.formatted());
             if (call.thrown != null) {
                 StringWriter sink = new StringWriter();

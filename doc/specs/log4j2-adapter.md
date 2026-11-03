@@ -384,7 +384,7 @@ rules (`NativeChangeReassertionTest`).
 
 Guide: the warning goes on the Log4j 2 pages with the last slice, with output captured from a real run.
 
-### Slice 4: the gate (built, 2026-11-03)
+### Slice 4: the gate (built, 2026-11-02)
 
 The fourth PR of the adapter under #302: drop rules and storm detection on Log4j 2.
 
@@ -416,7 +416,11 @@ The fourth PR of the adapter under #302: drop rules and storm detection on Log4j
   without the per-record decision cache. That cache exists so sibling handler filters share one verdict
   for one record; a context-wide filter runs once per call, before any record, and would only fill the
   cache with garbage. `RuleService` overrides it; the default evaluates against a fresh identity.
-- **One clock read per call**, shared by both seams. The adapter holds the configuration it attached
+- **A null message.** With a throwable (`logger.error(null, ex)`) it is a real call and is gated; with no
+  throwable it cannot be told from an `isXxxEnabled()` guard (same signature) and is treated as one, so
+  `logger.info((String) null)` is not gated. A message with no pattern (`getFormat()` null) is fingerprinted
+  by its text.
+- **One clock read per call**, shared by both seams and the storm's sample. The adapter holds the configuration it attached
   the filter to weakly, so a replaced configuration is not pinned, and `detach()` removes the filter from
   that one and from the live one.
 - **Reconfiguration.** A swap drops the filter with the old configuration; core's reset hook already
@@ -426,7 +430,7 @@ The fourth PR of the adapter under #302: drop rules and storm detection on Log4j
 - **Fails open (§9):** a rule or detector that throws is a throttled `Diagnostics` line and the event
   passes.
 
-Verified: 15 unit tests on real Log4j (every overload, the level fast path, a guard, deny, storm order and
+Verified: unit tests on real Log4j (every overload, the level fast path, a guard, deny, storm order and
 the raw pattern, idempotence, a swap, detach, fail-open), and `BundledLog4j2EndToEndIT` in a real
 process: a drop rule removes its lines and keeps removing them after a reload.
 

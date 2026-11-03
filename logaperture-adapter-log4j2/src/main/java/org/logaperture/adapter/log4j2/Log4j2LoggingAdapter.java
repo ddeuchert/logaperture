@@ -27,6 +27,7 @@ import org.logaperture.core.spi.LoggingAdapter;
 
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -96,7 +97,7 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
     /** The gate: one filter for drop rules and storm detection, attached to the live configuration. */
     private final GateFilter gateFilter = new GateFilter();
     /** The configuration {@link #gateFilter} is attached to; a swap leaves it behind and it is attached again. */
-    private volatile java.lang.ref.WeakReference<Configuration> gateAttachedTo;
+    private volatile WeakReference<Configuration> gateAttachedTo;
     private final AtomicReference<Runnable> resetListener = new AtomicReference<>();
     private final AtomicReference<Runnable> nativeChangeListener = new AtomicReference<>();
     private final PropertyChangeListener configListener = this::onConfigEvent;
@@ -152,13 +153,14 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
      */
     private synchronized void attachGate() {
         Configuration live = context.getConfiguration();
-        java.lang.ref.WeakReference<Configuration> attached = gateAttachedTo;
+        WeakReference<Configuration> attached = gateAttachedTo;
         if (attached != null && attached.get() == live) {
             return;
         }
         gateFilter.start();
+        live.removeFilter(gateFilter); // idempotent: this configuration may already carry it (A to B and back to A)
         live.addFilter(gateFilter);
-        gateAttachedTo = new java.lang.ref.WeakReference<>(live); // weak: a replaced configuration must not be pinned
+        gateAttachedTo = new WeakReference<>(live); // weak: a replaced configuration must not be pinned
     }
 
     /** Whether this adapter controls {@code other}. */
@@ -169,7 +171,7 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
     /** Lets go of the context: removes the event listener and both callbacks (spec "Scope" 7). */
     synchronized void detach() {
         gateFilter.release();
-        java.lang.ref.WeakReference<Configuration> attached = gateAttachedTo;
+        WeakReference<Configuration> attached = gateAttachedTo;
         Configuration old = attached == null ? null : attached.get();
         if (old != null) {
             old.removeFilter(gateFilter);

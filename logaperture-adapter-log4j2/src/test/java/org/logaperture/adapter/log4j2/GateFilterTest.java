@@ -170,6 +170,15 @@ class GateFilterTest {
     }
 
     @Test
+    void aNullMessageWithAThrowable_isARealCall_aGuardIsNot() {
+        Exception boom = new RuntimeException("boom");
+        log.error((Object) null, boom);
+        assertEquals(1, seen.size(), "Log4j writes it, so the gate sees it");
+        assertEquals(boom, seen.get(0).thrown());
+        assertEquals("null", seen.get(0).formattedMessageSupplier().get());
+    }
+
+    @Test
     void anIsEnabledGuard_isNotAnEvent() {
         assertTrue(log.isInfoEnabled());
         assertFalse(log.isDebugEnabled());
@@ -331,6 +340,33 @@ class GateFilterTest {
     }
 
     @Test
+    void aMessageWithNoPattern_isFingerprintedByItsText() {
+        adapter.installStormDetection(observer);
+        log.info(new org.apache.logging.log4j.message.Message() {
+            @Override
+            public String getFormattedMessage() {
+                return "no pattern here";
+            }
+
+            @Override
+            public String getFormat() {
+                return null;
+            }
+
+            @Override
+            public Object[] getParameters() {
+                return new Object[0];
+            }
+
+            @Override
+            public Throwable getThrowable() {
+                return null;
+            }
+        });
+        assertEquals("no pattern here", observed.get(0).rawMessage);
+    }
+
+    @Test
     void stormDetectionAlone_worksWithoutARulePipeline() {
         adapter.installRulePipeline(null);
         adapter.installStormDetection(observer);
@@ -369,6 +405,17 @@ class GateFilterTest {
         adapter.installRulePipeline(gate);
         adapter.detach();
         assertNull(context.getConfiguration().getFilter(), "removed from the configuration it was last put on");
+    }
+
+    @Test
+    void goingBackToAConfigurationItWasAttachedTo_doesNotAddTheGateTwice() {
+        org.apache.logging.log4j.core.config.Configuration first = context.getConfiguration();
+        context.setConfiguration(configuration());
+        adapter.installRulePipeline(gate); // attached to the second
+        context.setConfiguration(first);   // back to the first, which still carries it
+        adapter.installRulePipeline(gate);
+        log.info("once");
+        assertEquals(1, seen.size(), "one filter, one evaluation");
     }
 
     @Test
