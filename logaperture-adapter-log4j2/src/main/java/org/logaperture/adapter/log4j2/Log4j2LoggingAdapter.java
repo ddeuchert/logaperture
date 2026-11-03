@@ -20,8 +20,11 @@ import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.logaperture.api.BackendInfo;
 import org.logaperture.api.Level;
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.spi.LoggingAdapter;
 
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -29,6 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Levels on one Log4j 2 {@link LoggerContext} (doc/specs/log4j2-adapter.md A2, A8). Works on the
@@ -39,11 +43,19 @@ import java.util.concurrent.ConcurrentHashMap;
  * one, so a reset that writes the captured baseline back turns a declared {@code fatal} into
  * {@code error}. The adapter cannot do better alone: a reset and a deliberate {@code set logger x
  * error} reach {@link #applyLevel} as the same call. Exact restoration needs the baseline to carry
- * the native level (issue filed with this slice).
+ * the native level (#312).
  *
- * <p>Not in this class yet: re-applying after a reconfiguration, handler levels, the gate and trim.
- * Until the re-apply listener lands a reconfiguration discards a level set here, as it would any
- * other {@code LoggerConfig} change.
+ * <p>Reconfiguration (spec "Scope" 3). Log4j fires a {@code "config"} property event from the context
+ * on a configuration swap ({@code old != new}) and from <em>every</em> {@code updateLoggers()}
+ * ({@code old == new}, spike R0). A swap wipes levels, so it runs the {@link #onReset} listener (a full
+ * re-apply); an {@code old == new} event from anyone else's {@code updateLoggers()} is a native level
+ * change (Spring's {@code logging.level}, Actuator) and runs the {@link #onNativeChange} listener, which
+ * compares active overrides with the levels now in force. Events this adapter causes itself, and events
+ * once the context is stopping (SB10), are ignored, so nothing recurses. No assumption is made that the
+ * swap event comes before the {@code old == new} one that precedes it (SB5): both listeners are
+ * idempotent.
+ *
+ * <p>Not in this class yet: handler levels, the gate and trim.
  */
 final class Log4j2LoggingAdapter implements LoggingAdapter {
 
@@ -59,9 +71,88 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
      */
     private final Map<String, LoggerConfig> createdByLogAperture = new ConcurrentHashMap<>();
 
+    private final AtomicReference<Runnable> resetListener = new AtomicReference<>();
+    private final AtomicReference<Runnable> nativeChangeListener = new AtomicReference<>();
+    private final PropertyChangeListener configListener = this::onConfigEvent;
+    private boolean listening;
+    /** Set on the thread that is inside this adapter's own {@code updateLoggers()} or a listener it called. */
+    private final ThreadLocal<Boolean> inside = new ThreadLocal<>();
+
     Log4j2LoggingAdapter(LoggerContext context, String version) {
         this.context = context;
         this.version = version;
+    }
+
+    @Override
+    public synchronized void onReset(Runnable listener) {
+        resetListener.set(listener);
+        startListening();
+    }
+
+    @Override
+    public synchronized void clearResetListener() {
+        resetListener.set(null);
+        stopListeningIfIdle();
+    }
+
+    @Override
+    public synchronized void onNativeChange(Runnable listener) {
+        nativeChangeListener.set(listener);
+        startListening();
+    }
+
+    @Override
+    public synchronized void clearNativeChangeListener() {
+        nativeChangeListener.set(null);
+        stopListeningIfIdle();
+    }
+
+    /** Lets go of the context: removes the event listener and both callbacks (spec "Scope" 7). */
+    synchronized void detach() {
+        resetListener.set(null);
+        nativeChangeListener.set(null);
+        stopListeningIfIdle();
+    }
+
+    private void startListening() {
+        if (!listening) {
+            context.addPropertyChangeListener(configListener);
+            listening = true;
+        }
+    }
+
+    private void stopListeningIfIdle() {
+        if (listening && resetListener.get() == null && nativeChangeListener.get() == null) {
+            context.removePropertyChangeListener(configListener);
+            listening = false;
+        }
+    }
+
+    private void onConfigEvent(PropertyChangeEvent event) {
+        if (!LoggerContext.PROPERTY_CONFIG.equals(event.getPropertyName())) {
+            return;
+        }
+        if (inside.get() != null || !context.isStarted()) {
+            return; // our own updateLoggers() or a listener we ran (R0), or a context that is stopping (SB10)
+        }
+        boolean swap = event.getOldValue() != event.getNewValue();
+        if (swap) {
+            createdByLogAperture.clear(); // they were LoggerConfigs of the configuration that is gone
+        }
+        Runnable listener = swap ? resetListener.get() : nativeChangeListener.get();
+        if (listener == null) {
+            return;
+        }
+        inside.set(Boolean.TRUE);
+        try {
+            listener.run();
+        } catch (Throwable t) {
+            // Never into Log4j's own reconfiguration (§9): a failed re-apply is a line, not a crash.
+            Diagnostics.warn("LogAperture could not re-apply after a Log4j "
+                    + (swap ? "reconfiguration" : "level change") + ", continuing", t);
+        } finally {
+            inside.remove();
+        }
     }
 
     @Override
@@ -104,7 +195,20 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         } else {
             set(config, name, own, LevelMapper.toLog4j(level));
         }
-        context.updateLoggers();
+        updateLoggersQuietly();
+    }
+
+    /** {@code updateLoggers()} fires a {@code "config"} event; this adapter's own must not call it back (R0). */
+    private void updateLoggersQuietly() {
+        Boolean outer = inside.get();
+        inside.set(Boolean.TRUE);
+        try {
+            context.updateLoggers();
+        } finally {
+            if (outer == null) {
+                inside.remove();
+            }
+        }
     }
 
     private void set(Configuration config, String name, LoggerConfig own, org.apache.logging.log4j.Level level) {

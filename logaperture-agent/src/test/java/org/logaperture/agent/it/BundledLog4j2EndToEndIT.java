@@ -86,6 +86,43 @@ class BundledLog4j2EndToEndIT {
         assertFalse(reset.contains("debug b"), reset);
     }
 
+    /** A1, R1: a configuration reload wipes the level; the override is back before the call returns. */
+    @Test
+    void anOverrideSurvivesAReconfiguration_andANativeChangeAgainstIt() throws Exception {
+        Path output = work.resolve("reconf.log");
+        Process app = launch(output);
+        waitFor(output, "FIXTURE-READY");
+        LevelControlMXBean proxy = LevelControlEndToEndIT.pollForMxBeanProxy(
+                LevelControlEndToEndIT.attachAndConnect(app.pid()));
+        pollForLogger(proxy, WORKER);
+        proxy.setLogger(WORKER, "DEBUG", "e2e", "SESSION", 120, false);
+
+        sendAndWait(app, output, "RECONFIGURE r1", "DONE r1");
+        String afterReload = logAndWait(app, output, "a");
+        assertTrue(afterReload.contains("DEBUG fixture.Worker debug a"),
+                "the reload must not drop the override:\n" + afterReload);
+
+        // Spring's logging.level / an Actuator POST: a native change against the override.
+        sendAndWait(app, output, "NATIVE WARN n1", "DONE n1");
+        String afterNative = logAndWait(app, output, "b");
+        assertTrue(afterNative.contains("DEBUG fixture.Worker debug b"),
+                "a native change must not undo the override:\n" + afterNative);
+        LoggerInfoData row = proxy.listLoggers(WORKER).get(0);
+        assertEquals("DEBUG", row.getEffectiveLevel());
+        assertTrue(row.isOverrideActive());
+
+        proxy.resetLogger(WORKER, false);
+        String reset = logAndWait(app, output, "c");
+        assertFalse(reset.contains("debug c"), reset);
+    }
+
+    private static void sendAndWait(Process app, Path output, String command, String done) throws Exception {
+        OutputStream stdin = app.getOutputStream();
+        stdin.write((command + "\n").getBytes(StandardCharsets.UTF_8));
+        stdin.flush();
+        waitFor(output, done);
+    }
+
     /** C2: the adapter's classes are in the agent jar, but only where a BridgeClassLoader reads them. */
     @Test
     void adapterClassesAreStoredUnderThePrefix_andNowhereElse() throws Exception {

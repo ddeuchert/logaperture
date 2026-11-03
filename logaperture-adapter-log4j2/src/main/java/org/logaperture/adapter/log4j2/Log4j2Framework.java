@@ -45,6 +45,7 @@ public final class Log4j2Framework implements BridgedFramework {
     private final AtomicBoolean versionChecked = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final AtomicReference<Runnable> onShutdown = new AtomicReference<>();
+    private final List<Log4j2LoggingAdapter> adapters = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     @Override
     public boolean ready() {
@@ -82,7 +83,9 @@ public final class Log4j2Framework implements BridgedFramework {
                 continue;
             }
             String name = names.get(i);
-            handles.add(ContextHandle.of("log4j2:" + name, name, new Log4j2LoggingAdapter(context, version)));
+            Log4j2LoggingAdapter adapter = new Log4j2LoggingAdapter(context, version);
+            adapters.add(adapter);
+            handles.add(ContextHandle.of("log4j2:" + name, name, adapter));
         }
         if (handles.isEmpty()) {
             throw new IllegalStateException("the Log4j context stopped before it could be bound");
@@ -94,6 +97,10 @@ public final class Log4j2Framework implements BridgedFramework {
     public void close() {
         closed.set(true);
         onShutdown.set(null);
+        for (Log4j2LoggingAdapter adapter : adapters) {
+            adapter.detach(); // removes its property listener from the context (Scope 7)
+        }
+        adapters.clear();
     }
 
     /** Throws, so the detector reports it (C8), if this Log4j is older than 2.20.0 (A10). */
