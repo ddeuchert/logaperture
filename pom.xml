@@ -69,6 +69,7 @@
     <module>logaperture-core</module>
     <module>logaperture-adapter-logback</module>
     <module>logaperture-adapter-jul</module>
+    <module>logaperture-adapter-log4j2</module>
     <module>logaperture-container-none</module>
     <module>logaperture-container-jbosslogmanager</module>
     <module>logaperture-container-wildfly</module>
@@ -98,6 +99,9 @@
     <logback.version>1.5.13</logback.version>
     <slf4j.version>2.0.16</slf4j.version>
     <junit.version>5.11.3</junit.version>
+
+    <!-- The oldest Log4j 2 LogAperture controls (doc/specs/log4j2-adapter.md A10); the adapter is compiled against it. -->
+    <log4j2.version>2.20.0</log4j2.version>
 
     <!--
       Compiled against for the JBoss LogManager adapter. `provided` scope: at
@@ -170,6 +174,11 @@
       <dependency>
         <groupId>org.logaperture</groupId>
         <artifactId>logaperture-adapter-jul</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.logaperture</groupId>
+        <artifactId>logaperture-adapter-log4j2</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

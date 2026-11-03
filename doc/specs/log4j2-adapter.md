@@ -214,6 +214,49 @@ wrapper's counted-once, recomputed-at-render behaviour is tested only when the a
 2.25.3 (the per-PR matrix will run them), the cost of the gate,
 and the `ThrowableProxy` subclass of A4 (the prototype swapped in a plain `Throwable`).
 
+### Slice 1: detection and binding (built, 2026-11-03)
+
+The first PR of the adapter, issue #302. The agent now finds a Log4j 2 that is not on the system
+class path, binds it once it has a started context, and offers level control on it. In the order
+of "Scope":
+
+- **Module `logaperture-adapter-log4j2`**, compiled against Log4j 2.20.0 (`provided`), with the
+  entry `Log4j2Framework`, the levels in `Log4j2LoggingAdapter`, and the context names of A7. Its
+  class files are copied into the agent jar under `META-INF/logaperture/log4j2/` only, by path at
+  `process-classes`; the agent's shade step does not bundle the module, so nothing of it sits at the
+  jar's root (checked on the built jar: no `org/logaperture/adapter/log4j2` outside that folder).
+  The system class loader cannot load it by accident (C2).
+- **The watch** (`KnownFrameworks.LOG4J2`): marker `LoggerContext`, owner packages
+  `org.apache.logging.log4j.`, `log4j-jul`'s manager as a front for it (C1). `WatchMatchesAdapterTest`
+  keeps the strings true.
+- **Readiness.** `ready()` asks `LogManager.getFactory()` for the contexts the factory already has
+  (`getSelector().getLoggerContexts()`) and is true once one is `isStarted()`. It creates none.
+  This is called only after the detector has seen `LoggerContext` loaded, which is the I-4 condition;
+  `BundledLog4j2EndToEndIT` shows an application's own `log4j2.configurationFile`, set in `main`,
+  stays in force with Log4j in the application's own loader.
+- **Version (A10).** Read from the package of the loaded context class; below 2.20.0 `ready()`
+  throws, and the detector's C8 line says why. An unreadable version binds. The `log4j2.version`
+  `doctor` check is not in this slice (see below).
+- **Levels (A2, A8).** On the context held, never through `Configurator`. `configuredLevel` is
+  `getExplicitLevel()`; a name with no `LoggerConfig` of its own reports none. A pre-set creates a
+  `LoggerConfig` of its own, and clearing it removes that `LoggerConfig` again; a declared one is
+  given back its inheritance with `setLevel(null)`. `FATAL` reads back as `ERROR`, a custom level as
+  the nearest standard one. The root is `ROOT`, as on Logback and JUL.
+- **Shutdown (TC5).** Log4j's own `addShutdownListener` calls the detector's callback; the listener
+  cannot be removed, so it goes inert once the entry has been closed.
+
+**Not in this slice, each its own PR under #302:** re-applying after a reconfiguration and
+re-asserting after a native change (A1, A2: until then a reconfiguration discards a level set
+here); the gate; the slot wrapper and trim; handler levels; the three `doctor` checks (A12) and
+`handler.unbounded-growth`; the version matrix, the Spring Boot, Tomcat and WildFly setups; the
+benchmark; and the guide pages and changelog entry, which land with the last slice because
+the feature is not usable as a whole before it.
+
+**Found while building it:** the detector gives up three seconds after it finds a framework with no
+started context (C4). A Log4j copy whose first context is created more than three seconds after its
+`LoggerContext` class is loaded is not bound. Not seen in any setup tried; recorded under "Not
+established".
+
 ## Out of scope
 
 `top` on Log4j 2 (A6); Log4j 1 and reload4j; the warning for names no backend can reach (#303);
@@ -231,6 +274,7 @@ From the spike, carried here because they bound what is promised:
 - JDK 25; Spring Boot's `log4j2-spring.xml`, devtools restart and structured logging; Tomcat 10.1
   and a webapp without `log4j-jakarta-web` (the context name is then a hash, A7); WildFly 27+;
   more than one context in one Log4j copy.
+- A second context in the same Log4j copy created after the first was bound (the entry binds the contexts that are started when it opens), and a first context created more than 3 s after the class is loaded (C4).
 - The one extra `ContextDataProvider` call on the async-logger thread on 2.17.2 (moot under A3(a)).
 
 ## Estimate and slot

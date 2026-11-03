@@ -131,9 +131,13 @@ class FrameworkDetectionTest {
         assertFalse(KnownFrameworks.julManagerFrontsABoundFramework("org.fake.jul.LogManager", List.of()));
     }
 
-    /** Until a framework adapter registers its watch, the agent behaves exactly as before. */
+    /** Log4j 2 is the one framework the agent looks for in 1.1.0 (doc/specs/log4j2-adapter.md). */
     @Test
-    void noFrameworkIsKnownYet() {
-        assertTrue(KnownFrameworks.all().isEmpty());
+    void log4j2IsTheKnownFramework() {
+        assertEquals(List.of(KnownFrameworks.LOG4J2), KnownFrameworks.all());
+        assertEquals("log4j2", KnownFrameworks.LOG4J2.framework());
+        assertTrue(KnownFrameworks.julManagerFrontsABoundFramework(
+                "org.apache.logging.log4j.jul.LogManager", KnownFrameworks.all()),
+                "log4j-jul's manager is a front for Log4j 2, not a context of its own (C1)");
     }
 }

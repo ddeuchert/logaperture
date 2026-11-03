@@ -1,0 +1,68 @@
+/*
+ * Copyright 2026 David Deuchert
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.logaperture.adapter.log4j2;
+
+import org.apache.logging.log4j.Level;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class SmallUnitsTest {
+
+    @Test
+    void everyApiLevelRoundTrips() {
+        for (org.logaperture.api.Level level : org.logaperture.api.Level.values()) {
+            assertEquals(level, LevelMapper.toApi(LevelMapper.toLog4j(level)));
+        }
+    }
+
+    @Test
+    void fatalReadsBackAsError_andACustomLevelAsTheNearest() {
+        assertEquals(org.logaperture.api.Level.ERROR, LevelMapper.toApi(Level.FATAL));
+        assertEquals(org.logaperture.api.Level.INFO, LevelMapper.toApi(Level.forName("NOTICE", Level.INFO.intLevel() - 50)));
+        assertNull(LevelMapper.toApi(null));
+    }
+
+    @Test
+    void versions_below220AreTooOld_otherwiseNot() {
+        assertTrue(Log4j2Version.isTooOld("2.19.0"));
+        assertTrue(Log4j2Version.isTooOld("2.17.2"));
+        assertTrue(Log4j2Version.isTooOld("1.2.17"));
+        assertFalse(Log4j2Version.isTooOld("2.20.0"));
+        assertFalse(Log4j2Version.isTooOld("2.25.5"));
+        assertFalse(Log4j2Version.isTooOld("2.26.0-SNAPSHOT"));
+        assertFalse(Log4j2Version.isTooOld("3.0.0"));
+    }
+
+    @Test
+    void anUnknownVersionIsNotRefused() {
+        assertFalse(Log4j2Version.isTooOld(null));
+        assertFalse(Log4j2Version.isTooOld("weird"));
+    }
+
+    @Test
+    void contextNames_useAWebContextPath_elseACounter() {
+        assertEquals("/appA", ContextNames.of("/appA", 1));
+        assertEquals("/appA", ContextNames.of("/appA", 3));
+        assertEquals("log4j2", ContextNames.of("AppClassLoader@1b2c3d", 1));
+        assertEquals("log4j2", ContextNames.of(null, 1));
+        assertEquals("log4j2-2", ContextNames.of("AppClassLoader@1b2c3d", 2));
+        assertEquals("log4j2", ContextNames.of("/", 1), "a bare slash is not a context path");
+    }
+}

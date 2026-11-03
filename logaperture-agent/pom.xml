@@ -53,6 +53,16 @@
       <groupId>org.logaperture</groupId>
       <artifactId>logaperture-adapter-logback</artifactId>
     </dependency>
+    <!--
+      provided: built before this module (reactor order) and copied, class files only, into
+      META-INF/logaperture/log4j2/ below. Never a dependency the shade step bundles at the jar's
+      root: the system class loader must not be able to load it (class-loader-detector.md C2).
+    -->
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-adapter-log4j2</artifactId>
+      <scope>provided</scope>
+    </dependency>
     <dependency>
       <groupId>org.logaperture</groupId>
       <artifactId>logaperture-container-none</artifactId>
@@ -74,6 +84,20 @@
       <artifactId>logaperture-startup</artifactId>
     </dependency>
 
+    <!-- Test-only: the Log4j 2 the bundled-framework fixture loads in a class loader of its own
+         (never on its system class path), so the agent has to find it there. -->
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-api</artifactId>
+      <version>${log4j2.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
+      <version>${log4j2.version}</version>
+      <scope>test</scope>
+    </dependency>
     <!-- Test-only: the fixture app used by LevelControlEndToEndIT needs a
          real Logback on ITS classpath (a separate process from the agent). -->
     <dependency>
@@ -99,6 +123,36 @@
     -->
     <finalName>logaperture-agent</finalName>
     <plugins>
+      <!--
+        The Log4j 2 adapter's class files, stored under a prefix the system class loader never looks
+        in (class-loader-detector.md C2). Copied by path from the adapter module's output, so a plain
+        `mvn test` finds them without a packaged adapter jar; the adapter module precedes this one in
+        the reactor. A BridgeClassLoader reads them back through this jar's resource stream.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>store-log4j2-adapter</id>
+            <phase>process-classes</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.build.outputDirectory}/META-INF/logaperture/log4j2</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>${project.parent.basedir}/logaperture-adapter-log4j2/target/classes</directory>
+                  <includes>
+                    <include>**/*.class</include>
+                  </includes>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-shade-plugin</artifactId>
