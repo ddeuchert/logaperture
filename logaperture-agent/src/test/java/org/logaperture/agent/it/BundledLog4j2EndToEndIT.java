@@ -149,6 +149,45 @@ class BundledLog4j2EndToEndIT {
                 "a reload drops the filter with the old configuration; core puts it back:\n" + afterReload);
     }
 
+    /** The slot wrapper (A4): a trim rule cuts the trace on every converter, and is back after a reload. */
+    @Test
+    void aTrimRule_cutsTheTrace_withNoSyntheticClassName_andSurvivesAReconfiguration() throws Exception {
+        Path output = work.resolve("trim.log");
+        Process app = launch(output);
+        waitFor(output, "FIXTURE-READY");
+        LevelControlMXBean proxy = LevelControlEndToEndIT.pollForMxBeanProxy(
+                LevelControlEndToEndIT.attachAndConnect(app.pid()));
+        pollForLogger(proxy, WORKER);
+
+        String before = exceptionAndWait(app, output, "a");
+        assertTrue(before.contains("at org."), "no rule yet, the whole trace:\n" + before);
+        assertFalse(before.contains("stack trace trimmed"), before);
+
+        proxy.addRuleTrim(WORKER, null, false, null, null, false, null, 1, false, "e2e", "SESSION", 60);
+        String trimmed = exceptionAndWait(app, output, "b");
+        assertTrue(trimmed.contains("java.lang.RuntimeException: outer failure b [stack trace trimmed: "), trimmed);
+        assertTrue(trimmed.contains("Caused by: java.lang.IllegalStateException: root cause b [stack trace trimmed: "),
+                "the cause is cut too:\n" + trimmed);
+        assertFalse(trimmed.contains("Synthetic") || trimmed.contains("TrimmedThrowables"),
+                "no synthetic class name:\n" + trimmed);
+
+        sendAndWait(app, output, "RECONFIGURE r1", "DONE r1");
+        String afterReload = exceptionAndWait(app, output, "c");
+        assertTrue(afterReload.contains("[stack trace trimmed: "),
+                "a reload drops the wrappers with the old configuration; core puts them back:\n" + afterReload);
+        assertEquals(List.of(2L), proxy.listRules().stream().map(r -> r.getHitCount()).toList(),
+                "counted once per trimmed event, by the gate, and not again by the wrapper");
+    }
+
+    /** Sends {@code LOGEX <tag>} and returns only what was written since, up to {@code LOGGED <tag>}. */
+    private static String exceptionAndWait(Process app, Path output, String tag) throws Exception {
+        int before = Files.exists(output) ? Files.readString(output).length() : 0;
+        OutputStream stdin = app.getOutputStream();
+        stdin.write(("LOGEX " + tag + "\n").getBytes(StandardCharsets.UTF_8));
+        stdin.flush();
+        return waitFor(output, "LOGGED " + tag).substring(before);
+    }
+
     private static void sendAndWait(Process app, Path output, String command, String done) throws Exception {
         OutputStream stdin = app.getOutputStream();
         stdin.write((command + "\n").getBytes(StandardCharsets.UTF_8));

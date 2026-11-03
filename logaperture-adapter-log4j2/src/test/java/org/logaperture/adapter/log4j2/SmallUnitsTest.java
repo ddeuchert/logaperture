@@ -80,7 +80,8 @@ class SmallUnitsTest {
     @Test
     void theRealLog4jOnTheTestClassPathIsBelieved() {
         String version = Log4j2Version.of(org.apache.logging.log4j.core.LoggerContext.class);
-        assertEquals("2.20.0", version);
+        assertEquals(org.apache.logging.log4j.core.LoggerContext.class.getPackage().getImplementationVersion(), version);
+        assertTrue(version != null && version.startsWith("2."), "the running Log4j 2: " + version);
     }
 
     @Test
