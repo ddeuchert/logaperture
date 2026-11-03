@@ -320,9 +320,15 @@ changed natively against an override is put back at the moment it happens.
   is no longer the one they were created on, not when a swap event is seen: SB5 puts the `old == new`
   event, where a re-assert may create one, before the swap event, and a reset after both must still
   remove it. For a name created on a configuration that is gone, a reset leaves the application's own
-  config of that name alone (it does not blank its level).
-- **Not assumed (SB5):** the first event after a swap is an `old == new` one on the new
-  configuration, before the swap event. Both callbacks are idempotent, so the order does not matter.
+  config of that name alone; if an override was written onto it meanwhile, the reset gives back the
+  level the application declared there. The marks are dropped, at each configuration change, for names
+  the new configuration does not declare.
+- **The event before the swap event (SB5).** The first event after a swap is an `old == new` one on the
+  new configuration, fired before the swap event. The adapter recognises it (the live configuration is
+  not the one it last saw) and does not run the native-change callback for it: the swap event does the
+  full re-apply, and running the override check as well would put every override back twice and write
+  a misleading `verification-sweep` audit record per override on every reload. Both callbacks are still
+  idempotent, so nothing depends on the order.
 
 Verified in a real process (`BundledLog4j2EndToEndIT`): `reconfigure()` and then a native
 `Configurator.setLevel(WARN)` against a `DEBUG` override leave `DEBUG` in force, `list loggers` still
@@ -357,6 +363,12 @@ From the spike, carried here because they bound what is promised:
   callback, so stopping any one context unbinds every context it bound, and the bridge loader is
   pinned by the listener Log4j cannot remove for as long as another context lives. Both need a
   per-context callback in `BridgedFramework`; neither arises with one context per Log4j copy.
+- A `LoggerContext` stopped and then started again: a shutdown is the detector's "let go" (TC5, WF4), the
+  bridge is closed and that loader is not looked at again, so a restart of the same context is not
+  re-bound. A redeploy brings a new copy, which is.
+- The cost of `verifyOverrides` on every `updateLoggers()` anyone makes: one pass over the active
+  overrides with a level lookup each, normally fewer than ten, run on the calling thread. Spring Boot's
+  startup applies a handful of `logging.level` entries. No debounce until someone measures a need.
 - A second context in the same Log4j copy created after the first was bound (the entry binds the contexts that are started when it opens), and a first context created more than 3 s after the class is loaded (C4).
 - The one extra `ContextDataProvider` call on the async-logger thread on 2.17.2 (moot under A3(a)).
 

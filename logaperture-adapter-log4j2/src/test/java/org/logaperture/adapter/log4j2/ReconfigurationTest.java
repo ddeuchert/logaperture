@@ -148,20 +148,54 @@ class ReconfigurationTest {
     }
 
     /**
-     * SB5: Log4j fires the {@code old == new} event on the <em>new</em> configuration before the swap
-     * event. A re-assert that creates a {@code LoggerConfig} there must still be able to remove it on a
-     * reset, after the swap event has arrived.
+     * SB5: Log4j fires an {@code old == new} event on the <em>new</em> configuration before the swap
+     * event. It is part of the swap: the swap event runs the full re-apply, so running the override check
+     * on it as well would put every override back twice and audit a reload as native drift.
      */
     @Test
-    void aConfigCreatedByTheNativeChangeBeforeTheSwapEvent_isStillRemovedByAReset() {
-        Runnable createOnNativeChange = () -> adapter.applyLevel("late.Thing", Level.TRACE);
-        adapter.onNativeChange(createOnNativeChange);
-
+    void theEventBeforeTheSwapEvent_isNotANativeChange() {
         context.setConfiguration(configuration(org.apache.logging.log4j.Level.WARN));
-        assertEquals(java.util.Optional.of(Level.TRACE), adapter.configuredLevel("late.Thing"));
+        assertEquals(1, resets.get(), "the swap event re-applies");
+        assertEquals(0, nativeChanges.get(), "the old == new event that came first is part of the swap");
+        context.updateLoggers(); // a later one, from somebody else, is a native change
+        assertEquals(1, nativeChanges.get());
+    }
 
-        adapter.applyLevel("late.Thing", null);
-        org.junit.jupiter.api.Assertions.assertFalse(context.getConfiguration().getLoggers().containsKey("late.Thing"),
-                "reset removes the LoggerConfig LogAperture created, whichever event came first");
+    private static BuiltConfiguration declaring(String name, org.apache.logging.log4j.Level level) {
+        ConfigurationBuilder<BuiltConfiguration> builder = ConfigurationBuilderFactory.newConfigurationBuilder();
+        builder.add(builder.newLogger(name, level));
+        builder.add(builder.newRootLogger(org.apache.logging.log4j.Level.ERROR));
+        return builder.build();
+    }
+
+    /**
+     * A name LogAperture created, then the application's new configuration declares it, then the re-apply
+     * writes the override onto the declared config. A reset gives back the level the application declared,
+     * not the override's level and not "inherited".
+     */
+    @Test
+    void aResetAfterASwapThatDeclaresTheName_restoresTheApplicationsDeclaredLevel() {
+        adapter.applyLevel("x", Level.DEBUG); // created: the first configuration does not declare x
+        Runnable reapplyOnReset = () -> adapter.applyLevel("x", Level.DEBUG);
+        adapter.onReset(reapplyOnReset);
+
+        context.setConfiguration(declaring("x", org.apache.logging.log4j.Level.WARN));
+        assertEquals(Level.DEBUG, adapter.effectiveLevel("x"), "the override was put back");
+
+        adapter.applyLevel("x", null); // reset: the baseline captured earlier was "inherited"
+        assertEquals(org.apache.logging.log4j.Level.WARN,
+                context.getConfiguration().getLoggers().get("x").getExplicitLevel(),
+                "the application's declared WARN, not the override's DEBUG");
+    }
+
+    @Test
+    void theMarksAreDroppedForANameTheNewConfigurationNoLongerDeclares() {
+        adapter.applyLevel("x", Level.DEBUG);
+        context.setConfiguration(declaring("y", org.apache.logging.log4j.Level.WARN)); // x gone
+        context.setConfiguration(declaring("x", org.apache.logging.log4j.Level.INFO)); // x declared again, later
+        adapter.applyLevel("x", Level.TRACE);
+        adapter.applyLevel("x", null);
+        // x was not created on the configuration before this one, so the mark is gone: plain reset semantics.
+        assertEquals(java.util.Optional.empty(), adapter.configuredLevel("x"));
     }
 }

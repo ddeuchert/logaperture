@@ -61,13 +61,12 @@ public final class Log4j2Framework implements BridgedFramework {
         // removed, so it goes inert once this entry has let go.
         LoggerContextShutdownAware notifyOnShutdown = stopped -> {
             // The stopped context's adapter has nothing left to listen to: let go of it now, not at close().
-            adapters.removeIf(adapter -> {
-                boolean theStoppedOne = adapter.isFor(stopped);
-                if (theStoppedOne) {
+            for (Log4j2LoggingAdapter adapter : adapters) {
+                if (adapter.isFor(stopped)) {
                     adapter.detach();
+                    adapters.remove(adapter);
                 }
-                return theStoppedOne;
-            });
+            }
             if (!closed.get()) {
                 Runnable callback = this.onShutdown.get();
                 if (callback != null) {
