@@ -337,6 +337,43 @@ class TrimAppenderTest {
     }
 
     @Test
+    void aFilterAddedToTheOriginalAppenderAfterWrapping_isFollowed() throws Exception {
+        start("%m|%ex%n", null, false, null);
+        assumeTrue(trimWorksHere(), "trim is off on this Log4j");
+        adapter.installTrimRendering(gate);
+        log.error("written before the filter exists", deepThrowable());
+        Thread.sleep(100);
+        int written = console.size();
+        assertTrue(written > 0);
+
+        // another plugin adds a filter to the appender itself; the wrapper answers for the delegate each time
+        ((org.apache.logging.log4j.core.filter.Filterable) context.getConfiguration().getAppender("Con"))
+                .addFilter(org.apache.logging.log4j.core.filter.ThresholdFilter.createFilter(Level.FATAL,
+                        org.apache.logging.log4j.core.Filter.Result.NEUTRAL, org.apache.logging.log4j.core.Filter.Result.DENY));
+        log.error("denied by the filter added later", deepThrowable());
+        Thread.sleep(100);
+        assertEquals(written, console.size(), "the later filter denies it: " + console);
+    }
+
+    @Test
+    void wrappersLeftByAnAdapterThatWentAway_areTakenOverByTheNextOne() throws Exception {
+        start("%m|%ex%n", null, false, null);
+        assumeTrue(trimWorksHere(), "trim is off on this Log4j");
+        TrimAppender.Shared dead = new TrimAppender.Shared(); // its adapter let go: no gate
+        TrimSlots.wrapAll(context.getConfiguration(), dead);
+        TrimAppender left = assertInstanceOf(TrimAppender.class,
+                context.getConfiguration().getRootLogger().getAppenders().get("Con"));
+        assertEquals(dead, left.shared());
+
+        adapter.installTrimRendering(gate); // must not skip the slot as 'already wrapped'
+
+        assertEquals(left, context.getConfiguration().getRootLogger().getAppenders().get("Con"), "the wrapper is kept");
+        assertTrue(left.shared() != dead, "and now answers to the new adapter");
+        log.error("TRIMME", deepThrowable());
+        assertTrue(written().contains("[stack trace trimmed: "));
+    }
+
+    @Test
     void aMultiLineExceptionMessage_rendersTheSameUnderBothConverters() throws Exception {
         start("%m|%xEx%n", null, false, null);
         assumeTrue(trimWorksHere(), "trim is off on this Log4j");

@@ -50,7 +50,7 @@ final class TrimAppender extends AbstractAppender {
     }
 
     private final Appender delegate;
-    private final Shared shared;
+    private volatile Shared shared;
     private final boolean buildsProxy;
 
     /**
@@ -59,8 +59,7 @@ final class TrimAppender extends AbstractAppender {
      *                    proxy's constructor is eager and costs a stack walk per trimmed event
      */
     TrimAppender(Appender delegate, Shared shared, boolean buildsProxy) {
-        super(delegate.getName(), filterOf(delegate), delegate.getLayout(), delegate.ignoreExceptions(),
-                Property.EMPTY_ARRAY);
+        super(delegate.getName(), null, delegate.getLayout(), delegate.ignoreExceptions(), Property.EMPTY_ARRAY);
         this.delegate = delegate;
         this.shared = shared;
         this.buildsProxy = buildsProxy;
@@ -89,13 +88,24 @@ final class TrimAppender extends AbstractAppender {
         return delegate.isStarted();
     }
 
-    /**
-     * The appender's own filter (a {@code ThresholdFilter} inside a {@code <Console>}, say). Log4j checks it on
-     * the object in the slot, and {@code delegate.append} never does, so the wrapper has to carry it or every
-     * event it should deny would be written. The delegate keeps ownership: this one is not stopped with it.
-     */
-    private static Filter filterOf(Appender appender) {
-        return appender instanceof Filterable filterable ? filterable.getFilter() : null;
+    // The appender's own filter (a ThresholdFilter inside a <Console>, say). Log4j checks it on the object in
+    // the slot, and delegate.append never does, so the wrapper has to answer for it or every event it should
+    // deny would be written. Asked of the delegate each time, not copied: a filter added to or removed from the
+    // appender later (a plugin, a programmatic call) is followed, and the delegate keeps ownership of it.
+
+    @Override
+    public boolean isFiltered(LogEvent event) {
+        return delegate instanceof Filterable filterable && filterable.isFiltered(event);
+    }
+
+    @Override
+    public Filter getFilter() {
+        return delegate instanceof Filterable filterable ? filterable.getFilter() : null;
+    }
+
+    @Override
+    public boolean hasFilter() {
+        return delegate instanceof Filterable filterable && filterable.hasFilter();
     }
 
     Appender delegate() {
@@ -104,6 +114,15 @@ final class TrimAppender extends AbstractAppender {
 
     Shared shared() {
         return shared;
+    }
+
+    /**
+     * Takes this wrapper over for another adapter's {@link Shared}: a context that outlived its adapter keeps
+     * the wrappers, tied to a gate that is now null, and a new adapter must not mistake them for its own
+     * working wrappers and skip the slot.
+     */
+    void adopt(Shared newOwner) {
+        this.shared = newOwner;
     }
 
     @Override

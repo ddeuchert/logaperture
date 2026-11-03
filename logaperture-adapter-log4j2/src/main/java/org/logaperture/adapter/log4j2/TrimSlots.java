@@ -27,6 +27,7 @@ import org.logaperture.bridge.Diagnostics;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Puts a {@link TrimAppender} in every appender slot of a configuration whose appender writes text
@@ -42,6 +43,17 @@ import java.util.List;
  */
 final class TrimSlots {
 
+    /**
+     * The converters that render a throwable from the event's {@code ThrowableProxy}: {@code %xEx} and its
+     * kin ({@code xThrowable}, {@code xException}, {@code rEx} and so on, Spring Boot's {@code xwEx} among
+     * them). A pattern with none reads the throwable itself ({@code %ex}), which needs no proxy.
+     */
+    private static final Pattern PROXY_CONVERTER =
+            Pattern.compile("%[-0-9.]*[xr]w?(Ex|Throwable|Exception)(?![A-Za-z])|%[-0-9.]*rootException");
+
+    /** An explicit plain throwable converter: {@code %ex}, {@code %exception}, {@code %throwable}. */
+    private static final Pattern PLAIN_CONVERTER = Pattern.compile("%[-0-9.]*(ex|exception|throwable)(?![A-Za-z])");
+
     private TrimSlots() {
     }
 
@@ -52,7 +64,13 @@ final class TrimSlots {
         for (LoggerConfig loggerConfig : loggers) {
             for (AppenderRef reference : new ArrayList<>(loggerConfig.getAppenderRefs())) {
                 Appender appender = loggerConfig.getAppenders().get(reference.getRef());
-                if (appender == null || appender instanceof TrimAppender || !writesText(appender, configuration)) {
+                if (appender instanceof TrimAppender existing) {
+                    if (existing.shared() != shared) {
+                        existing.adopt(shared); // left by an adapter that has gone
+                    }
+                    continue;
+                }
+                if (appender == null || !writesText(appender, configuration)) {
                     continue;
                 }
                 if (swap(loggerConfig, reference, appender,
@@ -111,17 +129,6 @@ final class TrimSlots {
         }
     }
 
-    /**
-     * The converters that render a throwable from the event's {@code ThrowableProxy}: {@code %xEx} and its
-     * kin ({@code xThrowable}, {@code xException}, {@code rEx} and so on, Spring Boot's {@code xwEx} among
-     * them). A pattern with none reads the throwable itself ({@code %ex}), which needs no proxy.
-     */
-    private static final java.util.regex.Pattern PROXY_CONVERTER =
-            java.util.regex.Pattern.compile("%[-0-9.]*[xr]w?(Ex|Throwable|Exception)(?![A-Za-z])|%[-0-9.]*rootException");
-
-    /** An explicit plain throwable converter: {@code %ex}, {@code %exception}, {@code %throwable}. */
-    private static final java.util.regex.Pattern PLAIN_CONVERTER =
-            java.util.regex.Pattern.compile("%[-0-9.]*(ex|exception|throwable)(?![A-Za-z])");
 
     /**
      * Whether any layout behind the appender may read the proxy; when in doubt, yes. A pattern with no

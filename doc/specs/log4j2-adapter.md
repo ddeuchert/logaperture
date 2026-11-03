@@ -499,9 +499,17 @@ The fifth PR of the adapter under #302: a trim rule cuts the stack trace of a Lo
   `PatternLayout` adds its own (`alwaysWriteExceptions` defaults to true) and that one reads the proxy, which
   the end-to-end test's own pattern (`%level %logger %msg%n`) showed; an `<Async>` appender gets one if anything behind it might read it; when in doubt,
   yes. The cause proxy inside it is built when a converter first walks to it.
+- **The wrapper's reach ends at the standard converters.** `rendersFromProxy` reads the pattern with a
+  regular expression for Log4j's own throwable converters. A plugin converter that reads the proxy, or a
+  composite such as `%replace{%xEx}{...}` next to a plain `%ex`, can pass as "no proxy needed"; the proxy is
+  then built by Log4j from the synthetic throwable and the output names the synthetic class. Decided once,
+  at wrap time (an `<Async>` appender's inner appenders added to the configuration later are not seen).
+  When in doubt it builds the proxy; this is the case it cannot be in doubt about.
 - **The wrapper answers as the appender it stands for.** Log4j asks the slot object, not the appender, for
-  the error handler, `requiresLocation()` and whether it is started, so the wrapper forwards all three; a
-  wrapper in front of an appender the configuration stopped does not claim to be started.
+  the error handler, `requiresLocation()`, whether it is started and its filter, so the wrapper forwards
+  all four; a wrapper in front of an appender the configuration stopped does not claim to be started, and a
+  filter added to or removed from the appender later is followed (it is asked of the appender each time, not
+  copied). A wrapper left in a slot by an adapter that has gone is taken over by the next one, not skipped.
 - **The probe covers `%ex`, `%xEx`, `%rEx` and `%ex{short}`**, which render correctly on every version
   where the first two do (checked on 2.20.0, 2.23.1 and 2.25.5). Spring Boot's `%xwEx` is not in Log4j and
   is not probed; it was checked on real Spring Boot 3.5 and 4.1 applications (spike SB9) and renders as `%xEx`.
