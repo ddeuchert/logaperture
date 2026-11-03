@@ -77,10 +77,16 @@ class SmallUnitsTest {
                 "an application's version is unknown, not 'too old'");
     }
 
+    /** Pinned to the version in the jar's own pom.properties, a source independent of the manifest the code reads. */
     @Test
-    void theRealLog4jOnTheTestClassPathIsBelieved() {
-        String version = Log4j2Version.of(org.apache.logging.log4j.core.LoggerContext.class);
-        assertEquals("2.20.0", version);
+    void theRealLog4jOnTheTestClassPathIsBelieved_andIsTheVersionItsJarSays() throws Exception {
+        java.util.Properties pom = new java.util.Properties();
+        try (java.io.InputStream in = org.apache.logging.log4j.core.LoggerContext.class.getResourceAsStream(
+                "/META-INF/maven/org.apache.logging.log4j/log4j-core/pom.properties")) {
+            org.junit.jupiter.api.Assertions.assertNotNull(in, "log4j-core ships its pom.properties");
+            pom.load(in);
+        }
+        assertEquals(pom.getProperty("version"), Log4j2Version.of(org.apache.logging.log4j.core.LoggerContext.class));
     }
 
     @Test

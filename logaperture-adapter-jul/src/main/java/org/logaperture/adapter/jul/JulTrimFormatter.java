@@ -19,6 +19,7 @@ import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.GateVerdict;
 import org.logaperture.core.RuleGate;
 import org.logaperture.core.TrimDecision;
+import org.logaperture.core.TrimmedThrowables;
 
 import java.util.Optional;
 import java.util.logging.Formatter;
@@ -75,7 +76,7 @@ final class JulTrimFormatter extends Formatter {
             return delegate.format(record);
         }
         LogRecord trimmedCopy = copy.get();
-        trimmedCopy.setThrown(TrimRendering.buildTrimmed(record.getThrown(), trim));
+        trimmedCopy.setThrown(TrimmedThrowables.build(record.getThrown(), trim));
         return delegate.format(trimmedCopy);
     }
 

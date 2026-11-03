@@ -13,10 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.adapter.jul;
+package org.logaperture.core;
 
 import org.junit.jupiter.api.Test;
-import org.logaperture.core.TrimDecision;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -27,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** doc/specs/trim-rule.md "Text formatters only". */
-class TrimRenderingTest {
+class TrimmedThrowablesTest {
 
     private static String rendered(Throwable trimmed) {
         StringWriter sink = new StringWriter();
@@ -40,7 +39,7 @@ class TrimRenderingTest {
         RuntimeException original = new RuntimeException("boom");
         int originalFrameCount = original.getStackTrace().length;
 
-        Throwable trimmed = TrimRendering.buildTrimmed(original, new TrimDecision("r1", 0, false));
+        Throwable trimmed = TrimmedThrowables.build(original, new TrimDecision("r1", 0, false));
 
         assertEquals(original + " [stack trace trimmed: " + originalFrameCount + " frames omitted]",
                 trimmed.toString());
@@ -54,7 +53,7 @@ class TrimRenderingTest {
         RuntimeException original = new RuntimeException("boom");
         int originalFrameCount = original.getStackTrace().length;
 
-        Throwable trimmed = TrimRendering.buildTrimmed(original, new TrimDecision("r1", originalFrameCount + 100, false));
+        Throwable trimmed = TrimmedThrowables.build(original, new TrimDecision("r1", originalFrameCount + 100, false));
 
         assertTrue(trimmed.toString().endsWith("[stack trace trimmed: 0 frames omitted]"));
         assertEquals(originalFrameCount, trimmed.getStackTrace().length);
@@ -64,7 +63,7 @@ class TrimRenderingTest {
     void buildTrimmed_positiveFrames_keepsExactlyThatManyTopFrames() {
         RuntimeException original = new RuntimeException("boom");
 
-        Throwable trimmed = TrimRendering.buildTrimmed(original, new TrimDecision("r1", 2, false));
+        Throwable trimmed = TrimmedThrowables.build(original, new TrimDecision("r1", 2, false));
 
         assertEquals(2, trimmed.getStackTrace().length);
         assertEquals(original.getStackTrace()[0], trimmed.getStackTrace()[0]);
@@ -76,7 +75,7 @@ class TrimRenderingTest {
         RuntimeException root = new RuntimeException("root cause");
         RuntimeException wrapper = new RuntimeException("wrapper", root);
 
-        Throwable trimmed = TrimRendering.buildTrimmed(wrapper, new TrimDecision("r1", 0, false));
+        Throwable trimmed = TrimmedThrowables.build(wrapper, new TrimDecision("r1", 0, false));
 
         assertEquals(wrapper + " [stack trace trimmed: " + wrapper.getStackTrace().length + " frames omitted]",
                 trimmed.toString());
@@ -93,7 +92,7 @@ class TrimRenderingTest {
         RuntimeException root = new RuntimeException("root cause");
         RuntimeException wrapper = new RuntimeException("wrapper", root);
 
-        Throwable trimmed = TrimRendering.buildTrimmed(wrapper, new TrimDecision("r1", 0, true));
+        Throwable trimmed = TrimmedThrowables.build(wrapper, new TrimDecision("r1", 0, true));
 
         assertNull(trimmed.getCause());
         assertFalse(rendered(trimmed).contains("Caused by:"), rendered(trimmed));
@@ -107,7 +106,7 @@ class TrimRenderingTest {
         RuntimeException b = new RuntimeException("b", a);
         a.initCause(b);
 
-        Throwable trimmed = TrimRendering.buildTrimmed(a, new TrimDecision("r1", 0, false));
+        Throwable trimmed = TrimmedThrowables.build(a, new TrimDecision("r1", 0, false));
 
         Throwable trimmedB = trimmed.getCause();
         assertNull(trimmedB.getCause(), "the cycle back to an already-rendered level (a) stops the chain");

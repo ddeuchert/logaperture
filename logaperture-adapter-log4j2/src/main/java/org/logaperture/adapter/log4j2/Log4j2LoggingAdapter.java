@@ -94,6 +94,11 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
      */
     private final Map<String, Optional<org.apache.logging.log4j.Level>> declaredBeforeOverride =
             new ConcurrentHashMap<>();
+    private final TrimAppender.Shared trimShared = new TrimAppender.Shared();
+    private String trimProblem;
+    private boolean trimProbed;
+    /** Asked once per adapter; replaceable so a test can count the asks. */
+    java.util.function.Function<Configuration, String> trimProbe = TrimProbe::problem;
     /** The gate: one filter for drop rules and storm detection, attached to the live configuration. */
     private final GateFilter gateFilter = new GateFilter();
     /** The configuration {@link #gateFilter} is attached to; a swap leaves it behind and it is attached again. */
@@ -141,6 +146,33 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         attachGate();
     }
 
+    /**
+     * Trim wrapping (A4). Off, with the reason kept, when this Log4j cannot render a trimmed exception
+     * ({@link TrimProbe}); otherwise a wrapper goes into every text appender's slot, on the live
+     * configuration, again after each swap (core calls this from its reset hook) and idempotently.
+     */
+    @Override
+    public synchronized void installTrimRendering(RuleGate gate) {
+        trimShared.gate = gate;
+        if (!trimProbed) {
+            trimProblem = trimProbe.apply(context.getConfiguration());
+            trimProbed = true;
+            if (trimProblem != null) {
+                Diagnostics.warn("LogAperture cannot trim stack traces on this Log4j (" + trimProblem
+                        + "); trim rules are counted but not applied");
+            }
+        }
+        if (trimProbed && trimProblem != null) {
+            return;
+        }
+        TrimSlots.wrapAll(context.getConfiguration(), trimShared);
+    }
+
+    /** Why trim is off on this Log4j, or empty if it is on or has not been installed yet. */
+    synchronized Optional<String> trimDisabledReason() {
+        return trimProbed ? Optional.ofNullable(trimProblem) : Optional.empty();
+    }
+
     @Override
     public void installStormDetection(StormObserver detector) {
         gateFilter.setStorm(detector);
@@ -171,6 +203,14 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
     /** Lets go of the context: removes the event listener and both callbacks (spec "Scope" 7). */
     synchronized void detach() {
         gateFilter.release();
+        trimShared.gate = null; // a wrapper still in flight passes its event straight through
+        if (context.isStarted()) {
+            try {
+                TrimSlots.unwrapAll(context.getConfiguration(), trimShared); // a stopping context takes them with it
+            } catch (RuntimeException e) {
+                Diagnostics.warn("LogAperture could not take its trim wrappers out of the Log4j configuration: " + e);
+            }
+        }
         WeakReference<Configuration> attached = gateAttachedTo;
         Configuration old = attached == null ? null : attached.get();
         if (old != null) {

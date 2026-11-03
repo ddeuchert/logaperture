@@ -35,6 +35,7 @@ import java.util.List;
  * <p>Like a real app it sets its own configuration file in {@code main} before its first logger, so
  * the test also shows the agent leaves that configuration alone (spike I-1 to I-4). Commands on
  * stdin: {@code LOG <tag>} logs one line per level and prints {@code LOGGED <tag>};
+ * {@code LOGEX <tag>} logs an error with a two-level exception and prints {@code LOGGED <tag>};
  * {@code RECONFIGURE <tag>} reloads Log4j's configuration; {@code NATIVE <level> <tag>} sets the worker's
  * level through Log4j's own API, as Spring's {@code logging.level} and an Actuator POST do. Both print
  * {@code DONE <tag>}.
@@ -62,6 +63,7 @@ public final class BundledLog4j2FixtureApp {
             Method log = worker.getMethod("log", String.class);
             Method reconfigure = worker.getMethod("reconfigure", String.class);
             Method nativeLevel = worker.getMethod("nativeLevel", String.class, String.class);
+            Method logException = worker.getMethod("logException", String.class);
             start.invoke(null);
             System.out.println("FIXTURE-READY");
             System.out.flush();
@@ -70,6 +72,8 @@ public final class BundledLog4j2FixtureApp {
             while ((line = stdin.readLine()) != null) {
                 if (line.startsWith("LOG ")) {
                     log.invoke(null, line.substring(4));
+                } else if (line.startsWith("LOGEX ")) {
+                    logException.invoke(null, line.substring(6));
                 } else if (line.startsWith("RECONFIGURE ")) {
                     reconfigure.invoke(null, line.substring(12)); // what monitorInterval and Spring's swap do
                 } else if (line.startsWith("NATIVE ")) {
@@ -102,6 +106,15 @@ public final class BundledLog4j2FixtureApp {
             org.apache.logging.log4j.core.config.Configurator.setLevel(WORKER_LOGGER,
                     org.apache.logging.log4j.Level.valueOf(level));
             System.out.println("DONE " + tag);
+            System.out.flush();
+        }
+
+        /** An error with a cause, whose trace a trim rule can cut. */
+        public static void logException(String tag) {
+            org.apache.logging.log4j.Logger logger = org.apache.logging.log4j.LogManager.getLogger(WORKER_LOGGER);
+            Exception cause = new IllegalStateException("root cause " + tag);
+            logger.error("failed " + tag, new RuntimeException("outer failure " + tag, cause));
+            System.out.println("LOGGED " + tag);
             System.out.flush();
         }
 

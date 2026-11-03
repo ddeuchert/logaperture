@@ -13,9 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.logaperture.adapter.jul;
-
-import org.logaperture.core.TrimDecision;
+package org.logaperture.core;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -23,27 +21,25 @@ import java.util.IdentityHashMap;
 import java.util.Set;
 
 /**
- * Builds the trimmed {@link Throwable} chain a matching {@link
- * TrimDecision} produces -- doc/specs/trim-rule.md "Text formatters only".
- * Each level of the original cause chain is replaced with a frameless (or
- * top-N-frame) synthetic {@link Throwable} whose {@code toString()} is that
- * level's own original {@code toString()} plus the trim marker; a text
- * formatter's ordinary {@code printStackTrace} rendering (or a
- * pattern-formatter token that calls it) then produces the one-liner plus
- * marker at every level, recursively, for free -- no formatter-specific
- * code needed here beyond building the replacement chain.
+ * Builds the trimmed {@link Throwable} chain a matching {@link TrimDecision} produces --
+ * doc/specs/trim-rule.md "Text formatters only". Each level of the original cause chain is replaced with
+ * a frameless (or top-N-frame) synthetic {@link Throwable} whose {@code toString()} is that level's own
+ * original {@code toString()} plus the trim marker; a text formatter's ordinary {@code printStackTrace}
+ * rendering (or a pattern token that calls it) then produces the one-liner plus marker at every level,
+ * recursively, for free. Shared by every adapter that renders a trim: the JUL formatter wrap and the
+ * Log4j 2 slot wrapper.
  */
-final class TrimRendering {
+public final class TrimmedThrowables {
 
-    /** The trim marker around the omitted-frame count, appended to each level's {@code toString()}; {@link ByteCountingFormatter} skips it to find a trimmed trace (doc/specs/top.md T5). */
-    static final String MARKER_OPEN = " [stack trace trimmed: ";
-    static final String MARKER_CLOSE = " frames omitted]";
+    /** The trim marker around the omitted-frame count, appended to each level's {@code toString()}; {@code top} finds a trimmed trace by it (doc/specs/top.md T5). */
+    public static final String MARKER_OPEN = " [stack trace trimmed: ";
+    public static final String MARKER_CLOSE = " frames omitted]";
 
-    private TrimRendering() {
+    private TrimmedThrowables() {
     }
 
-    /** {@code original} itself is never mutated -- the caller is expected to set the result on a private record copy (see {@link ExtLogRecordCopier}), never on the shared record. */
-    static Throwable buildTrimmed(Throwable original, TrimDecision decision) {
+    /** {@code original} itself is never mutated: the caller sets the result on a private copy of the event. */
+    public static Throwable build(Throwable original, TrimDecision decision) {
         return buildLevel(original, decision.frames(), decision.collapseCauses(),
                 Collections.newSetFromMap(new IdentityHashMap<>()));
     }
@@ -63,19 +59,16 @@ final class TrimRendering {
         // prints, reading "0 frames omitted" when frames is at or above the trace's actual depth.
         String rendered = original + MARKER_OPEN + omitted + MARKER_CLOSE;
         // getStackTrace() already handed back a fresh defensive copy -- no need for a second one
-        // when every frame is kept (a code-review finding against the first cut, which copied
-        // unconditionally).
+        // when every frame is kept.
         StackTraceElement[] keptFrames = kept == originalFrames.length ? originalFrames
                 : Arrays.copyOf(originalFrames, kept);
         return new SyntheticThrowable(rendered, keptFrames, cause);
     }
 
     /**
-     * A throwable whose only job is to render {@code rendered} as its own
-     * {@code toString()}, with {@code frames} printed beneath it and {@code
-     * cause} chained on for {@code printStackTrace}'s own recursive
-     * "Caused by:" handling -- never thrown, never inspected beyond
-     * formatting.
+     * A throwable whose only job is to render {@code rendered} as its own {@code toString()}, with
+     * {@code frames} printed beneath it and {@code cause} chained on for {@code printStackTrace}'s own
+     * recursive "Caused by:" handling -- never thrown, never inspected beyond formatting.
      */
     private static final class SyntheticThrowable extends Throwable {
 
@@ -92,11 +85,7 @@ final class TrimRendering {
             setStackTrace(frames);
         }
 
-        /**
-         * No capture: the frames are set from the original right after construction, and walking
-         * the logging thread's own stack cost about a fifth of a trimmed record (2026-10-07
-         * overhead profile).
-         */
+        /** No capture: the frames are set from the original right after construction (2026-10-07 overhead profile). */
         @Override
         public synchronized Throwable fillInStackTrace() {
             return this;

@@ -440,6 +440,99 @@ benchmark of the gate's cost against the budgets in `overhead-benchmarks.md` is 
 design allocates nothing on the fast path, but nothing has been measured, and "Acceptance" makes a gate
 over budget a release blocker.
 
+### Slice 5: the slot wrapper and trim (built, 2026-11-02)
+
+The fifth PR of the adapter under #302: a trim rule cuts the stack trace of a Log4j 2 event.
+
+- **`TrimAppender`**: an appender in a `LoggerConfig` slot wearing the original's name, layout and error
+  policy. For an event with a throwable on a logger a rule applies to, it asks `RuleGate.trimChoice`
+  (never counts: the gate counted the hit once, before the event existed, A3), and if a trim applies
+  writes a private rebuilt copy of the event with the trimmed throwable. The original event, which may be
+  a reused `MutableLogEvent` or a ring-buffer slot, is never touched. It fails open (a throwing gate is a
+  throttled `Diagnostics` line and the event is written as it was). Stopping it does not stop the
+  appender behind it: the configuration owns that.
+- **`TrimSlots`** puts one in every slot of the live configuration, idempotently, and again after a swap
+  (core's reset hook calls `installTrimRendering` first). A slot is read from its `AppenderRef`, the only
+  place its level and filter can be found, and both are carried over, so an appender added to a
+  `LoggerConfig` in code with no reference is left alone. `config.getAppenders()` still lists the
+  originals. Swapping takes a `remove` and an `add` (the set is keyed by name), so a call on that logger
+  can miss that appender for the microseconds between them.
+- **Text only (trim-rule.md "Text formatters only", #83).** An appender is wrapped only if its layout is a
+  `PatternLayout`; an `<Async>` appender (no layout of its own) only if everything behind it is. A JSON,
+  HTML, CSV or custom layout, and any appender with no layout (`Routing`, `Failover`), is left untouched.
+  Behind an `<Async>` appender the wrapper is in front of the queue, so the cut happens on the calling
+  thread, before the event is queued.
+- **`TrimmedProxy`** (A4): from 2.20.0 to 2.24.x `%xEx` and Spring Boot's `%xwEx` render from the event's
+  `ThrowableProxy`, and one built from the synthetic throwable names the synthetic class. This subclass
+  answers with the synthetic throwable's own `toString()` (the original's, plus the marker) as its name,
+  at every level of the cause chain, which is what `%ex` prints from the throwable itself, and trims the
+  `: null` those versions append to the top line. From 2.25.4 the converters ignore the proxy and print
+  correctly anyway.
+- **A deviation from A4's wording, with the same outcome: a probe, not a version table.** A4 says trim is
+  off on 2.25.0 to 2.25.3. `TrimProbe` asks the running Log4j instead: it renders a trimmed event through
+  `%ex` and `%xEx` and checks the first line is the throwable's text and not a synthetic class name. It
+  fails on exactly those four versions (checked on 2.25.2), and it also covers a version this was never
+  tried on. When it fails, nothing is wrapped, one `Diagnostics` line says why, and the reason is kept
+  for `doctor` (`log4j2.trim`, A12, a later slice).
+- **`TrimmedThrowables`** (core, moved from the JUL adapter): the builder of the synthetic chain, now
+  shared. JUL keeps its names and its tests.
+- **The appender's own filter is carried too.** Log4j checks an appender's own filter on the object in the
+  slot, and `delegate.append` never does, so the wrapper takes the delegate's filter (a `ThresholdFilter`
+  inside a `<Console>`, a `BurstFilter` on a file appender), not only the reference's. Without it every
+  event such a filter denies would be written, in any configuration with a filtered text appender, with or
+  without a trim rule. The delegate keeps ownership: stopping the wrapper stops neither it nor the filter.
+- **A failed swap puts the appender back.** If adding the wrapper throws after the original was removed,
+  the original is added again and wrapping goes on with the other slots; a logger that has silently lost
+  an appender is worse than one that is not trimmed.
+- **Detach takes the wrappers out**: each slot gets its original appender back, with the reference's level
+  and filter, while the context lives. A context that is stopping takes its wrappers with it. A wrapper still in
+  flight passes its event straight through.
+- **The probe runs once per adapter**, not on every reset-hook call. `TrimmedProxy` strips the `: null` tail
+  right after its known name, so a multi-line exception message renders as `%ex` does. A styled
+  `TextRenderer` (ANSI colour around the name) defeats that match on 2.20 to 2.24 and leaves the `: null`
+  tail: cosmetic, not fixed.
+- **The proxy is built only where a layout can read it.** `ThrowableProxy`'s constructor is eager (a stack
+  walk and the whole cause chain), so building one per trimmed event for every appender would be the cost a
+  storm is worst placed to pay. An appender whose pattern has an explicit plain converter (`%ex`) and no
+  extended one (`%xEx`, `%rEx`, `%xThrowable`, `%rootException` and their kin, Spring Boot's `%xwEx` among
+  them) reads the throwable itself and gets none. A pattern with *no* throwable converter at all gets one:
+  `PatternLayout` adds its own (`alwaysWriteExceptions` defaults to true) and that one reads the proxy, which
+  the end-to-end test's own pattern (`%level %logger %msg%n`) showed; an `<Async>` appender gets one if anything behind it might read it; when in doubt,
+  yes. The cause proxy inside it is built when a converter first walks to it.
+- **The wrapper's reach ends at the standard converters.** `rendersFromProxy` reads the pattern with a
+  regular expression for Log4j's own throwable converters. A plugin converter that reads the proxy, or a
+  composite such as `%replace{%xEx}{...}` next to a plain `%ex`, can pass as "no proxy needed"; the proxy is
+  then built by Log4j from the synthetic throwable and the output names the synthetic class. Decided once,
+  at wrap time (an `<Async>` appender's inner appenders added to the configuration later are not seen).
+  When in doubt it builds the proxy; this is the case it cannot be in doubt about.
+- **The wrapper answers as the appender it stands for.** Log4j asks the slot object, not the appender, for
+  the error handler, `requiresLocation()`, whether it is started and its filter, so the wrapper forwards
+  all four; a wrapper in front of an appender the configuration stopped does not claim to be started, and a
+  filter added to or removed from the appender later is followed (it is asked of the appender each time, not
+  copied). A wrapper left in a slot by an adapter that has gone is taken over by the next one, not skipped.
+- **The probe covers `%ex`, `%xEx`, `%rEx` and `%ex{short}`**, which render correctly on every version
+  where the first two do (checked on 2.20.0, 2.23.1 and 2.25.5). Spring Boot's `%xwEx` is not in Log4j and
+  is not probed; it was checked on real Spring Boot 3.5 and 4.1 applications (spike SB9) and renders as `%xEx`.
+- **What a swap costs (real, and not avoidable with `LoggerConfig`).** The set is keyed by name, so wrapping,
+  and unwrapping on detach, is a remove and an add. A call on that logger landing between the two is not
+  written to that appender, and nothing counts it; it happens at install, after each reconfiguration
+  (when core re-installs) and on detach. The add also puts the wrapper after the logger's other appenders,
+  so the order in which they write one event can change.
+- **Per exception, per wrapped appender.** The trim choice, the synthetic chain and the proxy are built
+  once for each wrapped text appender, not once per event: caching by event identity is unsafe because
+  events are reused. It scales with the number of text appenders, not with the number of rules; a trim
+  pre-check on `RuleGate` is for the gate benchmark to ask for. Wrapping starts at install, not at the
+  first trim rule, as every other always-on seam does (JUL, top, storm detection, the rule pipeline), so a
+  rule added later needs no swap.
+
+Verified on 2.20.0, 2.23.1, 2.25.2 and 2.25.5 (`-Dlog4j2.version`, the same tests on each): the trim tests pass on
+2.20.0, 2.23.1 and 2.25.5, on 2.25.2 they are skipped and a test asserts nothing is wrapped and the
+reason is kept. `BundledLog4j2EndToEndIT`, in a real process: a trim rule cuts the trace and its cause,
+no synthetic class in the output, hits counted once per trimmed event, and the same after a reload.
+
+**Not in this slice:** `top` on a trimmed Log4j event (A6, #306); handler levels (A5); the `doctor` check;
+the full version matrix in CI (A11).
+
 ## Out of scope
 
 `top` on Log4j 2 (A6); Log4j 1 and reload4j; the warning for names no backend can reach (#303);
@@ -471,8 +564,6 @@ From the spike, carried here because they bound what is promised:
 - A `LogEvent` built elsewhere and handed straight to a `LoggerConfig` (a bridge that does not go through
   the logger API) does not pass the `Filter` overloads, and Log4j does not call `filter(LogEvent)` for a
   context-wide filter on the normal path (spike G1); such a call is not gated.
-- A trim rule is counted by the gate before the slot wrapper applies it (Slice 4); until then
-  `list rules` shows hits for a trim that has not trimmed anything.
 - The cost of `verifyOverrides` on every `updateLoggers()` anyone makes: one pass over the active
   overrides with a level lookup each, normally fewer than ten, run on the calling thread. Spring Boot's
   startup applies a handful of `logging.level` entries. No debounce until someone measures a need.
