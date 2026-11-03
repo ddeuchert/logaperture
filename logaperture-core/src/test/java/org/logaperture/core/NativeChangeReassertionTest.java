@@ -132,7 +132,7 @@ class NativeChangeReassertionTest {
         String text = warnings();
         assertTrue(text.contains("WARN logger '" + APP + "' was changed to WARN outside LogAperture"), text);
         assertTrue(text.contains("TRACE override"), text);
-        assertTrue(text.contains("set by jmx as alice"), text);
+        assertTrue(text.contains("set via jmx"), text);
         assertTrue(text.contains("logctl reset logger " + APP), text);
     }
 
@@ -162,12 +162,49 @@ class NativeChangeReassertionTest {
 
     @Test
     void longAfterAReconfiguration_itWarns() {
-        service.reapplyActiveOverrides(adapter);
+        service.reapplyActiveOverrides(adapter, Instant.now().minusSeconds(30));
         nativeChange(Level.INFO);
 
-        service.reassertAfterNativeChange(Instant.now().plusSeconds(30));
+        service.reassertAfterNativeChange(Instant.now());
 
         assertTrue(warnings().contains("outside LogAperture"), warnings());
+    }
+
+    @Test
+    void aLevelEqualToTheOverridesOwn_isNeverTakenAsTheBaseline() {
+        // effective says "changed", but the configured level is the one this process wrote: not the native source's.
+        adapter.pinEffectiveLevel(APP, Level.INFO);
+        adapter.setConfiguredLevel(APP, Level.TRACE);
+
+        service.reassertAfterNativeChange(Instant.now());
+
+        service.resetLogger(APP, false);
+        assertEquals(java.util.Optional.of(Level.DEBUG), adapter.configuredLevel(APP),
+                "the baseline from before the override is untouched");
+    }
+
+    @Test
+    void anOverrideResetWhileThePassWasRunning_isNeitherRebasedNorWarnedAbout() {
+        InMemoryAuditLog inner = new InMemoryAuditLog();
+        LevelControlService[] holder = new LevelControlService[1];
+        boolean[] done = {false};
+        AuditLog resetsOnTheFirstSweepRecord = record -> {
+            inner.record(record);
+            if (!done[0] && "verification-sweep".equals(record.source())) {
+                done[0] = true;
+                holder[0].resetLogger(APP, false); // a control-plane reset lands between the audit and the rebase
+            }
+        };
+        LevelControlService racing = new LevelControlService(adapter, baselines, new OverrideRegistry(),
+                CapabilityPolicy.allowAll(), resetsOnTheFirstSweepRecord, new InMemoryStateStore(), "alice", "jmx");
+        holder[0] = racing;
+        racing.setLogger(APP, Level.TRACE, SetLevelOptions.defaults());
+        nativeChange(Level.INFO);
+
+        racing.reassertAfterNativeChange(Instant.now());
+
+        assertFalse(warnings().contains("outside LogAperture"), warnings());
+        assertEquals(Level.DEBUG, adapter.effectiveLevel(APP), "reset to the baseline captured before, not INFO");
     }
 
     @Test

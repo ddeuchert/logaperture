@@ -58,6 +58,7 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     private final Set<HandlerRef> handlersOnRoot = new LinkedHashSet<>();
     /** Per-(loggerName, ref) level, checked before the shared handlerLevels entry -- see addHandlerWithPerTargetLevel. */
     private final Map<String, Map<HandlerRef, Level>> perTargetHandlerLevel = new LinkedHashMap<>();
+    private final Map<String, Level> pinnedEffective = new LinkedHashMap<>();
     private HandlerRef throwOnSetHandlerLevelFor;
     private boolean hasHandlerLevels = true; // this fake models a JUL-like framework by default
     private HandlerRef runOnHandlerLevelFor;
@@ -77,6 +78,11 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     void setConfiguredLevel(String name, Level level) {
         knownNames.add(name);
         explicitLevels.put(name, level);
+    }
+
+    /** Makes {@link #effectiveLevel} answer {@code level} for this logger whatever it is configured to. */
+    void pinEffectiveLevel(String name, Level level) {
+        pinnedEffective.put(name, level);
     }
 
     /** Someone removes the logger's own level (it inherits again), as an Actuator POST of null does. */
@@ -129,6 +135,9 @@ final class FakeLoggingAdapter implements LoggingAdapter {
             runOnEffectiveLevelFor = null; // one-shot
             runOnEffectiveLevel = null;
             action.run();
+        }
+        if (pinnedEffective.containsKey(loggerName)) {
+            return pinnedEffective.get(loggerName);
         }
         String name = loggerName;
         while (true) {

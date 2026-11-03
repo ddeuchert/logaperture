@@ -36,7 +36,9 @@ Guide pages this changes: `get-started/install-plain-jvm.md` (Log4j 2 route, and
 a new `get-started/install-tomcat.md` (shared with the detector spec); `get-started/install-wildfly.md`
 (the deployment that excludes the server's Log4j API); `concepts/rules.md`,
 `how-to/silence-noise.md`, `how-to/storms.md` and `how-to/find-disk-usage.md` (which backends
-support what, and the 2.25.0 to 2.25.3 trim limit); `troubleshooting.md`; `reference/doctor-checks.md`
+support what, and the 2.25.0 to 2.25.3 trim limit); `troubleshooting.md` (also the warning that a
+change was undone by an override, A1); `concepts/tiers-and-expiry.md` (what `reset` gives back after a
+native change, A2); `reference/doctor-checks.md`
 (three new checks, A12); and `index.md` (the support table and the "Not supported" line, which today
 names Log4j 2). `reference/agent-options.md` does not change.
 
@@ -347,10 +349,18 @@ The rest of A1 and A2, in `core`, for any backend that reports a native change
   not the one from before Spring ran. The value is read before the override overwrites it, so it is
   never one LogAperture wrote. The vendor layer is untouched.
 - **A1: the warning.** A `Diagnostics` line, at most once a minute per logger (`warnThrottled`), names
-  the logger, what it was changed to, the override that was put back, who set it and why, and
+  the logger, what it was changed to, the override that was put back, how it was set (`jmx`) and why, and
   `logctl reset logger <name>`. Not written within 5 s of a reconfiguration (`reapplyActiveOverrides`
-  stamps the time): a change that soon is the application's start-up configuration (SB6), put back and
-  audited and rebased, but not worth a warning. Both numbers are constants.
+  stamps the time, from the same clock the check uses): a change that soon is the application's start-up
+  configuration (SB6), put back and audited and rebased, but not worth a warning. Both numbers are
+  constants. The warning does not say who set the override: the service knows only the process's own
+  principal, which is what the audit trail records.
+- **Done after the pass, not inside it.** The rebase and the warning run once every override has been
+  checked, so the framework's reconfiguration listener (which runs under the framework's locks) first
+  does the least it can. Each is skipped if the override is no longer the one in force (a reset or a new
+  `set logger` landed meanwhile), and the rebase is skipped when the level read equals the override's own
+  (a value this process wrote, never the native source's) and never creates a baseline nobody captured.
+  The first check narrows a race it cannot close without a lock around the control plane.
 - **The audit record is unchanged:** `source=verification-sweep`, as for any override a framework undid
   (the `audit-log.md` guide already describes it that way), so no new value appears in the guide.
 - **The sweep's own check does neither.** It cannot tell who changed a level, so it neither rebases nor

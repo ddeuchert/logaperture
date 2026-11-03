@@ -89,7 +89,7 @@ public final class BaselineRegistry {
      * untouched.
      */
     public void rebaseNative(String name, Optional<Level> level) {
-        captured.put(name, level);
+        captured.computeIfPresent(name, (key, previous) -> level); // never creates a baseline nobody captured
     }
 
     public boolean isCaptured(String name) {
