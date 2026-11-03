@@ -131,8 +131,9 @@ class NativeChangeReassertionTest {
 
         String text = warnings();
         assertTrue(text.contains("WARN logger '" + APP + "' was changed to WARN outside LogAperture"), text);
-        assertTrue(text.contains("TRACE override"), text);
-        assertTrue(text.contains("set via jmx"), text);
+        assertTrue(text.contains("override on it was put back (TRACE, SESSION, set "), text);
+        assertTrue(text.contains(" via jmx"), text);
+        assertTrue(text.contains(" s ago via jmx"), "a coarse age, not just the transport: " + text);
         assertTrue(text.contains("logctl reset logger " + APP), text);
     }
 
@@ -250,5 +251,23 @@ class NativeChangeReassertionTest {
 
         assertEquals(0, service.reassertAfterNativeChange(Instant.now()));
         assertFalse(warnings().contains("outside LogAperture"), warnings());
+    }
+
+    @Test
+    void aLoggerTheAdapterCannotRead_doesNotStopTheOthers_andIsNotRebased() {
+        adapter.setConfiguredLevel("other.Thing", Level.INFO);
+        baselines.captureIfAbsent("other.Thing", adapter);
+        service.setLogger("other.Thing", Level.TRACE, SetLevelOptions.defaults());
+        nativeChange(Level.INFO);
+        adapter.setConfiguredLevel("other.Thing", Level.WARN);
+        adapter.throwOnConfiguredLevel("other.Thing");
+
+        int reasserted = service.reassertAfterNativeChange(Instant.now());
+
+        assertEquals(2, reasserted, "both put back: the unreadable one does not abort the pass");
+        assertEquals(Level.TRACE, adapter.effectiveLevel(APP));
+        // the readable one was still rebased
+        service.resetLogger(APP, false);
+        assertEquals(Level.INFO, adapter.effectiveLevel(APP));
     }
 }

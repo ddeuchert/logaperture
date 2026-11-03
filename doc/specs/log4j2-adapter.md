@@ -349,7 +349,7 @@ The rest of A1 and A2, in `core`, for any backend that reports a native change
   not the one from before Spring ran. The value is read before the override overwrites it, so it is
   never one LogAperture wrote. The vendor layer is untouched.
 - **A1: the warning.** A `Diagnostics` line, at most once a minute per logger (`warnThrottled`), names
-  the logger, what it was changed to, the override that was put back, how it was set (`jmx`) and why, and
+  the logger, what it was changed to, the override that was put back (its level, tier, how long ago and how it was set, and why), and
   `logctl reset logger <name>`. Not written within 5 s of a reconfiguration (`reapplyActiveOverrides`
   stamps the time, from the same clock the check uses): a change that soon is the application's start-up
   configuration (SB6), put back and audited and rebased, but not worth a warning. Both numbers are
@@ -361,6 +361,11 @@ The rest of A1 and A2, in `core`, for any backend that reports a native change
   `set logger` landed meanwhile), and the rebase is skipped when the level read equals the override's own
   (a value this process wrote, never the native source's) and never creates a baseline nobody captured.
   The first check narrows a race it cannot close without a lock around the control plane.
+- **Vendor-named loggers.** For a logger the vendor defaults file names, `reset` gives back the vendor
+  level (the vendor layer is that logger's baseline, as everywhere), so the rebase has no visible effect
+  there; `reset --to-native` gives back the level the native source set.
+- **A logger the adapter cannot read** (its `configuredLevel` throws) is still put back and audited and
+  does not stop the rest of the pass; no baseline is written for it from a value nobody read.
 - **One pass at a time.** The 30 s sweep and the native-change callback share one pass, serialized by a
   lock, so two threads that both see a drift do not both apply it and both write the audit record. A
   limit this does not close: a sweep that reaches a change in the microseconds between someone's

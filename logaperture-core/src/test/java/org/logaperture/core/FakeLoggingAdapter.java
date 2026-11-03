@@ -46,6 +46,7 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     private final Map<String, Level> explicitLevels = new LinkedHashMap<>();
     private final Set<String> knownNames = new LinkedHashSet<>();
     private String throwOnApplyFor;
+    private String throwOnConfiguredLevelFor;
     private String runOnEffectiveLevelFor;
     private Runnable runOnEffectiveLevel;
 
@@ -90,6 +91,11 @@ final class FakeLoggingAdapter implements LoggingAdapter {
         explicitLevels.remove(name);
     }
 
+    /** Makes {@link #configuredLevel} throw for this logger from now on. */
+    void throwOnConfiguredLevel(String loggerName) {
+        this.throwOnConfiguredLevelFor = loggerName;
+    }
+
     /** Makes the next {@link #applyLevel} call for this logger throw, to exercise chaos-case behavior. */
     void throwOnApply(String loggerName) {
         this.throwOnApplyFor = loggerName;
@@ -118,6 +124,9 @@ final class FakeLoggingAdapter implements LoggingAdapter {
 
     @Override
     public Optional<Level> configuredLevel(String loggerName) {
+        if (loggerName.equals(throwOnConfiguredLevelFor)) {
+            throw new RuntimeException("simulated adapter failure for configuredLevel(" + loggerName + ")");
+        }
         if (loggerName.equals(runOnConfiguredLevelFor)) {
             Runnable action = runOnConfiguredLevel;
             runOnConfiguredLevelFor = null; // one-shot

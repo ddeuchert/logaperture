@@ -980,11 +980,10 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     /**
-     * {@link #verifyAndReapply}'s override half alone: for a level that was just changed natively
-     * (doc/specs/log4j2-adapter.md A1, {@code LoggingAdapter#onNativeChange}). The vendor layer is
-     * left out on purpose: a vendor default sits <em>under</em> the application's own configuration,
-     * so a native change to a vendor-defaulted logger with no override is the application's own
-     * value and wins; the periodic sweep still re-applies a drifted vendor level (A2).
+     * {@link #verifyAndReapply}'s override half alone: compare each active override with the level in
+     * force and put back (and audit) any that differ. Knows nothing about <em>who</em> changed the level,
+     * so it neither rebases a baseline nor warns; {@link #reassertAfterNativeChange} does both, for a
+     * framework that reports native changes.
      *
      * @return how many overrides had drifted and were re-applied
      */
@@ -1023,10 +1022,12 @@ public final class LevelControlService implements LevelControlOperations {
      *
      * @param changedTo     the effective level it had been changed to
      * @param nativeSetting its own configured level just before the override went back: what the native
-     *                      source set (A2)
+     *                      source set (A2); empty means "inherited" only when {@code nativeSettingRead}
+     * @param nativeSettingRead false if the adapter could not say (it threw): the pass still put the
+     *                      override back, and no baseline is written from a value nobody read
      */
     private record Reasserted(String loggerName, LevelOverride override, Level changedTo,
-                              Optional<Level> nativeSetting) {
+                              Optional<Level> nativeSetting, boolean nativeSettingRead) {
     }
 
     /**
@@ -1060,8 +1061,15 @@ public final class LevelControlService implements LevelControlOperations {
                 continue; // still in force
             }
 
-            // Read before the override overwrites it: what the native source set (A2).
-            Optional<Level> nativeSetting = adapter.configuredLevel(loggerName);
+            // Read before the override overwrites it: what the native source set (A2). A logger the
+            // adapter cannot read must not stop the others from being verified.
+            Optional<Level> nativeSetting = Optional.empty();
+            boolean nativeSettingRead = true;
+            try {
+                nativeSetting = adapter.configuredLevel(loggerName);
+            } catch (RuntimeException e) {
+                nativeSettingRead = false;
+            }
             OverrideApplier.apply(override, adapter);
 
             Optional<LevelOverride> afterApply = overrides.get(loggerName);
@@ -1079,7 +1087,7 @@ public final class LevelControlService implements LevelControlOperations {
             auditLog.record(new AuditRecord(
                     now, principal, "verification-sweep", loggerName, current.toString(),
                     override.level().toString(), override.reason(), AuditRecord.Action.MUTATION));
-            reasserted.add(new Reasserted(loggerName, override, current, nativeSetting));
+            reasserted.add(new Reasserted(loggerName, override, current, nativeSetting, nativeSettingRead));
         }
         return reasserted;
     }
@@ -1096,7 +1104,7 @@ public final class LevelControlService implements LevelControlOperations {
         }
         // A level equal to the override's own is one this process wrote (a partial update), not the
         // native source's: never the baseline.
-        if (!one.nativeSetting().equals(Optional.of(one.override().level()))) {
+        if (one.nativeSettingRead() && !one.nativeSetting().equals(Optional.of(one.override().level()))) {
             baselines.rebaseNative(one.loggerName(), one.nativeSetting());
         }
         warnNativeChange(one.loggerName(), one.override(), one.changedTo(), now);
@@ -1110,13 +1118,26 @@ public final class LevelControlService implements LevelControlOperations {
         }
         Diagnostics.warnThrottled("native-change:" + loggerName,
                 "logger '" + loggerName + "' was changed to " + changedTo + " outside LogAperture, and the "
-                        + override.level() + " override on it was put back (set via " + override.source()
+                        + "override on it was put back (" + override.level() + ", " + override.tier()
+                        + ", set " + ago(Duration.between(override.appliedAt(), now)) + " via " + override.source()
                         + (override.reason() == null || override.reason().isEmpty()
                                 ? "" : ", reason: " + override.reason())
                         + "). 'logctl reset logger " + loggerName
                         + (override.tier() == PersistenceTier.STICKY ? " --include-sticky" : "")
                         + "' ends the override.",
                 null);
+    }
+
+    /** "12 minutes ago", "3 hours ago": coarse, for a person reading a log line. */
+    private static String ago(Duration elapsed) {
+        long seconds = Math.max(0, elapsed.getSeconds());
+        if (seconds < 90) {
+            return seconds + " s ago";
+        }
+        if (seconds < 90 * 60) {
+            return Math.round(seconds / 60.0) + " minutes ago";
+        }
+        return Math.round(seconds / 3600.0) + " hours ago";
     }
 
     /**
