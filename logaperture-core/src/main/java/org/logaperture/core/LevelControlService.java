@@ -911,7 +911,7 @@ public final class LevelControlService implements LevelControlOperations {
      * {@link #reapplyActiveOverrides(LoggingAdapter)}, stamped with the caller's clock: the
      * {@link #RECONFIGURATION_QUIET} window of {@link #reassertAfterNativeChange} is measured against it.
      */
-    public void reapplyActiveOverrides(LoggingAdapter targetAdapter, Instant now) {
+    void reapplyActiveOverrides(LoggingAdapter targetAdapter, Instant now) {
         lastReapplyAt = now;
         // The vendor layer first, for loggers no override covers -- doc/specs/vendor-defaults.md
         // "Reconfiguration and the verification sweep": a framework reset erased it too.
@@ -1029,8 +1029,23 @@ public final class LevelControlService implements LevelControlOperations {
                               Optional<Level> nativeSetting) {
     }
 
+    /**
+     * One pass at a time: the 30 s sweep and a framework's native-change callback both come here, from
+     * different threads, and two passes that both found the same drift would both apply it and both
+     * write the audit record. (A pass that finds the drift first, the sweep in the microseconds between
+     * someone's {@code setLevel} and their {@code updateLoggers()}, puts the override back without the
+     * rebase and the warning, which are the native-change callback's: a limit, not a race this closes.)
+     */
+    private final Object passLock = new Object();
+
     /** The shared pass: compare each active override with the level in force, put back, audit. */
     private List<Reasserted> reassertDriftedOverrides(Instant now) {
+        synchronized (passLock) {
+            return reassertDriftedOverridesLocked(now);
+        }
+    }
+
+    private List<Reasserted> reassertDriftedOverridesLocked(Instant now) {
         List<Reasserted> reasserted = new ArrayList<>();
         for (String loggerName : List.copyOf(overrides.all().keySet())) {
             LevelOverride override = overrides.get(loggerName).orElse(null);
@@ -1098,7 +1113,9 @@ public final class LevelControlService implements LevelControlOperations {
                         + override.level() + " override on it was put back (set via " + override.source()
                         + (override.reason() == null || override.reason().isEmpty()
                                 ? "" : ", reason: " + override.reason())
-                        + "). 'logctl reset logger " + loggerName + "' ends the override.",
+                        + "). 'logctl reset logger " + loggerName
+                        + (override.tier() == PersistenceTier.STICKY ? " --include-sticky" : "")
+                        + "' ends the override.",
                 null);
     }
 

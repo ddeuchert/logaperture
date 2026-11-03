@@ -361,6 +361,12 @@ The rest of A1 and A2, in `core`, for any backend that reports a native change
   `set logger` landed meanwhile), and the rebase is skipped when the level read equals the override's own
   (a value this process wrote, never the native source's) and never creates a baseline nobody captured.
   The first check narrows a race it cannot close without a lock around the control plane.
+- **One pass at a time.** The 30 s sweep and the native-change callback share one pass, serialized by a
+  lock, so two threads that both see a drift do not both apply it and both write the audit record. A
+  limit this does not close: a sweep that reaches a change in the microseconds between someone's
+  `setLevel` and their `updateLoggers()` puts the override back without the rebase and the warning,
+  which belong to the native-change callback.
+- **The command in the warning is one that works:** `--include-sticky` is added for a `STICKY` override.
 - **The audit record is unchanged:** `source=verification-sweep`, as for any override a framework undid
   (the `audit-log.md` guide already describes it that way), so no new value appears in the guide.
 - **The sweep's own check does neither.** It cannot tell who changed a level, so it neither rebases nor

@@ -137,6 +137,42 @@ class NativeChangeReassertionTest {
     }
 
     @Test
+    void aStickyOverrideWarning_suggestsTheFlagThatResetNeeds() {
+        service.setLogger("sticky.Thing", Level.TRACE, SetLevelOptions.sticky());
+        adapter.setConfiguredLevel("sticky.Thing", Level.WARN);
+
+        service.reassertAfterNativeChange(Instant.now());
+
+        assertTrue(warnings().contains("'logctl reset logger sticky.Thing --include-sticky' ends the override"),
+                warnings());
+    }
+
+    @Test
+    void twoPassesAtOnce_putBackAndAuditOnce() throws Exception {
+        nativeChange(Level.INFO);
+        java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+        Runnable pass = () -> {
+            try {
+                go.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            service.reassertAfterNativeChange(Instant.now());
+        };
+        Thread a = new Thread(pass);
+        Thread b = new Thread(pass);
+        a.start();
+        b.start();
+        go.countDown();
+        a.join();
+        b.join();
+
+        long sweepRecords = auditLog.records().stream()
+                .filter(r -> "verification-sweep".equals(r.source()) && APP.equals(r.loggerName())).count();
+        assertEquals(1, sweepRecords, "the second pass finds nothing left to put back");
+    }
+
+    @Test
     void theWarning_isWrittenOncePerLoggerPerMinute() {
         nativeChange(Level.WARN);
         service.reassertAfterNativeChange(Instant.now());

@@ -97,17 +97,13 @@ class BundledLog4j2EndToEndIT {
         pollForLogger(proxy, WORKER);
         proxy.setLogger(WORKER, "DEBUG", "e2e", "SESSION", 120, false);
 
+        // Straight after one another, so the native change is milliseconds after the reload, well inside the
+        // 5 s window in which it is put back and audited but not warned about (A1).
         sendAndWait(app, output, "RECONFIGURE r1", "DONE r1");
+        sendAndWait(app, output, "NATIVE WARN n1", "DONE n1");
         String afterReload = logAndWait(app, output, "a");
         assertTrue(afterReload.contains("DEBUG fixture.Worker debug a"),
-                "the reload must not drop the override:\n" + afterReload);
-
-        // Spring's logging.level / an Actuator POST: a native change against the override. It comes within
-        // 5 s of the reload, so it is put back and audited but not warned about (A1).
-        sendAndWait(app, output, "NATIVE WARN n1", "DONE n1");
-        String afterNative = logAndWait(app, output, "b");
-        assertTrue(afterNative.contains("DEBUG fixture.Worker debug b"),
-                "a native change must not undo the override:\n" + afterNative);
+                "neither the reload nor the native change may drop the override:\n" + afterReload);
         LoggerInfoData row = proxy.listLoggers(WORKER).get(0);
         assertEquals("DEBUG", row.getEffectiveLevel());
         assertTrue(row.isOverrideActive());
