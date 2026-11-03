@@ -272,6 +272,12 @@ public final class NoneContainer implements AutoCloseable {
             ruleService.installPipeline();
         };
         adapter.onReset(reapplyOnReset);
+        // doc/specs/log4j2-adapter.md A1: a level changed natively against an active override (Spring's
+        // logging.level, Actuator) is put back when it happens. Only the override check: not the whole
+        // re-apply (the gate and wrappers are untouched by a level change) and not the vendor layer
+        // (the application's own value wins over a vendor default).
+        Runnable verifyOnNativeChange = () -> service.verifyOverrides(Instant.now());
+        adapter.onNativeChange(verifyOnNativeChange);
 
         // doc/specs/trim-rule.md: same always-on-from-install discipline as top/storm/the rule
         // pipeline below, and must run first -- see the reapplyOnReset lambda's own comment.
@@ -374,6 +380,7 @@ public final class NoneContainer implements AutoCloseable {
 
         for (ContextControl context : aggregate.contexts()) {
             context.handle().adapter().clearResetListener();
+            context.handle().adapter().clearNativeChangeListener();
         }
 
         if (stateStore instanceof Closeable closeable) {

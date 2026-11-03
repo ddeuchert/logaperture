@@ -103,6 +103,27 @@ public interface LoggingAdapter {
     }
 
     /**
+     * Registers {@code listener} to run when something other than this adapter changed a level in the
+     * underlying framework without reconfiguring it: Spring Boot's {@code logging.level} applied after
+     * its configuration swap, an Actuator {@code POST /actuator/loggers/...}, application code calling the
+     * framework's own level API (doc/specs/log4j2-adapter.md A1, spike SB6, SB7). The caller compares each
+     * active override with the level now in force and puts back any that differ, so an override holds until
+     * it is reset or expires (§5, §15.5) at the moment of the change, not at the next sweep.
+     *
+     * <p>Must not run for the adapter's own {@link #applyLevel}, and must not run once the framework is
+     * stopping. Default no-op: a framework with no event for this (Logback, JUL) is covered by the periodic
+     * verification sweep alone. At most one listener; a second call replaces the first, like {@link #onReset}.
+     */
+    default void onNativeChange(Runnable listener) {
+        // no-op by default
+    }
+
+    /** Unregisters the listener most recently passed to {@link #onNativeChange}, if any. Default no-op. */
+    default void clearNativeChangeListener() {
+        // no-op by default
+    }
+
+    /**
      * Registers {@code listener} to run whenever this adapter renames a live
      * handler's {@link HandlerRef} in place — today, only {@code
      * JulLoggingAdapter} promoting an identity-token ref to a resolved

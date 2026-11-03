@@ -34,7 +34,10 @@ import java.util.List;
  *
  * <p>Like a real app it sets its own configuration file in {@code main} before its first logger, so
  * the test also shows the agent leaves that configuration alone (spike I-1 to I-4). Commands on
- * stdin: {@code LOG <tag>} logs one line per level and prints {@code LOGGED <tag>}.
+ * stdin: {@code LOG <tag>} logs one line per level and prints {@code LOGGED <tag>};
+ * {@code RECONFIGURE <tag>} reloads Log4j's configuration; {@code NATIVE <level> <tag>} sets the worker's
+ * level through Log4j's own API, as Spring's {@code logging.level} and an Actuator POST do. Both print
+ * {@code DONE <tag>}.
  */
 public final class BundledLog4j2FixtureApp {
 
@@ -57,6 +60,8 @@ public final class BundledLog4j2FixtureApp {
             Class<?> worker = bundled.loadClass(Worker.class.getName());
             Method start = worker.getMethod("start");
             Method log = worker.getMethod("log", String.class);
+            Method reconfigure = worker.getMethod("reconfigure", String.class);
+            Method nativeLevel = worker.getMethod("nativeLevel", String.class, String.class);
             start.invoke(null);
             System.out.println("FIXTURE-READY");
             System.out.flush();
@@ -65,6 +70,11 @@ public final class BundledLog4j2FixtureApp {
             while ((line = stdin.readLine()) != null) {
                 if (line.startsWith("LOG ")) {
                     log.invoke(null, line.substring(4));
+                } else if (line.startsWith("RECONFIGURE ")) {
+                    reconfigure.invoke(null, line.substring(12)); // what monitorInterval and Spring's swap do
+                } else if (line.startsWith("NATIVE ")) {
+                    String[] parts = line.substring(7).split(" ", 2); // <level> <tag>: Spring's logging.level, Actuator
+                    nativeLevel.invoke(null, parts[0], parts[1]);
                 } else {
                     break;
                 }
@@ -79,6 +89,20 @@ public final class BundledLog4j2FixtureApp {
 
         public static void start() {
             org.apache.logging.log4j.LogManager.getLogger(WORKER_LOGGER).info("fixture app started");
+        }
+
+        public static void reconfigure(String tag) {
+            ((org.apache.logging.log4j.core.LoggerContext) org.apache.logging.log4j.LogManager.getContext(false))
+                    .reconfigure();
+            System.out.println("DONE " + tag);
+            System.out.flush();
+        }
+
+        public static void nativeLevel(String level, String tag) {
+            org.apache.logging.log4j.core.config.Configurator.setLevel(WORKER_LOGGER,
+                    org.apache.logging.log4j.Level.valueOf(level));
+            System.out.println("DONE " + tag);
+            System.out.flush();
         }
 
         public static void log(String tag) {

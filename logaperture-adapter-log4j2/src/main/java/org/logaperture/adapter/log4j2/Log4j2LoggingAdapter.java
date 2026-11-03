@@ -20,8 +20,11 @@ import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.logaperture.api.BackendInfo;
 import org.logaperture.api.Level;
+import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.spi.LoggingAdapter;
 
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -29,6 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Levels on one Log4j 2 {@link LoggerContext} (doc/specs/log4j2-adapter.md A2, A8). Works on the
@@ -39,11 +43,19 @@ import java.util.concurrent.ConcurrentHashMap;
  * one, so a reset that writes the captured baseline back turns a declared {@code fatal} into
  * {@code error}. The adapter cannot do better alone: a reset and a deliberate {@code set logger x
  * error} reach {@link #applyLevel} as the same call. Exact restoration needs the baseline to carry
- * the native level (issue filed with this slice).
+ * the native level (#312).
  *
- * <p>Not in this class yet: re-applying after a reconfiguration, handler levels, the gate and trim.
- * Until the re-apply listener lands a reconfiguration discards a level set here, as it would any
- * other {@code LoggerConfig} change.
+ * <p>Reconfiguration (spec "Scope" 3). Log4j fires a {@code "config"} property event from the context
+ * on a configuration swap ({@code old != new}) and from <em>every</em> {@code updateLoggers()}
+ * ({@code old == new}, spike R0). A swap wipes levels, so it runs the {@link #onReset} listener (a full
+ * re-apply); an {@code old == new} event from anyone else's {@code updateLoggers()} is a native level
+ * change (Spring's {@code logging.level}, Actuator) and runs the {@link #onNativeChange} listener, which
+ * compares active overrides with the levels now in force. Events this adapter causes itself, and events
+ * once the context is stopping (SB10), are ignored, so nothing recurses. No assumption is made that the
+ * swap event comes before the {@code old == new} one that precedes it (SB5): both listeners are
+ * idempotent.
+ *
+ * <p>Not in this class yet: handler levels, the gate and trim.
  */
 final class Log4j2LoggingAdapter implements LoggingAdapter {
 
@@ -58,10 +70,141 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
      * application declared, and that one is never removed.
      */
     private final Map<String, LoggerConfig> createdByLogAperture = new ConcurrentHashMap<>();
+    /**
+     * Names LogAperture created a {@code LoggerConfig} for on a configuration that has since been
+     * replaced. The name may now be a config the application declared, and a reset must leave that
+     * alone, not blank its level.
+     */
+    private final Set<String> createdOnAGoneConfiguration = ConcurrentHashMap.newKeySet();
+
+    /**
+     * The configuration the created-config map belongs to. A swap is {@code old != new}, but the first
+     * event after one is an {@code old == new} event already on the new configuration (SB5), where
+     * {@code onNativeChange} may create {@code LoggerConfig}s before the swap event arrives. Keying the
+     * map by configuration identity, not by "a swap event was seen", keeps those.
+     */
+    private volatile Configuration trackedConfiguration;
+    /**
+     * For a name in {@link #createdOnAGoneConfiguration} that an override has since been written onto
+     * (the application declares it in the new configuration): the level the application declared there,
+     * which a reset restores. Without it the reset would leave the override's level in force.
+     */
+    private final Map<String, Optional<org.apache.logging.log4j.Level>> declaredBeforeOverride =
+            new ConcurrentHashMap<>();
+    private final AtomicReference<Runnable> resetListener = new AtomicReference<>();
+    private final AtomicReference<Runnable> nativeChangeListener = new AtomicReference<>();
+    private final PropertyChangeListener configListener = this::onConfigEvent;
+    private boolean listening;
+    /** Set on the thread that is inside this adapter's own {@code updateLoggers()} or a listener it called. */
+    private final ThreadLocal<Boolean> inside = new ThreadLocal<>();
 
     Log4j2LoggingAdapter(LoggerContext context, String version) {
         this.context = context;
         this.version = version;
+        this.trackedConfiguration = context.getConfiguration();
+    }
+
+    @Override
+    public synchronized void onReset(Runnable listener) {
+        resetListener.set(listener);
+        startListening();
+    }
+
+    @Override
+    public synchronized void clearResetListener() {
+        resetListener.set(null);
+        stopListeningIfIdle();
+    }
+
+    @Override
+    public synchronized void onNativeChange(Runnable listener) {
+        nativeChangeListener.set(listener);
+        startListening();
+    }
+
+    @Override
+    public synchronized void clearNativeChangeListener() {
+        nativeChangeListener.set(null);
+        stopListeningIfIdle();
+    }
+
+    /** Whether this adapter controls {@code other}. */
+    boolean isFor(org.apache.logging.log4j.spi.LoggerContext other) {
+        return context == other;
+    }
+
+    /** Lets go of the context: removes the event listener and both callbacks (spec "Scope" 7). */
+    synchronized void detach() {
+        resetListener.set(null);
+        nativeChangeListener.set(null);
+        stopListeningIfIdle();
+    }
+
+    /**
+     * The created {@code LoggerConfig}s belong to one configuration; when it is no longer the live one
+     * they are gone. Their names move to "created on a gone configuration", pruned to the names the live
+     * configuration declares (only those can need protecting). Returns whether the live configuration is
+     * a different one from the one last seen.
+     */
+    private synchronized boolean forgetCreatedConfigsOfAGoneConfiguration() {
+        Configuration live = context.getConfiguration();
+        if (trackedConfiguration == live) {
+            return false;
+        }
+        createdOnAGoneConfiguration.addAll(createdByLogAperture.keySet());
+        createdByLogAperture.clear();
+        Map<String, LoggerConfig> declared = live.getLoggers();
+        createdOnAGoneConfiguration.removeIf(name -> !declared.containsKey(name));
+        declaredBeforeOverride.clear(); // re-recorded against this configuration when an override is written
+        trackedConfiguration = live;
+        return true;
+    }
+
+    private void startListening() {
+        if (!listening) {
+            forgetCreatedConfigsOfAGoneConfiguration(); // "last seen" starts at the configuration now live
+            context.addPropertyChangeListener(configListener);
+            listening = true;
+        }
+    }
+
+    private void stopListeningIfIdle() {
+        if (listening && resetListener.get() == null && nativeChangeListener.get() == null) {
+            context.removePropertyChangeListener(configListener);
+            listening = false;
+        }
+    }
+
+    private void onConfigEvent(PropertyChangeEvent event) {
+        if (!LoggerContext.PROPERTY_CONFIG.equals(event.getPropertyName())) {
+            return;
+        }
+        if (inside.get() != null || !context.isStarted()) {
+            return; // our own updateLoggers() or a listener we ran (R0), or a context that is stopping (SB10)
+        }
+        boolean swap = event.getOldValue() != event.getNewValue();
+        boolean configurationChanged = forgetCreatedConfigsOfAGoneConfiguration();
+        if (!swap && configurationChanged) {
+            // SB5: the first event after a swap is an old == new one, on the new configuration, fired
+            // before the swap event. The swap event runs the full re-apply; running the override check
+            // here as well would put every override back twice and audit a reload as native drift.
+            return;
+        }
+        Runnable listener = swap ? resetListener.get() : nativeChangeListener.get();
+        if (listener == null) {
+            return;
+        }
+        inside.set(Boolean.TRUE);
+        try {
+            listener.run();
+        } catch (RuntimeException t) {
+            // Never into Log4j's own reconfiguration (§9): a failed re-apply is a line, not a crash.
+            // An Error (out of memory, stack overflow) is not ours to swallow.
+            Diagnostics.warn("LogAperture could not re-apply after a Log4j "
+                    + (swap ? "reconfiguration" : "level change") + ", continuing", t);
+        } finally {
+            inside.remove();
+        }
     }
 
     @Override
@@ -96,6 +239,7 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
 
     @Override
     public synchronized void applyLevel(String loggerName, Level level) {
+        forgetCreatedConfigsOfAGoneConfiguration();
         Configuration config = context.getConfiguration();
         String name = nativeName(loggerName);
         LoggerConfig own = config.getLoggers().get(name);
@@ -104,13 +248,31 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         } else {
             set(config, name, own, LevelMapper.toLog4j(level));
         }
-        context.updateLoggers();
+        updateLoggersQuietly();
+    }
+
+    /** {@code updateLoggers()} fires a {@code "config"} event; this adapter's own must not call it back (R0). */
+    private void updateLoggersQuietly() {
+        Boolean outer = inside.get();
+        inside.set(Boolean.TRUE);
+        try {
+            context.updateLoggers();
+        } finally {
+            if (outer == null) {
+                inside.remove();
+            }
+        }
     }
 
     private void set(Configuration config, String name, LoggerConfig own, org.apache.logging.log4j.Level level) {
         if (name.isEmpty()) {
             config.getRootLogger().setLevel(level);
         } else if (own != null) {
+            if (createdOnAGoneConfiguration.contains(name)) {
+                // The application declares this name in the configuration that replaced ours: remember its
+                // level before the override replaces it, so a reset can give it back.
+                declaredBeforeOverride.putIfAbsent(name, Optional.ofNullable(own.getExplicitLevel()));
+            }
             own.setLevel(level);
         } else {
             // A name no LoggerConfig has: pre-set one of its own, additive, no appenders (A8, L3b).
@@ -125,16 +287,20 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
             return; // the root has nothing to inherit from: leave it
         }
         LoggerConfig mine = createdByLogAperture.remove(name);
+        boolean createdOnGone = createdOnAGoneConfiguration.remove(name);
+        Optional<org.apache.logging.log4j.Level> declared = declaredBeforeOverride.remove(name);
         if (own == null) {
             return;
         }
         if (mine == own) {
             config.removeLogger(name); // reset removes the LoggerConfig it created (L3c)
-        } else if (mine == null) {
+        } else if (declared != null) {
+            own.setLevel(declared.orElse(null)); // the application's own level, from before the override
+        } else if (!createdOnGone) {
             own.setLevel(null); // a declared, level-less config inherits again (L3e)
         }
-        // else: the config LogAperture created is gone (a reconfiguration) and this one is the
-        // application's own: leave it. Putting levels back after a reconfiguration is the re-apply slice.
+        // else: the config LogAperture created went with a reconfiguration, this one is the
+        // application's own, and no override was written onto it: leave its level alone.
     }
 
     @Override

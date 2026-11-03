@@ -956,6 +956,19 @@ public final class LevelControlService implements LevelControlOperations {
      * @return how many overrides had drifted and were re-applied
      */
     public int verifyAndReapply(Instant now) {
+        return verifyOverrides(now) + verifyVendorLayer(now);
+    }
+
+    /**
+     * {@link #verifyAndReapply}'s override half alone: for a level that was just changed natively
+     * (doc/specs/log4j2-adapter.md A1, {@code LoggingAdapter#onNativeChange}). The vendor layer is
+     * left out on purpose: a vendor default sits <em>under</em> the application's own configuration,
+     * so a native change to a vendor-defaulted logger with no override is the application's own
+     * value and wins; the periodic sweep still re-applies a drifted vendor level (A2).
+     *
+     * @return how many overrides had drifted and were re-applied
+     */
+    public int verifyOverrides(Instant now) {
         int reapplied = 0;
         for (String loggerName : List.copyOf(overrides.all().keySet())) {
             LevelOverride override = overrides.get(loggerName).orElse(null);
@@ -989,7 +1002,7 @@ public final class LevelControlService implements LevelControlOperations {
                     override.level().toString(), override.reason(), AuditRecord.Action.MUTATION));
             reapplied++;
         }
-        return reapplied + verifyVendorLayer(now);
+        return reapplied;
     }
 
     /**
