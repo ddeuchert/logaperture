@@ -237,18 +237,26 @@ of "Scope":
 - **Version (A10).** Read from the package of the loaded context class; below 2.20.0 `ready()`
   throws, and the detector's C8 line says why. The version is believed only when the package's
   manifest title names Log4j: in a shaded or assembled jar the manifest is the application's own, and
-  its version (`1.4.0`) must not read as "too old". An unreadable or unbelieved version binds. The
-  `log4j2.version` `doctor` check is not in this slice (see below).
+  its version (`1.4.0`) must not read as "too old". With no believable version the entry checks that
+  `LoggerConfig.getExplicitLevel()` exists (added in 2.19.0) and refuses without it, so an old Log4j
+  in a shaded jar is not bound blind. The `log4j2.version` `doctor` check is not in this slice (see below).
 - **Levels (A2, A8).** On the context held, never through `Configurator`. `configuredLevel` is
   `getExplicitLevel()`; a name with no `LoggerConfig` of its own reports none. A pre-set creates a
   `LoggerConfig` of its own, and clearing it removes that `LoggerConfig` again, but only the object
   it created: after a reconfiguration the name may be a config the application declared, which is
-  left alone. A declared one is given back its inheritance with `setLevel(null)`. `FATAL` reads back
-  as `ERROR`, a custom level as the nearest standard one; the adapter remembers the native level it
-  read, so writing the baseline back (a reset) restores `FATAL`, not `ERROR`. `applyLevel` is
+  left alone. A declared one is given back its inheritance with `setLevel(null)`. `applyLevel` is
   synchronised. The root is `ROOT`, as on Logback and JUL.
-- **Contexts.** Taken in name order, because the selector keeps them in a hash map and the names
-  `log4j2`, `log4j2-2` are numbered by position and persisted. `open()` registers the shutdown
+- **A limit: `FATAL`.** `FATAL` (and a custom level) reads back as the nearest API level, `ERROR`, so
+  a reset that writes the captured baseline back turns a declared `fatal` into `error`. The adapter
+  cannot fix it alone: a reset and a deliberate `set logger x error` reach `applyLevel` as the same
+  call, and remembering the native level (tried, reverted) turned the deliberate `error` into
+  `FATAL`. Exact restoration needs the baseline to carry the native level:
+  [#312](https://github.com/ddeuchert/logaperture/issues/312).
+- **Contexts.** Taken in order of config location, then name, because the selector keeps them in a
+  hash map in no stable order. A web path (`/appA`) is the name; a repeat of one becomes `/appA#2`.
+  Only contexts without a web path are numbered (`log4j2`, `log4j2-2`), so a web context more or less
+  never renames them. A default context name is a class-loader identity hash, so two contexts in one
+  Log4j copy with the same config location and no web path cannot be named stably across runs. `open()` registers the shutdown
   listener before checking that a context is still started, and fails if none is, so the detector
   reports it and no instance is left bound to nothing.
 - **Shutdown (TC5).** Log4j's own `addShutdownListener` calls the detector's callback; the listener
@@ -293,6 +301,10 @@ From the spike, carried here because they bound what is promised:
 - JDK 25; Spring Boot's `log4j2-spring.xml`, devtools restart and structured logging; Tomcat 10.1
   and a webapp without `log4j-jakarta-web` (the context name is then a hash, A7); WildFly 27+;
   more than one context in one Log4j copy.
+- Several webapps sharing one Log4j copy (Tomcat's `lib/`, out of scope): the entry has one shutdown
+  callback, so stopping any one context unbinds every context it bound, and the bridge loader is
+  pinned by the listener Log4j cannot remove for as long as another context lives. Both need a
+  per-context callback in `BridgedFramework`; neither arises with one context per Log4j copy.
 - A second context in the same Log4j copy created after the first was bound (the entry binds the contexts that are started when it opens), and a first context created more than 3 s after the class is loaded (C4).
 - The one extra `ContextDataProvider` call on the async-logger thread on 2.17.2 (moot under A3(a)).
 

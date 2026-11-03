@@ -35,6 +35,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * context it holds, never through {@code Configurator}'s static helpers, which find their context
  * from the caller's class loader (spike SB3).
  *
+ * <p>A native level the API cannot name ({@code FATAL}, a custom level) reads back as the nearest
+ * one, so a reset that writes the captured baseline back turns a declared {@code fatal} into
+ * {@code error}. The adapter cannot do better alone: a reset and a deliberate {@code set logger x
+ * error} reach {@link #applyLevel} as the same call. Exact restoration needs the baseline to carry
+ * the native level (issue filed with this slice).
+ *
  * <p>Not in this class yet: re-applying after a reconfiguration, handler levels, the gate and trim.
  * Until the re-apply listener lands a reconfiguration discards a level set here, as it would any
  * other {@code LoggerConfig} change.
@@ -52,12 +58,6 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
      * application declared, and that one is never removed.
      */
     private final Map<String, LoggerConfig> createdByLogAperture = new ConcurrentHashMap<>();
-    /**
-     * Native levels {@link LevelMapper} cannot round-trip ({@code FATAL}, a custom level), by name, as
-     * last read by {@link #configuredLevel}. A reset that writes the baseline back would otherwise turn
-     * a declared {@code fatal} into {@code ERROR}.
-     */
-    private final Map<String, org.apache.logging.log4j.Level> lossyNativeLevels = new ConcurrentHashMap<>();
 
     Log4j2LoggingAdapter(LoggerContext context, String version) {
         this.context = context;
@@ -85,9 +85,7 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
             return Optional.empty(); // no LoggerConfig of its own: inherits (spike L2)
         }
         LoggerConfig target = own != null ? own : config.getRootLogger();
-        org.apache.logging.log4j.Level explicit = target.getExplicitLevel();
-        rememberIfLossy(name, explicit);
-        return Optional.ofNullable(LevelMapper.toApi(explicit));
+        return Optional.ofNullable(LevelMapper.toApi(target.getExplicitLevel()));
     }
 
     @Override
@@ -104,7 +102,7 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         if (level == null) {
             clear(config, name, own);
         } else {
-            set(config, name, own, nativeFor(name, level));
+            set(config, name, own, LevelMapper.toLog4j(level));
         }
         context.updateLoggers();
     }
@@ -137,23 +135,6 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         }
         // else: the config LogAperture created is gone (a reconfiguration) and this one is the
         // application's own: leave it. Putting levels back after a reconfiguration is the re-apply slice.
-    }
-
-    private void rememberIfLossy(String name, org.apache.logging.log4j.Level explicit) {
-        if (explicit != null && LevelMapper.toLog4j(LevelMapper.toApi(explicit)) != explicit) {
-            lossyNativeLevels.put(name, explicit);
-        } else {
-            lossyNativeLevels.remove(name);
-        }
-    }
-
-    /** The native level for {@code level}: the lossy one last read if that is what {@code level} stands for. */
-    private org.apache.logging.log4j.Level nativeFor(String name, Level level) {
-        org.apache.logging.log4j.Level remembered = lossyNativeLevels.get(name);
-        if (remembered != null && LevelMapper.toApi(remembered) == level) {
-            return remembered;
-        }
-        return LevelMapper.toLog4j(level);
     }
 
     @Override

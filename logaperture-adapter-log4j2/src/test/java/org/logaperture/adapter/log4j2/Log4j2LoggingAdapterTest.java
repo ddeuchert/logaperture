@@ -116,20 +116,12 @@ class Log4j2LoggingAdapterTest {
     }
 
     @Test
-    void aDeclaredFatalIsWrittenBackAsFatal_notAsError() {
+    void aDeclaredFatal_readsAsError_andADeliberateErrorIsWrittenAsError() {
         assertEquals(Optional.of(Level.ERROR), adapter.configuredLevel("critical"), "read as the nearest level");
-        adapter.applyLevel("critical", Level.DEBUG);
-        adapter.applyLevel("critical", Level.ERROR); // what a reset does with the baseline it captured
-        assertEquals(org.apache.logging.log4j.Level.FATAL,
-                context.getConfiguration().getLoggers().get("critical").getExplicitLevel());
-    }
-
-    @Test
-    void anErrorThatWasNeverFatalStaysError() {
-        adapter.configuredLevel("app");
-        adapter.applyLevel("app", Level.ERROR);
+        adapter.applyLevel("critical", Level.ERROR);
         assertEquals(org.apache.logging.log4j.Level.ERROR,
-                context.getConfiguration().getLoggers().get("app").getExplicitLevel());
+                context.getConfiguration().getLoggers().get("critical").getExplicitLevel(),
+                "a deliberate 'error' must not be written as FATAL, which would drop the ERROR events asked for");
     }
 
     @Test

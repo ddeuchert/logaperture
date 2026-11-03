@@ -82,4 +82,12 @@ class SmallUnitsTest {
         String version = Log4j2Version.of(org.apache.logging.log4j.core.LoggerContext.class);
         assertEquals("2.20.0", version);
     }
+
+    @Test
+    void aRepeatedWebPathGetsADistinctName() {
+        assertEquals(java.util.List.of("/appA", "/appA#2", "log4j2"),
+                ContextNames.allOf(java.util.Arrays.asList("/appA", "/appA", "AppClassLoader@1")));
+        assertEquals(java.util.List.of("log4j2", "log4j2-2"),
+                ContextNames.allOf(java.util.Arrays.asList("x@1", "y@2")));
+    }
 }

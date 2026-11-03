@@ -67,17 +67,21 @@ public final class Log4j2Framework implements BridgedFramework {
         };
         String version = version();
         List<LoggerContext> started = startedContexts();
-        List<ContextHandle> handles = new ArrayList<>(started.size());
-        int ordinal = 0;
+        List<String> log4jNames = new ArrayList<>(started.size());
         for (LoggerContext context : started) {
+            log4jNames.add(context.getName());
+        }
+        List<String> names = ContextNames.allOf(log4jNames);
+        List<ContextHandle> handles = new ArrayList<>(started.size());
+        for (int i = 0; i < started.size(); i++) {
+            LoggerContext context = started.get(i);
             // Listener first, then the check: a context that stops from here on is heard, and one
             // that stopped before is not handed out (a handle for a dead context never goes away).
             context.addShutdownListener(notifyOnShutdown);
             if (!context.isStarted()) {
                 continue;
             }
-            ordinal++;
-            String name = ContextNames.of(context.getName(), ordinal);
+            String name = names.get(i);
             handles.add(ContextHandle.of("log4j2:" + name, name, new Log4j2LoggingAdapter(context, version)));
         }
         if (handles.isEmpty()) {
@@ -102,11 +106,32 @@ public final class Log4j2Framework implements BridgedFramework {
             throw new IllegalStateException("Log4j " + version + " is older than "
                     + Log4j2Version.MIN_MAJOR + "." + Log4j2Version.MIN_MINOR + ".0, the oldest LogAperture controls");
         }
+        if (version == null && !hasExplicitLevels()) {
+            // Shaded or assembled: no version to read. LoggerConfig.getExplicitLevel arrived in 2.19.0, so
+            // its absence says "older than the floor" without running any Log4j code.
+            throw new IllegalStateException("this Log4j has no LoggerConfig.getExplicitLevel(), so it is older than "
+                    + Log4j2Version.MIN_MAJOR + "." + Log4j2Version.MIN_MINOR + ".0, the oldest LogAperture controls"
+                    + " (its version could not be read)");
+        }
+    }
+
+    private static boolean hasExplicitLevels() {
+        try {
+            org.apache.logging.log4j.core.config.LoggerConfig.class.getMethod("getExplicitLevel");
+            return true;
+        } catch (NoSuchMethodException e) {
+            return false;
+        }
     }
 
     /** From the package of the already-loaded context class: no Log4j code runs. Null if not trustworthy. */
     private static String version() {
         return Log4j2Version.of(LoggerContext.class);
+    }
+
+    private static String configLocation(LoggerContext context) {
+        Object location = context.getConfigLocation();
+        return location == null ? "" : location.toString();
     }
 
     /**
@@ -124,9 +149,12 @@ public final class Log4j2Framework implements BridgedFramework {
                 started.add(context);
             }
         }
-        // The selector keeps its contexts in a hash map, in no stable order; the names below are
-        // numbered by position and persisted, so the order has to be the same on every run.
-        started.sort(Comparator.comparing((LoggerContext context) -> String.valueOf(context.getName())));
+        // The selector keeps its contexts in a hash map, in no stable order, and the names below are
+        // numbered by position and persisted. Config location first (the same file on every run), then
+        // name. A context's default name is a class-loader identity hash, so two contexts in one copy
+        // that share a config location and have no web path cannot be told apart stably (spec, A7).
+        started.sort(Comparator.comparing(Log4j2Framework::configLocation)
+                .thenComparing((LoggerContext context) -> String.valueOf(context.getName())));
         return started;
     }
 }
