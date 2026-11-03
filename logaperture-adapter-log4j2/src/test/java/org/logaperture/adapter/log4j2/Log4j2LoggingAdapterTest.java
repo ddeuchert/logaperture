@@ -25,6 +25,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.logaperture.api.Level;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -41,6 +42,7 @@ class Log4j2LoggingAdapterTest {
         ConfigurationBuilder<BuiltConfiguration> builder = ConfigurationBuilderFactory.newConfigurationBuilder();
         builder.add(builder.newLogger("app", org.apache.logging.log4j.Level.INFO));
         builder.add(builder.newLogger("com.vendor", org.apache.logging.log4j.Level.WARN));
+        builder.add(builder.newLogger("critical", org.apache.logging.log4j.Level.FATAL));
         builder.add(builder.newRootLogger(org.apache.logging.log4j.Level.ERROR));
         context = Configurator.initialize(builder.build());
         context.getLogger("app.svc.Orders"); // instantiated, no LoggerConfig of its own
@@ -111,5 +113,56 @@ class Log4j2LoggingAdapterTest {
     void backendInfo_namesLog4j() {
         assertEquals("Log4j 2", adapter.backendInfo().name());
         assertEquals("2.20.0", adapter.backendInfo().version());
+    }
+
+    @Test
+    void aDeclaredFatalIsWrittenBackAsFatal_notAsError() {
+        assertEquals(Optional.of(Level.ERROR), adapter.configuredLevel("critical"), "read as the nearest level");
+        adapter.applyLevel("critical", Level.DEBUG);
+        adapter.applyLevel("critical", Level.ERROR); // what a reset does with the baseline it captured
+        assertEquals(org.apache.logging.log4j.Level.FATAL,
+                context.getConfiguration().getLoggers().get("critical").getExplicitLevel());
+    }
+
+    @Test
+    void anErrorThatWasNeverFatalStaysError() {
+        adapter.configuredLevel("app");
+        adapter.applyLevel("app", Level.ERROR);
+        assertEquals(org.apache.logging.log4j.Level.ERROR,
+                context.getConfiguration().getLoggers().get("app").getExplicitLevel());
+    }
+
+    @Test
+    void clearing_neverRemovesAConfigTheApplicationDeclaredAfterAReconfiguration() {
+        adapter.applyLevel("late.Thing", Level.TRACE); // LogAperture creates the LoggerConfig
+        // A reconfiguration: the new configuration declares the same name itself.
+        ConfigurationBuilder<BuiltConfiguration> builder = ConfigurationBuilderFactory.newConfigurationBuilder();
+        builder.add(builder.newLogger("late.Thing", org.apache.logging.log4j.Level.WARN));
+        builder.add(builder.newRootLogger(org.apache.logging.log4j.Level.ERROR));
+        context.setConfiguration(builder.build());
+        adapter.applyLevel("late.Thing", null);
+        assertTrue(context.getConfiguration().getLoggers().containsKey("late.Thing"),
+                "the application's own declared config is not ours to remove");
+        assertEquals(org.apache.logging.log4j.Level.WARN,
+                context.getConfiguration().getLoggers().get("late.Thing").getExplicitLevel());
+    }
+
+    @Test
+    void concurrentPreSetsOfOneNew_leaveOneConfigAndTheLastLevel() throws Exception {
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(8);
+        try {
+            List<java.util.concurrent.Future<?>> futures = new java.util.ArrayList<>();
+            for (int i = 0; i < 8; i++) {
+                futures.add(pool.submit(() -> adapter.applyLevel("race.Thing", Level.DEBUG)));
+            }
+            for (java.util.concurrent.Future<?> f : futures) {
+                f.get();
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        assertEquals(Optional.of(Level.DEBUG), adapter.configuredLevel("race.Thing"));
+        adapter.applyLevel("race.Thing", null);
+        assertFalse(context.getConfiguration().getLoggers().containsKey("race.Thing"));
     }
 }

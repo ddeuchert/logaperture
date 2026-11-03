@@ -25,6 +25,7 @@ import org.logaperture.core.spi.LoggingAdapter;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -45,8 +46,18 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
 
     private final LoggerContext context;
     private final String version;
-    /** Names for which {@link #applyLevel} created a {@code LoggerConfig} that was not there (A8). */
-    private final Set<String> createdByLogAperture = ConcurrentHashMap.newKeySet();
+    /**
+     * The {@code LoggerConfig}s {@link #applyLevel} created where none was (A8), by name. Held as the
+     * object, not just the name: after a reconfiguration the name may belong to a config the
+     * application declared, and that one is never removed.
+     */
+    private final Map<String, LoggerConfig> createdByLogAperture = new ConcurrentHashMap<>();
+    /**
+     * Native levels {@link LevelMapper} cannot round-trip ({@code FATAL}, a custom level), by name, as
+     * last read by {@link #configuredLevel}. A reset that writes the baseline back would otherwise turn
+     * a declared {@code fatal} into {@code ERROR}.
+     */
+    private final Map<String, org.apache.logging.log4j.Level> lossyNativeLevels = new ConcurrentHashMap<>();
 
     Log4j2LoggingAdapter(LoggerContext context, String version) {
         this.context = context;
@@ -74,7 +85,9 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
             return Optional.empty(); // no LoggerConfig of its own: inherits (spike L2)
         }
         LoggerConfig target = own != null ? own : config.getRootLogger();
-        return Optional.ofNullable(LevelMapper.toApi(target.getExplicitLevel()));
+        org.apache.logging.log4j.Level explicit = target.getExplicitLevel();
+        rememberIfLossy(name, explicit);
+        return Optional.ofNullable(LevelMapper.toApi(explicit));
     }
 
     @Override
@@ -84,14 +97,14 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
     }
 
     @Override
-    public void applyLevel(String loggerName, Level level) {
+    public synchronized void applyLevel(String loggerName, Level level) {
         Configuration config = context.getConfiguration();
         String name = nativeName(loggerName);
         LoggerConfig own = config.getLoggers().get(name);
         if (level == null) {
             clear(config, name, own);
         } else {
-            set(config, name, own, LevelMapper.toLog4j(level));
+            set(config, name, own, nativeFor(name, level));
         }
         context.updateLoggers();
     }
@@ -105,7 +118,7 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
             // A name no LoggerConfig has: pre-set one of its own, additive, no appenders (A8, L3b).
             LoggerConfig created = new LoggerConfig(name, level, true);
             config.addLogger(name, created);
-            createdByLogAperture.add(name);
+            createdByLogAperture.put(name, created);
         }
     }
 
@@ -113,15 +126,34 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         if (name.isEmpty()) {
             return; // the root has nothing to inherit from: leave it
         }
+        LoggerConfig mine = createdByLogAperture.remove(name);
         if (own == null) {
-            createdByLogAperture.remove(name);
             return;
         }
-        if (createdByLogAperture.remove(name)) {
+        if (mine == own) {
             config.removeLogger(name); // reset removes the LoggerConfig it created (L3c)
-        } else {
-            own.setLevel(null); // a level-less config inherits again (L3e)
+        } else if (mine == null) {
+            own.setLevel(null); // a declared, level-less config inherits again (L3e)
         }
+        // else: the config LogAperture created is gone (a reconfiguration) and this one is the
+        // application's own: leave it. Putting levels back after a reconfiguration is the re-apply slice.
+    }
+
+    private void rememberIfLossy(String name, org.apache.logging.log4j.Level explicit) {
+        if (explicit != null && LevelMapper.toLog4j(LevelMapper.toApi(explicit)) != explicit) {
+            lossyNativeLevels.put(name, explicit);
+        } else {
+            lossyNativeLevels.remove(name);
+        }
+    }
+
+    /** The native level for {@code level}: the lossy one last read if that is what {@code level} stands for. */
+    private org.apache.logging.log4j.Level nativeFor(String name, Level level) {
+        org.apache.logging.log4j.Level remembered = lossyNativeLevels.get(name);
+        if (remembered != null && LevelMapper.toApi(remembered) == level) {
+            return remembered;
+        }
+        return LevelMapper.toLog4j(level);
     }
 
     @Override

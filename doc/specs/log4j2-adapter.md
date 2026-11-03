@@ -214,7 +214,7 @@ wrapper's counted-once, recomputed-at-render behaviour is tested only when the a
 2.25.3 (the per-PR matrix will run them), the cost of the gate,
 and the `ThrowableProxy` subclass of A4 (the prototype swapped in a plain `Throwable`).
 
-### Slice 1: detection and binding (built, 2026-11-03)
+### Slice 1: detection and binding (built, 2026-11-02)
 
 The first PR of the adapter, issue #302. The agent now finds a Log4j 2 that is not on the system
 class path, binds it once it has a started context, and offers level control on it. In the order
@@ -235,13 +235,22 @@ of "Scope":
   `BundledLog4j2EndToEndIT` shows an application's own `log4j2.configurationFile`, set in `main`,
   stays in force with Log4j in the application's own loader.
 - **Version (A10).** Read from the package of the loaded context class; below 2.20.0 `ready()`
-  throws, and the detector's C8 line says why. An unreadable version binds. The `log4j2.version`
-  `doctor` check is not in this slice (see below).
+  throws, and the detector's C8 line says why. The version is believed only when the package's
+  manifest title names Log4j: in a shaded or assembled jar the manifest is the application's own, and
+  its version (`1.4.0`) must not read as "too old". An unreadable or unbelieved version binds. The
+  `log4j2.version` `doctor` check is not in this slice (see below).
 - **Levels (A2, A8).** On the context held, never through `Configurator`. `configuredLevel` is
   `getExplicitLevel()`; a name with no `LoggerConfig` of its own reports none. A pre-set creates a
-  `LoggerConfig` of its own, and clearing it removes that `LoggerConfig` again; a declared one is
-  given back its inheritance with `setLevel(null)`. `FATAL` reads back as `ERROR`, a custom level as
-  the nearest standard one. The root is `ROOT`, as on Logback and JUL.
+  `LoggerConfig` of its own, and clearing it removes that `LoggerConfig` again, but only the object
+  it created: after a reconfiguration the name may be a config the application declared, which is
+  left alone. A declared one is given back its inheritance with `setLevel(null)`. `FATAL` reads back
+  as `ERROR`, a custom level as the nearest standard one; the adapter remembers the native level it
+  read, so writing the baseline back (a reset) restores `FATAL`, not `ERROR`. `applyLevel` is
+  synchronised. The root is `ROOT`, as on Logback and JUL.
+- **Contexts.** Taken in name order, because the selector keeps them in a hash map and the names
+  `log4j2`, `log4j2-2` are numbered by position and persisted. `open()` registers the shutdown
+  listener before checking that a context is still started, and fails if none is, so the detector
+  reports it and no instance is left bound to nothing.
 - **Shutdown (TC5).** Log4j's own `addShutdownListener` calls the detector's callback; the listener
   cannot be removed, so it goes inert once the entry has been closed.
 
@@ -252,10 +261,20 @@ here); the gate; the slot wrapper and trim; handler levels; the three `doctor` c
 benchmark; and the guide pages and changelog entry, which land with the last slice because
 the feature is not usable as a whole before it.
 
-**Found while building it:** the detector gives up three seconds after it finds a framework with no
-started context (C4). A Log4j copy whose first context is created more than three seconds after its
-`LoggerContext` class is loaded is not bound. Not seen in any setup tried; recorded under "Not
+**A limit to know about (C4):** the detector gives up three seconds after it finds a framework with
+no started context, once, and does not look at that loader again for the life of the JVM. A Log4j
+copy whose first context has not started three seconds after its `LoggerContext` class is loaded,
+for example because an appender is slow to initialise, is warned about (C8) and then stays
+uncontrolled. Nothing in the setups tried comes near it (the spike bound at 0.56 to 0.75 s), so C4
+stands; there is no retry and no workaround other than a faster start. Recorded under "Not
 established".
+
+**A regression in a corner, accepted for now (C1):** with `-Djava.util.logging.manager` naming
+`log4j-jul` the `none` integration does not install the JUL context, whether or not the Log4j bind
+succeeds. An application on `log4j-jul` with a Log4j older than 2.20.0 (refused, A10), or one that
+gives up (above), therefore has no level control at all, where before this slice it had the JUL
+context. Binding JUL as a fallback when the Log4j bind fails is a follow-up
+([#311](https://github.com/ddeuchert/logaperture/issues/311)).
 
 ## Out of scope
 

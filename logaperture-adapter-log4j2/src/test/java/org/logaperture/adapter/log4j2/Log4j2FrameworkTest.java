@@ -24,12 +24,13 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class Log4j2FrameworkTest {
 
     @Test
-    void ready_isFalseUntilAContextIsStarted_andOpenHandsBackItsHandle() {
+    void ready_isTrueOnceAContextIsStarted_andOpenHandsBackItsHandle() {
         Log4j2Framework entry = new Log4j2Framework();
         LoggerContext context = Configurator.initialize("t", (String) null);
         try {
@@ -61,5 +62,27 @@ class Log4j2FrameworkTest {
         closed.close();
         second.stop();
         assertEquals(0, none.get(), "a closed entry's listener is inert");
+    }
+
+    @Test
+    void ready_isFalseWhileNoContextIsStarted() {
+        Log4j2Framework entry = new Log4j2Framework();
+        Configurator.initialize("t4", (String) null);
+        org.apache.logging.log4j.core.impl.Log4jContextFactory factory =
+                (org.apache.logging.log4j.core.impl.Log4jContextFactory) org.apache.logging.log4j.LogManager.getFactory();
+        assertTrue(entry.ready(), "a started context exists");
+        for (LoggerContext started : factory.getSelector().getLoggerContexts()) {
+            started.stop();
+        }
+        assertFalse(entry.ready(), "every context has stopped");
+    }
+
+    @Test
+    void open_failsWhenTheContextStoppedBeforeItWasBound() {
+        Log4j2Framework entry = new Log4j2Framework();
+        LoggerContext context = Configurator.initialize("t5", (String) null);
+        context.stop();
+        // No started context is left: a bound instance with no handles would never rebind or release.
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> entry.open(() -> { }));
     }
 }

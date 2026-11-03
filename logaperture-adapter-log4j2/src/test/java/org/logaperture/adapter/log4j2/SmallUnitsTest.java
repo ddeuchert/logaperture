@@ -65,4 +65,21 @@ class SmallUnitsTest {
         assertEquals("log4j2-2", ContextNames.of("AppClassLoader@1b2c3d", 2));
         assertEquals("log4j2", ContextNames.of("/", 1), "a bare slash is not a context path");
     }
+
+    @Test
+    void aVersionIsBelievedOnlyWhenTheManifestTitleNamesLog4j() {
+        assertEquals("2.24.3", Log4j2Version.believed("Apache Log4j Core", "2.24.3"));
+        // A shaded or assembled jar: the manifest is the application's own, whatever its version says.
+        assertNull(Log4j2Version.believed("my-shop", "1.4.0"));
+        assertNull(Log4j2Version.believed(null, "2.5"));
+        assertNull(Log4j2Version.believed("Apache Log4j Core", null));
+        assertFalse(Log4j2Version.isTooOld(Log4j2Version.believed("my-shop", "1.4.0")),
+                "an application's version is unknown, not 'too old'");
+    }
+
+    @Test
+    void theRealLog4jOnTheTestClassPathIsBelieved() {
+        String version = Log4j2Version.of(org.apache.logging.log4j.core.LoggerContext.class);
+        assertEquals("2.20.0", version);
+    }
 }

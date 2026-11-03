@@ -19,10 +19,12 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.impl.Log4jContextFactory;
 import org.apache.logging.log4j.spi.LoggerContextFactory;
+import org.apache.logging.log4j.spi.LoggerContextShutdownAware;
 import org.logaperture.core.loader.BridgedFramework;
 import org.logaperture.core.spi.ContextHandle;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -53,24 +55,33 @@ public final class Log4j2Framework implements BridgedFramework {
     @Override
     public List<ContextHandle> open(Runnable onShutdown) {
         this.onShutdown.set(onShutdown);
+        // Log4j's own shutdown listener (TC5): runs when a context stops, on any thread. It cannot be
+        // removed, so it goes inert once this entry has let go.
+        LoggerContextShutdownAware notifyOnShutdown = stopped -> {
+            if (!closed.get()) {
+                Runnable callback = this.onShutdown.get();
+                if (callback != null) {
+                    callback.run();
+                }
+            }
+        };
         String version = version();
         List<LoggerContext> started = startedContexts();
         List<ContextHandle> handles = new ArrayList<>(started.size());
         int ordinal = 0;
         for (LoggerContext context : started) {
+            // Listener first, then the check: a context that stops from here on is heard, and one
+            // that stopped before is not handed out (a handle for a dead context never goes away).
+            context.addShutdownListener(notifyOnShutdown);
+            if (!context.isStarted()) {
+                continue;
+            }
             ordinal++;
             String name = ContextNames.of(context.getName(), ordinal);
             handles.add(ContextHandle.of("log4j2:" + name, name, new Log4j2LoggingAdapter(context, version)));
-            // Log4j's own shutdown listener (TC5): runs when this context stops, on any thread. It
-            // cannot be removed, so it goes inert once this entry has let go.
-            context.addShutdownListener(stopped -> {
-                if (!closed.get()) {
-                    Runnable callback = this.onShutdown.get();
-                    if (callback != null) {
-                        callback.run();
-                    }
-                }
-            });
+        }
+        if (handles.isEmpty()) {
+            throw new IllegalStateException("the Log4j context stopped before it could be bound");
         }
         return handles;
     }
@@ -93,10 +104,9 @@ public final class Log4j2Framework implements BridgedFramework {
         }
     }
 
-    /** From the package of the already-loaded context class: no Log4j code runs. */
+    /** From the package of the already-loaded context class: no Log4j code runs. Null if not trustworthy. */
     private static String version() {
-        Package pkg = LoggerContext.class.getPackage();
-        return pkg == null ? null : pkg.getImplementationVersion();
+        return Log4j2Version.of(LoggerContext.class);
     }
 
     /**
@@ -114,6 +124,9 @@ public final class Log4j2Framework implements BridgedFramework {
                 started.add(context);
             }
         }
+        // The selector keeps its contexts in a hash map, in no stable order; the names below are
+        // numbered by position and persisted, so the order has to be the same on every run.
+        started.sort(Comparator.comparing((LoggerContext context) -> String.valueOf(context.getName())));
         return started;
     }
 }

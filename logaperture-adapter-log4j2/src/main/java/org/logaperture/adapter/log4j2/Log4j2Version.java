@@ -28,6 +28,29 @@ final class Log4j2Version {
     private Log4j2Version() {
     }
 
+    /**
+     * The version of the Log4j that defined {@code contextClass}, or {@code null} if it cannot be
+     * trusted. {@code getImplementationVersion()} reads the manifest of whichever jar holds the class,
+     * and in a shaded or assembled jar that is the <em>application's</em> manifest (a version like
+     * {@code 1.4.0}): so it is believed only when the same manifest's title says Log4j. No Log4j code
+     * runs.
+     */
+    static String of(Class<?> contextClass) {
+        Package pkg = contextClass.getPackage();
+        if (pkg == null) {
+            return null;
+        }
+        return believed(pkg.getImplementationTitle(), pkg.getImplementationVersion());
+    }
+
+    /** {@code version} if {@code title} names Log4j, else {@code null} (unknown, not "too old"). */
+    static String believed(String title, String version) {
+        if (title == null || version == null || !title.toLowerCase(java.util.Locale.ROOT).contains("log4j")) {
+            return null;
+        }
+        return version;
+    }
+
     /** {@code true} if {@code version} is older than 2.20.0. {@code null} or unparseable is not "older". */
     static boolean isTooOld(String version) {
         int[] parsed = parse(version);
