@@ -32,6 +32,7 @@ import org.logaperture.core.spi.LevelFloorInfo;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -885,6 +886,16 @@ public final class LevelControlService implements LevelControlOperations {
                 "'" + target + "' is STICKY -- reset refused without --include-sticky.");
     }
 
+    /** When a framework reconfiguration last made {@link #reapplyActiveOverrides} run; null if never. */
+    private volatile Instant lastReapplyAt;
+
+    /**
+     * A native level change this soon after a reconfiguration is the application's own start-up
+     * configuration (Spring's {@code logging.level} after its swap, spike SB6): put back and audited, but
+     * not warned about (doc/specs/log4j2-adapter.md A1).
+     */
+    static final Duration RECONFIGURATION_QUIET = Duration.ofSeconds(5);
+
     /**
      * Re-applies every currently-tracked override to {@code adapter} --
      * called from the composition root's reconfiguration-reset callback
@@ -893,6 +904,7 @@ public final class LevelControlService implements LevelControlOperations {
      * tests, per doc/specs/level-control.md's re-appliability note.
      */
     public void reapplyActiveOverrides(LoggingAdapter targetAdapter) {
+        lastReapplyAt = Instant.now();
         // The vendor layer first, for loggers no override covers -- doc/specs/vendor-defaults.md
         // "Reconfiguration and the verification sweep": a framework reset erased it too.
         for (String name : baselines.vendorLoggerNames()) {
@@ -968,7 +980,31 @@ public final class LevelControlService implements LevelControlOperations {
      *
      * @return how many overrides had drifted and were re-applied
      */
-    public int verifyOverrides(Instant now) {
+    int verifyOverrides(Instant now) {
+        return verifyOverrides(now, false);
+    }
+
+    /**
+     * Puts back the overrides a level changed <em>natively</em> just undid -- Spring Boot's
+     * {@code logging.level}, an Actuator {@code POST}, application code (doc/specs/log4j2-adapter.md A1,
+     * {@code LoggingAdapter#onNativeChange}). Like the sweep's override check, with what the sweep
+     * leaves out because it cannot tell who changed the level:
+     * <ul>
+     *   <li>the logger's native baseline becomes the level the native source set, read just before the
+     *       override goes back (A2), so a later {@code reset} gives back Spring's level and not the one
+     *       from before Spring ran;</li>
+     *   <li>a {@code Diagnostics} warning, at most once a minute per logger, names the override and
+     *       what undid it (A1), except within {@link #RECONFIGURATION_QUIET} of a reconfiguration.</li>
+     * </ul>
+     * The vendor layer is left out: a vendor default sits under the application's own configuration.
+     *
+     * @return how many overrides had been changed and were put back
+     */
+    public int reassertAfterNativeChange(Instant now) {
+        return verifyOverrides(now, true);
+    }
+
+    private int verifyOverrides(Instant now, boolean nativeChange) {
         int reapplied = 0;
         for (String loggerName : List.copyOf(overrides.all().keySet())) {
             LevelOverride override = overrides.get(loggerName).orElse(null);
@@ -983,6 +1019,8 @@ public final class LevelControlService implements LevelControlOperations {
                 continue; // still in force
             }
 
+            // What the native source set, read before the override overwrites it (A2).
+            Optional<Level> nativeSetting = nativeChange ? adapter.configuredLevel(loggerName) : Optional.empty();
             OverrideApplier.apply(override, adapter);
 
             Optional<LevelOverride> afterApply = overrides.get(loggerName);
@@ -1000,9 +1038,28 @@ public final class LevelControlService implements LevelControlOperations {
             auditLog.record(new AuditRecord(
                     now, principal, "verification-sweep", loggerName, current.toString(),
                     override.level().toString(), override.reason(), AuditRecord.Action.MUTATION));
+            if (nativeChange) {
+                baselines.rebaseNative(loggerName, nativeSetting);
+                warnNativeChange(loggerName, override, current, now);
+            }
             reapplied++;
         }
         return reapplied;
+    }
+
+    /** A1: a suppressed change is never silent (§9.6), and the person who made it can find out why. */
+    private void warnNativeChange(String loggerName, LevelOverride override, Level changedTo, Instant now) {
+        Instant reconfigured = lastReapplyAt;
+        if (reconfigured != null && Duration.between(reconfigured, now).compareTo(RECONFIGURATION_QUIET) < 0) {
+            return;
+        }
+        Diagnostics.warnThrottled("native-change:" + loggerName,
+                "logger '" + loggerName + "' was changed to " + changedTo + " outside LogAperture, and the "
+                        + override.level() + " override on it was put back (set by " + override.source()
+                        + " as " + principal + (override.reason() == null || override.reason().isEmpty()
+                                ? "" : ", reason: " + override.reason())
+                        + "). 'logctl reset logger " + loggerName + "' ends the override.",
+                null);
     }
 
     /**

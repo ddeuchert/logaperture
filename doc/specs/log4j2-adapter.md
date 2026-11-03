@@ -298,7 +298,7 @@ changed natively against an override is put back at the moment it happens.
   `LoggerConfig`s it created (they belonged to the configuration that is gone) before calling.
 - **A change from elsewhere** (`old == new`: Spring's `logging.level` after its swap, an Actuator
   `POST`, application code) runs a new, optional SPI method, `LoggingAdapter.onNativeChange`. Core
-  wires it to `LevelControlService.verifyOverrides`, the override half of the check the 30 s
+  wires it to `LevelControlService.reassertAfterNativeChange` (Slice 3 below), which is the override half of the check the 30 s
   verification sweep already runs (`verifyAndReapply` is that half plus the vendor layer): compare each
   active override with the level now in force, put back any that differ, and record each in the audit
   trail as `verification-sweep` (so a suppressed change is never silent, §9.6). The vendor layer is
@@ -334,13 +334,34 @@ Verified in a real process (`BundledLog4j2EndToEndIT`): `reconfigure()` and then
 `Configurator.setLevel(WARN)` against a `DEBUG` override leave `DEBUG` in force, `list loggers` still
 shows the override, and `reset` then removes it. The test fails without the `onNativeChange` wiring.
 
-**Not in this slice (the next, small one):** the rest of A1 and A2. The warning (`Diagnostics`, once per
-name per minute, naming the override and its owner, and none within 5 s of a swap), and the baseline
-taking the drifted value at the moment it is re-asserted, so that a `reset` after Spring's
-`logging.level` restores Spring's level and not the pre-Spring one. Both are in `core`
-(`verifyAndReapply` and the baseline registry) and apply to any backend that reports a native change.
-Until then a re-asserted native change is audited but not warned about, and a reset restores the
-baseline captured before it.
+**Not in this slice:** the rest of A1 and A2, built in Slice 3 below.
+
+### Slice 3: the A1 warning and the A2 baseline (built, 2026-11-02)
+
+The rest of A1 and A2, in `core`, for any backend that reports a native change
+(`LevelControlService.reassertAfterNativeChange`, called by `NoneContainer` from `onNativeChange`).
+
+- **A2: the baseline follows the native source.** Just before an override is put back, the logger's own
+  configured level is read (what Spring's `logging.level` or an Actuator call set, or "inherited") and
+  becomes its native baseline (`BaselineRegistry.rebaseNative`). A later `reset` gives that level back,
+  not the one from before Spring ran. The value is read before the override overwrites it, so it is
+  never one LogAperture wrote. The vendor layer is untouched.
+- **A1: the warning.** A `Diagnostics` line, at most once a minute per logger (`warnThrottled`), names
+  the logger, what it was changed to, the override that was put back, who set it and why, and
+  `logctl reset logger <name>`. Not written within 5 s of a reconfiguration (`reapplyActiveOverrides`
+  stamps the time): a change that soon is the application's start-up configuration (SB6), put back and
+  audited and rebased, but not worth a warning. Both numbers are constants.
+- **The audit record is unchanged:** `source=verification-sweep`, as for any override a framework undid
+  (the `audit-log.md` guide already describes it that way), so no new value appears in the guide.
+- **The sweep's own check does neither.** It cannot tell who changed a level, so it neither rebases nor
+  warns; WildFly's management CLI is as before (A1 leaves it unchanged).
+
+Verified in a real process (`BundledLog4j2EndToEndIT`): a native `WARN` within 5 s of a reload is put
+back with no warning; a native `ERROR` 5.5 s later is put back and the warning names the logger; after
+`reset` the logger is at `ERROR`, the last level the native source set. Nine core tests cover the
+rules (`NativeChangeReassertionTest`).
+
+Guide: the warning goes on the Log4j 2 pages with the last slice, with output captured from a real run.
 
 ## Out of scope
 

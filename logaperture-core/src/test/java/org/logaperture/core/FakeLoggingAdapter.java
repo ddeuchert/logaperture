@@ -79,6 +79,11 @@ final class FakeLoggingAdapter implements LoggingAdapter {
         explicitLevels.put(name, level);
     }
 
+    /** Someone removes the logger's own level (it inherits again), as an Actuator POST of null does. */
+    void clearConfiguredLevel(String name) {
+        explicitLevels.remove(name);
+    }
+
     /** Makes the next {@link #applyLevel} call for this logger throw, to exercise chaos-case behavior. */
     void throwOnApply(String loggerName) {
         this.throwOnApplyFor = loggerName;

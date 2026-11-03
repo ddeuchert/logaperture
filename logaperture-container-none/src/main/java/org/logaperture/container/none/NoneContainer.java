@@ -276,7 +276,7 @@ public final class NoneContainer implements AutoCloseable {
         // logging.level, Actuator) is put back when it happens. Only the override check: not the whole
         // re-apply (the gate and wrappers are untouched by a level change) and not the vendor layer
         // (the application's own value wins over a vendor default).
-        Runnable verifyOnNativeChange = () -> service.verifyOverrides(Instant.now());
+        Runnable verifyOnNativeChange = () -> service.reassertAfterNativeChange(Instant.now());
         adapter.onNativeChange(verifyOnNativeChange);
 
         // doc/specs/trim-rule.md: same always-on-from-install discipline as top/storm/the rule
