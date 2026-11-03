@@ -209,7 +209,9 @@ routine between it and the counting `evaluate`. A default of `null` (no trim) ke
 adapters unchanged. `TrimChoiceTest` covers it never counting, the most-restrictive rule, no
 throwable, drop-only rules, and a rule reset between gate and render.
 
-Not covered: the real `RuleGate` driven from a Log4j 2 gate (the prototype used a stand-in), 2.24.3 and 2.25.3 (the per-PR matrix will run them), the cost of the gate,
+Not covered: the real `RuleGate` driven from a Log4j 2 gate (the prototype used a stand-in; the
+wrapper's counted-once, recomputed-at-render behaviour is tested only when the adapter lands), 2.24.3 and
+2.25.3 (the per-PR matrix will run them), the cost of the gate,
 and the `ThrowableProxy` subclass of A4 (the prototype swapped in a plain `Throwable`).
 
 ## Out of scope

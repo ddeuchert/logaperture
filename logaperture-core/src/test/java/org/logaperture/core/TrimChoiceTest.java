@@ -23,6 +23,7 @@ import org.logaperture.api.Level;
 import org.logaperture.api.RuleAttachOptions;
 import org.logaperture.api.SampleFullPolicy;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -111,5 +112,42 @@ class TrimChoiceTest {
         assertNotNull(gate.evaluate(new Object(), event(WORKER, BOOM, "x")).trim());
         service.resetRule(id, false);
         assertNull(gate.trimChoice(event(WORKER, BOOM, "x")), "the split the spec accepts");
+    }
+
+    @Test
+    void decision_isEqualToTheGates_inEveryField() {
+        service.addRuleTrim(WORKER, new CompiledMatchers(Level.INFO, null, false, null, null, false),
+                RuleAttachOptions.defaults(), 3, true);
+        TrimDecision fromGate = gate.evaluate(new Object(), event(WORKER, BOOM, "x")).trim();
+        assertEquals(fromGate, gate.trimChoice(event(WORKER, BOOM, "x")));
+        assertEquals(3, fromGate.frames());
+        assertEquals(true, fromGate.collapseCauses());
+    }
+
+    @Test
+    void ruleOnTheParent_isInherited_andACutOffChildHasNone() {
+        String id = trim("com.acme", null, 4);
+        assertEquals(id, gate.trimChoice(event(WORKER, BOOM, "x")).matchedRuleId());
+        service.setUseParentRules(WORKER, false);
+        assertNull(gate.trimChoice(event(WORKER, BOOM, "x")));
+    }
+
+    @Test
+    void levelBoundedMatcher_isHonoured() {
+        service.addRuleTrim(WORKER, new CompiledMatchers(Level.DEBUG, null, false, null, null, false),
+                RuleAttachOptions.defaults(), 5, false);
+        assertNull(gate.trimChoice(event(WORKER, BOOM, "x")), "an INFO event is above the rule's DEBUG ceiling");
+    }
+
+    @Test
+    void sampledThroughDrop_leavesATrimSurvivor() {
+        service.addRuleDrop(WORKER, new CompiledMatchers(Level.INFO, "noisy", false, null, null, false),
+                RuleAttachOptions.defaults(), new SampleFullPolicy(true, Duration.ofHours(1)));
+        String id = trim(WORKER, "noisy", 5);
+        GateVerdict first = gate.evaluate(new Object(), event(WORKER, BOOM, "noisy"));
+        assertEquals(false, first.deny(), "the first match is always sampled through");
+        assertEquals(id, first.trim().matchedRuleId());
+        assertEquals(first.trim(), gate.trimChoice(event(WORKER, BOOM, "noisy")));
+        assertEquals(1, service.hitCount(id));
     }
 }

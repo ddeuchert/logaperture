@@ -56,6 +56,10 @@ public interface RuleGate {
      * survivor, which is exactly what this answers for. The result can differ from what the gate
      * chose if a rule changed in between; that split is accepted (A3, "As built").
      *
+     * <p><strong>A gate that wraps or decorates another must override this</strong> and delegate:
+     * the default answers "no trim", which silently stops trimming at the render stage while the
+     * gate has already counted the hit.
+     *
      * @return the decision, or {@code null} if no trim applies (including an event with no
      *         throwable)
      */
