@@ -97,23 +97,31 @@ class BundledLog4j2EndToEndIT {
         pollForLogger(proxy, WORKER);
         proxy.setLogger(WORKER, "DEBUG", "e2e", "SESSION", 120, false);
 
+        // Straight after one another, so the native change is milliseconds after the reload, well inside the
+        // 5 s window in which it is put back and audited but not warned about (A1).
         sendAndWait(app, output, "RECONFIGURE r1", "DONE r1");
+        sendAndWait(app, output, "NATIVE WARN n1", "DONE n1");
         String afterReload = logAndWait(app, output, "a");
         assertTrue(afterReload.contains("DEBUG fixture.Worker debug a"),
-                "the reload must not drop the override:\n" + afterReload);
-
-        // Spring's logging.level / an Actuator POST: a native change against the override.
-        sendAndWait(app, output, "NATIVE WARN n1", "DONE n1");
-        String afterNative = logAndWait(app, output, "b");
-        assertTrue(afterNative.contains("DEBUG fixture.Worker debug b"),
-                "a native change must not undo the override:\n" + afterNative);
+                "neither the reload nor the native change may drop the override:\n" + afterReload);
         LoggerInfoData row = proxy.listLoggers(WORKER).get(0);
         assertEquals("DEBUG", row.getEffectiveLevel());
         assertTrue(row.isOverrideActive());
+        assertFalse(Files.readString(output).contains("outside LogAperture"),
+                "no warning within 5 s of a reconfiguration:\n" + Files.readString(output));
 
+        // Later, an Actuator-style change: put back, and now the warning names the logger and the override.
+        Thread.sleep(5_500);
+        sendAndWait(app, output, "NATIVE ERROR n2", "DONE n2");
+        String warned = waitFor(output, "outside LogAperture");
+        assertTrue(warned.contains("logger '" + WORKER + "' was changed to ERROR outside LogAperture"), warned);
+        assertTrue(logAndWait(app, output, "c").contains("DEBUG fixture.Worker debug c"));
+
+        // A2: reset gives back the level the native source set last (ERROR), not the INFO the file declared.
         proxy.resetLogger(WORKER, false);
-        String reset = logAndWait(app, output, "c");
-        assertFalse(reset.contains("debug c"), reset);
+        String reset = logAndWait(app, output, "d");
+        assertTrue(reset.contains("ERROR fixture.Worker error d"), reset);
+        assertFalse(reset.contains("info d"), "the native source's ERROR is the baseline now:\n" + reset);
     }
 
     private static void sendAndWait(Process app, Path output, String command, String done) throws Exception {

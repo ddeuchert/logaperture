@@ -81,6 +81,17 @@ public final class BaselineRegistry {
         return captured.computeIfAbsent(name, adapter::configuredLevel);
     }
 
+    /**
+     * Replaces {@code name}'s captured native value with {@code level}: the level the native source
+     * (the application's configuration, Spring's {@code logging.level}, an Actuator call) last set,
+     * read at the moment an override against it was put back (doc/specs/log4j2-adapter.md A2). Only for
+     * a value someone else wrote: never for one this process applied itself. The vendor layer is
+     * untouched.
+     */
+    public void rebaseNative(String name, Optional<Level> level) {
+        captured.computeIfPresent(name, (key, previous) -> level); // never creates a baseline nobody captured
+    }
+
     public boolean isCaptured(String name) {
         return captured.containsKey(name);
     }

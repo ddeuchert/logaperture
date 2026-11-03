@@ -46,6 +46,7 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     private final Map<String, Level> explicitLevels = new LinkedHashMap<>();
     private final Set<String> knownNames = new LinkedHashSet<>();
     private String throwOnApplyFor;
+    private String throwOnConfiguredLevelFor;
     private String runOnEffectiveLevelFor;
     private Runnable runOnEffectiveLevel;
 
@@ -58,6 +59,7 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     private final Set<HandlerRef> handlersOnRoot = new LinkedHashSet<>();
     /** Per-(loggerName, ref) level, checked before the shared handlerLevels entry -- see addHandlerWithPerTargetLevel. */
     private final Map<String, Map<HandlerRef, Level>> perTargetHandlerLevel = new LinkedHashMap<>();
+    private final Map<String, Level> pinnedEffective = new LinkedHashMap<>();
     private HandlerRef throwOnSetHandlerLevelFor;
     private boolean hasHandlerLevels = true; // this fake models a JUL-like framework by default
     private HandlerRef runOnHandlerLevelFor;
@@ -77,6 +79,21 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     void setConfiguredLevel(String name, Level level) {
         knownNames.add(name);
         explicitLevels.put(name, level);
+    }
+
+    /** Makes {@link #effectiveLevel} answer {@code level} for this logger whatever it is configured to. */
+    void pinEffectiveLevel(String name, Level level) {
+        pinnedEffective.put(name, level);
+    }
+
+    /** Someone removes the logger's own level (it inherits again), as an Actuator POST of null does. */
+    void clearConfiguredLevel(String name) {
+        explicitLevels.remove(name);
+    }
+
+    /** Makes {@link #configuredLevel} throw for this logger from now on. */
+    void throwOnConfiguredLevel(String loggerName) {
+        this.throwOnConfiguredLevelFor = loggerName;
     }
 
     /** Makes the next {@link #applyLevel} call for this logger throw, to exercise chaos-case behavior. */
@@ -107,6 +124,9 @@ final class FakeLoggingAdapter implements LoggingAdapter {
 
     @Override
     public Optional<Level> configuredLevel(String loggerName) {
+        if (loggerName.equals(throwOnConfiguredLevelFor)) {
+            throw new RuntimeException("simulated adapter failure for configuredLevel(" + loggerName + ")");
+        }
         if (loggerName.equals(runOnConfiguredLevelFor)) {
             Runnable action = runOnConfiguredLevel;
             runOnConfiguredLevelFor = null; // one-shot
@@ -124,6 +144,9 @@ final class FakeLoggingAdapter implements LoggingAdapter {
             runOnEffectiveLevelFor = null; // one-shot
             runOnEffectiveLevel = null;
             action.run();
+        }
+        if (pinnedEffective.containsKey(loggerName)) {
+            return pinnedEffective.get(loggerName);
         }
         String name = loggerName;
         while (true) {

@@ -32,6 +32,7 @@ import org.logaperture.core.spi.LevelFloorInfo;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.StateStore;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -885,6 +886,16 @@ public final class LevelControlService implements LevelControlOperations {
                 "'" + target + "' is STICKY -- reset refused without --include-sticky.");
     }
 
+    /** When a framework reconfiguration last made {@link #reapplyActiveOverrides} run; null if never. */
+    private volatile Instant lastReapplyAt;
+
+    /**
+     * A native level change this soon after a reconfiguration is the application's own start-up
+     * configuration (Spring's {@code logging.level} after its swap, spike SB6): put back and audited, but
+     * not warned about (doc/specs/log4j2-adapter.md A1).
+     */
+    static final Duration RECONFIGURATION_QUIET = Duration.ofSeconds(5);
+
     /**
      * Re-applies every currently-tracked override to {@code adapter} --
      * called from the composition root's reconfiguration-reset callback
@@ -893,6 +904,15 @@ public final class LevelControlService implements LevelControlOperations {
      * tests, per doc/specs/level-control.md's re-appliability note.
      */
     public void reapplyActiveOverrides(LoggingAdapter targetAdapter) {
+        reapplyActiveOverrides(targetAdapter, Instant.now());
+    }
+
+    /**
+     * {@link #reapplyActiveOverrides(LoggingAdapter)}, stamped with the caller's clock: the
+     * {@link #RECONFIGURATION_QUIET} window of {@link #reassertAfterNativeChange} is measured against it.
+     */
+    void reapplyActiveOverrides(LoggingAdapter targetAdapter, Instant now) {
+        lastReapplyAt = now;
         // The vendor layer first, for loggers no override covers -- doc/specs/vendor-defaults.md
         // "Reconfiguration and the verification sweep": a framework reset erased it too.
         for (String name : baselines.vendorLoggerNames()) {
@@ -960,16 +980,74 @@ public final class LevelControlService implements LevelControlOperations {
     }
 
     /**
-     * {@link #verifyAndReapply}'s override half alone: for a level that was just changed natively
-     * (doc/specs/log4j2-adapter.md A1, {@code LoggingAdapter#onNativeChange}). The vendor layer is
-     * left out on purpose: a vendor default sits <em>under</em> the application's own configuration,
-     * so a native change to a vendor-defaulted logger with no override is the application's own
-     * value and wins; the periodic sweep still re-applies a drifted vendor level (A2).
+     * {@link #verifyAndReapply}'s override half alone: compare each active override with the level in
+     * force and put back (and audit) any that differ. Knows nothing about <em>who</em> changed the level,
+     * so it neither rebases a baseline nor warns; {@link #reassertAfterNativeChange} does both, for a
+     * framework that reports native changes.
      *
      * @return how many overrides had drifted and were re-applied
      */
-    public int verifyOverrides(Instant now) {
-        int reapplied = 0;
+    int verifyOverrides(Instant now) {
+        return reassertDriftedOverrides(now).size();
+    }
+
+    /**
+     * Puts back the overrides a level changed <em>natively</em> just undid -- Spring Boot's
+     * {@code logging.level}, an Actuator {@code POST}, application code (doc/specs/log4j2-adapter.md A1,
+     * {@code LoggingAdapter#onNativeChange}). The sweep's own override check, and then, because here the
+     * change is known to be someone else's:
+     * <ul>
+     *   <li>the logger's native baseline becomes the level the native source set, read just before the
+     *       override goes back (A2), so a later {@code reset} gives back Spring's level and not the one
+     *       from before Spring ran;</li>
+     *   <li>a {@code Diagnostics} warning, at most once a minute per logger, names the override and
+     *       what undid it (A1), except within {@link #RECONFIGURATION_QUIET} of a reconfiguration.</li>
+     * </ul>
+     * Both run after the whole pass, not inside it, so the listener of a framework's reconfiguration
+     * does the least it can while the framework holds its locks. The vendor layer is left out: a vendor
+     * default sits under the application's own configuration.
+     *
+     * @return how many overrides had been changed and were put back
+     */
+    public int reassertAfterNativeChange(Instant now) {
+        List<Reasserted> reasserted = reassertDriftedOverrides(now);
+        for (Reasserted one : reasserted) {
+            afterNativeChange(one, now);
+        }
+        return reasserted.size();
+    }
+
+    /**
+     * One override that was found changed and put back, and what the logger held just before.
+     *
+     * @param changedTo     the effective level it had been changed to
+     * @param nativeSetting its own configured level just before the override went back: what the native
+     *                      source set (A2); empty means "inherited" only when {@code nativeSettingRead}
+     * @param nativeSettingRead false if the adapter could not say (it threw): the pass still put the
+     *                      override back, and no baseline is written from a value nobody read
+     */
+    private record Reasserted(String loggerName, LevelOverride override, Level changedTo,
+                              Optional<Level> nativeSetting, boolean nativeSettingRead) {
+    }
+
+    /**
+     * One pass at a time: the 30 s sweep and a framework's native-change callback both come here, from
+     * different threads, and two passes that both found the same drift would both apply it and both
+     * write the audit record. (A pass that finds the drift first, the sweep in the microseconds between
+     * someone's {@code setLevel} and their {@code updateLoggers()}, puts the override back without the
+     * rebase and the warning, which are the native-change callback's: a limit, not a race this closes.)
+     */
+    private final Object passLock = new Object();
+
+    /** The shared pass: compare each active override with the level in force, put back, audit. */
+    private List<Reasserted> reassertDriftedOverrides(Instant now) {
+        synchronized (passLock) {
+            return reassertDriftedOverridesLocked(now);
+        }
+    }
+
+    private List<Reasserted> reassertDriftedOverridesLocked(Instant now) {
+        List<Reasserted> reasserted = new ArrayList<>();
         for (String loggerName : List.copyOf(overrides.all().keySet())) {
             LevelOverride override = overrides.get(loggerName).orElse(null);
             if (override == null) {
@@ -983,6 +1061,15 @@ public final class LevelControlService implements LevelControlOperations {
                 continue; // still in force
             }
 
+            // Read before the override overwrites it: what the native source set (A2). A logger the
+            // adapter cannot read must not stop the others from being verified.
+            Optional<Level> nativeSetting = Optional.empty();
+            boolean nativeSettingRead = true;
+            try {
+                nativeSetting = adapter.configuredLevel(loggerName);
+            } catch (RuntimeException e) {
+                nativeSettingRead = false;
+            }
             OverrideApplier.apply(override, adapter);
 
             Optional<LevelOverride> afterApply = overrides.get(loggerName);
@@ -1000,9 +1087,57 @@ public final class LevelControlService implements LevelControlOperations {
             auditLog.record(new AuditRecord(
                     now, principal, "verification-sweep", loggerName, current.toString(),
                     override.level().toString(), override.reason(), AuditRecord.Action.MUTATION));
-            reapplied++;
+            reasserted.add(new Reasserted(loggerName, override, current, nativeSetting, nativeSettingRead));
         }
-        return reapplied;
+        return reasserted;
+    }
+
+    /**
+     * A2 and A1 for one override that was put back after a native change. Skipped if the override is no
+     * longer the one in force (a reset or a new {@code set logger} landed since): there is then nothing
+     * to explain, and a baseline written now would not match what the adapter holds. That check narrows
+     * the window; it cannot close it without a lock around the control plane.
+     */
+    private void afterNativeChange(Reasserted one, Instant now) {
+        if (!overrides.get(one.loggerName()).map(one.override()::equals).orElse(false)) {
+            return;
+        }
+        // A level equal to the override's own is one this process wrote (a partial update), not the
+        // native source's: never the baseline.
+        if (one.nativeSettingRead() && !one.nativeSetting().equals(Optional.of(one.override().level()))) {
+            baselines.rebaseNative(one.loggerName(), one.nativeSetting());
+        }
+        warnNativeChange(one.loggerName(), one.override(), one.changedTo(), now);
+    }
+
+    /** A1: a suppressed change is never silent (§9.6), and whoever made it can find out why. */
+    private void warnNativeChange(String loggerName, LevelOverride override, Level changedTo, Instant now) {
+        Instant reconfigured = lastReapplyAt;
+        if (reconfigured != null && Duration.between(reconfigured, now).compareTo(RECONFIGURATION_QUIET) < 0) {
+            return;
+        }
+        Diagnostics.warnThrottled("native-change:" + loggerName,
+                "logger '" + loggerName + "' was changed to " + changedTo + " outside LogAperture, and the "
+                        + "override on it was put back (" + override.level() + ", " + override.tier()
+                        + ", set " + ago(Duration.between(override.appliedAt(), now)) + " via " + override.source()
+                        + (override.reason() == null || override.reason().isEmpty()
+                                ? "" : ", reason: " + override.reason())
+                        + "). 'logctl reset logger " + loggerName
+                        + (override.tier() == PersistenceTier.STICKY ? " --include-sticky" : "")
+                        + "' ends the override.",
+                null);
+    }
+
+    /** "12 minutes ago", "3 hours ago": coarse, for a person reading a log line. */
+    private static String ago(Duration elapsed) {
+        long seconds = Math.max(0, elapsed.getSeconds());
+        if (seconds < 90) {
+            return seconds + " s ago";
+        }
+        if (seconds < 90 * 60) {
+            return Math.round(seconds / 60.0) + " minutes ago";
+        }
+        return Math.round(seconds / 3600.0) + " hours ago";
     }
 
     /**
