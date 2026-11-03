@@ -21,6 +21,8 @@ import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.logaperture.api.BackendInfo;
 import org.logaperture.api.Level;
 import org.logaperture.bridge.Diagnostics;
+import org.logaperture.core.RuleGate;
+import org.logaperture.core.StormObserver;
 import org.logaperture.core.spi.LoggingAdapter;
 
 import java.beans.PropertyChangeEvent;
@@ -91,6 +93,10 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
      */
     private final Map<String, Optional<org.apache.logging.log4j.Level>> declaredBeforeOverride =
             new ConcurrentHashMap<>();
+    /** The gate: one filter for drop rules and storm detection, attached to the live configuration. */
+    private final GateFilter gateFilter = new GateFilter();
+    /** The configuration {@link #gateFilter} is attached to; a swap leaves it behind and it is attached again. */
+    private volatile Configuration gateAttachedTo;
     private final AtomicReference<Runnable> resetListener = new AtomicReference<>();
     private final AtomicReference<Runnable> nativeChangeListener = new AtomicReference<>();
     private final PropertyChangeListener configListener = this::onConfigEvent;
@@ -128,6 +134,32 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         stopListeningIfIdle();
     }
 
+    @Override
+    public void installRulePipeline(RuleGate gate) {
+        gateFilter.setGate(gate);
+        attachGate();
+    }
+
+    @Override
+    public void installStormDetection(StormObserver detector) {
+        gateFilter.setStorm(detector);
+        attachGate();
+    }
+
+    /**
+     * Puts the gate on the live configuration if it is not there: a reconfiguration drops it with the
+     * rest of the old configuration, and core calls the installs again from its reset hook. Idempotent.
+     */
+    private synchronized void attachGate() {
+        Configuration live = context.getConfiguration();
+        if (gateAttachedTo == live) {
+            return;
+        }
+        gateFilter.start();
+        live.addFilter(gateFilter);
+        gateAttachedTo = live;
+    }
+
     /** Whether this adapter controls {@code other}. */
     boolean isFor(org.apache.logging.log4j.spi.LoggerContext other) {
         return context == other;
@@ -135,6 +167,12 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
 
     /** Lets go of the context: removes the event listener and both callbacks (spec "Scope" 7). */
     synchronized void detach() {
+        gateFilter.release();
+        Configuration attached = gateAttachedTo;
+        if (attached != null) {
+            attached.removeFilter(gateFilter);
+        }
+        gateAttachedTo = null;
         resetListener.set(null);
         nativeChangeListener.set(null);
         stopListeningIfIdle();

@@ -35,6 +35,17 @@ public interface RuleGate {
     GateVerdict evaluate(Object recordIdentity, RuleCandidateEvent event);
 
     /**
+     * {@link #evaluate} for a gate that runs <em>once per event</em>, so there is no sibling filter
+     * to share a verdict with and nothing to remember it for: the same verdict, counted the same
+     * way, without the per-record decision cache (doc/specs/log4j2-adapter.md A3; Log4j 2's
+     * context-wide filter sees each call once, before any record exists). The default evaluates
+     * against a fresh identity; {@link RuleService} skips the cache.
+     */
+    default GateVerdict evaluateOnce(RuleCandidateEvent event) {
+        return evaluate(new Object(), event);
+    }
+
+    /**
      * doc/specs/rule-pipeline-foundation.md "Evaluation cost", R3: whether any rule can apply to
      * an event from this logger. Asked before building a {@link RuleCandidateEvent}, so an event
      * no rule can touch (the normal case) allocates nothing and takes no lock. {@code false}

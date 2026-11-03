@@ -384,6 +384,45 @@ rules (`NativeChangeReassertionTest`).
 
 Guide: the warning goes on the Log4j 2 pages with the last slice, with output captured from a real run.
 
+### Slice 4: the gate (built, 2026-11-03)
+
+The fourth PR of the adapter under #302: drop rules and storm detection on Log4j 2.
+
+- **`GateFilter`**, one context-wide `Filter` added with `config.addFilter` by the adapter's
+  `installRulePipeline` and `installStormDetection` (both attach the same filter; installing again is
+  idempotent). It never returns `ACCEPT` (G2): a drop is `DENY`, everything else `NEUTRAL`.
+- **Order (drop-rule.md decision #3):** the rule pipeline first, then storm detection, so a denied call
+  never reaches the storm counters. Either seam alone works.
+- **The level fast path (G2).** Before anything else it compares the call's level with the logger's
+  and leaves if the call would not be written; an `isXxxEnabled()` guard (no message) leaves too, and
+  so does a logger no rule can touch while storm detection is off (R3). The fixed-arity overloads
+  (`p0` to `p9`, which `AbstractFilter` would route through a freshly allocated `Object[]`) do this
+  *before* allocating it. All fifteen `Filter` entry points are covered, the fluent API included.
+- **What a rule sees:** the logger name, the level, the throwable (an explicit one, the message's, or a
+  trailing one no placeholder consumed, as Log4j decides), and the message with its parameters filled
+  in, formatted only if a rule reads it, so a parameter's `toString()` runs one extra time then (A3).
+  Storm detection gets the *unformatted pattern*, not the line, as it does on JUL.
+- **`RuleGate.evaluateOnce`** (core, new): the same verdict and the same hit counting as `evaluate`,
+  without the per-record decision cache. That cache exists so sibling handler filters share one verdict
+  for one record; a context-wide filter runs once per call, before any record, and would only fill the
+  cache with garbage. `RuleService` overrides it; the default evaluates against a fresh identity.
+- **Reconfiguration.** A swap drops the filter with the old configuration; core's reset hook already
+  calls `installRulePipeline` and `installStormDetection` again, which attach it to the new one. Between
+  the swap and that call events pass unfiltered (accepted, "Scope" 3). `detach()` removes the filter and
+  lets go of both seams.
+- **Fails open (§9):** a rule or detector that throws is a throttled `Diagnostics` line and the event
+  passes.
+
+Verified: 15 unit tests on real Log4j (every overload, the level fast path, a guard, deny, storm order and
+the raw pattern, idempotence, a swap, detach, fail-open), and `BundledLog4j2EndToEndIT` in a real
+process: a drop rule removes its lines and keeps removing them after a reload.
+
+**Not in this slice:** the slot wrapper and trim; until it lands, a trim rule on a Log4j context is
+*counted* at the gate (`trimChoice` is what the wrapper will use, without counting) but not applied. The
+benchmark of the gate's cost against the budgets in `overhead-benchmarks.md` is not done either: the
+design allocates nothing on the fast path, but nothing has been measured, and "Acceptance" makes a gate
+over budget a release blocker.
+
 ## Out of scope
 
 `top` on Log4j 2 (A6); Log4j 1 and reload4j; the warning for names no backend can reach (#303);

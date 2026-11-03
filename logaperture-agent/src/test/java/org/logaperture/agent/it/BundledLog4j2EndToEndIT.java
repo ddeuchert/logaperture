@@ -124,6 +124,31 @@ class BundledLog4j2EndToEndIT {
         assertFalse(reset.contains("info d"), "the native source's ERROR is the baseline now:\n" + reset);
     }
 
+    /** The gate (A3): a drop rule removes its lines, and is back on the new configuration after a reload. */
+    @Test
+    void aDropRule_removesItsLines_andSurvivesAReconfiguration() throws Exception {
+        Path output = work.resolve("drop.log");
+        Process app = launch(output);
+        waitFor(output, "FIXTURE-READY");
+        LevelControlMXBean proxy = LevelControlEndToEndIT.pollForMxBeanProxy(
+                LevelControlEndToEndIT.attachAndConnect(app.pid()));
+        pollForLogger(proxy, WORKER);
+
+        String before = logAndWait(app, output, "a");
+        assertTrue(before.contains("INFO fixture.Worker drop-me a"), "no rule yet:\n" + before);
+
+        proxy.addRuleDrop(WORKER, "drop-me", false, null, null, false, null, false, 60_000, "e2e", "SESSION", 0);
+        String dropped = logAndWait(app, output, "b");
+        assertTrue(dropped.contains("INFO fixture.Worker info b"), "other lines are kept:\n" + dropped);
+        assertFalse(dropped.contains("drop-me b"), "the rule removes its lines:\n" + dropped);
+
+        sendAndWait(app, output, "RECONFIGURE r1", "DONE r1");
+        String afterReload = logAndWait(app, output, "c");
+        assertTrue(afterReload.contains("INFO fixture.Worker info c"), afterReload);
+        assertFalse(afterReload.contains("drop-me c"),
+                "a reload drops the filter with the old configuration; core puts it back:\n" + afterReload);
+    }
+
     private static void sendAndWait(Process app, Path output, String command, String done) throws Exception {
         OutputStream stdin = app.getOutputStream();
         stdin.write((command + "\n").getBytes(StandardCharsets.UTF_8));

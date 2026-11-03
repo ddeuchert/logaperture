@@ -110,6 +110,7 @@ public final class BundledLog4j2FixtureApp {
             logger.error("error {}", tag);
             logger.info("info {}", tag);
             logger.debug("debug {}", tag);
+            logger.info("drop-me {}", tag);
             System.out.println("LOGGED " + tag);
             System.out.flush();
         }
