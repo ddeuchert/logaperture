@@ -56,6 +56,7 @@ class GateFilterTest {
     private Log4j2LoggingAdapter adapter;
     private org.apache.logging.log4j.Logger log;
     private final List<String> written = new CopyOnWriteArrayList<>();
+    private final List<Throwable> writtenThrown = new CopyOnWriteArrayList<>();
     private final List<RuleCandidateEvent> seen = new CopyOnWriteArrayList<>();
     private final List<String> formatted = new CopyOnWriteArrayList<>();
     private final AtomicInteger appliesCalls = new AtomicInteger();
@@ -95,6 +96,7 @@ class GateFilterTest {
             @Override
             public void append(LogEvent event) {
                 written.add(event.getMessage().getFormattedMessage());
+                writtenThrown.add(event.getThrown() == null ? new Throwable("none") : event.getThrown());
             }
         };
         recorder.start();
@@ -180,6 +182,56 @@ class GateFilterTest {
         other.error("DROPME elsewhere");
         assertEquals(0, seen.size());
         assertEquals(List.of("DROPME elsewhere"), written, "R3: no rule applies, so nothing is built or denied");
+    }
+
+    @Test
+    void aSupplier_isReadAsItsText_notAsALambdaIdentity() {
+        log.info(() -> "DROPME supplied");
+        log.info((org.apache.logging.log4j.util.MessageSupplier) () -> new SimpleMessage("DROPME message supplied"));
+        log.info(() -> "kept supplied");
+        assertEquals(List.of("kept supplied"), written, "both drops matched on their text");
+        assertEquals("kept supplied", seen.get(2).formattedMessageSupplier().get());
+    }
+
+    @Test
+    void aSupplierIsEvaluatedAtTheGateOnlyWhenARuleReadsIt() {
+        AtomicInteger evaluations = new AtomicInteger();
+        RuleGate readsNothing = new RuleGate() {
+            @Override
+            public GateVerdict evaluate(Object recordIdentity, RuleCandidateEvent event) {
+                return GateVerdict.allow();
+            }
+
+            @Override
+            public GateVerdict evaluateOnce(RuleCandidateEvent event) {
+                return GateVerdict.allow();
+            }
+        };
+        adapter.installRulePipeline(readsNothing);
+        log.info(() -> {
+            evaluations.incrementAndGet();
+            return "once";
+        });
+        assertEquals(1, evaluations.get(), "only Log4j's own evaluation, when it wrote the call");
+    }
+
+    /**
+     * Log4j itself answers this differently by version: 2.20.0 makes no throwable of {@code escaped \{} only}
+     * with one {@code Throwable} argument, 2.25.5 makes the argument the throwable. The gate asks Log4j's own
+     * {@code ParameterizedMessage}, so it follows the running version; what must hold is that it agrees
+     * with the event Log4j builds.
+     */
+    @Test
+    void anEscapedPlaceholder_isDecidedAsTheRunningLog4jDecidesIt() {
+        Exception boom = new RuntimeException("boom");
+        log.error("escaped \\{} only", (Object) boom);
+        Throwable inTheEvent = writtenThrown.get(0);
+        Throwable atTheGate = seen.get(0).thrown();
+        if (atTheGate == null) {
+            assertEquals("none", inTheEvent.getMessage(), "the gate saw no throwable, so the event has none");
+        } else {
+            assertEquals(boom, inTheEvent);
+        }
     }
 
     @Test
@@ -309,6 +361,14 @@ class GateFilterTest {
         adapter.installRulePipeline(gate); // core's reset hook calls this
         log.info("DROPME guarded");
         assertEquals(1, seen.size());
+    }
+
+    @Test
+    void detach_afterASwapAndAnInstall_leavesNoFilterOnTheLiveConfiguration() {
+        context.setConfiguration(configuration());
+        adapter.installRulePipeline(gate);
+        adapter.detach();
+        assertNull(context.getConfiguration().getFilter(), "removed from the configuration it was last put on");
     }
 
     @Test

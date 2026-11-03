@@ -399,13 +399,26 @@ The fourth PR of the adapter under #302: drop rules and storm detection on Log4j
   (`p0` to `p9`, which `AbstractFilter` would route through a freshly allocated `Object[]`) do this
   *before* allocating it. All fifteen `Filter` entry points are covered, the fluent API included.
 - **What a rule sees:** the logger name, the level, the throwable (an explicit one, the message's, or a
-  trailing one no placeholder consumed, as Log4j decides), and the message with its parameters filled
-  in, formatted only if a rule reads it, so a parameter's `toString()` runs one extra time then (A3).
-  Storm detection gets the *unformatted pattern*, not the line, as it does on JUL.
+  trailing one no placeholder consumed), and the message with its parameters filled in, formatted only if
+  a rule reads it, so a parameter's `toString()` runs one extra time then (A3). Storm detection gets the
+  *unformatted pattern*, not the line, as it does on JUL.
+- **The trailing throwable is Log4j's own decision.** It is read from a `ParameterizedMessage` built for
+  the call, not counted by the gate, because Log4j's answer differs by version for an escaped
+  placeholder (`"escaped \{} only"` with one `Throwable` argument: no throwable on 2.20.0, the argument
+  on 2.25.5), and the gate has to agree with the event Log4j then builds, whichever version runs. A test
+  compares the two.
+- **Suppliers and arbitrary objects.** `logger.info(() -> ...)` and a `MessageSupplier` reach the gate as
+  an `Object`. They are evaluated at the gate only when a rule reads the text or storm detection is on
+  (and once), and Log4j evaluates them again when it writes the call, so a supplier with side effects
+  repeats them. The throwable inside a supplied `Message` is not looked for: that would evaluate the
+  supplier for every gated call.
 - **`RuleGate.evaluateOnce`** (core, new): the same verdict and the same hit counting as `evaluate`,
   without the per-record decision cache. That cache exists so sibling handler filters share one verdict
   for one record; a context-wide filter runs once per call, before any record, and would only fill the
   cache with garbage. `RuleService` overrides it; the default evaluates against a fresh identity.
+- **One clock read per call**, shared by both seams. The adapter holds the configuration it attached
+  the filter to weakly, so a replaced configuration is not pinned, and `detach()` removes the filter from
+  that one and from the live one.
 - **Reconfiguration.** A swap drops the filter with the old configuration; core's reset hook already
   calls `installRulePipeline` and `installStormDetection` again, which attach it to the new one. Between
   the swap and that call events pass unfiltered (accepted, "Scope" 3). `detach()` removes the filter and
@@ -447,6 +460,15 @@ From the spike, carried here because they bound what is promised:
 - A `LoggerContext` stopped and then started again: a shutdown is the detector's "let go" (TC5, WF4), the
   bridge is closed and that loader is not looked at again, so a restart of the same context is not
   re-bound. A redeploy brings a new copy, which is.
+- An application's own context-wide filter that accepts a call (a `MarkerFilter` or
+  `DynamicThresholdFilter` with `onMatch=ACCEPT`) ends the composite filter's evaluation before the gate,
+  which is added last, so such a call is invisible to drop rules and storm detection (and the level
+  fast path would skip a call below the logger's level that the application's filter lets through).
+- A `LogEvent` built elsewhere and handed straight to a `LoggerConfig` (a bridge that does not go through
+  the logger API) does not pass the `Filter` overloads, and Log4j does not call `filter(LogEvent)` for a
+  context-wide filter on the normal path (spike G1); such a call is not gated.
+- A trim rule is counted by the gate before the slot wrapper applies it (Slice 4); until then
+  `list rules` shows hits for a trim that has not trimmed anything.
 - The cost of `verifyOverrides` on every `updateLoggers()` anyone makes: one pass over the active
   overrides with a level lookup each, normally fewer than ten, run on the calling thread. Spring Boot's
   startup applies a handful of `logging.level` entries. No debounce until someone measures a need.

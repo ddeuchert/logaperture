@@ -23,6 +23,7 @@ import org.apache.logging.log4j.core.Logger;
 import org.apache.logging.log4j.core.filter.AbstractFilter;
 import org.apache.logging.log4j.message.Message;
 import org.apache.logging.log4j.message.ParameterizedMessage;
+import org.apache.logging.log4j.util.MessageSupplier;
 import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.GateVerdict;
 import org.logaperture.core.RuleCandidateEvent;
@@ -34,7 +35,6 @@ import java.io.StringWriter;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Supplier;
 
 /**
  * The one context-wide filter that is Log4j 2's gate (doc/specs/log4j2-adapter.md A3, "Scope" 4): drop
@@ -171,9 +171,10 @@ final class GateFilter extends AbstractFilter {
         StormObserver observer = storm;
         try {
             Call call = Call.of(logger.getName(), level, message, params, thrown);
+            Instant now = Instant.now(); // one clock read, shared by both seams
             if (rules != null && rules.appliesTo(call.loggerName)) {
                 GateVerdict verdict = rules.evaluateOnce(new RuleCandidateEvent(call.loggerName,
-                        LevelMapper.toApi(level), call.thrown, call::formatted, Instant.now()));
+                        LevelMapper.toApi(level), call.thrown, call::formatted, now));
                 if (verdict.deny()) {
                     return Result.DENY; // never reaches storm detection (drop-rule.md decision #3)
                 }
@@ -181,7 +182,7 @@ final class GateFilter extends AbstractFilter {
             if (observer != null && observer.isActive()) {
                 observer.observe(call.loggerName, LevelMapper.toApi(level),
                         call.thrown == null ? null : call.thrown.getClass().getName(),
-                        call.format == null ? "" : call.format, Instant.now(), call, CALL_DETAILS);
+                        call.format(), now, call, CALL_DETAILS);
             }
         } catch (RuntimeException e) {
             Diagnostics.warnThrottled("log4j2-gate", "rule or storm evaluation failed, event passes through unaffected: " + e,
@@ -190,32 +191,53 @@ final class GateFilter extends AbstractFilter {
         return Result.NEUTRAL;
     }
 
-    /** One call's fields, resolved only when a seam needs them. */
+    /**
+     * One call's fields. The message is resolved only when a seam reads it: a {@code String} and a
+     * {@code Message} are cheap, but a {@code Supplier}, a {@code MessageSupplier} or an arbitrary
+     * {@code Object} is evaluated here, once, and Log4j evaluates it again when it writes the call, so
+     * a supplier with side effects repeats them. The throwable of a supplied message is not looked for:
+     * that would evaluate the supplier for every gated call.
+     */
     private static final class Call {
         final String loggerName;
-        final String format;
+        final Level level;
+        final Object message;
         final Object[] params;
         final Throwable thrown;
-        final Object message;
-        final Level level;
+        private String resolvedFormat;
+        private String resolvedText;
+        private boolean resolved;
 
-        private Call(String loggerName, Level level, String format, Object[] params, Throwable thrown, Object message) {
+        private Call(String loggerName, Level level, Object message, Object[] params, Throwable thrown) {
             this.loggerName = loggerName;
             this.level = level;
-            this.format = format;
+            this.message = message;
             this.params = params;
             this.thrown = thrown;
-            this.message = message;
         }
 
         static Call of(String loggerName, Level level, Object message, Object[] params, Throwable thrown) {
-            if (message instanceof Message m) {
-                return new Call(loggerName, level, m.getFormat(), m.getParameters(),
-                        thrown != null ? thrown : m.getThrowable(), m);
+            Throwable effective = thrown;
+            if (effective == null) {
+                if (message instanceof Message m) {
+                    effective = m.getThrowable();
+                } else if (message instanceof String pattern) {
+                    effective = trailingThrowable(pattern, params);
+                }
             }
-            String format = message instanceof String s ? s : String.valueOf(message);
-            Throwable effective = thrown != null ? thrown : lastThrowable(format, params);
-            return new Call(loggerName, level, format, params, effective, message);
+            return new Call(loggerName, level, message, params, effective);
+        }
+
+        /** The unformatted pattern: what storm detection fingerprints. Never null. */
+        String format() {
+            if (message instanceof String pattern) {
+                return pattern;
+            }
+            if (message instanceof Message m) {
+                return m.getFormat();
+            }
+            resolve();
+            return resolvedFormat;
         }
 
         /** The message with its parameters filled in, as an appender would write it: for a rule that matches text. */
@@ -223,26 +245,44 @@ final class GateFilter extends AbstractFilter {
             if (message instanceof Message m) {
                 return m.getFormattedMessage();
             }
-            if (params == null || params.length == 0) {
-                return format;
+            if (message instanceof String pattern) {
+                return params == null || params.length == 0 ? pattern : ParameterizedMessage.format(pattern, params);
             }
-            return ParameterizedMessage.format(format, params);
+            resolve();
+            return resolvedText;
         }
 
-        /** Log4j's rule: a trailing {@code Throwable} not consumed by a placeholder is the call's throwable. */
-        private static Throwable lastThrowable(String format, Object[] params) {
-            if (params == null || params.length == 0 || !(params[params.length - 1] instanceof Throwable last)) {
+        /** A supplier or an arbitrary object, evaluated once. */
+        private void resolve() {
+            if (resolved) {
+                return;
+            }
+            resolved = true;
+            Object value = message;
+            if (value instanceof MessageSupplier supplier) {
+                value = supplier.get();
+            } else if (value instanceof org.apache.logging.log4j.util.Supplier<?> supplier) {
+                value = supplier.get();
+            }
+            if (value instanceof Message m) {
+                resolvedFormat = m.getFormat();
+                resolvedText = m.getFormattedMessage();
+            } else {
+                resolvedFormat = String.valueOf(value);
+                resolvedText = resolvedFormat;
+            }
+        }
+
+        /**
+         * A trailing {@code Throwable} that no placeholder consumed is the call's throwable. Log4j's own
+         * {@code ParameterizedMessage} decides, so escaped placeholders ({@code \{}}) count as Log4j counts
+         * them; only built when the last argument is a {@code Throwable} at all.
+         */
+        private static Throwable trailingThrowable(String pattern, Object[] params) {
+            if (params == null || params.length == 0 || !(params[params.length - 1] instanceof Throwable)) {
                 return null;
             }
-            return placeholders(format) < params.length ? last : null;
-        }
-
-        private static int placeholders(String format) {
-            int count = 0;
-            for (int i = format.indexOf("{}"); i >= 0; i = format.indexOf("{}", i + 2)) {
-                count++;
-            }
-            return count;
+            return new ParameterizedMessage(pattern, params).getThrowable();
         }
     }
 
