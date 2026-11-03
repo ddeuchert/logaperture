@@ -26,6 +26,7 @@ import org.logaperture.core.spi.ContextHandle;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -45,7 +46,7 @@ public final class Log4j2Framework implements BridgedFramework {
     private final AtomicBoolean versionChecked = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final AtomicReference<Runnable> onShutdown = new AtomicReference<>();
-    private final List<Log4j2LoggingAdapter> adapters = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final List<Log4j2LoggingAdapter> adapters = new CopyOnWriteArrayList<>();
 
     @Override
     public boolean ready() {
@@ -59,6 +60,14 @@ public final class Log4j2Framework implements BridgedFramework {
         // Log4j's own shutdown listener (TC5): runs when a context stops, on any thread. It cannot be
         // removed, so it goes inert once this entry has let go.
         LoggerContextShutdownAware notifyOnShutdown = stopped -> {
+            // The stopped context's adapter has nothing left to listen to: let go of it now, not at close().
+            adapters.removeIf(adapter -> {
+                boolean theStoppedOne = adapter.isFor(stopped);
+                if (theStoppedOne) {
+                    adapter.detach();
+                }
+                return theStoppedOne;
+            });
             if (!closed.get()) {
                 Runnable callback = this.onShutdown.get();
                 if (callback != null) {

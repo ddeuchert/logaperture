@@ -102,6 +102,11 @@ class NativeChangeReassertTest {
             resetListener = listener;
         }
 
+        @Override
+        public void clearNativeChangeListener() {
+            nativeListener = null;
+        }
+
         /** Someone else sets a level and Log4j tells the listener. */
         void changeNatively(String loggerName, Level level) {
             levels.put(loggerName, level);
@@ -145,5 +150,17 @@ class NativeChangeReassertTest {
             assertEquals(Level.WARN, adapter.effectiveLevel(LOGGER));
             assertTrue(audit.records().stream().noneMatch(r -> "verification-sweep".equals(r.source())));
         }
+    }
+
+    @Test
+    void closingTheContainer_unhooksTheNativeChangeListener() {
+        NativeChangeAdapter adapter = new NativeChangeAdapter();
+        adapter.applyLevel(LOGGER, Level.INFO);
+        InMemoryAuditLog audit = new InMemoryAuditLog();
+        NoneContainer root = new NoneContainer(CapabilityPolicy.allowAll(), audit);
+        root.installContext(ContextHandle.of(ContextHandle.SYSTEM, "none", adapter));
+        assertTrue(adapter.nativeListener != null, "wired at install");
+        root.close();
+        assertEquals(null, adapter.nativeListener, "a closed container's listener must not keep firing");
     }
 }

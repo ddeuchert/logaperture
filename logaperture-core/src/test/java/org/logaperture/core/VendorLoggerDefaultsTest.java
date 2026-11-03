@@ -149,6 +149,20 @@ class VendorLoggerDefaultsTest {
         assertEquals("DEBUG", reapplied.previousValue());
     }
 
+    /** log4j2-adapter.md A1/A2: a native change to a vendor-defaulted logger is the application's own value. */
+    @Test
+    void verifyOverrides_leavesTheVendorLayerAlone() {
+        service.applyVendorDefaults(Instant.now());
+        adapter.applyLevel(HIBERNATE, Level.DEBUG); // the application, Spring's logging.level or Actuator
+        int audits = auditLog.records().size();
+
+        assertEquals(0, service.verifyOverrides(Instant.now()));
+
+        assertEquals(Level.DEBUG, adapter.effectiveLevel(HIBERNATE), "not forced back to the vendor level");
+        assertEquals(audits, auditLog.records().size());
+        assertEquals(1, service.verifyAndReapply(Instant.now()), "the periodic sweep still re-applies it");
+    }
+
     @Test
     void verificationSweep_leavesAVendorLoggerWithAnOverrideToTheOverrideHalf() {
         service.applyVendorDefaults(Instant.now());

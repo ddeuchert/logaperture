@@ -88,10 +88,11 @@ class ReconfigurationTest {
 
     @Test
     void aListenerThatAppliesLevels_doesNotRecurse() {
-        adapter.onNativeChange(() -> {
+        Runnable reassertOnNativeChange = () -> {
             nativeChanges.incrementAndGet();
-            adapter.applyLevel("app", Level.WARN); // what verifyAndReapply does
-        });
+            adapter.applyLevel("app", Level.WARN); // what verifyOverrides does
+        };
+        adapter.onNativeChange(reassertOnNativeChange);
         context.getConfiguration().getLoggerConfig("app").setLevel(org.apache.logging.log4j.Level.DEBUG);
         context.updateLoggers();
         assertEquals(1, nativeChanges.get(), "the re-assert's own updateLoggers() must not call back");
@@ -100,10 +101,11 @@ class ReconfigurationTest {
 
     @Test
     void aSwapListenerThatAppliesLevels_doesNotRecurse_andTheLevelSticks() {
-        adapter.onReset(() -> {
+        Runnable reapplyOnReset = () -> {
             resets.incrementAndGet();
             adapter.applyLevel("app", Level.DEBUG);
-        });
+        };
+        adapter.onReset(reapplyOnReset);
         context.setConfiguration(configuration(org.apache.logging.log4j.Level.WARN));
         assertEquals(1, resets.get());
         assertEquals(Level.DEBUG, adapter.effectiveLevel("app"), "re-applied on the new configuration");
@@ -120,9 +122,10 @@ class ReconfigurationTest {
 
     @Test
     void aFailingListener_neverReachesLog4j() {
-        adapter.onReset(() -> {
+        Runnable failingReapply = () -> {
             throw new IllegalStateException("boom");
-        });
+        };
+        adapter.onReset(failingReapply);
         context.setConfiguration(configuration(org.apache.logging.log4j.Level.WARN)); // must not throw
         assertEquals(Level.WARN, adapter.effectiveLevel("app"));
     }
@@ -142,5 +145,23 @@ class ReconfigurationTest {
         context.stop();
         context.updateLoggers();
         assertEquals(0, nativeChanges.get(), "Spring's shutdown hook calls updateLoggers() on a stopping context (SB10)");
+    }
+
+    /**
+     * SB5: Log4j fires the {@code old == new} event on the <em>new</em> configuration before the swap
+     * event. A re-assert that creates a {@code LoggerConfig} there must still be able to remove it on a
+     * reset, after the swap event has arrived.
+     */
+    @Test
+    void aConfigCreatedByTheNativeChangeBeforeTheSwapEvent_isStillRemovedByAReset() {
+        Runnable createOnNativeChange = () -> adapter.applyLevel("late.Thing", Level.TRACE);
+        adapter.onNativeChange(createOnNativeChange);
+
+        context.setConfiguration(configuration(org.apache.logging.log4j.Level.WARN));
+        assertEquals(java.util.Optional.of(Level.TRACE), adapter.configuredLevel("late.Thing"));
+
+        adapter.applyLevel("late.Thing", null);
+        org.junit.jupiter.api.Assertions.assertFalse(context.getConfiguration().getLoggers().containsKey("late.Thing"),
+                "reset removes the LoggerConfig LogAperture created, whichever event came first");
     }
 }

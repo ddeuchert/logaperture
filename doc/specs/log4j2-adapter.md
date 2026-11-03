@@ -91,12 +91,14 @@ integration (1.2.0).
    is `getExplicitLevel()`; `effectiveLevel` is the nearest ancestor's. Baselines record whether
    the name had its own config and its explicit level.
 3. **Re-apply and re-assert** (A1). A listener on the context's `"config"` property change. A real
-   swap has `old != new`; every `updateLoggers()` fires one with `old == new` and the listener must
-   not recurse on those (R0). On every event it re-applies levels, gate, wrappers and handler
-   levels in one place, idempotently, and compares each overridden name with its override, putting
-   it back if it differs (SB7). It does not assume the swap event comes before the `old == new`
-   one (SB5), and does nothing once the context is stopping (SB10). *As built (Slice 2): the two
-   kinds of event run two different callbacks, not one that does everything; see below.*
+   swap has `old != new`; every `updateLoggers()` fires one with `old == new`, and the listener must
+   not recurse on those (R0). The two kinds run two callbacks. A swap wipes levels, the gate, the
+   wrappers and the handler levels, so it runs `onReset`: core's whole re-apply, idempotent. An
+   `old == new` event from anyone else's `updateLoggers()` is a native change (Spring's
+   `logging.level`, Actuator) and runs `onNativeChange`: core compares each overridden name with its
+   override and puts back any that differ (SB7), and leaves the vendor layer alone. Neither assumes the
+   swap event comes before the `old == new` one (SB5), and nothing runs once the context is stopping
+   (SB10). (The first draft of this item ran the whole re-apply on every event; see "Slice 2".)
 4. **Gate** (A3). One context-wide `Filter` added with `config.addFilter`. Its first test is a
    level compare against the logger's level, before any rule lookup, because it runs ahead of the
    level check on every call, including disabled `debug()` in hot loops (G2). It never returns
@@ -284,7 +286,7 @@ gives up (above), therefore has no level control at all, where before this slice
 context. Binding JUL as a fallback when the Log4j bind fails is a follow-up
 ([#311](https://github.com/ddeuchert/logaperture/issues/311)).
 
-### Slice 2: re-apply on reconfiguration (built, 2026-11-03)
+### Slice 2: re-apply on reconfiguration (built, 2026-11-02)
 
 The second PR of the adapter under #302. A configuration swap puts every override back, and a level
 changed natively against an override is put back at the moment it happens.
@@ -296,18 +298,29 @@ changed natively against an override is put back at the moment it happens.
   `LoggerConfig`s it created (they belonged to the configuration that is gone) before calling.
 - **A change from elsewhere** (`old == new`: Spring's `logging.level` after its swap, an Actuator
   `POST`, application code) runs a new, optional SPI method, `LoggingAdapter.onNativeChange`. Core
-  wires it to `LevelControlService.verifyAndReapply`, the check the 30 s verification sweep already
-  runs: compare each active override with the level now in force, put back any that differ, and
-  record each in the audit trail as `verification-sweep` (so a suppressed change is never silent,
-  §9.6). **A deviation from the Scope text above:** running the whole re-apply on every `old == new`
+  wires it to `LevelControlService.verifyOverrides`, the override half of the check the 30 s
+  verification sweep already runs (`verifyAndReapply` is that half plus the vendor layer): compare each
+  active override with the level now in force, put back any that differ, and record each in the audit
+  trail as `verification-sweep` (so a suppressed change is never silent, §9.6). The vendor layer is
+  left out: a vendor default sits under the application's own configuration, so a native change to a
+  vendor-defaulted logger with no override is the application's value and wins (A2); the periodic
+  sweep still re-applies a drifted vendor level. **A deviation from the Scope text above:** running the whole re-apply on every `old == new`
   event would re-apply every override, and re-install the rule pipeline, top and storm detection,
   on every `updateLoggers()` anyone makes; only the override check is needed for a level change, and a
   swap is the only event that wipes the rest. The default is a no-op, so Logback, JUL and the others
   are unchanged and keep the sweep alone.
 - **No recursion (R0).** The adapter's own `updateLoggers()` (in `applyLevel`) and any listener it is
   running set a thread-local; events on that thread are ignored. Events once the context is not
-  `STARTED` are ignored (SB10). A listener that throws is a `Diagnostics` line, never an exception into
-  Log4j. The entry's `close()` removes the property listener from every context it bound ("Scope" 7).
+  `STARTED` are ignored (SB10). A listener that throws a `RuntimeException` is a `Diagnostics` line,
+  never an exception into Log4j (an `Error` is not swallowed). A context's adapter lets go of its
+  property listener when that context stops, and the entry's `close()` does so for the rest ("Scope" 7);
+  `NoneContainer.close()` clears both listeners.
+- **The created-config map follows the live configuration.** `LoggerConfig`s LogAperture created
+  belong to one configuration. They move to "created on a gone configuration" when the live configuration
+  is no longer the one they were created on, not when a swap event is seen: SB5 puts the `old == new`
+  event, where a re-assert may create one, before the swap event, and a reset after both must still
+  remove it. For a name created on a configuration that is gone, a reset leaves the application's own
+  config of that name alone (it does not blank its level).
 - **Not assumed (SB5):** the first event after a swap is an `old == new` one on the new
   configuration, before the swap event. Both callbacks are idempotent, so the order does not matter.
 
