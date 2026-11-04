@@ -14,8 +14,8 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
   as on WildFly: `set logger` and `reset`, `set handler` and `reset handlers`, vendor defaults, recipes,
   `drop` and `trim` rules, `doctor` and storm detection. LogAperture finds Log4j on the JVM's class path or
   bundled inside the application, so it works in a plain `java -jar`, a Spring Boot fat jar on
-  `spring-boot-starter-log4j2`, a Tomcat web application that brings its own `log4j-core` (two web
-  applications with different Log4j versions are controlled separately, and a redeploy gets its overrides
+  `spring-boot-starter-log4j2`, a Tomcat web application that brings its own `log4j-core` (each web
+  application's Log4j is bound on its own, even when their versions differ, and a redeploy gets its overrides
   back), and a WildFly deployment that excludes the server's Log4j API. The application's own configuration
   always applies: LogAperture touches Log4j only once its context has started.
   - A handler is an appender, named as in `log4j2.xml`. `set handler Console WARN` sets the level of the
@@ -25,9 +25,10 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
     (Spring Boot Actuator, `Configurator.setLevel`) is put back, audited, and reported once a minute per
     logger in the application's log; `reset` then goes to the level that change set, not the one in the file.
   - `doctor` adds `log4j2.version` (a Log4j older than 2.20.0 is found but not controlled),
-    `log4j2.not-bound` (found, and could not be bound, with the reason) and `log4j2.trim` (trim is off).
-    `handler.unbounded-growth` and `disk.headroom` check a plain `File`, `RandomAccessFile` or
-    `MemoryMappedFile` appender; a `RollingFile` appender is not inspected.
+    `log4j2.not-bound` (found, and could not be bound, with the reason) and `log4j2.trim` (an `INFO`: trim
+    cannot work on this Log4j, reported whether or not there is a trim rule).
+    `handler.unbounded-growth`, `disk.headroom` and `handler.autoflush` check a plain `File`,
+    `RandomAccessFile` or `MemoryMappedFile` appender; a `RollingFile` appender is not inspected.
   - Limits: `top` does not count Log4j 2 output yet (issue #306); `trim` cuts text layouts only and does not
     work on Log4j 2.25.0 to 2.25.3, whose renderers give LogAperture no hook; from 2.24.3 the Log4j registry
     holds loggers weakly, so `list loggers` shows a logger only while the application holds it; a `drop` rule
@@ -40,7 +41,6 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
   `--pid` finds the JVM and `logctl doctor` says why, instead of "No LogAperture-enabled JVM found". A Log4j that
   is on the class path but never starts a context publishes nothing (issues #322, #301;
   `doc/specs/surface-on-bind-failure.md`).
-
 - **Quarkus handler names.** A handler named in `application.properties`
   (`quarkus.log.handler.file."AUDIT"`) now shows in `logctl list handlers` under that name, and
   `logctl set handler AUDIT DEBUG` works, as on WildFly. Quarkus's own handlers keep `console`,
@@ -57,7 +57,7 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 - **`logctl env` names Logback.** An application on Logback now gets a `Logging backend` line
   (`Logback 1.5.13`), as JUL and JBoss LogManager already did (issue #283).
 - **`logctl attach`.** `logctl attach [<pid>]` loads the agent into a JVM that was started without
-  `-javaagent`, on Logback, `java.util.logging` or a standalone WildFly, and takes `--vendor-defaults`,
+  `-javaagent`, on Logback, `java.util.logging`, Log4j 2 or a standalone WildFly, and takes `--vendor-defaults`,
   `--storm-detection` and `--agent-jar`. The `logctl` jar now carries the agent jar. `doctor` explains
   an attached JVM with `agent.attached`. When the default home can't be written, the state store now
   falls back to `/tmp/logaperture-<user>` for every start (issue #273; `doc/specs/logctl-attach.md`).
@@ -88,8 +88,7 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 ### Changed
 
 - **`logctl list loggers` with no loggers** now says `No loggers known yet. LogAperture is running; if it controls
-  no logging context in this JVM, `logctl doctor` says why.` The `logctl attach` waiting messages name Log4j 2 as
-  a controlled backend (they used to say it could not be controlled).
+  no logging context in this JVM, `logctl doctor` says why.`
 
 ## [1.0.0-beta.4] — 2026-10-28
 

@@ -13,11 +13,17 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -#}
-{#- A banner on every page of a pre-release version's guide (DOCS_PRERELEASE in mkdocs.yml). -#}
+{#- A banner on every page of a pre-release version's guide (DOCS_PRERELEASE in mkdocs.yml), and on every page of
+    the development guide (DOCS_VERSION is dev, which is what a push to develop and a local build deploy). -#}
 {% extends "base.html" %}
 
 {% block announce %}
-  {% if config.extra.prerelease %}
+  {% if config.extra.docs_version == "dev" %}
+    This is the <strong>development</strong> guide: it documents work in progress on the
+    <code>develop</code> branch. Not everything here is available yet, in a release or in a build you make
+    from the repository. For example, running <code>logctl</code> through JBang needs a published release.
+    Choose a released version from the version menu for what you can use today.
+  {% elif config.extra.prerelease %}
     This guide is for <strong>{{ config.extra.prerelease }}</strong>, a pre-release. Commands
     and options may still change before 1.0.0.
   {% endif %}

@@ -52,9 +52,9 @@ logctl env
 logctl list loggers --show-all
 ```
 
-`env` names the backend, `Log4j 2`, with the version of the first web application it found. Each web
-application that has started its Log4j appears as its own **context** in the `CONTEXT` column, and each
-is controlled separately, so two applications with different Log4j versions work side by side. Tomcat's
+`env` names the backend, `Log4j 2`. Each web application that has started its Log4j appears as its own
+**context** in the `CONTEXT` column, bound on its own, so two applications with different Log4j versions
+work side by side. Tomcat's
 own logging, which uses `java.util.logging`, is the context called `system`: you see Tomcat and your
 applications in one session.
 
@@ -62,8 +62,9 @@ applications in one session.
 logctl set logger com.example.orders DEBUG for 10m
 ```
 
-A change goes to every context that has that logger. To change one application only, name it with the
-context it appears under in `list loggers`.
+A change goes to every context that has that logger. There is no way to aim it at one web application,
+so a logger name that two applications share is changed in both; `list loggers` shows each context's
+own rows and levels.
 
 ## Context names
 

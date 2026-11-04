@@ -277,7 +277,7 @@ Nothing here is user-visible content yet; it is the machinery every later slice 
 |---|---|
 | `mkdocs.yml` (repo root) | Site config. `docs_dir: guide`, `site_dir: site`. Material theme, light/dark toggle, `navigation.tabs`, `navigation.sections`, `search.suggest`, `content.code.copy`. `extra.version.provider: mike`. The full navigation of the [layout](#site-layout-proposed-u2). |
 | `requirements-docs.txt` | `mkdocs`, `mkdocs-material` and `mike`, pinned to exact versions, so the site builds the same in CI and on a laptop. |
-| `guide-overrides/` | Two theme overrides: the pre-release banner, and a footer naming the version. |
+| `guide-overrides/` | Two theme overrides: the banner (a pre-release version's, and the development guide's: U13), and a footer naming the version. |
 | `guide/**` | Every page in the layout. Pages not written yet are stubs: a title, one line on what the page will cover, and a note that it is being written for 1.0. |
 | `.github/workflows/docs.yml` | Builds and deploys the site (below). |
 | `.gitignore` | `site/` and `.venv-docs/`. |
@@ -486,6 +486,7 @@ All twelve agreed as recommended. Numbering is stable and matches the review art
 | U10 | Keeping current | **`CLAUDE.md` rule and PR template checkbox**; no CI enforcement beyond the drift tests. |
 | U11 | Platform coverage | **One support matrix on Home, admonitions on pages**; no per-platform forks. |
 | U12 | Examples | **Hand-captured for 1.0**, re-captured for rc.1; IT-captured snippets are a 1.x issue. |
+| U13 | The `dev` guide | **A banner on every page of the `dev` version** (added 2026-11-03, David): "this documents work in progress on `develop`; not everything is available yet, in a release or in a build from the repository", with running `logctl` through JBang as the example, since it needs a published release. Built in: the `dev` site is built with `DOCS_VERSION=dev`, so no script runs in the browser; a local `mkdocs serve` shows it too. A pre-release version keeps its own banner. |
 
 Slice 2, H1–H7, agreed as written on 2026-10-08: the topics in H1, the one-screen overview (H2),
 topic lookup from command words (H3), usage errors showing only the command's forms (H4), topic

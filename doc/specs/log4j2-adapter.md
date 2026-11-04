@@ -887,7 +887,7 @@ so a contributor can reproduce a failing one.
 **Not in this slice:** the Spring Boot, Tomcat and WildFly setup ITs (Slice 9); the gate benchmark; the guide
 pages; mixed `log4j-api` and `log4j-core` versions (A10, still "Not established"); JDK 25.
 
-### Guide pages and CHANGELOG (written 2026-11-04)
+### Guide pages and CHANGELOG (written 2026-11-03)
 
 Written ahead of the benchmark and the owner's unstructured testing, to be amended by what those find. Pages:
 `index.md` (a Log4j 2 column in the support table, the setups, the "not supported" line), `get-started/install-plain-jvm.md`
