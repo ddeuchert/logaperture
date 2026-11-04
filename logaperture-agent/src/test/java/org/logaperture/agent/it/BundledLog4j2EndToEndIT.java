@@ -393,6 +393,7 @@ class BundledLog4j2EndToEndIT {
                 System.getProperty("java.home") + "/bin/java",
                 "-javaagent:" + agentJar,
                 "-Dlogaperture.home=" + work.resolve("home"),
+                "-Dlogaperture.diagnostics.level=debug", // so a bind that is silent in CI shows what the detector did
                 "-Dfixture.log4j.jars=" + log4jJars()));
         if ("async-loggers".equals(MODE)) {
             command.add("-Dlog4j2.contextSelector=org.apache.logging.log4j.core.async.AsyncLoggerContextSelector");
