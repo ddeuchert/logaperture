@@ -179,6 +179,34 @@ class BundledLog4j2EndToEndIT {
                 "counted once per trimmed event, by the gate, and not again by the wrapper");
     }
 
+    /** Handler levels (A5): the appender is listed by its file name, set hides lines, reset and a reload keep faith. */
+    @Test
+    void aHandlerLevel_hidesLines_resetBringsThemBack_andSurvivesAReconfiguration() throws Exception {
+        Path output = work.resolve("handler.log");
+        Process app = launch(output);
+        waitFor(output, "FIXTURE-READY");
+        LevelControlMXBean proxy = LevelControlEndToEndIT.pollForMxBeanProxy(
+                LevelControlEndToEndIT.attachAndConnect(app.pid()));
+        pollForLogger(proxy, WORKER);
+        assertTrue(proxy.listHandlers().stream().anyMatch(h -> "Out".equals(h.getRef())),
+                "the appender is listed by its log4j2.xml name: " + proxy.listHandlers());
+
+        assertTrue(logAndWait(app, output, "a").contains("INFO fixture.Worker info a"));
+
+        proxy.setHandlerLevel("Out", "ERROR", "e2e", "SESSION", 0);
+        String hidden = logAndWait(app, output, "b");
+        assertFalse(hidden.contains("info b"), "INFO is hidden by the handler:\n" + hidden);
+        assertTrue(hidden.contains("ERROR fixture.Worker error b"), hidden);
+
+        sendAndWait(app, output, "RECONFIGURE r1", "DONE r1");
+        String afterReload = logAndWait(app, output, "c");
+        assertFalse(afterReload.contains("info c"),
+                "a reload gives the file's levels back; core puts the handler override back:\n" + afterReload);
+
+        proxy.resetHandler("Out", false);
+        assertTrue(logAndWait(app, output, "d").contains("INFO fixture.Worker info d"));
+    }
+
     /** Sends {@code LOGEX <tag>} and returns only what was written since, up to {@code LOGGED <tag>}. */
     private static String exceptionAndWait(Process app, Path output, String tag) throws Exception {
         int before = Files.exists(output) ? Files.readString(output).length() : 0;
