@@ -183,4 +183,9 @@ class LoaderScannerTest {
         }
         throw new AssertionError("expected IllegalArgumentException");
     }
+
+    @org.junit.jupiter.api.AfterEach
+    void clearBindFailures() {
+        BindFailures.clear(); // process-wide rows must not leak into other tests' doctor assertions
+    }
 }

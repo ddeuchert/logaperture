@@ -18,6 +18,7 @@ package org.logaperture.core.loader;
 import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.spi.ContextHandle;
 
+import java.lang.ref.WeakReference;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -55,6 +56,7 @@ public final class BoundInstance {
 
     private final FrameworkWatch watch;
     private final String ownerName;
+    private final WeakReference<ClassLoader> ownerRef;
     private final BridgeClassLoader bridge;
     private final ContextSink sink;
     private final Timing timing;
@@ -67,6 +69,7 @@ public final class BoundInstance {
                           ContextSink sink, Timing timing) {
         this.watch = watch;
         this.ownerName = describe(owner);
+        this.ownerRef = new WeakReference<>(owner);
         this.bridge = new BridgeClassLoader(owner, watch.ownerPackages(), system, source);
         this.sink = sink;
         this.timing = timing;
@@ -86,7 +89,7 @@ public final class BoundInstance {
             Class<?> entryClass = instance.bridge.loadClass(watch.entryClass());
             instance.entry = (BridgedFramework) entryClass.getDeclaredConstructor().newInstance();
         } catch (Throwable t) {
-            instance.fail("its adapter could not be created (" + t + ")", t);
+            instance.fail("its adapter could not be created (" + t + ")", t, false);
             return instance;
         }
         Thread waiter = new Thread(instance::awaitAndBind, "logaperture-" + watch.framework() + "-bind");
@@ -123,7 +126,9 @@ public final class BoundInstance {
                     return;
                 }
                 if (System.nanoTime() - deadline >= 0) {
-                    fail("it has no started context " + timing.giveUpAfter().toMillis() + " ms after it was found", null);
+                    String waited = "it has no started context " + timing.giveUpAfter().toMillis()
+                            + " ms after it was found";
+                    fail(waited, null, true);
                     return;
                 }
                 Thread.sleep(timing.pollEvery().toMillis());
@@ -132,7 +137,7 @@ public final class BoundInstance {
             Thread.currentThread().interrupt();
             letGo();
         } catch (Throwable t) {
-            fail("it failed while waiting for its first context (" + t + ")", t);
+            fail("it failed while waiting for its first context (" + t + ")", t, false);
         }
     }
 
@@ -145,8 +150,12 @@ public final class BoundInstance {
         try {
             contexts = opened.open(this::letGo);
         } catch (Throwable t) {
-            fail("opening it failed (" + t + ")", t);
+            fail("opening it failed (" + t + ")", t, false);
             return;
+        }
+        ClassLoader owner = ownerRef.get();
+        if (owner != null) {
+            BindFailures.forget(watch.framework(), owner); // before the contexts are added, so doctor never sees both
         }
         List<ContextHandle> added = new ArrayList<>();
         for (ContextHandle context : contexts) {
@@ -175,14 +184,39 @@ public final class BoundInstance {
         release();
     }
 
-    private void fail(String reason, Throwable cause) {
+    private void fail(String reason, Throwable cause, boolean gaveUp) {
         if (state.getAndSet(State.CLOSED) == State.CLOSED) {
             return;
         }
         // C8: a silent failure is a reassuring answer that does nothing
         Diagnostics.warn("LogAperture found " + watch.framework() + " in " + ownerName
                 + " but did not bind: " + reason);
+        ClassLoader owner = ownerRef.get();
+        if (owner != null) {
+            BindFailures.record(watch.framework(), owner, ownerName, describeFailure(reason, cause),
+                    isVersionProblem(cause) ? BindFailures.Kind.VERSION
+                            : gaveUp ? BindFailures.Kind.GAVE_UP : BindFailures.Kind.FAILED);
+        }
         release();
+    }
+
+    /** The framework's own words when it gave them (a too-old version), else what this class saw. */
+    private static String describeFailure(String reason, Throwable cause) {
+        for (Throwable t = cause; t != null; t = t.getCause()) {
+            if (t instanceof UnsupportedFrameworkVersionException) {
+                return t.getMessage();
+            }
+        }
+        return reason;
+    }
+
+    private static boolean isVersionProblem(Throwable cause) {
+        for (Throwable t = cause; t != null; t = t.getCause()) {
+            if (t instanceof UnsupportedFrameworkVersionException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void release() {
@@ -203,7 +237,7 @@ public final class BoundInstance {
     }
 
     /** The owner's loader class and name, never its {@code toString()} (it may be mid-unload). */
-    private static String describe(ClassLoader owner) {
+    static String describe(ClassLoader owner) {
         String name = owner.getName();
         return owner.getClass().getName() + (name == null ? "" : " '" + name + "'");
     }

@@ -29,6 +29,11 @@ A file handler with no size limit, or no limit on how many rotated files it keep
 can grow until the disk is full. `WARNING`, raised to `CRITICAL` when `disk.headroom` also finds that
 handler's disk close to full.
 
+On Log4j 2 this finds a plain `File`, `RandomAccessFile` or `MemoryMappedFile` appender, also one
+behind an `<Async>` appender that has nothing else behind it. A `RollingFile` appender is not
+inspected: its policy and strategy are not read, so `doctor` stays quiet on it, as it does for the
+JDK's own `FileHandler`.
+
 **Fix:** configure size-based rotation with a backup limit on that handler.
 
 ### `logger.verbosity-left-on`
@@ -51,6 +56,10 @@ A handler that flushes after every record, which costs disk I/O on a busy logger
 On Quarkus, the console and file handlers Quarkus creates itself are reported as `INFO` instead,
 marked as the framework's default: the application didn't choose it. A handler the application added
 keeps the `WARNING`.
+
+On Log4j 2 this reports a plain `File`, `RandomAccessFile` or `MemoryMappedFile` appender whose
+`immediateFlush` is on, which is Log4j's default. A `RollingFile` appender, a console appender and
+an `<Async>` appender are not reported.
 
 **Fix:** turn autoflush off on that handler, if losing the last few lines in a crash is acceptable.
 
@@ -102,6 +111,37 @@ while `doctor` runs. `CRITICAL` under 4 hours, `WARNING` under 24 hours, `OK` ot
 nothing was written during the measurement.
 
 **Fix:** free space, or reduce what is written there: `logctl top` shows which loggers write most.
+
+## Log4j 2
+
+### `log4j2.version`
+
+LogAperture found a Log4j 2 older than 2.20.0 and did not control it. `WARNING`. The finding names the
+class loader the Log4j was found in (its class and name and an identity, so two web applications' loaders
+are two rows) and the version. It is process-wide, with no context, because
+nothing was bound.
+
+**Fix:** upgrade Log4j to 2.20.0 or later.
+
+### `log4j2.not-bound`
+
+LogAperture found a Log4j 2 and could not bind it. `WARNING` when its adapter could not be created
+or threw while opening; `INFO` when no Log4j context had started three seconds after the Log4j was
+found, which is usually a Log4j the application never used. The finding names the class loader and
+the reason, and is the same reason the application printed to its error stream when it gave up. It is kept for as long as that class loader is alive, so a
+redeployed web application's old failure goes away when it is collected, and each loader that
+failed has its own row (at most 16).
+
+**Fix:** the reason says what happened. Nothing to do for an `INFO` about a Log4j that never started.
+
+### `log4j2.trim`
+
+Trim rules cannot cut a stack trace on this Log4j: 2.25.0 to 2.25.3 render the exception without
+going through anything LogAperture can reach. `INFO`, because LogAperture cannot tell whether there
+is a trim rule; if there is none this is only worth knowing. Trim rules are still counted, and are
+applied nowhere on this Log4j. `drop` rules, levels and storm detection are not affected.
+
+**Fix:** upgrade Log4j to 2.25.4 or later (2.24.x works too).
 
 ## The agent
 

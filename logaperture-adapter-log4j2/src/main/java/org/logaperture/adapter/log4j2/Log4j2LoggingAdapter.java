@@ -17,13 +17,24 @@ package org.logaperture.adapter.log4j2;
 
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.AbstractOutputStreamAppender;
+import org.apache.logging.log4j.core.appender.AsyncAppender;
+import org.apache.logging.log4j.core.appender.ConsoleAppender;
+import org.apache.logging.log4j.core.appender.FileAppender;
+import org.apache.logging.log4j.core.appender.MemoryMappedFileAppender;
+import org.apache.logging.log4j.core.appender.RandomAccessFileAppender;
+import org.apache.logging.log4j.core.appender.RollingFileAppender;
+import org.apache.logging.log4j.core.appender.RollingRandomAccessFileAppender;
 import org.apache.logging.log4j.core.config.AppenderRef;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.logaperture.api.BackendInfo;
+import org.logaperture.api.DoctorFinding;
+import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
+import org.logaperture.api.Severity;
 import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.RuleGate;
 import org.logaperture.core.StormObserver;
@@ -33,6 +44,8 @@ import org.logaperture.core.spi.UnknownHandlerException;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.lang.ref.WeakReference;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -42,6 +55,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 /**
  * Levels on one Log4j 2 {@link LoggerContext} (doc/specs/log4j2-adapter.md A2, A8). Works on the
@@ -596,7 +610,7 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         return refs;
     }
 
-    /** The {@code LoggerConfig}s an event from the logger passes through, nearest first, ending where additivity does. */
+    /** The {@code LoggerConfig}s an event from the logger passes through, nearest first, ending where additivity ends. */
     private List<LoggerConfig> path(String loggerName) {
         List<LoggerConfig> path = new ArrayList<>();
         for (LoggerConfig current = context.getConfiguration().getLoggerConfig(nativeName(loggerName));
@@ -607,6 +621,77 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
             }
         }
         return path;
+    }
+
+    /**
+     * The file facts of an appender (A9, Slice 7 D7-1 to D7-3). The original in {@code config.getAppenders()},
+     * never the trim wrapper in the slot. A plain file appender has a known path and no caps; a rolling one is
+     * persistent with its file unknown (its policy is not stable API, A9), so the file checks leave it alone as
+     * they do the JDK {@code FileHandler}; an {@code <Async>} over exactly one appender answers with that one's
+     * facts, flush excepted (it flushes per batch); anything else gives none.
+     */
+    @Override
+    public HandlerDiagnostics handlerDiagnostics(HandlerRef ref) { // a read of the original appenders: no lock
+        Appender appender = context.getConfiguration().getAppenders().get(ref.value());
+        if (appender == null) {
+            return HandlerDiagnostics.EMPTY;
+        }
+        if (appender instanceof AsyncAppender async) {
+            String[] behind = async.getAppenderRefStrings();
+            Appender inner = behind.length == 1 ? context.getConfiguration().getAppender(behind[0]) : null;
+            if (inner == null || inner instanceof AsyncAppender) {
+                return HandlerDiagnostics.EMPTY;
+            }
+            HandlerDiagnostics facts = diagnosticsOf(inner);
+            return new HandlerDiagnostics(null, null, null, facts.targetPath(), facts.isConsole(), false,
+                    facts.fileWithoutPath());
+        }
+        return diagnosticsOf(appender);
+    }
+
+    private static HandlerDiagnostics diagnosticsOf(Appender appender) {
+        if (appender instanceof ConsoleAppender) {
+            return new HandlerDiagnostics(null, null, null, null, true);
+        }
+        if (appender instanceof RollingFileAppender || appender instanceof RollingRandomAccessFileAppender) {
+            return new HandlerDiagnostics(null, null, null, null, false, false, true); // persistent, file unknown
+        }
+        String fileName = appender instanceof FileAppender file ? file.getFileName()
+                : appender instanceof RandomAccessFileAppender random ? random.getFileName()
+                : appender instanceof MemoryMappedFileAppender mapped ? mapped.getFileName() : null;
+        if (fileName == null) {
+            return HandlerDiagnostics.EMPTY;
+        }
+        Path path = pathOrNull(fileName);
+        return path == null ? HandlerDiagnostics.EMPTY
+                : new HandlerDiagnostics(null, null, immediateFlush(appender), path);
+    }
+
+    /** The path, or null for a name this platform rejects: no facts, never a failed {@code doctor} run. */
+    static Path pathOrNull(String fileName) {
+        try {
+            return Path.of(fileName);
+        } catch (InvalidPathException e) {
+            return null;
+        }
+    }
+
+    /** {@code immediateFlush} of a plain file appender (a memory-mapped one reports its own, always false). */
+    private static Boolean immediateFlush(Appender appender) {
+        return appender instanceof AbstractOutputStreamAppender<?> stream ? stream.getImmediateFlush() : null;
+    }
+
+    /**
+     * Trim is off on this Log4j (A4, A12 {@code log4j2.trim}): {@code INFO}, because the adapter cannot tell
+     * whether anyone has a trim rule (D7-5). Nothing before the probe has run.
+     */
+    @Override
+    public List<DoctorFinding> doctorFindings() {
+        Function<String, DoctorFinding> trimOff = reason -> new DoctorFinding("log4j2.trim", Severity.INFO, "trim",
+                "trim rules are counted but not applied on this Log4j" + (version == null ? "" : " (" + version + ")")
+                        + ".",
+                reason, "use a Log4j that renders a trimmed exception: 2.24.x and earlier, or 2.25.4 and later.");
+        return trimDisabledReason().map(trimOff).stream().toList();
     }
 
     @Override

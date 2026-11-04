@@ -44,6 +44,7 @@ import org.logaperture.api.Severity;
 import org.logaperture.api.SquelchedLogger;
 import org.logaperture.api.Storm;
 import org.logaperture.api.StormReport;
+import org.logaperture.core.loader.BindFailures;
 import org.logaperture.core.spi.ContextHandle;
 
 import java.time.Duration;
@@ -423,13 +424,14 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * {@code stableKey}; unlike {@code listHandlerOverrides}, findings are
      * never unioned/deduped across contexts, since two contexts can
      * legitimately have different underlying configuration to report on.
-     * The process-wide rows (vendor defaults, {@code -javaagent} ordering)
+     * The process-wide rows (vendor defaults, {@code -javaagent} ordering, frameworks found but not bound)
      * come first, once, with no context.
      */
     @Override
     public List<DoctorFinding> diagnose() {
         List<DoctorFinding> result = new ArrayList<>(vendorDefaultsFindings());
         result.addAll(agentOrderCheck.findings());
+        result.addAll(BindFailures.findings());
         for (ContextControl context : sortedByKey()) {
             String key = context.stableKey();
             for (DoctorFinding finding : context.doctorService().diagnose()) {

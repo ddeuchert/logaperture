@@ -16,6 +16,7 @@
 package org.logaperture.core.spi;
 
 import org.logaperture.api.BackendInfo;
+import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
@@ -273,6 +274,15 @@ public interface LoggingAdapter {
      */
     default HandlerDiagnostics handlerDiagnostics(HandlerRef ref) {
         return HandlerDiagnostics.EMPTY;
+    }
+
+    /**
+     * Findings only this adapter can make, appended to {@code doctor}'s own for this context (doc/specs/
+     * log4j2-adapter.md Slice 7, D7-5): a backend limit that is not about any handler or logger. Default
+     * none. Called on every {@code doctor} run, so it must be cheap and must not change anything.
+     */
+    default List<DoctorFinding> doctorFindings() {
+        return List.of();
     }
 
     /**

@@ -640,6 +640,115 @@ process: `set handler Out ERROR` hides INFO, the same after a reload, `reset han
 **Not in this slice:** `handlerDiagnostics` and `handler.unbounded-growth` (A9); the three `doctor`
 checks (A12); `installByteCounting` (A6); the version matrix in CI (A11).
 
+### Slice 7: diagnostics (built, 2026-11-03)
+
+The seventh PR under #302: `logctl doctor` knows Log4j 2. A9 and A12 decided *what* it says; this section
+settles where each fact comes from, which A9 and A12 left open because the three A12 checks are not
+alike. Two need no bound adapter at all (Log4j was found and could not be bound), one is per context,
+and the file checks are per handler.
+
+**1. The file checks on a Log4j appender (A9): `handlerDiagnostics`.** Core's checks already exist
+(`handler.unbounded-growth`, `disk.headroom`, `handler.duplicate-output`, `handler.autoflush`); the adapter
+only has to answer for each handler (the original appender in `config.getAppenders()`, never the trim
+wrapper in the slot):
+
+| Appender | `targetPath` | other facts | What the checks do |
+|---|---|---|---|
+| `Console` | none | `isConsole` | nothing to flag |
+| `File`, `RandomAccessFile`, `MemoryMappedFile` | `getFileName()` | no size cap, no backups | `handler.unbounded-growth` fires, `disk.headroom` runs |
+| `RollingFile`, `RollingRandomAccessFile` | none | persistent, file unknown (`fileWithoutPath`) | `top` counts it; the file checks leave it alone, as for the JDK `FileHandler` (A9) |
+| `Async` | what its one appender behind it answers | | an `<Async>` over exactly one appender answers with that appender's facts, so a plain file behind it is still found; none or several behind it: no facts |
+| anything else (`Routing`, `Failover`, `Rewrite`, custom) | none | no facts | not inspected |
+
+**2. `handler.autoflush`.** Log4j's `immediateFlush` defaults to `true`, so reporting it for every appender
+would put a `WARNING` on nearly every Log4j application. A plain file appender reports its `immediateFlush`; a
+rolling appender, a console appender and an `<Async>` appender report nothing (a console has no file to flush, and an `<Async>`
+appender flushes per batch). So the finding appears for a file appender someone left at the default, which is
+the case the check exists for.
+
+**3. Found, not bound (A12 `log4j2.version`, `log4j2.not-bound`): a process-wide record in the detector.** These
+two have no context, so no `DoctorService` of a context can say them. `BoundInstance.fail` already knows the
+framework, the owning loader and the reason (C8). It now also hands that to a small process-wide list that
+`AggregateLevelControl.diagnose()` reads, next to the vendor-defaults and `-javaagent` ordering findings,
+which are process-wide in the same way, with no context on the row.
+
+- The check id is the framework id plus a suffix: `log4j2.version` when the framework said it is too old (a
+  typed reason, not a text match), otherwise `log4j2.not-bound` (opened and threw, gave up after 3 s, no
+  started context). The ids are constants in core, so `GuideReferenceDriftTest` sees them.
+- **What `doctor` prints (as built; the spec's first wording was tighter).** The summary carries the framework's
+  own reason ("older than 2.20.0", "binding it threw ..."), the detail is generic ("see the line the application
+  printed", "usually a log4j2 the application never used"), and the `log4j2.version` fix says to upgrade to a
+  supported version. The subject is the loader's class and name plus its identity hash, so two webapp loaders of
+  the same class are two rows.
+- `WARNING`, except `INFO` when the detector gave up waiting for a started context (often a Log4j the
+  application never used, found in review); subject the owning loader's class and name, detail the reason as `Diagnostics` printed it.
+  `log4j2.version` suggests upgrading to 2.20.0 or later (A10); `log4j2.not-bound` says what happened and
+  suggests nothing, because the reason is what a user needs.
+- One row per (framework, loader), kept while that loader is alive (weakly: a redeployed webapp's old loader
+  drops its row when it is collected), at most 16. A later successful bind from another loader does not
+  remove an old row: each names its own loader.
+
+**4. `log4j2.trim`: a new optional SPI method.** Trim is off on 2.25.0 to 2.25.3 and the adapter keeps the
+reason (`trimDisabledReason()`, Slice 5). `LoggingAdapter` gets `default List<DoctorFinding> doctorFindings()`
+(empty), which `DoctorService.diagnose()` appends to its own, so every row is stamped with its context like
+the others. The Log4j adapter answers one `INFO` row when trim is off: *trim rules are counted but not
+applied on Log4j 2.25.2; upgrade to 2.25.4 or later*. `INFO` and not `WARNING`: the adapter cannot tell
+whether anyone has a trim rule, and for an application with none it is only worth knowing. Nothing before
+the probe has run. The SPI is internal (the MXBean and `--json` surface do not change; the new rows use the
+existing finding shape).
+
+**Decisions (agreed 2026-11-03):**
+
+| Id | Question | Options | Recommendation |
+|---|---|---|---|
+| D7-1 | A rolling appender | (a) Persistent, file unknown (quiet on the file checks, as A9 says). (b) Report its path with made-up limits. (c) Read the policy and strategy by reflection. | **(a).** It costs `disk.headroom` for rolling files, which is the check most worth having on one; core's `HandlerDiagnostics` has no "path known, caps unknown" state. File that as a follow-up rather than invent caps (b) or read unstable classes (c). |
+| D7-2 | An `<Async>` appender | (a) Answer with the one appender behind it; none or several: no facts. (b) No facts. | **(a).** `<Async>` in front of a `File` is the common production setup; (b) would make it invisible to `handler.unbounded-growth`. |
+| D7-3 | `handler.autoflush` | (a) File appenders only, from `immediateFlush`. (b) Every appender. (c) None. | **(a).** (b) warns on every default Log4j application; (c) drops a real check. |
+| D7-4 | Where the not-bound rows come from | (a) A process-wide list read by `AggregateLevelControl.diagnose()`. (b) A new service per failed bind. | **(a).** There is no context to hang a service on. Generic, so the next framework adapter gets its two checks for free. |
+| D7-5 | `log4j2.trim` severity | (a) `INFO`. (b) `WARNING`. | **(a)**, since the adapter does not know whether a trim rule exists. |
+| D7-6 | How long a not-bound row lives | (a) While its loader lives (weak), at most 16. (b) For the process's life. (c) Cleared when the framework binds elsewhere. | **(a).** (b) keeps a row for a webapp that has since gone; (c) hides a failure that is still true for its own loader. |
+
+**Tests.** Unit: each appender type in the table through `handlerDiagnostics` on 2.20.0, 2.23.1, 2.25.2 and
+2.25.5 (a real file in a temp directory; the trim wrapper installed in the slot makes no difference);
+`doctorFindings` on 2.25.2 (trim off) and 2.25.5 (nothing); `BoundInstance` failing for a too-old
+framework and for a throwing one, and what the list answers (weak drop, the cap, one row per loader);
+`AggregateLevelControl.diagnose` with and without rows, and a context-less row; `DoctorService` appending an
+adapter's findings with the context stamped. Real process (`BundledLog4j2EndToEndIT`): a plain `File` appender
+makes `doctor` print `handler.unbounded-growth` for it by its `log4j2.xml` name. The too-old and gave-up
+paths need a Log4j older than 2.20.0, or a context that never starts, as a fixture: those wait for the
+version-matrix slice (A11) and are covered at unit level here.
+
+**Docs.** `guide/reference/doctor-checks.md` gets a section for each new id (`log4j2.version`,
+`log4j2.not-bound`, `log4j2.trim`) **in this PR**: `GuideReferenceDriftTest` fails the build otherwise, so
+this is the one guide page the deferral to the last slice cannot cover. `handler.unbounded-growth` and
+`handler.autoflush` get a line each on what they see on Log4j. The other guide pages wait, as decided.
+
+**As built (small differences from the section above):**
+
+- **A rolling appender reports no flush** (decided in review): like `handler.unbounded-growth`, it stays quiet, so
+  `handler.autoflush` appears only for a plain file appender left at Log4j's default.
+- The typed reason is `UnsupportedFrameworkVersionException` in core's `loader` package; `Log4j2Framework` throws
+  it for a version below 2.20.0 and for a Log4j with no `getExplicitLevel()`. `BoundInstance.fail` finds it in
+  the cause chain, so the `log4j2.version` row carries the framework's own sentence.
+- `BindFailures` keeps the rows; `BoundInstance` records the bind failure after its `Diagnostics` line, and
+  holds its owner weakly, so a row never keeps a loader alive. The two check ids are constants
+  (`FRAMEWORK_VERSION_CHECK`, `FRAMEWORK_NOT_BOUND_CHECK`) so `GuideReferenceDriftTest` sees them, built as
+  framework id plus suffix for any other framework.
+- The new SPI method is `LoggingAdapter.doctorFindings()`. `log4j2.trim` is `INFO` with the probe's reason as
+  detail.
+- **From review:** a scanner-level failure (the listener threw before an instance existed) is recorded too; a
+  later successful bind of the same loader forgets its row; a file name the platform rejects gives no facts
+  (`pathOrNull`) instead of failing `doctor`; the `log4j2` ids come from the constants; a memory-mapped appender
+  reports its own flush (always false).
+- `BoundInstance` marks itself closed before it prints its line and records its row, so a test that waits for
+  `isClosed` can read too early; the new and one older test wait for the line or the row instead.
+
+**Verified** on 2.20.0, 2.23.1, 2.25.2 and 2.25.5 (`-Dlog4j2.version`); `BundledLog4j2EndToEndIT` in a real
+process: `doctor` reports a plain `File` appender (`Disk`) as `handler.unbounded-growth` and not the console.
+
+**Not in this slice:** `disk.headroom` for rolling appenders (D7-1 follow-up); `top` (A6); the version matrix
+(A11) and the setup ITs; the gate benchmark; the guide pages other than `doctor-checks.md`.
+
 ## Out of scope
 
 `top` on Log4j 2 (A6); Log4j 1 and reload4j; the warning for names no backend can reach (#303);
