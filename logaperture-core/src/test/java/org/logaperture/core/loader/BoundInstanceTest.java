@@ -216,8 +216,10 @@ class BoundInstanceTest {
         BoundInstance instance = start(new FixtureOwnerLoader(), quick, ADAPTER_CLASSES);
 
         await(instance::isClosed);
+        // isClosed flips before the line is printed and before the entry's close() runs (issue #314): wait for both
+        await(() -> FakeFrameworkState.closed.get() == 1);
+        await(() -> diagnosticsText().contains("did not bind"));
         assertTrue(added.isEmpty());
-        assertEquals(1, FakeFrameworkState.closed.get());
         String text = diagnosticsText();
         assertTrue(text.contains("found fake in"), text);
         assertTrue(text.contains("did not bind"), text);
