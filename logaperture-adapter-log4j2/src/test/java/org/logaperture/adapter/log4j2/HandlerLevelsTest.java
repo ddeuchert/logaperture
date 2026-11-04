@@ -286,4 +286,47 @@ class HandlerLevelsTest {
         assertFalse(written().contains("Con:root path"),
                 "the root reference had no level in the file and now has WARN: the documented limit");
     }
+
+    @Test
+    void aHandlerAtOFF_isAFloorAndReadsBack() {
+        adapter.setHandlerLevel(ref("Iso"), org.logaperture.api.Level.OFF);
+        assertEquals(Optional.of(org.logaperture.api.Level.OFF), adapter.handlerLevel(ref("Iso")));
+        assertEquals(List.of(new HandlerFloor(ref("Iso"), org.logaperture.api.Level.OFF)),
+                adapter.handlerFloorsBelow("iso", org.logaperture.api.Level.ERROR));
+    }
+
+    @Test
+    void aFailedCall_recordsNothingForTheReferencesItDidNotNeedToSwap() {
+        var config = context.getConfiguration();
+        var failing = new org.apache.logging.log4j.core.config.LoggerConfig("x", java.util.List.of(
+                org.apache.logging.log4j.core.config.AppenderRef.createAppenderRef("Con", null, null)), null,
+                Level.TRACE, true, org.apache.logging.log4j.core.config.Property.EMPTY_ARRAY, config, false) {
+            @Override
+            public void addAppender(org.apache.logging.log4j.core.Appender appender, Level level,
+                    org.apache.logging.log4j.core.Filter filter) {
+                if (level == Level.WARN) {
+                    throw new IllegalStateException("simulated");
+                }
+                super.addAppender(appender, level, filter);
+            }
+        };
+        failing.addAppender(config.getAppender("Con"), null, null);
+        config.addLogger("x", failing);
+
+        // "app" already has WARN (no swap there); the root and x need one, and x fails
+        assertThrows(IllegalStateException.class, () -> adapter.setHandlerLevel(ref("Con"), org.logaperture.api.Level.WARN));
+
+        var app = config.getLoggers().get("app");
+        assertEquals(null, adapterLevelsRecorded(app), "no phantom override on the reference that needed no swap");
+    }
+
+    private Level adapterLevelsRecorded(org.apache.logging.log4j.core.config.LoggerConfig loggerConfig) {
+        try {
+            var field = Log4j2LoggingAdapter.class.getDeclaredField("handlerLevels");
+            field.setAccessible(true);
+            return ((HandlerLevels) field.get(adapter)).recorded(loggerConfig, "Con");
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
+    }
 }

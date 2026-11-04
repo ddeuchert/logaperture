@@ -466,7 +466,8 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
 
     /**
      * Sets the level on every reference to the appender, in every {@code LoggerConfig} (A5). A swap, as for
-     * trim: a call in the window is not written to this appender. A reference already at the level is left
+     * trim: a call in the window is not written to this appender, and the appender goes last in the logger's
+     * list. A reference already at the level is left
      * alone (no swap, so no lost call and no reordering). {@code null} gives each reference back the level the
      * file declared. If a swap fails the others are still tried and the call then throws: a level that reached
      * only some references must not be reported as set.
@@ -483,22 +484,29 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         List<Slot> changed = new ArrayList<>();
         List<org.apache.logging.log4j.Level> changedFrom = new ArrayList<>();
         List<org.apache.logging.log4j.Level> recordedBefore = new ArrayList<>();
-        for (Slot slot : slots) {
-            org.apache.logging.log4j.Level now = handlerLevels.current(slot.loggerConfig(), slot.reference());
-            org.apache.logging.log4j.Level recorded = handlerLevels.recorded(slot.loggerConfig(), name);
-            org.apache.logging.log4j.Level newLevel = wanted != null ? wanted : slot.reference().getLevel();
-            if (!sameLevel(now, newLevel)) {
+        try {
+            for (Slot slot : slots) {
+                org.apache.logging.log4j.Level now = handlerLevels.current(slot.loggerConfig(), slot.reference());
+                org.apache.logging.log4j.Level recorded = handlerLevels.recorded(slot.loggerConfig(), name);
+                org.apache.logging.log4j.Level newLevel = wanted != null ? wanted : slot.reference().getLevel();
+                if (sameLevel(now, newLevel)) {
+                    continue;
+                }
                 if (!swapLevel(slot, name, newLevel, now)) {
-                    rollBack(name, changed, changedFrom, recordedBefore);
                     throw new IllegalStateException("could not change handler '" + name + "' in logger '"
-                            + slot.loggerConfig().getName() + "' (nothing was changed); see the preceding "
-                            + "LogAperture warning");
+                            + slot.loggerConfig().getName() + "'; see the preceding LogAperture warning");
                 }
                 changed.add(slot);
                 changedFrom.add(now);
                 recordedBefore.add(recorded);
+                handlerLevels.record(slot.loggerConfig(), name, wanted);
             }
-            handlerLevels.record(slot.loggerConfig(), name, wanted);
+        } catch (RuntimeException e) {
+            rollBack(name, changed, changedFrom, recordedBefore); // all or nothing, whatever went wrong
+            throw e;
+        }
+        for (Slot slot : slots) {
+            handlerLevels.record(slot.loggerConfig(), name, wanted); // only once the whole call succeeded
         }
         return Optional.ofNullable(previous);
     }
@@ -507,6 +515,9 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
     private boolean swapLevel(Slot slot, String name, org.apache.logging.log4j.Level newLevel,
             org.apache.logging.log4j.Level restoreLevel) {
         Appender current = slot.loggerConfig().getAppenders().get(name);
+        if (current == null) {
+            return false; // taken out by a reconfiguration since the slots were read
+        }
         return TrimSlots.swap(slot.loggerConfig(), slot.reference(), current, current, newLevel, restoreLevel);
     }
 

@@ -624,8 +624,9 @@ rule) when the guide slice lands.
   levels in one file); a documented limit, pinned by a test, tracked as [#319](https://github.com/ddeuchert/logaperture/issues/319) (core calling
   `setHandlerLevel(ref, null)` on a reset, or the baseline carrying per-`LoggerConfig` levels).
 
-- **A swap that fails is not reported as success.** The other references are still tried, then
-  `setHandlerLevel` throws. A reference already at the requested level is not swapped at all (no lost call,
+- **A swap that fails is not reported as success, and the call is all or nothing.** The references already
+  changed go back (also when something other than a failed swap throws), the table records nothing until the
+  whole call succeeded, and `setHandlerLevel` throws. A reference already at the requested level is not swapped at all (no lost call,
   no reordering): core re-applies overrides after every reload and `reset` fans out over every appender, so
   most calls are no-ops. The handler reads are synchronized with the swaps, so a floor walk never sees an
   appender in the remove-and-add window.
@@ -667,6 +668,9 @@ From the spike, carried here because they bound what is promised:
   `DynamicThresholdFilter` with `onMatch=ACCEPT`) ends the composite filter's evaluation before the gate,
   which is added last, so such a call is invisible to drop rules and storm detection (and the level
   fast path would skip a call below the logger's level that the application's filter lets through).
+- Two `AppenderRef`s to the same appender in one `LoggerConfig` (with different levels or filters): which
+  one Log4j keeps live was not checked, and handler levels read the first. Not a configuration the
+  adapter was written for.
 - A `LogEvent` built elsewhere and handed straight to a `LoggerConfig` (a bridge that does not go through
   the logger API) does not pass the `Filter` overloads, and Log4j does not call `filter(LogEvent)` for a
   context-wide filter on the normal path (spike G1); such a call is not gated.
