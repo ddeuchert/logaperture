@@ -207,6 +207,25 @@ class BundledLog4j2EndToEndIT {
         assertTrue(logAndWait(app, output, "d").contains("INFO fixture.Worker info d"));
     }
 
+    /** Diagnostics (A9): a plain File appender is found by `doctor` by its log4j2.xml name. */
+    @Test
+    void doctorFindsAPlainFileAppender_byItsName() throws Exception {
+        Path output = work.resolve("doctor.log");
+        Process app = launch(output);
+        waitFor(output, "FIXTURE-READY");
+        LevelControlMXBean proxy = LevelControlEndToEndIT.pollForMxBeanProxy(
+                LevelControlEndToEndIT.attachAndConnect(app.pid()));
+        pollForLogger(proxy, WORKER);
+
+        var findings = proxy.diagnose();
+        var growth = findings.stream()
+                .filter(f -> "handler.unbounded-growth".equals(f.getCheck()) && "Disk".equals(f.getSubject()))
+                .findFirst();
+        assertTrue(growth.isPresent(), "the plain File appender has no size cap: " + findings);
+        assertTrue(findings.stream().noneMatch(f -> "Out".equals(f.getSubject())
+                && "handler.unbounded-growth".equals(f.getCheck())), "the console is not a file: " + findings);
+    }
+
     /** Sends {@code LOGEX <tag>} and returns only what was written since, up to {@code LOGGED <tag>}. */
     private static String exceptionAndWait(Process app, Path output, String tag) throws Exception {
         int before = Files.exists(output) ? Files.readString(output).length() : 0;
@@ -261,8 +280,10 @@ class BundledLog4j2EndToEndIT {
         Files.writeString(config, String.join("\n",
                 "<Configuration status=\"warn\">",
                 "  <Appenders><Console name=\"Out\" target=\"SYSTEM_OUT\">",
-                "    <PatternLayout pattern=\"%level %logger %msg%n\"/></Console></Appenders>",
-                "  <Loggers><Root level=\"info\"><AppenderRef ref=\"Out\"/></Root></Loggers>",
+                "    <PatternLayout pattern=\"%level %logger %msg%n\"/></Console>",
+                "    <File name=\"Disk\" fileName=\"" + work.resolve("app.log") + "\">",
+                "    <PatternLayout pattern=\"%level %logger %msg%n\"/></File></Appenders>",
+                "  <Loggers><Root level=\"info\"><AppenderRef ref=\"Out\"/><AppenderRef ref=\"Disk\"/></Root></Loggers>",
                 "</Configuration>", ""));
         List<String> command = List.of(
                 System.getProperty("java.home") + "/bin/java",

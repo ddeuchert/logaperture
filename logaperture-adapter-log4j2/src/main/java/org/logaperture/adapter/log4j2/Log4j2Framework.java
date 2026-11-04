@@ -21,6 +21,7 @@ import org.apache.logging.log4j.core.impl.Log4jContextFactory;
 import org.apache.logging.log4j.spi.LoggerContextFactory;
 import org.apache.logging.log4j.spi.LoggerContextShutdownAware;
 import org.logaperture.core.loader.BridgedFramework;
+import org.logaperture.core.loader.UnsupportedFrameworkVersionException;
 import org.logaperture.core.spi.ContextHandle;
 
 import java.util.ArrayList;
@@ -118,13 +119,13 @@ public final class Log4j2Framework implements BridgedFramework {
         }
         String version = version();
         if (Log4j2Version.isTooOld(version)) {
-            throw new IllegalStateException("Log4j " + version + " is older than "
+            throw new UnsupportedFrameworkVersionException("Log4j " + version + " is older than "
                     + Log4j2Version.MIN_MAJOR + "." + Log4j2Version.MIN_MINOR + ".0, the oldest LogAperture controls");
         }
         if (version == null && !hasExplicitLevels()) {
             // Shaded or assembled: no version to read. LoggerConfig.getExplicitLevel arrived in 2.19.0, so
             // its absence says "older than the floor" without running any Log4j code.
-            throw new IllegalStateException("this Log4j has no LoggerConfig.getExplicitLevel(), so it is older than "
+            throw new UnsupportedFrameworkVersionException("this Log4j has no LoggerConfig.getExplicitLevel(), so it is older than "
                     + Log4j2Version.MIN_MAJOR + "." + Log4j2Version.MIN_MINOR + ".0, the oldest LogAperture controls"
                     + " (its version could not be read)");
         }

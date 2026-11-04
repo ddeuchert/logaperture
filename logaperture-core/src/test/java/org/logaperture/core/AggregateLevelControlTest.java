@@ -68,6 +68,7 @@ class AggregateLevelControlTest {
         sharedStore = new InMemoryStateStore();
         auditLog = new InMemoryAuditLog();
         aggregate = new AggregateLevelControl();
+        org.logaperture.core.loader.BindFailures.clear();
         // The test JVM's own -javaagent entries are not what these tests are about.
         aggregate.useAgentOrderCheck(agentOrderCheck());
     }
@@ -321,6 +322,19 @@ class AggregateLevelControlTest {
         assertTrue(findings.stream().anyMatch(f -> "system".equals(f.context())));
         assertTrue(findings.stream().anyMatch(f -> "myapp.war".equals(f.context())));
         assertTrue(findings.stream().allMatch(f -> f.context() != null), "every row is tagged with its context");
+    }
+
+    @Test
+    void diagnose_frameworksFoundButNotBound_appearWithNoContext() {
+        aggregate.register(new Ctx("system").control);
+        org.logaperture.core.loader.BindFailuresFixture.record();
+
+        List<DoctorFinding> findings = aggregate.diagnose();
+
+        DoctorFinding row = findings.stream().filter(f -> "log4j2.version".equals(f.check())).findFirst().orElseThrow();
+        assertEquals(null, row.context());
+        assertTrue(findings.stream().anyMatch(f -> "system".equals(f.context())), "the contexts' own rows are still there");
+        org.logaperture.core.loader.BindFailures.clear();
     }
 
     // --- diagnose: -javaagent ordering (doc/specs/doctor-agent-order.md) ------------------------

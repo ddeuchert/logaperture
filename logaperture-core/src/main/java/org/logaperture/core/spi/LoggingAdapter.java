@@ -276,6 +276,15 @@ public interface LoggingAdapter {
     }
 
     /**
+     * Findings only this adapter can make, appended to {@code doctor}'s own for this context (doc/specs/
+     * log4j2-adapter.md Slice 7, D7-5): a backend limit that is not about any handler or logger. Default
+     * none. Called on every {@code doctor} run, so it must be cheap and must not change anything.
+     */
+    default List<org.logaperture.api.DoctorFinding> doctorFindings() {
+        return List.of();
+    }
+
+    /**
      * Installs render-stage byte counting on every persistent handler this
      * adapter can act on right now, attributing each counted record's bytes
      * to its originating logger name — doc/specs/top.md "Adapter SPI".

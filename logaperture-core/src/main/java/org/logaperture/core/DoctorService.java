@@ -99,6 +99,7 @@ public final class DoctorService implements DoctorOperations {
         findings.addAll(checkDuplicateOutput(persistentHandlers));
         findings.addAll(checkAutoflush());
         findings.addAll(checkBelowFloor());
+        findings.addAll(adapter.doctorFindings());
         findings.addAll(containerFindings.get());
         findings.addAll(diskHeadroom);
         return List.copyOf(findings);

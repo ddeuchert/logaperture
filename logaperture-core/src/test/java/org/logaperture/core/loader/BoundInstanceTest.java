@@ -71,11 +71,13 @@ class BoundInstanceTest {
     @BeforeEach
     void setUp() {
         FakeFrameworkState.reset();
+        BindFailures.clear();
         Diagnostics.configure(new PrintStream(diagnostics, true, StandardCharsets.UTF_8), DiagnosticLevel.DEBUG);
     }
 
     @AfterEach
     void tearDown() {
+        BindFailures.clear();
         Diagnostics.resetToDefault();
     }
 
@@ -246,8 +248,49 @@ class BoundInstanceTest {
         BoundInstance instance = start(new FixtureOwnerLoader(), FAST, ADAPTER_CLASSES);
 
         await(instance::isClosed);
+        await(() -> diagnosticsText().contains("framework cannot be bound")); // the line follows the close
         assertTrue(added.isEmpty());
-        assertTrue(diagnosticsText().contains("framework cannot be bound"), diagnosticsText());
+    }
+
+    /** Slice 7, D7-4: what `doctor` says about a framework found and not bound. */
+    @Test
+    void aTooOldFramework_isAVersionFinding_andAThrowingOneIsNotBound() throws Exception {
+        FakeFrameworkState.tooOld.set(true);
+        FixtureOwnerLoader old = new FixtureOwnerLoader();
+        start(old, FAST, ADAPTER_CLASSES);
+        await(() -> BindFailures.findings().size() == 1); // closed is set before the row is recorded
+
+        FakeFrameworkState.tooOld.set(false);
+        FakeFrameworkState.readyThrows.set(true);
+        FixtureOwnerLoader throwing = new FixtureOwnerLoader();
+        start(throwing, FAST, ADAPTER_CLASSES);
+        await(() -> BindFailures.findings().size() == 2);
+
+        List<org.logaperture.api.DoctorFinding> findings = BindFailures.findings();
+        assertEquals(List.of("fake.version", "fake.not-bound"),
+                findings.stream().map(org.logaperture.api.DoctorFinding::check).toList());
+        org.logaperture.api.DoctorFinding version = findings.get(0);
+        assertEquals(org.logaperture.api.Severity.WARNING, version.severity());
+        assertTrue(version.summary().contains("fake 1.0 is too old"), version.summary());
+        assertTrue(version.subject().contains("FixtureOwnerLoader"), version.subject());
+        assertEquals(null, version.context(), "process-wide: no context");
+        assertTrue(findings.get(1).summary().contains("framework cannot be bound"), findings.get(1).summary());
+    }
+
+    @Test
+    void aFrameworkThatGaveUpWaiting_isNotBound() throws Exception {
+        BoundInstance.Timing quick = new BoundInstance.Timing(Duration.ofMillis(5), Duration.ofMillis(100));
+        start(new FixtureOwnerLoader(), quick, ADAPTER_CLASSES);
+        await(() -> !BindFailures.findings().isEmpty());
+        assertEquals(List.of("fake.not-bound"),
+                BindFailures.findings().stream().map(org.logaperture.api.DoctorFinding::check).toList());
+    }
+
+    @Test
+    void aBoundFramework_leavesNoFinding() throws Exception {
+        FakeFrameworkState.ready.set(true);
+        await(start(new FixtureOwnerLoader(), FAST, ADAPTER_CLASSES)::isBound);
+        assertEquals(List.of(), BindFailures.findings());
     }
 
     @Test

@@ -368,4 +368,11 @@ class DoctorServiceTest {
         assertTrue(match.isPresent(), () -> "expected a " + severity + " finding for '" + check + "' in " + findings);
         return match.get();
     }
+
+    @Test
+    void anAdaptersOwnFindings_areAppended() {
+        adapter.adapterFindings.add(new org.logaperture.api.DoctorFinding("fake.adapter", org.logaperture.api.Severity.INFO,
+                "trim", "an adapter's own finding", null, null, null));
+        assertTrue(service.diagnose().stream().anyMatch(f -> "fake.adapter".equals(f.check())));
+    }
 }

@@ -38,6 +38,7 @@ public final class FakeFrameworkState {
     public static final AtomicReference<ClassLoader> pollerContextLoader = new AtomicReference<>();
     public static final AtomicBoolean shutdownDuringOpen = new AtomicBoolean();
     public static final AtomicBoolean readyThrows = new AtomicBoolean();
+    public static final AtomicBoolean tooOld = new AtomicBoolean();
     public static final List<String> keys = new CopyOnWriteArrayList<>(List.of("fake:one"));
 
     private FakeFrameworkState() {
@@ -52,6 +53,7 @@ public final class FakeFrameworkState {
         pollerContextLoader.set(null);
         shutdownDuringOpen.set(false);
         readyThrows.set(false);
+        tooOld.set(false);
         keys.clear();
         keys.add("fake:one");
     }

@@ -55,6 +55,7 @@ public final class BoundInstance {
 
     private final FrameworkWatch watch;
     private final String ownerName;
+    private final java.lang.ref.WeakReference<ClassLoader> ownerRef;
     private final BridgeClassLoader bridge;
     private final ContextSink sink;
     private final Timing timing;
@@ -67,6 +68,7 @@ public final class BoundInstance {
                           ContextSink sink, Timing timing) {
         this.watch = watch;
         this.ownerName = describe(owner);
+        this.ownerRef = new java.lang.ref.WeakReference<>(owner);
         this.bridge = new BridgeClassLoader(owner, watch.ownerPackages(), system, source);
         this.sink = sink;
         this.timing = timing;
@@ -182,7 +184,31 @@ public final class BoundInstance {
         // C8: a silent failure is a reassuring answer that does nothing
         Diagnostics.warn("LogAperture found " + watch.framework() + " in " + ownerName
                 + " but did not bind: " + reason);
+        ClassLoader owner = ownerRef.get();
+        if (owner != null) {
+            BindFailures.record(watch.framework(), owner, ownerName, describeFailure(reason, cause),
+                    isVersionProblem(cause));
+        }
         release();
+    }
+
+    /** The framework's own words when it gave them (a too-old version), else what this class saw. */
+    private static String describeFailure(String reason, Throwable cause) {
+        for (Throwable t = cause; t != null; t = t.getCause()) {
+            if (t instanceof UnsupportedFrameworkVersionException) {
+                return t.getMessage();
+            }
+        }
+        return reason;
+    }
+
+    private static boolean isVersionProblem(Throwable cause) {
+        for (Throwable t = cause; t != null; t = t.getCause()) {
+            if (t instanceof UnsupportedFrameworkVersionException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void release() {

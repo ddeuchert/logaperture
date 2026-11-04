@@ -28,6 +28,9 @@ public final class FakeEntry implements BridgedFramework {
     public boolean ready() {
         FakeFrameworkState.readyCalls.incrementAndGet();
         FakeFrameworkState.pollerContextLoader.set(Thread.currentThread().getContextClassLoader());
+        if (FakeFrameworkState.tooOld.get()) {
+            throw new org.logaperture.core.loader.UnsupportedFrameworkVersionException("fake 1.0 is too old");
+        }
         if (FakeFrameworkState.readyThrows.get()) {
             throw new IllegalStateException("framework cannot be bound");
         }
