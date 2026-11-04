@@ -566,7 +566,7 @@ that appender, and the appender goes to the end of the logger's list.
 **The adapter keeps the levels itself (H1), and Slice 5 must read them from there.** `getAppenderRefs()`
 goes on reporting the old level after a swap. `TrimSlots` reads `reference.getLevel()` when it wraps or
 unwraps a slot, so left as it is, a detach or a re-wrap after `set handler` would put the stale level
-back. One small table, keyed by (`LoggerConfig` identity, appender name), is the single source: written
+back. One small table, keyed by (`LoggerConfig`, appender name; `LoggerConfig` has no `equals`, so identity), is the single source: written
 by `setHandlerLevel`, read by `handlerLevel`, the floor walks and `TrimSlots`, and dropped with the
 configuration on a swap. A slot with no entry falls back to the reference's own level. The slot holds
 whatever is there now, wrapper or original: `setHandlerLevel` swaps *that* object, never the original
@@ -587,7 +587,7 @@ override survives `reconfigure()` (Acceptance, "Reconfiguration"). A handler lev
 - The `Routing`, `Failover` and `Rewrite` appenders are handlers like any other, by their own name;
   what they hold inside is not.
 
-**Open for sign-off:**
+**Decisions (agreed 2026-11-03):**
 
 | Id | Question | Options | Recommendation |
 |---|---|---|---|
@@ -624,7 +624,16 @@ rule) when the guide slice lands.
   reference its file level, and is tested, but core does not call it for a reset. Rare (one appender at two
   levels in one file); a documented limit. Fixing it needs the baseline to carry per-`LoggerConfig` levels.
 
-**Verified** on 2.20.0, 2.25.2 and 2.25.5 (`-Dlog4j2.version`); `BundledLog4j2EndToEndIT` in a real
+- **A swap that fails is not reported as success.** The other references are still tried, then
+  `setHandlerLevel` throws. A reference already at the requested level is not swapped at all (no lost call,
+  no reordering): core re-applies overrides after every reload and `reset` fans out over every appender, so
+  most calls are no-ops. The handler reads are synchronized with the swaps, so a floor walk never sees an
+  appender in the remove-and-add window.
+- **A handler declared at `FATAL` reads as `ERROR`** (`LevelMapper`), so it under-reports its floor and a
+  reset writes `ERROR` back. Same limit as #312; not fixed here.
+- **Guide pages are not in this PR**, by the earlier decision to write them in the last slice.
+
+**Verified** on 2.20.0, 2.25.2 and 2.25.5 (the versions run; 2.23.1 was not run for this slice) (`-Dlog4j2.version`); `BundledLog4j2EndToEndIT` in a real
 process: `set handler Out ERROR` hides INFO, the same after a reload, `reset handler` brings it back.
 
 **Not in this slice:** `handlerDiagnostics` and `handler.unbounded-growth` (A9); the three `doctor`

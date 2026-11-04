@@ -238,4 +238,40 @@ class HandlerLevelsTest {
         assertFalse(text.contains("Con:must stay hidden"), text);
         assertTrue(text.contains("Con:shown"), text);
     }
+
+    @Test
+    void aReferenceAlreadyAtTheLevel_isNotSwapped() {
+        org.apache.logging.log4j.core.Appender before = context.getConfiguration().getRootLogger().getAppenders().get("Con");
+        var order = new java.util.ArrayList<>(context.getConfiguration().getRootLogger().getAppenders().keySet());
+        adapter.setHandlerLevel(ref("Iso"), org.logaperture.api.Level.ALL); // no level in the file: already ALL
+        adapter.setHandlerLevel(ref("Con"), org.logaperture.api.Level.WARN); // the app reference is WARN, the root's has none
+        adapter.setHandlerLevel(ref("Con"), org.logaperture.api.Level.WARN); // now both are: nothing to do
+        assertEquals(order, new java.util.ArrayList<>(context.getConfiguration().getRootLogger().getAppenders().keySet()));
+        assertTrue(before == context.getConfiguration().getRootLogger().getAppenders().get("Con"));
+    }
+
+    @Test
+    void aFailedSwap_isNotReportedAsSet() {
+        var config = context.getConfiguration();
+        var refs = new org.apache.logging.log4j.core.config.LoggerConfig("x", java.util.List.of(
+                org.apache.logging.log4j.core.config.AppenderRef.createAppenderRef("Con", null, null)), null,
+                Level.TRACE, true, org.apache.logging.log4j.core.config.Property.EMPTY_ARRAY, config, false) {
+            @Override
+            public void addAppender(org.apache.logging.log4j.core.Appender appender, Level level,
+                    org.apache.logging.log4j.core.Filter filter) {
+                if (level == Level.ERROR) {
+                    throw new IllegalStateException("simulated");
+                }
+                super.addAppender(appender, level, filter);
+            }
+        };
+        refs.addAppender(config.getAppender("Con"), null, null);
+        config.addLogger("x", refs);
+
+        assertThrows(IllegalStateException.class, () -> adapter.setHandlerLevel(ref("Con"), org.logaperture.api.Level.ERROR));
+        assertTrue(refs.getAppenders().containsKey("Con"), "the failed slot got its appender back");
+        assertTrue(config.getRootLogger().getAppenders().containsKey("Con"));
+        // the failed slot is back at its own (no) level; the references that did change took ERROR
+        assertEquals(Optional.of(org.logaperture.api.Level.ERROR), adapter.handlerLevel(ref("Con")));
+    }
 }

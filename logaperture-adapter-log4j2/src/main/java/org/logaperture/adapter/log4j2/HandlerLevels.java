@@ -33,7 +33,8 @@ import java.util.WeakHashMap;
  * the file declared (H1). So the reference gives the <em>file's</em> level, and this table the level set
  * since; a slot with no entry is at the file's.
  *
- * <p>Keyed by {@code LoggerConfig} identity and weakly: a reconfiguration builds new {@code LoggerConfig}s,
+ * <p>Keyed weakly by {@code LoggerConfig} ({@code LoggerConfig} does not override {@code equals}, so that is
+ * identity): a reconfiguration builds new {@code LoggerConfig}s,
  * and the old table goes with them, which is what a swap does to a handler level anyway.
  */
 final class HandlerLevels {

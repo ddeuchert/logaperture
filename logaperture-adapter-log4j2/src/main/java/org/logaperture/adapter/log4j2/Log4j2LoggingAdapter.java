@@ -400,13 +400,11 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
 
     /** The appenders some {@code LoggerConfig} references, by their {@code log4j2.xml} name (A5, S6-1). */
     @Override
-    public List<HandlerRef> realHandlers() {
+    public synchronized List<HandlerRef> realHandlers() {
         Set<String> names = new LinkedHashSet<>();
         for (LoggerConfig loggerConfig : HandlerLevels.loggerConfigs(context.getConfiguration())) {
-            for (AppenderRef reference : loggerConfig.getAppenderRefs()) {
-                if (loggerConfig.getAppenders().containsKey(reference.getRef())) {
-                    names.add(reference.getRef());
-                }
+            for (AppenderRef reference : liveReferences(loggerConfig)) {
+                names.add(reference.getRef());
             }
         }
         List<HandlerRef> refs = new ArrayList<>(names.size());
@@ -417,19 +415,19 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
     }
 
     @Override
-    public List<HandlerRef> knownHandlers() {
+    public synchronized List<HandlerRef> knownHandlers() {
         List<HandlerRef> combined = new ArrayList<>(realHandlers());
         combined.add(HandlerRef.ALL_HANDLERS);
         return List.copyOf(combined);
     }
 
     @Override
-    public List<HandlerRef> handlersOnRoot() {
+    public synchronized List<HandlerRef> handlersOnRoot() {
         return handlersOn(context.getConfiguration().getRootLogger());
     }
 
     @Override
-    public List<HandlerRef> handlersOnPath(String loggerName) {
+    public synchronized List<HandlerRef> handlersOnPath(String loggerName) {
         List<HandlerRef> refs = new ArrayList<>();
         for (LoggerConfig current : path(loggerName)) {
             for (HandlerRef ref : handlersOn(current)) {
@@ -442,16 +440,13 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
     }
 
     @Override
-    public List<HandlerFloor> handlerFloorsBelow(String loggerName, Level target) {
+    public synchronized List<HandlerFloor> handlerFloorsBelow(String loggerName, Level target) {
         if (target == null) {
             return List.of(); // "back to inherited" is not a raise
         }
         Map<String, Level> strictest = new java.util.LinkedHashMap<>();
         for (LoggerConfig current : path(loggerName)) {
-            for (AppenderRef reference : current.getAppenderRefs()) {
-                if (!current.getAppenders().containsKey(reference.getRef())) {
-                    continue;
-                }
+            for (AppenderRef reference : liveReferences(current)) {
                 Level level = LevelMapper.toApi(handlerLevels.current(current, reference));
                 if (level != null && level.compareTo(target) > 0) {
                     strictest.merge(reference.getRef(), level, (a, b) -> a.compareTo(b) >= 0 ? a : b);
@@ -465,13 +460,15 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
 
     @Override
     public synchronized Optional<Level> handlerLevel(HandlerRef ref) {
-        return Optional.ofNullable(mostRestrictive(ref.value()));
+        return Optional.ofNullable(mostRestrictive(context.getConfiguration(), ref.value()));
     }
 
     /**
      * Sets the level on every reference to the appender, in every {@code LoggerConfig} (A5). A swap, as for
-     * trim: a call in the window is not written to this appender. {@code null} gives each reference back the
-     * level the file declared (S6-4), not one flattened value.
+     * trim: a call in the window is not written to this appender. A reference already at the level is left
+     * alone (no swap, so no lost call and no reordering). {@code null} gives each reference back the level the
+     * file declared. If a swap fails the others are still tried and the call then throws: a level that reached
+     * only some references must not be reported as set.
      */
     @Override
     public synchronized Optional<Level> setHandlerLevel(HandlerRef ref, Level level) {
@@ -479,24 +476,42 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         Configuration config = context.getConfiguration();
         List<LoggerConfig> holders = new ArrayList<>();
         for (LoggerConfig loggerConfig : HandlerLevels.loggerConfigs(config)) {
-            if (referenceTo(loggerConfig, name) != null && loggerConfig.getAppenders().containsKey(name)) {
+            if (referenceTo(loggerConfig, name) != null) {
                 holders.add(loggerConfig);
             }
         }
         if (holders.isEmpty()) {
             throw new UnknownHandlerException(ref);
         }
-        Level previous = mostRestrictive(name);
+        Level previous = mostRestrictive(config, name);
         org.apache.logging.log4j.Level wanted = level == null ? null : LevelMapper.toLog4j(level);
+        int failed = 0;
         for (LoggerConfig loggerConfig : holders) {
             AppenderRef reference = referenceTo(loggerConfig, name);
-            Appender slot = loggerConfig.getAppenders().get(name); // the wrapper if there is one, never what is behind it
             org.apache.logging.log4j.Level newLevel = wanted != null ? wanted : reference.getLevel();
-            if (TrimSlots.swap(loggerConfig, reference, slot, slot, newLevel)) {
+            if (sameLevel(handlerLevels.current(loggerConfig, reference), newLevel)) {
                 handlerLevels.record(loggerConfig, name, wanted);
+                continue;
+            }
+            Appender slot = loggerConfig.getAppenders().get(name); // the wrapper if there is one, never what is behind it
+            if (TrimSlots.swap(loggerConfig, reference, slot, slot, newLevel, handlerLevels.current(loggerConfig, reference))) {
+                handlerLevels.record(loggerConfig, name, wanted);
+            } else {
+                failed++;
             }
         }
+        if (failed > 0) {
+            throw new IllegalStateException("could not change handler '" + name + "' in " + failed + " of "
+                    + holders.size() + " logger configurations; see the preceding LogAperture warnings");
+        }
         return Optional.ofNullable(previous);
+    }
+
+    /** No level and {@code ALL} filter nothing, so they are the same level. */
+    private static boolean sameLevel(org.apache.logging.log4j.Level a, org.apache.logging.log4j.Level b) {
+        int left = a == null ? org.apache.logging.log4j.Level.ALL.intLevel() : a.intLevel();
+        int right = b == null ? org.apache.logging.log4j.Level.ALL.intLevel() : b.intLevel();
+        return left == right;
     }
 
     /**
@@ -505,12 +520,12 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
      * {@code LoggerConfig} references. Never empty for a live handler: core captures a baseline only from a
      * level that is present, and a reset needs one.
      */
-    private Level mostRestrictive(String name) {
+    private Level mostRestrictive(Configuration config, String name) {
         boolean referenced = false;
         Level strictest = null;
-        for (LoggerConfig loggerConfig : HandlerLevels.loggerConfigs(context.getConfiguration())) {
+        for (LoggerConfig loggerConfig : HandlerLevels.loggerConfigs(config)) {
             AppenderRef reference = referenceTo(loggerConfig, name);
-            if (reference == null || !loggerConfig.getAppenders().containsKey(name)) {
+            if (reference == null) {
                 continue;
             }
             referenced = true;
@@ -522,8 +537,19 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         return referenced && strictest == null ? Level.ALL : strictest;
     }
 
-    private static AppenderRef referenceTo(LoggerConfig loggerConfig, String name) {
+    /** The {@code LoggerConfig}'s references whose appender is live in it (the one place that rule is written). */
+    private static List<AppenderRef> liveReferences(LoggerConfig loggerConfig) {
+        List<AppenderRef> live = new ArrayList<>();
         for (AppenderRef reference : loggerConfig.getAppenderRefs()) {
+            if (loggerConfig.getAppenders().containsKey(reference.getRef())) {
+                live.add(reference);
+            }
+        }
+        return live;
+    }
+
+    private static AppenderRef referenceTo(LoggerConfig loggerConfig, String name) {
+        for (AppenderRef reference : liveReferences(loggerConfig)) {
             if (name.equals(reference.getRef())) {
                 return reference;
             }
@@ -533,10 +559,8 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
 
     private static List<HandlerRef> handlersOn(LoggerConfig loggerConfig) {
         List<HandlerRef> refs = new ArrayList<>();
-        for (AppenderRef reference : loggerConfig.getAppenderRefs()) {
-            if (loggerConfig.getAppenders().containsKey(reference.getRef())) {
-                refs.add(new HandlerRef(reference.getRef()));
-            }
+        for (AppenderRef reference : liveReferences(loggerConfig)) {
+            refs.add(new HandlerRef(reference.getRef()));
         }
         return refs;
     }

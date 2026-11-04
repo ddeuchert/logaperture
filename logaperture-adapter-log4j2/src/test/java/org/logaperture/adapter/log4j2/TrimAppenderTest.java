@@ -360,7 +360,7 @@ class TrimAppenderTest {
         start("%m|%ex%n", null, false, null);
         assumeTrue(trimWorksHere(), "trim is off on this Log4j");
         TrimAppender.Shared dead = new TrimAppender.Shared(); // its adapter let go: no gate
-        TrimSlots.wrapAll(context.getConfiguration(), dead);
+        TrimSlots.wrapAll(context.getConfiguration(), dead, new HandlerLevels());
         TrimAppender left = assertInstanceOf(TrimAppender.class,
                 context.getConfiguration().getRootLogger().getAppenders().get("Con"));
         assertEquals(dead, left.shared());
@@ -403,7 +403,7 @@ class TrimAppenderTest {
         failing.addAppender(original, null, null);
         config.addLogger("failing", failing);
 
-        int wrapped = TrimSlots.wrapAll(config, new TrimAppender.Shared());
+        int wrapped = TrimSlots.wrapAll(config, new TrimAppender.Shared(), new HandlerLevels());
 
         assertEquals(original, failing.getAppenders().get("Con"), "the logger did not lose its appender");
         assertTrue(wrapped >= 0);
