@@ -126,7 +126,9 @@ public final class BoundInstance {
                     return;
                 }
                 if (System.nanoTime() - deadline >= 0) {
-                    fail("it has no started context " + timing.giveUpAfter().toMillis() + " ms after it was found", null, true);
+                    String waited = "it has no started context " + timing.giveUpAfter().toMillis()
+                            + " ms after it was found";
+                    fail(waited, null, true);
                     return;
                 }
                 Thread.sleep(timing.pollEvery().toMillis());
@@ -151,6 +153,10 @@ public final class BoundInstance {
             fail("opening it failed (" + t + ")", t, false);
             return;
         }
+        ClassLoader owner = ownerRef.get();
+        if (owner != null) {
+            BindFailures.forget(watch.framework(), owner); // before the contexts are added, so doctor never sees both
+        }
         List<ContextHandle> added = new ArrayList<>();
         for (ContextHandle context : contexts) {
             if (state.get() != State.BOUND) {
@@ -165,10 +171,6 @@ public final class BoundInstance {
             // a shutdown landed after the check above: letGo may have seen no handles yet
             added.forEach(sink::remove);
         } else {
-            ClassLoader owner = ownerRef.get();
-            if (owner != null) {
-                BindFailures.forget(watch.framework(), owner);
-            }
             Diagnostics.debug(watch.framework() + " bound in " + ownerName + ": "
                     + added.stream().map(ContextHandle::stableKey).toList());
         }

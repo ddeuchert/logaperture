@@ -114,6 +114,7 @@ class HandlerDiagnosticsTest {
         HandlerDiagnostics facts = of("Rolling");
         assertTrue(facts.isPersistent());
         assertFalse(facts.hasKnownFile(), "the file checks leave it alone (D7-1)");
+        assertNull(facts.autoFlush(), "not reported for a rolling appender: it would warn on every default config");
     }
 
     @Test

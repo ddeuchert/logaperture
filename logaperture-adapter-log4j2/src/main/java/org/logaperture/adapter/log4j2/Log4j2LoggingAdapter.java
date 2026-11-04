@@ -41,13 +41,11 @@ import org.logaperture.core.StormObserver;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.UnknownHandlerException;
 
-
-
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
+import java.lang.ref.WeakReference;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -57,6 +55,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 /**
  * Levels on one Log4j 2 {@link LoggerContext} (doc/specs/log4j2-adapter.md A2, A8). Works on the
@@ -611,7 +610,7 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         return refs;
     }
 
-    /** The {@code LoggerConfig}s an event from the logger passes through, nearest first, ending where additivity does. */
+    /** The {@code LoggerConfig}s an event from the logger passes through, nearest first, ending where additivity ends. */
     private List<LoggerConfig> path(String loggerName) {
         List<LoggerConfig> path = new ArrayList<>();
         for (LoggerConfig current = context.getConfiguration().getLoggerConfig(nativeName(loggerName));
@@ -632,7 +631,7 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
      * facts, flush excepted (it flushes per batch); anything else gives none.
      */
     @Override
-    public synchronized HandlerDiagnostics handlerDiagnostics(HandlerRef ref) {
+    public HandlerDiagnostics handlerDiagnostics(HandlerRef ref) { // a read of the original appenders: no lock
         Appender appender = context.getConfiguration().getAppenders().get(ref.value());
         if (appender == null) {
             return HandlerDiagnostics.EMPTY;
@@ -655,7 +654,7 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
             return new HandlerDiagnostics(null, null, null, null, true);
         }
         if (appender instanceof RollingFileAppender || appender instanceof RollingRandomAccessFileAppender) {
-            return new HandlerDiagnostics(null, null, immediateFlush(appender), null, false, false, true);
+            return new HandlerDiagnostics(null, null, null, null, false, false, true); // persistent, file unknown
         }
         String fileName = appender instanceof FileAppender file ? file.getFileName()
                 : appender instanceof RandomAccessFileAppender random ? random.getFileName()
@@ -677,7 +676,7 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         }
     }
 
-    /** {@code immediateFlush} of a file appender (a memory-mapped one reports its own, always false). */
+    /** {@code immediateFlush} of a plain file appender (a memory-mapped one reports its own, always false). */
     private static Boolean immediateFlush(Appender appender) {
         return appender instanceof AbstractOutputStreamAppender<?> stream ? stream.getImmediateFlush() : null;
     }
@@ -688,11 +687,11 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
      */
     @Override
     public List<DoctorFinding> doctorFindings() {
-        return trimDisabledReason().map(reason -> new DoctorFinding("log4j2.trim", Severity.INFO, "trim",
+        Function<String, DoctorFinding> trimOff = reason -> new DoctorFinding("log4j2.trim", Severity.INFO, "trim",
                 "trim rules are counted but not applied on this Log4j" + (version == null ? "" : " (" + version + ")")
-                        + ".", reason,
-                "use a Log4j that renders a trimmed exception: 2.24.x and earlier, or 2.25.4 and later.")).stream()
-                .toList();
+                        + ".",
+                reason, "use a Log4j that renders a trimmed exception: 2.24.x and earlier, or 2.25.4 and later.");
+        return trimDisabledReason().map(trimOff).stream().toList();
     }
 
     @Override

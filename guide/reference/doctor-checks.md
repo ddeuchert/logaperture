@@ -57,8 +57,9 @@ On Quarkus, the console and file handlers Quarkus creates itself are reported as
 marked as the framework's default: the application didn't choose it. A handler the application added
 keeps the `WARNING`.
 
-On Log4j 2 this reports a file appender whose `immediateFlush` is on, which is Log4j's default.
-A console appender, and an `<Async>` appender, are not reported.
+On Log4j 2 this reports a plain `File`, `RandomAccessFile` or `MemoryMappedFile` appender whose
+`immediateFlush` is on, which is Log4j's default. A `RollingFile` appender, a console appender and
+an `<Async>` appender are not reported.
 
 **Fix:** turn autoflush off on that handler, if losing the last few lines in a crash is acceptable.
 
@@ -116,7 +117,8 @@ nothing was written during the measurement.
 ### `log4j2.version`
 
 LogAperture found a Log4j 2 older than 2.20.0 and did not control it. `WARNING`. The finding names the
-class loader the Log4j was found in and the version. It is process-wide, with no context, because
+class loader the Log4j was found in (its class and name and an identity, so two web applications' loaders
+are two rows) and the version. It is process-wide, with no context, because
 nothing was bound.
 
 **Fix:** upgrade Log4j to 2.20.0 or later.

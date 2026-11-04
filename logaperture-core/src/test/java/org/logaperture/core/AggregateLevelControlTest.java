@@ -68,7 +68,7 @@ class AggregateLevelControlTest {
         sharedStore = new InMemoryStateStore();
         auditLog = new InMemoryAuditLog();
         aggregate = new AggregateLevelControl();
-        org.logaperture.core.loader.BindFailures.clear();
+        org.logaperture.core.loader.BindFailuresFixture.clear();
         // The test JVM's own -javaagent entries are not what these tests are about.
         aggregate.useAgentOrderCheck(agentOrderCheck());
     }
@@ -334,7 +334,7 @@ class AggregateLevelControlTest {
         DoctorFinding row = findings.stream().filter(f -> "log4j2.version".equals(f.check())).findFirst().orElseThrow();
         assertEquals(null, row.context());
         assertTrue(findings.stream().anyMatch(f -> "system".equals(f.context())), "the contexts' own rows are still there");
-        org.logaperture.core.loader.BindFailures.clear();
+        org.logaperture.core.loader.BindFailuresFixture.clear();
     }
 
     // --- diagnose: -javaagent ordering (doc/specs/doctor-agent-order.md) ------------------------

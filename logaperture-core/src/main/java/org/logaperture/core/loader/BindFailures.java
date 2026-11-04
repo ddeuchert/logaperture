@@ -50,8 +50,9 @@ public final class BindFailures {
         GAVE_UP
     }
 
-    private record Row(String framework, WeakReference<ClassLoader> owner, String ownerName, String reason,
-                       Kind kind) {
+    /** {@code subject} is the loader's class and name plus its identity, so two like loaders can be told apart. */
+    private record Row(String framework, WeakReference<ClassLoader> owner, String ownerName, String subject,
+                       String reason, Kind kind) {
     }
 
     private static final List<Row> ROWS = new ArrayList<>();
@@ -63,11 +64,12 @@ public final class BindFailures {
     static void record(String framework, ClassLoader owner, String ownerName, String reason, Kind kind) {
         synchronized (ROWS) {
             prune();
-            ROWS.removeIf(row -> row.framework.equals(framework) && row.owner.get() == owner);
+            forget(framework, owner);
             if (ROWS.size() >= MAX) {
                 ROWS.remove(0);
             }
-            ROWS.add(new Row(framework, new WeakReference<>(owner), ownerName, reason, kind));
+            String subject = ownerName + "@" + Integer.toHexString(System.identityHashCode(owner));
+            ROWS.add(new Row(framework, new WeakReference<>(owner), ownerName, subject, reason, kind));
         }
     }
 
@@ -110,14 +112,14 @@ public final class BindFailures {
                 };
                 String fix = row.kind == Kind.VERSION
                         ? "upgrade " + row.framework + " to a supported version." : null;
-                findings.add(new DoctorFinding(check, severity, row.ownerName, summary, detail, fix));
+                findings.add(new DoctorFinding(check, severity, row.subject, summary, detail, fix));
             }
             return List.copyOf(findings);
         }
     }
 
-    /** For the tests. */
-    public static void clear() {
+    /** For the tests (reached from other packages through {@code BindFailuresFixture}). */
+    static void clear() {
         synchronized (ROWS) {
             ROWS.clear();
         }

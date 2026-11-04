@@ -661,8 +661,8 @@ wrapper in the slot):
 | anything else (`Routing`, `Failover`, `Rewrite`, custom) | none | no facts | not inspected |
 
 **2. `handler.autoflush`.** Log4j's `immediateFlush` defaults to `true`, so reporting it for every appender
-would put a `WARNING` on nearly every Log4j application. A file appender reports its `immediateFlush`; a
-console appender and an `<Async>` appender report nothing (a console has no file to flush, and an `<Async>`
+would put a `WARNING` on nearly every Log4j application. A plain file appender reports its `immediateFlush`; a
+rolling appender, a console appender and an `<Async>` appender report nothing (a console has no file to flush, and an `<Async>`
 appender flushes per batch). So the finding appears for a file appender someone left at the default, which is
 the case the check exists for.
 
@@ -675,6 +675,11 @@ which are process-wide in the same way, with no context on the row.
 - The check id is the framework id plus a suffix: `log4j2.version` when the framework said it is too old (a
   typed reason, not a text match), otherwise `log4j2.not-bound` (opened and threw, gave up after 3 s, no
   started context). The ids are constants in core, so `GuideReferenceDriftTest` sees them.
+- **What `doctor` prints (as built; the spec's first wording was tighter).** The summary carries the framework's
+  own reason ("older than 2.20.0", "binding it threw ..."), the detail is generic ("see the line the application
+  printed", "usually a log4j2 the application never used"), and the `log4j2.version` fix says to upgrade to a
+  supported version. The subject is the loader's class and name plus its identity hash, so two webapp loaders of
+  the same class are two rows.
 - `WARNING`, except `INFO` when the detector gave up waiting for a started context (often a Log4j the
   application never used, found in review); subject the owning loader's class and name, detail the reason as `Diagnostics` printed it.
   `log4j2.version` suggests upgrading to 2.20.0 or later (A10); `log4j2.not-bound` says what happened and
@@ -720,8 +725,8 @@ this is the one guide page the deferral to the last slice cannot cover. `handler
 
 **As built (small differences from the section above):**
 
-- A rolling appender also reports its `immediateFlush` (it is a file appender, D7-3), as well as "persistent,
-  file unknown".
+- **A rolling appender reports no flush** (decided in review): like `handler.unbounded-growth`, it stays quiet, so
+  `handler.autoflush` appears only for a plain file appender left at Log4j's default.
 - The typed reason is `UnsupportedFrameworkVersionException` in core's `loader` package; `Log4j2Framework` throws
   it for a version below 2.20.0 and for a Log4j with no `getExplicitLevel()`. `BoundInstance.fail` finds it in
   the cause chain, so the `log4j2.version` row carries the framework's own sentence.

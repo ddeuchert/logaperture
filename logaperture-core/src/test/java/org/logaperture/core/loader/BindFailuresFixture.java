@@ -24,6 +24,11 @@ public final class BindFailuresFixture {
     /** One too-old Log4j, held by a loader that lives as long as the JVM. */
     private static final ClassLoader OWNER = new ClassLoader("fixture-owner", null) { };
 
+    /** Empties the process-wide list, which tests in other packages cannot reach directly. */
+    public static void clear() {
+        BindFailures.clear();
+    }
+
     public static void record() {
         BindFailures.record("log4j2", OWNER, "FixtureOwner", "Log4j 2.19.0 is older than 2.20.0", BindFailures.Kind.VERSION);
     }

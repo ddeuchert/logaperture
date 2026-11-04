@@ -24,6 +24,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** doc/specs/log4j2-adapter.md Slice 7, D7-4 and D7-6: the process-wide list of frameworks found and not bound. */
 class BindFailuresTest {
@@ -85,7 +86,7 @@ class BindFailuresTest {
             BindFailures.record("fake", loader, "owner-" + i, "x", BindFailures.Kind.FAILED);
         }
         assertEquals(BindFailures.MAX, BindFailures.findings().size());
-        assertEquals("owner-3", subjects().get(0));
+        assertTrue(subjects().get(0).startsWith("owner-3@"), subjects().get(0));
         assertEquals(BindFailures.MAX + 3, keep.size());
     }
 
@@ -118,5 +119,14 @@ class BindFailuresTest {
         BindFailures.recordScanFailure("fake", loader, new IllegalStateException("boom"));
         assertEquals(List.of("fake.not-bound"), BindFailures.findings().stream().map(f -> f.check()).toList());
         assertEquals(true, BindFailures.findings().get(0).summary().contains("boom"));
+    }
+
+    @Test
+    void twoLoadersOfTheSameClassAndName_haveDifferentSubjects() {
+        BindFailures.record("fake", new ClassLoader("same", null) { }, "L 'same'", "x", BindFailures.Kind.FAILED);
+        BindFailures.record("fake", new ClassLoader("same", null) { }, "L 'same'", "x", BindFailures.Kind.FAILED);
+        List<String> subjects = subjects();
+        assertEquals(2, subjects.size());
+        assertEquals(false, subjects.get(0).equals(subjects.get(1)), subjects.toString());
     }
 }
