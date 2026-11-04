@@ -96,11 +96,19 @@ public final class BundledLog4j2FixtureApp {
 
     /** Defined by the app's own loader, so it links against its Log4j. */
     public static final class Worker {
+        /**
+         * Held in a field, as an application does ({@code private static final Logger LOG}). From Log4j 2.24.3 (not
+         * 2.24.0) the registry holds loggers weakly, so one nobody references drops out of the context's logger
+         * list after a garbage collection, and the agent would not list it (found in CI, issue #302).
+         */
+        private static final org.apache.logging.log4j.Logger LOG =
+                org.apache.logging.log4j.LogManager.getLogger(WORKER_LOGGER);
+
         private Worker() {
         }
 
         public static void start() {
-            org.apache.logging.log4j.LogManager.getLogger(WORKER_LOGGER).info("fixture app started");
+            LOG.info("fixture app started");
         }
 
         public static void reconfigure(String tag) {
@@ -119,7 +127,7 @@ public final class BundledLog4j2FixtureApp {
 
         /** An error with a cause, whose trace a trim rule can cut. */
         public static void logException(String tag) {
-            org.apache.logging.log4j.Logger logger = org.apache.logging.log4j.LogManager.getLogger(WORKER_LOGGER);
+            org.apache.logging.log4j.Logger logger = LOG;
             Exception cause = new IllegalStateException("root cause " + tag);
             logger.error("failed " + tag, new RuntimeException("outer failure " + tag, cause));
             sentinel(tag);
@@ -134,7 +142,7 @@ public final class BundledLog4j2FixtureApp {
 
         /** Events with an exception, alternately one a trim rule matches and one it does not. */
         public static void burst(int count, String tag) {
-            org.apache.logging.log4j.Logger logger = org.apache.logging.log4j.LogManager.getLogger(WORKER_LOGGER);
+            org.apache.logging.log4j.Logger logger = LOG;
             for (int i = 0; i < count; i++) {
                 Exception cause = new IllegalStateException("root cause " + tag + "-" + i);
                 RuntimeException failure = new RuntimeException("outer failure " + tag + "-" + i, cause);
@@ -150,7 +158,7 @@ public final class BundledLog4j2FixtureApp {
         }
 
         public static void log(String tag) {
-            org.apache.logging.log4j.Logger logger = org.apache.logging.log4j.LogManager.getLogger(WORKER_LOGGER);
+            org.apache.logging.log4j.Logger logger = LOG;
             logger.error("error {}", tag);
             logger.info("info {}", tag);
             logger.debug("debug {}", tag);

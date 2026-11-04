@@ -165,6 +165,11 @@ integration (1.2.0).
   a mixed-version app (A10).
 - A Spring Boot app's `log4j2-spring.xml`, devtools restarts and structured logging are not
   tested.
+- **`list loggers` shows a Log4j 2 logger only while the application holds it** (from 2.24.3: 2.24.0 and 2.23.1 keep
+  them, 2.24.3, 2.25.2 and 2.25.5 do not; checked by forcing a GC on a logger nothing references). The registry holds
+  loggers weakly, so one that was instantiated and dropped is gone from the context's logger list after a collection;
+  a logger a class keeps in a `static final` field stays. `set logger` works for any name regardless (A8), and a
+  `LoggerConfig` from the configuration file is always listed. Found when the version matrix failed in CI (Slice 8).
 - A rule that matches on message text makes the gate format the message itself, so a parameter's
   `toString()` runs one extra time (A3 prototype, "As built"). A `toString()` with side effects,
   such as one that logs, repeats them. Rules that match on the unformatted pattern, the logger or
@@ -866,6 +871,12 @@ so a contributor can reproduce a failing one.
 - **The floor is compiled at, always, by the `build` job:** a cell's `-Dlog4j2.version` also moves the version the
   adapter compiles against, but the `build` job's full `verify` runs at the default 2.20.0, so a use of an API above
   the floor fails to compile there.
+- **CI failure after the merge (found by CI, not locally): the fixture's logger was garbage collected.** Five of
+  the six per-PR cells failed with "the agent never listed fixture.Worker" (2.24.3 and 2.25.x; 2.20.0 passed). Log4j's
+  registry holds loggers weakly from 2.24.3, and the fixture created its logger and kept no reference; on a runner
+  with a small heap a GC dropped it from the context's list. The bind itself was fine. Reproduced locally by forcing a
+  GC; fixed by holding the logger in a static field, as an application does. #323 was merged with these checks
+  failing; the fix is #324. See "Behaviour to document".
 - The sentinel is logged on its own logger (`fixture.Sentinel`), so no rule or native level set on the worker
   touches it. On 2.25.0 to 2.25.3 the trim test goes on past the first rule: a reload keeps the trace whole and
   `doctor` keeps saying why, and the rule's hit count is asserted there too.
