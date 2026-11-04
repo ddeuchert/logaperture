@@ -36,6 +36,10 @@ import java.util.List;
  * the test also shows the agent leaves that configuration alone (spike I-1 to I-4). Commands on
  * stdin: {@code LOG <tag>} logs one line per level and prints {@code LOGGED <tag>};
  * {@code LOGEX <tag>} logs an error with a two-level exception and prints {@code LOGGED <tag>};
+ * {@code BURST <n> <tag>} logs {@code n} errors with an exception, as fast as it can, alternating a message
+ * a trim rule can match ({@code TRIMME}) with one it cannot ({@code KEEPME}), then prints {@code LOGGED <tag>};
+ * each of these three ends with an error line {@code SENTINEL <tag>} on its own logger, which an asynchronous appender writes
+ * after everything before it, so a test knows the output is complete;
  * {@code RECONFIGURE <tag>} reloads Log4j's configuration; {@code NATIVE <level> <tag>} sets the worker's
  * level through Log4j's own API, as Spring's {@code logging.level} and an Actuator POST do. Both print
  * {@code DONE <tag>}.
@@ -64,6 +68,7 @@ public final class BundledLog4j2FixtureApp {
             Method reconfigure = worker.getMethod("reconfigure", String.class);
             Method nativeLevel = worker.getMethod("nativeLevel", String.class, String.class);
             Method logException = worker.getMethod("logException", String.class);
+            Method burst = worker.getMethod("burst", int.class, String.class);
             start.invoke(null);
             System.out.println("FIXTURE-READY");
             System.out.flush();
@@ -74,6 +79,9 @@ public final class BundledLog4j2FixtureApp {
                     log.invoke(null, line.substring(4));
                 } else if (line.startsWith("LOGEX ")) {
                     logException.invoke(null, line.substring(6));
+                } else if (line.startsWith("BURST ")) {
+                    String[] parts = line.substring(6).split(" ", 2); // <count> <tag>
+                    burst.invoke(null, Integer.parseInt(parts[0]), parts[1]);
                 } else if (line.startsWith("RECONFIGURE ")) {
                     reconfigure.invoke(null, line.substring(12)); // what monitorInterval and Spring's swap do
                 } else if (line.startsWith("NATIVE ")) {
@@ -114,6 +122,29 @@ public final class BundledLog4j2FixtureApp {
             org.apache.logging.log4j.Logger logger = org.apache.logging.log4j.LogManager.getLogger(WORKER_LOGGER);
             Exception cause = new IllegalStateException("root cause " + tag);
             logger.error("failed " + tag, new RuntimeException("outer failure " + tag, cause));
+            sentinel(tag);
+            System.out.println("LOGGED " + tag);
+            System.out.flush();
+        }
+
+        /** The last event of a command, on a logger of its own so no rule or level set on the worker touches it. */
+        private static void sentinel(String tag) {
+            org.apache.logging.log4j.LogManager.getLogger("fixture.Sentinel").error("SENTINEL {}", tag);
+        }
+
+        /** Events with an exception, alternately one a trim rule matches and one it does not. */
+        public static void burst(int count, String tag) {
+            org.apache.logging.log4j.Logger logger = org.apache.logging.log4j.LogManager.getLogger(WORKER_LOGGER);
+            for (int i = 0; i < count; i++) {
+                Exception cause = new IllegalStateException("root cause " + tag + "-" + i);
+                RuntimeException failure = new RuntimeException("outer failure " + tag + "-" + i, cause);
+                if (i % 2 == 0) {
+                    logger.error("TRIMME {}-{}", tag, i, failure);
+                } else {
+                    logger.error("KEEPME {}-{}", tag, i, failure);
+                }
+            }
+            sentinel(tag);
             System.out.println("LOGGED " + tag);
             System.out.flush();
         }
@@ -124,6 +155,7 @@ public final class BundledLog4j2FixtureApp {
             logger.info("info {}", tag);
             logger.debug("debug {}", tag);
             logger.info("drop-me {}", tag);
+            sentinel(tag);
             System.out.println("LOGGED " + tag);
             System.out.flush();
         }

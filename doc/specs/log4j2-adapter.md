@@ -77,7 +77,7 @@ integration (1.2.0).
 | A8 | A logger name no `LoggerConfig` has | (a) Pre-set creates a `LoggerConfig` of its own (native behaviour of `Configurator.setLevel`, L3b), recorded in the baseline as "created by LogAperture", removed by `reset`, and not shown as a native config in `list logger`. (b) Refuse to set a level on a name Log4j has not seen. | **(a).** It is what §8.5 "Known" means and what Log4j already does. The baseline records whether the name had its own `LoggerConfig` and its explicit level (possibly none); reset sets the level back or removes the `LoggerConfig` it created (L3c, L3e). The adapter sets levels on the context it holds, never through `Configurator`'s static helpers, which find their context from the caller's loader (SB3). |
 | A9 | `doctor`'s facts about a file appender | (a) File name and whether the appender rolls (by type), nothing about sizes or counts. (b) Read the triggering policy and strategy. | **(a).** The file name is public on `FileAppender` and `RollingFileAppender`; the policies are not a stable API across 2.20 to current. `handler.unbounded-growth` therefore reports a plain `FileAppender` and stays quiet on a rolling one, as it does for a JDK `FileHandler` (`plain-jvm-jul.md` #5). (b) can follow as its own issue. |
 | A10 | A Log4j below 2.20.0 | (a) Do not bind; one `Diagnostics` line and a `doctor` finding. (b) Bind with `drop` blind to fluent-API events and the explicit level read by reflection. | **(a).** (b) gives a user a `drop` rule that quietly misses events, which is the failure mode the floor exists to avoid. The version is read from the `LoggerContext` class's package, with no Log4j code run. The mixed case, `log4j-api` and `log4j-core` of different versions, was not tested (I-F); the adapter reads the core version and says so. |
-| A11 | CI cost of the version matrix | (a) The full matrix on every PR. (b) A short set per PR, the full matrix nightly. | **(b).** Per PR: 2.20.0, 2.24.3, 2.25.3, 2.25.5, each synchronous. Nightly: 2.20.0, 2.23.0, 2.24.0 to 2.24.3, 2.25.0 to 2.25.5, latest, each in three modes (synchronous, all async loggers, `<Async>` appender). The nightly picks up a new Log4j release without a code change. The per-PR set includes both ends of the trim exception (2.25.3 and 2.25.4+, A4). |
+| A11 | CI cost of the version matrix | (a) The full matrix on every PR. (b) A short set per PR, the full matrix nightly. | **(b).** Per PR: 2.20.0, 2.24.3, 2.25.3, 2.25.5, each synchronous, and 2.25.5 also in the two asynchronous modes (Slice 8, M8-3). Nightly: 2.20.0, 2.23.0, 2.24.0 to 2.24.3, 2.25.0 to 2.25.5, latest, each in three modes (synchronous, all async loggers, `<Async>` appender). The nightly picks up a new Log4j release without a code change. The per-PR set includes both ends of the trim exception (2.25.3 and 2.25.4+, A4). |
 | A12 | New `doctor` checks | (a) None; log the problems. (b) Three: `log4j2.version` (found below 2.20.0, not bound), `log4j2.trim` (trim disabled on 2.25.0 to 2.25.3), `log4j2.not-bound` (found, bind failed or gave up; from the detector's C8). | **(b),** with the check ids in `reference/doctor-checks.md`, which `GuideReferenceDriftTest` keeps in step with the code. Each says what to change: upgrade Log4j, upgrade past 2.25.3, or the reason the bind did not happen. |
 
 ## Scope
@@ -141,9 +141,9 @@ integration (1.2.0).
   override is left alone and becomes the baseline (A2).
 - **Version matrix** (A11): levels, gate, trim rendering and handler levels pass on every version
   in the list; 2.25.0 to 2.25.3 report trim disabled; 2.19.x and below do not bind and `doctor`
-  says so.
-- **Async:** all three modes in every version of the per-PR set; `MutableLogEvent` reuse produces
-  no stale trim.
+  says so (**not yet at process level**: #322, Slice 8 "As built").
+- **Async:** the three modes on every version nightly, and on 2.25.5 per PR (A11, M8-3); `MutableLogEvent`
+  reuse produces no stale trim (Slice 8's burst test).
 - **Lifecycle:** the leak tests of `class-loader-detector.md`, and no work done after the context
   begins stopping.
 - **Benchmark in `logaperture-bench`:** the gate with no rule, the gate with a non-matching rule,
@@ -748,6 +748,130 @@ process: `doctor` reports a plain `File` appender (`Disk`) as `handler.unbounded
 
 **Not in this slice:** `disk.headroom` for rolling appenders (D7-1 follow-up); `top` (A6); the version matrix
 (A11) and the setup ITs; the gate benchmark; the guide pages other than `doctor-checks.md`.
+
+### Slice 8: version matrix and async modes (built, 2026-11-03)
+
+The eighth PR under #302: the adapter is tested on the Log4j versions A11 names, in the three async modes, in CI,
+and the two "found but not controlled" paths (A10, A12) get a real process. A11 decided the *lists*; this section
+settles how they are run, what each cell asserts, and four things A11 left open. The setup ITs (Spring Boot,
+Tomcat, WildFly) are **not** here: each needs a sample application and a harness of its own, so they are Slice 9,
+specified when this one has merged (M8-8).
+
+**What exists today.** The Log4j version is one Maven property, `log4j2.version` (root `pom.xml`, **2.20.0**, the
+floor), read by the adapter module's tests and by the agent module's `BundledLog4j2EndToEndIT`. The `build` job
+therefore already runs everything on 2.20.0, by accident of the default. No async mode is tested: the unit tests and
+the IT use a synchronous configuration. Central has 2.20.0, 2.23.0, 2.23.1, 2.24.0 to 2.24.3, 2.25.0 to 2.25.5,
+2.26.0 and 2.26.1, and `3.0.0-beta3` (checked 2026-11-03).
+
+**What a cell is.** One Log4j version in one mode runs the adapter module's unit tests and `BundledLog4j2*IT` in a
+real process:
+
+```
+./mvnw -B verify -pl logaperture-adapter-log4j2,logaperture-agent -am \
+    -Dlog4j2.version=<V> -Dlog4j2.mode=<MODE> \
+    -Dtest='org/logaperture/adapter/log4j2/*Test' -Dit.test='BundledLog4j2*IT' \
+    -Dsurefire.failIfNoSpecifiedTests=false -Dfailsafe.failIfNoSpecifiedTests=false
+```
+
+(the same shape as the Quarkus job's selection: it does not re-run the other modules' tests in every cell).
+
+**The three modes** (`log4j2.mode`, passed by failsafe to the fixture as a system property):
+
+| Mode | Fixture setup |
+|---|---|
+| `sync` (default) | Today's: `<Console>` and `<File>` appenders, synchronous loggers. |
+| `async-loggers` | `-Dlog4j2.contextSelector=...AsyncLoggerContextSelector` and LMAX Disruptor 3.4.4 on the fixture's Log4j jars (a test-scoped dependency of the agent module, never bundled). Events go through the ring buffer, `MutableLogEvent` is reused. |
+| `async-appender` | The configuration puts an `<Async>` appender in front of the console and the file. |
+
+**What the IT asserts, in every cell:** levels and reset; a native change put back (A1); `set handler` and its reset;
+a `drop` rule; a `trim` rule on every converter, with no synthetic class name in the output, counted once; all of
+it again after a reload; `doctor` reports a plain `File` appender. **New, for the async modes:** a burst of events
+alternating a matching and a non-matching message, logged as fast as the fixture can, asserting that no
+non-matching event is trimmed and every matching one is (the stale `MutableLogEvent` case of "Acceptance"), and that
+the counts agree with what was written. **New, per version:** trim is expected **off** exactly on 2.25.0 to 2.25.3
+and on everywhere else, so the cell asserts the `log4j2.trim` row *and* an untrimmed trace on those four and a trimmed
+one on the rest, instead of skipping (M8-6). A Log4j that breaks the probe, or one that fixes it, fails the cell.
+
+**The two paths that need an older or a stranger Log4j (A10, A12): moved out of this slice.** The plan was two
+`BundledLog4j2EndToEndIT` tests: a fixture on Log4j **2.19.0** (`doctor` has a `log4j2.version` `WARNING`, nothing is
+controlled) and one that loads Log4j's `LoggerContext` class and never starts a context (`doctor` has a
+`log4j2.not-bound` row at `INFO` after 3 s). Building them showed `doctor` cannot reach those rows when nothing else
+is installed, so they wait for [#322](https://github.com/ddeuchert/logaperture/issues/322) ("As built" below). Until then
+**the A10 and A12 acceptance is unmet at process level** and covered at unit level only (Slice 7).
+
+**CI.**
+
+| Where | What | Cells |
+|---|---|---|
+| `ci.yml`, a new `log4j2` job, every PR and push | the four versions, synchronous (A11), plus 2.25.5 in the two async modes (M8-3) | 6 |
+| `.github/workflows/log4j2-nightly.yml`, daily and by hand | every version A11 names, **and the newest 2.x release found on Central** (M8-2), each in the three modes | about 39 |
+
+The nightly resolves its version list in a first job (a fixed list plus the newest `2.x` from Central's
+`maven-metadata.xml`, ignoring `3.x` and any `-alpha`, `-beta`, `-rc`; the metadata's own `<release>` is
+`3.0.0-beta3` today and must not be used). A version that no longer exists on Central fails that job loudly rather
+than dropping out of the matrix. Its summary says whether the newest version is above the highest one the project
+has tested by name (2.25.5), so a new minor is noticed even when it passes. Failing cells upload their reports, as the
+other jobs do.
+
+**Decisions (agreed 2026-11-03):**
+
+| Id | Question | Options | Recommendation |
+|---|---|---|---|
+| M8-1 | The floor in the per-PR matrix | (a) List 2.20.0 explicitly. (b) Leave it to the `build` job, which runs on the default. | **(a).** The floor must never be implicit: bumping the default property would silently drop it. It costs one cheap cell, and says what is covered. |
+| M8-2 | "Latest" | (a) The newest `2.x` on Central, resolved each night. (b) A pinned list that someone updates. | **(a),** excluding `3.x` and pre-releases (A11's intent: pick up a new release without a code change). Not `<release>`: that is a 3.0 beta. |
+| M8-3 | Async modes per PR | (a) A11 as written: every per-PR cell synchronous, async nightly only. (b) Add 2.25.5 in `async-loggers` and `async-appender`. | **(b).** An async regression (reused `MutableLogEvent`, a trim on the wrong thread) is the likeliest to break and the cheapest to catch: two cells. A11 is changed to say so, and the "Acceptance" bullet that says "all three modes in every version of the per-PR set" is corrected to match (it disagreed with A11). |
+| M8-4 | How the fixture is told the mode | (a) A Maven property `log4j2.mode`, handed to the fixture by failsafe. (b) Three test classes. | **(a).** One set of tests, three runs; (b) triples the code for no extra coverage. |
+| M8-5 | The old-Log4j and never-started fixtures | (a) ITs in the existing class, once, in the default cell. (b) In every cell. | **(a)**, **when they are built, in #322, not in this slice** ("As built"). They do not depend on the cell's version; running them 39 times adds nothing. |
+| M8-6 | Trim on 2.25.0 to 2.25.3 | (a) The cell asserts "off" there and "on" elsewhere. (b) Skip where off (today's unit tests). | **(a).** A skip hides a Log4j that fixed the bug, or a new one that has it; an assertion by version range makes the nightly say so. The unit tests keep their `assume`. |
+| M8-7 | Telling a human a nightly failed | (a) The workflow fails, GitHub notifies as for any failing run. (b) Open an issue automatically. | **(a).** Nothing to maintain. |
+| M8-8 | The setup ITs | (a) Their own slice (9), specified after this one. (b) In this slice. | **(a).** Spring Boot (3.5 and 4.1), Tomcat with two Log4j copies, and a WildFly deployment each need a sample application and a harness (a `springboot` profile like Quarkus's, Testcontainers like WildFly's); with the version matrix that is two PRs of review, not one. |
+
+**Tests.** The deliverable is the tests and the workflows, so the check is: every cell of the per-PR job green
+locally for the four versions in `sync` and for 2.25.5 in both async modes; the nightly's resolved version list read (it cannot be run by hand until it is on `main`, "As built"); and a deliberate
+break (the probe's expected range changed in a scratch branch) shown to fail exactly the 2.25.0 to 2.25.3 cells.
+No guide page changes: the matrix is the project's, not the user's. `DEVELOPMENT.md` gets the command for one cell,
+so a contributor can reproduce a failing one.
+
+**As built:**
+
+- **The too-old (2.19.0) and never-started tests are not in this slice.** Building them showed that `doctor`
+  cannot reach the findings of Slice 7 when Log4j is the only framework in the JVM: the agent publishes its
+  control surface only once a context is installed (`AgentBootstrap`, `EngineStartup.onFirstContextReady`), so with
+  nothing bound there is no MBean to ask. The two rows appear only next to some other installed context. Decided
+  with the owner on 2026-11-03: its own issue and spec, [#322](https://github.com/ddeuchert/logaperture/issues/322)
+  (1.1.0), which also adds these two tests; the Functional summary's promise ("told by `doctor`") is unmet for a
+  JVM whose only framework is the failing Log4j until then. The `maven-dependency-plugin` copy of 2.19.0 planned
+  for them was left out.
+- Handler names depend on the mode: behind an `<Async>` appender the handler is the `<Async>` one (S6-1), so the
+  `async-appender` fixture names two (`AsyncOut`, `AsyncDisk`) and the tests ask for the console and disk handler by
+  mode.
+- **A sentinel makes the output complete.** `LOGGED` is printed by the application as soon as it has logged,
+  which an asynchronous appender or logger may not have written yet. The three logging commands end with an error
+  line `SENTINEL <tag>`, written after everything before it, and the tests wait for it.
+- **A test-harness bug the matrix found, not an adapter one:** the fixture JVM took the adapter's classes onto its
+  system class path through the reactor, which production never does (the adapter's classes are stored under a
+  prefix inside the agent jar). On 2.25.x, `%xEx` resolves the classes of the probe's own stack trace by name, found
+  the adapter's `TrimProbe` on the system loader without Log4j, threw `NoClassDefFoundError`, and the probe reported
+  trim off on 2.25.5. The fixture's class path now leaves the adapter module out.
+- Checked, as the spec asked: all six per-PR cells green locally; 2.26.1 (the newest) in `sync` and
+  `async-loggers` and 2.23.0 in `async-appender` green; the nightly's version list resolved by hand (12 named plus
+  2.26.1, 13 versions, 39 cells); and narrowing the trim range to 2.25.0 to 2.25.2 in a scratch change fails the
+  2.25.3 cell (trim test and burst test), then restored.
+- **The nightly cannot run from `develop` by schedule or by hand.** GitHub runs a `schedule` (and offers
+  `workflow_dispatch`) only for a workflow on the default branch, `main`, which gets 1.1 changes only through a
+  release. So the workflow also triggers on `push` to `develop` for the paths it tests (the adapter, the agent, the
+  detector, `RuleGate`, the workflows): the full matrix runs whenever that code changes. What this does not catch is
+  a new Log4j release that breaks the adapter with no change here; the schedule does, from the first release that
+  carries the file to `main`. M8-7 is amended accordingly.
+- **The floor is compiled at, always, by the `build` job:** a cell's `-Dlog4j2.version` also moves the version the
+  adapter compiles against, but the `build` job's full `verify` runs at the default 2.20.0, so a use of an API above
+  the floor fails to compile there.
+- The sentinel is logged on its own logger (`fixture.Sentinel`), so no rule or native level set on the worker
+  touches it. On 2.25.0 to 2.25.3 the trim test goes on past the first rule: a reload keeps the trace whole and
+  `doctor` keeps saying why, and the rule's hit count is asserted there too.
+
+**Not in this slice:** the Spring Boot, Tomcat and WildFly setup ITs (Slice 9); the gate benchmark; the guide
+pages; mixed `log4j-api` and `log4j-core` versions (A10, still "Not established"); JDK 25.
 
 ## Out of scope
 

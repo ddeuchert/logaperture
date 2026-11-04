@@ -102,6 +102,8 @@
 
     <!-- The oldest Log4j 2 LogAperture controls (doc/specs/log4j2-adapter.md A10); the adapter is compiled against it. -->
     <log4j2.version>2.20.0</log4j2.version>
+    <!-- How the Log4j 2 integration test's fixture logs: sync, async-loggers or async-appender (Slice 8, M8-4). -->
+    <log4j2.mode>sync</log4j2.mode>
 
     <!--
       Compiled against for the JBoss LogManager adapter. `provided` scope: at

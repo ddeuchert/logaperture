@@ -98,6 +98,14 @@
       <version>${log4j2.version}</version>
       <scope>test</scope>
     </dependency>
+    <!-- Test-only: LMAX Disruptor, for the `async-loggers` mode of the Log4j 2 matrix (doc/specs/log4j2-adapter.md
+         Slice 8, M8-4). On the fixture's Log4j jars in that mode only; never bundled. -->
+    <dependency>
+      <groupId>com.lmax</groupId>
+      <artifactId>disruptor</artifactId>
+      <version>3.4.4</version>
+      <scope>test</scope>
+    </dependency>
     <!-- Test-only: the fixture app used by LevelControlEndToEndIT needs a
          real Logback on ITS classpath (a separate process from the agent). -->
     <dependency>
@@ -213,6 +221,8 @@
         <configuration>
           <systemPropertyVariables>
             <logaperture.agent.jar>${project.build.directory}/logaperture-agent.jar</logaperture.agent.jar>
+            <log4j2.version>${log4j2.version}</log4j2.version>
+            <log4j2.mode>${log4j2.mode}</log4j2.mode>
           </systemPropertyVariables>
         </configuration>
       </plugin>

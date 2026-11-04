@@ -1,0 +1,100 @@
+# Copyright 2026 David Deuchert
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Log4j 2 nightly
+
+# doc/specs/log4j2-adapter.md A11 and Slice 8: every Log4j version the adapter names, and the newest 2.x release on
+# Central, each in the three modes. A new Log4j release is picked up without a code change; a run that fails
+# is how the project learns of one that breaks the adapter (M8-2, M8-7).
+
+on:
+  # A schedule, and a manual run, only exist for a workflow on the default branch (main), which gets 1.1 changes only
+  # at a release; until then the push trigger below is what runs the matrix: whenever the Log4j 2 code, the
+  # integration test it runs, or these workflows change on develop. It does not notice a Log4j release that breaks the
+  # adapter with no change here; the schedule does, once this file reaches main (doc/specs/log4j2-adapter.md, M8-7).
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - 'logaperture-adapter-log4j2/**'
+      - 'logaperture-agent/**'
+      - 'logaperture-core/src/main/java/org/logaperture/core/loader/**'
+      - 'logaperture-core/src/main/java/org/logaperture/core/RuleGate.java'
+      - '.github/workflows/log4j2-nightly.yml'
+
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.resolve.outputs.versions }}
+    steps:
+      - id: resolve
+        run: |
+          set -euo pipefail
+          metadata=$(curl -sSf https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-core/maven-metadata.xml)
+          # Central's own <release> is a 3.0 beta: take the newest plain 2.x instead.
+          latest=$(echo "$metadata" | grep -oE '<version>2\.[0-9]+\.[0-9]+</version>' \
+            | sed -E 's/<[^>]+>//g' | sort -V | tail -1)
+          fixed="2.20.0 2.23.0 2.24.0 2.24.1 2.24.2 2.24.3 2.25.0 2.25.1 2.25.2 2.25.3 2.25.4 2.25.5"
+          highest_named=$(printf '%s\n' $fixed | sort -V | tail -1)
+          for v in $fixed; do
+            grep -q "<version>$v</version>" <<<"$metadata" \
+              || { echo "::error::Log4j $v is not on Central any more"; exit 1; }
+          done
+          all=$(printf '%s\n' $fixed "$latest" | sort -uV | paste -sd' ')
+          json=$(printf '%s\n' $all | jq -R . | jq -sc .)
+          echo "versions=$json" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Log4j versions under test"
+            echo "$all"
+            if [ "$(printf '%s\n' "$highest_named" "$latest" | sort -V | tail -1)" != "$highest_named" ]; then
+              echo
+              echo "**The newest 2.x ($latest) is above the highest version this project names ($highest_named).** If every cell passes, add it to the list."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  matrix:
+    needs: versions
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        log4j2-version: ${{ fromJSON(needs.versions.outputs.versions) }}
+        mode: [sync, async-loggers, async-appender]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Log4j ${{ matrix.log4j2-version }}, ${{ matrix.mode }}
+        run: |
+          ./mvnw -B --no-transfer-progress -pl logaperture-adapter-log4j2,logaperture-agent -am verify \
+            -Dlog4j2.version=${{ matrix.log4j2-version }} -Dlog4j2.mode=${{ matrix.mode }} \
+            -Dtest='org/logaperture/adapter/log4j2/*Test' -Dit.test='BundledLog4j2*IT' \
+            -Dsurefire.failIfNoSpecifiedTests=false -Dfailsafe.failIfNoSpecifiedTests=false
+
+      - name: Upload failure surefire/failsafe reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: log4j2-test-reports-${{ matrix.log4j2-version }}-${{ matrix.mode }}
+          path: '**/target/*-reports/'
+          if-no-files-found: ignore

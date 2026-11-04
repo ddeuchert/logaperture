@@ -49,6 +49,24 @@ class BundledLog4j2EndToEndIT {
 
     private static final String WORKER = BundledLog4j2FixtureApp.WORKER_LOGGER;
 
+    /** The matrix cell (doc/specs/log4j2-adapter.md Slice 8): which Log4j, and how the fixture logs. */
+    private static final String MODE = System.getProperty("log4j2.mode", "sync");
+    private static final String VERSION = System.getProperty("log4j2.version", "");
+
+    /** Behind an {@code <Async>} appender the handler is the {@code <Async>} one (Slice 6, S6-1). */
+    private static String consoleHandler() {
+        return "async-appender".equals(MODE) ? "AsyncOut" : "Out";
+    }
+
+    private static String diskHandler() {
+        return "async-appender".equals(MODE) ? "AsyncDisk" : "Disk";
+    }
+
+    /** Trim cannot work on 2.25.0 to 2.25.3 (A4): the cell asserts that, rather than skipping (M8-6). */
+    private static boolean trimExpectedOff() {
+        return VERSION.matches("2\\.25\\.[0-3]");
+    }
+
     @TempDir
     private Path work;
 
@@ -165,18 +183,35 @@ class BundledLog4j2EndToEndIT {
 
         proxy.addRuleTrim(WORKER, null, false, null, null, false, null, 1, false, "e2e", "SESSION", 60);
         String trimmed = exceptionAndWait(app, output, "b");
-        assertTrue(trimmed.contains("java.lang.RuntimeException: outer failure b [stack trace trimmed: "), trimmed);
-        assertTrue(trimmed.contains("Caused by: java.lang.IllegalStateException: root cause b [stack trace trimmed: "),
-                "the cause is cut too:\n" + trimmed);
-        assertFalse(trimmed.contains("Synthetic") || trimmed.contains("TrimmedThrowables"),
-                "no synthetic class name:\n" + trimmed);
+        var trimRows = proxy.diagnose().stream().filter(f -> "log4j2.trim".equals(f.getCheck())).toList();
+        if (trimExpectedOff()) {
+            // 2.25.0 to 2.25.3 (A4): nothing is wrapped, the trace is whole, and doctor says why (M8-6).
+            assertTrue(trimmed.contains("at org."), "trim is off on Log4j " + VERSION + ":\n" + trimmed);
+            assertFalse(trimmed.contains("stack trace trimmed"), trimmed);
+            assertEquals(1, trimRows.size(), "doctor says trim is off on " + VERSION);
+        } else {
+            assertTrue(trimRows.isEmpty(), "trim works on " + VERSION + ", so doctor says nothing about it; it said: "
+                    + trimRows.stream().map(f -> f.getSummary() + " / " + f.getDetail()).toList());
+            assertTrue(trimmed.contains("java.lang.RuntimeException: outer failure b [stack trace trimmed: "), trimmed);
+            assertTrue(trimmed.contains("Caused by: java.lang.IllegalStateException: root cause b [stack trace trimmed: "),
+                    "the cause is cut too:\n" + trimmed);
+            assertFalse(trimmed.contains("Synthetic") || trimmed.contains("TrimmedThrowables"),
+                    "no synthetic class name:\n" + trimmed);
+        }
 
         sendAndWait(app, output, "RECONFIGURE r1", "DONE r1");
         String afterReload = exceptionAndWait(app, output, "c");
-        assertTrue(afterReload.contains("[stack trace trimmed: "),
-                "a reload drops the wrappers with the old configuration; core puts them back:\n" + afterReload);
+        if (trimExpectedOff()) {
+            assertFalse(afterReload.contains("stack trace trimmed"), "still off after a reload:\n" + afterReload);
+            assertTrue(afterReload.contains("at org."), afterReload);
+            assertEquals(1, proxy.diagnose().stream().filter(f -> "log4j2.trim".equals(f.getCheck())).count(),
+                    "doctor still says so after a reload");
+        } else {
+            assertTrue(afterReload.contains("[stack trace trimmed: "),
+                    "a reload drops the wrappers with the old configuration; core puts them back:\n" + afterReload);
+        }
         assertEquals(List.of(2L), proxy.listRules().stream().map(r -> r.getHitCount()).toList(),
-                "counted once per trimmed event, by the gate, and not again by the wrapper");
+                "counted once per event by the gate (also where trim cannot be applied), and not again by the wrapper");
     }
 
     /** Handler levels (A5): the appender is listed by its file name, set hides lines, reset and a reload keep faith. */
@@ -188,12 +223,12 @@ class BundledLog4j2EndToEndIT {
         LevelControlMXBean proxy = LevelControlEndToEndIT.pollForMxBeanProxy(
                 LevelControlEndToEndIT.attachAndConnect(app.pid()));
         pollForLogger(proxy, WORKER);
-        assertTrue(proxy.listHandlers().stream().anyMatch(h -> "Out".equals(h.getRef())),
+        assertTrue(proxy.listHandlers().stream().anyMatch(h -> consoleHandler().equals(h.getRef())),
                 "the appender is listed by its log4j2.xml name: " + proxy.listHandlers());
 
         assertTrue(logAndWait(app, output, "a").contains("INFO fixture.Worker info a"));
 
-        proxy.setHandlerLevel("Out", "ERROR", "e2e", "SESSION", 0);
+        proxy.setHandlerLevel(consoleHandler(), "ERROR", "e2e", "SESSION", 0);
         String hidden = logAndWait(app, output, "b");
         assertFalse(hidden.contains("info b"), "INFO is hidden by the handler:\n" + hidden);
         assertTrue(hidden.contains("ERROR fixture.Worker error b"), hidden);
@@ -203,7 +238,7 @@ class BundledLog4j2EndToEndIT {
         assertFalse(afterReload.contains("info c"),
                 "a reload gives the file's levels back; core puts the handler override back:\n" + afterReload);
 
-        proxy.resetHandler("Out", false);
+        proxy.resetHandler(consoleHandler(), false);
         assertTrue(logAndWait(app, output, "d").contains("INFO fixture.Worker info d"));
     }
 
@@ -219,11 +254,51 @@ class BundledLog4j2EndToEndIT {
 
         var findings = proxy.diagnose();
         var growth = findings.stream()
-                .filter(f -> "handler.unbounded-growth".equals(f.getCheck()) && "Disk".equals(f.getSubject()))
+                .filter(f -> "handler.unbounded-growth".equals(f.getCheck()) && diskHandler().equals(f.getSubject()))
                 .findFirst();
         assertTrue(growth.isPresent(), "the plain File appender has no size cap: " + findings);
-        assertTrue(findings.stream().noneMatch(f -> "Out".equals(f.getSubject())
+        assertTrue(findings.stream().noneMatch(f -> consoleHandler().equals(f.getSubject())
                 && "handler.unbounded-growth".equals(f.getCheck())), "the console is not a file: " + findings);
+    }
+
+    /**
+     * A burst with no stale or missing trim (Slice 8, "Acceptance" Async): events alternate a message the rule
+     * matches with one it does not, logged as fast as the fixture can. In the asynchronous modes the events
+     * reuse {@code MutableLogEvent}s and cross threads; every matching one is still trimmed, no other one is,
+     * and the rule counts each trimmed event once.
+     */
+    @Test
+    void aBurstOfMixedEvents_trimsExactlyTheMatchingOnes_andCountsEachOnce() throws Exception {
+        Path output = work.resolve("burst.log");
+        Process app = launch(output);
+        waitFor(output, "FIXTURE-READY");
+        LevelControlMXBean proxy = LevelControlEndToEndIT.pollForMxBeanProxy(
+                LevelControlEndToEndIT.attachAndConnect(app.pid()));
+        pollForLogger(proxy, WORKER);
+        proxy.addRuleTrim(WORKER, "TRIMME", false, null, null, false, null, 1, false, "e2e", "SESSION", 60);
+
+        int count = 400;
+        int before = Files.readString(output).length();
+        sendAndWait(app, output, "BURST " + count + " z", "LOGGED z");
+        String text = waitFor(output, "SENTINEL z").substring(before);
+
+        int matching = 0;
+        int others = 0;
+        for (String event : text.split("\\R(?=ERROR fixture\\.Worker )")) {
+            boolean trimmedEvent = event.contains("[stack trace trimmed: ");
+            if (event.contains("TRIMME z-")) {
+                matching++;
+                assertEquals(!trimExpectedOff(), trimmedEvent, "a matching event:\n" + event);
+            } else if (event.contains("KEEPME z-")) {
+                others++;
+                assertFalse(trimmedEvent, "a stale trim on an event the rule does not match:\n" + event);
+                assertTrue(event.contains("at org.") || event.contains("\tat "), "its whole trace:\n" + event);
+            }
+        }
+        assertEquals(count / 2, matching, "every matching event was written");
+        assertEquals(count / 2, others, "every other event was written");
+        assertEquals(List.of((long) (count / 2)), proxy.listRules().stream().map(r -> r.getHitCount()).toList(),
+                "counted once per matching event");
     }
 
     /** Sends {@code LOGEX <tag>} and returns only what was written since, up to {@code LOGGED <tag>}. */
@@ -232,7 +307,17 @@ class BundledLog4j2EndToEndIT {
         OutputStream stdin = app.getOutputStream();
         stdin.write(("LOGEX " + tag + "\n").getBytes(StandardCharsets.UTF_8));
         stdin.flush();
-        return waitFor(output, "LOGGED " + tag).substring(before);
+        return settled(output, tag).substring(before);
+    }
+
+    /**
+     * The output once the fixture has logged {@code tag} and the logging framework has written all of it:
+     * {@code LOGGED} is printed by the application, {@code SENTINEL} is the last event it logged, which an
+     * asynchronous appender or logger writes after everything before it.
+     */
+    private static String settled(Path output, String tag) throws Exception {
+        waitFor(output, "LOGGED " + tag);
+        return waitFor(output, "SENTINEL " + tag);
     }
 
     private static void sendAndWait(Process app, Path output, String command, String done) throws Exception {
@@ -277,22 +362,32 @@ class BundledLog4j2EndToEndIT {
         String agentJar = System.getProperty("logaperture.agent.jar");
         assertNotNull(agentJar, "system property logaperture.agent.jar must point at the shaded jar");
         Path config = work.resolve("log4j2-app.xml");
+        String pattern = "<PatternLayout pattern=\"%level %logger %msg%n\"/>";
+        boolean asyncAppender = "async-appender".equals(MODE);
         Files.writeString(config, String.join("\n",
                 "<Configuration status=\"warn\">",
-                "  <Appenders><Console name=\"Out\" target=\"SYSTEM_OUT\">",
-                "    <PatternLayout pattern=\"%level %logger %msg%n\"/></Console>",
-                "    <File name=\"Disk\" fileName=\"" + work.resolve("app.log") + "\">",
-                "    <PatternLayout pattern=\"%level %logger %msg%n\"/></File></Appenders>",
-                "  <Loggers><Root level=\"info\"><AppenderRef ref=\"Out\"/><AppenderRef ref=\"Disk\"/></Root></Loggers>",
+                "  <Appenders><Console name=\"Out\" target=\"SYSTEM_OUT\">" + pattern + "</Console>",
+                "    <File name=\"Disk\" fileName=\"" + work.resolve("app.log") + "\">" + pattern + "</File>",
+                asyncAppender ? "    <Async name=\"AsyncOut\"><AppenderRef ref=\"Out\"/></Async>" : "",
+                asyncAppender ? "    <Async name=\"AsyncDisk\"><AppenderRef ref=\"Disk\"/></Async>" : "",
+                "  </Appenders>",
+                "  <Loggers><Root level=\"info\">",
+                asyncAppender ? "    <AppenderRef ref=\"AsyncOut\"/><AppenderRef ref=\"AsyncDisk\"/>"
+                        : "    <AppenderRef ref=\"Out\"/><AppenderRef ref=\"Disk\"/>",
+                "  </Root></Loggers>",
                 "</Configuration>", ""));
-        List<String> command = List.of(
+        List<String> command = new ArrayList<>(List.of(
                 System.getProperty("java.home") + "/bin/java",
                 "-javaagent:" + agentJar,
                 "-Dlogaperture.home=" + work.resolve("home"),
-                "-Dfixture.log4j.jars=" + log4jJars(),
+                "-Dfixture.log4j.jars=" + log4jJars()));
+        if ("async-loggers".equals(MODE)) {
+            command.add("-Dlog4j2.contextSelector=org.apache.logging.log4j.core.async.AsyncLoggerContextSelector");
+        }
+        command.addAll(List.of(
                 "-cp", classPathWithoutLog4jAndLogback(),
                 BundledLog4j2FixtureApp.class.getName(),
-                config.toString());
+                config.toString()));
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.redirectErrorStream(true);
         builder.redirectOutput(output.toFile());
@@ -301,16 +396,38 @@ class BundledLog4j2EndToEndIT {
         return process;
     }
 
+    private static String fileName(String classPathEntry) {
+        return Path.of(classPathEntry).getFileName().toString();
+    }
+
+    /**
+     * The Log4j adapter's classes, as the reactor puts them on this JVM's class path ({@code .../logaperture-adapter-log4j2/
+     * target/classes} or its jar): never on the system class path in production, where they are stored under a prefix
+     * inside the agent jar, so the fixture must not have them there either. Matched on a path segment or the jar's name,
+     * not on a substring of the whole path.
+     */
+    private static boolean isAdapterModule(String classPathEntry) {
+        Path entry = Path.of(classPathEntry);
+        for (Path segment : entry) {
+            if (segment.toString().equals("logaperture-adapter-log4j2")) {
+                return true;
+            }
+        }
+        return fileName(classPathEntry).startsWith("logaperture-adapter-log4j2-");
+    }
+
     private static String log4jJars() {
         return Arrays.stream(System.getProperty("java.class.path").split(File.pathSeparator))
-                .filter(entry -> entry.contains("log4j-api") || entry.contains("log4j-core"))
+                .filter(entry -> entry.contains("log4j-api") || entry.contains("log4j-core")
+                        || ("async-loggers".equals(MODE) && fileName(entry).startsWith("disruptor-")))
                 .collect(Collectors.joining(File.pathSeparator));
     }
 
     private static String classPathWithoutLog4jAndLogback() {
         return Arrays.stream(System.getProperty("java.class.path").split(File.pathSeparator))
                 .filter(entry -> !entry.contains("logback") && !entry.contains("log4j-api")
-                        && !entry.contains("log4j-core"))
+                        && !entry.contains("log4j-core") && !fileName(entry).startsWith("disruptor-")
+                        && !isAdapterModule(entry))
                 .collect(Collectors.joining(File.pathSeparator));
     }
 
@@ -319,7 +436,7 @@ class BundledLog4j2EndToEndIT {
         OutputStream stdin = app.getOutputStream();
         stdin.write(("LOG " + tag + "\n").getBytes(StandardCharsets.UTF_8));
         stdin.flush();
-        return waitFor(output, "LOGGED " + tag).substring(before);
+        return settled(output, tag).substring(before);
     }
 
     private static String waitFor(Path output, String text) throws Exception {
