@@ -123,15 +123,14 @@ nothing was bound.
 
 ### `log4j2.not-bound`
 
-LogAperture found a Log4j 2 and could not bind it: its adapter could not be created, or it threw
-while opening, or no Log4j context had started three seconds after the Log4j was found. `WARNING`.
-The finding names the class loader and the reason, and is the same reason the application printed
-to its error stream when it gave up. It is kept for as long as that class loader is alive, so a
+LogAperture found a Log4j 2 and could not bind it. `WARNING` when its adapter could not be created
+or threw while opening; `INFO` when no Log4j context had started three seconds after the Log4j was
+found, which is usually a Log4j the application never used. The finding names the class loader and
+the reason, and is the same reason the application printed to its error stream when it gave up. It is kept for as long as that class loader is alive, so a
 redeployed web application's old failure goes away when it is collected, and each loader that
 failed has its own row (at most 16).
 
-**Fix:** the reason says what happened; a Log4j that never starts a context is usually one the
-application never used.
+**Fix:** the reason says what happened. Nothing to do for an `INFO` about a Log4j that never started.
 
 ### `log4j2.trim`
 

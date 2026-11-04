@@ -58,6 +58,8 @@ class HandlerDiagnosticsTest {
         b.add(b.newAppender("Plain", "File").addAttribute("fileName", dir.resolve("plain.log").toString()).add(layout));
         b.add(b.newAppender("Random", "RandomAccessFile")
                 .addAttribute("fileName", dir.resolve("random.log").toString()).addAttribute("immediateFlush", false).add(layout));
+        b.add(b.newAppender("Mapped", "MemoryMappedFile").addAttribute("fileName", dir.resolve("mapped.log").toString())
+                .add(layout));
         b.add(b.newAppender("Rolling", "RollingFile").addAttribute("fileName", dir.resolve("rolling.log").toString())
                 .addAttribute("filePattern", dir.resolve("rolling-%i.log").toString()).add(layout)
                 .addComponent(b.newComponent("Policies").addComponent(
@@ -66,7 +68,7 @@ class HandlerDiagnosticsTest {
         b.add(b.newAppender("AsyncTwo", "Async").addComponent(b.newAppenderRef("Plain")).addComponent(b.newAppenderRef("Con")));
         b.add(b.newAppender("AsyncRolling", "Async").addComponent(b.newAppenderRef("Rolling")));
         b.add(b.newRootLogger(Level.INFO).add(b.newAppenderRef("Con")).add(b.newAppenderRef("Plain"))
-                .add(b.newAppenderRef("Random")).add(b.newAppenderRef("Rolling")).add(b.newAppenderRef("AsyncPlain"))
+                .add(b.newAppenderRef("Random")).add(b.newAppenderRef("Mapped")).add(b.newAppenderRef("Rolling")).add(b.newAppenderRef("AsyncPlain"))
                 .add(b.newAppenderRef("AsyncTwo")).add(b.newAppenderRef("AsyncRolling")));
         return b.build();
     }
@@ -160,5 +162,19 @@ class HandlerDiagnosticsTest {
         } else {
             assertEquals(List.of(), findings);
         }
+    }
+
+    @Test
+    void aMemoryMappedFile_isAFileWithAKnownPath_andReportsItsOwnFlush() {
+        HandlerDiagnostics facts = of("Mapped");
+        assertEquals(dir.resolve("mapped.log"), facts.targetPath());
+        assertTrue(facts.hasKnownFile());
+        assertEquals(Boolean.FALSE, facts.autoFlush(), "memory-mapped writes are not flushed per record");
+    }
+
+    @Test
+    void aFileNameThePlatformRejects_givesNoPath_notAnException() {
+        assertNull(Log4j2LoggingAdapter.pathOrNull("bad\0name.log"), "an embedded NUL is rejected everywhere");
+        assertEquals(dir.resolve("ok.log"), Log4j2LoggingAdapter.pathOrNull(dir.resolve("ok.log").toString()));
     }
 }

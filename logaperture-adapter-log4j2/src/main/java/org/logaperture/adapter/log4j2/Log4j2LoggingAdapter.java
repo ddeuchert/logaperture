@@ -31,18 +31,21 @@ import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.logaperture.api.BackendInfo;
 import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.HandlerDiagnostics;
-import org.logaperture.api.Severity;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
+import org.logaperture.api.Severity;
 import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.RuleGate;
 import org.logaperture.core.StormObserver;
 import org.logaperture.core.spi.LoggingAdapter;
 import org.logaperture.core.spi.UnknownHandlerException;
 
+
+
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -660,10 +663,21 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         if (fileName == null) {
             return HandlerDiagnostics.EMPTY;
         }
-        return new HandlerDiagnostics(null, null, immediateFlush(appender), Path.of(fileName));
+        Path path = pathOrNull(fileName);
+        return path == null ? HandlerDiagnostics.EMPTY
+                : new HandlerDiagnostics(null, null, immediateFlush(appender), path);
     }
 
-    /** {@code immediateFlush} of a file appender; a memory-mapped one has none to report. */
+    /** The path, or null for a name this platform rejects: no facts, never a failed {@code doctor} run. */
+    static Path pathOrNull(String fileName) {
+        try {
+            return Path.of(fileName);
+        } catch (InvalidPathException e) {
+            return null;
+        }
+    }
+
+    /** {@code immediateFlush} of a file appender (a memory-mapped one reports its own, always false). */
     private static Boolean immediateFlush(Appender appender) {
         return appender instanceof AbstractOutputStreamAppender<?> stream ? stream.getImmediateFlush() : null;
     }
@@ -675,8 +689,10 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
     @Override
     public List<DoctorFinding> doctorFindings() {
         return trimDisabledReason().map(reason -> new DoctorFinding("log4j2.trim", Severity.INFO, "trim",
-                "trim rules are counted but not applied on Log4j " + version + ".", reason,
-                "upgrade Log4j to 2.25.4 or later (or 2.24.x).")).stream().toList();
+                "trim rules are counted but not applied on this Log4j" + (version == null ? "" : " (" + version + ")")
+                        + ".", reason,
+                "use a Log4j that renders a trimmed exception: 2.24.x and earlier, or 2.25.4 and later.")).stream()
+                .toList();
     }
 
     @Override

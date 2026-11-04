@@ -675,7 +675,8 @@ which are process-wide in the same way, with no context on the row.
 - The check id is the framework id plus a suffix: `log4j2.version` when the framework said it is too old (a
   typed reason, not a text match), otherwise `log4j2.not-bound` (opened and threw, gave up after 3 s, no
   started context). The ids are constants in core, so `GuideReferenceDriftTest` sees them.
-- `WARNING`, subject the owning loader's class and name, detail the reason as `Diagnostics` printed it.
+- `WARNING`, except `INFO` when the detector gave up waiting for a started context (often a Log4j the
+  application never used, found in review); subject the owning loader's class and name, detail the reason as `Diagnostics` printed it.
   `log4j2.version` suggests upgrading to 2.20.0 or later (A10); `log4j2.not-bound` says what happened and
   suggests nothing, because the reason is what a user needs.
 - One row per (framework, loader), kept while that loader is alive (weakly: a redeployed webapp's old loader
@@ -730,6 +731,10 @@ this is the one guide page the deferral to the last slice cannot cover. `handler
   framework id plus suffix for any other framework.
 - The new SPI method is `LoggingAdapter.doctorFindings()`. `log4j2.trim` is `INFO` with the probe's reason as
   detail.
+- **From review:** a scanner-level failure (the listener threw before an instance existed) is recorded too; a
+  later successful bind of the same loader forgets its row; a file name the platform rejects gives no facts
+  (`pathOrNull`) instead of failing `doctor`; the `log4j2` ids come from the constants; a memory-mapped appender
+  reports its own flush (always false).
 - `BoundInstance` marks itself closed before it prints its line and records its row, so a test that waits for
   `isClosed` can read too early; the new and one older test wait for the line or the row instead.
 

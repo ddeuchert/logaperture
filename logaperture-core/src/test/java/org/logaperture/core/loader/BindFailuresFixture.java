@@ -25,6 +25,6 @@ public final class BindFailuresFixture {
     private static final ClassLoader OWNER = new ClassLoader("fixture-owner", null) { };
 
     public static void record() {
-        BindFailures.record("log4j2", OWNER, "FixtureOwner", "Log4j 2.19.0 is older than 2.20.0", true);
+        BindFailures.record("log4j2", OWNER, "FixtureOwner", "Log4j 2.19.0 is older than 2.20.0", BindFailures.Kind.VERSION);
     }
 }

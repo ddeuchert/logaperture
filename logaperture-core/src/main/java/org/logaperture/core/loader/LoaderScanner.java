@@ -136,6 +136,7 @@ public final class LoaderScanner {
             // A bind that throws must not end the scan: later loaders still need finding.
             Diagnostics.error("LogAperture could not bind " + watch.framework() + " found in "
                     + owner.getClass().getName(), t);
+            BindFailures.recordScanFailure(watch.framework(), owner, t);
         }
     }
 

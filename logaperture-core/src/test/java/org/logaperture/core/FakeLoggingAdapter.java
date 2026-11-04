@@ -16,6 +16,7 @@
 package org.logaperture.core;
 
 import org.logaperture.api.BackendInfo;
+import org.logaperture.api.DoctorFinding;
 import org.logaperture.api.HandlerDiagnostics;
 import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
@@ -348,11 +349,11 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     private final Map<HandlerRef, HandlerDiagnostics> handlerDiagnostics = new LinkedHashMap<>();
 
     /** What {@link #doctorFindings()} answers; empty by default, as for the real adapters that have none. */
-    final java.util.List<org.logaperture.api.DoctorFinding> adapterFindings = new java.util.ArrayList<>();
+    final List<DoctorFinding> adapterFindings = new ArrayList<>();
 
     @Override
-    public java.util.List<org.logaperture.api.DoctorFinding> doctorFindings() {
-        return java.util.List.copyOf(adapterFindings);
+    public List<DoctorFinding> doctorFindings() {
+        return List.copyOf(adapterFindings);
     }
 
     /** Registers static configuration facts for an already-{@link #addHandler}ed ref -- doc/specs/doctor.md "Adapter SPI". */

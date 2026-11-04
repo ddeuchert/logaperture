@@ -18,6 +18,7 @@ package org.logaperture.core.loader;
 import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.spi.ContextHandle;
 
+import java.lang.ref.WeakReference;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -55,7 +56,7 @@ public final class BoundInstance {
 
     private final FrameworkWatch watch;
     private final String ownerName;
-    private final java.lang.ref.WeakReference<ClassLoader> ownerRef;
+    private final WeakReference<ClassLoader> ownerRef;
     private final BridgeClassLoader bridge;
     private final ContextSink sink;
     private final Timing timing;
@@ -68,7 +69,7 @@ public final class BoundInstance {
                           ContextSink sink, Timing timing) {
         this.watch = watch;
         this.ownerName = describe(owner);
-        this.ownerRef = new java.lang.ref.WeakReference<>(owner);
+        this.ownerRef = new WeakReference<>(owner);
         this.bridge = new BridgeClassLoader(owner, watch.ownerPackages(), system, source);
         this.sink = sink;
         this.timing = timing;
@@ -88,7 +89,7 @@ public final class BoundInstance {
             Class<?> entryClass = instance.bridge.loadClass(watch.entryClass());
             instance.entry = (BridgedFramework) entryClass.getDeclaredConstructor().newInstance();
         } catch (Throwable t) {
-            instance.fail("its adapter could not be created (" + t + ")", t);
+            instance.fail("its adapter could not be created (" + t + ")", t, false);
             return instance;
         }
         Thread waiter = new Thread(instance::awaitAndBind, "logaperture-" + watch.framework() + "-bind");
@@ -125,7 +126,7 @@ public final class BoundInstance {
                     return;
                 }
                 if (System.nanoTime() - deadline >= 0) {
-                    fail("it has no started context " + timing.giveUpAfter().toMillis() + " ms after it was found", null);
+                    fail("it has no started context " + timing.giveUpAfter().toMillis() + " ms after it was found", null, true);
                     return;
                 }
                 Thread.sleep(timing.pollEvery().toMillis());
@@ -134,7 +135,7 @@ public final class BoundInstance {
             Thread.currentThread().interrupt();
             letGo();
         } catch (Throwable t) {
-            fail("it failed while waiting for its first context (" + t + ")", t);
+            fail("it failed while waiting for its first context (" + t + ")", t, false);
         }
     }
 
@@ -147,7 +148,7 @@ public final class BoundInstance {
         try {
             contexts = opened.open(this::letGo);
         } catch (Throwable t) {
-            fail("opening it failed (" + t + ")", t);
+            fail("opening it failed (" + t + ")", t, false);
             return;
         }
         List<ContextHandle> added = new ArrayList<>();
@@ -164,6 +165,10 @@ public final class BoundInstance {
             // a shutdown landed after the check above: letGo may have seen no handles yet
             added.forEach(sink::remove);
         } else {
+            ClassLoader owner = ownerRef.get();
+            if (owner != null) {
+                BindFailures.forget(watch.framework(), owner);
+            }
             Diagnostics.debug(watch.framework() + " bound in " + ownerName + ": "
                     + added.stream().map(ContextHandle::stableKey).toList());
         }
@@ -177,7 +182,7 @@ public final class BoundInstance {
         release();
     }
 
-    private void fail(String reason, Throwable cause) {
+    private void fail(String reason, Throwable cause, boolean gaveUp) {
         if (state.getAndSet(State.CLOSED) == State.CLOSED) {
             return;
         }
@@ -187,7 +192,8 @@ public final class BoundInstance {
         ClassLoader owner = ownerRef.get();
         if (owner != null) {
             BindFailures.record(watch.framework(), owner, ownerName, describeFailure(reason, cause),
-                    isVersionProblem(cause));
+                    isVersionProblem(cause) ? BindFailures.Kind.VERSION
+                            : gaveUp ? BindFailures.Kind.GAVE_UP : BindFailures.Kind.FAILED);
         }
         release();
     }
@@ -229,7 +235,7 @@ public final class BoundInstance {
     }
 
     /** The owner's loader class and name, never its {@code toString()} (it may be mid-unload). */
-    private static String describe(ClassLoader owner) {
+    static String describe(ClassLoader owner) {
         String name = owner.getName();
         return owner.getClass().getName() + (name == null ? "" : " '" + name + "'");
     }

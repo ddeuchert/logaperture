@@ -39,8 +39,19 @@ public final class BindFailures {
 
     static final int MAX = 16;
 
+    /** Why a bind did not happen: it decides the check id and the severity. */
+    enum Kind {
+        /** The framework said its version is too old: {@code .version}, {@code WARNING}. */
+        VERSION,
+        /** Its adapter could not be created, or threw: {@code .not-bound}, {@code WARNING}. */
+        FAILED,
+        /** No started context when the detector stopped waiting: {@code .not-bound}, {@code INFO} (often a
+         *  framework the application never used). */
+        GAVE_UP
+    }
+
     private record Row(String framework, WeakReference<ClassLoader> owner, String ownerName, String reason,
-                       boolean versionProblem) {
+                       Kind kind) {
     }
 
     private static final List<Row> ROWS = new ArrayList<>();
@@ -49,16 +60,36 @@ public final class BindFailures {
     }
 
     /** Called by {@link BoundInstance} when it gives up, after the {@code Diagnostics} line (C8). */
-    static void record(String framework, ClassLoader owner, String ownerName, String reason,
-                       boolean versionProblem) {
+    static void record(String framework, ClassLoader owner, String ownerName, String reason, Kind kind) {
         synchronized (ROWS) {
             prune();
             ROWS.removeIf(row -> row.framework.equals(framework) && row.owner.get() == owner);
             if (ROWS.size() >= MAX) {
                 ROWS.remove(0);
             }
-            ROWS.add(new Row(framework, new WeakReference<>(owner), ownerName, reason, versionProblem));
+            ROWS.add(new Row(framework, new WeakReference<>(owner), ownerName, reason, kind));
         }
+    }
+
+    /** The scanner could not even start the bind (the listener threw): found and not bound all the same. */
+    static void recordScanFailure(String framework, ClassLoader owner, Throwable cause) {
+        record(framework, owner, BoundInstance.describe(owner), "binding it threw (" + cause + ")", Kind.FAILED);
+    }
+
+    /** The framework bound after all (the same loader found again): its old row is no longer true. */
+    static void forget(String framework, ClassLoader owner) {
+        synchronized (ROWS) {
+            ROWS.removeIf(row -> row.framework.equals(framework) && row.owner.get() == owner);
+        }
+    }
+
+    /** The check id: Log4j 2's two are constants (the guide and its drift test name them), others get the suffix. */
+    static String checkId(String framework, Kind kind) {
+        boolean version = kind == Kind.VERSION;
+        if ("log4j2".equals(framework)) {
+            return version ? FRAMEWORK_VERSION_CHECK : FRAMEWORK_NOT_BOUND_CHECK;
+        }
+        return framework + (version ? ".version" : ".not-bound");
     }
 
     /** One finding per live row, in the order they happened; no context (the row is process-wide). */
@@ -67,14 +98,19 @@ public final class BindFailures {
             prune();
             List<DoctorFinding> findings = new ArrayList<>(ROWS.size());
             for (Row row : ROWS) {
-                String check = row.framework + (row.versionProblem ? ".version" : ".not-bound");
-                String summary = row.versionProblem
-                        ? "found " + row.framework + " in " + row.ownerName + " but it is not controlled: "
-                                + row.reason
+                String check = checkId(row.framework, row.kind);
+                Severity severity = row.kind == Kind.GAVE_UP ? Severity.INFO : Severity.WARNING;
+                String summary = row.kind == Kind.VERSION
+                        ? "found " + row.framework + " in " + row.ownerName + " but it is not controlled: " + row.reason
                         : "found " + row.framework + " in " + row.ownerName + " but did not bind: " + row.reason;
-                findings.add(new DoctorFinding(check, Severity.WARNING, row.ownerName, summary,
-                        row.versionProblem ? null : "see the LogAperture line the application printed when it gave up",
-                        row.versionProblem ? "upgrade " + row.framework + " to a supported version." : null));
+                String detail = switch (row.kind) {
+                    case VERSION -> null;
+                    case FAILED -> "see the LogAperture line the application printed when it gave up";
+                    case GAVE_UP -> "usually a " + row.framework + " the application never used";
+                };
+                String fix = row.kind == Kind.VERSION
+                        ? "upgrade " + row.framework + " to a supported version." : null;
+                findings.add(new DoctorFinding(check, severity, row.ownerName, summary, detail, fix));
             }
             return List.copyOf(findings);
         }

@@ -44,6 +44,7 @@ import org.logaperture.api.Severity;
 import org.logaperture.api.SquelchedLogger;
 import org.logaperture.api.Storm;
 import org.logaperture.api.StormReport;
+import org.logaperture.core.loader.BindFailures;
 import org.logaperture.core.spi.ContextHandle;
 
 import java.time.Duration;
@@ -430,7 +431,7 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     public List<DoctorFinding> diagnose() {
         List<DoctorFinding> result = new ArrayList<>(vendorDefaultsFindings());
         result.addAll(agentOrderCheck.findings());
-        result.addAll(org.logaperture.core.loader.BindFailures.findings());
+        result.addAll(BindFailures.findings());
         for (ContextControl context : sortedByKey()) {
             String key = context.stableKey();
             for (DoctorFinding finding : context.doctorService().diagnose()) {

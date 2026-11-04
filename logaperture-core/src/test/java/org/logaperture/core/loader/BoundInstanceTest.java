@@ -18,6 +18,8 @@ package org.logaperture.core.loader;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.logaperture.api.DoctorFinding;
+import org.logaperture.api.Severity;
 import org.logaperture.bridge.DiagnosticLevel;
 import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.spi.ContextHandle;
@@ -266,11 +268,11 @@ class BoundInstanceTest {
         start(throwing, FAST, ADAPTER_CLASSES);
         await(() -> BindFailures.findings().size() == 2);
 
-        List<org.logaperture.api.DoctorFinding> findings = BindFailures.findings();
+        List<DoctorFinding> findings = BindFailures.findings();
         assertEquals(List.of("fake.version", "fake.not-bound"),
-                findings.stream().map(org.logaperture.api.DoctorFinding::check).toList());
-        org.logaperture.api.DoctorFinding version = findings.get(0);
-        assertEquals(org.logaperture.api.Severity.WARNING, version.severity());
+                findings.stream().map(DoctorFinding::check).toList());
+        DoctorFinding version = findings.get(0);
+        assertEquals(Severity.WARNING, version.severity());
         assertTrue(version.summary().contains("fake 1.0 is too old"), version.summary());
         assertTrue(version.subject().contains("FixtureOwnerLoader"), version.subject());
         assertEquals(null, version.context(), "process-wide: no context");
@@ -283,13 +285,26 @@ class BoundInstanceTest {
         start(new FixtureOwnerLoader(), quick, ADAPTER_CLASSES);
         await(() -> !BindFailures.findings().isEmpty());
         assertEquals(List.of("fake.not-bound"),
-                BindFailures.findings().stream().map(org.logaperture.api.DoctorFinding::check).toList());
+                BindFailures.findings().stream().map(DoctorFinding::check).toList());
+        assertEquals(Severity.INFO, BindFailures.findings().get(0).severity(), "usually a framework nobody used");
     }
 
     @Test
     void aBoundFramework_leavesNoFinding() throws Exception {
         FakeFrameworkState.ready.set(true);
         await(start(new FixtureOwnerLoader(), FAST, ADAPTER_CLASSES)::isBound);
+        assertEquals(List.of(), BindFailures.findings());
+    }
+
+    @Test
+    void aBindThatSucceedsAfterAnEarlierFailureOfTheSameLoader_clearsTheRow() throws Exception {
+        BoundInstance.Timing quick = new BoundInstance.Timing(Duration.ofMillis(5), Duration.ofMillis(100));
+        FixtureOwnerLoader owner = new FixtureOwnerLoader();
+        start(owner, quick, ADAPTER_CLASSES);
+        await(() -> BindFailures.findings().size() == 1);
+
+        FakeFrameworkState.ready.set(true);
+        await(start(owner, FAST, ADAPTER_CLASSES)::isBound);
         assertEquals(List.of(), BindFailures.findings());
     }
 

@@ -140,4 +140,9 @@ class FrameworkDetectionTest {
                 "org.apache.logging.log4j.jul.LogManager", KnownFrameworks.all()),
                 "log4j-jul's manager is a front for Log4j 2, not a context of its own (C1)");
     }
+
+    @org.junit.jupiter.api.AfterEach
+    void clearBindFailures() {
+        BindFailures.clear(); // process-wide rows must not leak into other tests' doctor assertions
+    }
 }
