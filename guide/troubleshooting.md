@@ -25,11 +25,58 @@ See [Work with several JVMs](how-to/several-jvms.md) for "Several candidates" an
   No agent can be loaded into it. Restart it with `-javaagent`, or without that flag.
 - *`Can't attach to PID … run as the user that owns that process`*: run `logctl` as the JVM's user.
 - *`This Java has no attach support`*: run `logctl` with a JDK, not a JRE.
-- *`loaded … but not active yet`*: the application hasn't logged through Logback or
-  `java.util.logging`, and nothing is wrong until it does. If it logs through another backend, such as
-  Log4j 2, LogAperture can't control it. See [Try without a restart](how-to/try-without-restart.md).
+- *`loaded … but not active yet`*: the application hasn't logged through Logback,
+  `java.util.logging` or Log4j 2, and nothing is wrong until it does. If it logs through another backend,
+  LogAperture can't control it. See [Try without a restart](how-to/try-without-restart.md).
 - *A JVM that `jps` shows is missing from the list*: `logctl attach` lists only JVMs that don't have
   LogAperture yet, and only ones it could attach to as your user.
+
+## Log4j 2
+
+From 1.1. See [On Log4j 2](get-started/install-plain-jvm.md#on-log4j-2) for how it works.
+
+### `doctor` says `log4j2.version`
+
+LogAperture found a Log4j 2 **older than 2.20.0** and does not control it: below that version a `drop`
+rule can't see every event, and there is no way to read an explicit level. The application logs as it
+always did. `logctl doctor` names the class loader the Log4j was found in and its version, and works
+even when that Log4j is the only logging framework in the JVM. **Upgrade Log4j to 2.20.0 or later.**
+
+### `doctor` says `log4j2.not-bound`
+
+LogAperture found a Log4j 2 and could not bind it: its adapter failed to start, or no Log4j context
+had started three seconds after the Log4j was found. The finding carries the reason, which the
+application's standard error also has as a `LogAperture found log4j2 … but did not bind` line. For the
+second case, a Log4j on the class path that the application never uses, it is only `INFO`.
+
+### `doctor` says `log4j2.trim`
+
+`trim` rules can't cut a stack trace on **Log4j 2.25.0 to 2.25.3**: those versions render the exception
+from its class with nothing for LogAperture to hook. `drop` rules, levels and storm detection are not
+affected. Use Log4j 2.24.x, or 2.25.4 or later.
+
+### `logctl` says my change was "put back", or the application logs "changed … outside LogAperture"
+
+Something other than LogAperture changed a level that has a LogAperture override: Spring Boot Actuator, the
+application's own `Configurator.setLevel`, or a Log4j reload that changes it. The override wins until it
+ends; the line in the application's log names the logger, what it was changed to, and the override.
+`logctl reset logger <name>` ends the override, and the logger then goes to the level that change set.
+See [Tiers and expiry](concepts/tiers-and-expiry.md#when-the-application-changes-a-level-itself).
+
+### A logger is missing from `list loggers`
+
+On Log4j 2.24.3 and later, a logger appears only while the application holds a reference to it. Name it
+anyway: `logctl set logger com.example.Thing DEBUG` works for any name.
+
+### `set handler` can't find my appender
+
+A handler is an appender, by its name in `log4j2.xml`: `logctl list handlers --show-all` shows them. An
+appender that is only behind an `<Async>` appender is not listed: use the `<Async>` appender's name.
+
+### Rows for a context called `system`
+
+That is the JDK's own `java.util.logging`, which the connection `logctl` opens starts using. It has no
+application loggers and can be ignored. A `set logger` goes to every context, so it shows up under both.
 
 ## `logctl` needs a JDK
 

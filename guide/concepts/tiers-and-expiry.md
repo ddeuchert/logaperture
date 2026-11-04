@@ -55,6 +55,12 @@ override, LogAperture puts the override back:
   `source=verification-sweep`.
 - On Logback 1.3.14, 1.4.14 or 1.5.x, as soon as the reload finishes. This puts back the levels
   LogAperture already had in place, so it writes no audit line.
+- On Log4j 2 (from 1.1), as soon as Log4j reconfigures: a `monitorInterval` reload, or Spring Boot
+  applying its settings. A level changed by Spring Boot Actuator or by the application itself is put
+  back at once, audited with `source=verification-sweep`, and the application's log gets one warning a
+  minute per logger saying so. The level that change set becomes what `reset` goes back to, not the one
+  in the file, which would undo the application's own settings. See
+  [On Log4j 2](../get-started/install-plain-jvm.md#when-something-else-changes-the-level).
 - Otherwise within the sweep interval, 30 seconds by default
   ([`logaperture.sweep.seconds`](../reference/agent-options.md)), audited with
   `source=verification-sweep`. That includes Logback 1.2.x, 1.3.0 and 1.4.0 when the file itself

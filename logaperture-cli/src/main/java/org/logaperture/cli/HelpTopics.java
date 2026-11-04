@@ -320,8 +320,8 @@ final class HelpTopics {
                     List.of("Loads the LogAperture agent into a JVM that was started without `-javaagent`, so you "
                                     + "can use `logctl` on it without a restart. Without a PID, on a terminal, it lists "
                                     + "the JVMs it can attach to and asks which; otherwise it needs the PID.",
-                            "The agent starts when the application first logs through Logback or "
-                                    + "`java.util.logging`, which is usually already. `attach` waits up to ten "
+                            "The agent starts when the application first logs through Logback, "
+                                    + "`java.util.logging` or Log4j 2, which is usually already. `attach` waits up to ten "
                                     + "seconds and says whether it is active. A JVM that already runs LogAperture is "
                                     + "left alone, and that is not an error.",
                             "An attach lasts until the JVM stops. To keep LogAperture, add `-javaagent` to its launch "

@@ -6,8 +6,10 @@ message, or keeps it and shortens its stack trace. See [Rules](../concepts/rules
 work.
 
 !!! info "Not on Logback yet"
-    Rules need `java.util.logging` or JBoss LogManager: WildFly, Quarkus, or (from 1.1) a plain JVM
-    that logs through `java.util.logging`. On a plain JVM with Logback they aren't available yet.
+    Rules need `java.util.logging`, JBoss LogManager or Log4j 2: WildFly, Quarkus, or (from 1.1) a plain
+    JVM that logs through `java.util.logging` or Log4j 2. On a plain JVM with Logback they aren't available
+    yet. On Log4j 2, `trim` works for text layouts, not on 2.25.0 to 2.25.3: see
+    [On Log4j 2](../get-started/install-plain-jvm.md#limits-to-know).
 
 <div class="la-cast" data-cast="flood"></div>
 

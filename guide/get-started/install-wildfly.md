@@ -101,6 +101,30 @@ deploying. `ALL_HANDLERS` always works.
 
 Next: the [Quick start](quick-start.md).
 
+## A deployment with its own Log4j 2
+
+From 1.1. Most applications on WildFly need nothing here: an application that logs through Log4j 2 using
+WildFly's own Log4j API module is already logging through JBoss LogManager, and everything above applies
+to it.
+
+It is different when a deployment **excludes** the server's Log4j API (an exclusion of
+`org.apache.logging.log4j.api` in `jboss-deployment-structure.xml`) and brings its own `log4j-api` and
+`log4j-core`, 2.20.0 or later. That deployment's Log4j is separate from the server's, so LogAperture finds
+it inside the deployment and controls it as its own context, next to the server's:
+
+```sh
+logctl list loggers --show-all
+```
+
+The server's logging is the context `system`; a deployment's Log4j is `log4j2:` followed by its name
+(its web context path, if it has Log4j's web support, as on [Tomcat](install-tomcat.md#context-names)). The
+agent line is the same as above; nothing is added to the deployment. When the deployment is redeployed,
+its overrides come back on the new copy.
+
+It was tried on WildFly 26.1.3. This setup is checked by hand and not yet by automated tests; if it
+doesn't work for you, [tell us](https://github.com/ddeuchert/logaperture/issues). A Log4j older than 2.20.0
+is found but not controlled, and `logctl doctor` says so (`log4j2.version`).
+
 ## Agent options
 
 Agent options go after the jar, separated by `=`:

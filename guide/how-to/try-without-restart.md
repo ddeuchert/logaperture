@@ -2,7 +2,7 @@
 
 `logctl attach` loads the agent into a JVM that is already running, so you can try LogAperture on
 an application without changing its launch line or restarting it. It works for an application on
-Logback, on `java.util.logging`, and for a standalone WildFly.
+Logback, on `java.util.logging`, on Log4j 2 (from 1.1), and for a standalone WildFly.
 
 It lasts until that JVM stops. To keep LogAperture, add the `-javaagent` option to the launch line
 as in the [install guides](../get-started/install-plain-jvm.md).
@@ -33,20 +33,22 @@ On a terminal, `logctl attach` without a process id lists the JVMs it can attach
 It asks even when there is only one, since the only other JVM on a machine is often an IDE or a build
 daemon. Off a terminal, or with `--json`, it prints the list and exits with code 4: name the JVM.
 
+On a Log4j 2 application the line ends `(Log4j 2 2.25.5)`, naming the version it found.
+
 ## If nothing is active yet
 
-LogAperture starts when the application first logs through Logback or `java.util.logging`. For an
+LogAperture starts when the application first logs through Logback, `java.util.logging` or Log4j 2. For an
 application that is already logging, that is at once. If the application has not logged yet,
 `attach` waits ten seconds and then says so:
 
 ```
 The LogAperture agent is loaded in PID 1344371 but not active yet: it starts when the application
-first logs through Logback or java.util.logging. Run 'logctl status' once it has.
+first logs through Logback, java.util.logging or Log4j 2. Run 'logctl status' once it has.
 ```
 
 The application's own standard error gets one line saying it is waiting. If a minute passes without
-the application logging through either, a second line says which backends LogAperture looked for.
-An application on another backend, such as Log4j 2, cannot be controlled.
+the application logging through one of them, a second line says which backends LogAperture looked for.
+An application on another backend cannot be controlled.
 
 ## Attach twice
 

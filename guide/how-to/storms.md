@@ -5,8 +5,8 @@ retry that never stops. Storm detection notices them, groups them, and keeps one
 full for you to read. In 1.0 it only reports: nothing is suppressed.
 
 !!! info "Not on Logback yet"
-    Storm detection needs `java.util.logging` or JBoss LogManager: WildFly, Quarkus, or (from 1.1)
-    a plain JVM that logs through `java.util.logging`.
+    Storm detection needs `java.util.logging`, JBoss LogManager or Log4j 2: WildFly, Quarkus, or (from 1.1)
+    a plain JVM that logs through `java.util.logging` or Log4j 2.
 
 The output on this page is from WildFly 26.1.3.
 
