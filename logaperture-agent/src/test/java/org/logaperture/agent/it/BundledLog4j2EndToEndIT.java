@@ -183,29 +183,35 @@ class BundledLog4j2EndToEndIT {
 
         proxy.addRuleTrim(WORKER, null, false, null, null, false, null, 1, false, "e2e", "SESSION", 60);
         String trimmed = exceptionAndWait(app, output, "b");
+        var trimRows = proxy.diagnose().stream().filter(f -> "log4j2.trim".equals(f.getCheck())).toList();
         if (trimExpectedOff()) {
             // 2.25.0 to 2.25.3 (A4): nothing is wrapped, the trace is whole, and doctor says why (M8-6).
             assertTrue(trimmed.contains("at org."), "trim is off on Log4j " + VERSION + ":\n" + trimmed);
             assertFalse(trimmed.contains("stack trace trimmed"), trimmed);
-            assertTrue(proxy.diagnose().stream().anyMatch(f -> "log4j2.trim".equals(f.getCheck())),
-                    "doctor says trim is off on " + VERSION);
-            return;
+            assertEquals(1, trimRows.size(), "doctor says trim is off on " + VERSION);
+        } else {
+            assertTrue(trimRows.isEmpty(), "trim works on " + VERSION + ", so doctor says nothing about it; it said: "
+                    + trimRows.stream().map(f -> f.getSummary() + " / " + f.getDetail()).toList());
+            assertTrue(trimmed.contains("java.lang.RuntimeException: outer failure b [stack trace trimmed: "), trimmed);
+            assertTrue(trimmed.contains("Caused by: java.lang.IllegalStateException: root cause b [stack trace trimmed: "),
+                    "the cause is cut too:\n" + trimmed);
+            assertFalse(trimmed.contains("Synthetic") || trimmed.contains("TrimmedThrowables"),
+                    "no synthetic class name:\n" + trimmed);
         }
-        var trimRows = proxy.diagnose().stream().filter(f -> "log4j2.trim".equals(f.getCheck())).toList();
-        assertTrue(trimRows.isEmpty(), "trim works on " + VERSION + ", so doctor says nothing about it; it said: "
-                + trimRows.stream().map(f -> f.getSummary() + " / " + f.getDetail()).toList());
-        assertTrue(trimmed.contains("java.lang.RuntimeException: outer failure b [stack trace trimmed: "), trimmed);
-        assertTrue(trimmed.contains("Caused by: java.lang.IllegalStateException: root cause b [stack trace trimmed: "),
-                "the cause is cut too:\n" + trimmed);
-        assertFalse(trimmed.contains("Synthetic") || trimmed.contains("TrimmedThrowables"),
-                "no synthetic class name:\n" + trimmed);
 
         sendAndWait(app, output, "RECONFIGURE r1", "DONE r1");
         String afterReload = exceptionAndWait(app, output, "c");
-        assertTrue(afterReload.contains("[stack trace trimmed: "),
-                "a reload drops the wrappers with the old configuration; core puts them back:\n" + afterReload);
+        if (trimExpectedOff()) {
+            assertFalse(afterReload.contains("stack trace trimmed"), "still off after a reload:\n" + afterReload);
+            assertTrue(afterReload.contains("at org."), afterReload);
+            assertEquals(1, proxy.diagnose().stream().filter(f -> "log4j2.trim".equals(f.getCheck())).count(),
+                    "doctor still says so after a reload");
+        } else {
+            assertTrue(afterReload.contains("[stack trace trimmed: "),
+                    "a reload drops the wrappers with the old configuration; core puts them back:\n" + afterReload);
+        }
         assertEquals(List.of(2L), proxy.listRules().stream().map(r -> r.getHitCount()).toList(),
-                "counted once per trimmed event, by the gate, and not again by the wrapper");
+                "counted once per event by the gate (also where trim cannot be applied), and not again by the wrapper");
     }
 
     /** Handler levels (A5): the appender is listed by its file name, set hides lines, reset and a reload keep faith. */
@@ -291,10 +297,8 @@ class BundledLog4j2EndToEndIT {
         }
         assertEquals(count / 2, matching, "every matching event was written");
         assertEquals(count / 2, others, "every other event was written");
-        if (!trimExpectedOff()) {
-            assertEquals(List.of((long) (count / 2)), proxy.listRules().stream().map(r -> r.getHitCount()).toList(),
-                    "counted once per trimmed event");
-        }
+        assertEquals(List.of((long) (count / 2)), proxy.listRules().stream().map(r -> r.getHitCount()).toList(),
+                "counted once per matching event");
     }
 
     /** Sends {@code LOGEX <tag>} and returns only what was written since, up to {@code LOGGED <tag>}. */
@@ -392,18 +396,38 @@ class BundledLog4j2EndToEndIT {
         return process;
     }
 
+    private static String fileName(String classPathEntry) {
+        return Path.of(classPathEntry).getFileName().toString();
+    }
+
+    /**
+     * The Log4j adapter's classes, as the reactor puts them on this JVM's class path ({@code .../logaperture-adapter-log4j2/
+     * target/classes} or its jar): never on the system class path in production, where they are stored under a prefix
+     * inside the agent jar, so the fixture must not have them there either. Matched on a path segment or the jar's name,
+     * not on a substring of the whole path.
+     */
+    private static boolean isAdapterModule(String classPathEntry) {
+        Path entry = Path.of(classPathEntry);
+        for (Path segment : entry) {
+            if (segment.toString().equals("logaperture-adapter-log4j2")) {
+                return true;
+            }
+        }
+        return fileName(classPathEntry).startsWith("logaperture-adapter-log4j2-");
+    }
+
     private static String log4jJars() {
         return Arrays.stream(System.getProperty("java.class.path").split(File.pathSeparator))
                 .filter(entry -> entry.contains("log4j-api") || entry.contains("log4j-core")
-                        || ("async-loggers".equals(MODE) && entry.contains("disruptor")))
+                        || ("async-loggers".equals(MODE) && fileName(entry).startsWith("disruptor-")))
                 .collect(Collectors.joining(File.pathSeparator));
     }
 
     private static String classPathWithoutLog4jAndLogback() {
         return Arrays.stream(System.getProperty("java.class.path").split(File.pathSeparator))
                 .filter(entry -> !entry.contains("logback") && !entry.contains("log4j-api")
-                        && !entry.contains("log4j-core") && !entry.contains("disruptor")
-                        && !entry.contains("logaperture-adapter-log4j2"))
+                        && !entry.contains("log4j-core") && !fileName(entry).startsWith("disruptor-")
+                        && !isAdapterModule(entry))
                 .collect(Collectors.joining(File.pathSeparator));
     }
 

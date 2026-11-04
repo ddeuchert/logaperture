@@ -19,9 +19,21 @@ name: Log4j 2 nightly
 # is how the project learns of one that breaks the adapter (M8-2, M8-7).
 
 on:
+  # A schedule, and a manual run, only exist for a workflow on the default branch (main), which gets 1.1 changes only
+  # at a release; until then the push trigger below is what runs the matrix: whenever the Log4j 2 code, the
+  # integration test it runs, or these workflows change on develop. It does not notice a Log4j release that breaks the
+  # adapter with no change here; the schedule does, once this file reaches main (doc/specs/log4j2-adapter.md, M8-7).
   schedule:
     - cron: '17 3 * * *'
   workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - 'logaperture-adapter-log4j2/**'
+      - 'logaperture-agent/**'
+      - 'logaperture-core/src/main/java/org/logaperture/core/loader/**'
+      - 'logaperture-core/src/main/java/org/logaperture/core/RuleGate.java'
+      - '.github/workflows/log4j2-nightly.yml'
 
 jobs:
   versions:
@@ -37,8 +49,9 @@ jobs:
           latest=$(echo "$metadata" | grep -oE '<version>2\.[0-9]+\.[0-9]+</version>' \
             | sed -E 's/<[^>]+>//g' | sort -V | tail -1)
           fixed="2.20.0 2.23.0 2.24.0 2.24.1 2.24.2 2.24.3 2.25.0 2.25.1 2.25.2 2.25.3 2.25.4 2.25.5"
+          highest_named=$(printf '%s\n' $fixed | sort -V | tail -1)
           for v in $fixed; do
-            echo "$metadata" | grep -q "<version>$v</version>" \
+            grep -q "<version>$v</version>" <<<"$metadata" \
               || { echo "::error::Log4j $v is not on Central any more"; exit 1; }
           done
           all=$(printf '%s\n' $fixed "$latest" | sort -uV | paste -sd' ')
@@ -47,9 +60,9 @@ jobs:
           {
             echo "### Log4j versions under test"
             echo "$all"
-            if [ "$(printf '%s\n' 2.25.5 "$latest" | sort -V | tail -1)" != "2.25.5" ]; then
+            if [ "$(printf '%s\n' "$highest_named" "$latest" | sort -V | tail -1)" != "$highest_named" ]; then
               echo
-              echo "**The newest 2.x ($latest) is above the highest version this project names (2.25.5).** If every cell passes, add it to the list."
+              echo "**The newest 2.x ($latest) is above the highest version this project names ($highest_named).** If every cell passes, add it to the list."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 

@@ -38,7 +38,7 @@ import java.util.List;
  * {@code LOGEX <tag>} logs an error with a two-level exception and prints {@code LOGGED <tag>};
  * {@code BURST <n> <tag>} logs {@code n} errors with an exception, as fast as it can, alternating a message
  * a trim rule can match ({@code TRIMME}) with one it cannot ({@code KEEPME}), then prints {@code LOGGED <tag>};
- * each of these three ends with an error line {@code SENTINEL <tag>}, which an asynchronous appender writes
+ * each of these three ends with an error line {@code SENTINEL <tag>} on its own logger, which an asynchronous appender writes
  * after everything before it, so a test knows the output is complete;
  * {@code RECONFIGURE <tag>} reloads Log4j's configuration; {@code NATIVE <level> <tag>} sets the worker's
  * level through Log4j's own API, as Spring's {@code logging.level} and an Actuator POST do. Both print
@@ -122,9 +122,14 @@ public final class BundledLog4j2FixtureApp {
             org.apache.logging.log4j.Logger logger = org.apache.logging.log4j.LogManager.getLogger(WORKER_LOGGER);
             Exception cause = new IllegalStateException("root cause " + tag);
             logger.error("failed " + tag, new RuntimeException("outer failure " + tag, cause));
-            logger.error("SENTINEL {}", tag);
+            sentinel(tag);
             System.out.println("LOGGED " + tag);
             System.out.flush();
+        }
+
+        /** The last event of a command, on a logger of its own so no rule or level set on the worker touches it. */
+        private static void sentinel(String tag) {
+            org.apache.logging.log4j.LogManager.getLogger("fixture.Sentinel").error("SENTINEL {}", tag);
         }
 
         /** Events with an exception, alternately one a trim rule matches and one it does not. */
@@ -139,7 +144,7 @@ public final class BundledLog4j2FixtureApp {
                     logger.error("KEEPME {}-{}", tag, i, failure);
                 }
             }
-            logger.error("SENTINEL {}", tag);
+            sentinel(tag);
             System.out.println("LOGGED " + tag);
             System.out.flush();
         }
@@ -150,7 +155,7 @@ public final class BundledLog4j2FixtureApp {
             logger.info("info {}", tag);
             logger.debug("debug {}", tag);
             logger.info("drop-me {}", tag);
-            logger.error("SENTINEL {}", tag);
+            sentinel(tag);
             System.out.println("LOGGED " + tag);
             System.out.flush();
         }
