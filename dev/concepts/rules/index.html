@@ -92,6 +92,11 @@
             
             
   
+    This is the <strong>development</strong> guide: it documents work in progress on the
+    <code>develop</code> branch. Not everything here is available yet, in a release or in a build you make
+    from the repository. For example, running <code>logctl</code> through JBang needs a published release.
+    Choose a released version from the version menu for what you can use today.
+  
 
           </div>
           
@@ -533,6 +538,8 @@
       
         
       
+        
+      
     
     
     
@@ -649,6 +656,34 @@
     
   
     Install on Quarkus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/install-tomcat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on Tomcat
   
 
     
@@ -2104,8 +2139,11 @@ logctl<span class="w"> </span>add<span class="w"> </span>rule<span class="w"> </
 </code></pre></div>
 <div class="admonition info">
 <p class="admonition-title">Not on Logback yet</p>
-<p>Rules need <code>java.util.logging</code> or JBoss LogManager: WildFly, Quarkus, or (from 1.1) a plain JVM
-that logs through <code>java.util.logging</code>. On a plain JVM with Logback they aren't available yet.</p>
+<p>Rules need <code>java.util.logging</code>, JBoss LogManager or Log4j 2: WildFly, Quarkus, or (from 1.1) a plain
+JVM that logs through <code>java.util.logging</code> or Log4j 2. On a plain JVM with Logback they aren't available
+yet. On Log4j 2, <code>trim</code> cuts the exception in text layouts only, and not on Log4j 2.25.0 to 2.25.3; a
+rule that matches on the message text formats the message once more to read it, so a parameter's
+<code>toString()</code> runs an extra time. See <a href="../../get-started/install-plain-jvm/#limits-to-know">On Log4j 2</a>.</p>
 </div>
 <h2 id="what-a-rule-matches">What a rule matches<a class="headerlink" href="#what-a-rule-matches" title="Permanent link">&para;</a></h2>
 <p>A rule is attached to one logger and applies to that logger's events and its descendants'

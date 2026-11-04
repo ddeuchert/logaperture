@@ -92,6 +92,11 @@
             
             
   
+    This is the <strong>development</strong> guide: it documents work in progress on the
+    <code>develop</code> branch. Not everything here is available yet, in a release or in a build you make
+    from the repository. For example, running <code>logctl</code> through JBang needs a published release.
+    Choose a released version from the version menu for what you can use today.
+  
 
           </div>
           
@@ -533,6 +538,8 @@
       
         
       
+        
+      
     
     
     
@@ -649,6 +656,34 @@
     
   
     Install on Quarkus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/install-tomcat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on Tomcat
   
 
     
@@ -2078,10 +2113,12 @@
 <code>top</code> measures, and <code>doctor</code> checks the configuration. Neither changes anything.</p>
 <div class="admonition info">
 <p class="admonition-title">Not on Logback yet</p>
-<p><code>top</code> and <code>doctor</code> need <code>java.util.logging</code> or JBoss LogManager: WildFly, Quarkus, or (from 1.1)
-a plain JVM that logs through <code>java.util.logging</code>. On a plain JVM with Logback they report
-nothing yet. On <code>java.util.logging</code>, <code>top</code> counts what the JDK's <code>FileHandler</code> writes, but
-<code>doctor</code> can't check that file's size limits or its disk: the JDK keeps them private.</p>
+<p><code>top</code> and <code>doctor</code> need <code>java.util.logging</code>, JBoss LogManager or Log4j 2: WildFly, Quarkus, or (from
+1.1) a plain JVM that logs through <code>java.util.logging</code> or Log4j 2. On a plain JVM with Logback they
+report nothing yet. On <code>java.util.logging</code>, <code>top</code> counts what the JDK's <code>FileHandler</code> writes, but
+<code>doctor</code> can't check that file's size limits or its disk: the JDK keeps them private. On Log4j 2
+(from 1.1), <code>top</code> does not count what Log4j writes yet, and <code>doctor</code> checks the file of a plain <code>File</code>
+appender but not a <code>RollingFile</code>.</p>
 </div>
 <p>The output on this page is from WildFly 26.1.3.</p>
 <h2 id="which-loggers-write-the-most">Which loggers write the most<a class="headerlink" href="#which-loggers-write-the-most" title="Permanent link">&para;</a></h2>

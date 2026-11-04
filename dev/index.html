@@ -90,6 +90,11 @@
             
             
   
+    This is the <strong>development</strong> guide: it documents work in progress on the
+    <code>develop</code> branch. Not everything here is available yet, in a release or in a build you make
+    from the repository. For example, running <code>logctl</code> through JBang needs a published release.
+    Choose a released version from the version menu for what you can use today.
+  
 
           </div>
           
@@ -633,6 +638,8 @@
       
         
       
+        
+      
     
     
     
@@ -749,6 +756,34 @@
     
   
     Install on Quarkus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="get-started/install-tomcat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on Tomcat
   
 
     
@@ -2144,11 +2179,13 @@ the WildFly console; <code>logctl</code> runs below.</p>
 <th>WildFly, standalone, 26.1 and later</th>
 <th>Plain <code>java -jar</code> with Logback</th>
 <th>Plain <code>java -jar</code> with <code>java.util.logging</code> (from 1.1)</th>
+<th>Log4j 2, 2.20.0 and later (from 1.1)</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Change and reset logger levels</td>
+<td>✓</td>
 <td>✓</td>
 <td>✓</td>
 <td>✓</td>
@@ -2158,9 +2195,11 @@ the WildFly console; <code>logctl</code> runs below.</p>
 <td>✓</td>
 <td>—</td>
 <td>✓</td>
+<td>✓ (by appender name)</td>
 </tr>
 <tr>
 <td>Vendor defaults file: levels</td>
+<td>✓</td>
 <td>✓</td>
 <td>✓</td>
 <td>✓</td>
@@ -2170,9 +2209,11 @@ the WildFly console; <code>logctl</code> runs below.</p>
 <td>✓</td>
 <td>—</td>
 <td>✓</td>
+<td>✓</td>
 </tr>
 <tr>
 <td>Recipes</td>
+<td>✓</td>
 <td>✓</td>
 <td>✓</td>
 <td>✓</td>
@@ -2182,23 +2223,27 @@ the WildFly console; <code>logctl</code> runs below.</p>
 <td>✓</td>
 <td>—</td>
 <td>✓</td>
+<td>✓ (<code>trim</code> for text layouts, and not on 2.25.0 to 2.25.3)</td>
 </tr>
 <tr>
 <td><code>top</code></td>
 <td>✓</td>
 <td>—</td>
 <td>✓</td>
+<td>—</td>
 </tr>
 <tr>
 <td><code>doctor</code></td>
 <td>✓</td>
 <td>—</td>
 <td>✓ (no file-size or disk checks on the JDK's <code>FileHandler</code>)</td>
+<td>✓ (file checks for plain file appenders only)</td>
 </tr>
 <tr>
 <td>Storm detection</td>
 <td>✓</td>
 <td>—</td>
+<td>✓</td>
 <td>✓</td>
 </tr>
 <tr>
@@ -2206,17 +2251,25 @@ the WildFly console; <code>logctl</code> runs below.</p>
 <td>✓</td>
 <td>✓</td>
 <td>✓</td>
+<td>✓</td>
 </tr>
 </tbody>
 </table>
-<p>Not supported in 1.0: WildFly domain mode, a plain JVM that logs through <code>java.util.logging</code>
-alone (from 1.1), Log4j 2 (from 1.1), Spring Boot, Tomcat (from 1.1, with Log4j 2 webapps), Jetty, Quarkus (from 1.1). Quarkus native images can never be supported:
-they have no JVM to attach an agent to.</p>
+<p>From 1.1, Log4j 2 is controlled wherever it lives: on the JVM's class path, or bundled inside the
+application: a <strong>Spring Boot fat jar</strong> on <code>spring-boot-starter-log4j2</code>, a <strong>Tomcat webapp</strong> that
+brings its own <code>log4j-core</code>, or a <strong>WildFly deployment</strong> that excludes the server's Log4j API. See
+<a href="get-started/install-plain-jvm/#on-log4j-2">plain JVM</a>,
+<a href="get-started/install-tomcat/">Tomcat</a> and
+<a href="get-started/install-wildfly/#a-deployment-with-its-own-log4j-2">WildFly</a>.</p>
+<p>Not supported: WildFly domain mode, Logback in a Spring Boot fat jar or a Tomcat webapp (planned),
+Spring Boot's own logging integration, Jetty, and Log4j 1 or reload4j. Quarkus is supported from
+1.1. Quarkus native images can never be supported: they have no JVM to attach an agent to.</p>
 <h2 id="where-to-start">Where to start<a class="headerlink" href="#where-to-start" title="Permanent link">&para;</a></h2>
 <ol>
 <li>Get it: the release zip, or Maven Central for a build: <a href="get-started/download/">Download</a>.</li>
 <li>Install the agent: <a href="get-started/install-wildfly/">on WildFly</a>,
-   <a href="get-started/install-quarkus/">on Quarkus</a> (from 1.1) or
+   <a href="get-started/install-quarkus/">on Quarkus</a> (from 1.1),
+   <a href="get-started/install-tomcat/">on Tomcat</a> (from 1.1) or
    <a href="get-started/install-plain-jvm/">on a plain JVM</a>.</li>
 <li>Try it for ten minutes: <a href="get-started/quick-start/">Quick start</a>.</li>
 <li>Learn what <code>reset</code> goes back to: <a href="concepts/configuration-layers/">Configuration layers</a>.</li>

@@ -92,6 +92,11 @@
             
             
   
+    This is the <strong>development</strong> guide: it documents work in progress on the
+    <code>develop</code> branch. Not everything here is available yet, in a release or in a build you make
+    from the repository. For example, running <code>logctl</code> through JBang needs a published release.
+    Choose a released version from the version menu for what you can use today.
+  
 
           </div>
           
@@ -533,6 +538,8 @@
       
         
       
+        
+      
     
     
     
@@ -649,6 +656,34 @@
     
   
     Install on Quarkus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/install-tomcat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on Tomcat
   
 
     
@@ -2823,7 +2858,7 @@ logctl<span class="w"> </span>disable<span class="w"> </span>storms
 <div class="highlight"><pre><span></span><code>logctl attach [&lt;pid&gt;] [--vendor-defaults &lt;file&gt;] [--storm-detection on|off] [--agent-jar &lt;file&gt;]
 </code></pre></div>
 <p>Loads the LogAperture agent into a JVM that was started without <code>-javaagent</code>, so you can use <code>logctl</code> on it without a restart. Without a PID, on a terminal, it lists the JVMs it can attach to and asks which; otherwise it needs the PID.</p>
-<p>The agent starts when the application first logs through Logback or <code>java.util.logging</code>, which is usually already. <code>attach</code> waits up to ten seconds and says whether it is active. A JVM that already runs LogAperture is left alone, and that is not an error.</p>
+<p>The agent starts when the application first logs through Logback, <code>java.util.logging</code> or Log4j 2, which is usually already. <code>attach</code> waits up to ten seconds and says whether it is active. A JVM that already runs LogAperture is left alone, and that is not an error.</p>
 <p>An attach lasts until the JVM stops. To keep LogAperture, add <code>-javaagent</code> to its launch line. A JVM started with <code>-XX:-EnableDynamicAgentLoading</code> refuses, and Java 21 and later print a warning on the JVM's own standard error.</p>
 <p>The agent jar is the one carried inside <code>logctl</code>, unless a newer one of the same major version sits next to it. Loading code into another process is a bigger step than the other commands: you can only do it to a JVM you could attach a debugger to.</p>
 <p><strong>Options</strong></p>

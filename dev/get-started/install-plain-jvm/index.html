@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://logaperture.org/dev/get-started/install-plain-jvm/">
       
       
-        <link rel="prev" href="../install-quarkus/">
+        <link rel="prev" href="../install-tomcat/">
       
       
         <link rel="next" href="../quick-start/">
@@ -91,6 +91,11 @@
           <div class="md-banner__inner md-grid md-typeset">
             
             
+  
+    This is the <strong>development</strong> guide: it documents work in progress on the
+    <code>develop</code> branch. Not everything here is available yet, in a release or in a build you make
+    from the repository. For example, running <code>logctl</code> through JBang needs a published release.
+    Choose a released version from the version menu for what you can use today.
   
 
           </div>
@@ -535,6 +540,8 @@
       
         
       
+        
+      
     
     
     
@@ -671,6 +678,34 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../install-tomcat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on Tomcat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -774,6 +809,56 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#on-log4j-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Log4j 2
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="On Log4j 2">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#when-something-else-changes-the-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When something else changes the level
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limits-to-know" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limits to know
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-spring-boot-fat-jar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A Spring Boot fat jar
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2076,6 +2161,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#on-log4j-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On Log4j 2
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="On Log4j 2">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#when-something-else-changes-the-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When something else changes the level
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limits-to-know" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limits to know
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-spring-boot-fat-jar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A Spring Boot fat jar
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#several-applications-on-one-machine" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2119,13 +2254,14 @@
 
 <h1 id="install-on-a-plain-jvm">Install on a plain JVM<a class="headerlink" href="#install-on-a-plain-jvm" title="Permanent link">&para;</a></h1>
 <p>For an application started with <code>java -jar</code> that logs through <strong>Logback</strong> or, from 1.1, through
-<strong><code>java.util.logging</code></strong> (JUL). You add the agent to the <code>java</code> command and restart once.</p>
+<strong><code>java.util.logging</code></strong> (JUL) or <strong>Log4j 2</strong>. You add the agent to the <code>java</code> command and restart once.</p>
 <div class="admonition info">
 <p class="admonition-title">Logback: level control only</p>
 <p>With Logback, LogAperture changes and resets logger levels, and applies the level settings of
 vendor defaults files and recipes. Handler levels, <code>drop</code> and <code>trim</code> rules, <code>top</code>, <code>doctor</code> and
-storm detection need <code>java.util.logging</code>. An application on <code>java.util.logging</code> gets all of them,
-as on WildFly. See the <a href="../../#what-10-supports">support table</a>.</p>
+storm detection need <code>java.util.logging</code> or Log4j 2. An application on <code>java.util.logging</code> gets all of
+them, as on WildFly; Log4j 2 gets all but <code>top</code> (see <a href="#on-log4j-2">On Log4j 2</a>). See the
+<a href="../../#what-10-supports">support table</a>.</p>
 </div>
 <p>If Logback is on the application's class path, LogAperture uses Logback, even if some code also
 logs through <code>java.util.logging</code>. With <code>jul-to-slf4j</code> those records reach Logback and are
@@ -2133,7 +2269,7 @@ controlled there.</p>
 <h2 id="what-you-need">What you need<a class="headerlink" href="#what-you-need" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>JDK 17, 21 or 25</strong> running the application, which logs through Logback (directly or through
-  SLF4J) or through <code>java.util.logging</code>.</li>
+  SLF4J), through <code>java.util.logging</code>, or through <strong>Log4j 2.20.0 or later</strong>.</li>
 <li>A <strong>JDK</strong>, not just a JRE, wherever you run <code>logctl</code>.</li>
 <li><code>logctl</code> runs <strong>on the same machine and as the same operating-system user</strong> as the application.</li>
 </ul>
@@ -2171,8 +2307,8 @@ logctl<span class="w"> </span>list<span class="w"> </span>loggers<span class="w"
 </code></pre></div>
 <p><code>env</code> shows the agent's version and where it keeps its state file. The application's own log
 also has one line from LogAperture at startup, <code>LogAperture &lt;version&gt; active (JVM)</code>. <code>env</code> also names
-the logging backend: <code>Logging backend    Logback 1.5.13</code>, or on <code>java.util.logging</code>,
-<code>Logging backend    java.util.logging (JUL)</code>.
+the logging backend: <code>Logging backend    Logback 1.5.13</code>, on <code>java.util.logging</code>,
+<code>Logging backend    java.util.logging (JUL)</code>, or on Log4j 2, <code>Logging backend    Log4j 2 2.25.5</code>.
 <code>list loggers --show-all</code> lists the application's loggers and their levels.</p>
 <p>Then change one for a few minutes and watch the log:</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>com.example<span class="w"> </span>DEBUG<span class="w"> </span><span class="k">for</span><span class="w"> </span>5m
@@ -2208,6 +2344,89 @@ handler console → AUTO, currently DEBUG   (follows com.example)
 is on.</p>
 <p>If the application re-reads its configuration (<code>LogManager.readConfiguration()</code>), your changes are
 put back straight away, on the new handlers the JDK creates.</p>
+<h2 id="on-log4j-2">On Log4j 2<a class="headerlink" href="#on-log4j-2" title="Permanent link">&para;</a></h2>
+<p>From 1.1, LogAperture controls a Log4j 2 of <strong>2.20.0 or later</strong>. It finds Log4j wherever the
+application keeps it: on the JVM's class path, or inside a Spring Boot fat jar (next section). It never
+touches Log4j before the application's own configuration has started, so <code>log4j2.xml</code>, the
+<code>log4j2.configurationFile</code> property and a configuration the application sets in <code>main()</code> all apply as
+they always did.</p>
+<p>Almost everything works as on WildFly. <code>top</code> does not count Log4j 2 output yet (it says
+<code>No byte-volume measurements available yet.</code>), and <code>doctor</code> and <code>trim</code> have the limits under
+<a href="#limits-to-know">Limits to know</a>. The output below is from a small application on Log4j 2.25.5 with a
+<code>Console</code> appender, a plain <code>File</code> appender named <code>App</code>, and a <code>com.example.Audit</code> logger that writes
+only to <code>App</code>:</p>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>list<span class="w"> </span>handlers<span class="w"> </span>--show-all
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>CONTEXT        HANDLER           LEVEL  PERSISTS  TARGET                 OVERRIDE
+log4j2:log4j2  Console           ALL    no        —                      —
+log4j2:log4j2  App               ALL    file      /var/log/demo/app.log  —
+log4j2:log4j2  ALL_HANDLERS      —      —         —                      —
+log4j2:log4j2  DEFAULT_HANDLERS  —      —         (auto: Console)        —
+system         console           INFO   no        —                      —
+system         ALL_HANDLERS      —      —         —                      —
+system         DEFAULT_HANDLERS  —      —         (auto: console)        —
+</code></pre></div>
+<ul>
+<li><strong>A handler is an appender, named as in <code>log4j2.xml</code></strong> (<code>Console</code>, <code>App</code>). Its level is the level of the
+  appender's reference in each logger, and <code>logctl set handler Console WARN</code> sets it on every reference.
+  An appender with no level reports <code>ALL</code>: nothing is filtered. An appender that sits only behind an
+  <code>&lt;Async&gt;</code> appender is not listed: the <code>&lt;Async&gt;</code> appender is the handler, so give <em>its</em> name.</li>
+<li><strong><code>system</code> is the JDK's own logging</strong> (<code>java.util.logging</code>), which the connection <code>logctl</code> opens starts
+  using. It has no application loggers; ignore it. A <code>set logger</code> goes to every context, so its rows appear
+  under both.</li>
+<li><strong>Logger levels, <code>set logger</code>, rules and <code>doctor</code> work as in the rest of this guide.</strong> An override
+  survives Log4j re-reading its configuration (a <code>monitorInterval</code> reload, Spring Boot applying its
+  settings): it is put back straight away, and <code>logctl status</code> still shows it.</li>
+</ul>
+<div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>com.example.Worker<span class="w"> </span>DEBUG<span class="w"> </span><span class="k">for</span><span class="w"> </span>30m<span class="w"> </span>--reason<span class="w"> </span>INC-123
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>com.example.Worker → DEBUG   (FOR, reverts 23:04:17 local — in 29m)
+handler console → AUTO, currently DEBUG   (follows com.example.Worker)
+</code></pre></div>
+<p>Here only the JDK's <code>console</code> needed to follow: the Log4j <code>Console</code> appender has no level, so it never
+held the lines back.</p>
+<h3 id="when-something-else-changes-the-level">When something else changes the level<a class="headerlink" href="#when-something-else-changes-the-level" title="Permanent link">&para;</a></h3>
+<p>Spring Boot Actuator's <code>POST /actuator/loggers/&lt;name&gt;</code>, or the application calling
+<code>Configurator.setLevel</code>, changes a level without LogAperture. If that logger has an override, LogAperture
+puts the override back, records it in the <a href="../../reference/audit-log/">audit log</a>, and says so once a minute
+in the application's log:</p>
+<div class="highlight"><pre><span></span><code>[logaperture] WARN logger 'com.example.Worker' was changed to ERROR outside LogAperture, and the override on it was put back (DEBUG, FOR, set 8 s ago via jmx, reason: INC-123). 'logctl reset logger com.example.Worker' ends the override.
+</code></pre></div>
+<p>Actuator still answers <code>204</code>. A change made within five seconds of a Log4j reconfiguration is Spring
+Boot's own start-up settings, and is put back without the warning. When the override ends, the logger goes
+to the level that change set (<code>ERROR</code> here), not the one in the file. See
+<a href="../../concepts/tiers-and-expiry/#when-the-application-changes-a-level-itself">Tiers and expiry</a>.</p>
+<h3 id="limits-to-know">Limits to know<a class="headerlink" href="#limits-to-know" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>trim</code> works on text layouts</strong> (a <code>PatternLayout</code>), not on JSON or other structured layouts, which
+  are left alone. It does not work on <strong>Log4j 2.25.0 to 2.25.3</strong>: those versions render the exception
+  from the class itself, with no hook for LogAperture. Rules still count; <code>doctor</code> says so
+  (<code>log4j2.trim</code>). 2.24.x, 2.25.4 and later work.</li>
+<li><strong><code>list loggers</code> shows a logger only while the application holds it</strong> on Log4j 2.24.3 and later
+  (2.24.0 and earlier keep them). A logger the code looked up once and dropped is gone from the list after
+  a garbage collection; one kept in a <code>static final</code> field stays. <code>set logger</code> works on any name, and a logger declared in the configuration
+  is always listed.</li>
+<li><strong>A <code>drop</code> rule that matches on the message text</strong> formats the message once more to read it, so a
+  parameter's <code>toString()</code> runs an extra time. Rules on the logger, the level or the unformatted pattern
+  never do.</li>
+<li><strong><code>doctor</code></strong> checks the file of a plain <code>File</code>, <code>RandomAccessFile</code> or <code>MemoryMappedFile</code> appender for a
+  size cap and for disk space, and reports <code>handler.autoflush</code> for one that flushes every record (Log4j's
+  default). A <code>RollingFile</code> appender is not inspected.</li>
+<li><strong>Changing a handler level swaps the appender inside its logger</strong>: a log call at that instant is not
+  written to that appender, and it ends up last in the logger's list. Rare, and the same for the <code>trim</code>
+  wrapper LogAperture installs at start.</li>
+<li><strong>Older than 2.20.0</strong> is not controlled: the application logs as it always did and <code>logctl doctor</code>
+  says <code>log4j2.version</code>. See <a href="../../troubleshooting/#log4j-2">Troubleshooting</a>.</li>
+</ul>
+<h3 id="a-spring-boot-fat-jar">A Spring Boot fat jar<a class="headerlink" href="#a-spring-boot-fat-jar" title="Permanent link">&para;</a></h3>
+<p>A Spring Boot application on <code>spring-boot-starter-log4j2</code> keeps Log4j inside its jar, where the JVM's
+class path cannot see it. LogAperture finds it there and needs nothing extra on the command line:</p>
+<div class="highlight"><pre><span></span><code>java<span class="w"> </span>-javaagent:/opt/logaperture/lib/logaperture-agent.jar<span class="w"> </span>-jar<span class="w"> </span>myapp.jar
+</code></pre></div>
+<p>It was tried on Spring Boot 3.5 (Log4j 2.24.3) and 4.1 (2.25.5). <code>logging.level.*</code> in
+<code>application.properties</code> and Actuator's <code>/loggers</code> both work as above. Spring Boot on Logback in a fat jar
+is not supported yet. These setups are checked by hand and not yet by automated tests; if one doesn't
+work, <a href="https://github.com/ddeuchert/logaperture/issues">tell us</a>.</p>
 <h2 id="several-applications-on-one-machine">Several applications on one machine<a class="headerlink" href="#several-applications-on-one-machine" title="Permanent link">&para;</a></h2>
 <p><code>logctl</code> picks the JVM by itself when exactly one is running with the agent. With several, on a
 terminal it lists them to pick from; in a script, pass <code>--pid &lt;n&gt;</code>. See
@@ -2254,7 +2473,7 @@ whose path <code>logctl env</code> shows.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../install-quarkus/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Install on Quarkus">
+          <a href="../install-tomcat/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Install on Tomcat">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -2264,7 +2483,7 @@ whose path <code>logctl env</code> shows.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Install on Quarkus
+                Install on Tomcat
               </div>
             </div>
           </a>

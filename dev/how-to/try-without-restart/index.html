@@ -92,6 +92,11 @@
             
             
   
+    This is the <strong>development</strong> guide: it documents work in progress on the
+    <code>develop</code> branch. Not everything here is available yet, in a release or in a build you make
+    from the repository. For example, running <code>logctl</code> through JBang needs a published release.
+    Choose a released version from the version menu for what you can use today.
+  
 
           </div>
           
@@ -533,6 +538,8 @@
       
         
       
+        
+      
     
     
     
@@ -649,6 +656,34 @@
     
   
     Install on Quarkus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/install-tomcat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on Tomcat
   
 
     
@@ -2120,7 +2155,7 @@
 <h1 id="try-logaperture-without-a-restart">Try LogAperture without a restart<a class="headerlink" href="#try-logaperture-without-a-restart" title="Permanent link">&para;</a></h1>
 <p><code>logctl attach</code> loads the agent into a JVM that is already running, so you can try LogAperture on
 an application without changing its launch line or restarting it. It works for an application on
-Logback, on <code>java.util.logging</code>, and for a standalone WildFly.</p>
+Logback, on <code>java.util.logging</code>, on Log4j 2 (from 1.1), and for a standalone WildFly.</p>
 <p>It lasts until that JVM stops. To keep LogAperture, add the <code>-javaagent</code> option to the launch line
 as in the <a href="../../get-started/install-plain-jvm/">install guides</a>.</p>
 <p>With <a href="../run-with-jbang/">JBang</a> installed, the whole trial needs nothing else: write
@@ -2140,16 +2175,17 @@ JVM as it would after a normal start: <code>set logger</code>, <code>top</code>,
 <p>On a terminal, <code>logctl attach</code> without a process id lists the JVMs it can attach to and asks which.
 It asks even when there is only one, since the only other JVM on a machine is often an IDE or a build
 daemon. Off a terminal, or with <code>--json</code>, it prints the list and exits with code 4: name the JVM.</p>
+<p>On a Log4j 2 application the line ends <code>(Log4j 2 2.25.5)</code>, naming the version it found.</p>
 <h2 id="if-nothing-is-active-yet">If nothing is active yet<a class="headerlink" href="#if-nothing-is-active-yet" title="Permanent link">&para;</a></h2>
-<p>LogAperture starts when the application first logs through Logback or <code>java.util.logging</code>. For an
+<p>LogAperture starts when the application first logs through Logback, <code>java.util.logging</code> or Log4j 2. For an
 application that is already logging, that is at once. If the application has not logged yet,
 <code>attach</code> waits ten seconds and then says so:</p>
 <div class="highlight"><pre><span></span><code>The LogAperture agent is loaded in PID 1344371 but not active yet: it starts when the application
-first logs through Logback or java.util.logging. Run 'logctl status' once it has.
+first logs through Logback, java.util.logging or Log4j 2. Run 'logctl status' once it has.
 </code></pre></div>
 <p>The application's own standard error gets one line saying it is waiting. If a minute passes without
-the application logging through either, a second line says which backends LogAperture looked for.
-An application on another backend, such as Log4j 2, cannot be controlled.</p>
+the application logging through one of them, a second line says which backends LogAperture looked for.
+An application on another backend cannot be controlled.</p>
 <h2 id="attach-twice">Attach twice<a class="headerlink" href="#attach-twice" title="Permanent link">&para;</a></h2>
 <p>Attaching to a JVM that already runs LogAperture, from <code>-javaagent</code>, an earlier attach or the
 Quarkus extension, loads nothing and exits 0, so a script can run it without checking first:</p>

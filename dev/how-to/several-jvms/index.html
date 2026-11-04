@@ -92,6 +92,11 @@
             
             
   
+    This is the <strong>development</strong> guide: it documents work in progress on the
+    <code>develop</code> branch. Not everything here is available yet, in a release or in a build you make
+    from the repository. For example, running <code>logctl</code> through JBang needs a published release.
+    Choose a released version from the version menu for what you can use today.
+  
 
           </div>
           
@@ -533,6 +538,8 @@
       
         
       
+        
+      
     
     
     
@@ -649,6 +656,34 @@
     
   
     Install on Quarkus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/install-tomcat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on Tomcat
   
 
     
@@ -2084,7 +2119,9 @@ on the same machine, run by the same operating-system user.</p>
 <p><strong>None</strong>: it says so and exits with code 3:</p>
 <div class="highlight"><pre><span></span><code>No LogAperture-enabled JVM found. Start the application with -javaagent:logaperture-agent.jar.
 </code></pre></div>
-<p>Check that the JVM was started with the agent, and that you are the user it runs as.</p>
+<p>Check that the JVM was started with the agent, and that you are the user it runs as. A JVM that has
+the agent and a Log4j 2 older than 2.20.0 is still listed: <code>logctl doctor</code> says why it controls
+nothing (<code>log4j2.version</code>).</p>
 </li>
 <li>
 <p><strong>Several</strong>: on a terminal, it lists them as a numbered list to pick from. In a script, or with

@@ -92,6 +92,11 @@
             
             
   
+    This is the <strong>development</strong> guide: it documents work in progress on the
+    <code>develop</code> branch. Not everything here is available yet, in a release or in a build you make
+    from the repository. For example, running <code>logctl</code> through JBang needs a published release.
+    Choose a released version from the version menu for what you can use today.
+  
 
           </div>
           
@@ -533,6 +538,8 @@
       
         
       
+        
+      
     
     
     
@@ -649,6 +656,34 @@
     
   
     Install on Quarkus
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../get-started/install-tomcat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install on Tomcat
   
 
     
@@ -2159,6 +2194,12 @@ override, LogAperture puts the override back:</p>
   <code>source=verification-sweep</code>.</li>
 <li>On Logback 1.3.14, 1.4.14 or 1.5.x, as soon as the reload finishes. This puts back the levels
   LogAperture already had in place, so it writes no audit line.</li>
+<li>On Log4j 2 (from 1.1), as soon as Log4j reconfigures: a <code>monitorInterval</code> reload, or Spring Boot
+  applying its settings. A level changed by Spring Boot Actuator or by the application itself is put
+  back at once, audited with <code>source=verification-sweep</code>, and the application's log gets one warning a
+  minute per logger saying so. The level that change set becomes what <code>reset</code> goes back to, not the one
+  in the file, which would undo the application's own settings. See
+  <a href="../../get-started/install-plain-jvm/#when-something-else-changes-the-level">On Log4j 2</a>.</li>
 <li>Otherwise within the sweep interval, 30 seconds by default
   (<a href="../../reference/agent-options/"><code>logaperture.sweep.seconds</code></a>), audited with
   <code>source=verification-sweep</code>. That includes Logback 1.2.x, 1.3.0 and 1.4.0 when the file itself
