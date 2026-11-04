@@ -196,6 +196,16 @@ public final class BoundInstance {
             BindFailures.record(watch.framework(), owner, ownerName, describeFailure(reason, cause),
                     isVersionProblem(cause) ? BindFailures.Kind.VERSION
                             : gaveUp ? BindFailures.Kind.GAVE_UP : BindFailures.Kind.FAILED);
+            if (!gaveUp) {
+                // D1, D2: a real problem brings the control surface up so doctor can report it (and there is a
+                // row for it to report); a give-up (usually a framework the application never used) does not.
+                try {
+                    sink.unbound(watch.framework());
+                } catch (Throwable t) {
+                    Diagnostics.warn("LogAperture could not publish its control surface for the unbound "
+                            + watch.framework(), t);
+                }
+            }
         }
         release();
     }

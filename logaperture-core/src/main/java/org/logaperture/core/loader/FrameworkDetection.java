@@ -39,19 +39,25 @@ public final class FrameworkDetection {
     private FrameworkDetection() {
     }
 
+    /** What a start that does not care about a framework found and not bound does ({@link ContextSink#unbound}). */
+    private static final Consumer<AggregateLevelControl> NO_UNBOUND = operations -> { };
+
     /**
      * Starts scanning for {@code watches}. With none, starts nothing -- no thread.
      *
      * @param onContextReady the agent's "first context ready" callback, already wrapped in
      *                       {@link ContainerContextSink#once} and shared with the integration's own
+     * @param onUnbound      what to do when a framework is found and cannot be bound ({@link ContextSink#unbound})
      * @param agentLoader    the loader that holds the agent jar (and so the adapter class files)
      */
+    /** As above, with {@code onUnbound}: what to do when a framework is found and cannot be bound ({@link ContextSink#unbound}). */
     public static LoaderScanner start(Instrumentation inst, ContainerIntegration container,
                                       AggregateLevelControl aggregate, Consumer<AggregateLevelControl> onContextReady,
-                                      List<FrameworkWatch> watches, ClassLoader agentLoader) {
+                                      Consumer<AggregateLevelControl> onUnbound, List<FrameworkWatch> watches,
+                                      ClassLoader agentLoader) {
         Function<FrameworkWatch, BridgeSource> sources =
                 watch -> BridgeSource.underPrefix(agentLoader, BRIDGE_FOLDER + watch.framework());
-        return start(inst::getAllLoadedClasses, container, aggregate, onContextReady, watches, sources,
+        return start(inst::getAllLoadedClasses, container, aggregate, onContextReady, onUnbound, watches, sources,
                 ClassLoader.getSystemClassLoader(), LoaderScanner.Cadence.standard(), BoundInstance.Timing.standard());
     }
 
@@ -59,7 +65,16 @@ public final class FrameworkDetection {
                                AggregateLevelControl aggregate, Consumer<AggregateLevelControl> onContextReady,
                                List<FrameworkWatch> watches, Function<FrameworkWatch, BridgeSource> sources,
                                ClassLoader system, LoaderScanner.Cadence cadence, BoundInstance.Timing timing) {
-        ContextSink sink = new ContainerContextSink(container, aggregate, onContextReady);
+        return start(loadedClasses, container, aggregate, onContextReady, NO_UNBOUND, watches, sources, system,
+                cadence, timing);
+    }
+
+    static LoaderScanner start(Supplier<Class<?>[]> loadedClasses, ContainerIntegration container,
+                               AggregateLevelControl aggregate, Consumer<AggregateLevelControl> onContextReady,
+                               Consumer<AggregateLevelControl> onUnbound, List<FrameworkWatch> watches,
+                               Function<FrameworkWatch, BridgeSource> sources, ClassLoader system,
+                               LoaderScanner.Cadence cadence, BoundInstance.Timing timing) {
+        ContextSink sink = new ContainerContextSink(container, aggregate, onContextReady, onUnbound);
         FrameworkBinder binder = new FrameworkBinder(sources, system, sink, timing);
         LoaderScanner scanner = new LoaderScanner(loadedClasses, watches, binder, cadence);
         scanner.start();

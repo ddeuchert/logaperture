@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** doc/specs/logctl-attach.md #6: the lines an attach writes when LogAperture is not up yet. */
@@ -64,8 +65,12 @@ class AttachWatchTest {
 
     @Test
     void theMessagesNameTheBackends() {
-        assertTrue(AttachWatch.WAITING.contains("Logback") && AttachWatch.WAITING.contains("java.util.logging"));
-        assertTrue(AttachWatch.STILL_WAITING.contains("Log4j 2"));
+        assertTrue(AttachWatch.WAITING.contains("Logback") && AttachWatch.WAITING.contains("java.util.logging")
+                && AttachWatch.WAITING.contains("Log4j 2"));
+        assertTrue(AttachWatch.STILL_WAITING.contains("Log4j 2 (2.20 or later)"));
+        assertFalse(AttachWatch.STILL_WAITING.contains("cannot control it.") && AttachWatch.STILL_WAITING.contains("such as Log4j 2"),
+                "Log4j 2 is controlled now (#302)");
+        assertTrue(AttachWatch.STILL_WAITING.contains("logctl doctor"));
     }
 
     @Test

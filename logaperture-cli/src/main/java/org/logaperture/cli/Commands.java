@@ -65,6 +65,10 @@ final class Commands {
     private Commands() {
     }
 
+    /** doc/specs/surface-on-bind-failure.md D4: an empty list can mean the agent controls nothing, and doctor says why. */
+    static final String NO_LOGGERS_KNOWN = "No loggers known yet. LogAperture is running; if it controls no logging "
+            + "context in this JVM, `logctl doctor` says why.";
+
     static Command listLoggers(String filter, boolean showAll, boolean json) {
         return (mbean, out, in, interactive) -> {
             List<LoggerInfoData> matched = mbean.listLoggers(filter);
@@ -80,7 +84,7 @@ final class Commands {
             }
             if (rows.isEmpty()) {
                 if (matched.isEmpty()) {
-                    out.println(filter != null ? "No loggers match '" + filter + "'." : "No loggers known yet.");
+                    out.println(filter != null ? "No loggers match '" + filter + "'." : NO_LOGGERS_KNOWN);
                 } else if (filter != null) {
                     out.println("No loggers matching '" + filter + "' have an active override or vendor default.");
                 } else {

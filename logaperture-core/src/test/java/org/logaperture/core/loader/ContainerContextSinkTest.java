@@ -137,4 +137,25 @@ class ContainerContextSinkTest {
 
         assertEquals(1, published.get());
     }
+
+    /** doc/specs/surface-on-bind-failure.md D1: the sink brings the surface up for a framework found and not bound. */
+    @Test
+    void unbound_runsTheUnboundCallbackWithTheAggregate_andAFailureIsNotAnException() {
+        List<AggregateLevelControl> seen = new java.util.ArrayList<>();
+        ContainerContextSink sink = new ContainerContextSink(container, aggregate, ops -> { }, seen::add);
+        sink.unbound("log4j2");
+        assertEquals(List.of(aggregate), seen);
+        assertTrue(calls.isEmpty(), "no context was adopted");
+
+        ContainerContextSink failing = new ContainerContextSink(container, aggregate, ops -> { }, ops -> {
+            throw new IllegalStateException("no surface");
+        });
+        failing.unbound("log4j2"); // reported as a line, never thrown into the detector
+    }
+
+    @Test
+    void unbound_doesNothingWithTheDefaultCallback() {
+        new ContainerContextSink(container, aggregate, ops -> { }).unbound("log4j2");
+        assertTrue(calls.isEmpty());
+    }
 }

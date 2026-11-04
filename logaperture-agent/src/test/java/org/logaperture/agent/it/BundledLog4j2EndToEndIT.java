@@ -38,6 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * doc/specs/class-loader-detector.md "Acceptance" (fat jar) for the first consumer, Log4j 2
@@ -382,6 +383,11 @@ class BundledLog4j2EndToEndIT {
     }
 
     private Process launch(Path output) throws IOException {
+        return launch(output, BundledLog4j2FixtureApp.class.getName(), log4jJars());
+    }
+
+    /** The fixture {@code mainClass} on {@code log4jJars} (the cell's Log4j, or an older one for the too-old test). */
+    private Process launch(Path output, String mainClass, String log4jJars) throws IOException {
         latestOutput = output;
         String agentJar = System.getProperty("logaperture.agent.jar");
         assertNotNull(agentJar, "system property logaperture.agent.jar must point at the shaded jar");
@@ -404,13 +410,13 @@ class BundledLog4j2EndToEndIT {
                 System.getProperty("java.home") + "/bin/java",
                 "-javaagent:" + agentJar,
                 "-Dlogaperture.home=" + work.resolve("home"),
-                "-Dfixture.log4j.jars=" + log4jJars()));
+                "-Dfixture.log4j.jars=" + log4jJars));
         if ("async-loggers".equals(MODE)) {
             command.add("-Dlog4j2.contextSelector=org.apache.logging.log4j.core.async.AsyncLoggerContextSelector");
         }
         command.addAll(List.of(
                 "-cp", classPathWithoutLog4jAndLogback(),
-                BundledLog4j2FixtureApp.class.getName(),
+                mainClass,
                 config.toString()));
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.redirectErrorStream(true);
@@ -438,6 +444,92 @@ class BundledLog4j2EndToEndIT {
             }
         }
         return fileName(classPathEntry).startsWith("logaperture-adapter-log4j2-");
+    }
+
+    /** The Log4j 2.19.0 jars the build copied beside itself: below the floor (A10). */
+    private static String oldLog4jJars() {
+        Path dir = Path.of(System.getProperty("log4j2.old.dir"));
+        assertTrue(Files.isDirectory(dir), "the build copies Log4j 2.19.0 to " + dir);
+        return dir.resolve("log4j-api-2.19.0.jar") + File.pathSeparator + dir.resolve("log4j-core-2.19.0.jar");
+    }
+
+    /**
+     * What {@code logctl}'s discovery reads (doc/specs/cli-transport.md "Discovery"): the target's system properties,
+     * through a plain attach that starts nothing in it, so no JMX agent and none of the JUL loggers that starts.
+     */
+    private static String markerOf(long pid) throws Exception {
+        com.sun.tools.attach.VirtualMachine vm = com.sun.tools.attach.VirtualMachine.attach(String.valueOf(pid));
+        try {
+            return vm.getSystemProperties().getProperty("logaperture.version");
+        } finally {
+            vm.detach();
+        }
+    }
+
+    private static String awaitMarker(long pid, long seconds) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(seconds);
+        while (System.nanoTime() < deadline) {
+            String marker = markerOf(pid);
+            if (marker != null) {
+                return marker;
+            }
+            Thread.sleep(100);
+        }
+        return null;
+    }
+
+    /**
+     * doc/specs/surface-on-bind-failure.md D1: a Log4j below the floor is found and cannot be bound, and the control
+     * surface and the marker come up anyway, so discovery (no {@code --pid}) finds the JVM and {@code doctor} says why.
+     * Before this the marker was set only by a context, and a JVM whose only framework failed to bind read as "no
+     * LogAperture-enabled JVM found".
+     */
+    @Test
+    void aLog4jBelowTheFloor_bringsTheSurfaceUp_soDiscoveryFindsItAndDoctorSaysWhy() throws Exception {
+        assumeTrue("sync".equals(MODE) && "2.20.0".equals(VERSION),
+                "runs once, in the default cell (doc/specs/surface-on-bind-failure.md); cell: " + VERSION + ", " + MODE);
+        Path output = work.resolve("old.log");
+        Process app = launch(output, BundledLog4j2FixtureApp.class.getName(), oldLog4jJars());
+        String started = waitFor(output, "FIXTURE-READY");
+        assertTrue(started.contains("INFO fixture.Worker fixture app started"),
+                "the application logs under its own configuration:\n" + started);
+
+        // Before any JMX connection: a plain attach reads the marker, which is all discovery does.
+        String marker = awaitMarker(app.pid(), 15);
+        assertNotNull(marker, "the marker is set although no context was installed:\n" + fixtureOutput());
+        String text = waitFor(output, "no logging context yet");
+        assertTrue(text.contains("did not bind") && text.contains("2.19.0"), text);
+
+        LevelControlMXBean proxy = LevelControlEndToEndIT.pollForMxBeanProxy(
+                LevelControlEndToEndIT.attachAndConnect(app.pid()));
+        var rows = proxy.diagnose().stream().filter(f -> "log4j2.version".equals(f.getCheck())).toList();
+        assertEquals(1, rows.size(), "doctor says why: " + proxy.diagnose());
+        assertEquals("WARNING", rows.get(0).getSeverity());
+        assertTrue(rows.get(0).getSummary().contains("2.19.0"), rows.get(0).getSummary());
+        assertTrue(proxy.listLoggers("").stream().noneMatch(l -> String.valueOf(l.getContext()).startsWith("log4j2")),
+                "nothing of the old Log4j is controlled");
+    }
+
+    /**
+     * D2: a Log4j that was loaded and never started a context is a give-up, not a reason to publish: the marker stays
+     * unset (an unused {@code log4j-core} must not make the JVM look like a LogAperture JVM). An attach brings the
+     * surface up anyway, through the JDK's own JUL loggers, and {@code doctor} still carries the {@code INFO} row.
+     */
+    @Test
+    void aLog4jThatNeverStartsAContext_publishesNothingByItself_butDoctorStillHasTheRow() throws Exception {
+        assumeTrue("sync".equals(MODE) && "2.20.0".equals(VERSION),
+                "runs once, in the default cell (doc/specs/surface-on-bind-failure.md); cell: " + VERSION + ", " + MODE);
+        Path output = work.resolve("nocontext.log");
+        Process app = launch(output, BundledLog4j2NoContextFixtureApp.class.getName(), log4jJars());
+        waitFor(output, "FIXTURE-READY");
+        waitFor(output, "it has no started context"); // the detector waited 3 s for one, and gave up
+        assertEquals(null, markerOf(app.pid()), "a give-up publishes no surface:\n" + fixtureOutput());
+
+        LevelControlMXBean proxy = LevelControlEndToEndIT.pollForMxBeanProxy(
+                LevelControlEndToEndIT.attachAndConnect(app.pid()));
+        var rows = proxy.diagnose().stream().filter(f -> "log4j2.not-bound".equals(f.getCheck())).toList();
+        assertEquals(1, rows.size(), "doctor has the row once something publishes: " + proxy.diagnose());
+        assertEquals("INFO", rows.get(0).getSeverity());
     }
 
     private static String log4jJars() {

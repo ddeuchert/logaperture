@@ -67,7 +67,9 @@ class BoundInstanceTest {
     private final ContextSink sink = new ContextSink() {
         @Override public void add(ContextHandle context) { added.add(context.stableKey()); }
         @Override public void remove(ContextHandle context) { removed.add(context.stableKey()); }
+        @Override public void unbound(String framework) { unbound.add(framework); }
     };
+    private final List<String> unbound = new CopyOnWriteArrayList<>();
     private final ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
 
     @BeforeEach
@@ -214,8 +216,10 @@ class BoundInstanceTest {
         BoundInstance instance = start(new FixtureOwnerLoader(), quick, ADAPTER_CLASSES);
 
         await(instance::isClosed);
+        // isClosed flips before the line is printed and before the entry's close() runs (issue #314): wait for both
+        await(() -> FakeFrameworkState.closed.get() == 1);
+        await(() -> diagnosticsText().contains("did not bind"));
         assertTrue(added.isEmpty());
-        assertEquals(1, FakeFrameworkState.closed.get());
         String text = diagnosticsText();
         assertTrue(text.contains("found fake in"), text);
         assertTrue(text.contains("did not bind"), text);
@@ -277,6 +281,43 @@ class BoundInstanceTest {
         assertTrue(version.subject().contains("FixtureOwnerLoader"), version.subject());
         assertEquals(null, version.context(), "process-wide: no context");
         assertTrue(findings.get(1).summary().contains("framework cannot be bound"), findings.get(1).summary());
+    }
+
+    /** doc/specs/surface-on-bind-failure.md D1, D2: a real problem tells the sink; a give-up and a success do not. */
+    @Test
+    void aTooOldFrameworkAndAThrowingOne_tellTheSink_butAGiveUpAndASuccessDoNot() throws Exception {
+        FakeFrameworkState.tooOld.set(true);
+        start(new FixtureOwnerLoader(), FAST, ADAPTER_CLASSES);
+        await(() -> unbound.size() == 1);
+
+        FakeFrameworkState.tooOld.set(false);
+        FakeFrameworkState.readyThrows.set(true);
+        start(new FixtureOwnerLoader(), FAST, ADAPTER_CLASSES);
+        await(() -> unbound.size() == 2);
+        assertEquals(List.of("fake", "fake"), unbound);
+
+        FakeFrameworkState.readyThrows.set(false);
+        BoundInstance.Timing quick = new BoundInstance.Timing(Duration.ofMillis(5), Duration.ofMillis(100));
+        start(new FixtureOwnerLoader(), quick, ADAPTER_CLASSES); // never ready: gives up
+        await(() -> BindFailures.findings().size() == 3);
+        FakeFrameworkState.ready.set(true);
+        await(start(new FixtureOwnerLoader(), FAST, ADAPTER_CLASSES)::isBound);
+        assertEquals(2, unbound.size(), "a give-up and a bind that worked do not publish a surface");
+    }
+
+    @Test
+    void aSinkThatThrowsFromUnbound_doesNotBreakTheInstance() throws Exception {
+        ContextSink throwing = new ContextSink() {
+            @Override public void add(ContextHandle context) { }
+            @Override public void remove(ContextHandle context) { }
+            @Override public void unbound(String framework) { throw new IllegalStateException("no surface"); }
+        };
+        FakeFrameworkState.tooOld.set(true);
+        BoundInstance instance = BoundInstance.start(WATCH, new FixtureOwnerLoader(), ADAPTER_CLASSES,
+                ClassLoader.getSystemClassLoader(), throwing, FAST);
+        await(() -> BindFailures.findings().size() == 1);
+        await(instance::isClosed);
+        await(() -> diagnosticsText().contains("could not publish its control surface"));
     }
 
     @Test

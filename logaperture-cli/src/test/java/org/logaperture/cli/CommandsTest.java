@@ -111,6 +111,7 @@ class CommandsTest {
         captured.reset();
         assertEquals(CliError.OK, run(Commands.listLoggers(null, true, false)));
         assertTrue(output().contains("No loggers known yet."));
+        assertTrue(output().contains("`logctl doctor` says why"), "an empty list can mean nothing is controlled");
     }
 
     @Test
