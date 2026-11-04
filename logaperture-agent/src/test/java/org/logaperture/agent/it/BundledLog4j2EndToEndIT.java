@@ -355,12 +355,23 @@ class BundledLog4j2EndToEndIT {
             Thread.sleep(100);
         }
         fail("the agent never listed " + name + ": the Log4j in the app's own class loader was not bound\n"
+                + "what the agent lists: " + describeListing(proxy) + "\n"
                 + "fixture output:\n" + fixtureOutput());
         throw new AssertionError("unreachable");
     }
 
     /** The latest fixture's output file, so a failure can show what the application and the agent printed. */
     private static volatile Path latestOutput;
+
+    private static String describeListing(LevelControlMXBean proxy) {
+        try {
+            return proxy.listLoggers("").stream()
+                    .map(l -> l.getContext() + ":" + l.getName() + "=" + l.getEffectiveLevel()).toList() + " ("
+                    + proxy.environmentReport().getBackendName() + ")";
+        } catch (RuntimeException e) {
+            return "(listing failed: " + e + ")";
+        }
+    }
 
     private static String fixtureOutput() {
         try {
