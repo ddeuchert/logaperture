@@ -38,6 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * doc/specs/class-loader-detector.md "Acceptance" (fat jar) for the first consumer, Log4j 2
@@ -485,6 +486,8 @@ class BundledLog4j2EndToEndIT {
      */
     @Test
     void aLog4jBelowTheFloor_bringsTheSurfaceUp_soDiscoveryFindsItAndDoctorSaysWhy() throws Exception {
+        assumeTrue("sync".equals(MODE) && "2.20.0".equals(VERSION),
+                "runs once, in the default cell (doc/specs/surface-on-bind-failure.md); cell: " + VERSION + ", " + MODE);
         Path output = work.resolve("old.log");
         Process app = launch(output, BundledLog4j2FixtureApp.class.getName(), oldLog4jJars());
         String started = waitFor(output, "FIXTURE-READY");
@@ -514,10 +517,12 @@ class BundledLog4j2EndToEndIT {
      */
     @Test
     void aLog4jThatNeverStartsAContext_publishesNothingByItself_butDoctorStillHasTheRow() throws Exception {
+        assumeTrue("sync".equals(MODE) && "2.20.0".equals(VERSION),
+                "runs once, in the default cell (doc/specs/surface-on-bind-failure.md); cell: " + VERSION + ", " + MODE);
         Path output = work.resolve("nocontext.log");
         Process app = launch(output, BundledLog4j2NoContextFixtureApp.class.getName(), log4jJars());
         waitFor(output, "FIXTURE-READY");
-        Thread.sleep(5_000); // the detector waits 3 s for a started context, then gives up
+        waitFor(output, "it has no started context"); // the detector waited 3 s for one, and gave up
         assertEquals(null, markerOf(app.pid()), "a give-up publishes no surface:\n" + fixtureOutput());
 
         LevelControlMXBean proxy = LevelControlEndToEndIT.pollForMxBeanProxy(

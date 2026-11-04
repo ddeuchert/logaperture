@@ -39,19 +39,17 @@ public final class FrameworkDetection {
     private FrameworkDetection() {
     }
 
+    /** What a start that does not care about a framework found and not bound does ({@link ContextSink#unbound}). */
+    private static final Consumer<AggregateLevelControl> NO_UNBOUND = operations -> { };
+
     /**
      * Starts scanning for {@code watches}. With none, starts nothing -- no thread.
      *
      * @param onContextReady the agent's "first context ready" callback, already wrapped in
      *                       {@link ContainerContextSink#once} and shared with the integration's own
+     * @param onUnbound      what to do when a framework is found and cannot be bound ({@link ContextSink#unbound})
      * @param agentLoader    the loader that holds the agent jar (and so the adapter class files)
      */
-    public static LoaderScanner start(Instrumentation inst, ContainerIntegration container,
-                                      AggregateLevelControl aggregate, Consumer<AggregateLevelControl> onContextReady,
-                                      List<FrameworkWatch> watches, ClassLoader agentLoader) {
-        return start(inst, container, aggregate, onContextReady, operations -> { }, watches, agentLoader);
-    }
-
     /** As above, with {@code onUnbound}: what to do when a framework is found and cannot be bound ({@link ContextSink#unbound}). */
     public static LoaderScanner start(Instrumentation inst, ContainerIntegration container,
                                       AggregateLevelControl aggregate, Consumer<AggregateLevelControl> onContextReady,
@@ -67,7 +65,7 @@ public final class FrameworkDetection {
                                AggregateLevelControl aggregate, Consumer<AggregateLevelControl> onContextReady,
                                List<FrameworkWatch> watches, Function<FrameworkWatch, BridgeSource> sources,
                                ClassLoader system, LoaderScanner.Cadence cadence, BoundInstance.Timing timing) {
-        return start(loadedClasses, container, aggregate, onContextReady, operations -> { }, watches, sources, system,
+        return start(loadedClasses, container, aggregate, onContextReady, NO_UNBOUND, watches, sources, system,
                 cadence, timing);
     }
 

@@ -36,6 +36,8 @@ import java.util.function.Consumer;
  */
 public final class ContainerContextSink implements ContextSink {
 
+    private static final Consumer<AggregateLevelControl> NO_UNBOUND = operations -> { };
+
     private final ContainerIntegration container;
     private final AggregateLevelControl aggregate;
     private final Consumer<AggregateLevelControl> onContextReady;
@@ -51,7 +53,7 @@ public final class ContainerContextSink implements ContextSink {
      */
     public ContainerContextSink(ContainerIntegration container, AggregateLevelControl aggregate,
                                 Consumer<AggregateLevelControl> onContextReady) {
-        this(container, aggregate, onContextReady, operations -> { });
+        this(container, aggregate, onContextReady, NO_UNBOUND);
     }
 
     /**

@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * The start-up work every delivery route shares (doc/specs/quarkus-extension.md #10): the agent
@@ -156,8 +157,8 @@ public final class EngineStartup {
             LibraryRecipeScanner recipeScanner) {
         return operations -> {
             auditVendorDefaults(vendorDefaults, auditLog);
-            publishControlSurface(containerId, delivery, operations,
-                    recipes(recipeScanner, policy, vendorDefaults, operations), vendorDefaults, false);
+            Supplier<RecipeOperations> recipes = () -> recipes(recipeScanner, policy, vendorDefaults, operations);
+            publishControlSurface(containerId, delivery, operations, recipes, vendorDefaults, false);
         };
     }
 
@@ -169,8 +170,10 @@ public final class EngineStartup {
      */
     public static Consumer<AggregateLevelControl> onSurfaceNeeded(String containerId, Delivery delivery,
             CapabilityPolicy policy, VendorDefaults vendorDefaults, LibraryRecipeScanner recipeScanner) {
-        return operations -> publishControlSurface(containerId, delivery, operations,
-                recipes(recipeScanner, policy, vendorDefaults, operations), vendorDefaults, true);
+        return operations -> {
+            Supplier<RecipeOperations> recipes = () -> recipes(recipeScanner, policy, vendorDefaults, operations);
+            publishControlSurface(containerId, delivery, operations, recipes, vendorDefaults, true);
+        };
     }
 
     /**
@@ -266,17 +269,34 @@ public final class EngineStartup {
         return line.toString();
     }
 
-    /** Idempotent: the marker says it is up, and a second call (a context after a failed bind) does nothing. */
+    /** Whether this JVM's control surface is registered, and whether it came up before any context (guarded by the class). */
+    private static boolean surfaceUp;
+    private static boolean surfaceUpWithNoContext;
+
+    /**
+     * Registers the control surface and sets the marker, once. A second call registers nothing (and builds no
+     * recipes: they are asked for only when needed). The one thing a later call does: the first real context
+     * after a surface that came up with none prints the real startup line, which carries what only a context
+     * knows (the restored settings, the storm-detection state), instead of leaving "no logging context yet" as the
+     * last word.
+     */
     private static synchronized void publishControlSurface(String containerId, Delivery delivery,
-            AggregateLevelControl operations, RecipeOperations recipes, VendorDefaults vendorDefaults,
+            AggregateLevelControl operations, Supplier<RecipeOperations> recipes, VendorDefaults vendorDefaults,
             boolean noContext) {
-        if (System.getProperty(VERSION_PROPERTY) != null) {
+        if (surfaceUp) {
+            if (surfaceUpWithNoContext && !noContext) {
+                surfaceUpWithNoContext = false;
+                Diagnostics.notice(banner(version(), containerId, delivery, vendorDefaults,
+                        operations.restoredSettings(), operations.stormDetectionSwitch().current()));
+            }
             return;
         }
         try {
             JmxRegistrar.register(operations, operations, operations, operations, operations, operations, operations,
-                    operations, recipes); // AggregateLevelControl implements all eight operation interfaces
+                    operations, recipes.get()); // AggregateLevelControl implements all eight operation interfaces
             System.setProperty(VERSION_PROPERTY, version());
+            surfaceUp = true;
+            surfaceUpWithNoContext = noContext;
             Diagnostics.notice(noContext
                     ? banner(version(), containerId, delivery, vendorDefaults, 0, NO_CONTEXT_YET)
                     : banner(version(), containerId, delivery, vendorDefaults, operations.restoredSettings(),
@@ -291,7 +311,9 @@ public final class EngineStartup {
      * and clears the marker and the claim, so the next start in this JVM -- a Quarkus dev-mode
      * restart -- publishes afresh. Never throws.
      */
-    public static void withdrawControlSurface() {
+    public static synchronized void withdrawControlSurface() {
+        surfaceUp = false;
+        surfaceUpWithNoContext = false;
         try {
             if (java.lang.management.ManagementFactory.getPlatformMBeanServer().isRegistered(JmxRegistrar.OBJECT_NAME)) {
                 JmxRegistrar.unregister();
