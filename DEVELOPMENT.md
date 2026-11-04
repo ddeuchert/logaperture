@@ -123,6 +123,23 @@ mvn verify        # full reactor: compile, unit tests, integration tests
 - Work on one module: `mvn -pl <module> -am test` (`-am` also builds its
   dependencies).
 
+### Log4j 2: one cell of the version matrix
+
+The Log4j 2 adapter is tested on a set of Log4j versions, each in three modes (`sync`, `async-loggers`,
+`async-appender`): a short set on every pull request (the `log4j2` job in `ci.yml`), the full set and the newest 2.x
+release every night (`log4j2-nightly.yml`); see [`doc/specs/log4j2-adapter.md`](doc/specs/log4j2-adapter.md), Slice 8. To
+reproduce a failing cell:
+
+```sh
+./mvnw -B -pl logaperture-adapter-log4j2,logaperture-agent -am verify \
+    -Dlog4j2.version=2.25.5 -Dlog4j2.mode=async-loggers \
+    -Dtest='org/logaperture/adapter/log4j2/*Test' -Dit.test='BundledLog4j2*IT' \
+    -Dsurefire.failIfNoSpecifiedTests=false -Dfailsafe.failIfNoSpecifiedTests=false
+```
+
+Leave out `-Dlog4j2.version` and `-Dlog4j2.mode` for the defaults (the floor, 2.20.0, `sync`). Trim is expected to be off on
+2.25.0 to 2.25.3 and the test asserts that, so a Log4j that fixes or newly has the bug fails its cell.
+
 ## User guide
 
 The user guide published at [logaperture.org](https://logaperture.org/) is Markdown in `guide/`,

@@ -82,6 +82,47 @@ jobs:
           path: '**/target/*-reports/'
           if-no-files-found: ignore
 
+  log4j2:
+    # doc/specs/log4j2-adapter.md A11 and Slice 8 (M8-1, M8-3): the adapter module's tests and
+    # BundledLog4j2*IT, in a real process, on a short set of Log4j versions. The floor (2.20.0) is listed
+    # explicitly, not left to the default; 2.25.3 and 2.25.5 are both ends of the trim exception (A4).
+    # 2.25.5 also runs in the two asynchronous modes. The full set is the nightly (log4j2-nightly.yml).
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {log4j2-version: '2.20.0', mode: sync}
+          - {log4j2-version: '2.24.3', mode: sync}
+          - {log4j2-version: '2.25.3', mode: sync}
+          - {log4j2-version: '2.25.5', mode: sync}
+          - {log4j2-version: '2.25.5', mode: async-loggers}
+          - {log4j2-version: '2.25.5', mode: async-appender}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Log4j ${{ matrix.log4j2-version }}, ${{ matrix.mode }}
+        run: |
+          ./mvnw -B --no-transfer-progress -pl logaperture-adapter-log4j2,logaperture-agent -am verify \
+            -Dlog4j2.version=${{ matrix.log4j2-version }} -Dlog4j2.mode=${{ matrix.mode }} \
+            -Dtest='org/logaperture/adapter/log4j2/*Test' -Dit.test='BundledLog4j2*IT' \
+            -Dsurefire.failIfNoSpecifiedTests=false -Dfailsafe.failIfNoSpecifiedTests=false
+
+      - name: Upload failure surefire/failsafe reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: log4j2-test-reports-${{ matrix.log4j2-version }}-${{ matrix.mode }}
+          path: '**/target/*-reports/'
+          if-no-files-found: ignore
+
   bench-smoke:
     # doc/specs/overhead-benchmarks.md Decision #4: every benchmark runs once, with no threshold,
     # so a scenario that throws or silently installs nothing fails here. The published numbers
