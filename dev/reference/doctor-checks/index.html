@@ -2653,6 +2653,8 @@ nothing was written during the measurement.</p>
 class loader the Log4j was found in (its class and name and an identity, so two web applications' loaders
 are two rows) and the version. It is process-wide, with no context, because
 nothing was bound.</p>
+<p>LogAperture brings its control surface up for it, so <code>logctl doctor</code> finds the JVM without <code>--pid</code> even when this
+Log4j is the only logging framework in it.</p>
 <p><strong>Fix:</strong> upgrade Log4j to 2.20.0 or later.</p>
 <h3 id="log4j2not-bound"><code>log4j2.not-bound</code><a class="headerlink" href="#log4j2not-bound" title="Permanent link">&para;</a></h3>
 <p>LogAperture found a Log4j 2 and could not bind it. <code>WARNING</code> when its adapter could not be created
