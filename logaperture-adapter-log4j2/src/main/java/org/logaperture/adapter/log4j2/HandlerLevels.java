@@ -33,6 +33,9 @@ import java.util.WeakHashMap;
  * the file declared (H1). So the reference gives the <em>file's</em> level, and this table the level set
  * since; a slot with no entry is at the file's.
  *
+ * <p>The table is as current as the changes made through this adapter: code that swaps an appender's level
+ * itself ({@code addAppender(a, level, f)} from elsewhere) is not seen.
+ *
  * <p>Keyed weakly by {@code LoggerConfig} ({@code LoggerConfig} does not override {@code equals}, so that is
  * identity): a reconfiguration builds new {@code LoggerConfig}s,
  * and the old table goes with them, which is what a swap does to a handler level anyway.
@@ -51,6 +54,12 @@ final class HandlerLevels {
             }
         }
         return reference.getLevel();
+    }
+
+    /** What was set for the slot, or null if it is at the file's level. */
+    synchronized Level recorded(LoggerConfig loggerConfig, String appenderName) {
+        Map<String, Level> levels = set.get(loggerConfig);
+        return levels == null ? null : levels.get(appenderName);
     }
 
     /** Records {@code level} for the slot; {@code null} goes back to the file's. */

@@ -594,16 +594,15 @@ override survives `reconfigure()` (Acceptance, "Reconfiguration"). A handler lev
 | S6-1 | An appender behind `<Async>` | (a) Not listed; the `<Async>` is the handler (above). (b) List it and apply its level to the `<Async>` reference. (c) List it, read-only. | **(a).** (b) shows two names that control one thing; (c) invites `set handler` to fail on something that is listed. A user who wants the file appender quiet raises the `<Async>`. Say so in the guide. |
 | S6-2 | `ALL_HANDLERS` fans out over every referenced appender | (a) As JUL. (b) Exclude `<Async>`-wrapped ones. | **(a);** nothing is wrapped that way here (S6-1). |
 | S6-3 | The level table shared with `TrimSlots` | (a) The table above (one source). (b) Read the live `AppenderControl` level by reflection. (c) Re-read `getAppenderRefs()` and accept the stale value. | **(a).** (b) breaks across 2.20 to 2.25; (c) is the bug this section exists to prevent. |
-| S6-4 | An appender referenced from several `LoggerConfig`s at different levels | (a) Report the most restrictive (A5), set all to the one value. (b) Per-reference control. | **(a).** The SPI has one level per handler. |
-
-On S6-4, the part that did not survive the build: see "As built" below.
+| S6-4 | An appender referenced from several `LoggerConfig`s at different levels | (a) Report the most restrictive (A5), set all to the one value. (b) Per-reference control. | **(a), with a limit found in the build.** The SPI has one level per handler. `reset` writes the baseline (the most restrictive level) to every reference, so an appender at different levels in the file is flattened by a reset: see "As built". |
 
 **Tests.** Unit tests on each version in the usual set (`-Dlog4j2.version`: 2.20.0, 2.23.1, 2.25.2,
 2.25.5): list; set and reset on one reference and on several; floors on a path with and without
 `additivity="false"`; `ALL_HANDLERS`; an unknown name; set then trim detach and re-wrap keep the level
-(the interaction above); a swap failure puts the appender back; a reconfiguration drops the table and
-core re-applies. `BundledLog4j2EndToEndIT` in a real process: `set handler console WARN` hides the
-`INFO` lines, `reset handlers` brings them back, and the same after a reload.
+(the interaction above); a swap failure puts the appender back and rolls the other references back (all or nothing); a
+reference already at the level is not swapped; reset flattens an appender at two levels (the limit
+below, pinned by a test); a reconfiguration drops the table and core re-applies. `BundledLog4j2EndToEndIT` in a real process: `set handler Out ERROR` hides the
+`INFO` lines, `reset handler` brings them back, and the same after a reload.
 
 **Docs.** The Functional summary already names the behaviour. Guide pages: `how-to/find-disk-usage.md`
 and `concepts/rules.md` (what `set handler` means on Log4j: the `AppenderRef` level, the `<Async>`
@@ -622,7 +621,8 @@ rule) when the guide slice lands.
   logger, none under the root), the baseline is the most restrictive (`WARN`), and a reset leaves it at
   `WARN` on both: the reference that had no level now has one. `setHandlerLevel(ref, null)` still gives each
   reference its file level, and is tested, but core does not call it for a reset. Rare (one appender at two
-  levels in one file); a documented limit. Fixing it needs the baseline to carry per-`LoggerConfig` levels.
+  levels in one file); a documented limit, pinned by a test, tracked as [#319](https://github.com/ddeuchert/logaperture/issues/319) (core calling
+  `setHandlerLevel(ref, null)` on a reset, or the baseline carrying per-`LoggerConfig` levels).
 
 - **A swap that fails is not reported as success.** The other references are still tried, then
   `setHandlerLevel` throws. A reference already at the requested level is not swapped at all (no lost call,
@@ -633,7 +633,7 @@ rule) when the guide slice lands.
   reset writes `ERROR` back. Same limit as #312; not fixed here.
 - **Guide pages are not in this PR**, by the earlier decision to write them in the last slice.
 
-**Verified** on 2.20.0, 2.25.2 and 2.25.5 (the versions run; 2.23.1 was not run for this slice) (`-Dlog4j2.version`); `BundledLog4j2EndToEndIT` in a real
+**Verified** on 2.20.0, 2.23.1, 2.25.2 and 2.25.5 (`-Dlog4j2.version`); `BundledLog4j2EndToEndIT` in a real
 process: `set handler Out ERROR` hides INFO, the same after a reload, `reset handler` brings it back.
 
 **Not in this slice:** `handlerDiagnostics` and `handler.unbounded-growth` (A9); the three `doctor`

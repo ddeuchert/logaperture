@@ -251,7 +251,7 @@ class HandlerLevelsTest {
     }
 
     @Test
-    void aFailedSwap_isNotReportedAsSet() {
+    void aFailedSwap_leavesNothingChanged() {
         var config = context.getConfiguration();
         var refs = new org.apache.logging.log4j.core.config.LoggerConfig("x", java.util.List.of(
                 org.apache.logging.log4j.core.config.AppenderRef.createAppenderRef("Con", null, null)), null,
@@ -271,7 +271,19 @@ class HandlerLevelsTest {
         assertThrows(IllegalStateException.class, () -> adapter.setHandlerLevel(ref("Con"), org.logaperture.api.Level.ERROR));
         assertTrue(refs.getAppenders().containsKey("Con"), "the failed slot got its appender back");
         assertTrue(config.getRootLogger().getAppenders().containsKey("Con"));
-        // the failed slot is back at its own (no) level; the references that did change took ERROR
-        assertEquals(Optional.of(org.logaperture.api.Level.ERROR), adapter.handlerLevel(ref("Con")));
+        // all or nothing: the references that had changed went back
+        assertEquals(Optional.of(org.logaperture.api.Level.WARN), adapter.handlerLevel(ref("Con")));
+    }
+
+    /** The limit of spec Slice 6 "As built": core resets with one baseline value, the most restrictive. */
+    @Test
+    void resetToTheBaseline_flattensAnAppenderAtTwoLevelsToTheMostRestrictive() throws Exception {
+        org.logaperture.api.Level baseline = adapter.handlerLevel(ref("Con")).orElseThrow(); // what core captures
+        assertEquals(org.logaperture.api.Level.WARN, baseline);
+        adapter.setHandlerLevel(ref("Con"), org.logaperture.api.Level.DEBUG);
+        adapter.setHandlerLevel(ref("Con"), baseline); // what core's reset does
+        context.getLogger("other").info("root path");
+        assertFalse(written().contains("Con:root path"),
+                "the root reference had no level in the file and now has WARN: the documented limit");
     }
 }

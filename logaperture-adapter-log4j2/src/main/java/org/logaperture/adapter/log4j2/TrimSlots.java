@@ -57,8 +57,10 @@ final class TrimSlots {
     private TrimSlots() {
     }
 
-    /** @return how many slots now hold a wrapper that did not before */
-    /** @param levels where a slot's current level is read from (a handler level set since the file was read) */
+    /**
+     * @param levels where a slot's current level is read from (a handler level set since the file was read)
+     * @return how many slots now hold a wrapper that did not before
+     */
     static int wrapAll(Configuration configuration, TrimAppender.Shared shared, HandlerLevels levels) {
         int wrapped = 0;
         List<LoggerConfig> loggers = HandlerLevels.loggerConfigs(configuration);
