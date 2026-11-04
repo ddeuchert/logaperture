@@ -530,8 +530,105 @@ Verified on 2.20.0, 2.23.1, 2.25.2 and 2.25.5 (`-Dlog4j2.version`, the same test
 reason is kept. `BundledLog4j2EndToEndIT`, in a real process: a trim rule cuts the trace and its cause,
 no synthetic class in the output, hits counted once per trimmed event, and the same after a reload.
 
-**Not in this slice:** `top` on a trimmed Log4j event (A6, #306); handler levels (A5); the `doctor` check;
+**Not in this slice:** `top` on a trimmed Log4j event (A6, #306); handler levels (A5, Slice 6); the `doctor` check;
 the full version matrix in CI (A11).
+
+### Slice 6: handler levels (built, 2026-11-03)
+
+The sixth PR under #302: `logctl list handlers`, `set handler`, `reset handlers` and the handler-floor
+warning of `set logger` work on Log4j appenders. A5 decided *what* a handler level is; this section
+settles how it is built and the questions A5 left open. Diagnostics (A9, A12) are the next slice, not
+this one.
+
+**What the adapter answers** (the SPI of [`handler-floor-control.md`](handler-floor-control.md)):
+
+- `hasHandlerLevels()` is `true`.
+- **A handler is an appender that at least one `LoggerConfig` references**, named by its `log4j2.xml`
+  name (`HandlerRef(name)`, no resolver, no identity tokens). `realHandlers()` lists them in
+  configuration order; `knownHandlers()` is the same plus `ALL_HANDLERS`, as for plain JUL.
+  `config.getAppenders()` still lists the originals, so a trim wrapper (Slice 5) does not change a name.
+- **`handlerLevel(ref)`** is the most restrictive level among the appender's references (A5), empty when
+  none has a level (**`ALL`, not empty, when none has: see "As built" below**). **`setHandlerLevel(ref, level)`** sets it on every reference in every `LoggerConfig`
+  and returns the previous one; `null` takes the level off (what `reset` and "back to inherited" mean).
+  An unknown name, or one no longer in the live configuration, throws `UnknownHandlerException`.
+- **`handlersOnRoot()`, `handlersOnPath(logger)` and `handlerFloorsBelow(logger, target)`** walk from the
+  logger's own `LoggerConfig` up through its parents, stopping after a `LoggerConfig` with
+  `additivity="false"`, which is Log4j's own rule for where events stop, like JUL's `useParentHandlers`.
+  A floor is reported for each reference on the walk whose level is stricter than `target`. The walk
+  starts at the `LoggerConfig` the logger resolves to (`config.getLoggerConfig(name)`), which is the
+  nearest one that exists, not necessarily one of its own.
+
+**Changing a reference level** is the swap of A5 and Slice 5: `removeAppender`, then
+`addAppender(appender, level, filter)` on that `LoggerConfig`, carrying the reference's filter and the
+appender's own. Everything Slice 5 says about the swap applies: a call in the window is not written to
+that appender, and the appender goes to the end of the logger's list.
+
+**The adapter keeps the levels itself (H1), and Slice 5 must read them from there.** `getAppenderRefs()`
+goes on reporting the old level after a swap. `TrimSlots` reads `reference.getLevel()` when it wraps or
+unwraps a slot, so left as it is, a detach or a re-wrap after `set handler` would put the stale level
+back. One small table, keyed by (`LoggerConfig` identity, appender name), is the single source: written
+by `setHandlerLevel`, read by `handlerLevel`, the floor walks and `TrimSlots`, and dropped with the
+configuration on a swap. A slot with no entry falls back to the reference's own level. The slot holds
+whatever is there now, wrapper or original: `setHandlerLevel` swaps *that* object, never the original
+behind it, so the two mechanisms do not undo each other.
+
+**Re-apply.** A reconfiguration builds a new `Configuration`, so the table starts empty and every
+reference has the file's levels. Core's `onReset` hook already re-applies handler overrides and
+re-captures handler baselines (as on JUL); this slice adds no new hook, and an IT checks a handler
+override survives `reconfigure()` (Acceptance, "Reconfiguration"). A handler level set in
+`log4j2.xml` is the baseline `reset` returns to.
+
+**Not handlers, deliberately:**
+
+- An appender no `LoggerConfig` references (programmatic slots with no `AppenderRef`, as in Slice 5) is
+  not listed: there is no reference to carry a level.
+- An appender referenced only from an `<Async>` appender (`<AppenderRef>` inside it) has no reference in
+  any `LoggerConfig`. The `<Async>` appender is the handler; the ones behind it are not listed.
+- The `Routing`, `Failover` and `Rewrite` appenders are handlers like any other, by their own name;
+  what they hold inside is not.
+
+**Open for sign-off:**
+
+| Id | Question | Options | Recommendation |
+|---|---|---|---|
+| S6-1 | An appender behind `<Async>` | (a) Not listed; the `<Async>` is the handler (above). (b) List it and apply its level to the `<Async>` reference. (c) List it, read-only. | **(a).** (b) shows two names that control one thing; (c) invites `set handler` to fail on something that is listed. A user who wants the file appender quiet raises the `<Async>`. Say so in the guide. |
+| S6-2 | `ALL_HANDLERS` fans out over every referenced appender | (a) As JUL. (b) Exclude `<Async>`-wrapped ones. | **(a);** nothing is wrapped that way here (S6-1). |
+| S6-3 | The level table shared with `TrimSlots` | (a) The table above (one source). (b) Read the live `AppenderControl` level by reflection. (c) Re-read `getAppenderRefs()` and accept the stale value. | **(a).** (b) breaks across 2.20 to 2.25; (c) is the bug this section exists to prevent. |
+| S6-4 | An appender referenced from several `LoggerConfig`s at different levels | (a) Report the most restrictive (A5), set all to the one value. (b) Per-reference control. | **(a).** The SPI has one level per handler. |
+
+On S6-4, the part that did not survive the build: see "As built" below.
+
+**Tests.** Unit tests on each version in the usual set (`-Dlog4j2.version`: 2.20.0, 2.23.1, 2.25.2,
+2.25.5): list; set and reset on one reference and on several; floors on a path with and without
+`additivity="false"`; `ALL_HANDLERS`; an unknown name; set then trim detach and re-wrap keep the level
+(the interaction above); a swap failure puts the appender back; a reconfiguration drops the table and
+core re-applies. `BundledLog4j2EndToEndIT` in a real process: `set handler console WARN` hides the
+`INFO` lines, `reset handlers` brings them back, and the same after a reload.
+
+**Docs.** The Functional summary already names the behaviour. Guide pages: `how-to/find-disk-usage.md`
+and `concepts/rules.md` (what `set handler` means on Log4j: the `AppenderRef` level, the `<Async>`
+rule) when the guide slice lands.
+
+**As built (deviations from the section above):**
+
+- **An appender whose references have no level reports `ALL`, not "no level".** Core captures a handler's
+  baseline only from a level that is *present* (`HandlerBaselineRegistry.captureIfAbsent`, so a handler
+  that does not resolve yet is retried); with an empty answer the baseline of every unset appender was
+  never captured and `reset handler` had nothing to go back to (found by `BundledLog4j2EndToEndIT`). `ALL`
+  is true (nothing is filtered) and is what a JDK handler reports by default. A reset then writes `ALL`
+  to each reference, which filters nothing, the same as no level.
+- **So the S6-4 promise is cut to what the SPI can carry.** `reset` writes the *baseline* level, one value, to
+  every reference. For an appender whose references have different levels in the file (`WARN` under one
+  logger, none under the root), the baseline is the most restrictive (`WARN`), and a reset leaves it at
+  `WARN` on both: the reference that had no level now has one. `setHandlerLevel(ref, null)` still gives each
+  reference its file level, and is tested, but core does not call it for a reset. Rare (one appender at two
+  levels in one file); a documented limit. Fixing it needs the baseline to carry per-`LoggerConfig` levels.
+
+**Verified** on 2.20.0, 2.25.2 and 2.25.5 (`-Dlog4j2.version`); `BundledLog4j2EndToEndIT` in a real
+process: `set handler Out ERROR` hides INFO, the same after a reload, `reset handler` brings it back.
+
+**Not in this slice:** `handlerDiagnostics` and `handler.unbounded-growth` (A9); the three `doctor`
+checks (A12); `installByteCounting` (A6); the version matrix in CI (A11).
 
 ## Out of scope
 

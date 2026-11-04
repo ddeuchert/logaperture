@@ -59,8 +59,13 @@ final class TrimSlots {
 
     /** @return how many slots now hold a wrapper that did not before */
     static int wrapAll(Configuration configuration, TrimAppender.Shared shared) {
+        return wrapAll(configuration, shared, new HandlerLevels());
+    }
+
+    /** @param levels where a slot's current level is read from (a handler level set since the file was read) */
+    static int wrapAll(Configuration configuration, TrimAppender.Shared shared, HandlerLevels levels) {
         int wrapped = 0;
-        List<LoggerConfig> loggers = new ArrayList<>(configuration.getLoggers().values());
+        List<LoggerConfig> loggers = HandlerLevels.loggerConfigs(configuration);
         for (LoggerConfig loggerConfig : loggers) {
             for (AppenderRef reference : new ArrayList<>(loggerConfig.getAppenderRefs())) {
                 Appender appender = loggerConfig.getAppenders().get(reference.getRef());
@@ -74,7 +79,8 @@ final class TrimSlots {
                     continue;
                 }
                 if (swap(loggerConfig, reference, appender,
-                        new TrimAppender(appender, shared, rendersFromProxy(appender, configuration)))) {
+                        new TrimAppender(appender, shared, rendersFromProxy(appender, configuration)),
+                        levels.current(loggerConfig, reference))) {
                     wrapped++;
                 }
             }
@@ -87,25 +93,29 @@ final class TrimSlots {
      * lets go of a context that lives on; a context that is stopping takes its wrappers with it.
      */
     static void unwrapAll(Configuration configuration, TrimAppender.Shared shared) {
-        List<LoggerConfig> loggers = new ArrayList<>(configuration.getLoggers().values());
+        unwrapAll(configuration, shared, new HandlerLevels());
+    }
+
+    static void unwrapAll(Configuration configuration, TrimAppender.Shared shared, HandlerLevels levels) {
+        List<LoggerConfig> loggers = HandlerLevels.loggerConfigs(configuration);
         for (LoggerConfig loggerConfig : loggers) {
             for (AppenderRef reference : new ArrayList<>(loggerConfig.getAppenderRefs())) {
                 Appender slot = loggerConfig.getAppenders().get(reference.getRef());
                 if (slot instanceof TrimAppender wrapper && wrapper.shared() == shared) {
-                    swap(loggerConfig, reference, wrapper, wrapper.delegate());
+                    swap(loggerConfig, reference, wrapper, wrapper.delegate(), levels.current(loggerConfig, reference));
                 }
             }
         }
     }
 
     /**
-     * Puts {@code replacement} in the slot of {@code current}, with the reference's level and filter. The set is
+     * Puts {@code replacement} in the slot of {@code current}, with {@code level} (the slot's current one: the
+     * reference goes on reporting the file's, H1) and the reference's filter. The set is
      * keyed by name, so this is a remove and an add; if the add fails the slot gets {@code current} back rather
      * than staying empty (a logger that has silently lost an appender is worse than one that is not trimmed).
      */
-    private static boolean swap(LoggerConfig loggerConfig, AppenderRef reference, Appender current,
-            Appender replacement) {
-        Level level = reference.getLevel();
+    static boolean swap(LoggerConfig loggerConfig, AppenderRef reference, Appender current,
+            Appender replacement, Level level) {
         Filter filter = reference.getFilter();
         if (replacement instanceof TrimAppender) {
             replacement.start();

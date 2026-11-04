@@ -18,12 +18,17 @@ package org.logaperture.adapter.log4j2;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.config.AppenderRef;
 import org.logaperture.api.BackendInfo;
+import org.logaperture.api.HandlerFloor;
+import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 import org.logaperture.bridge.Diagnostics;
 import org.logaperture.core.RuleGate;
 import org.logaperture.core.StormObserver;
 import org.logaperture.core.spi.LoggingAdapter;
+import org.logaperture.core.spi.UnknownHandlerException;
 
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
@@ -58,7 +63,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * swap event comes before the {@code old == new} one that precedes it (SB5): both listeners are
  * idempotent.
  *
- * <p>Not in this class yet: handler levels, the gate and trim.
+ * <p>Handler levels (A5, Slice 6) are the {@code AppenderRef} level of every reference to an appender, in
+ * every {@code LoggerConfig}; see {@link HandlerLevels} for why the adapter keeps them.
  */
 final class Log4j2LoggingAdapter implements LoggingAdapter {
 
@@ -95,6 +101,7 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
     private final Map<String, Optional<org.apache.logging.log4j.Level>> declaredBeforeOverride =
             new ConcurrentHashMap<>();
     private final TrimAppender.Shared trimShared = new TrimAppender.Shared();
+    private final HandlerLevels handlerLevels = new HandlerLevels();
     private String trimProblem;
     private boolean trimProbed;
     /** Asked once per adapter; replaceable so a test can count the asks. */
@@ -165,7 +172,7 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         if (trimProbed && trimProblem != null) {
             return;
         }
-        TrimSlots.wrapAll(context.getConfiguration(), trimShared);
+        TrimSlots.wrapAll(context.getConfiguration(), trimShared, handlerLevels);
     }
 
     /** Why trim is off on this Log4j, or empty if it is on or has not been installed yet. */
@@ -206,7 +213,7 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         trimShared.gate = null; // a wrapper still in flight passes its event straight through
         if (context.isStarted()) {
             try {
-                TrimSlots.unwrapAll(context.getConfiguration(), trimShared); // a stopping context takes them with it
+                TrimSlots.unwrapAll(context.getConfiguration(), trimShared, handlerLevels); // a stopping context takes them with it
             } catch (RuntimeException e) {
                 Diagnostics.warn("LogAperture could not take its trim wrappers out of the Log4j configuration: " + e);
             }
@@ -384,6 +391,167 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         }
         // else: the config LogAperture created went with a reconfiguration, this one is the
         // application's own, and no override was written onto it: leave its level alone.
+    }
+
+    @Override
+    public boolean hasHandlerLevels() {
+        return true;
+    }
+
+    /** The appenders some {@code LoggerConfig} references, by their {@code log4j2.xml} name (A5, S6-1). */
+    @Override
+    public List<HandlerRef> realHandlers() {
+        Set<String> names = new LinkedHashSet<>();
+        for (LoggerConfig loggerConfig : HandlerLevels.loggerConfigs(context.getConfiguration())) {
+            for (AppenderRef reference : loggerConfig.getAppenderRefs()) {
+                if (loggerConfig.getAppenders().containsKey(reference.getRef())) {
+                    names.add(reference.getRef());
+                }
+            }
+        }
+        List<HandlerRef> refs = new ArrayList<>(names.size());
+        for (String name : names) {
+            refs.add(new HandlerRef(name));
+        }
+        return List.copyOf(refs);
+    }
+
+    @Override
+    public List<HandlerRef> knownHandlers() {
+        List<HandlerRef> combined = new ArrayList<>(realHandlers());
+        combined.add(HandlerRef.ALL_HANDLERS);
+        return List.copyOf(combined);
+    }
+
+    @Override
+    public List<HandlerRef> handlersOnRoot() {
+        return handlersOn(context.getConfiguration().getRootLogger());
+    }
+
+    @Override
+    public List<HandlerRef> handlersOnPath(String loggerName) {
+        List<HandlerRef> refs = new ArrayList<>();
+        for (LoggerConfig current : path(loggerName)) {
+            for (HandlerRef ref : handlersOn(current)) {
+                if (!refs.contains(ref)) {
+                    refs.add(ref);
+                }
+            }
+        }
+        return List.copyOf(refs);
+    }
+
+    @Override
+    public List<HandlerFloor> handlerFloorsBelow(String loggerName, Level target) {
+        if (target == null) {
+            return List.of(); // "back to inherited" is not a raise
+        }
+        Map<String, Level> strictest = new java.util.LinkedHashMap<>();
+        for (LoggerConfig current : path(loggerName)) {
+            for (AppenderRef reference : current.getAppenderRefs()) {
+                if (!current.getAppenders().containsKey(reference.getRef())) {
+                    continue;
+                }
+                Level level = LevelMapper.toApi(handlerLevels.current(current, reference));
+                if (level != null && level.compareTo(target) > 0) {
+                    strictest.merge(reference.getRef(), level, (a, b) -> a.compareTo(b) >= 0 ? a : b);
+                }
+            }
+        }
+        List<HandlerFloor> floors = new ArrayList<>(strictest.size());
+        strictest.forEach((name, level) -> floors.add(new HandlerFloor(new HandlerRef(name), level)));
+        return List.copyOf(floors);
+    }
+
+    @Override
+    public synchronized Optional<Level> handlerLevel(HandlerRef ref) {
+        return Optional.ofNullable(mostRestrictive(ref.value()));
+    }
+
+    /**
+     * Sets the level on every reference to the appender, in every {@code LoggerConfig} (A5). A swap, as for
+     * trim: a call in the window is not written to this appender. {@code null} gives each reference back the
+     * level the file declared (S6-4), not one flattened value.
+     */
+    @Override
+    public synchronized Optional<Level> setHandlerLevel(HandlerRef ref, Level level) {
+        String name = ref.value();
+        Configuration config = context.getConfiguration();
+        List<LoggerConfig> holders = new ArrayList<>();
+        for (LoggerConfig loggerConfig : HandlerLevels.loggerConfigs(config)) {
+            if (referenceTo(loggerConfig, name) != null && loggerConfig.getAppenders().containsKey(name)) {
+                holders.add(loggerConfig);
+            }
+        }
+        if (holders.isEmpty()) {
+            throw new UnknownHandlerException(ref);
+        }
+        Level previous = mostRestrictive(name);
+        org.apache.logging.log4j.Level wanted = level == null ? null : LevelMapper.toLog4j(level);
+        for (LoggerConfig loggerConfig : holders) {
+            AppenderRef reference = referenceTo(loggerConfig, name);
+            Appender slot = loggerConfig.getAppenders().get(name); // the wrapper if there is one, never what is behind it
+            org.apache.logging.log4j.Level newLevel = wanted != null ? wanted : reference.getLevel();
+            if (TrimSlots.swap(loggerConfig, reference, slot, slot, newLevel)) {
+                handlerLevels.record(loggerConfig, name, wanted);
+            }
+        }
+        return Optional.ofNullable(previous);
+    }
+
+    /**
+     * The most restrictive level among the appender's references; {@code ALL} when none has one (nothing is
+     * filtered, which is what the JUL handler default says too), and null only for a name no
+     * {@code LoggerConfig} references. Never empty for a live handler: core captures a baseline only from a
+     * level that is present, and a reset needs one.
+     */
+    private Level mostRestrictive(String name) {
+        boolean referenced = false;
+        Level strictest = null;
+        for (LoggerConfig loggerConfig : HandlerLevels.loggerConfigs(context.getConfiguration())) {
+            AppenderRef reference = referenceTo(loggerConfig, name);
+            if (reference == null || !loggerConfig.getAppenders().containsKey(name)) {
+                continue;
+            }
+            referenced = true;
+            Level level = LevelMapper.toApi(handlerLevels.current(loggerConfig, reference));
+            if (level != null && (strictest == null || level.compareTo(strictest) > 0)) {
+                strictest = level;
+            }
+        }
+        return referenced && strictest == null ? Level.ALL : strictest;
+    }
+
+    private static AppenderRef referenceTo(LoggerConfig loggerConfig, String name) {
+        for (AppenderRef reference : loggerConfig.getAppenderRefs()) {
+            if (name.equals(reference.getRef())) {
+                return reference;
+            }
+        }
+        return null;
+    }
+
+    private static List<HandlerRef> handlersOn(LoggerConfig loggerConfig) {
+        List<HandlerRef> refs = new ArrayList<>();
+        for (AppenderRef reference : loggerConfig.getAppenderRefs()) {
+            if (loggerConfig.getAppenders().containsKey(reference.getRef())) {
+                refs.add(new HandlerRef(reference.getRef()));
+            }
+        }
+        return refs;
+    }
+
+    /** The {@code LoggerConfig}s an event from the logger passes through, nearest first, ending where additivity does. */
+    private List<LoggerConfig> path(String loggerName) {
+        List<LoggerConfig> path = new ArrayList<>();
+        for (LoggerConfig current = context.getConfiguration().getLoggerConfig(nativeName(loggerName));
+                current != null; current = current.getParent()) {
+            path.add(current);
+            if (!current.isAdditive()) {
+                break;
+            }
+        }
+        return path;
     }
 
     @Override
