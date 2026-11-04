@@ -14,7 +14,9 @@ on the same machine, run by the same operating-system user.
     No LogAperture-enabled JVM found. Start the application with -javaagent:logaperture-agent.jar.
     ```
 
-    Check that the JVM was started with the agent, and that you are the user it runs as.
+    Check that the JVM was started with the agent, and that you are the user it runs as. A JVM that has
+    the agent and a Log4j 2 older than 2.20.0 is still listed: `logctl doctor` says why it controls
+    nothing (`log4j2.version`).
 
 - **Several**: on a terminal, it lists them as a numbered list to pick from. In a script, or with
   `--json` or `--yes`, it can't ask. It prints the same list and exits with code 4:

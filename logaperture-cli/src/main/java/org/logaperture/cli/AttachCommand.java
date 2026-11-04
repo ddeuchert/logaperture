@@ -246,8 +246,8 @@ final class AttachCommand implements Standalone {
             }
             default -> {
                 out.println("The LogAperture agent is loaded in PID " + pid + " but not active yet: it starts when "
-                        + "the application first logs through Logback or java.util.logging. Run 'logctl status' "
-                        + "once it has.");
+                        + "the application first logs through Logback, java.util.logging or Log4j 2. Run "
+                        + "'logctl status' once it has.");
                 details(out, result);
             }
         }

@@ -887,6 +887,33 @@ so a contributor can reproduce a failing one.
 **Not in this slice:** the Spring Boot, Tomcat and WildFly setup ITs (Slice 9); the gate benchmark; the guide
 pages; mixed `log4j-api` and `log4j-core` versions (A10, still "Not established"); JDK 25.
 
+### Guide pages and CHANGELOG (written 2026-11-04)
+
+Written ahead of the benchmark and the owner's unstructured testing, to be amended by what those find. Pages:
+`index.md` (a Log4j 2 column in the support table, the setups, the "not supported" line), `get-started/install-plain-jvm.md`
+(new "On Log4j 2": handlers, `<Async>`, held loggers, trim and drop limits, the held-back change and its warning, a
+Spring Boot fat jar), a new `get-started/install-tomcat.md` (in the nav), `get-started/install-wildfly.md` (a deployment
+with its own Log4j 2), `troubleshooting.md` (a Log4j 2 section, and the stale "cannot control Log4j 2" lines),
+`how-to/try-without-restart.md`, `how-to/several-jvms.md`, `how-to/find-disk-usage.md`, `how-to/storms.md`,
+`how-to/silence-noise.md`, `concepts/rules.md`, `concepts/tiers-and-expiry.md`, `reference/doctor-checks.md` (with
+Slice 7), and `reference/logctl.md` regenerated from the help (the attach text names Log4j 2). The CHANGELOG has
+the Log4j 2 entry, the #322 entry and a "Changed" note. Example output was captured from a real run (a small
+application on Log4j 2.25.5 with the agent, and `logctl attach`).
+
+Things the pages say that are narrower than this spec, on purpose:
+
+- **Spring Boot, Tomcat and a WildFly deployment are described as checked by hand, not by automated tests.** The
+  spike's probes (Spring Boot 3.5.16 and 4.1.2, Tomcat 11.0.27 with two Log4j versions, WildFly 26.1.3) are what they
+  rest on; the setup ITs (Slice 9) are not built. Only the plain JVM and the fat-jar mechanism have real-process tests.
+- **`top` on Log4j 2 prints the generic "No byte-volume measurements available yet."** The spec (A6) says `top` shows
+  the context as "not counted"; the code never got that line, and the guide says what it prints. Not changed here.
+- **A second context called `system` appears in every listing**, the JDK's own `java.util.logging`, which the JMX
+  connection `logctl` opens starts using (the same effect as in the #322 spec). The guide explains it and says to
+  ignore it. Whether `logctl` should hide a context with no application loggers is a separate decision.
+
+Open: the gate benchmark (a release blocker for #302) and the owner's testing may change what the pages promise
+(for example the cost statements, and any limit that testing turns up).
+
 ## Out of scope
 
 `top` on Log4j 2 (A6); Log4j 1 and reload4j; the warning for names no backend can reach (#303);

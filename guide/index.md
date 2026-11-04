@@ -57,28 +57,36 @@ More films in [Now Showing](now-showing.md).
 
 JDK 17, 21 and 25.
 
-| | WildFly, standalone, 26.1 and later | Plain `java -jar` with Logback | Plain `java -jar` with `java.util.logging` (from 1.1) |
-|---|---|---|---|
-| Change and reset logger levels | ✓ | ✓ | ✓ |
-| Change and reset handler levels | ✓ | — | ✓ |
-| Vendor defaults file: levels | ✓ | ✓ | ✓ |
-| Vendor defaults file: rules | ✓ | — | ✓ |
-| Recipes | ✓ | ✓ | ✓ |
-| `drop` and `trim` rules | ✓ | — | ✓ |
-| `top` | ✓ | — | ✓ |
-| `doctor` | ✓ | — | ✓ (no file-size or disk checks on the JDK's `FileHandler`) |
-| Storm detection | ✓ | — | ✓ |
-| `status`, `env` | ✓ | ✓ | ✓ |
+| | WildFly, standalone, 26.1 and later | Plain `java -jar` with Logback | Plain `java -jar` with `java.util.logging` (from 1.1) | Log4j 2, 2.20.0 and later (from 1.1) |
+|---|---|---|---|---|
+| Change and reset logger levels | ✓ | ✓ | ✓ | ✓ |
+| Change and reset handler levels | ✓ | — | ✓ | ✓ (by appender name) |
+| Vendor defaults file: levels | ✓ | ✓ | ✓ | ✓ |
+| Vendor defaults file: rules | ✓ | — | ✓ | ✓ |
+| Recipes | ✓ | ✓ | ✓ | ✓ |
+| `drop` and `trim` rules | ✓ | — | ✓ | ✓ (`trim` for text layouts, and not on 2.25.0 to 2.25.3) |
+| `top` | ✓ | — | ✓ | — |
+| `doctor` | ✓ | — | ✓ (no file-size or disk checks on the JDK's `FileHandler`) | ✓ (file checks for plain file appenders only) |
+| Storm detection | ✓ | — | ✓ | ✓ |
+| `status`, `env` | ✓ | ✓ | ✓ | ✓ |
 
-Not supported in 1.0: WildFly domain mode, a plain JVM that logs through `java.util.logging`
-alone (from 1.1), Log4j 2 (from 1.1), Spring Boot, Tomcat (from 1.1, with Log4j 2 webapps), Jetty, Quarkus (from 1.1). Quarkus native images can never be supported:
-they have no JVM to attach an agent to.
+From 1.1, Log4j 2 is controlled wherever it lives: on the JVM's class path, or bundled inside the
+application: a **Spring Boot fat jar** on `spring-boot-starter-log4j2`, a **Tomcat webapp** that
+brings its own `log4j-core`, or a **WildFly deployment** that excludes the server's Log4j API. See
+[plain JVM](get-started/install-plain-jvm.md#on-log4j-2),
+[Tomcat](get-started/install-tomcat.md) and
+[WildFly](get-started/install-wildfly.md#a-deployment-with-its-own-log4j-2).
+
+Not supported: WildFly domain mode, Logback in a Spring Boot fat jar or a Tomcat webapp (planned),
+Spring Boot's own logging integration, Jetty, and Log4j 1 or reload4j. Quarkus is supported from
+1.1. Quarkus native images can never be supported: they have no JVM to attach an agent to.
 
 ## Where to start
 
 1. Get it: the release zip, or Maven Central for a build: [Download](get-started/download.md).
 2. Install the agent: [on WildFly](get-started/install-wildfly.md),
-   [on Quarkus](get-started/install-quarkus.md) (from 1.1) or
+   [on Quarkus](get-started/install-quarkus.md) (from 1.1),
+   [on Tomcat](get-started/install-tomcat.md) (from 1.1) or
    [on a plain JVM](get-started/install-plain-jvm.md).
 3. Try it for ten minutes: [Quick start](get-started/quick-start.md).
 4. Learn what `reset` goes back to: [Configuration layers](concepts/configuration-layers.md).
