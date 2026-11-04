@@ -39,6 +39,7 @@ public final class ContainerContextSink implements ContextSink {
     private final ContainerIntegration container;
     private final AggregateLevelControl aggregate;
     private final Consumer<AggregateLevelControl> onContextReady;
+    private final Consumer<AggregateLevelControl> onUnbound;
     /** The handle currently registered under each key, so a stale remove can be told from a live one. */
     private final Map<String, ContextHandle> current = new ConcurrentHashMap<>();
 
@@ -50,9 +51,21 @@ public final class ContainerContextSink implements ContextSink {
      */
     public ContainerContextSink(ContainerIntegration container, AggregateLevelControl aggregate,
                                 Consumer<AggregateLevelControl> onContextReady) {
+        this(container, aggregate, onContextReady, operations -> { });
+    }
+
+    /**
+     * @param onUnbound called when the detector found a framework and could not bind it (see
+     *                  {@link ContextSink#unbound}): brings the control surface up with no context. Must be
+     *                  idempotent and must not do what only a real context justifies (the vendor-defaults audit).
+     */
+    public ContainerContextSink(ContainerIntegration container, AggregateLevelControl aggregate,
+                                Consumer<AggregateLevelControl> onContextReady,
+                                Consumer<AggregateLevelControl> onUnbound) {
         this.container = Objects.requireNonNull(container, "container");
         this.aggregate = Objects.requireNonNull(aggregate, "aggregate");
         this.onContextReady = Objects.requireNonNull(onContextReady, "onContextReady");
+        this.onUnbound = Objects.requireNonNull(onUnbound, "onUnbound");
     }
 
     /**
@@ -89,6 +102,15 @@ public final class ContainerContextSink implements ContextSink {
             // the context is installed; it is the control surface that did not come up
             Diagnostics.error("LogAperture installed " + context.stableKey()
                     + " but could not publish its control surface", t);
+        }
+    }
+
+    @Override
+    public void unbound(String framework) {
+        try {
+            onUnbound.accept(aggregate);
+        } catch (Throwable t) {
+            Diagnostics.error("LogAperture found " + framework + " but could not publish its control surface", t);
         }
     }
 

@@ -157,8 +157,20 @@ public final class EngineStartup {
         return operations -> {
             auditVendorDefaults(vendorDefaults, auditLog);
             publishControlSurface(containerId, delivery, operations,
-                    recipes(recipeScanner, policy, vendorDefaults, operations), vendorDefaults);
+                    recipes(recipeScanner, policy, vendorDefaults, operations), vendorDefaults, false);
         };
+    }
+
+    /**
+     * The callback for a framework found and not bound (doc/specs/surface-on-bind-failure.md D1, D3): register the
+     * control surface and publish the marker with no context, so {@code logctl} discovers the JVM and {@code doctor}
+     * says why. Publishing only: the vendor defaults were applied to nothing, so nothing is audited, and the first
+     * context that installs later does that (the surface is already up, and publishing again does nothing).
+     */
+    public static Consumer<AggregateLevelControl> onSurfaceNeeded(String containerId, Delivery delivery,
+            CapabilityPolicy policy, VendorDefaults vendorDefaults, LibraryRecipeScanner recipeScanner) {
+        return operations -> publishControlSurface(containerId, delivery, operations,
+                recipes(recipeScanner, policy, vendorDefaults, operations), vendorDefaults, true);
     }
 
     /**
@@ -196,6 +208,9 @@ public final class EngineStartup {
         }
     }
 
+    /** What the startup line says when the surface is up for a framework found and not bound. */
+    static final String NO_CONTEXT_YET = "no logging context yet, see logctl doctor";
+
     /** The agent's startup line, with storm detection disabled. */
     public static String banner(String version, String containerId, VendorDefaults vendorDefaults, int restored) {
         return banner(version, containerId, Delivery.AGENT, vendorDefaults, restored, (String) null);
@@ -226,7 +241,7 @@ public final class EngineStartup {
      * enabled (doc/specs/storm-detection-toggle.md "Starting state"; disabled, the default, says
      * nothing).
      */
-    private static String banner(String version, String containerId, Delivery delivery, VendorDefaults vendorDefaults,
+    static String banner(String version, String containerId, Delivery delivery, VendorDefaults vendorDefaults,
             int restored, String stormDetection) {
         StringBuilder line = new StringBuilder("LogAperture ").append(version).append(" active (")
                 .append(switch (containerId) {
@@ -251,14 +266,21 @@ public final class EngineStartup {
         return line.toString();
     }
 
-    private static void publishControlSurface(String containerId, Delivery delivery, AggregateLevelControl operations,
-            RecipeOperations recipes, VendorDefaults vendorDefaults) {
+    /** Idempotent: the marker says it is up, and a second call (a context after a failed bind) does nothing. */
+    private static synchronized void publishControlSurface(String containerId, Delivery delivery,
+            AggregateLevelControl operations, RecipeOperations recipes, VendorDefaults vendorDefaults,
+            boolean noContext) {
+        if (System.getProperty(VERSION_PROPERTY) != null) {
+            return;
+        }
         try {
             JmxRegistrar.register(operations, operations, operations, operations, operations, operations, operations,
                     operations, recipes); // AggregateLevelControl implements all eight operation interfaces
             System.setProperty(VERSION_PROPERTY, version());
-            Diagnostics.notice(banner(version(), containerId, delivery, vendorDefaults, operations.restoredSettings(),
-                    operations.stormDetectionSwitch().current()));
+            Diagnostics.notice(noContext
+                    ? banner(version(), containerId, delivery, vendorDefaults, 0, NO_CONTEXT_YET)
+                    : banner(version(), containerId, delivery, vendorDefaults, operations.restoredSettings(),
+                            operations.stormDetectionSwitch().current()));
         } catch (Throwable t) {
             Diagnostics.error("LogAperture failed to register the JMX control surface", t);
         }

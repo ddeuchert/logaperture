@@ -98,4 +98,11 @@ class EngineStartupTest {
         assertEquals("loaded sha256=" + vendor.sha256().orElseThrow() + " (1 logger)", record.newValue());
         assertEquals(64, vendor.sha256().orElseThrow().length());
     }
+
+    /** doc/specs/surface-on-bind-failure.md Scope 3: the line for a surface that is up with no context. */
+    @Test
+    void banner_forASurfaceWithNoContext_saysSo() {
+        assertEquals("LogAperture 1.1.0 active (JVM): no logging context yet, see logctl doctor",
+                EngineStartup.banner("1.1.0", "none", AGENT, VendorDefaults.none(), 0, EngineStartup.NO_CONTEXT_YET));
+    }
 }

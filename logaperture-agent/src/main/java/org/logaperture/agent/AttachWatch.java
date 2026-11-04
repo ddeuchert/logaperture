@@ -39,10 +39,11 @@ final class AttachWatch {
     private static final long POLL_MILLIS = 100;
 
     static final String WAITING = "LogAperture attached; waiting for the application to start logging through "
-            + "Logback or java.util.logging.";
+            + "Logback, java.util.logging or Log4j 2 (2.20 or later).";
     static final String STILL_WAITING = "LogAperture is still waiting: this application has not logged through "
-            + "Logback or java.util.logging, the only backends supported in a plain JVM. If it uses another, "
-            + "such as Log4j 2, LogAperture cannot control it.";
+            + "Logback, java.util.logging or Log4j 2 (2.20 or later), the backends it controls in a plain JVM. If it "
+            + "uses another, LogAperture cannot control it; if it uses one of these, `logctl doctor` says what "
+            + "LogAperture found.";
 
     private AttachWatch() {
     }

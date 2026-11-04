@@ -49,9 +49,17 @@ public final class FrameworkDetection {
     public static LoaderScanner start(Instrumentation inst, ContainerIntegration container,
                                       AggregateLevelControl aggregate, Consumer<AggregateLevelControl> onContextReady,
                                       List<FrameworkWatch> watches, ClassLoader agentLoader) {
+        return start(inst, container, aggregate, onContextReady, operations -> { }, watches, agentLoader);
+    }
+
+    /** As above, with {@code onUnbound}: what to do when a framework is found and cannot be bound ({@link ContextSink#unbound}). */
+    public static LoaderScanner start(Instrumentation inst, ContainerIntegration container,
+                                      AggregateLevelControl aggregate, Consumer<AggregateLevelControl> onContextReady,
+                                      Consumer<AggregateLevelControl> onUnbound, List<FrameworkWatch> watches,
+                                      ClassLoader agentLoader) {
         Function<FrameworkWatch, BridgeSource> sources =
                 watch -> BridgeSource.underPrefix(agentLoader, BRIDGE_FOLDER + watch.framework());
-        return start(inst::getAllLoadedClasses, container, aggregate, onContextReady, watches, sources,
+        return start(inst::getAllLoadedClasses, container, aggregate, onContextReady, onUnbound, watches, sources,
                 ClassLoader.getSystemClassLoader(), LoaderScanner.Cadence.standard(), BoundInstance.Timing.standard());
     }
 
@@ -59,7 +67,16 @@ public final class FrameworkDetection {
                                AggregateLevelControl aggregate, Consumer<AggregateLevelControl> onContextReady,
                                List<FrameworkWatch> watches, Function<FrameworkWatch, BridgeSource> sources,
                                ClassLoader system, LoaderScanner.Cadence cadence, BoundInstance.Timing timing) {
-        ContextSink sink = new ContainerContextSink(container, aggregate, onContextReady);
+        return start(loadedClasses, container, aggregate, onContextReady, operations -> { }, watches, sources, system,
+                cadence, timing);
+    }
+
+    static LoaderScanner start(Supplier<Class<?>[]> loadedClasses, ContainerIntegration container,
+                               AggregateLevelControl aggregate, Consumer<AggregateLevelControl> onContextReady,
+                               Consumer<AggregateLevelControl> onUnbound, List<FrameworkWatch> watches,
+                               Function<FrameworkWatch, BridgeSource> sources, ClassLoader system,
+                               LoaderScanner.Cadence cadence, BoundInstance.Timing timing) {
+        ContextSink sink = new ContainerContextSink(container, aggregate, onContextReady, onUnbound);
         FrameworkBinder binder = new FrameworkBinder(sources, system, sink, timing);
         LoaderScanner scanner = new LoaderScanner(loadedClasses, watches, binder, cadence);
         scanner.start();

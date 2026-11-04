@@ -136,7 +136,7 @@ overridden" — the two are different facts and conflating them would mislead:
 - `No loggers matching '<filter>' have an active override.` — the filter matched real
   loggers, but none carry an override (no `--show-all`).
 - `No loggers have an active override.` — unfiltered, no `--show-all`, nothing overridden.
-- `No loggers known yet.` — unfiltered, `--show-all`, nothing known at all (today's message).
+- `No loggers known yet. LogAperture is running; if it controls no logging context in this JVM, `logctl doctor` says why.` — unfiltered, `--show-all`, nothing known at all ([`surface-on-bind-failure.md`](surface-on-bind-failure.md) D4 added the second sentence).
 
 ### `logctl list handlers [--show-all]`
 

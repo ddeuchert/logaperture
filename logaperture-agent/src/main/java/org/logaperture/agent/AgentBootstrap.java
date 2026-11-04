@@ -137,7 +137,11 @@ final class AgentBootstrap {
                             vendorDefaults, recipeScanner(inst)));
             AggregateLevelControl aggregate = container.activate(inst, policy, auditLog, vendorDefaults,
                     stormDetection, onFirstContextReady);
-            startFrameworkDetection(inst, container, aggregate, onFirstContextReady);
+            // Found and not bound (an unsupported Log4j, an adapter that failed): the surface and the marker come up
+            // anyway, so logctl can discover this JVM and doctor can say why (doc/specs/surface-on-bind-failure.md).
+            Consumer<AggregateLevelControl> onUnbound = EngineStartup.onSurfaceNeeded(container.id(),
+                    EngineStartup.Delivery.AGENT, policy, vendorDefaults, recipeScanner(inst));
+            startFrameworkDetection(inst, container, aggregate, onFirstContextReady, onUnbound);
             if (entry == Entry.AGENTMAIN) {
                 AttachWatch.start(container.id()); // doc/specs/logctl-attach.md #6: say why, if nothing comes up
             }
@@ -152,10 +156,11 @@ final class AgentBootstrap {
      * must not stop the agent.
      */
     private static void startFrameworkDetection(Instrumentation inst, ContainerIntegration container,
-            AggregateLevelControl aggregate, Consumer<AggregateLevelControl> onFirstContextReady) {
+            AggregateLevelControl aggregate, Consumer<AggregateLevelControl> onFirstContextReady,
+            Consumer<AggregateLevelControl> onUnbound) {
         try {
-            FrameworkDetection.start(inst, container, aggregate, onFirstContextReady, KnownFrameworks.all(),
-                    AgentBootstrap.class.getClassLoader());
+            FrameworkDetection.start(inst, container, aggregate, onFirstContextReady, onUnbound,
+                    KnownFrameworks.all(), AgentBootstrap.class.getClassLoader());
         } catch (Throwable t) {
             Diagnostics.warn("LogAperture could not start the search for bundled logging frameworks", t);
         }

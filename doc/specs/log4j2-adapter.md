@@ -141,7 +141,7 @@ integration (1.2.0).
   override is left alone and becomes the baseline (A2).
 - **Version matrix** (A11): levels, gate, trim rendering and handler levels pass on every version
   in the list; 2.25.0 to 2.25.3 report trim disabled; 2.19.x and below do not bind and `doctor`
-  says so (**not yet at process level**: #322, Slice 8 "As built").
+  says so (at process level, #322: [`surface-on-bind-failure.md`](surface-on-bind-failure.md)).
 - **Async:** the three modes on every version nightly, and on 2.25.5 per PR (A11, M8-3); `MutableLogEvent`
   reuse produces no stale trim (Slice 8's burst test).
 - **Lifecycle:** the leak tests of `class-loader-detector.md`, and no work done after the context
@@ -801,8 +801,8 @@ one on the rest, instead of skipping (M8-6). A Log4j that breaks the probe, or o
 `BundledLog4j2EndToEndIT` tests: a fixture on Log4j **2.19.0** (`doctor` has a `log4j2.version` `WARNING`, nothing is
 controlled) and one that loads Log4j's `LoggerContext` class and never starts a context (`doctor` has a
 `log4j2.not-bound` row at `INFO` after 3 s). Building them showed `doctor` cannot reach those rows when nothing else
-is installed, so they wait for [#322](https://github.com/ddeuchert/logaperture/issues/322) ("As built" below). Until then
-**the A10 and A12 acceptance is unmet at process level** and covered at unit level only (Slice 7).
+is installed, so they wait for [#322](https://github.com/ddeuchert/logaperture/issues/322) ("As built" below), where they are built
+([`surface-on-bind-failure.md`](surface-on-bind-failure.md)).
 
 **CI.**
 
@@ -839,14 +839,17 @@ so a contributor can reproduce a failing one.
 
 **As built:**
 
-- **The too-old (2.19.0) and never-started tests are not in this slice.** Building them showed that `doctor`
-  cannot reach the findings of Slice 7 when Log4j is the only framework in the JVM: the agent publishes its
-  control surface only once a context is installed (`AgentBootstrap`, `EngineStartup.onFirstContextReady`), so with
-  nothing bound there is no MBean to ask. The two rows appear only next to some other installed context. Decided
-  with the owner on 2026-11-03: its own issue and spec, [#322](https://github.com/ddeuchert/logaperture/issues/322)
-  (1.1.0), which also adds these two tests; the Functional summary's promise ("told by `doctor`") is unmet for a
-  JVM whose only framework is the failing Log4j until then. The `maven-dependency-plugin` copy of 2.19.0 planned
-  for them was left out.
+- **The too-old (2.19.0) and never-started tests are not in this slice.** Building them raised a gap in how the
+  Slice 7 findings are reached: the agent publishes its control surface, and sets the marker `logaperture.version`
+  that `logctl`'s discovery filters on, only once a context is installed, so for a JVM whose only framework fails to
+  bind, `logctl doctor` with no `--pid` finds no candidate and says "Start the application with `-javaagent`" for an
+  application that has it. (An earlier version of this note said there was "no MBean to ask". That is wrong for an
+  explicit pid: attaching starts the JDK's JMX agent, whose JUL loggers install the `none` container's JUL context, so
+  the surface comes up as a side effect and `doctor` shows the row; measured on 2.19.0, 2026-11-03.) Decided with the
+  owner on 2026-11-03 as its own issue and spec, [#322](https://github.com/ddeuchert/logaperture/issues/322),
+  [`surface-on-bind-failure.md`](surface-on-bind-failure.md) (1.1.0), which also adds these two tests (done there: the
+  Functional summary's promise holds for that JVM without `--pid`). The
+  `maven-dependency-plugin` copy of 2.19.0 planned for them was left out.
 - Handler names depend on the mode: behind an `<Async>` appender the handler is the `<Async>` one (S6-1), so the
   `async-appender` fixture names two (`AsyncOut`, `AsyncDisk`) and the tests ask for the console and disk handler by
   mode.

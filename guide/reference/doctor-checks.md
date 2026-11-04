@@ -121,6 +121,9 @@ class loader the Log4j was found in (its class and name and an identity, so two 
 are two rows) and the version. It is process-wide, with no context, because
 nothing was bound.
 
+LogAperture brings its control surface up for it, so `logctl doctor` finds the JVM without `--pid` even when this
+Log4j is the only logging framework in it.
+
 **Fix:** upgrade Log4j to 2.20.0 or later.
 
 ### `log4j2.not-bound`

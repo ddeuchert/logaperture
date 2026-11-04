@@ -28,6 +28,15 @@ public interface ContextSink {
     void add(ContextHandle context);
 
     /**
+     * The detector found {@code framework} and could not bind it for a reason a user should hear of (an
+     * unsupported version, or an adapter that failed: not merely no context after 3 s). The agent's sink brings the
+     * control surface up so {@code doctor} can say why (doc/specs/surface-on-bind-failure.md, D1, D2). Default:
+     * nothing.
+     */
+    default void unbound(String framework) {
+    }
+
+    /**
      * This context has gone. Removing one twice, or one never added, is a no-op, and so is removing
      * one that a later {@link #add} has since replaced under the same key: a redeploy can register
      * the new copy before the old copy's shutdown listener fires, and the old one must not take the
