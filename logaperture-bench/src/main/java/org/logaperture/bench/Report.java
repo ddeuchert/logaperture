@@ -46,7 +46,7 @@ public final class Report {
     private static final String L4J_INFO = L4J + "Log4jCallBenchmark.info";
     private static final String L4J_DISABLED = L4J + "Log4jCallBenchmark.disabled";
     private static final String L4J_GATE = L4J + "GateFilterComponentsBenchmark.gate";
-    private static final String L4J_GATE_DISABLED = L4J + "GateFilterComponentsBenchmark.disabled";
+    private static final String L4J_GATE_DISABLED = L4J + "GateFilterDisabledComponentsBenchmark.disabled";
     private static final List<String> L4J_MODES = List.of("sync", "async-appender", "async-loggers");
     private static final String GATE_EMPTY = "org.logaperture.core.IdleComponentsBenchmark.gateEmpty";
     private static final String STORM_OFF = "org.logaperture.adapter.jul.StormFilterComponentsBenchmark.stormOff";
@@ -118,10 +118,17 @@ public final class Report {
 
     private final List<Result> results;
     private final String machine;
+    /** The Log4j 2 the Log4j 2 scenarios ran on, from the folder's {@code log4j2.txt}; empty if there is none. */
+    private final String log4j2Version;
 
     Report(List<Result> results, String machine) {
+        this(results, machine, "");
+    }
+
+    Report(List<Result> results, String machine, String log4j2Version) {
         this.results = results;
         this.machine = machine;
+        this.log4j2Version = log4j2Version;
     }
 
     public static void main(String[] args) throws IOException {
@@ -138,8 +145,10 @@ public final class Report {
                 results.addAll(read(Files.readString(json, StandardCharsets.UTF_8)));
             }
         }
+        Path versionFile = folder.resolve("log4j2.txt");
+        String log4j2 = Files.exists(versionFile) ? Files.readString(versionFile, StandardCharsets.UTF_8).strip() : "";
         Path out = folder.resolve("report.md");
-        Files.writeString(out, new Report(results, machine).render(), StandardCharsets.UTF_8);
+        Files.writeString(out, new Report(results, machine, log4j2).render(), StandardCharsets.UTF_8);
         System.out.println(out);
     }
 
@@ -396,6 +405,11 @@ public final class Report {
             return;
         }
         md.append("## Log4j 2\n\n");
+        md.append("**Log4j 2 version: ").append(log4j2Version.isEmpty() ? "not recorded" : log4j2Version)
+                .append("**. The published run uses the latest tested 2.25 for every mode, and 2.20.0, the adapter's "
+                        + "floor, for `idle` and `disabled` in a separate results folder (Decision #26); a trim "
+                        + "regression of #333's kind shows on 2.25 and not on 2.20, so a number is only as good as "
+                        + "the version printed here.\n\n");
         md.append("The Log4j 2 adapter's gate on a real `LoggerContext`, one `INFO` call, in each of Log4j's three "
                 + "modes. Overhead is against `baseline` (bare Log4j 2) of the same mode, message, thread count and "
                 + "appender shape. There is no `top` layer: byte counting is not built for Log4j 2. "
@@ -454,6 +468,8 @@ public final class Report {
                 + "follow #21's curve, 50 ns + 35 ns × log₂(n + 1). Rows marked *parameterized* include the cost of "
                 + "formatting the message for the rules and are reported, not budgeted (Decision #32).\n\n");
         md.append("| Check | Message | Measured (ns) | Budget (ns) | Result |\n|---|---|--:|--:|---|\n");
+        // The length of the 1.0 suite's representative `concatenated` message (a five-digit sequence number); the
+        // Log4j benchmark's own grows with its sequence number, so the budget is that of a typical call, not exact.
         int concatenatedLength = BenchContext.message(true, 48213).length();
         String m = "sync";
         for (String message : MESSAGES) {
@@ -560,8 +576,8 @@ public final class Report {
             budgetRow(md, "reading a parameterized message, " + n + " rules: `pattern` − `plain`", "pattern",
                     l4jGate(L4J_GATE, n, "pattern"), l4jGate(L4J_GATE, n, "plain"), Double.NaN);
         }
-        Optional<Result> disabled = l4jGate(L4J_GATE_DISABLED, 0, "pattern");
-        md.append("| disabled call through the filter, no rules (Decision #28) | any | ")
+        Optional<Result> disabled = component(L4J_GATE_DISABLED);
+        md.append("| disabled call through the filter, 20 non-matching rules (Decision #28) | any | ")
                 .append(disabled.map(d -> ns(measured(d))).orElse("not run")).append(" | 10 | ")
                 .append(disabled.map(d -> measured(d).upper() <= 10 ? "pass" : "**over**").orElse("—"))
                 .append(" |\n\n");
@@ -620,7 +636,7 @@ public final class Report {
         List<Result> rows = results.stream()
                 .filter(r -> !r.benchmark().equals(IDLE) && !r.benchmark().equals(RULES)
                         && !r.benchmark().equals(SAVINGS)
-                        // The Log4j 2 whole-call rows get their own tables (next slice), not this list.
+                        // The Log4j 2 whole-call rows have their own tables (see log4j2()), not this list.
                         && !r.benchmark().startsWith("org.logaperture.adapter.log4j2.Log4jCallBenchmark."))
                 .sorted(Comparator.comparing(Result::shortName))
                 .toList();

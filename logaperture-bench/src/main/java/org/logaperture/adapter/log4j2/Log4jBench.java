@@ -85,6 +85,30 @@ final class Log4jBench {
         }
     }
 
+    /**
+     * The appender a logger writes through: a text appender to {@code sink} named {@code Out<suffix>}, behind an
+     * {@code <Async>} appender of its own named {@code Async<suffix>} in the {@code async-appender} mode. Both are
+     * added to the configuration; the one to attach to a logger is returned. The root's shape and each worker's are
+     * built here, so a change to the buffer or blocking cannot make the two shapes differ.
+     */
+    private static org.apache.logging.log4j.core.Appender appenderFor(Configuration configuration, String mode,
+            String suffix, Sink sink) {
+        PatternLayout layout = PatternLayout.newBuilder().withPattern(LAYOUT).withConfiguration(configuration).build();
+        OutputStreamAppender out = OutputStreamAppender.newBuilder().setName("Out" + suffix).setLayout(layout)
+                .setTarget(sink).setFollow(false).build();
+        out.start();
+        configuration.addAppender(out);
+        if (!ASYNC_APPENDER.equals(mode)) {
+            return out;
+        }
+        AsyncAppender async = AsyncAppender.newBuilder().setName("Async" + suffix).setConfiguration(configuration)
+                .setAppenderRefs(new AppenderRef[] {AppenderRef.createAppenderRef("Out" + suffix, null, null)})
+                .setBlocking(true).setBufferSize(1 << 16).build();
+        async.start();
+        configuration.addAppender(async);
+        return async;
+    }
+
     /** A context in {@code mode} with one text appender to {@code sink} on the root logger, at INFO. */
     static LoggerContext context(String name, String mode, Sink sink) {
         LoggerContext context = ASYNC_LOGGERS.equals(mode) ? new AsyncLoggerContext(name) : new LoggerContext(name);
@@ -96,20 +120,7 @@ final class Log4jBench {
             configuration.getRootLogger().removeAppender(stale);
             configuration.getAppenders().remove(stale);
         }
-        PatternLayout layout = PatternLayout.newBuilder().withPattern(LAYOUT).withConfiguration(configuration).build();
-        OutputStreamAppender out = OutputStreamAppender.newBuilder().setName("Out").setLayout(layout)
-                .setTarget(sink).setFollow(false).build();
-        out.start();
-        configuration.addAppender(out);
-        org.apache.logging.log4j.core.Appender onRoot = out;
-        if (ASYNC_APPENDER.equals(mode)) {
-            AsyncAppender async = AsyncAppender.newBuilder().setName("Async").setConfiguration(configuration)
-                    .setAppenderRefs(new AppenderRef[] {AppenderRef.createAppenderRef("Out", null, null)})
-                    .setBlocking(true).setBufferSize(1 << 16).build();
-            async.start();
-            configuration.addAppender(async);
-            onRoot = async;
-        }
+        org.apache.logging.log4j.core.Appender onRoot = appenderFor(configuration, mode, "", sink);
         configuration.getRootLogger().getAppenderRefs().clear();
         configuration.getRootLogger().addAppender(onRoot, null, null);
         // A slot is an AppenderRef (TrimSlots): a parsed configuration has one, an appender added in code does not.
@@ -128,20 +139,7 @@ final class Log4jBench {
     static Logger workerWithOwnAppender(LoggerContext context, String mode, String category, int index, Sink sink) {
         Configuration configuration = context.getConfiguration();
         String name = category + ".worker" + index;
-        PatternLayout layout = PatternLayout.newBuilder().withPattern(LAYOUT).withConfiguration(configuration).build();
-        OutputStreamAppender out = OutputStreamAppender.newBuilder().setName("Out" + index).setLayout(layout)
-                .setTarget(sink).setFollow(false).build();
-        out.start();
-        configuration.addAppender(out);
-        org.apache.logging.log4j.core.Appender onLogger = out;
-        if (ASYNC_APPENDER.equals(mode)) {
-            AsyncAppender async = AsyncAppender.newBuilder().setName("Async" + index).setConfiguration(configuration)
-                    .setAppenderRefs(new AppenderRef[] {AppenderRef.createAppenderRef("Out" + index, null, null)})
-                    .setBlocking(true).setBufferSize(1 << 16).build();
-            async.start();
-            configuration.addAppender(async);
-            onLogger = async;
-        }
+        org.apache.logging.log4j.core.Appender onLogger = appenderFor(configuration, mode, String.valueOf(index), sink);
         org.apache.logging.log4j.core.config.LoggerConfig loggerConfig =
                 new org.apache.logging.log4j.core.config.LoggerConfig(name, Level.INFO, false);
         loggerConfig.addAppender(onLogger, null, null);

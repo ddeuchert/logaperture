@@ -41,14 +41,13 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * doc/specs/overhead-benchmarks.md, "Revision 2026-11-06: the Log4j 2 gate", {@code gate-empty} and
- * {@code gate-n} for Log4j 2, plus the {@code disabled} call (Decision #28): the whole {@link GateFilter}
- * entry point Log4j calls, with {@code rules} {@code drop} rules effective on the logger (all on its parent,
+ * {@code gate-n} for Log4j 2 (the disabled call is {@link GateFilterDisabledComponentsBenchmark}): the whole
+ * {@link GateFilter} entry point Log4j calls, with {@code rules} {@code drop} rules effective on the logger (all on its parent,
  * none matching, each reading the message), as {@code GateCurveBenchmark} does for the JUL gate.
  *
  * <p>{@code rules = 0} is {@code gate-empty}: the gate is installed and knows no rule for the logger, the
- * shipped idle state. {@code gate} is checked as {@code gate − gate-empty} against Decision #21's curve;
- * {@code disabled} is a call the logger's level rejects, which Log4j runs through the filter anyway
- * (spike G2) and is held to Decision #28's 10 ns.
+ * shipped idle state. {@code gate} is checked as {@code gate − gate-empty} against Decision #21's curve, for rules
+ * that read nothing or a plain message; what a parameterized message adds is its own row (Decision #32).
  */
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
@@ -111,11 +110,5 @@ public class GateFilterComponentsBenchmark {
         return "plain".equals(reads)
                 ? filter.filter(logger, Level.INFO, null, IdleComponentsBenchmark.MESSAGE)
                 : filter.filter(logger, Level.INFO, null, Log4jBench.PATTERN, order, customer, millis);
-    }
-
-    /** Decision #28: a call the level rejects, which the filter still sees. */
-    @Benchmark
-    public Result disabled() {
-        return filter.filter(logger, Level.DEBUG, null, Log4jBench.PATTERN, order, customer, millis);
     }
 }

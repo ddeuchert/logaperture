@@ -18,10 +18,12 @@ package org.logaperture.adapter.log4j2;
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.logaperture.core.CapabilityPolicy;
 import org.logaperture.core.InMemoryAuditLog;
 import org.logaperture.core.RuleService;
 import org.logaperture.core.StormDetectionSwitch;
+import org.logaperture.core.StormObserver;
 import org.logaperture.core.StormService;
 import org.logaperture.core.spi.StateStore;
 
@@ -77,20 +79,47 @@ final class Log4jPipeline {
         return install(context, Storm.DISABLED, true);
     }
 
-    /** A scenario that quietly installed nothing would publish the baseline twice. */
+    /**
+     * A scenario that quietly installed nothing would publish the baseline twice: the gate must be the
+     * configuration's filter, storm detection present and enabled or disabled as asked, and every appender slot of
+     * every {@code LoggerConfig} (the root's, and each worker's in the per-thread shape, which are the ones the
+     * benchmark logs through) a {@link TrimAppender} when trim is on.
+     */
     void requireInstalled() {
         Configuration configuration = context.getConfiguration();
-        if (!(configuration.getFilter() instanceof GateFilter)) {
+        if (!(configuration.getFilter() instanceof GateFilter gateFilter)) {
             throw new IllegalStateException("the gate is not the configuration's only filter: " + configuration.getFilter());
         }
-        if (trim) {
-            for (Appender appender : configuration.getRootLogger().getAppenders().values()) {
+        Object installed = field(gateFilter, "storm");
+        if (storm == Storm.NONE) {
+            if (installed != null) {
+                throw new IllegalStateException("storm detection is installed in a scenario that has none");
+            }
+        } else if (!(installed instanceof StormObserver observer) || observer.isActive() != (storm == Storm.ENABLED)) {
+            throw new IllegalStateException("storm detection should be " + (storm == Storm.ENABLED ? "enabled" : "disabled")
+                    + " but the gate holds " + installed);
+        }
+        if (!trim) {
+            return;
+        }
+        for (LoggerConfig loggerConfig : HandlerLevels.loggerConfigs(configuration)) {
+            for (Appender appender : loggerConfig.getAppenders().values()) {
                 if (!(appender instanceof TrimAppender)) {
-                    throw new IllegalStateException("root slot holds " + appender.getClass().getSimpleName()
-                            + ", expected TrimAppender (trim is off on this Log4j: "
+                    throw new IllegalStateException("slot of '" + loggerConfig.getName() + "' holds "
+                            + appender.getClass().getSimpleName() + ", expected TrimAppender (trim is off on this Log4j: "
                             + adapter.trimDisabledReason().orElse("no reason recorded") + ")");
                 }
             }
+        }
+    }
+
+    private static Object field(Object target, String name) {
+        try {
+            java.lang.reflect.Field f = target.getClass().getDeclaredField(name);
+            f.setAccessible(true);
+            return f.get(target);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("can't read " + name + " of " + target.getClass().getSimpleName(), e);
         }
     }
 }

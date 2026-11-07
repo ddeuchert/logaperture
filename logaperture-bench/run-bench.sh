@@ -26,6 +26,11 @@
 #   --allow-slow-clock       measure even if System.nanoTime() is slow (the report says so)
 #   --async-profiler <lib>   also record flame graphs of the idle scenario (Linux; path to
 #                            libasyncProfiler.so)
+#   --log4j2-version <v>     the Log4j 2 the Log4j 2 scenarios run on (default 2.25.5); the report records it
+#   --only <prefix>          run only the runs whose name starts with <prefix>, e.g. log4j2-floor
+#
+# The Log4j 2 floor comparison (decision #26: `idle` and `disabled` on the adapter's oldest Log4j) needs its own
+# jar and results folder:  run-bench.sh --log4j2-version 2.20.0 --only log4j2-floor --label floor
 #
 # It records the CPU frequency settings but doesn't change them (that needs root); it prints
 # how to pin them instead.
@@ -36,13 +41,17 @@ quick=false
 label=run
 allow_slow=false
 async_lib=""
+log4j2_version=""
+only=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --quick) quick=true ;;
         --label) label="$2"; shift ;;
         --allow-slow-clock) allow_slow=true ;;
         --async-profiler) async_lib="$2"; shift ;;
-        -h|--help) sed -n '16,31p' "$0"; exit 0 ;;
+        --log4j2-version) log4j2_version="$2"; shift ;;
+        --only) only="$2"; shift ;;
+        -h|--help) sed -n '16,38p' "$0"; exit 0 ;;
         *) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
     esac
     shift
@@ -66,7 +75,9 @@ head -1 <<<"$java_text"
 # --- 2. Build ----------------------------------------------------------------------------------
 
 step "Building the benchmarks (the first build downloads Maven and libraries; a few minutes)"
-./mvnw -B -q --no-transfer-progress -Pbench -pl logaperture-bench -am package -DskipTests \
+build_args=()
+[[ -n "$log4j2_version" ]] && build_args+=("-Dlog4j2.bench.version=$log4j2_version")
+./mvnw -B -q --no-transfer-progress -Pbench -pl logaperture-bench -am package -DskipTests ${build_args[@]+"${build_args[@]}"} \
     || fail "The build failed; see the output above."
 jar="$repo/logaperture-bench/target/benchmarks.jar"
 [[ -f "$jar" ]] || fail "The build finished but $jar is missing."
@@ -141,6 +152,7 @@ step "Running the benchmarks (started $(date +%H:%M)); leave the machine alone u
 suite_args=("$out")
 $quick && suite_args+=(--quick)
 [[ -n "$async_lib" ]] && suite_args+=(--async-profiler "$async_lib")
+[[ -n "$only" ]] && suite_args+=(--only "$only")
 java -cp "$jar" org.logaperture.bench.Suite "${suite_args[@]}" 2>&1 | tee "$out/benchmarks.txt"
 [[ "${PIPESTATUS[0]}" -eq 0 ]] || fail "A benchmark run failed; see $out/benchmarks.txt"
 

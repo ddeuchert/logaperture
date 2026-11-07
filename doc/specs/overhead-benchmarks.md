@@ -294,11 +294,12 @@ published set, defined once in the benchmark jar (`Suite`) so the two can't drif
 | `savings-t1` | `SavingsBenchmark`, every scenario and message, 1 thread, through a real file handler | "What a match saves" (Decision #22) |
 | `idle-t4`, `idle-t8` | `baseline`, `rule+storm` and `idle`; `template` and `concatenated`; both handler shapes | the concurrency rows, #24 |
 | `flamegraphs` | `idle`, every message, under async-profiler (only with `--async-profiler`) | the flame graphs; not in the report's numbers |
-| `log4j2-components` | `GateFilterComponentsBenchmark` (rules 0, 1, 5, 20, 100; reads `pattern`, `plain`, `level-only`), `StormGateComponentsBenchmark`, `TrimQueryComponentsBenchmark` | the Log4j 2 `gate-empty`, `gate-n`, `storm-observe`, `trim-query` rows (Decision #32 splits the format cost out) |
+| `log4j2-components` | `GateFilterComponentsBenchmark` (rules 0, 1, 5, 20, 100; reads `pattern`, `plain`, `level-only`), `GateFilterDisabledComponentsBenchmark` (the disabled call, 20 rules installed), `StormGateComponentsBenchmark`, `TrimQueryComponentsBenchmark` | the Log4j 2 `gate-empty`, `gate-n`, `storm-observe`, `trim-query` rows (Decision #32 splits the format cost out) |
 | `log4j2-layers-t1` | `Log4jCallBenchmark.info`: `baseline`, `gate`, `gate+storm`, `gate+storm-off`, `gate+storm+trim-wrap`, `idle`; every mode; `template`, `concatenated`, `throwable`; 1 thread | the Log4j 2 overhead table and the layer budgets |
 | `log4j2-rules-t1` | `drop-miss`, `drop-hit`, `trim`, `trim-typed`; every mode; `template`, `concatenated`, `throwable`; 1 thread | the rule rows, compared with `idle` of the same mode and message; `concatenated` (a plain `String`) is the budgeted variant, the other two read a parameterized message (Decision #32) |
-| `log4j2-disabled-t1` | `Log4jCallBenchmark.disabled`: `baseline`, `gate`, `gate+storm-off`, `idle`; every mode | Decision #28's disabled-call budget |
-| `log4j2-per-thread-t1` | `baseline` and `idle`, `template`, synchronous, an appender per thread | #24's single-thread reference |
+| `log4j2-disabled-t1` | `Log4jCallBenchmark.disabled`: `baseline`, `idle`; every mode | Decision #28's disabled-call budget |
+| `log4j2-floor-layers`, `log4j2-floor-disabled` | `baseline` and `idle` (`template`, `throwable`) and the disabled call, every mode; run only with `--only log4j2-floor` on a jar built for 2.20.0 | decision #26's floor comparison |
+| `log4j2-per-thread-t1` | `baseline` and `idle`, `template` and `concatenated`, synchronous, an appender per thread | #24's single-thread reference |
 | `log4j2-t4`, `log4j2-t8` | `baseline`, `gate+storm`, `idle`; `template`, `concatenated`; both appender shapes; synchronous only (the async modes are reported, not budgeted, Decision #27) | the concurrency rows |
 
 A thread count above the machine's hardware threads is skipped, not oversubscribed. `Suite` takes
@@ -610,10 +611,14 @@ carry the budgets.
 `disabled` difference is held to **≤ 10 ns** (a level compare and a volatile read of the gate), a
 number agreed before the run like the others.
 
-**Outputs.** New runs (`log4j2-t1`, `log4j2-threads`, `log4j2-components`) in `Suite`, so
-`run-bench.sh` and `run-bench.ps1` run them; the CI smoke pass includes them; results in
-`doc/overhead/<date>-jdk21-log4j2/`; a Log4j 2 section in `guide/overhead.md`; and the cost
-statements on the Log4j 2 guide pages checked against the numbers.
+**Outputs.** New `Suite` runs (the "Running it" table below lists each: `log4j2-components`, `log4j2-layers-t1`,
+`log4j2-rules-t1`, `log4j2-disabled-t1`, `log4j2-per-thread-t1`, `log4j2-t4`, `log4j2-t8`, and `log4j2-floor-*` for
+decision #26's 2.20.0 comparison), so `run-bench.sh` and `run-bench.ps1` run them; the CI smoke pass includes them;
+results in `doc/overhead/<date>-jdk21-log4j2/`; a Log4j 2 section in `guide/overhead.md`; and the cost statements on
+the Log4j 2 guide pages checked against the numbers. The Log4j 2 the benchmarks run on is the bench module's own
+`log4j2.bench.version` (2.25.5), not the parent's `log4j2.version` that the adapter is compiled against; the scripts
+take `--log4j2-version` and `--only`, and `Suite` writes the version it ran on beside the results, which the report
+prints. The floor run is its own jar and folder: `run-bench.sh --log4j2-version 2.20.0 --only log4j2-floor --label floor`.
 
 **#25 — Where the harness lives.**
 A. The existing `logaperture-bench` module: Log4j 2 classes beside the JUL ones, one `Suite`, one

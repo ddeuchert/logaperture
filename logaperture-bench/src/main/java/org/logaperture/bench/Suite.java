@@ -54,6 +54,7 @@ public final class Suite {
 
     // The Log4j 2 sets (doc/specs/overhead-benchmarks.md, "Revision 2026-11-06: the Log4j 2 gate"). The benchmark classes
     // default to the CI smoke subset, so every published value is named here.
+    private static final String FLOOR = "log4j2-floor";
     private static final String[] L4J_MODES = {"sync", "async-appender", "async-loggers"};
     private static final String[] L4J_LAYERS = {"baseline", "gate", "gate+storm", "gate+storm-off",
             "gate+storm+trim-wrap", "idle"};
@@ -92,8 +93,12 @@ public final class Suite {
             }
         }
         Files.createDirectories(out);
+        Files.writeString(out.resolve("log4j2.txt"), log4j2Version() + System.lineSeparator());
         List<Run> runs = runs(Runtime.getRuntime().availableProcessors(), asyncProfiler, out);
-        if (only != null) {
+        if (only == null) {
+            // The floor comparison runs on a different Log4j, so on its own jar and in its own results folder.
+            runs = runs.stream().filter(run -> !run.name().startsWith(FLOOR)).toList();
+        } else {
             String prefix = only;
             runs = runs.stream().filter(run -> run.name().startsWith(prefix)).toList();
             if (runs.isEmpty()) {
@@ -171,12 +176,20 @@ public final class Suite {
                 .param("message", "template", "concatenated", "throwable").param("handlers", "shared")));
         // Decision #28: a call the level rejects, for the layers that can change it.
         runs.add(new Run("log4j2-disabled-t1", o -> o.include(LOG4J2_CALL + "disabled").threads(1)
-                .param("mode", L4J_MODES).param("scenario", "baseline", "gate", "gate+storm-off", "idle")
+                .param("mode", L4J_MODES).param("scenario", "baseline", "idle")
                 .param("message", "template").param("handlers", "shared")));
         // The #24 rule's single-thread reference.
         runs.add(new Run("log4j2-per-thread-t1", o -> o.include(LOG4J2_CALL + "info").threads(1)
                 .param("mode", "sync").param("scenario", "baseline", "idle")
-                .param("message", "template").param("handlers", "per-thread")));
+                .param("message", "template", "concatenated").param("handlers", "per-thread")));
+        // Decision #26: `idle` and `disabled` on the adapter's floor, 2.20.0. Only meaningful on a jar built with
+        // `--log4j2-version 2.20.0`, so `Suite` leaves them out unless `--only log4j2-floor` asks.
+        runs.add(new Run(FLOOR + "-layers", o -> o.include(LOG4J2_CALL + "info").threads(1)
+                .param("mode", L4J_MODES).param("scenario", "baseline", "idle")
+                .param("message", "template", "throwable").param("handlers", "shared")));
+        runs.add(new Run(FLOOR + "-disabled", o -> o.include(LOG4J2_CALL + "disabled").threads(1)
+                .param("mode", L4J_MODES).param("scenario", "baseline", "idle")
+                .param("message", "template").param("handlers", "shared")));
         for (int threads : new int[] {4, 8}) {
             if (threads > hardwareThreads) {
                 System.out.printf("Skipping the Log4j 2 %d-thread runs: this machine has %d hardware threads.%n",
@@ -188,6 +201,12 @@ public final class Suite {
                     .param("message", "template", "concatenated").param("handlers", "shared", "per-thread")));
         }
         return runs;
+    }
+
+    /** The Log4j 2 this jar runs on, recorded beside the results so the report can say what was measured. */
+    static String log4j2Version() {
+        String version = org.apache.logging.log4j.core.LoggerContext.class.getPackage().getImplementationVersion();
+        return version == null ? "unknown" : version;
     }
 
     private static void execute(Run run, Path out, boolean quick) throws RunnerException, IOException {
