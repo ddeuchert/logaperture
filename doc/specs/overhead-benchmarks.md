@@ -699,11 +699,14 @@ arguments. Two things differ from the JUL suite.
 - **Checked at trial end:** the sink received bytes (a scenario that logged nothing is a failure), `drop-hit`
   suppressed something, `trim` matched.
 
-**First finding of the whole-call run (issue #333).** With a `trim` rule matching an event that carries a
-throwable, the wrapper's copy of the event computes the caller location, a stack walk, on synchronous loggers
-and with an `<Async>` appender: ~16 µs added per trimmed call (22.6 µs against `idle`'s 5.8 µs), nothing with
-all-async loggers. Decision #21's budget at 20 rules is 204 ns, so by #29 it is its own issue, fixed or
-accepted by the owner.
+**First finding of the whole-call run (issue #333, fixed in #334).** With a `trim` rule matching an event that
+carries a throwable, the wrapper's copy of the event computed the caller location, a stack walk, on Log4j 2.25 with
+synchronous loggers or an `<Async>` appender: ~16 µs added per trimmed call (21.8 µs against `idle`'s 5.8 µs on
+2.25.5), nothing with all-async loggers, and nothing on 2.20 or 2.24.3. It is fixed to 7.5 µs on 2.25.5 and
+unchanged on the others (7.5 and 7.3 µs). A first fix that used the sourceless copy on every version made 2.20 three
+times slower; the measurement that showed it is why the benchmark is run on more than one Log4j version before a
+number is believed. A trimmed call still costs ~1.6 µs more than an untrimmed one on 2.25.5, against Decision #21's
+204 ns; whether to accept that is the owner's call under #29.
 
 **The Log4j 2 report.** `Report` gains a "Log4j 2" section when the results hold Log4j 2 rows: the overhead table
 (every mode, message, thread count and appender shape, against the `baseline` of the same ones), the budgets
