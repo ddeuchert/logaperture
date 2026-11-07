@@ -52,7 +52,7 @@ public final class BindFailures {
 
     /** {@code subject} is the loader's class and name plus its identity, so two like loaders can be told apart. */
     private record Row(String framework, WeakReference<ClassLoader> owner, String ownerName, String subject,
-                       String reason, Kind kind) {
+                       String reason, Kind kind, boolean fellBack) {
     }
 
     private static final List<Row> ROWS = new ArrayList<>();
@@ -69,13 +69,22 @@ public final class BindFailures {
                 ROWS.remove(0);
             }
             String subject = ownerName + "@" + Integer.toHexString(System.identityHashCode(owner));
-            ROWS.add(new Row(framework, new WeakReference<>(owner), ownerName, subject, reason, kind));
+            ROWS.add(new Row(framework, new WeakReference<>(owner), ownerName, subject, reason, kind, false));
         }
     }
 
     /** The scanner could not even start the bind (the listener threw): found and not bound all the same. */
     static void recordScanFailure(String framework, ClassLoader owner, Throwable cause) {
         record(framework, owner, BoundInstance.describe(owner), "binding it threw (" + cause + ")", Kind.FAILED);
+    }
+
+    /** The container controls {@code java.util.logging} instead (J5): the row's detail says so. */
+    static void noteFallback(String framework, ClassLoader owner) {
+        synchronized (ROWS) {
+            ROWS.replaceAll(row -> row.framework.equals(framework) && row.owner.get() == owner
+                    ? new Row(row.framework, row.owner, row.ownerName, row.subject, row.reason, row.kind, true)
+                    : row);
+        }
     }
 
     /** The framework bound after all (the same loader found again): its old row is no longer true. */
@@ -110,6 +119,10 @@ public final class BindFailures {
                     case FAILED -> "see the LogAperture line the application printed when it gave up";
                     case GAVE_UP -> "usually a " + row.framework + " the application never used";
                 };
+                if (row.fellBack) {
+                    String note = "java.util.logging is controlled instead";
+                    detail = detail == null ? note : detail + "; " + note;
+                }
                 String fix = row.kind == Kind.VERSION
                         ? "upgrade " + row.framework + " to a supported version." : null;
                 findings.add(new DoctorFinding(check, severity, row.subject, summary, detail, fix));

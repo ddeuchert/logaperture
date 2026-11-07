@@ -117,6 +117,20 @@ public final class ContainerContextSink implements ContextSink {
     }
 
     @Override
+    public boolean notBound(String framework, ClassLoader owner) {
+        try {
+            boolean tookOver = container.frameworkNotBound(framework, owner);
+            if (tookOver) {
+                BindFailures.noteFallback(framework, owner);
+            }
+            return tookOver;
+        } catch (Throwable t) {
+            Diagnostics.warn("LogAperture could not fall back after " + framework + " was not bound", t);
+            return false;
+        }
+    }
+
+    @Override
     public void remove(ContextHandle context) {
         if (!current.remove(context.stableKey(), context)) {
             return; // never added, already removed, or replaced by a newer copy under the same key

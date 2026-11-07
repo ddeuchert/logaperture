@@ -54,7 +54,12 @@ class ContainerContextSinkTest {
             calls.add("adopt " + context.stableKey());
         }
         @Override public void releaseContext(String stableKey) { calls.add("release " + stableKey); }
+        @Override public boolean frameworkNotBound(String framework, ClassLoader owner) {
+            calls.add("not bound " + framework);
+            return takesOver;
+        }
     };
+    private boolean takesOver;
 
     @Test
     void handsAContextToTheContainerAndTellsTheAgent() {
@@ -157,5 +162,23 @@ class ContainerContextSinkTest {
     void unbound_doesNothingWithTheDefaultCallback() {
         new ContainerContextSink(container, aggregate, ops -> { }).unbound("log4j2");
         assertTrue(calls.isEmpty());
+    }
+
+    /** doc/specs/jul-fallback-on-log4j-bind-failure.md J3, J5: the notice reaches the container, and doctor hears of a takeover. */
+    @Test
+    void aNotBoundNoticeReachesTheContainer_andDoctorSaysJulIsControlledWhenItTookOver() {
+        BindFailures.clear();
+        ClassLoader owner = new FixtureOwnerLoader();
+        ContainerContextSink sink = new ContainerContextSink(container, aggregate, ops -> { });
+
+        BindFailures.record("log4j2", owner, "loader", "too old", BindFailures.Kind.VERSION);
+        assertEquals(false, sink.notBound("log4j2", owner));
+        assertTrue(BindFailures.findings().get(0).detail() == null);
+
+        takesOver = true;
+        assertEquals(true, sink.notBound("log4j2", owner));
+        assertEquals(List.of("not bound log4j2", "not bound log4j2"), calls);
+        assertTrue(BindFailures.findings().get(0).detail().contains("java.util.logging is controlled instead"));
+        BindFailures.clear();
     }
 }

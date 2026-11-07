@@ -242,6 +242,11 @@
                   <artifactId>log4j-core</artifactId>
                   <version>2.19.0</version>
                 </artifactItem>
+                <artifactItem>
+                  <groupId>org.apache.logging.log4j</groupId>
+                  <artifactId>log4j-jul</artifactId>
+                  <version>2.19.0</version>
+                </artifactItem>
               </artifactItems>
               <outputDirectory>${project.build.directory}/old-log4j2</outputDirectory>
             </configuration>

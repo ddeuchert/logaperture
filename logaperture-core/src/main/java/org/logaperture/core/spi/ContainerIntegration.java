@@ -117,6 +117,17 @@ public interface ContainerIntegration {
     default void releaseContext(String stableKey) {
     }
 
+    /**
+     * The class-loader detector found {@code framework} in {@code owner} and ended without binding it (too old,
+     * failed, or no started context in time). An integration that can control the same application another way
+     * may do so (doc/specs/jul-fallback-on-log4j-bind-failure.md, J3, J4): {@code none} installs
+     * {@code java.util.logging} when it left it out because {@code log4j-jul} fronts the system Log4j 2.
+     * Returns whether it did (or already had). The default does nothing.
+     */
+    default boolean frameworkNotBound(String framework, ClassLoader owner) {
+        return false;
+    }
+
     /** Where the {@code -javaagent} flag goes, for diagnostics and help. Default {@link InstallGuidance#NONE}. */
     default InstallGuidance guidance() {
         return InstallGuidance.NONE;
