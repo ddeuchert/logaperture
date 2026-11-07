@@ -538,6 +538,24 @@ no synthetic class in the output, hits counted once per trimmed event, and the s
 **Not in this slice:** `top` on a trimmed Log4j event (A6, #306); handler levels (A5, Slice 6); the `doctor` check;
 the full version matrix in CI (A11).
 
+**A finding after the slice** (issue #333):
+
+- **No caller location unless the layout prints it, and only where it pays.** The wrapper copies an event with
+  `new Log4jLogEvent.Builder(event)`. On Log4j 2.25 that asks the original for `getSource()`, which on a synchronous
+  logger's event (`includeLocation` true by default) is a stack walk: about 16 µs per trimmed call (21.8 µs against
+  5.8 µs untrimmed, 20-frame throwable, 2.25.5). On 2.20 and 2.24.3 the copy reads a field and never walks (trimmed
+  calls cost 7.3 and 7.8 µs, below the untrimmed ones). The copy is therefore made from `SourcelessEvent`, a
+  read-only view that reports no location, when two things hold: nothing behind the wrapper prints one
+  (`TrimAppender.needsLocation()`: the appender's own `requiresLocation()`, which for an `AbstractAppender` asks its
+  layout, as Log4j decides it; an appender that cannot say is assumed to want it), and `LocationWalkProbe` says the
+  view pays on the running Log4j. The probe copies a reusable event that counts location requests (does the
+  builder ask?) and a view that counts thrown-proxy requests (does the generic path leave the proxy alone?), once per
+  adapter. It exists because a first version without it used the view everywhere and made 2.20 three times
+  slower (21.3 µs against 7.2 µs): the builder's generic path builds a `ThrowableProxy` of the untrimmed throwable
+  that its specialised path does not. After the fix: 2.20.0 7.5 µs, 2.24.3 7.3 µs, 2.25.5 7.5 µs (issue
+  [#333](https://github.com/ddeuchert/logaperture/issues/333); the whole-call benchmark of
+  `overhead-benchmarks.md` found it). The original event is never touched.
+
 ### Slice 6: handler levels (built, 2026-11-03)
 
 The sixth PR under #302: `logctl list handlers`, `set handler`, `reset handlers` and the handler-floor
