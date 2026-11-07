@@ -15,8 +15,8 @@ Decision #24 (storm detection is off by default since #151: `idle` is the shippe
 storm filter installed but disabled; disabled storm costs at most 10 % of the enabled budget,
 checked by a component benchmark) agreed 2026-10-07.
 Decisions #25–#31 (the Log4j 2 gate, 1.1.0, issue #332) agreed 2026-11-06, all on the recommended
-option; see "Revision 2026-11-06: the Log4j 2 gate". The component and whole-call benchmarks are built (`Log4jCallBenchmark`); the thread runs, report
-tables, `Suite` and CI wiring and the guide are not.
+option; see "Revision 2026-11-06: the Log4j 2 gate". The component and whole-call benchmarks, the thread runs, the `Suite` runs and the report tables are
+built; the pinned run and the guide are not.
 Decision #32 (the rule budget covers the gate's own work, not formatting a parameterized message) agreed 2026-11-06.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §10 (Performance: "< 200 ns added
 per evaluated event … near-zero for loggers no rule can match … enforced by JMH benchmarks in
@@ -296,7 +296,7 @@ published set, defined once in the benchmark jar (`Suite`) so the two can't drif
 | `flamegraphs` | `idle`, every message, under async-profiler (only with `--async-profiler`) | the flame graphs; not in the report's numbers |
 | `log4j2-components` | `GateFilterComponentsBenchmark` (rules 0, 1, 5, 20, 100; reads `pattern`, `plain`, `level-only`), `StormGateComponentsBenchmark`, `TrimQueryComponentsBenchmark` | the Log4j 2 `gate-empty`, `gate-n`, `storm-observe`, `trim-query` rows (Decision #32 splits the format cost out) |
 | `log4j2-layers-t1` | `Log4jCallBenchmark.info`: `baseline`, `gate`, `gate+storm`, `gate+storm-off`, `gate+storm+trim-wrap`, `idle`; every mode; `template`, `concatenated`, `throwable`; 1 thread | the Log4j 2 overhead table and the layer budgets |
-| `log4j2-rules-t1` | `drop-miss`, `drop-hit`, `trim`, `trim-typed`; every mode; `template`, `throwable`; 1 thread | the rule rows, compared with `idle` of the same mode and message |
+| `log4j2-rules-t1` | `drop-miss`, `drop-hit`, `trim`, `trim-typed`; every mode; `template`, `concatenated`, `throwable`; 1 thread | the rule rows, compared with `idle` of the same mode and message; `concatenated` (a plain `String`) is the budgeted variant, the other two read a parameterized message (Decision #32) |
 | `log4j2-disabled-t1` | `Log4jCallBenchmark.disabled`: `baseline`, `gate`, `gate+storm-off`, `idle`; every mode | Decision #28's disabled-call budget |
 | `log4j2-per-thread-t1` | `baseline` and `idle`, `template`, synchronous, an appender per thread | #24's single-thread reference |
 | `log4j2-t4`, `log4j2-t8` | `baseline`, `gate+storm`, `idle`; `template`, `concatenated`; both appender shapes; synchronous only (the async modes are reported, not budgeted, Decision #27) | the concurrency rows |
@@ -704,6 +704,16 @@ throwable, the wrapper's copy of the event computes the caller location, a stack
 and with an `<Async>` appender: ~16 µs added per trimmed call (22.6 µs against `idle`'s 5.8 µs), nothing with
 all-async loggers. Decision #21's budget at 20 rules is 204 ns, so by #29 it is its own issue, fixed or
 accepted by the owner.
+
+**The Log4j 2 report.** `Report` gains a "Log4j 2" section when the results hold Log4j 2 rows: the overhead table
+(every mode, message, thread count and appender shape, against the `baseline` of the same ones), the budgets
+(synchronous mode, one thread: the gate, the storm filter, `idle`, `drop-miss`, the rules, the type-bound trims,
+and the disabled call in every mode), a concurrency table (`idle` − `baseline` at 1, 4 and 8 threads for each
+appender shape, beside `baseline`'s own rise), and the gate called directly (`gate-n` against #21's curve for
+rules that read nothing or a plain message, the cost of reading a parameterized message as its own reported row,
+and the disabled call against Decision #28's 10 ns). A rule row whose message is parameterized is marked and
+reported, not budgeted (Decision #32), so the budgeted rule rows are the `concatenated` ones; type-bound trims read
+no message and are budgeted for every message.
 
 ## Testing
 

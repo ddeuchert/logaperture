@@ -42,6 +42,12 @@ public final class Report {
     private static final String IDLE = "org.logaperture.bench.IdleBenchmark.info";
     private static final String RULES = "org.logaperture.bench.RulesBenchmark.info";
     private static final String SAVINGS = "org.logaperture.bench.SavingsBenchmark.info";
+    private static final String L4J = "org.logaperture.adapter.log4j2.";
+    private static final String L4J_INFO = L4J + "Log4jCallBenchmark.info";
+    private static final String L4J_DISABLED = L4J + "Log4jCallBenchmark.disabled";
+    private static final String L4J_GATE = L4J + "GateFilterComponentsBenchmark.gate";
+    private static final String L4J_GATE_DISABLED = L4J + "GateFilterComponentsBenchmark.disabled";
+    private static final List<String> L4J_MODES = List.of("sync", "async-appender", "async-loggers");
     private static final String GATE_EMPTY = "org.logaperture.core.IdleComponentsBenchmark.gateEmpty";
     private static final String STORM_OFF = "org.logaperture.adapter.jul.StormFilterComponentsBenchmark.stormOff";
     private static final String STORM_OFF_DELEGATE =
@@ -176,6 +182,7 @@ public final class Report {
         budgets(md);
         savings(md);
         decisionRules(md);
+        log4j2(md);
         components(md);
         md.append("## Machine\n\n```\n").append(machine.strip()).append("\n```\n");
         return md.toString();
@@ -362,6 +369,202 @@ public final class Report {
             verdict += " (no error bar)";
         }
         md.append(signedNs(diff)).append(" | ").append(format(budget)).append(" | ").append(verdict).append(" |\n");
+    }
+
+    // ---- Log4j 2 (doc/specs/overhead-benchmarks.md, "Revision 2026-11-06: the Log4j 2 gate") ----------------------
+
+    /** One Log4j 2 whole-call row: a benchmark, mode, scenario, message, thread count and appender shape. */
+    private Optional<Result> l4j(String benchmark, String mode, String scenario, String message, int threads,
+            String handlers) {
+        return results.stream()
+                .filter(r -> r.benchmark().equals(benchmark) && r.threads() == threads
+                        && r.param("mode").equals(mode) && r.param("scenario").equals(scenario)
+                        && r.param("message").equals(message) && r.param("handlers").equals(handlers))
+                .findFirst();
+    }
+
+    /** One {@code GateFilterComponentsBenchmark} row, by benchmark method, rule count and what the rules read. */
+    private Optional<Result> l4jGate(String benchmark, int rules, String reads) {
+        return results.stream()
+                .filter(r -> r.benchmark().equals(benchmark) && r.param("rules").equals(String.valueOf(rules))
+                        && r.param("reads").equals(reads))
+                .findFirst();
+    }
+
+    private void log4j2(StringBuilder md) {
+        if (results.stream().noneMatch(r -> r.benchmark().startsWith(L4J))) {
+            return;
+        }
+        md.append("## Log4j 2\n\n");
+        md.append("The Log4j 2 adapter's gate on a real `LoggerContext`, one `INFO` call, in each of Log4j's three "
+                + "modes. Overhead is against `baseline` (bare Log4j 2) of the same mode, message, thread count and "
+                + "appender shape. There is no `top` layer: byte counting is not built for Log4j 2. "
+                + "`template` is a parameterized message (`{}` with three arguments), so a rule that reads it "
+                + "formats it first; `concatenated` is a plain `String`; `throwable` is `template` plus a 20-frame "
+                + "exception. Budgets are checked in synchronous mode only; the two asynchronous modes are "
+                + "reported, because a hot loop into a queue measures the queue (Decision #27). A rule that reads a "
+                + "parameterized message pays for formatting it, which the 1.0 curve never included, so those rows "
+                + "are reported and the budgeted rule rows use the plain message (Decision #32).\n\n");
+        log4j2Overhead(md);
+        log4j2Budgets(md);
+        log4j2Concurrency(md);
+        log4j2Components(md);
+    }
+
+    private void log4j2Overhead(StringBuilder md) {
+        md.append("### Overhead per log call (Log4j 2)\n\n");
+        md.append("| Mode | Scenario | Message | Threads | Appenders | Overhead | Added (ns) | Score (ns/op) "
+                + "| Baseline (ns/op) | Allocated (B/op) |\n|---|---|---|--:|---|--:|--:|--:|--:|--:|\n");
+        List<String> scenarios = List.of("gate", "gate+storm", "gate+storm-off", "gate+storm+trim-wrap", "idle",
+                "drop-miss", "drop-hit", "trim", "trim-typed");
+        List<Result> rows = results.stream()
+                .filter(r -> r.benchmark().equals(L4J_INFO) && !r.param("scenario").equals("baseline"))
+                .sorted(Comparator.comparing((Result r) -> !r.param("handlers").equals("shared"))
+                        .thenComparingInt(Result::threads)
+                        .thenComparingInt(r -> L4J_MODES.indexOf(r.param("mode")))
+                        .thenComparingInt(r -> MESSAGES.indexOf(r.param("message")))
+                        .thenComparingInt(r -> scenarios.indexOf(r.param("scenario"))))
+                .toList();
+        for (Result row : rows) {
+            Optional<Result> base = l4j(L4J_INFO, row.param("mode"), "baseline", row.param("message"),
+                    row.threads(), row.param("handlers"));
+            md.append("| ").append(row.param("mode")).append(" | `").append(row.param("scenario")).append("` | ")
+                    .append(row.param("message")).append(" | ").append(row.threads()).append(" | ")
+                    .append(row.param("handlers")).append(" | ");
+            if (base.isPresent()) {
+                Measured added = measured(row).minus(measured(base.get()));
+                md.append(percent(added.over(measured(base.get())))).append(" | ").append(signedNs(added));
+            } else {
+                md.append("— | —");
+            }
+            md.append(" | ").append(ns(measured(row))).append(" | ")
+                    .append(base.map(b -> ns(measured(b))).orElse("—")).append(" | ")
+                    .append(bytes(row.allocBytes())).append(" |\n");
+        }
+        if (rows.isEmpty()) {
+            md.append("| (no Log4j 2 scenario results) ||||||||||\n");
+        }
+        md.append('\n');
+    }
+
+    private void log4j2Budgets(StringBuilder md) {
+        md.append("### Log4j 2 budgets\n\n");
+        md.append("Synchronous mode, single thread, one shared appender. A check passes when the difference "
+                + "*plus* its error is within the budget (Decisions #8, #13, #21, #23, #28, #32). Rule budgets "
+                + "follow #21's curve, 50 ns + 35 ns × log₂(n + 1). Rows marked *parameterized* include the cost of "
+                + "formatting the message for the rules and are reported, not budgeted (Decision #32).\n\n");
+        md.append("| Check | Message | Measured (ns) | Budget (ns) | Result |\n|---|---|--:|--:|---|\n");
+        int concatenatedLength = BenchContext.message(true, 48213).length();
+        String m = "sync";
+        for (String message : MESSAGES) {
+            budgetRow(md, "gate: `gate` − `baseline`", message, l4j(L4J_INFO, m, "gate", message, 1, "shared"),
+                    l4j(L4J_INFO, m, "baseline", message, 1, "shared"), 50);
+        }
+        budgetRow(md, "storm filter: `gate+storm` − `gate`", "template",
+                l4j(L4J_INFO, m, "gate+storm", "template", 1, "shared"),
+                l4j(L4J_INFO, m, "gate", "template", 1, "shared"), 100);
+        budgetRow(md, "storm filter: `gate+storm` − `gate`", "concatenated",
+                l4j(L4J_INFO, m, "gate+storm", "concatenated", 1, "shared"),
+                l4j(L4J_INFO, m, "gate", "concatenated", 1, "shared"), 100 + 4 * Math.min(concatenatedLength, 500));
+        for (String message : MESSAGES) {
+            budgetRow(md, "storm filter, disabled: `gate+storm-off` − `gate`", message,
+                    l4j(L4J_INFO, m, "gate+storm-off", message, 1, "shared"),
+                    l4j(L4J_INFO, m, "gate", message, 1, "shared"), Double.NaN);
+        }
+        for (String message : MESSAGES) {
+            budgetRow(md, "idle (shipped default): `idle` − `baseline`", message,
+                    l4j(L4J_INFO, m, "idle", message, 1, "shared"),
+                    l4j(L4J_INFO, m, "baseline", message, 1, "shared"), 50);
+        }
+        for (String message : List.of("concatenated", "template")) {
+            budgetRow(md, "no rule can match: `drop-miss` − `idle`" + (message.equals("template") ? " *(parameterized)*" : ""),
+                    message, l4j(L4J_INFO, m, "drop-miss", message, 1, "shared"),
+                    l4j(L4J_INFO, m, "idle", message, 1, "shared"), message.equals("template") ? Double.NaN : 50);
+        }
+        for (String scenario : List.of("drop-hit", "trim")) {
+            for (String message : MESSAGES) {
+                boolean plain = message.equals("concatenated");
+                budgetRow(md, RULE_COUNT + " rules: `" + scenario + "` − `idle`" + (plain ? "" : " *(parameterized)*"),
+                        message, l4j(L4J_INFO, m, scenario, message, 1, "shared"),
+                        l4j(L4J_INFO, m, "idle", message, 1, "shared"), plain ? ruleBudget(RULE_COUNT) : Double.NaN);
+            }
+        }
+        // Type-bound trims read no message, so there is nothing to format: budgeted for every message.
+        for (String message : MESSAGES) {
+            double budget = message.equals("throwable") ? ruleBudget(RULE_COUNT) : 50;
+            budgetRow(md, RULE_COUNT + " type-bound trims: `trim-typed` − `idle`", message,
+                    l4j(L4J_INFO, m, "trim-typed", message, 1, "shared"),
+                    l4j(L4J_INFO, m, "idle", message, 1, "shared"), budget);
+        }
+        // Decision #28: a call the level rejects, which Log4j runs through the filter anyway. Never reaches a
+        // queue, so it is budgeted in every mode.
+        for (String mode : L4J_MODES) {
+            budgetRow(md, "disabled call, " + mode + ": `idle` − `baseline`", "template",
+                    l4j(L4J_DISABLED, mode, "idle", "template", 1, "shared"),
+                    l4j(L4J_DISABLED, mode, "baseline", "template", 1, "shared"), 10);
+        }
+        md.append('\n');
+    }
+
+    /** {@code idle} over {@code baseline} at 1, 4 and 8 threads, for each appender shape: the #24 question. */
+    private void log4j2Concurrency(StringBuilder md) {
+        boolean any = results.stream().anyMatch(r -> r.benchmark().equals(L4J_INFO) && r.threads() > 1);
+        if (!any) {
+            return;
+        }
+        md.append("### Concurrency (Log4j 2)\n\n");
+        md.append("`idle` − `baseline` in synchronous mode, per message and appender shape. With an appender per "
+                + "thread the number should stay flat: a rise means the gate, the storm filter or the trim wrapper "
+                + "serializes threads that Log4j does not (the #24 shape). With one shared appender, `baseline` "
+                + "itself rises, because Log4j locks the appender.\n\n");
+        md.append("| Appenders | Message | 1 thread | 4 threads | 8 threads | `baseline`, 1 → 8 threads (ns) |\n"
+                + "|---|---|--:|--:|--:|--:|\n");
+        for (String handlers : List.of("shared", "per-thread")) {
+            for (String message : List.of("template", "concatenated")) {
+                md.append("| ").append(handlers).append(" | ").append(message).append(" | ");
+                for (int threads : new int[] {1, 4, 8}) {
+                    Optional<Result> idle = l4j(L4J_INFO, "sync", "idle", message, threads, handlers);
+                    Optional<Result> base = l4j(L4J_INFO, "sync", "baseline", message, threads, handlers);
+                    md.append(idle.isPresent() && base.isPresent()
+                            ? signedNs(measured(idle.get()).minus(measured(base.get()))) : "not run").append(" | ");
+                }
+                Optional<Result> one = l4j(L4J_INFO, "sync", "baseline", message, 1, handlers);
+                Optional<Result> eight = l4j(L4J_INFO, "sync", "baseline", message, 8, handlers);
+                md.append(one.isPresent() && eight.isPresent()
+                        ? ns(measured(one.get())) + " → " + ns(measured(eight.get())) : "—").append(" |\n");
+            }
+        }
+        md.append('\n');
+    }
+
+    /** The gate called directly: {@code gate-n} against #21's curve, the format cost, the disabled call. */
+    private void log4j2Components(StringBuilder md) {
+        List<Result> gateRows = results.stream().filter(r -> r.benchmark().equals(L4J_GATE)).toList();
+        if (gateRows.isEmpty()) {
+            return;
+        }
+        md.append("### Log4j 2 gate, called directly\n\n");
+        md.append("`GateFilter` with *n* non-matching rules effective on the logger, over the same call with no "
+                + "rules, checked against #21's curve. What the rules read decides the cost: `level-only` rules read "
+                + "no message, `plain` rules read a `String`, and `pattern` rules read a parameterized message, which "
+                + "is formatted once per call (Decision #32: that difference is reported as its own row, not "
+                + "budgeted).\n\n");
+        md.append("| Check | Reads | Measured (ns) | Budget (ns) | Result |\n|---|---|--:|--:|---|\n");
+        for (String reads : List.of("level-only", "plain")) {
+            for (int n : new int[] {1, 5, 20, 100}) {
+                budgetRow(md, "`gate-n`, " + n + " rules, − `gate-empty`", reads, l4jGate(L4J_GATE, n, reads),
+                        l4jGate(L4J_GATE, 0, reads), ruleBudget(n));
+            }
+        }
+        for (int n : new int[] {1, 5, 20, 100}) {
+            budgetRow(md, "reading a parameterized message, " + n + " rules: `pattern` − `plain`", "pattern",
+                    l4jGate(L4J_GATE, n, "pattern"), l4jGate(L4J_GATE, n, "plain"), Double.NaN);
+        }
+        Optional<Result> disabled = l4jGate(L4J_GATE_DISABLED, 0, "pattern");
+        md.append("| disabled call through the filter, no rules (Decision #28) | any | ")
+                .append(disabled.map(d -> ns(measured(d))).orElse("not run")).append(" | 10 | ")
+                .append(disabled.map(d -> measured(d).upper() <= 10 ? "pass" : "**over**").orElse("—"))
+                .append(" |\n\n");
     }
 
     /** Decision #6, written down before measuring. */

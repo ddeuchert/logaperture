@@ -164,10 +164,11 @@ public final class Suite {
         runs.add(new Run("log4j2-layers-t1", o -> o.include(LOG4J2_CALL + "info").threads(1)
                 .param("mode", L4J_MODES).param("scenario", L4J_LAYERS)
                 .param("message", "template", "concatenated", "throwable").param("handlers", "shared")));
-        // The rules, on top of idle: a concatenated message adds nothing the rules read.
+        // The rules, on top of idle. `concatenated` is the plain-message variant, the one Decision #32 budgets; `template` and
+        // `throwable` are parameterized, so a rule that reads the message formats it, and those rows are reported.
         runs.add(new Run("log4j2-rules-t1", o -> o.include(LOG4J2_CALL + "info").threads(1)
                 .param("mode", L4J_MODES).param("scenario", L4J_RULES)
-                .param("message", "template", "throwable").param("handlers", "shared")));
+                .param("message", "template", "concatenated", "throwable").param("handlers", "shared")));
         // Decision #28: a call the level rejects, for the layers that can change it.
         runs.add(new Run("log4j2-disabled-t1", o -> o.include(LOG4J2_CALL + "disabled").threads(1)
                 .param("mode", L4J_MODES).param("scenario", "baseline", "gate", "gate+storm-off", "idle")
