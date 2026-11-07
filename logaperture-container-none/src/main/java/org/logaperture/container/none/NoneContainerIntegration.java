@@ -30,6 +30,7 @@ import org.logaperture.core.loader.KnownFrameworks;
 
 import java.lang.instrument.Instrumentation;
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -57,6 +58,9 @@ public final class NoneContainerIntegration implements ContainerIntegration {
 
     private final Duration sweepInterval;
     private volatile NoneContainer host;
+    /** Set when JUL was left out because {@code log4j-jul} fronts a Log4j 2; what installs it after all. */
+    private volatile Runnable julFallback;
+    private volatile boolean julFallbackStarted;
 
     public NoneContainerIntegration() {
         this(SweepPolicy.interval());
@@ -112,10 +116,43 @@ public final class NoneContainerIntegration implements ContainerIntegration {
             // which touches no JUL.
             Diagnostics.debug("none integration: java.util.logging is managed by "
                     + System.getProperty(JUL_MANAGER_PROPERTY) + "; leaving it to the detector");
+            // J4: if Log4j 2 then cannot be bound, the same JUL context goes in after all
+            armJulFallback(() -> JulLoadDetector.awaitJulThen(inst, installSystemContext));
         } else {
             JulLoadDetector.awaitJulThen(inst, installSystemContext);
         }
         return root.operations();
+    }
+
+    /** Whether {@code java.util.logging.manager} names the manager of the watched {@code framework}. */
+    private static boolean managerFronts(String framework) {
+        return KnownFrameworks.all().stream().filter(watch -> watch.framework().equals(framework))
+                .anyMatch(watch -> KnownFrameworks.julManagerFrontsABoundFramework(
+                        System.getProperty(JUL_MANAGER_PROPERTY), List.of(watch)));
+    }
+
+    /** What {@link #frameworkNotBound} runs: set when JUL was left out for {@code log4j-jul}. Package-visible for the test. */
+    void armJulFallback(Runnable install) {
+        julFallback = install;
+    }
+
+    /**
+     * doc/specs/jul-fallback-on-log4j-bind-failure.md J2, J4: the Log4j 2 {@code log4j-jul} fronts is the one the
+     * system class loader sees, so only its failure installs the {@code java.util.logging} context, once.
+     */
+    @Override
+    public synchronized boolean frameworkNotBound(String framework, ClassLoader owner) {
+        Runnable fallback = julFallback;
+        if (fallback == null || owner != ClassLoader.getSystemClassLoader() || !managerFronts(framework)) {
+            return false;
+        }
+        if (!julFallbackStarted) {
+            julFallbackStarted = true;
+            Diagnostics.warn("LogAperture could not control " + framework + " (see above); controlling "
+                    + "java.util.logging instead, which " + System.getProperty(JUL_MANAGER_PROPERTY) + " fronts");
+            fallback.run();
+        }
+        return true;
     }
 
     @Override

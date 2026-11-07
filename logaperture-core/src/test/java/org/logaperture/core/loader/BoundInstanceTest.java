@@ -68,7 +68,12 @@ class BoundInstanceTest {
         @Override public void add(ContextHandle context) { added.add(context.stableKey()); }
         @Override public void remove(ContextHandle context) { removed.add(context.stableKey()); }
         @Override public void unbound(String framework) { unbound.add(framework); }
+        @Override public boolean notBound(String framework, ClassLoader owner) {
+            notBound.add(System.identityHashCode(owner));
+            return false;
+        }
     };
+    private final List<Integer> notBound = new CopyOnWriteArrayList<>();
     private final List<String> unbound = new CopyOnWriteArrayList<>();
     private final ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
 
@@ -303,6 +308,31 @@ class BoundInstanceTest {
         FakeFrameworkState.ready.set(true);
         await(start(new FixtureOwnerLoader(), FAST, ADAPTER_CLASSES)::isBound);
         assertEquals(2, unbound.size(), "a give-up and a bind that worked do not publish a surface");
+    }
+
+    /** doc/specs/jul-fallback-on-log4j-bind-failure.md J1, J3: every way of ending without a context is told, with the owner. */
+    @Test
+    void everyFailureKindTellsTheSinkWhoseFrameworkItWas_andASuccessDoesNot() throws Exception {
+        FakeFrameworkState.tooOld.set(true);
+        FixtureOwnerLoader old = new FixtureOwnerLoader();
+        start(old, FAST, ADAPTER_CLASSES);
+        await(() -> notBound.size() == 1);
+
+        FakeFrameworkState.tooOld.set(false);
+        FakeFrameworkState.readyThrows.set(true);
+        FixtureOwnerLoader throwing = new FixtureOwnerLoader();
+        start(throwing, FAST, ADAPTER_CLASSES);
+        await(() -> notBound.size() == 2);
+
+        FakeFrameworkState.readyThrows.set(false);
+        FixtureOwnerLoader slow = new FixtureOwnerLoader();
+        start(slow, new BoundInstance.Timing(Duration.ofMillis(5), Duration.ofMillis(100)), ADAPTER_CLASSES);
+        await(() -> notBound.size() == 3);
+        assertEquals(List.of(System.identityHashCode(old), System.identityHashCode(throwing), System.identityHashCode(slow)), notBound);
+
+        FakeFrameworkState.ready.set(true);
+        await(start(new FixtureOwnerLoader(), FAST, ADAPTER_CLASSES)::isBound);
+        assertEquals(3, notBound.size());
     }
 
     @Test

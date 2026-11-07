@@ -37,6 +37,17 @@ public interface ContextSink {
     }
 
     /**
+     * The detector found {@code framework} in {@code owner} and ended without a context, for any reason: an
+     * unsupported version, an adapter that failed, or no started context in time
+     * (doc/specs/jul-fallback-on-log4j-bind-failure.md, J3). Called after {@link #unbound} where that applies.
+     * Returns whether the container now controls another tree for the same application instead (the
+     * {@code java.util.logging} one behind {@code log4j-jul}), which {@code doctor} then says. Default: no.
+     */
+    default boolean notBound(String framework, ClassLoader owner) {
+        return false;
+    }
+
+    /**
      * This context has gone. Removing one twice, or one never added, is a no-op, and so is removing
      * one that a later {@link #add} has since replaced under the same key: a redeploy can register
      * the new copy before the old copy's shutdown listener fires, and the old one must not take the

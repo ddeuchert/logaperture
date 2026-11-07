@@ -206,6 +206,11 @@ public final class BoundInstance {
                             + watch.framework(), t);
                 }
             }
+            try {
+                sink.notBound(watch.framework(), owner);
+            } catch (Throwable t) {
+                Diagnostics.warn("LogAperture could not fall back after " + watch.framework() + " was not bound", t);
+            }
         }
         release();
     }

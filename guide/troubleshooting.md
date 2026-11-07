@@ -42,6 +42,11 @@ rule can't see every event, and there is no way to read an explicit level. The a
 always did. `logctl doctor` names the class loader the Log4j was found in and its version, and works
 even when that Log4j is the only logging framework in the JVM. **Upgrade Log4j to 2.20.0 or later.**
 
+If the application uses `log4j-jul` (`-Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager`),
+LogAperture controls its `java.util.logging` loggers instead, as it would without Log4j 2, and says so in
+a `LogAperture could not control log4j2 … controlling java.util.logging instead` line and in the finding.
+The same holds for `log4j2.not-bound` below.
+
 ### `doctor` says `log4j2.not-bound`
 
 LogAperture found a Log4j 2 and could not bind it: its adapter failed to start, or no Log4j context

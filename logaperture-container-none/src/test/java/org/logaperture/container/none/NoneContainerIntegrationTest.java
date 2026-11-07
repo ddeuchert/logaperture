@@ -19,9 +19,11 @@ import org.junit.jupiter.api.Test;
 
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.logaperture.core.spi.ContextHandle;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -59,5 +61,36 @@ class NoneContainerIntegrationTest {
 
         assertThrows(IllegalStateException.class, () -> integration.adoptContext(untouched));
         assertThrows(IllegalStateException.class, () -> integration.releaseContext("fake:x"));
+    }
+
+    /** doc/specs/jul-fallback-on-log4j-bind-failure.md J2, J4. */
+    @Test
+    void theSystemLoadersLog4jNotBound_installsJulOnce_andAnotherLoadersDoesNot() throws Exception {
+        NoneContainerIntegration integration = new NoneContainerIntegration();
+        AtomicInteger installs = new AtomicInteger();
+
+        assertFalse(integration.frameworkNotBound("log4j2", ClassLoader.getSystemClassLoader()),
+                "JUL was not left out, so there is nothing to fall back to");
+
+        String key = NoneContainerIntegration.JUL_MANAGER_PROPERTY;
+        String before = System.getProperty(key);
+        System.setProperty(key, "org.apache.logging.log4j.jul.LogManager");
+        try {
+            integration.armJulFallback(installs::incrementAndGet);
+            try (URLClassLoader webapp = new URLClassLoader(new URL[0], null)) {
+                assertFalse(integration.frameworkNotBound("log4j2", webapp));
+            }
+            assertEquals(0, installs.get());
+
+            assertTrue(integration.frameworkNotBound("log4j2", ClassLoader.getSystemClassLoader()));
+            assertTrue(integration.frameworkNotBound("log4j2", ClassLoader.getSystemClassLoader()));
+            assertEquals(1, installs.get(), "once, whatever the number of notices");
+        } finally {
+            if (before == null) {
+                System.clearProperty(key);
+            } else {
+                System.setProperty(key, before);
+            }
+        }
     }
 }
