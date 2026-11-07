@@ -491,6 +491,54 @@ class TrimAppenderTest {
         assertEquals(1, probes.get(), "a reset-hook call must not probe again");
     }
 
+    private TrimAppender wrapperFor(String pattern) {
+        start(pattern, null, false, null);
+        assumeTrue(trimWorksHere(), "trim is off on this Log4j");
+        adapter.installTrimRendering(gate);
+        return assertInstanceOf(TrimAppender.class, context.getConfiguration().getRootLogger().getAppenders().get("Con"));
+    }
+
+    @Test
+    void aLayoutThatDoesNotPrintTheLocation_isCopiedWithoutAskingForIt() {
+        // #333: the event copy asked the original for its caller location, a stack walk on a synchronous logger's
+        // event, on every trimmed call. Log4j 2.25 asks in Builder(LogEvent); 2.20 reads a field, so the decision
+        // itself is what is checked here, on every version.
+        assertFalse(wrapperFor("%m|%ex%n").needsLocation());
+        context.stop();
+        assertFalse(wrapperFor("%m|%xEx%n").needsLocation());
+        context.stop();
+        assertFalse(wrapperFor("%d %-5level [%logger] %msg%n").needsLocation());
+    }
+
+    @Test
+    void aLayoutThatPrintsTheLocation_stillGetsItThroughATrimmedEvent() throws Exception {
+        assertTrue(wrapperFor("%m|%L|%ex%n").needsLocation());
+        log.error("TRIMME", deepThrowable());
+        String text = written();
+        assertTrue(text.contains("[stack trace trimmed: "), "the event was trimmed:\n" + text);
+        assertTrue(text.matches("(?s).*TRIMME\\|\\d+\\|.*"), "%L still prints a line number:\n" + text);
+    }
+
+    @Test
+    void aTrimmedEventWithoutALocation_isOtherwiseTheSameEvent() {
+        TrimAppender wrapper = wrapperFor("%m|%ex%n");
+        org.apache.logging.log4j.core.impl.Log4jLogEvent original = new org.apache.logging.log4j.core.impl.Log4jLogEvent.Builder()
+                .setLoggerName("app.svc").setLoggerFqcn("x.Y").setLevel(Level.ERROR)
+                .setMessage(new org.apache.logging.log4j.message.SimpleMessage("TRIMME")).setThreadName("t-1")
+                .setThrown(deepThrowable()).build();
+        SourcelessEvent view = new SourcelessEvent(original);
+        org.apache.logging.log4j.core.impl.Log4jLogEvent copy =
+                new org.apache.logging.log4j.core.impl.Log4jLogEvent.Builder(view).build();
+        assertEquals(original.getLoggerName(), copy.getLoggerName());
+        assertEquals(original.getLevel(), copy.getLevel());
+        assertEquals(original.getThreadName(), copy.getThreadName());
+        assertEquals(original.getMessage().getFormattedMessage(), copy.getMessage().getFormattedMessage());
+        assertEquals(original.getThrown(), copy.getThrown());
+        assertFalse(copy.isIncludeLocation());
+        assertEquals(null, copy.getSource());
+        assertFalse(wrapper.needsLocation());
+    }
+
     @Test
     void aGateThatThrows_failsOpen_andWritesTheEventUntrimmed() throws Exception {
         RuleGate broken = new RuleGate() {

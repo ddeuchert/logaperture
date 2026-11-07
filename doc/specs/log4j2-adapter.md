@@ -538,6 +538,18 @@ no synthetic class in the output, hits counted once per trimmed event, and the s
 **Not in this slice:** `top` on a trimmed Log4j event (A6, #306); handler levels (A5, Slice 6); the `doctor` check;
 the full version matrix in CI (A11).
 
+**A finding after the slice** (issue [#333](https://github.com/ddeuchert/logaperture/issues/333)):
+
+- **No caller location unless the layout prints it** (found by the whole-call benchmark of `overhead-benchmarks.md`). The wrapper copies an event with
+  `new Log4jLogEvent.Builder(event)`, which on Log4j 2.25 asks the original for `getSource()`; a synchronous
+  logger's event (`includeLocation` true by default) answers with a stack walk, which cost about 16 µs per trimmed
+  call (22.6 µs against 5.8 µs untrimmed, 20-frame throwable). The copy is now made from `SourcelessEvent`, a
+  read-only view that reports no location, unless `TrimAppender.needsLocation()` says something behind the wrapper
+  prints one (the appender's own `requiresLocation()`, which for an `AbstractAppender` asks its layout, as Log4j
+  decides it; an appender that cannot say is assumed to want it). The original event is never touched. After the
+  fix the trimmed call is ~7.5 µs, 1.6 µs over the untrimmed one.
+
+
 ### Slice 6: handler levels (built, 2026-11-03)
 
 The sixth PR under #302: `logctl list handlers`, `set handler`, `reset handlers` and the handler-floor

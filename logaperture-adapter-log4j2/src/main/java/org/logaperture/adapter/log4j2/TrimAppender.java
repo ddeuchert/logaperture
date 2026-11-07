@@ -130,6 +130,17 @@ final class TrimAppender extends AbstractAppender {
         delegate.append(trimmed(event));
     }
 
+    /**
+     * Whether anything behind this wrapper may print the caller location: the appender's own answer where it
+     * has one ({@code AbstractAppender} asks its layout; an {@code <Async>} appender is asked for its
+     * {@code includeLocation}), as Log4j itself decides it. An appender that cannot say is assumed to want it,
+     * as before the fix: a wrong "no" would silently drop a field, a wrong "yes" only costs the walk.
+     */
+    boolean needsLocation() {
+        return !(delegate instanceof org.apache.logging.log4j.core.impl.LocationAware aware)
+                || aware.requiresLocation();
+    }
+
     /** The event itself unless a trim rule applies to its throwable; never throws (§9, fail open). */
     private LogEvent trimmed(LogEvent event) {
         Throwable thrown = event.getThrown();
@@ -146,7 +157,10 @@ final class TrimAppender extends AbstractAppender {
             }
             Throwable trimmed = TrimmedThrowables.build(thrown, decision);
             // Without the proxy the rebuilt event must not carry the original's (untrimmed) one over.
-            return new Log4jLogEvent.Builder(event).setThrown(trimmed)
+            // The builder asks the source event for its caller location, a stack walk on a synchronous logger's
+            // event (#333): hand it a view that has none unless something behind this wrapper prints it.
+            LogEvent source = needsLocation() ? event : new SourcelessEvent(event);
+            return new Log4jLogEvent.Builder(source).setThrown(trimmed)
                     .setThrownProxy(buildsProxy ? new TrimmedProxy(trimmed) : null).build();
         } catch (RuntimeException e) {
             Diagnostics.warnThrottled("log4j2-trim", "trim failed, event written untrimmed: " + e, null);
