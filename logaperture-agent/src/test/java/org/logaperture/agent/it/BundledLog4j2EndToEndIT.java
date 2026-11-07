@@ -84,7 +84,11 @@ class BundledLog4j2EndToEndIT {
     void agentFindsALog4jOutsideTheSystemClassPath_andControlsItsLevels() throws Exception {
         Path output = work.resolve("run.log");
         Process app = launch(output);
-        String startup = waitFor(output, "FIXTURE-READY");
+        waitFor(output, "FIXTURE-READY");
+        // The fixture prints FIXTURE-READY straight to System.out, but behind an <Async> appender (the
+        // async-appender cell) its own startup line is still queued when the marker lands: wait for it too
+        // (issue #330) instead of assuming it came first.
+        String startup = waitFor(output, "INFO fixture.Worker fixture app started");
         assertTrue(startup.contains("INFO fixture.Worker fixture app started"),
                 "the app's own log4j2 configuration must apply -- the agent touches nothing first:\n" + startup);
 
