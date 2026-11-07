@@ -63,8 +63,8 @@ final class LocationWalkProbe {
                     return super.getSource();
                 }
             };
-            reusable.setLoggerName("logaperture.probe");
-            reusable.setLoggerFqcn("logaperture.probe.Fqcn");
+            reusable.setLoggerName("location-walk-probe");
+            reusable.setLoggerFqcn("location.walk.Probe");
             reusable.setLevel(Level.ERROR);
             reusable.setMessage(new SimpleMessage("probe"));
             reusable.setIncludeLocation(true);
@@ -73,7 +73,7 @@ final class LocationWalkProbe {
                 return false; // this Log4j's copy does not ask: nothing to save
             }
             AtomicInteger proxies = new AtomicInteger();
-            Log4jLogEvent plain = new Log4jLogEvent.Builder().setLoggerName("logaperture.probe")
+            Log4jLogEvent plain = new Log4jLogEvent.Builder().setLoggerName("location-walk-probe")
                     .setLevel(Level.ERROR).setMessage(new SimpleMessage("probe")).build();
             SourcelessEvent view = new SourcelessEvent(plain) {
                 @Override
