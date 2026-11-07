@@ -15,7 +15,8 @@ Decision #24 (storm detection is off by default since #151: `idle` is the shippe
 storm filter installed but disabled; disabled storm costs at most 10 % of the enabled budget,
 checked by a component benchmark) agreed 2026-10-07.
 Decisions #25–#31 (the Log4j 2 gate, 1.1.0, issue #332) agreed 2026-11-06, all on the recommended
-option; see "Revision 2026-11-06: the Log4j 2 gate". Not yet implemented.
+option; see "Revision 2026-11-06: the Log4j 2 gate". The component benchmarks are built; the rest is not.
+Decision #32 (the rule budget covers the gate's own work, not formatting a parameterized message) agreed 2026-11-06.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §10 (Performance: "< 200 ns added
 per evaluated event … near-zero for loggers no rule can match … enforced by JMH benchmarks in
 CI"), §17.1 ("What earns 1.0": "published overhead numbers (§10) for an idle agent, a `trim`
@@ -641,6 +642,33 @@ B. Also a stand-in byte counter.
 **#31 — Where it runs.**
 A. The development box, pinned, as for 1.0 (Decision #15). B. Also a nightly. 
 **Decided: A** (2026-11-06), nightly stays the smoke pass (Decision #4).
+
+**What the first component run showed (2026-11-06, unpinned box, 2 forks × 5 iterations, so the shape is
+solid and the exact figures are not).** `gate`, 20 rules effective on the logger, none matching, through
+`GateFilter`:
+
+| What the rules read | ns/call | Allocated | Over `gate-empty` (4 ns) |
+|---|--:|--:|--:|
+| Nothing (`level-only`: a level matcher that does not match) | 106 | 0 B | ~102 ns |
+| A plain `String` message (`plain`) | 215 | 364 B | ~210 ns |
+| A parameterized message (`pattern`, 3 arguments) | 464 | 640 B | ~460 ns |
+
+Decision #21 allows 204 ns at n = 20. The cost is flat in n: the first run's 1, 5, 20 and 100 rules were
+within noise of each other, so the rules are not what costs. About 100 ns is the clock read, the call and
+the rule walk; about 110 ns is reading a plain message; about 250 ns is **formatting a parameterized
+message once so that a `message-contains` matcher can read it** (Log4j then formats it again for the
+layout). The 1.0 `gate-n` benchmark passes its rules a constant `String`, so its figures never included a
+format. The `reads` parameter of `GateFilterComponentsBenchmark` carries these three cases.
+
+**#32 — Does the rule budget include formatting a parameterized message?** 
+A. Yes: the budget is for a call as the application makes it, so the `pattern` row is held to #21 and
+today's ~460 ns at n = 20 is over budget (#29 applies). B. The budget is for the gate's own work (`plain`
+and `level-only`), with the format reported as its own row, "reading a parameterized message", since the
+1.0 curve was never measured with one. C. Keep A, and make the format cheaper: format once and let Log4j
+reuse it for the layout.
+**Decided: B** (2026-11-06), with the cost published. A would hold Log4j 2 to a number JUL never measured, and C is a design
+change to a hand-off between the gate and the layout that A3 chose not to make. The `plain` row is ~6 ns
+over budget at n = 20, inside its error, and needs the pinned run before it is read either way.
 
 ## Testing
 

@@ -61,6 +61,14 @@ public class GateFilterComponentsBenchmark {
     @Param({"0", "1", "5", "20", "100"})
     public int rules;
 
+    /**
+     * What the rules read: {@code pattern} (message-contains rules on a parameterized message, which
+     * formats it once per call), {@code plain} (the same rules on a message with no parameters, nothing to
+     * format) or {@code level-only} (rules with no message matcher, so the message is never read).
+     */
+    @Param({"pattern", "plain", "level-only"})
+    public String reads;
+
     private LoggerContext context;
     private Logger logger;
     private GateFilter filter;
@@ -75,8 +83,9 @@ public class GateFilterComponentsBenchmark {
         logger = Log4jBench.logger(context);
         RuleService service = IdleComponentsBenchmark.newRuleService();
         for (int i = 0; i < rules; i++) {
-            CompiledMatchers miss = new CompiledMatchers(null, "connection pool exhausted (" + i + ")", false, null,
-                    null, false);
+            CompiledMatchers miss = "level-only".equals(reads)
+                    ? new CompiledMatchers(org.logaperture.api.Level.TRACE, null, false, null, null, false)
+                    : new CompiledMatchers(null, "connection pool exhausted (" + i + ")", false, null, null, false);
             service.addRuleDrop("org.acme.orders", miss, RuleAttachOptions.defaults(), SampleFullPolicy.defaults());
         }
         int effective = service.effectiveRules(IdleComponentsBenchmark.LOGGER).size();
@@ -85,7 +94,7 @@ public class GateFilterComponentsBenchmark {
         }
         filter = new GateFilter();
         filter.setGate(service.gate());
-        if (filter.filter(logger, Level.INFO, null, Log4jBench.PATTERN, order, customer, millis) != Result.NEUTRAL) {
+        if (gate() != Result.NEUTRAL) {
             throw new IllegalStateException("a non-matching rule set must let the call through");
         }
     }
@@ -98,7 +107,9 @@ public class GateFilterComponentsBenchmark {
     /** {@code gate-empty} (rules 0) and {@code gate-n}: a call the logger writes. */
     @Benchmark
     public Result gate() {
-        return filter.filter(logger, Level.INFO, null, Log4jBench.PATTERN, order, customer, millis);
+        return "plain".equals(reads)
+                ? filter.filter(logger, Level.INFO, null, IdleComponentsBenchmark.MESSAGE)
+                : filter.filter(logger, Level.INFO, null, Log4jBench.PATTERN, order, customer, millis);
     }
 
     /** Decision #28: a call the level rejects, which the filter still sees. */
