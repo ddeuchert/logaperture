@@ -14,6 +14,10 @@ Decision #23 (the storm filter's per-character allowance is 4 ns, not 3; amends 
 Decision #24 (storm detection is off by default since #151: `idle` is the shipped default with the
 storm filter installed but disabled; disabled storm costs at most 10 % of the enabled budget,
 checked by a component benchmark) agreed 2026-10-07.
+Decisions #25–#31 (the Log4j 2 gate, 1.1.0, issue #332) agreed 2026-11-06, all on the recommended
+option; see "Revision 2026-11-06: the Log4j 2 gate". The component and whole-call benchmarks, the thread runs, the `Suite` runs and the report tables are
+built; the pinned run and the guide are not.
+Decision #32 (the rule budget covers the gate's own work, not formatting a parameterized message) agreed 2026-11-06.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §10 (Performance: "< 200 ns added
 per evaluated event … near-zero for loggers no rule can match … enforced by JMH benchmarks in
 CI"), §17.1 ("What earns 1.0": "published overhead numbers (§10) for an idle agent, a `trim`
@@ -36,6 +40,9 @@ After this feature, the user will be able to:
   without it, on the same machine.
 - Re-run the same measurements on their own hardware with one command (Linux, macOS or
   Windows), and get the same percentage table for their machine.
+- Read the same numbers for an application on Log4j 2 (1.1.0): what each call costs with the
+  agent loaded, with a `drop` or `trim` rule, and for a disabled `debug()`, in each of Log4j's
+  synchronous and asynchronous modes.
 
 ## Motivation
 
@@ -287,8 +294,22 @@ published set, defined once in the benchmark jar (`Suite`) so the two can't drif
 | `savings-t1` | `SavingsBenchmark`, every scenario and message, 1 thread, through a real file handler | "What a match saves" (Decision #22) |
 | `idle-t4`, `idle-t8` | `baseline`, `rule+storm` and `idle`; `template` and `concatenated`; both handler shapes | the concurrency rows, #24 |
 | `flamegraphs` | `idle`, every message, under async-profiler (only with `--async-profiler`) | the flame graphs; not in the report's numbers |
+| `log4j2-components` | `GateFilterComponentsBenchmark` (rules 0, 1, 5, 20, 100; reads `pattern`, `plain`, `level-only`), `GateFilterDisabledComponentsBenchmark` (the disabled call, 20 rules installed), `StormGateComponentsBenchmark`, `TrimQueryComponentsBenchmark` | the Log4j 2 `gate-empty`, `gate-n`, `storm-observe`, `trim-query` rows (Decision #32 splits the format cost out) |
+| `log4j2-layers-t1` | `Log4jCallBenchmark.info`: `baseline`, `gate`, `gate+storm`, `gate+storm-off`, `gate+storm+trim-wrap`, `idle`; every mode; `template`, `concatenated`, `throwable`; 1 thread | the Log4j 2 overhead table and the layer budgets |
+| `log4j2-rules-t1` | `drop-miss`, `drop-hit`, `trim`, `trim-typed`; every mode; `template`, `concatenated`, `throwable`; 1 thread | the rule rows, compared with `idle` of the same mode and message; `concatenated` (a plain `String`) is the budgeted variant, the other two read a parameterized message (Decision #32) |
+| `log4j2-disabled-t1` | `Log4jCallBenchmark.disabled`: `baseline`, `idle`; every mode | Decision #28's disabled-call budget |
+| `log4j2-floor-layers`, `log4j2-floor-disabled` | `baseline` and `idle` (`template`, `throwable`) and the disabled call, every mode; run only with `--only log4j2-floor` on a jar built for 2.20.0 | decision #26's floor comparison |
+| `log4j2-per-thread-t1` | `baseline` and `idle`, `template` and `concatenated`, synchronous, an appender per thread | #24's single-thread reference |
+| `log4j2-t4`, `log4j2-t8` | `baseline`, `gate+storm`, `idle`; `template`, `concatenated`; both appender shapes; synchronous only (the async modes are reported, not budgeted, Decision #27) | the concurrency rows |
 
-A thread count above the machine's hardware threads is skipped, not oversubscribed. A report
+A thread count above the machine's hardware threads is skipped, not oversubscribed. `Suite` takes
+`--only <run name prefix>` to run a subset (`--only log4j2`), for checking a change without the whole set.
+
+**The CI smoke set for Log4j 2.** The `bench-smoke` job runs every benchmark with no overrides, so the Log4j 2
+benchmark classes default to a smoke-sized `@Param` set (every mode; `baseline`, `idle`, `drop-hit` and `trim`; a
+throwable; both appender shapes; 0 and 20 rules for the components) and `Suite` names every published value
+explicitly. The whole job runs in about 80 seconds, with 63 of its 124 combinations on Log4j 2. The set is chosen
+for what each trial-end check can catch: it found four harness bugs on its first runs. A report
 step in the same jar (`Report`) turns the JSON into `report.md`. The rule scenarios' budgets are
 checked against `idle` of the same message, not `baseline`: `idle`'s own layers carry #13's
 budgets already, and what §10's rule budget (204 ns at *n* = 20, Decision #21) and "near-zero for loggers no rule can
@@ -533,6 +554,174 @@ effective on the logger, so `drop-miss` keeps #8's near-zero ≤ 50 ns unchanged
   `/tmp`), is truncated at the start of every iteration so disk use stays bounded, and is
   deleted at trial end, after checking that its stack traces have 5 frames under `trim` and
   100 under `baseline`.
+
+### Revision 2026-11-06: the Log4j 2 gate
+
+Issue [#332](https://github.com/ddeuchert/logaperture/issues/332), a 1.1.0 release blocker.
+[`log4j2-adapter.md`](log4j2-adapter.md) "Acceptance" makes a Log4j 2 gate over the budgets above a
+release blocker for #302, and nothing has measured it: the 1.0 suite is JUL only (the "Logback is
+out of scope" line above stands). The adapter's design allocates nothing on the fast path; this
+section is what proves or disproves that.
+
+**What is different about the Log4j 2 gate.** One context-wide `GateFilter` on the `LoggerConfig`
+(drop rules and storm detection, before any `LogEvent` exists) and a `TrimAppender` in each
+appender slot. Three things have no JUL equivalent and decide the scenarios:
+
+- **The filter runs ahead of the level check** on every call, a disabled `debug()` in a hot loop
+  included (spike G2). On JUL a record reaches the filters only after the logger's level has
+  accepted it, so a disabled call costs nothing extra; on Log4j 2 it costs a filter call. Bare
+  Log4j 2 makes a disabled call nearly free, so this is the most visible number for a user.
+- **The gate and the wrapper may run on different threads.** With an `<Async>` appender both stay on
+  the calling thread; with all-async loggers the appender (and so `TrimAppender`) runs on the
+  consumer thread, off the caller's cost.
+- **No `top`.** Byte counting is not built for Log4j 2 (A6, #306), so `idle` here is the gate,
+  storm detection (installed, disabled by default) and the trim wrapper.
+
+**Scenarios.** The same ids and message variants (`template` with `{}` parameters, `concatenated`,
+`throwable`), the same 20-rule shapes, on a real Log4j 2 `LoggerContext`, one logger and one
+appender (an `OutputStreamAppender` to a discarding stream with a short fixed `PatternLayout`).
+`baseline` is the same logger with no LogAperture piece installed.
+
+| Id | Setup | Answers |
+|---|---|---|
+| `baseline` | Bare Log4j 2 | The reference |
+| `disabled` | `debug()` on a logger whose level rejects it, gate installed (no rules) vs. not | The cost of the filter running ahead of the level check |
+| `idle` | Gate with no rules, storm installed but disabled, trim wrapper installed | §10 "near-zero", Decision #8 |
+| `gate`, `gate+storm`, `gate+storm+trim-wrap` | The same layers as 1.0's `rule`, `rule+storm`, … | Each layer against #13's budgets |
+| `drop-miss`, `drop-hit`, `trim`, `trim-typed` | As 1.0, 20 rules | #21, #22 |
+
+Component benchmarks: `gate-empty`, `gate-n` (n = 1, 5, 20, 100), `storm-observe` and `trim-query`
+(`RuleGate.trimChoice`, the wrapper's non-counting query), each called directly. The storm
+normalizer benchmarks are core's and not repeated.
+
+**Modes and versions.** Each scenario runs in the three modes of the version matrix (synchronous,
+`<Async>` appender, all-async loggers) on Log4j 2.25.5, and `idle` and `disabled` also on 2.20.0, the
+adapter's floor. The published run is JDK 21 on the same machine and settings as the 1.0 run, so
+the tables compare.
+
+**Async measurement.** A hot loop into an asynchronous queue measures the queue filling (backpressure),
+not the call. Whole-call differences in the two async modes are therefore **reported, not
+budgeted**; the gate's cost on the calling thread, which is the same in every mode, is checked by
+the component benchmarks, and `trim-query` shows the wrapper's cost. Whole-call rows in sync mode
+carry the budgets.
+
+**Concurrency.** `idle` at 1, 4 and 8 threads, one shared appender and one per thread, as for JUL.
+
+**Budgets.** #8, #13, #21 and #23 apply unchanged to the layers and rules above. Added: the
+`disabled` difference is held to **≤ 10 ns** (a level compare and a volatile read of the gate), a
+number agreed before the run like the others.
+
+**Outputs.** New `Suite` runs (the "Running it" table below lists each: `log4j2-components`, `log4j2-layers-t1`,
+`log4j2-rules-t1`, `log4j2-disabled-t1`, `log4j2-per-thread-t1`, `log4j2-t4`, `log4j2-t8`, and `log4j2-floor-*` for
+decision #26's 2.20.0 comparison), so `run-bench.sh` and `run-bench.ps1` run them; the CI smoke pass includes them;
+results in `doc/overhead/<date>-jdk21-log4j2/`; a Log4j 2 section in `guide/overhead.md`; and the cost statements on
+the Log4j 2 guide pages checked against the numbers. The Log4j 2 the benchmarks run on is the bench module's own
+`log4j2.bench.version` (2.25.5), not the parent's `log4j2.version` that the adapter is compiled against; the scripts
+take `--log4j2-version` and `--only`, and `Suite` writes the version it ran on beside the results, which the report
+prints. The floor run is its own jar and folder: `run-bench.sh --log4j2-version 2.20.0 --only log4j2-floor --label floor`.
+
+**#25 — Where the harness lives.**
+A. The existing `logaperture-bench` module: Log4j 2 classes beside the JUL ones, one `Suite`, one
+`Report`. B. A second module with its own jar. C. Run the Log4j scenarios inside the adapter's own
+tests.
+**Decided: A** (2026-11-06). The runner, report and CI job are shared; Log4j 2 and JBoss LogManager coexist on one
+class path because they use different logging APIs. B duplicates the runner for no isolation
+benefit; C has no JMH forks and no pinned machine.
+
+**#26 — Log4j 2 versions benchmarked.**
+A. 2.25.5 in every mode, plus `idle` and `disabled` on 2.20.0. B. 2.25.5 only. C. The whole
+version matrix.
+**Decided: A** (2026-11-06). The floor is where fluent-API and filter paths differ most; the rest of the matrix
+is correctness, which CI already covers (A11).
+
+**#27 — Asynchronous modes: budgeted or reported.**
+A. Whole-call rows in the two async modes are reported; the gate's calling-thread cost is
+budgeted through component benchmarks. B. Budget the whole call in all modes. C. Sync only.
+**Decided: A** (2026-11-06). Whole-call async numbers are dominated by queue behaviour under a saturating loop and
+would pass or fail on the ring buffer, not on LogAperture. C leaves the async modes unmeasured
+although the gate sits in a different place in each.
+
+**#28 — The budget for a disabled call.**
+A. ≤ 10 ns over bare Log4j 2, with the combined error counted. B. The idle budget of 50 ns. C. No
+budget, report only.
+**Decided: A** (2026-11-06). A disabled `debug()` is the call applications make most often, and B would allow a
+bare ~1 ns call to cost fifty times as much.
+
+**#29 — A number over budget.**
+A. As #7: its own issue under 1.1.0, fixed or accepted for 1.x by the owner with the figure
+published (the #158, #177 and #150 precedent). B. Always fix before 1.1.0. C. Publish and decide
+later.
+**Decided: A** (2026-11-06).
+
+**#30 — What `idle` includes without `top`.**
+A. Gate, storm (disabled) and trim wrapper, with `top` stated as "not counted" in the table (A6).
+B. Also a stand-in byte counter. 
+**Decided: A** (2026-11-06). A stand-in would measure code that does not ship.
+
+**#31 — Where it runs.**
+A. The development box, pinned, as for 1.0 (Decision #15). B. Also a nightly. 
+**Decided: A** (2026-11-06), nightly stays the smoke pass (Decision #4).
+
+**What the first component run showed (2026-11-06, unpinned box, 2 forks × 5 iterations, so the shape is
+solid and the exact figures are not).** `gate`, 20 rules effective on the logger, none matching, through
+`GateFilter`:
+
+| What the rules read | ns/call | Allocated | Over `gate-empty` (4 ns) |
+|---|--:|--:|--:|
+| Nothing (`level-only`: a level matcher that does not match) | 106 | 0 B | ~102 ns |
+| A plain `String` message (`plain`) | 215 | 364 B | ~210 ns |
+| A parameterized message (`pattern`, 3 arguments) | 464 | 640 B | ~460 ns |
+
+Decision #21 allows 204 ns at n = 20. The cost is flat in n: the first run's 1, 5, 20 and 100 rules were
+within noise of each other, so the rules are not what costs. About 100 ns is the clock read, the call and
+the rule walk; about 110 ns is reading a plain message; about 250 ns is **formatting a parameterized
+message once so that a `message-contains` matcher can read it** (Log4j then formats it again for the
+layout). The 1.0 `gate-n` benchmark passes its rules a constant `String`, so its figures never included a
+format. The `reads` parameter of `GateFilterComponentsBenchmark` carries these three cases.
+
+**#32 — Does the rule budget include formatting a parameterized message?** 
+A. Yes: the budget is for a call as the application makes it, so the `pattern` row is held to #21 and
+today's ~460 ns at n = 20 is over budget (#29 applies). B. The budget is for the gate's own work (`plain`
+and `level-only`), with the format reported as its own row, "reading a parameterized message", since the
+1.0 curve was never measured with one. C. Keep A, and make the format cheaper: format once and let Log4j
+reuse it for the layout.
+**Decided: B** (2026-11-06), with the cost published. A would hold Log4j 2 to a number JUL never measured, and C is a design
+change to a hand-off between the gate and the layout that A3 chose not to make. The `plain` row is ~6 ns
+over budget at n = 20, inside its error, and needs the pinned run before it is read either way.
+
+**The whole-call run (`Log4jCallBenchmark`) and what it changed in the harness.**
+Scenario ids, modes and messages are as above; `template` is a parameterized message with three
+arguments. Two things differ from the JUL suite.
+- **The throwable has real frames.** The JUL suite sets synthetic frames
+  (`org.acme.orders.OrderService$Stage0` ...). Log4j 2 resolves every frame's class when it builds a
+  `ThrowableProxy`, and a class that does not exist costs a failed lookup per frame (`trim` came out at
+  ~100 µs with synthetic frames, ~22 µs with real ones). The Log4j throwable is therefore a 20-deep
+  recursion of real methods; the stack is about 30 frames in all, and the trim rule cuts it to 5.
+- **A slot is an `AppenderRef`.** An appender added to a `LoggerConfig` in code has no reference, and the trim
+  wrapper leaves such a slot alone (`TrimSlots`); the harness adds the reference a parsed configuration
+  has, and every scenario checks that the gate is the configuration's filter and, for the trim layers,
+  that the slot holds a `TrimAppender`.
+- **Checked at trial end:** the sink received bytes (a scenario that logged nothing is a failure), `drop-hit`
+  suppressed something, `trim` matched.
+
+**First finding of the whole-call run (issue #333, fixed in #334).** With a `trim` rule matching an event that
+carries a throwable, the wrapper's copy of the event computed the caller location, a stack walk, on Log4j 2.25 with
+synchronous loggers or an `<Async>` appender: ~16 µs added per trimmed call (21.8 µs against `idle`'s 5.8 µs on
+2.25.5), nothing with all-async loggers, and nothing on 2.20 or 2.24.3. It is fixed to 7.5 µs on 2.25.5 and
+unchanged on the others (7.5 and 7.3 µs). A first fix that used the sourceless copy on every version made 2.20 three
+times slower; the measurement that showed it is why the benchmark is run on more than one Log4j version before a
+number is believed. A trimmed call still costs ~1.6 µs more than an untrimmed one on 2.25.5, against Decision #21's
+204 ns; whether to accept that is the owner's call under #29.
+
+**The Log4j 2 report.** `Report` gains a "Log4j 2" section when the results hold Log4j 2 rows: the overhead table
+(every mode, message, thread count and appender shape, against the `baseline` of the same ones), the budgets
+(synchronous mode, one thread: the gate, the storm filter, `idle`, `drop-miss`, the rules, the type-bound trims,
+and the disabled call in every mode), a concurrency table (`idle` − `baseline` at 1, 4 and 8 threads for each
+appender shape, beside `baseline`'s own rise), and the gate called directly (`gate-n` against #21's curve for
+rules that read nothing or a plain message, the cost of reading a parameterized message as its own reported row,
+and the disabled call against Decision #28's 10 ns). A rule row whose message is parameterized is marked and
+reported, not budgeted (Decision #32), so the budgeted rule rows are the `concatenated` ones; type-bound trims read
+no message and are budgeted for every message.
 
 ## Testing
 

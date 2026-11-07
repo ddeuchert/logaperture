@@ -34,6 +34,10 @@
 
   <properties>
     <jmh.version>1.37</jmh.version>
+    <!-- The Log4j 2 the Log4j benchmarks run on (Decision #26: the published run is 2.25.5, with `idle` and `disabled`
+         also on the adapter's floor, 2.20.0, through the scripts' log4j2-version option). Deliberately not the parent's
+         log4j2.version, which is what the adapter is compiled against; and the report records what was used. -->
+    <log4j2.bench.version>2.25.5</log4j2.bench.version>
     <maven.deploy.skip>true</maven.deploy.skip>
     <maven.install.skip>true</maven.install.skip>
   </properties>
@@ -54,6 +58,28 @@
     <dependency>
       <groupId>org.logaperture</groupId>
       <artifactId>logaperture-adapter-jul</artifactId>
+    </dependency>
+    <!-- Decision #25: Log4j 2 scenarios live beside the JUL ones. log4j-core at ${log4j2.bench.version}
+         (2.25.5 by default, Decision #26); the adapter itself is provided there. -->
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-adapter-log4j2</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-api</artifactId>
+      <version>${log4j2.bench.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
+      <version>${log4j2.bench.version}</version>
+    </dependency>
+    <!-- The all-async-loggers mode (Decision #27) needs the LMAX Disruptor, as the version matrix does. -->
+    <dependency>
+      <groupId>com.lmax</groupId>
+      <artifactId>disruptor</artifactId>
+      <version>3.4.4</version>
     </dependency>
     <!-- Decision #2: the benchmark JVM runs JBoss LogManager, what WildFly users run. -->
     <dependency>

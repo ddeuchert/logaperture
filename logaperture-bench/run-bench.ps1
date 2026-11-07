@@ -31,6 +31,13 @@
     A setup check of about 10 minutes: one fork, short iterations, numbers indicative only.
     Use it first.
 
+.PARAMETER Log4j2Version
+    The Log4j 2 the Log4j 2 scenarios run on (default 2.25.5). The report records it. The floor comparison
+    (decision #26) is a separate run: -Log4j2Version 2.20.0 -Only log4j2-floor -Label floor.
+
+.PARAMETER Only
+    Run only the runs whose name starts with this, e.g. log4j2-floor.
+
 .PARAMETER AllowSlowClock
     Measure even if one System.nanoTime() call costs over 100 ns. The report then carries a warning.
 
@@ -41,7 +48,9 @@
 param(
     [string]$Label = "run",
     [switch]$Quick,
-    [switch]$AllowSlowClock
+    [switch]$AllowSlowClock,
+    [string]$Log4j2Version = "",
+    [string]$Only = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -80,7 +89,9 @@ Write-Host $javaFirst
 # --- 2. Build ------------------------------------------------------------------------------------
 
 Step "Building the benchmarks (the first build downloads Maven and libraries; a few minutes)"
-& .\mvnw.cmd -B -q --no-transfer-progress -Pbench -pl logaperture-bench -am package -DskipTests
+$buildArgs = @()
+if ($Log4j2Version) { $buildArgs += "-Dlog4j2.bench.version=$Log4j2Version" }
+& .\mvnw.cmd -B -q --no-transfer-progress -Pbench -pl logaperture-bench -am package -DskipTests @buildArgs
 if ($LASTEXITCODE -ne 0) { Fail "The build failed. Send David the output above." }
 $jar = Join-Path $repo "logaperture-bench\target\benchmarks.jar"
 if (-not (Test-Path $jar)) { Fail "The build finished but $jar is missing." }
@@ -158,6 +169,7 @@ try {
     Step "Running the benchmarks (started $(Get-Date -Format HH:mm)); leave the PC alone until it's done"
     $suiteArgs = @("-cp", $jar, "org.logaperture.bench.Suite", $out)
     if ($Quick) { $suiteArgs += "--quick" }
+    if ($Only) { $suiteArgs += @("--only", $Only) }
     & java @suiteArgs | Tee-Object -FilePath (Join-Path $out "benchmarks.txt")
     if ($LASTEXITCODE -ne 0) { Fail "A benchmark run failed; see $(Join-Path $out "benchmarks.txt")" }
 }
