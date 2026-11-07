@@ -18,7 +18,15 @@ package org.logaperture.adapter.log4j2;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.Logger;
 import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.AsyncAppender;
+import org.apache.logging.log4j.core.appender.OutputStreamAppender;
+import org.apache.logging.log4j.core.async.AsyncLoggerContext;
+import org.apache.logging.log4j.core.config.AppenderRef;
 import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.layout.PatternLayout;
+
+import java.io.OutputStream;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * A real Log4j 2 {@link LoggerContext} for the component benchmarks (doc/specs/overhead-benchmarks.md,
@@ -52,5 +60,79 @@ final class Log4jBench {
             throw new IllegalStateException("expected INFO on " + LOGGER + ", got " + logger.getLevel());
         }
         return logger;
+    }
+
+    /** The three modes of the version matrix (Decision #26, #27). */
+    static final String SYNC = "sync";
+    static final String ASYNC_APPENDER = "async-appender";
+    static final String ASYNC_LOGGERS = "async-loggers";
+
+    /** Short and fixed, as the JUL suite's: a small baseline keeps its error from swamping the difference. */
+    private static final String LAYOUT = "%d{HH:mm:ss,SSS} %-5level [%logger] %msg%n";
+
+    /** Where the appender writes: nowhere, but it counts, so a scenario that logged nothing is caught. */
+    static final class Sink extends OutputStream {
+        final AtomicLong bytes = new AtomicLong();
+
+        @Override
+        public void write(int b) {
+            bytes.incrementAndGet();
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) {
+            bytes.addAndGet(len);
+        }
+    }
+
+    /** A context in {@code mode} with one text appender to {@code sink} on the root logger, at INFO. */
+    static LoggerContext context(String name, String mode, Sink sink) {
+        LoggerContext context = ASYNC_LOGGERS.equals(mode) ? new AsyncLoggerContext(name) : new LoggerContext(name);
+        // start() (not start(Configuration)): an AsyncLoggerContext starts its Disruptor only there.
+        context.start();
+        Configuration configuration = context.getConfiguration();
+        // The default configuration brings a console appender on the root: take it out, so the only output is the sink.
+        for (String stale : new java.util.ArrayList<>(configuration.getRootLogger().getAppenders().keySet())) {
+            configuration.getRootLogger().removeAppender(stale);
+            configuration.getAppenders().remove(stale);
+        }
+        PatternLayout layout = PatternLayout.newBuilder().withPattern(LAYOUT).withConfiguration(configuration).build();
+        OutputStreamAppender out = OutputStreamAppender.newBuilder().setName("Out").setLayout(layout)
+                .setTarget(sink).setFollow(false).build();
+        out.start();
+        configuration.addAppender(out);
+        org.apache.logging.log4j.core.Appender onRoot = out;
+        if (ASYNC_APPENDER.equals(mode)) {
+            AsyncAppender async = AsyncAppender.newBuilder().setName("Async").setConfiguration(configuration)
+                    .setAppenderRefs(new AppenderRef[] {AppenderRef.createAppenderRef("Out", null, null)})
+                    .setBlocking(true).setBufferSize(1 << 16).build();
+            async.start();
+            configuration.addAppender(async);
+            onRoot = async;
+        }
+        configuration.getRootLogger().getAppenderRefs().clear();
+        configuration.getRootLogger().addAppender(onRoot, null, null);
+        // A slot is an AppenderRef (TrimSlots): a parsed configuration has one, an appender added in code does not.
+        configuration.getRootLogger().getAppenderRefs().add(AppenderRef.createAppenderRef(onRoot.getName(), null, null));
+        configuration.getRootLogger().setLevel(Level.INFO);
+        context.updateLoggers();
+        return context;
+    }
+
+    /**
+     * A throwable at least 20 frames deep whose frames are real, loadable classes. The JUL suite sets
+     * synthetic frames ({@code org.acme.orders.OrderService$Stage0} ...), which is fine for a formatter that
+     * only prints them; Log4j 2 resolves each frame's class when it builds a {@code ThrowableProxy}, and a
+     * class that does not exist costs a failed lookup per frame, which a real application never pays.
+     */
+    static Throwable throwable() {
+        return deeper(20);
+    }
+
+    private static Throwable deeper(int remaining) {
+        if (remaining > 0) {
+            return deeper(remaining - 1);
+        }
+        return new IllegalStateException("Connection refused: db-primary:5432");
     }
 }

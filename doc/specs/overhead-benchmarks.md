@@ -15,7 +15,8 @@ Decision #24 (storm detection is off by default since #151: `idle` is the shippe
 storm filter installed but disabled; disabled storm costs at most 10 % of the enabled budget,
 checked by a component benchmark) agreed 2026-10-07.
 Decisions #25–#31 (the Log4j 2 gate, 1.1.0, issue #332) agreed 2026-11-06, all on the recommended
-option; see "Revision 2026-11-06: the Log4j 2 gate". The component benchmarks are built; the rest is not.
+option; see "Revision 2026-11-06: the Log4j 2 gate". The component and whole-call benchmarks are built (`Log4jCallBenchmark`); the thread runs, report
+tables, `Suite` and CI wiring and the guide are not.
 Decision #32 (the rule budget covers the gate's own work, not formatting a parameterized message) agreed 2026-11-06.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §10 (Performance: "< 200 ns added
 per evaluated event … near-zero for loggers no rule can match … enforced by JMH benchmarks in
@@ -669,6 +670,27 @@ reuse it for the layout.
 **Decided: B** (2026-11-06), with the cost published. A would hold Log4j 2 to a number JUL never measured, and C is a design
 change to a hand-off between the gate and the layout that A3 chose not to make. The `plain` row is ~6 ns
 over budget at n = 20, inside its error, and needs the pinned run before it is read either way.
+
+**The whole-call run (`Log4jCallBenchmark`) and what it changed in the harness.**
+Scenario ids, modes and messages are as above; `template` is a parameterized message with three
+arguments. Two things differ from the JUL suite.
+- **The throwable has real frames.** The JUL suite sets synthetic frames
+  (`org.acme.orders.OrderService$Stage0` ...). Log4j 2 resolves every frame's class when it builds a
+  `ThrowableProxy`, and a class that does not exist costs a failed lookup per frame (`trim` came out at
+  ~100 µs with synthetic frames, ~22 µs with real ones). The Log4j throwable is therefore a 20-deep
+  recursion of real methods; the stack is about 30 frames in all, and the trim rule cuts it to 5.
+- **A slot is an `AppenderRef`.** An appender added to a `LoggerConfig` in code has no reference, and the trim
+  wrapper leaves such a slot alone (`TrimSlots`); the harness adds the reference a parsed configuration
+  has, and every scenario checks that the gate is the configuration's filter and, for the trim layers,
+  that the slot holds a `TrimAppender`.
+- **Checked at trial end:** the sink received bytes (a scenario that logged nothing is a failure), `drop-hit`
+  suppressed something, `trim` matched.
+
+**First finding of the whole-call run (issue #333).** With a `trim` rule matching an event that carries a
+throwable, the wrapper's copy of the event computes the caller location, a stack walk, on synchronous loggers
+and with an `<Async>` appender: ~16 µs added per trimmed call (22.6 µs against `idle`'s 5.8 µs), nothing with
+all-async loggers. Decision #21's budget at 20 rules is 204 ns, so by #29 it is its own issue, fixed or
+accepted by the owner.
 
 ## Testing
 

@@ -71,6 +71,12 @@
       <artifactId>log4j-core</artifactId>
       <version>${log4j2.version}</version>
     </dependency>
+    <!-- The all-async-loggers mode (Decision #27) needs the LMAX Disruptor, as the version matrix does. -->
+    <dependency>
+      <groupId>com.lmax</groupId>
+      <artifactId>disruptor</artifactId>
+      <version>3.4.4</version>
+    </dependency>
     <!-- Decision #2: the benchmark JVM runs JBoss LogManager, what WildFly users run. -->
     <dependency>
       <groupId>org.jboss.logmanager</groupId>
