@@ -35,7 +35,17 @@ logaperture-bench/run-bench.sh            # the full run, about an hour
 
 Options: `--label <name>` names the results folder; `--allow-slow-clock` measures even when the
 clock check fails; `--async-profiler <path to libasyncProfiler.so>` also records flame graphs of
-the `idle` scenario (Linux).
+the `idle` scenario (Linux); `--log4j2-version <version>` sets the Log4j 2 the Log4j 2 scenarios
+run on (default 2.25.5, and `Suite` records it beside the results); `--only <prefix>` runs just
+the runs whose name starts with the prefix, such as `log4j2` for the Log4j 2 scenarios.
+
+The Log4j 2 scenarios (1.1) run in each of Log4j's modes: synchronous, an `<Async>` appender and
+all-async loggers. The oldest supported Log4j, 2.20.0, is measured separately, because the jar
+holds one Log4j version and some costs show on only one of them:
+
+```
+logaperture-bench/run-bench.sh --log4j2-version 2.20.0 --only log4j2-floor --label floor
+```
 
 For numbers worth comparing, close everything else and pin the CPU frequency first. The script
 records the governor and boost settings and prints how to pin them, but doesn't change them,
@@ -65,7 +75,7 @@ powershell -ExecutionPolicy Bypass -File logaperture-bench\run-bench.ps1 -Quick 
 powershell -ExecutionPolicy Bypass -File logaperture-bench\run-bench.ps1          # about an hour
 ```
 
-`-Label <name>` and `-AllowSlowClock` work as on Linux. For the run, the script switches Windows
+`-Label <name>`, `-AllowSlowClock`, `-Log4j2Version <version>` and `-Only <prefix>` work as `--label`, `--allow-slow-clock`, `--log4j2-version` and `--only` do on Linux. For the run, the script switches Windows
 to its High (or Ultimate) Performance power plan and keeps the PC from sleeping; it puts the
 original plan back at the end, even if the run fails or you press Ctrl+C. If it stops with a red
 **STOPPED:** message, that message says why.
@@ -81,7 +91,9 @@ booting with `tsc=reliable` usually fixes it.
 ## What's in the results folder
 
 - `report.md`: the overhead table, the budget and decision-rule checks, the component
-  benchmarks and the machine.
+  benchmarks and the machine; a "Log4j 2" section, with the Log4j version it measured, if the
+  results hold Log4j 2 runs.
+- `log4j2.txt`: the Log4j 2 version the Log4j 2 scenarios ran on.
 - `machine.txt`: CPU, memory, OS, Java, frequency settings or power plan, the clock check and
   the exact code version. No personal files or account details, just the machine's name.
 - `benchmarks.txt`: everything that scrolled past; one `.json` per run with JMH's raw numbers.

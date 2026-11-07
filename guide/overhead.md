@@ -1,7 +1,9 @@
 # Overhead
 
 What LogAperture adds to a log call, measured with [JMH](https://github.com/openjdk/jmh): with
-nothing configured, with rules, and with storm detection turned on.
+nothing configured, with rules, and with storm detection turned on. The numbers below are for
+`java.util.logging` and JBoss LogManager (WildFly, Quarkus); [Log4j 2](#on-log4j-2) is covered
+separately.
 
 !!! info "Measured on 2026-10-09, before 1.0"
     These numbers are from the 1.0 code before beta 1, on one machine ([the run](#the-run)).
@@ -25,7 +27,8 @@ LogAperture than without it, measured in the same run.
 How to read it:
 
 - **Only calls that pass the logger's level check pay anything.** A disabled `DEBUG` call never
-  reaches LogAperture.
+  reaches LogAperture. (That holds on `java.util.logging`. On Log4j 2 a disabled call does pass
+  through LogAperture's gate; see [On Log4j 2](#on-log4j-2).)
 - **Template or concatenated.** A template is the same `String` on every call: what JBoss
   Logging, message loggers and `{0}`/`%s` parameterized logging pass. Most WildFly logging is
   in the first column. A concatenated message (`"order " + id + " failed"`) is a new string on
@@ -73,6 +76,38 @@ The idle agent at 1, 4 and 8 threads, each thread logging through its own logger
   +25 % on a template at 1, 4 and 8 threads.
 
 The machine has 4 cores and 8 hardware threads, so the 8-thread runs share cores.
+
+## On Log4j 2
+
+!!! info "Log4j 2 numbers come with 1.1"
+    Log4j 2 support is new in 1.1. Its numbers are measured with the same benchmark suite and
+    will be published here, from a quiet machine with the CPU pinned, before 1.1.0 ships. Until
+    then, [measure it yourself](#measure-it-yourself). What follows is what is different on
+    Log4j 2, and what the benchmarks measure because of it.
+
+- **A disabled call still passes through the gate.** Log4j 2 runs a filter ahead of its level
+  check, so `logger.debug(...)` on a logger whose level rejects it reaches LogAperture. The gate
+  leaves at once when the call would not be written, and allocates nothing, but it is not free the
+  way a disabled call is on `java.util.logging`. It has a budget of 10 ns, and the report checks it
+  in every Log4j mode.
+- **A rule that reads the message formats it first.** For a parameterized message (`{}`), the
+  gate formats the message once so a `--message-contains` rule can read it, and Log4j formats it
+  again when it writes the line. That formatting is the larger part of what a message rule costs,
+  so the report shows it as its own row, apart from the rules' own cost. A `drop` rule that
+  matches on the logger, the level or the unformatted pattern never does this. A message built by
+  concatenation is already a plain string and has nothing to format. See
+  [the limits on Log4j 2](get-started/install-plain-jvm.md#limits-to-know).
+- **There is no `top` layer.** `logctl top` does not count Log4j 2 output yet, so an idle agent
+  there does not pay for byte counting.
+- **Log4j's three modes are measured separately.** With synchronous loggers, with an `<Async>`
+  appender and with all-async loggers, the gate runs on the calling thread. A `trim` rule's work
+  runs on the calling thread too, except with all-async loggers, where it moves to Log4j's own
+  consumer thread and is off the call. The two asynchronous modes are reported but not held to a
+  budget: a tight loop into a queue measures the queue.
+- **Two Log4j versions are measured.** The newest tested 2.25 for every mode, and 2.20.0, the
+  oldest LogAperture supports, for the idle agent and the disabled call. Log4j changed how it
+  copies and renders events between those versions, so a cost on one is not a promise about the
+  other.
 
 ## What these numbers don't say
 
@@ -187,6 +222,14 @@ The benchmarks are in the source tree, and run on Linux, macOS or Windows. From 
 ```sh
 logaperture-bench/run-bench.sh --quick     # about 10 minutes, indicative only
 logaperture-bench/run-bench.sh             # the full run, about an hour
+```
+
+For Log4j 2, the run uses Log4j 2.25.5 unless you pass `--log4j2-version`, and the report says which
+version it measured. The oldest supported version is a separate run, because the jar holds one
+version:
+
+```sh
+logaperture-bench/run-bench.sh --log4j2-version 2.20.0 --only log4j2-floor --label floor
 ```
 
 On Windows, `powershell -ExecutionPolicy Bypass -File logaperture-bench\run-bench.ps1 -Quick`. See
