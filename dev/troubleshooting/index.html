@@ -2503,6 +2503,10 @@
 rule can't see every event, and there is no way to read an explicit level. The application logs as it
 always did. <code>logctl doctor</code> names the class loader the Log4j was found in and its version, and works
 even when that Log4j is the only logging framework in the JVM. <strong>Upgrade Log4j to 2.20.0 or later.</strong></p>
+<p>If the application uses <code>log4j-jul</code> (<code>-Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager</code>),
+LogAperture controls its <code>java.util.logging</code> loggers instead, as it would without Log4j 2, and says so in
+a <code>LogAperture could not control log4j2 … controlling java.util.logging instead</code> line and in the finding.
+The same holds for <code>log4j2.not-bound</code> below.</p>
 <h3 id="doctor-says-log4j2not-bound"><code>doctor</code> says <code>log4j2.not-bound</code><a class="headerlink" href="#doctor-says-log4j2not-bound" title="Permanent link">&para;</a></h3>
 <p>LogAperture found a Log4j 2 and could not bind it: its adapter failed to start, or no Log4j context
 had started three seconds after the Log4j was found. The finding carries the reason, which the
