@@ -51,8 +51,8 @@ import java.util.function.Supplier;
 @State(Scope.Thread)
 public class IdleComponentsBenchmark {
 
-    static final String LOGGER = "org.acme.orders.worker0";
-    static final String MESSAGE = "Processed order 48213 for customer 7f3a9c21 in 12 ms";
+    public static final String LOGGER = "org.acme.orders.worker0";
+    public static final String MESSAGE = "Processed order 48213 for customer 7f3a9c21 in 12 ms";
 
     private RuleGate gate;
     private StormDetector detector;
@@ -83,7 +83,7 @@ public class IdleComponentsBenchmark {
     }
 
     /** No logger tree is touched: an adapter with no loggers is enough for a rule set the gate reads. */
-    static RuleService newRuleService() {
+    public static RuleService newRuleService() {
         LoggingAdapter adapter = new LoggingAdapter() {
             @Override
             public List<String> knownLoggerNames() {

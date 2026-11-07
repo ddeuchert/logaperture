@@ -55,6 +55,22 @@
       <groupId>org.logaperture</groupId>
       <artifactId>logaperture-adapter-jul</artifactId>
     </dependency>
+    <!-- Decision #25: Log4j 2 scenarios live beside the JUL ones. log4j-core at ${log4j2.version}
+         (-Dlog4j2.version=2.25.5 for the published run, Decision #26); the adapter itself is provided there. -->
+    <dependency>
+      <groupId>org.logaperture</groupId>
+      <artifactId>logaperture-adapter-log4j2</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-api</artifactId>
+      <version>${log4j2.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
+      <version>${log4j2.version}</version>
+    </dependency>
     <!-- Decision #2: the benchmark JVM runs JBoss LogManager, what WildFly users run. -->
     <dependency>
       <groupId>org.jboss.logmanager</groupId>
