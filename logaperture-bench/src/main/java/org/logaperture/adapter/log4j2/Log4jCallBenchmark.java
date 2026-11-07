@@ -75,14 +75,18 @@ public class Log4jCallBenchmark {
     @State(Scope.Benchmark)
     public static class Install {
 
+        // The @Param defaults below are the CI smoke set (Decision #4: `bench-smoke` runs every benchmark once, with
+        // no overrides): every mode and the scenarios that carry a trial-end check, with a throwable. `Suite` passes
+        // the full sets for the published run, so adding a value here never changes what is published.
         @Param({"sync", "async-appender", "async-loggers"})
         public String mode;
 
-        @Param({"baseline", "gate", "gate+storm", "gate+storm-off", "gate+storm+trim-wrap", "idle", "drop-miss",
-                "drop-hit", "trim", "trim-typed"})
+        /** Full set: baseline, gate, gate+storm, gate+storm-off, gate+storm+trim-wrap, idle, drop-miss, drop-hit, trim, trim-typed. */
+        @Param({"baseline", "idle", "drop-hit", "trim"})
         public String scenario;
 
-        @Param({"template", "concatenated", "throwable"})
+        /** Full set: template, concatenated, throwable. */
+        @Param({"throwable"})
         public String message;
 
         /**

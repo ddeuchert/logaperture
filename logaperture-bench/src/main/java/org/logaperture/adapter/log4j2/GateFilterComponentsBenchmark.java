@@ -58,7 +58,8 @@ import java.util.concurrent.TimeUnit;
 @State(Scope.Thread)
 public class GateFilterComponentsBenchmark {
 
-    @Param({"0", "1", "5", "20", "100"})
+    /** The CI smoke set (0 and 20); {@code Suite} passes 0, 1, 5, 20 and 100 for the published run. */
+    @Param({"0", "20"})
     public int rules;
 
     /**

@@ -294,8 +294,21 @@ published set, defined once in the benchmark jar (`Suite`) so the two can't drif
 | `savings-t1` | `SavingsBenchmark`, every scenario and message, 1 thread, through a real file handler | "What a match saves" (Decision #22) |
 | `idle-t4`, `idle-t8` | `baseline`, `rule+storm` and `idle`; `template` and `concatenated`; both handler shapes | the concurrency rows, #24 |
 | `flamegraphs` | `idle`, every message, under async-profiler (only with `--async-profiler`) | the flame graphs; not in the report's numbers |
+| `log4j2-components` | `GateFilterComponentsBenchmark` (rules 0, 1, 5, 20, 100; reads `pattern`, `plain`, `level-only`), `StormGateComponentsBenchmark`, `TrimQueryComponentsBenchmark` | the Log4j 2 `gate-empty`, `gate-n`, `storm-observe`, `trim-query` rows (Decision #32 splits the format cost out) |
+| `log4j2-layers-t1` | `Log4jCallBenchmark.info`: `baseline`, `gate`, `gate+storm`, `gate+storm-off`, `gate+storm+trim-wrap`, `idle`; every mode; `template`, `concatenated`, `throwable`; 1 thread | the Log4j 2 overhead table and the layer budgets |
+| `log4j2-rules-t1` | `drop-miss`, `drop-hit`, `trim`, `trim-typed`; every mode; `template`, `throwable`; 1 thread | the rule rows, compared with `idle` of the same mode and message |
+| `log4j2-disabled-t1` | `Log4jCallBenchmark.disabled`: `baseline`, `gate`, `gate+storm-off`, `idle`; every mode | Decision #28's disabled-call budget |
+| `log4j2-per-thread-t1` | `baseline` and `idle`, `template`, synchronous, an appender per thread | #24's single-thread reference |
+| `log4j2-t4`, `log4j2-t8` | `baseline`, `gate+storm`, `idle`; `template`, `concatenated`; both appender shapes; synchronous only (the async modes are reported, not budgeted, Decision #27) | the concurrency rows |
 
-A thread count above the machine's hardware threads is skipped, not oversubscribed. A report
+A thread count above the machine's hardware threads is skipped, not oversubscribed. `Suite` takes
+`--only <run name prefix>` to run a subset (`--only log4j2`), for checking a change without the whole set.
+
+**The CI smoke set for Log4j 2.** The `bench-smoke` job runs every benchmark with no overrides, so the Log4j 2
+benchmark classes default to a smoke-sized `@Param` set (every mode; `baseline`, `idle`, `drop-hit` and `trim`; a
+throwable; both appender shapes; 0 and 20 rules for the components) and `Suite` names every published value
+explicitly. The whole job runs in about 80 seconds, with 63 of its 124 combinations on Log4j 2. The set is chosen
+for what each trial-end check can catch: it found four harness bugs on its first runs. A report
 step in the same jar (`Report`) turns the JSON into `report.md`. The rule scenarios' budgets are
 checked against `idle` of the same message, not `baseline`: `idle`'s own layers carry #13's
 budgets already, and what §10's rule budget (204 ns at *n* = 20, Decision #21) and "near-zero for loggers no rule can

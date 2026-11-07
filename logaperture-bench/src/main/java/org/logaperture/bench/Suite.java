@@ -39,7 +39,7 @@ import java.util.function.UnaryOperator;
  * {@link Report} reads them all.
  *
  * <p>Usage: {@code java -cp benchmarks.jar org.logaperture.bench.Suite <results-folder> [--quick]
- * [--async-profiler <libasyncProfiler path>]}
+ * [--only <run name prefix>] [--async-profiler <libasyncProfiler path>]}
  */
 public final class Suite {
 
@@ -48,7 +48,16 @@ public final class Suite {
     private static final String SAVINGS = "org\\.logaperture\\.bench\\.SavingsBenchmark\\.";
     private static final String COMPONENTS =
             "org\\.logaperture\\.(core\\.IdleComponents|core\\.GateCurve|adapter\\.jul\\.TopComponents"
-                    + "|adapter\\.jul\\.StormFilterComponents|adapter\\.log4j2\\.\\w+Components)Benchmark\\.";
+                    + "|adapter\\.jul\\.StormFilterComponents)Benchmark\\.";
+    private static final String LOG4J2_COMPONENTS = "org\\.logaperture\\.adapter\\.log4j2\\.\\w+ComponentsBenchmark\\.";
+    private static final String LOG4J2_CALL = "org\\.logaperture\\.adapter\\.log4j2\\.Log4jCallBenchmark\\.";
+
+    // The Log4j 2 sets (doc/specs/overhead-benchmarks.md, "Revision 2026-11-06: the Log4j 2 gate"). The benchmark classes
+    // default to the CI smoke subset, so every published value is named here.
+    private static final String[] L4J_MODES = {"sync", "async-appender", "async-loggers"};
+    private static final String[] L4J_LAYERS = {"baseline", "gate", "gate+storm", "gate+storm-off",
+            "gate+storm+trim-wrap", "idle"};
+    private static final String[] L4J_RULES = {"drop-miss", "drop-hit", "trim", "trim-typed"};
 
     /**
      * One JMH invocation: a name for its files, and what it adds to the shared options. A run
@@ -67,21 +76,30 @@ public final class Suite {
 
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
-            System.err.println("usage: Suite <results-folder> [--quick] [--async-profiler <library path>]");
+            System.err.println("usage: Suite <results-folder> [--quick] [--only <run name prefix>] [--async-profiler <library path>]");
             System.exit(1);
         }
         Path out = Path.of(args[0]);
         boolean quick = false;
         String asyncProfiler = null;
+        String only = null;
         for (int i = 1; i < args.length; i++) {
             switch (args[i]) {
                 case "--quick" -> quick = true;
+                case "--only" -> only = args[++i]; // a name prefix, e.g. log4j2: run just those, to check a change
                 case "--async-profiler" -> asyncProfiler = args[++i];
                 default -> throw new IllegalArgumentException("unknown option " + args[i]);
             }
         }
         Files.createDirectories(out);
         List<Run> runs = runs(Runtime.getRuntime().availableProcessors(), asyncProfiler, out);
+        if (only != null) {
+            String prefix = only;
+            runs = runs.stream().filter(run -> run.name().startsWith(prefix)).toList();
+            if (runs.isEmpty()) {
+                throw new IllegalArgumentException("--only " + only + " matches no run");
+            }
+        }
         for (int i = 0; i < runs.size(); i++) {
             Run run = runs.get(i);
             System.out.printf("%n== Run %d of %d: %s (started %s)%n", i + 1, runs.size(), run.name(),
@@ -120,12 +138,53 @@ public final class Suite {
                     .param("layers", "baseline", "rule+storm", "idle")
                     .param("message", "template", "concatenated")));
         }
+        runs.addAll(log4j2Runs(hardwareThreads));
         if (asyncProfiler != null) {
             String flamegraphs = out.resolve("flamegraphs").toAbsolutePath().toString();
             String profilerOptions = "libPath=" + asyncProfiler + ";output=flamegraph;dir=" + flamegraphs;
             runs.add(new Run("flamegraphs", false, o -> o.include(IDLE).threads(1).param("handlers", "shared")
                     .param("layers", "idle").param("message", "template", "concatenated", "throwable")
                     .addProfiler("async", profilerOptions)));
+        }
+        return runs;
+    }
+
+    /**
+     * The Log4j 2 runs. Whole-call budgets are checked in synchronous mode; the two asynchronous modes are reported
+     * only (Decision #27), so the thread runs use synchronous mode alone. {@code disabled} is run for the layers that
+     * can change it. Rule rows are compared with {@code idle} of the same mode and message, from {@code log4j2-layers}.
+     */
+    static List<Run> log4j2Runs(int hardwareThreads) {
+        List<Run> runs = new ArrayList<>();
+        // The gate's pieces called directly: gate-empty and gate-n, storm-observe, trim-query.
+        runs.add(new Run("log4j2-components", o -> o.include(LOG4J2_COMPONENTS)
+                .param("rules", "0", "1", "5", "20", "100")
+                .param("reads", "pattern", "plain", "level-only")));
+        // The layers: every mode and message, one thread, one appender.
+        runs.add(new Run("log4j2-layers-t1", o -> o.include(LOG4J2_CALL + "info").threads(1)
+                .param("mode", L4J_MODES).param("scenario", L4J_LAYERS)
+                .param("message", "template", "concatenated", "throwable").param("handlers", "shared")));
+        // The rules, on top of idle: a concatenated message adds nothing the rules read.
+        runs.add(new Run("log4j2-rules-t1", o -> o.include(LOG4J2_CALL + "info").threads(1)
+                .param("mode", L4J_MODES).param("scenario", L4J_RULES)
+                .param("message", "template", "throwable").param("handlers", "shared")));
+        // Decision #28: a call the level rejects, for the layers that can change it.
+        runs.add(new Run("log4j2-disabled-t1", o -> o.include(LOG4J2_CALL + "disabled").threads(1)
+                .param("mode", L4J_MODES).param("scenario", "baseline", "gate", "gate+storm-off", "idle")
+                .param("message", "template").param("handlers", "shared")));
+        // The #24 rule's single-thread reference.
+        runs.add(new Run("log4j2-per-thread-t1", o -> o.include(LOG4J2_CALL + "info").threads(1)
+                .param("mode", "sync").param("scenario", "baseline", "idle")
+                .param("message", "template").param("handlers", "per-thread")));
+        for (int threads : new int[] {4, 8}) {
+            if (threads > hardwareThreads) {
+                System.out.printf("Skipping the Log4j 2 %d-thread runs: this machine has %d hardware threads.%n",
+                        threads, hardwareThreads);
+                continue;
+            }
+            runs.add(new Run("log4j2-t" + threads, o -> o.include(LOG4J2_CALL + "info").threads(threads)
+                    .param("mode", "sync").param("scenario", "baseline", "gate+storm", "idle")
+                    .param("message", "template", "concatenated").param("handlers", "shared", "per-thread")));
         }
         return runs;
     }

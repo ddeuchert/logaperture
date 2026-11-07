@@ -416,7 +416,9 @@ public final class Report {
     private void components(StringBuilder md) {
         List<Result> rows = results.stream()
                 .filter(r -> !r.benchmark().equals(IDLE) && !r.benchmark().equals(RULES)
-                        && !r.benchmark().equals(SAVINGS))
+                        && !r.benchmark().equals(SAVINGS)
+                        // The Log4j 2 whole-call rows get their own tables (next slice), not this list.
+                        && !r.benchmark().startsWith("org.logaperture.adapter.log4j2.Log4jCallBenchmark."))
                 .sorted(Comparator.comparing(Result::shortName))
                 .toList();
         if (rows.isEmpty()) {
