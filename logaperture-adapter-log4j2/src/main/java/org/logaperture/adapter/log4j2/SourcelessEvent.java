@@ -29,15 +29,17 @@ import java.util.Map;
 /**
  * A read-only view of an event that never reports a caller location (issue #333). {@link TrimAppender} copies
  * an event with {@code new Log4jLogEvent.Builder(event)}, which on current Log4j asks the source event for
- * {@code getSource()}; a synchronous logger's event answers with a stack walk, about 15 µs per call, for a
+ * {@code getSource()}; a synchronous logger's event answers with a stack walk, about 16 µs per call, for a
  * location the appender's layout never prints. Handing the builder this view instead leaves the event
  * untouched and the walk undone. Only used where nothing behind the wrapper needs the location
- * ({@link TrimAppender#needsLocation}).
+ * ({@link TrimAppender#needsLocation}) and the running Log4j says it pays ({@link LocationWalkProbe}): on
+ * Log4j 2.20 it would be slower, since the builder's generic path builds a {@code ThrowableProxy} the specialised
+ * one does not.
  *
  * <p>It is not a {@code MutableLogEvent} or a {@code RingBufferLogEvent}, so the builder reads it through the
  * getters, the one path every Log4j version has.
  */
-final class SourcelessEvent implements LogEvent {
+class SourcelessEvent implements LogEvent {
 
     private static final long serialVersionUID = 1L;
 
@@ -64,7 +66,8 @@ final class SourcelessEvent implements LogEvent {
 
     @Override
     public LogEvent toImmutable() {
-        return event.toImmutable();
+        // Never the original's: its immutable copy would carry a location again.
+        return new org.apache.logging.log4j.core.impl.Log4jLogEvent.Builder(this).build();
     }
 
     @Override

@@ -135,6 +135,8 @@ final class TrimAppender extends AbstractAppender {
      * has one ({@code AbstractAppender} asks its layout; an {@code <Async>} appender is asked for its
      * {@code includeLocation}), as Log4j itself decides it. An appender that cannot say is assumed to want it,
      * as before the fix: a wrong "no" would silently drop a field, a wrong "yes" only costs the walk.
+     * (That is the opposite default to {@link #requiresLocation()} above, on purpose: that one answers Log4j's own
+     * question by its convention, this one decides whether a field may be dropped.)
      */
     boolean needsLocation() {
         return !(delegate instanceof org.apache.logging.log4j.core.impl.LocationAware aware)
@@ -159,7 +161,7 @@ final class TrimAppender extends AbstractAppender {
             // Without the proxy the rebuilt event must not carry the original's (untrimmed) one over.
             // The builder asks the source event for its caller location, a stack walk on a synchronous logger's
             // event (#333): hand it a view that has none unless something behind this wrapper prints it.
-            LogEvent source = needsLocation() ? event : new SourcelessEvent(event);
+            LogEvent source = !needsLocation() && LocationWalkProbe.viewPays() ? new SourcelessEvent(event) : event;
             return new Log4jLogEvent.Builder(source).setThrown(trimmed)
                     .setThrownProxy(buildsProxy ? new TrimmedProxy(trimmed) : null).build();
         } catch (RuntimeException e) {

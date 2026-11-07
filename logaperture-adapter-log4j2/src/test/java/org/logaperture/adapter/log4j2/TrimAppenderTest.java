@@ -519,24 +519,74 @@ class TrimAppenderTest {
         assertTrue(text.matches("(?s).*TRIMME\\|\\d+\\|.*"), "%L still prints a line number:\n" + text);
     }
 
+    /** A reusable event, as a synchronous logger in garbage-free mode produces, that counts location requests. */
+    private static final class CountingReusableEvent extends org.apache.logging.log4j.core.impl.MutableLogEvent {
+        final AtomicInteger sourceAsked = new AtomicInteger();
+
+        CountingReusableEvent(org.apache.logging.log4j.message.Message message, Throwable thrown) {
+            setLoggerName("app.svc");
+            setLoggerFqcn("x.Y");
+            setLevel(Level.ERROR);
+            setMessage(message);
+            setThrown(thrown);
+            setThreadName("t-1");
+            setIncludeLocation(true);
+            org.apache.logging.log4j.util.StringMap data =
+                    org.apache.logging.log4j.core.impl.ContextDataFactory.createContextData();
+            data.putValue("user", "alice");
+            setContextData(data);
+        }
+
+        @Override
+        public StackTraceElement getSource() {
+            sourceAsked.incrementAndGet();
+            return super.getSource();
+        }
+    }
+
     @Test
-    void aTrimmedEventWithoutALocation_isOtherwiseTheSameEvent() {
+    void aReusableEvent_isNeverAskedForItsLocation_whenTheLayoutDoesNotPrintIt() {
+        // #333, on every Log4j version: where the builder would ask (2.25) the view answers instead, and where it
+        // reads a field (2.20) the plain copy is kept, because the view would be slower there.
         TrimAppender wrapper = wrapperFor("%m|%ex%n");
-        org.apache.logging.log4j.core.impl.Log4jLogEvent original = new org.apache.logging.log4j.core.impl.Log4jLogEvent.Builder()
-                .setLoggerName("app.svc").setLoggerFqcn("x.Y").setLevel(Level.ERROR)
-                .setMessage(new org.apache.logging.log4j.message.SimpleMessage("TRIMME")).setThreadName("t-1")
-                .setThrown(deepThrowable()).build();
-        SourcelessEvent view = new SourcelessEvent(original);
+        CountingReusableEvent event = new CountingReusableEvent(new org.apache.logging.log4j.message.SimpleMessage("TRIMME"),
+                deepThrowable());
+        wrapper.append(event);
+        assertEquals(0, event.sourceAsked.get());
+    }
+
+    @Test
+    void theProbeSaysTheViewPaysWhereTheBuilderWalks_andNotWhereItDoesNot() {
+        String version = Log4j2Version.of(org.apache.logging.log4j.core.LoggerContext.class);
+        boolean probed = LocationWalkProbe.probe();
+        if (version.startsWith("2.25.")) {
+            assertTrue(probed, "2.25 asks the reusable event for its location in Builder(LogEvent)");
+        } else if (version.startsWith("2.20.")) {
+            assertFalse(probed, "2.20 reads a field: the view would only add the generic path's ThrowableProxy");
+        }
+        assertEquals(probed, LocationWalkProbe.viewPays(), "asked once, answered the same");
+    }
+
+    @Test
+    void aViewOfAReusableEvent_copiesEveryOtherField_andSurvivesTheEventsReuse() {
+        org.apache.logging.log4j.message.Message message =
+                org.apache.logging.log4j.message.ReusableMessageFactory.INSTANCE.newMessage("order {} done", 1);
+        Throwable thrown = deepThrowable();
+        CountingReusableEvent original = new CountingReusableEvent(message, thrown);
         org.apache.logging.log4j.core.impl.Log4jLogEvent copy =
-                new org.apache.logging.log4j.core.impl.Log4jLogEvent.Builder(view).build();
-        assertEquals(original.getLoggerName(), copy.getLoggerName());
-        assertEquals(original.getLevel(), copy.getLevel());
-        assertEquals(original.getThreadName(), copy.getThreadName());
-        assertEquals(original.getMessage().getFormattedMessage(), copy.getMessage().getFormattedMessage());
-        assertEquals(original.getThrown(), copy.getThrown());
+                new org.apache.logging.log4j.core.impl.Log4jLogEvent.Builder(new SourcelessEvent(original)).build();
+        // the logging thread reuses its event and message for the next call
+        org.apache.logging.log4j.message.ReusableMessageFactory.release(message);
+        org.apache.logging.log4j.message.ReusableMessageFactory.INSTANCE.newMessage("order {} done", 2);
+        assertEquals("order 1 done", copy.getMessage().getFormattedMessage());
+        assertEquals("app.svc", copy.getLoggerName());
+        assertEquals(Level.ERROR, copy.getLevel());
+        assertEquals("t-1", copy.getThreadName());
+        assertEquals(thrown, copy.getThrown());
+        assertEquals("alice", copy.getContextData().getValue("user"));
         assertFalse(copy.isIncludeLocation());
         assertEquals(null, copy.getSource());
-        assertFalse(wrapper.needsLocation());
+        assertEquals(0, original.sourceAsked.get(), "the view never asked the original for a location");
     }
 
     @Test
