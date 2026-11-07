@@ -120,6 +120,38 @@ final class Log4jBench {
     }
 
     /**
+     * Gives worker {@code index} its own appender (and, in the {@code async-appender} mode, its own queue) on its
+     * own child logger, which does not add to the root: the {@code per-thread} handler shape of the JUL suite, the
+     * shape where independent appenders must not slow each other down (#24). The slot is an {@code AppenderRef},
+     * as for the root, so the trim wrapper finds it.
+     */
+    static Logger workerWithOwnAppender(LoggerContext context, String mode, String category, int index, Sink sink) {
+        Configuration configuration = context.getConfiguration();
+        String name = category + ".worker" + index;
+        PatternLayout layout = PatternLayout.newBuilder().withPattern(LAYOUT).withConfiguration(configuration).build();
+        OutputStreamAppender out = OutputStreamAppender.newBuilder().setName("Out" + index).setLayout(layout)
+                .setTarget(sink).setFollow(false).build();
+        out.start();
+        configuration.addAppender(out);
+        org.apache.logging.log4j.core.Appender onLogger = out;
+        if (ASYNC_APPENDER.equals(mode)) {
+            AsyncAppender async = AsyncAppender.newBuilder().setName("Async" + index).setConfiguration(configuration)
+                    .setAppenderRefs(new AppenderRef[] {AppenderRef.createAppenderRef("Out" + index, null, null)})
+                    .setBlocking(true).setBufferSize(1 << 16).build();
+            async.start();
+            configuration.addAppender(async);
+            onLogger = async;
+        }
+        org.apache.logging.log4j.core.config.LoggerConfig loggerConfig =
+                new org.apache.logging.log4j.core.config.LoggerConfig(name, Level.INFO, false);
+        loggerConfig.addAppender(onLogger, null, null);
+        loggerConfig.getAppenderRefs().add(AppenderRef.createAppenderRef(onLogger.getName(), null, null));
+        configuration.addLogger(name, loggerConfig);
+        context.updateLoggers();
+        return context.getLogger(name);
+    }
+
+    /**
      * A throwable at least 20 frames deep whose frames are real, loadable classes. The JUL suite sets
      * synthetic frames ({@code org.acme.orders.OrderService$Stage0} ...), which is fine for a formatter that
      * only prints them; Log4j 2 resolves each frame's class when it builds a {@code ThrowableProxy}, and a

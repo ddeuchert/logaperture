@@ -35,8 +35,12 @@ import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
 
+import org.openjdk.jmh.infra.BenchmarkParams;
+
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * doc/specs/overhead-benchmarks.md, "Revision 2026-11-06: the Log4j 2 gate": what one {@code INFO} call
@@ -81,12 +85,21 @@ public class Log4jCallBenchmark {
         @Param({"template", "concatenated", "throwable"})
         public String message;
 
+        /**
+         * "Concurrency", as {@code IdleBenchmark}'s: {@code shared}, every thread on its own child logger but
+         * through one appender; {@code per-thread}, each thread on its own appender, the #24 shape.
+         */
+        @Param({"shared", "per-thread"})
+        public String handlers;
+
         Throwable thrown;
         boolean concatenated;
         LoggerContext context;
         Log4jBench.Sink sink;
         Log4jPipeline pipeline;
-        Logger logger;
+        final List<Logger> workers = new ArrayList<>();
+        final List<Log4jBench.Sink> sinks = new ArrayList<>();
+        final AtomicInteger nextWorker = new AtomicInteger();
         String matchingRule;
         // Boxed once: the call under test must not pay for the benchmark's own autoboxing.
         final Object order = 48213;
@@ -94,12 +107,24 @@ public class Log4jCallBenchmark {
         final Object millis = 12;
 
         @Setup(Level.Trial)
-        public void install() {
+        public void install(BenchmarkParams params) {
             thrown = message.equals("throwable") ? Log4jBench.throwable() : null;
             concatenated = message.equals("concatenated");
             sink = new Log4jBench.Sink();
             context = Log4jBench.context("call-bench-" + System.nanoTime(), mode, sink);
-            logger = context.getLogger(CATEGORY + ".worker0");
+            int threads = params.getThreads();
+            if (handlers.equals("per-thread")) {
+                for (int i = 0; i < threads; i++) {
+                    Log4jBench.Sink own = new Log4jBench.Sink();
+                    sinks.add(own);
+                    workers.add(Log4jBench.workerWithOwnAppender(context, mode, CATEGORY, i, own));
+                }
+            } else {
+                sinks.add(sink);
+                for (int i = 0; i < threads; i++) {
+                    workers.add(context.getLogger(CATEGORY + ".worker" + i));
+                }
+            }
             if (!scenario.equals("baseline")) {
                 pipeline = switch (scenario) {
                     case "gate" -> Log4jPipeline.install(context, Log4jPipeline.Storm.NONE, false);
@@ -113,7 +138,7 @@ public class Log4jCallBenchmark {
                 if (scenario.equals("drop-hit")) {
                     // The rule lets its first match through in full (drop-rule.md): spend that sample here, so
                     // every measured call is a deny and even a one-call smoke iteration suppresses something (#183).
-                    call(this, 0);
+                    call(this, workers.get(0), 0);
                 }
             }
         }
@@ -129,8 +154,13 @@ public class Log4jCallBenchmark {
             if (!writes()) {
                 return; // a benchmark that logs nothing the level lets through has nothing to check below
             }
-            if (!scenario.equals("drop-hit") && sink.bytes.get() == 0) {
-                throw new IllegalStateException(scenario + " in " + mode + " wrote nothing: it measured no call");
+            if (!scenario.equals("drop-hit")) {
+                for (int i = 0; i < sinks.size(); i++) {
+                    if (sinks.get(i).bytes.get() == 0) {
+                        throw new IllegalStateException(scenario + " in " + mode + " wrote nothing to appender " + i
+                                + ": it measured no call");
+                    }
+                }
             }
             if (scenario.equals("drop-hit")) {
                 long suppressed = pipeline.rules.takeDropCounts().stream()
@@ -199,10 +229,15 @@ public class Log4jCallBenchmark {
     @State(Scope.Thread)
     public static class ThreadState {
         int sequence;
+        Logger logger;
+
+        @Setup(Level.Trial)
+        public void pick(Install install) {
+            logger = install.workers.get(install.nextWorker.getAndIncrement() % install.workers.size());
+        }
     }
 
-    static void call(Install in, int sequence) {
-        Logger logger = in.logger;
+    static void call(Install in, Logger logger, int sequence) {
         if (in.concatenated) {
             logger.info("Processed order " + sequence + " for customer 7f3a9c21 in 12 ms");
         } else if (in.thrown != null) {
@@ -214,12 +249,12 @@ public class Log4jCallBenchmark {
 
     @Benchmark
     public void info(Install install, ThreadState thread) {
-        call(install, thread.sequence++);
+        call(install, thread.logger, thread.sequence++);
     }
 
     /** Decision #28: a call the level rejects. */
     @Benchmark
     public void disabled(DisabledInstall install) {
-        install.logger.debug(Log4jBench.PATTERN, install.order, install.customer, install.millis);
+        install.workers.get(0).debug(Log4jBench.PATTERN, install.order, install.customer, install.millis);
     }
 }
