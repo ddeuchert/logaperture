@@ -22,6 +22,7 @@
 #   wait_gone REGEX [SECS] until no console-pane line matches, else fail the recording
 #   expect_absent  REGEX   fail the recording if a console-pane line matches now
 #   expect_output  REGEX   fail the recording unless the last run's output matches
+#   jvm_pid MATCH          the process id of the JVM `jps -l` lists with MATCH in its line
 #
 # A story may also define before_recording(), which record.sh runs before recording starts,
 # after the shop is running, with DEMO_URL set to the shop's /demo endpoint.
@@ -44,6 +45,17 @@ PROMPT=$'\e[1;34m$\e[0m '
 # WildFly container, as wildflyctl.py's `logctl --` does.
 logctl() {
     docker exec "$DEMO_CONTAINER" java -jar /opt/logctl.jar "$@"
+}
+
+# The agent-less server has no agent for `logctl` to find, so the story names the JVM: `jps` is the
+# JDK's own listing, run in the container like logctl.
+jps() {
+    docker exec "$DEMO_CONTAINER" jps "$@"
+}
+
+# The process id of the JVM whose `jps -l` line contains MATCH.
+jvm_pid() {
+    jps -l | awk -v m="$1" 'index($0, m) { print $1; exit }'
 }
 
 _type() {

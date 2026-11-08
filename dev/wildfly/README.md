@@ -127,6 +127,7 @@ The container publishes JDWP on **8787**. Two VSCode launch configs:
 | `logctl -- ARG…` | run `logctl` inside the container |
 | `tail [--lines N]` | follow `server.log` |
 | `status` | container state + `logctl status` + image-version drift check |
+| `plain-up` / `plain-down` | (re)create / remove a second WildFly **without the agent** on :8081, the sample deployed; the target of the dynamic-attach demo (`dev/demos/attach.sh`) and of trying `logctl attach` by hand. `docker exec logaperture-wildfly-plain …` |
 
 Deploy your own app with `wildflyctl deploy path/to/app.war`, or just drop an
 archive into `dev/wildfly/deployments/` (git-ignored).

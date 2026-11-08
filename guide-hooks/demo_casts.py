@@ -18,7 +18,7 @@
   build when guide/assets/demos/NAME.cast doesn't exist; so does a missing player file
   (extra_css / extra_javascript), which MkDocs itself only links to.
 - now-showing.md must embed every recording in guide/assets/demos/, and show each
-  `run logctl ...` line of the recording's story script, dev/demos/NAME.sh, exactly as typed:
+  `run logctl ...` line of the recording's story script, dev/demos/NAME.sh, exactly as typed (a `"$name"` the story fills in at run time is written `<name>`):
   its command breakdowns are written by hand, so a story whose commands change fails the build
   until its breakdown does too.
 - Each built assets/demos/NAME.cast gets a NAME.cast.js next to it, which casts.js loads
@@ -39,6 +39,7 @@ from mkdocs.exceptions import PluginError
 
 _EMBED = re.compile(r'class="la-cast"\s+data-cast="([^"]+)"')
 _STORY_COMMAND = re.compile(r"^\s*run (logctl .*?)\s*$", re.MULTILINE)
+_STORY_VARIABLE = re.compile(r'"\$(\w+)"')
 _NOW_SHOWING = "now-showing.md"
 
 
@@ -56,6 +57,8 @@ def on_page_markdown(markdown, page, config, files):
         if not script.is_file():
             raise PluginError(f"recording '{name}' has no story script dev/demos/{name}.sh")
         for command in _STORY_COMMAND.findall(script.read_text(encoding="utf-8")):
+            # A value the story reads at run time ("$pid") is written <pid> on the page.
+            command = _STORY_VARIABLE.sub(r"<\1>", command)
             if command not in markdown:
                 raise PluginError(
                     f"{_NOW_SHOWING} doesn't show `{command}` from dev/demos/{name}.sh; "

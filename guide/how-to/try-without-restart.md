@@ -11,6 +11,11 @@ With [JBang](run-with-jbang.md) installed, the whole trial needs nothing else: w
 `jbang logctl@ddeuchert/logaperture` where this page says `logctl`. Each command then starts JBang
 again; `jbang app install` on that page makes `logctl` a command of its own.
 
+The film shows it on a WildFly server that does not run LogAperture: attach, then raise a logger,
+with no restart. [Now Showing](../now-showing.md#attach) explains each command.
+
+<div class="la-cast" data-cast="attach"></div>
+
 ## Attach
 
 Find the process id of the application (`jps -l` lists Java processes), then:

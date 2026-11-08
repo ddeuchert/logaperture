@@ -97,6 +97,9 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 - **A seventh demo recording: ship what you tuned.** Sticky changes to a logger and a rule, then
   `logctl export vendor-defaults` writes them as the file a product ships. Embedded in Vendors: Vendor
   defaults and on Now Showing (issue #343).
+- **An eighth demo recording: try it, no restart.** `logctl attach` loads the agent into a WildFly
+  server that was started without it, then a `set logger` shows its effect on the console at once.
+  Embedded in How-to: Try LogAperture without a restart and on Now Showing (issue #349).
 
 ### Changed
 

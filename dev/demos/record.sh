@@ -27,7 +27,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 out_dir=$root/guide/assets/demos
-stories=(why-no-trace debug-for-a-while flood trim storm doctor export)
+stories=(why-no-trace debug-for-a-while flood trim storm doctor export attach)
 
 cols=120
 rows=32
@@ -66,10 +66,22 @@ record_story() {
     # the script. Only the digits are kept, so a trailing comment on the line can't reach the arithmetic.
     story_console_rows=$(sed -n 's/^DEMO_CONSOLE_ROWS=\([0-9][0-9]*\).*/\1/p' "$here/$story.sh" | head -n 1)
     story_console_rows=${story_console_rows:-$console_rows}
+    # A story may run against the agent-less server (`DEMO_SERVER=plain`, story 8): an attach lasts
+    # until the JVM stops, so it is replaced fresh for the recording and removed afterwards, and the
+    # dev WildFly is left alone. container and demo_url are locals, so every helper sees them.
+    local server container=$container demo_url=$demo_url
+    server=$(sed -n 's/^DEMO_SERVER=\([a-z][a-z]*\).*/\1/p' "$here/$story.sh" | head -n 1)
+    if [[ $server == plain ]]; then
+        container=logaperture-wildfly-plain
+        demo_url=http://localhost:8081/logaperture-sample-war/demo
+        python3 "$root/dev/wildfly/wildflyctl.py" plain-up >&2
+    elif [[ -n $server ]]; then
+        die "$story: unknown DEMO_SERVER '$server'"
+    fi
     work=$(mktemp -d)
     mkdir -p "$work/home"
 
-    reset_server
+    [[ $server == plain ]] || reset_server
     curl -fsS -X POST "$demo_url/start" >/dev/null
     sleep 3   # a few shop lines, so the console pane doesn't open empty
     (
@@ -110,7 +122,11 @@ record_story() {
     fi
 
     status=$(cat "$work/status" 2>/dev/null || echo "no status")
-    reset_server
+    if [[ $server == plain ]]; then
+        python3 "$root/dev/wildfly/wildflyctl.py" plain-down >&2
+    else
+        reset_server
+    fi
     if [[ $status != 0 ]]; then
         cat "$work/status.err" >&2 2>/dev/null || true
         die "$story failed ($status); nothing written. Rehearse it: dev/demos/record.sh --rehearse $story"
