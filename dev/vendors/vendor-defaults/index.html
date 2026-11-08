@@ -2180,7 +2180,11 @@ starts anyway, and <code>logctl doctor</code> lists every error with its line nu
 before you ship it.</p>
 <h2 id="making-the-file-tune-then-export">Making the file: tune, then export<a class="headerlink" href="#making-the-file-tune-then-export" title="Permanent link">&para;</a></h2>
 <p>You don't need to write the file by hand. Run the product in a test environment, tune its logging
-live with <code>sticky</code> changes until it is right, then export:</p>
+live with <code>sticky</code> changes until it is right, then export. The film shows a logger and a rule
+exported.</p>
+<div class="la-cast" data-cast="export"></div>
+
+<p>In text, from an earlier run that also sets a handler:</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>logger<span class="w"> </span>org.jboss.as.server.deployment<span class="w"> </span>WARN<span class="w"> </span>sticky
 logctl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>handler<span class="w"> </span>CONSOLE<span class="w"> </span>INFO<span class="w"> </span>sticky
 logctl<span class="w"> </span>add<span class="w"> </span>rule<span class="w"> </span>drop<span class="w"> </span>io.undertow.request<span class="w"> </span>--message-contains<span class="w"> </span><span class="s2">"Matched default"</span><span class="w"> </span>--below<span class="w"> </span>WARN<span class="w"> </span>sticky

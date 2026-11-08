@@ -994,6 +994,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ship what you tuned
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ship what you tuned">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#export-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands in this film
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2331,6 +2359,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ship what you tuned
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ship what you tuned">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#export-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands in this film
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2365,6 +2421,7 @@ its reference and to the how-to that covers it.</p>
 <li><a href="#trim">Stack traces are burying the log</a>: keep every warning, but not its trace.</li>
 <li><a href="#storm">What is bursting?</a>: find the one message behind a scrolling console.</li>
 <li><a href="#doctor">Is my logging config going to hurt me?</a>: what <code>doctor</code> reports, and the one fix <code>logctl</code> can make.</li>
+<li><a href="#export">Ship what you tuned</a>: turn sticky changes into the file your product ships.</li>
 </ol>
 <h2 id="why-no-trace">Why don't I see my TRACE?<a class="headerlink" href="#why-no-trace" title="Permanent link">&para;</a></h2>
 <p>A customer reports failed payments, so you turn on <code>TRACE</code> for the payment code, and the console
@@ -2548,6 +2605,35 @@ How-to: <a href="../how-to/find-disk-usage/#what-in-the-configuration-will-hurt"
 <p><strong><code>logctl reset logger org.hibernate</code></strong>: put the logger back to the level the application
 configured. It prints the level it went back to, with <code>(baseline)</code>.</p>
 <p>Reference: <a href="../reference/logctl/#reset"><code>reset</code></a> · How-to: <a href="../how-to/undo-changes/#reset">Reset</a></p>
+<h2 id="export">Ship what you tuned<a class="headerlink" href="#export" title="Permanent link">&para;</a></h2>
+<p>You ship a product on a JVM, and you have tuned its logging live in a test environment until it is
+right. Your customers shouldn't have to repeat that. <code>export vendor-defaults</code> writes every <code>sticky</code>
+change, on top of the file the JVM started with, as a vendor defaults file you ship with the
+product. Reach for it when the settings are right and you want customers to start from them.</p>
+<div class="la-cast" data-cast="export"></div>
+
+<h3 id="export-commands">Commands in this film<a class="headerlink" href="#export-commands" title="Permanent link">&para;</a></h3>
+<p><strong><code>logctl set logger com.example.shop.payment WARN sticky</code></strong>: change a logger's level and keep it
+across restarts. Only <code>sticky</code> changes are exported; <code>session</code> and <code>for</code> changes are left out.</p>
+<p>Reference: <a href="../reference/logctl/#set-logger"><code>set logger</code></a> · How-to:
+<a href="../how-to/raise-a-level/">Raise a log level</a></p>
+<p><strong><code>logctl add rule drop com.example.shop.inventory.StockSync --message-contains synced --below WARN sticky</code></strong>:
+drop a repeating message below <code>WARN</code>, kept across restarts.</p>
+<ul>
+<li><code>drop</code>: discard the matching events, letting the first through and then one every 5 minutes.</li>
+<li><code>--message-contains synced</code>: match events whose message contains the text.</li>
+<li><code>--below WARN</code>: only events below <code>WARN</code>, so a warning or an error from the logger is never dropped.</li>
+<li><code>sticky</code>: keep it across restarts, which is what puts it in the export.</li>
+</ul>
+<p>Reference: <a href="../reference/logctl/#add-rule"><code>add rule</code></a> · How-to:
+<a href="../how-to/silence-noise/#drop-a-message">Drop a message</a></p>
+<p><strong><code>logctl export vendor-defaults</code></strong>: print the vendor defaults file: the file the JVM started with,
+plus every <code>sticky</code> change. Each entry's <code>stateId</code> ties it to the change it came from, so when the
+agent starts with the new file, the file takes those changes over and each setting is active once.
+Add <code>--out &lt;file&gt;</code> to write it to a file. Ship the file with the product and start the agent with
+<code>--vendor-defaults=&lt;file&gt;</code>.</p>
+<p>Reference: <a href="../reference/logctl/#export-vendor-defaults"><code>export vendor-defaults</code></a> · How-to:
+<a href="../vendors/vendor-defaults/#making-the-file-tune-then-export">Making the file: tune, then export</a></p>
 
 
 
