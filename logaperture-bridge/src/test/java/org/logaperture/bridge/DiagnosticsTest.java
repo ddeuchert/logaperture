@@ -24,6 +24,8 @@ import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DiagnosticsTest {
@@ -33,6 +35,43 @@ class DiagnosticsTest {
     @AfterEach
     void resetDiagnostics() {
         Diagnostics.resetToDefault();
+    }
+
+    @Test
+    void afterUseProcessStderr_aReplacedSystemErrNoLongerSeesLogApertureOutput() {
+        PrintStream original = System.err;
+        ByteArrayOutputStream wrapped = new ByteArrayOutputStream();
+        try {
+            // A container that wraps System.err, as WildFly does, before an attach.
+            System.setErr(new PrintStream(wrapped, true, StandardCharsets.UTF_8));
+            Diagnostics.resetToDefault();
+            Diagnostics.useProcessStderr();
+
+            assertNotNull(Diagnostics.sink());
+            assertNotSame(System.err, Diagnostics.sink(), "not the wrapped stream");
+            Diagnostics.notice("banner");
+            Diagnostics.error("boom");
+
+            assertEquals("", wrapped.toString(StandardCharsets.UTF_8));
+        } finally {
+            System.setErr(original);
+        }
+    }
+
+    @Test
+    void withoutUseProcessStderr_theCapturedSystemErrIsUsedAsBefore() {
+        PrintStream original = System.err;
+        ByteArrayOutputStream wrapped = new ByteArrayOutputStream();
+        try {
+            System.setErr(new PrintStream(wrapped, true, StandardCharsets.UTF_8));
+            Diagnostics.resetToDefault();
+
+            Diagnostics.notice("banner");
+
+            assertEquals("[logaperture] banner" + System.lineSeparator(), wrapped.toString(StandardCharsets.UTF_8));
+        } finally {
+            System.setErr(original);
+        }
     }
 
     @Test

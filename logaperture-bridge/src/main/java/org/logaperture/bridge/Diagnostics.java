@@ -15,7 +15,10 @@
  */
 package org.logaperture.bridge;
 
+import java.io.FileDescriptor;
+import java.io.FileOutputStream;
 import java.io.PrintStream;
+import java.nio.charset.Charset;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -41,7 +44,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * message} -- no timestamp of its own, since every console and log already has one. It writes to
  * the {@code System.err} captured when this class loads (in {@code premain}), so a message is never
  * re-logged by a container that later wraps {@code System.err} -- WildFly files that as {@code ERROR
- * [stderr]} (Q7).
+ * [stderr]} (Q7). When the agent starts through {@code agentmain} (an attach) that capture would come too
+ * late -- the container has wrapped {@code System.err} by then -- so {@link #useProcessStderr()} writes
+ * to the process's own stderr instead (doc/specs/logctl-attach.md #11).
  */
 public final class Diagnostics {
 
@@ -65,6 +70,43 @@ public final class Diagnostics {
     public static void configure(PrintStream newTarget, DiagnosticLevel newThreshold) {
         target = newTarget;
         threshold = newThreshold;
+    }
+
+    /**
+     * Writes to the process's own standard error ({@code FileDescriptor.err}) from now on, whatever
+     * {@code System.err} has become. Called first thing when the agent starts through {@code agentmain}:
+     * a container that wraps {@code System.err} (WildFly files it as {@code ERROR [stderr]} in
+     * {@code server.log}) has done so long before an attach, so capturing {@code System.err} then would
+     * log every LogAperture line through the application's handlers. After a {@code -javaagent} start
+     * the capture precedes the wrapping, which is what this reproduces (doc/specs/logctl-attach.md #11).
+     * A security manager that denies the stream leaves the current one in place.
+     */
+    public static void useProcessStderr() {
+        // What System.err itself uses: stderr.encoding (JDK 19+), sun.stderr.encoding (JDK 17 and below, set
+        // when stderr is a terminal), else the default charset.
+        Charset charset = Charset.defaultCharset();
+        for (String property : new String[] {"stderr.encoding", "sun.stderr.encoding"}) {
+            String configured = System.getProperty(property);
+            if (configured != null) {
+                try {
+                    charset = Charset.forName(configured);
+                    break;
+                } catch (IllegalArgumentException unknown) {
+                    // try the next, then the default charset
+                }
+            }
+        }
+        try {
+            target = new PrintStream(new FileOutputStream(FileDescriptor.err), true, charset);
+        } catch (SecurityException denied) {
+            // A security manager that denies writeFileDescriptor (JDK 17 and below): keep the current stream.
+            // The attach goes on, with LogAperture's lines as they were before this switch existed.
+        }
+    }
+
+    /** The stream LogAperture's own output goes to now: what {@code StderrAuditLog} writes to by default. */
+    public static PrintStream sink() {
+        return target;
     }
 
     /** Restores the default sink ({@code System.err}) and the system-property-derived threshold. */

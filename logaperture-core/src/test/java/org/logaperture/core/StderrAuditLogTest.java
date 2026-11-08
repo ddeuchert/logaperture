@@ -16,6 +16,8 @@
 package org.logaperture.core;
 
 import org.junit.jupiter.api.Test;
+import org.logaperture.bridge.DiagnosticLevel;
+import org.logaperture.bridge.Diagnostics;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -39,6 +41,20 @@ class StderrAuditLogTest {
 
     private static AuditRecord record(String target) {
         return new AuditRecord(NOW, "david", "jmx", target, "INFO", "DEBUG", "INC-1", AuditRecord.Action.MUTATION);
+    }
+
+    @Test
+    void defaultConstructor_writesToTheStreamDiagnosticsWritesTo() {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try {
+            Diagnostics.configure(new PrintStream(bytes, true, StandardCharsets.UTF_8), DiagnosticLevel.WARN);
+
+            new StderrAuditLog().record(record("com.acme.Worker"));
+
+            assertTrue(bytes.toString(StandardCharsets.UTF_8).startsWith("[logaperture-audit] "));
+        } finally {
+            Diagnostics.resetToDefault();
+        }
     }
 
     @Test

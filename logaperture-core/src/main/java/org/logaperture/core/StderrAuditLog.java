@@ -23,15 +23,15 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * Production default {@link AuditLog}: one structured line per record, to
- * {@code System.err} unless {@code -Dlogaperture.audit.file=} names a file.
+ * {@code System.err} (the stream {@code Diagnostics} writes to: the process's own stderr after an attach,
+ * doc/specs/logctl-attach.md #11) unless {@code -Dlogaperture.audit.file=} names a file.
  * Hash-chaining and syslog/Event Log mirroring (doc/logaperture-spec.md
  * §9.7) are deferred — this is deliberately the minimal slice.
  *
- * <p>{@code core} does not depend on {@code logaperture-bridge} (see this
- * module's pom), so a failure opening the audit file is reported directly
- * to {@code System.err} rather than through {@code Diagnostics} — a narrow,
- * one-off exception to that module boundary rather than a reason to add
- * the dependency for a single corner case.
+ * <p>The stream is read from {@code Diagnostics.sink()} when this log is built, so it is fixed from then
+ * on; {@code AgentBootstrap} switches {@code Diagnostics} to the process's stderr before building it on an
+ * attach. A failure opening the audit file is reported through {@code Diagnostics}, and the audit lines
+ * then go to the same stream.
  */
 public final class StderrAuditLog implements AuditLog {
 
@@ -64,14 +64,14 @@ public final class StderrAuditLog implements AuditLog {
     private static PrintStream resolveTarget() {
         String path = System.getProperty(FILE_PROPERTY);
         if (path == null) {
-            return System.err;
+            return Diagnostics.sink(); // System.err, or the process's stderr after an attach (#11)
         }
         try {
             return new PrintStream(new FileOutputStream(path, true), true, StandardCharsets.UTF_8);
         } catch (IOException e) {
             Diagnostics.warn("failed to open audit file '" + path
                     + "', falling back to stderr: " + e);
-            return System.err;
+            return Diagnostics.sink();
         }
     }
 }
