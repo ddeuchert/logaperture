@@ -31,6 +31,7 @@ import org.logaperture.core.HandlerFollowing;
 import org.logaperture.core.HandlerLevelControlService;
 import org.logaperture.core.HandlerOverrideRegistry;
 import org.logaperture.core.LevelControlService;
+import org.logaperture.core.LevelOrigin;
 import org.logaperture.core.LoggerOverrideChangeListener;
 import org.logaperture.core.OverrideRegistry;
 import org.logaperture.core.RuleService;
@@ -245,7 +246,10 @@ public final class NoneContainer implements AutoCloseable {
             Diagnostics.warn("failed to resume persisted overrides, continuing without them", e);
         }
 
-        DoctorService doctorService = new DoctorService(adapter, policy);
+        // Where a logger's level comes from, for the fix `doctor` suggests for a level left on
+        // (doc/specs/doctor-verbosity-fix.md D1).
+        DoctorService doctorService = new DoctorService(adapter, policy, List::of,
+                LevelOrigin.resolver(overrides, baselines));
         TopService topService = new TopService(adapter, policy);
         StormService stormService = new StormService(adapter, policy, aggregate.stormDetectionSwitch());
         EnvironmentReportService environmentReportService = new EnvironmentReportService(adapter, policy);

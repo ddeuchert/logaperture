@@ -40,8 +40,11 @@ today.
 **D1. Doctor is told where a level comes from.** A small function the container supplies,
 `Function<String, LevelOrigin>`, with `LevelOrigin` one of `OVERRIDE` (an active `logctl` override),
 `VENDOR` (the vendor defaults file names the logger and it is not reset to native) and `CONFIGURATION`
-(neither). The `none` container builds it from the `OverrideRegistry` and the `BaselineRegistry` it already
-holds, so `DoctorService` stays free of any state of its own and stays read-only. A `DoctorService` built
+(neither). `LevelOrigin.resolver(overrides, baselines)` builds it from the `OverrideRegistry` and the
+`BaselineRegistry` a context already holds, so `DoctorService` stays free of any state of its own and stays
+read-only. There are two composition roots, `NoneContainer` and `JBossLogManagerContainer` (the WildFly path, with
+its own copy of the install wiring), and both pass it; the first version of this change wired only the first, and
+the real check below on the dev WildFly is what found the second. A `DoctorService` built
 without one treats every level as `CONFIGURATION`.
 
 **D2. What the finding says.**

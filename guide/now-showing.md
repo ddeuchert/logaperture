@@ -231,8 +231,8 @@ you take over a server you didn't set up.
 suggested fix where there is one. It never changes anything.
 
 - The `org.hibernate` finding is the one `logctl` can fix, and it prints the command. Here the
-  `DEBUG` was set at runtime, which `reset` undoes; a level the application's own configuration
-  sets is changed there, or turned down with `logctl set logger`.
+  `DEBUG` was set at runtime, which `reset` undoes. For a level the application's own configuration
+  sets, `doctor` suggests `logctl set logger <name> INFO sticky` instead.
 - The `FILE` and `CONSOLE` findings are the server's own handler settings (no size cap, autoflush).
   `doctor` names them and leaves them to you: LogAperture doesn't change handler settings other than
   the level.

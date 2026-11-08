@@ -153,6 +153,29 @@ class NoneContainerTest {
         }
     }
 
+    /** doc/specs/doctor-verbosity-fix.md D1: the container tells doctor where a level comes from. */
+    @Test
+    void doctor_aChattyLoggerSetByLogctl_isFixedByReset_andOneTheConfigurationSetsIsNot() {
+        try (NoneContainer root = newRoot()) {
+            AggregateLevelControl ops = install(root);
+            LoggerFactory.getLogger("org.hibernate"); // known to the adapter, as a framework's logger would be
+            LoggerFactory.getLogger("org.apache.http");
+            ((ch.qos.logback.classic.Logger) LoggerFactory.getLogger("org.apache.http"))
+                    .setLevel(ch.qos.logback.classic.Level.DEBUG); // the configuration's own level
+
+            ops.setLogger("org.hibernate", Level.DEBUG, SetLevelOptions.defaults());
+
+            List<org.logaperture.api.DoctorFinding> findings = ops.diagnose();
+            org.logaperture.api.DoctorFinding set = findings.stream().filter(f -> "org.hibernate".equals(f.subject()))
+                    .findFirst().orElseThrow();
+            org.logaperture.api.DoctorFinding configured = findings.stream()
+                    .filter(f -> "org.apache.http".equals(f.subject())).findFirst().orElseThrow();
+            assertEquals("logctl reset logger org.hibernate", set.suggestedFix());
+            assertEquals("logctl set logger org.apache.http INFO sticky", configured.suggestedFix());
+            ((ch.qos.logback.classic.Logger) LoggerFactory.getLogger("org.apache.http")).setLevel(null);
+        }
+    }
+
     // --- a context the class-loader detector bound (doc/specs/class-loader-detector.md C6) ------------
 
     @Test

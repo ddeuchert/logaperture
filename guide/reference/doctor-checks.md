@@ -42,8 +42,12 @@ The root logger at `DEBUG`, `TRACE` or `ALL`, or one of a few known-chatty frame
 (`org.hibernate`, `org.apache.http`, `com.zaxxer.hikari`, `org.apache.commons.dbcp2`) configured
 at one of those levels. `WARNING`.
 
-**Fix:** for a framework logger, `doctor` gives the `logctl reset logger` command; for a level in the
-application's own configuration, change it there.
+**Fix:** the command `doctor` gives depends on where the level comes from. If someone set it with
+`logctl set logger`, it is `logctl reset logger <name>`. If the application's own configuration, or a
+[vendor defaults file](../vendors/vendor-defaults.md), sets it, `reset` would go back to the same level,
+so `doctor` gives `logctl set logger <name> INFO sticky` instead and says where the level comes from.
+`sticky` keeps it across restarts; change the level in the configuration (or the file) to make it
+permanent.
 
 ### `handler.duplicate-output`
 

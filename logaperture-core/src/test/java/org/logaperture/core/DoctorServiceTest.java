@@ -27,11 +27,14 @@ import org.logaperture.api.Severity;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -144,6 +147,60 @@ class DoctorServiceTest {
                 .filter(f -> f.check().equals("logger.verbosity-left-on") && f.subject().equals("org.hibernate"))
                 .findFirst().orElseThrow();
         assertEquals(Severity.WARNING, finding.severity());
+    }
+
+    // doc/specs/doctor-verbosity-fix.md D2: the fix depends on where the level comes from.
+
+    private DoctorFinding chattyFindingFor(LevelOrigin origin, List<String> asked) {
+        adapter.setConfiguredLevel("org.hibernate", Level.DEBUG);
+        Function<String, LevelOrigin> originOf = name -> {
+            asked.add(name);
+            return origin;
+        };
+        DoctorService withOrigin = new DoctorService(adapter, CapabilityPolicy.allowAll(), List::of, originOf);
+        return withOrigin.diagnose().stream()
+                .filter(f -> f.check().equals("logger.verbosity-left-on") && f.subject().equals("org.hibernate"))
+                .findFirst().orElseThrow();
+    }
+
+    @Test
+    void verbosity_anOverride_isFixedByReset() {
+        List<String> asked = new ArrayList<>();
+        DoctorFinding finding = chattyFindingFor(LevelOrigin.OVERRIDE, asked);
+
+        assertEquals("logctl reset logger org.hibernate", finding.suggestedFix());
+        assertNull(finding.detail());
+        assertEquals(List.of("org.hibernate"), asked, "asked about the flagged logger only");
+    }
+
+    @Test
+    void verbosity_aConfiguredLevel_isTurnedDownNotReset() {
+        DoctorFinding finding = chattyFindingFor(LevelOrigin.CONFIGURATION, new ArrayList<>());
+
+        assertEquals("logctl set logger org.hibernate INFO sticky", finding.suggestedFix());
+        assertTrue(finding.detail().contains("the application's configuration"), finding.detail());
+        assertTrue(finding.detail().contains("reset would not change it"), finding.detail());
+        assertEquals(Severity.WARNING, finding.severity());
+        assertEquals("org.hibernate is explicitly set to DEBUG — a known-chatty framework logger.", finding.summary());
+    }
+
+    @Test
+    void verbosity_aVendorLevel_isTurnedDownAndNamesTheFile() {
+        DoctorFinding finding = chattyFindingFor(LevelOrigin.VENDOR, new ArrayList<>());
+
+        assertEquals("logctl set logger org.hibernate INFO sticky", finding.suggestedFix());
+        assertTrue(finding.detail().contains("the vendor defaults file"), finding.detail());
+    }
+
+    @Test
+    void verbosity_withNoOriginSource_isTakenToBeConfiguration() {
+        adapter.setConfiguredLevel("org.hibernate", Level.DEBUG);
+
+        DoctorFinding finding = service.diagnose().stream()
+                .filter(f -> f.check().equals("logger.verbosity-left-on") && f.subject().equals("org.hibernate"))
+                .findFirst().orElseThrow();
+
+        assertEquals("logctl set logger org.hibernate INFO sticky", finding.suggestedFix());
     }
 
     @Test

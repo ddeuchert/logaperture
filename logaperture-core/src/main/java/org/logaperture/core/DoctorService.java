@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -65,6 +66,7 @@ public final class DoctorService implements DoctorOperations {
     private final LoggingAdapter adapter;
     private final CapabilityPolicy policy;
     private final Supplier<List<DoctorFinding>> containerFindings;
+    private final Function<String, LevelOrigin> levelOrigin;
 
     public DoctorService(LoggingAdapter adapter, CapabilityPolicy policy) {
         this(adapter, policy, List::of);
@@ -77,9 +79,20 @@ public final class DoctorService implements DoctorOperations {
      */
     public DoctorService(LoggingAdapter adapter, CapabilityPolicy policy,
             Supplier<List<DoctorFinding>> containerFindings) {
+        this(adapter, policy, containerFindings, name -> LevelOrigin.CONFIGURATION);
+    }
+
+    /**
+     * @param levelOrigin where a logger's explicit level comes from, so a level left on gets the fix that
+     *                    works for it (doc/specs/doctor-verbosity-fix.md D1); without one every level is
+     *                    taken to come from the configuration
+     */
+    public DoctorService(LoggingAdapter adapter, CapabilityPolicy policy,
+            Supplier<List<DoctorFinding>> containerFindings, Function<String, LevelOrigin> levelOrigin) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.policy = Objects.requireNonNull(policy, "policy");
         this.containerFindings = Objects.requireNonNull(containerFindings, "containerFindings");
+        this.levelOrigin = Objects.requireNonNull(levelOrigin, "levelOrigin");
     }
 
     @Override
@@ -210,9 +223,7 @@ public final class DoctorService implements DoctorOperations {
             }
             Level configured = adapter.configuredLevel(seedName).orElse(null);
             if (isChattyLevel(configured)) {
-                flagged.add(new DoctorFinding("logger.verbosity-left-on", Severity.WARNING, seedName,
-                        seedName + " is explicitly set to " + configured + " — a known-chatty framework logger.",
-                        null, "logctl reset logger " + seedName));
+                flagged.add(chattyLoggerFinding(seedName, configured));
             }
         }
         if (flagged.isEmpty()) {
@@ -220,6 +231,24 @@ public final class DoctorService implements DoctorOperations {
                     "no excess verbosity found at root or on a known-chatty logger."));
         }
         return List.copyOf(flagged);
+    }
+
+    /**
+     * doc/specs/doctor-verbosity-fix.md D2: {@code reset} undoes an override, but for a level the configuration
+     * or the vendor defaults file sets it goes back to the same level, so those get a command that turns the
+     * logger down, and a detail line saying why.
+     */
+    private DoctorFinding chattyLoggerFinding(String name, Level level) {
+        String summary = name + " is explicitly set to " + level + " — a known-chatty framework logger.";
+        LevelOrigin origin = levelOrigin.apply(name);
+        if (origin == LevelOrigin.OVERRIDE) {
+            return new DoctorFinding("logger.verbosity-left-on", Severity.WARNING, name, summary, null,
+                    "logctl reset logger " + name);
+        }
+        String source = origin == LevelOrigin.VENDOR ? "the vendor defaults file" : "the application's configuration";
+        return new DoctorFinding("logger.verbosity-left-on", Severity.WARNING, name, summary,
+                "the level comes from " + source + ", so reset would not change it",
+                "logctl set logger " + name + " INFO sticky");
     }
 
     private static boolean isChattyLevel(Level level) {
