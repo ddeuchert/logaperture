@@ -18,6 +18,10 @@ exactly what that is. This guide stays on 1.0 until 1.1.0 is out.
     [Discussions](https://github.com/ddeuchert/logaperture/discussions), and its guide appears in this guide's
     version menu. No pre-release has been published yet.
 
+    Better yet, get told when it ships: [watch the project on GitHub](https://github.com/ddeuchert/logaperture)
+    (the *Watch* button at the top of that page, then *Custom* and *Releases*), and GitHub notifies you of each
+    release and pre-release.
+
 ## Quarkus, with no `-javaagent`
 
 LogAperture on a Quarkus application in JVM mode ([#114](https://github.com/ddeuchert/logaperture/issues/114)).
