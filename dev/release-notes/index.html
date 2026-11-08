@@ -2920,6 +2920,10 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
+<li><strong>After <code>logctl attach</code> on WildFly, the agent's own messages are no longer logged as <code>ERROR [stderr]</code>.</strong>
+  Its startup line and every audit line went through the server's handlers, and so into <code>server.log</code>, as
+  <code>ERROR</code> records. An attach now writes them to the process's own standard error, as a <code>-javaagent</code> start
+  does (issue #351).</li>
 <li><strong><code>doctor</code> no longer suggests <code>logctl reset logger</code> for a chatty logger the configuration sets to <code>DEBUG</code>.</strong>
   <code>reset</code> goes back to the configured level, so the command changed nothing. For a level the application's
   configuration or a vendor defaults file sets, <code>doctor</code> now says where the level comes from and suggests
