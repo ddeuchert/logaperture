@@ -1,12 +1,14 @@
 # Demo recordings
 
-Status: **signed off 2026-10-10**, decisions D1–D12 agreed as recommended. Implemented
+Status: **signed off 2026-10-10**, decisions D1–D12 agreed as recommended. Story 5 (storms,
+issue #198): **signed off 2026-11-07**, decisions S1–S7 agreed as recommended. Implemented
 2026-10-10: story 1 as the prototype (D12), reviewed, then stories 2 and 3. Story 4 (a `trim`
 rule) added 2026-10-18, decisions T1–T6 agreed as recommended. The Now Showing page: C1–C5
 and N1–N6 agreed 2026-10-18, as recommended.
 Issues: [#196](https://github.com/ddeuchert/logaperture/issues/196) (stories 1–3),
 [#226](https://github.com/ddeuchert/logaperture/issues/226) (story 4),
-[#228](https://github.com/ddeuchert/logaperture/issues/228) (the Now Showing page). Milestone `1.0.0`;
+[#228](https://github.com/ddeuchert/logaperture/issues/228) (the Now Showing page),
+[#198](https://github.com/ddeuchert/logaperture/issues/198) (story 5, milestone `1.1.0`). Milestone `1.0.0`;
 documentation and a test fixture only, so it can land after the beta 1 feature freeze (Oct 15).
 Parent spec: [`doc/specs/user-documentation.md`](user-documentation.md) (the guide this adds to), and
 through it [`doc/logaperture-spec.md`](../logaperture-spec.md) §17.1 "User documentation".
@@ -25,6 +27,8 @@ After this feature, the user will be able to:
   **debug one package for a while, then it cleans itself up** (`set logger … for`),
   **something is flooding the log** (`top`, then a `drop` rule), and **stack traces are burying
   the log** (a `trim` rule).
+- See a fifth story, **what is bursting?** (`enable storms`, then `storms`, then a `drop` rule),
+  on the log-storms how-to.
 - Watch every recording in one place, the guide's **Now Showing** page: for each, when you'd
   run into that problem, the recording, and every command in it explained, linked to its
   reference.
@@ -48,8 +52,8 @@ explains the same steps.
 
 ## Out of scope
 
-- Story 5 (`doctor`, storm detection, vendor defaults with `export`), first planned as story 4:
-  a later issue, [#198](https://github.com/ddeuchert/logaperture/issues/198) (D11, T1).
+- The `doctor` story and the vendor-defaults `export` story, both candidates for #198: filed as their own
+  issues, 1.x (S1).
 - A narrated screen capture (OBS, audio). The issue leaves that for later.
 - Running the recordings in CI. They need Docker, a WildFly and a minute of wall-clock time each;
   the release step is manual (D10).
@@ -160,6 +164,41 @@ then, after the rule, a `Caused by: java.net.ConnectException: … [stack trace 
 reaches it within 15 s, and every stack frame and `... N more` line leaves it within 25 s
 (`wait_gone`) (T6). Its hidden setup starts the outage before recording, so the first frame
 already shows the problem.
+
+## Story 5: what is bursting? (issue #198, signed off 2026-11-07)
+
+The three candidates for #198 (`doctor`, storms, vendor-defaults `export`) are too much for one clip
+under 90 seconds. Story 5 is **storms**; the other two become their own issues (S1).
+
+**The problem.** The server's console is scrolling too fast to read and nobody knows which message is
+doing it. Story 3 finds a flood by logger with `top`; this one finds a *message*: storm detection groups
+near-identical events whose numbers differ, and keeps one in full.
+
+```sh
+# A web shop app deployed on a WildFly server. Its console is scrolling too fast to read.
+# Storm detection is off by default. Turn it on for ten minutes:
+logctl enable storms for 10m
+# ...give it a few seconds, then ask what is bursting:
+logctl storms
+#   [ONGOING] com.example.shop.payment.RetryQueue  (no exception)  "Retrying payment for order %s (attempt %s)"
+#   events and rate, and the sample: the event that made it a storm, in full
+# One message, 1000s of times, the numbers changing. Keep it out of the log while the cause is fixed:
+logctl add rule drop com.example.shop.payment.RetryQueue --message-contains "Retrying payment"
+# The console is readable again; the shop still logs.
+```
+
+| # | Decision | Recommendation |
+|---|---|---|
+| S1 | Which story; the rest | Storms is story 5. `doctor` and `export` become two issues in milestone 1.x, so #198 closes with the one story. (David, 2026-11-07.) |
+| S2 | The demo shop | `POST /demo/retry-storm/start` makes a `RetryQueue` log a WARN `Retrying payment for order 10431 (attempt 7)` about every 5 ms (200 a second, no exception) until `/demo/stop`. The numbers come from a counter, so every recording is the same. 1,000 events in 10 s, storm detection's default threshold, is crossed in about 5 s. `com.example.shop.payment`, so it reads as the shop's own code. |
+| S3 | The flood starts first | The storm is already running when the recording starts (hidden setup, like story 3's flood), so the console is scrolling in the first frame. Detection is off until the story turns it on, so the story needs no second hidden trigger. |
+| S4 | The ending | A `drop` rule by `--message-contains`, then the console quiets, as in story 3 but by message instead of by exception: the guide's own "Then" section for storms. |
+| S5 | Leaving the server clean | `record.sh`'s reset also runs `logctl disable storms`, so a story never starts or ends with detection on. (`enable` already clears what was tracked.) |
+| S6 | Checks | After `logctl storms`, an `[ONGOING]` row naming `RetryQueue` (within 30 s of enabling); after the rule, no `Retrying payment` line on the console pane within 30 s (`wait_gone`). The `enable` line carries timestamps that make it long; if it wraps past the 19-row pane, the recording fails and the story drops `for 10m`. |
+| S7 | Guide placement | `how-to/storms.md`, under "See the storms", with the static output kept; the Now Showing page gains film 5 (C2, N5); the README keeps one GIF. |
+
+The files: `dev/demos/storm.sh` (story 5), `RetryQueue` and the switch in the sample WAR's `DemoShop` and
+`DemoServlet`, `record.sh` (`stories`, the reset), `guide/assets/demos/storm.cast`.
 
 ## Design
 
