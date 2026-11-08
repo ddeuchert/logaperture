@@ -2630,8 +2630,15 @@ JDK's own <code>FileHandler</code>.</p>
 <p>The root logger at <code>DEBUG</code>, <code>TRACE</code> or <code>ALL</code>, or one of a few known-chatty framework loggers
 (<code>org.hibernate</code>, <code>org.apache.http</code>, <code>com.zaxxer.hikari</code>, <code>org.apache.commons.dbcp2</code>) configured
 at one of those levels. <code>WARNING</code>.</p>
-<p><strong>Fix:</strong> for a framework logger, <code>doctor</code> gives the <code>logctl reset logger</code> command; for a level in the
-application's own configuration, change it there.</p>
+<p><strong>Fix:</strong> the command <code>doctor</code> gives depends on what a <code>reset</code> would do. If something raised the level with
+<code>logctl set logger</code>, and a <code>reset</code> would go back to a level that is not chatty, it is
+<code>logctl reset logger &lt;name&gt;</code>. Otherwise <code>reset</code> would change nothing, so <code>doctor</code> gives
+<code>logctl set logger &lt;name&gt; INFO sticky</code> and says why: the application set the level itself, in code, so there
+is nothing for <code>reset</code> to undo; or <code>reset</code> would go back to a chatty level that the application's own
+configuration, or a <a href="../../vendors/vendor-defaults/">vendor defaults file</a>, sets.
+<code>sticky</code> keeps it across restarts; change the level in the configuration (or the file) to make it
+permanent. Like any <code>set logger</code>, it changes that one logger: a logger under it, such as
+<code>org.hibernate.SQL</code>, that has a level of its own keeps it.</p>
 <h3 id="handlerduplicate-output"><code>handler.duplicate-output</code><a class="headerlink" href="#handlerduplicate-output" title="Permanent link">&para;</a></h3>
 <p>Two or more file handlers at the same level, so the same lines are written twice. <code>INFO</code>: it can be
 deliberate.</p>

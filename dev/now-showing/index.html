@@ -2594,8 +2594,8 @@ you take over a server you didn't set up.</p>
 suggested fix where there is one. It never changes anything.</p>
 <ul>
 <li>The <code>org.hibernate</code> finding is the one <code>logctl</code> can fix, and it prints the command. Here the
-  <code>DEBUG</code> was set at runtime, which <code>reset</code> undoes; a level the application's own configuration
-  sets is changed there, or turned down with <code>logctl set logger</code>.</li>
+  <code>DEBUG</code> was set at runtime, which <code>reset</code> undoes. For a level the application's own configuration
+  sets, <code>doctor</code> suggests <code>logctl set logger &lt;name&gt; INFO sticky</code> instead.</li>
 <li>The <code>FILE</code> and <code>CONSOLE</code> findings are the server's own handler settings (no size cap, autoflush).
   <code>doctor</code> names them and leaves them to you: LogAperture doesn't change handler settings other than
   the level.</li>

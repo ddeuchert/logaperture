@@ -1993,6 +1993,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2011,7 +2022,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#fixed" class="md-nav__link">
+  <a href="#fixed_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Fixed
@@ -2089,7 +2100,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#fixed_1" class="md-nav__link">
+  <a href="#fixed_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         Fixed
@@ -2161,7 +2172,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fixed_2" class="md-nav__link">
+  <a href="#fixed_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         Fixed
@@ -2211,7 +2222,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fixed_3" class="md-nav__link">
+  <a href="#fixed_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         Fixed
@@ -2272,7 +2283,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fixed_4" class="md-nav__link">
+  <a href="#fixed_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         Fixed
@@ -2416,6 +2427,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2434,7 +2456,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#fixed" class="md-nav__link">
+  <a href="#fixed_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         Fixed
@@ -2512,7 +2534,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#fixed_1" class="md-nav__link">
+  <a href="#fixed_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         Fixed
@@ -2584,7 +2606,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fixed_2" class="md-nav__link">
+  <a href="#fixed_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         Fixed
@@ -2634,7 +2656,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fixed_3" class="md-nav__link">
+  <a href="#fixed_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         Fixed
@@ -2695,7 +2717,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fixed_4" class="md-nav__link">
+  <a href="#fixed_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         Fixed
@@ -2896,9 +2918,16 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
 <li><strong><code>logctl list loggers</code> with no loggers</strong> now says <code>No loggers known yet. LogAperture is running; if it controls
   no logging context in this JVM,</code>logctl doctor<code>says why.</code></li>
 </ul>
+<h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>doctor</code> no longer suggests <code>logctl reset logger</code> for a chatty logger the configuration sets to <code>DEBUG</code>.</strong>
+  <code>reset</code> goes back to the configured level, so the command changed nothing. For a level the application's
+  configuration or a vendor defaults file sets, <code>doctor</code> now says where the level comes from and suggests
+  <code>logctl set logger &lt;name&gt; INFO sticky</code>; for one <code>logctl</code> set, it still suggests <code>reset</code> (issue #345).</li>
+</ul>
 <h2 id="100-beta4-2026-10-28"><a href="https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.4">1.0.0-beta.4</a> — 2026-10-28<a class="headerlink" href="#100-beta4-2026-10-28" title="Permanent link">&para;</a></h2>
 <p><code>logctl</code> now finds a LocalSystem Windows service's JVM from an Administrator prompt. <strong>Not for production yet.</strong></p>
-<h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
+<h3 id="fixed_1">Fixed<a class="headerlink" href="#fixed_1" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Windows: <code>logctl --pid</code> no longer says "No process with PID" for a running process.</strong> The JDK
   reports a process it may not open, such as a <code>LocalSystem</code> service's JVM, as absent, so <code>logctl</code>
@@ -2951,7 +2980,7 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
 commands and the <code>--json</code> output are unchanged; the one behavior change is that <code>logctl</code> now
 honors <code>JAVA_HOME</code>. <strong>Not for production yet.</strong> WildFly users on beta.1 should upgrade: on some
 servers the agent stopped WildFly's own management beans from registering.</p>
-<h3 id="fixed_1">Fixed<a class="headerlink" href="#fixed_1" title="Permanent link">&para;</a></h3>
+<h3 id="fixed_2">Fixed<a class="headerlink" href="#fixed_2" title="Permanent link">&para;</a></h3>
 <ul>
 <li>
 <p><strong>WildFly's <code>jboss.as</code> MBeans (and so datasources) went missing with the agent on.</strong> The agent
@@ -3137,7 +3166,7 @@ renames from the 1.0 review of commands and <code>--json</code> output.</p>
 <li><strong>Guided <code>logctl list</code></strong> also offers <code>recipes</code>. A one-letter answer to a guided question now
   counts only when no other choice starts with that letter, so <code>r</code> asks again (rules or recipes).</li>
 </ul>
-<h3 id="fixed_2">Fixed<a class="headerlink" href="#fixed_2" title="Permanent link">&para;</a></h3>
+<h3 id="fixed_3">Fixed<a class="headerlink" href="#fixed_3" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong><code>logctl</code> on Windows <code>cmd</code> no longer prints <code>?</code> for "no value".</strong> A console whose code page
   can't show <code>—</code>, <code>→</code> or <code>…</code> now gets <code>-</code>, <code>-&gt;</code> and <code>...</code>, with table columns still aligned
@@ -3345,7 +3374,7 @@ formats may still change between builds without a migration path.</p>
   pattern matching a single logger is applied without asking. More than 30 matches still get the
   all-or-nothing <code>[y/N]</code>. Without a terminal, and with <code>--yes</code>, nothing changes (issue #116).</li>
 </ul>
-<h3 id="fixed_3">Fixed<a class="headerlink" href="#fixed_3" title="Permanent link">&para;</a></h3>
+<h3 id="fixed_4">Fixed<a class="headerlink" href="#fixed_4" title="Permanent link">&para;</a></h3>
 <ul>
 <li>
 <p><strong>Piped or scripted <code>logctl</code> could be treated as interactive on JDK 22–24</strong>, whose
@@ -3406,7 +3435,7 @@ still change between builds without a migration path.</p>
   fully-qualified state file path.</li>
 <li><strong>WildFly test-drive walkthrough</strong> (<code>doc/wildfly-test-drive.md</code>).</li>
 </ul>
-<h3 id="fixed_4">Fixed<a class="headerlink" href="#fixed_4" title="Permanent link">&para;</a></h3>
+<h3 id="fixed_5">Fixed<a class="headerlink" href="#fixed_5" title="Permanent link">&para;</a></h3>
 <ul>
 <li>WildFly handler-name resolution on newer WildFly (#39) and the readiness gate
   that never passed (#64); boot-time resolver noise (#66); an intermittent
