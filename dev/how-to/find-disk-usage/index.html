@@ -2154,8 +2154,15 @@ shorter "No byte-volume measurements available yet", which means a file handler 
 has been written through it yet.</p>
 <p>With <code>--json</code>, <code>persistentHandlers</code> is the number of file-backed handlers: <code>0</code> for the case above.</p>
 <h2 id="what-in-the-configuration-will-hurt">What in the configuration will hurt<a class="headerlink" href="#what-in-the-configuration-will-hurt" title="Permanent link">&para;</a></h2>
+<div class="la-cast" data-cast="doctor"></div>
+
+<p>Above: <code>logctl doctor</code> flags a chatty framework logger left at <code>DEBUG</code> and prints the command that
+fixes it, and reports three settings of the server's own handlers that <code>logctl</code> leaves alone. In
+the film the <code>DEBUG</code> was set at runtime, which <code>logctl reset logger</code> undoes. A level that the
+application's own configuration sets is changed there, or turned down with <code>logctl set logger</code>.</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>doctor
 </code></pre></div>
+<p>On a server with no chatty logger left on, the output looks like this:</p>
 <div class="highlight"><pre><span></span><code>[OK]    logaperture-agent.jar is the first -javaagent.
 [WARN]  FILE has no size cap — writes are unbounded.
         no size-based rotation is configured

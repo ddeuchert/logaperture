@@ -966,6 +966,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#doctor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Is my logging config going to hurt me?
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Is my logging config going to hurt me?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#doctor-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands in this film
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2275,6 +2303,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#doctor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Is my logging config going to hurt me?
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Is my logging config going to hurt me?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#doctor-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands in this film
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2308,6 +2364,7 @@ its reference and to the how-to that covers it.</p>
 <li><a href="#flood">Something is flooding the log</a>: find the source, and silence one exception.</li>
 <li><a href="#trim">Stack traces are burying the log</a>: keep every warning, but not its trace.</li>
 <li><a href="#storm">What is bursting?</a>: find the one message behind a scrolling console.</li>
+<li><a href="#doctor">Is my logging config going to hurt me?</a>: what <code>doctor</code> reports, and the one fix <code>logctl</code> can make.</li>
 </ol>
 <h2 id="why-no-trace">Why don't I see my TRACE?<a class="headerlink" href="#why-no-trace" title="Permanent link">&para;</a></h2>
 <p>A customer reports failed payments, so you turn on <code>TRACE</code> for the payment code, and the console
@@ -2467,6 +2524,30 @@ the storm out of the log while the cause is fixed.</p>
 <p>The rule lasts <code>for 4h</code>, since no duration was given.</p>
 <p>Reference: <a href="../reference/logctl/#add-rule"><code>add rule</code></a> · How-to:
 <a href="../how-to/silence-noise/#drop-a-message">Drop a message</a></p>
+<h2 id="doctor">Is my logging config going to hurt me?<a class="headerlink" href="#doctor" title="Permanent link">&para;</a></h2>
+<p>Nothing has failed yet, but a logging configuration can quietly cost you a disk or a noisy log: a
+file with no size cap, a chatty framework logger left at <code>DEBUG</code>, a handler that flushes on every
+record. <code>doctor</code> reads the configuration and says which of those apply. It only reports, and where
+<code>logctl</code> can fix a finding it prints the exact command. Reach for it before an incident, or when
+you take over a server you didn't set up.</p>
+<div class="la-cast" data-cast="doctor"></div>
+
+<h3 id="doctor-commands">Commands in this film<a class="headerlink" href="#doctor-commands" title="Permanent link">&para;</a></h3>
+<p><strong><code>logctl doctor</code></strong>: run the checks and print one line per finding, with a detail line and a
+suggested fix where there is one. It never changes anything.</p>
+<ul>
+<li>The <code>org.hibernate</code> finding is the one <code>logctl</code> can fix, and it prints the command. Here the
+  <code>DEBUG</code> was set at runtime, which <code>reset</code> undoes; a level the application's own configuration
+  sets is changed there, or turned down with <code>logctl set logger</code>.</li>
+<li>The <code>FILE</code> and <code>CONSOLE</code> findings are the server's own handler settings (no size cap, autoflush).
+  <code>doctor</code> names them and leaves them to you: LogAperture doesn't change handler settings other than
+  the level.</li>
+</ul>
+<p>Reference: <a href="../reference/logctl/#doctor"><code>doctor</code></a>, <a href="../reference/doctor-checks/">Doctor checks</a> ·
+How-to: <a href="../how-to/find-disk-usage/#what-in-the-configuration-will-hurt">What in the configuration will hurt</a></p>
+<p><strong><code>logctl reset logger org.hibernate</code></strong>: put the logger back to the level the application
+configured. It prints the level it went back to, with <code>(baseline)</code>.</p>
+<p>Reference: <a href="../reference/logctl/#reset"><code>reset</code></a> · How-to: <a href="../how-to/undo-changes/#reset">Reset</a></p>
 
 
 
