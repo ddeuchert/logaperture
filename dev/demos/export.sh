@@ -23,16 +23,16 @@ DEMO_CONSOLE_ROWS=6
 
 story() {
     hold 2
-    say "A web shop app deployed on a WildFly server. You have tuned its logging live; now ship it."
+    say "A web shop app on a WildFly server. Customers get the logging it ships with, and you want that to be better."
+    say "Vendor defaults do that. Tune it live with sticky changes (they survive a restart), then export them:"
     run logctl set logger com.example.shop.payment WARN sticky
     run logctl add rule drop com.example.shop.inventory.StockSync --message-contains synced --below WARN sticky
-    say "Both are sticky: they survive a restart. Export what you tuned:"
     run logctl export vendor-defaults
     expect_output '^# Exported by logctl export vendor-defaults'
     expect_output 'name: com\.example\.shop\.payment'
     expect_output 'level: WARN'
     expect_output 'action: drop'
     expect_output 'messageContains: synced'
-    say "Ship it with the product and start the agent with --vendor-defaults=<file>: these become the baseline."
+    say "Ship the file with the product and start the agent with --vendor-defaults=<file>: customers start from it."
     hold 3
 }

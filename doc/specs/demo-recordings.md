@@ -242,15 +242,15 @@ Story 7 is the vendor-defaults `export` candidate from #198 (S1). A product vend
 settings (guide: Vendor defaults, "Making the file: tune, then export").
 
 ```sh
-# A web shop app deployed on a WildFly server. You have tuned its logging live; now ship it.
+# A web shop app on a WildFly server. Customers get the logging it ships with, and you want that to be better.
+# Vendor defaults do that. Tune it live with sticky changes (they survive a restart), then export them:
 logctl set logger com.example.shop.payment WARN sticky
 logctl add rule drop com.example.shop.inventory.StockSync --message-contains synced --below WARN sticky
-# Both are sticky: they survive a restart. Export what you tuned:
 logctl export vendor-defaults
 #   # Exported by logctl export vendor-defaults, ... agent 1.1.0-SNAPSHOT
 #   loggers: - name: com.example.shop.payment, level: WARN, stateId: ...
 #   rules:   - id: drop-stocksync, action: drop, ..., messageContains: synced, below: WARN, ...
-# Ship it with the product and start the agent with --vendor-defaults=<file>. These settings are the baseline.
+# Ship the file with the product and start the agent with --vendor-defaults=<file>: customers start from it.
 ```
 
 A logger and a rule export as 16 lines of YAML, so with the commands and narration the film runs to
@@ -262,7 +262,8 @@ about 24 rows, past the 19 the `logctl` pane has (V2).
 | V2 | Pane size | This one story gives the console 6 rows and `logctl` 25 (`DEMO_CONSOLE_ROWS=6` in the story file, read like `DEMO_TITLE`; every other story keeps 12 and 19). The console has nothing to show here, and the rule that the whole `logctl` pane fits, so the last frame (the guide's poster) shows the story from its first line, still holds: the film ends at about 24 of 25 rows. The one exception to the 19-row pane, noted where that rule is stated. |
 | V3 | Real output | Nothing is edited. The export's header carries the time and the agent's version (`1.1.0-SNAPSHOT` until the release), and each entry a random `stateId` that ties it to the sticky change it came from, so no two recordings are byte-identical. No host or path appears. |
 | V4 | The rule's matcher | `--message-contains synced`, one word, because `run` echoes arguments without their quotes; the file shows it as `messageContains: synced` (the exporter quotes only a value with a space in it; found while recording). |
-| V5 | Shipping the file | Narrated in one comment line, not shown: a restart cannot be filmed inside 90 seconds, and `--vendor-defaults=<file>` is the real agent argument. |
+| V5 | Shipping the file | Narrated in the closing comment line, not shown: a restart cannot be filmed inside 90 seconds, and `--vendor-defaults=<file>` is the real agent argument. |
+| V9 | The opening (David, 2026-11-08) | Two comment lines say why: customers get the logging a product ships with, vendor defaults let the vendor change that, and sticky changes tuned live are what gets exported. The old mid-film line ("Both are sticky...") folds into the second, so the film stays at 24 of 25 rows. |
 | V6 | Checks | `expect_output` for the export header, `name: com.example.shop.payment`, `level: WARN`, `action: drop` and `messageContains: synced`. `reset_server` already clears sticky loggers, handlers and rules, so no story starts or ends with them set. |
 | V7 | Guide | `vendors/vendor-defaults.md`, "Making the file: tune, then export" (the static example stays, it uses other settings); film 7 on Now Showing with each command explained. |
 | V8 | Name and numbering | Story 7, `dev/demos/export.sh`, `guide/assets/demos/export.cast`. |
