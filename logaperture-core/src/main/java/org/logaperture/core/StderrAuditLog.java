@@ -28,11 +28,10 @@ import java.nio.charset.StandardCharsets;
  * Hash-chaining and syslog/Event Log mirroring (doc/logaperture-spec.md
  * §9.7) are deferred — this is deliberately the minimal slice.
  *
- * <p>{@code core} does not depend on {@code logaperture-bridge} (see this
- * module's pom), so a failure opening the audit file is reported directly
- * to {@code System.err} rather than through {@code Diagnostics} — a narrow,
- * one-off exception to that module boundary rather than a reason to add
- * the dependency for a single corner case.
+ * <p>The stream is read from {@code Diagnostics.sink()} when this log is built, so it is fixed from then
+ * on; {@code AgentBootstrap} switches {@code Diagnostics} to the process's stderr before building it on an
+ * attach. A failure opening the audit file is reported through {@code Diagnostics}, and the audit lines
+ * then go to the same stream.
  */
 public final class StderrAuditLog implements AuditLog {
 

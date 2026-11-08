@@ -109,7 +109,7 @@ nowhere, exactly as after a `-javaagent` start. An application that called `Syst
 purposes before the attach is bypassed too, as it would be after a `-javaagent` start, where the agent
 captured the stream before the application ran. `-Dlogaperture.audit.file` is unchanged: a named file
 still wins over the stream. The 60 s and one-second lines of #6 go through `Diagnostics` and follow the
-same stream.
+same stream. Guide pages changed: none; the guide never says where an attached agent's lines go.
 
 ## Scope
 

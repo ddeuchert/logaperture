@@ -81,13 +81,18 @@ public final class Diagnostics {
      * the capture precedes the wrapping, which is what this reproduces (doc/specs/logctl-attach.md #11).
      */
     public static void useProcessStderr() {
+        // What System.err itself uses: stderr.encoding (JDK 19+), sun.stderr.encoding (JDK 17 and below, set
+        // when stderr is a terminal), else the default charset.
         Charset charset = Charset.defaultCharset();
-        String configured = System.getProperty("stderr.encoding");
-        if (configured != null) {
-            try {
-                charset = Charset.forName(configured);
-            } catch (IllegalArgumentException unknown) {
-                // keep the default charset
+        for (String property : new String[] {"stderr.encoding", "sun.stderr.encoding"}) {
+            String configured = System.getProperty(property);
+            if (configured != null) {
+                try {
+                    charset = Charset.forName(configured);
+                    break;
+                } catch (IllegalArgumentException unknown) {
+                    // try the next, then the default charset
+                }
             }
         }
         target = new PrintStream(new FileOutputStream(FileDescriptor.err), true, charset);

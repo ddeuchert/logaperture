@@ -113,7 +113,13 @@ class WildFlyAttachIT {
         logctl("set", "logger", "com.example.Probe", "DEBUG", "for", "5m"); // an audit line
         logctl("reset", "logger", "com.example.Probe");
 
-        assertTrue(wildfly.getLogs().contains("[logaperture-audit]"), "the audit line still reaches the console");
+        // The console shows this test's own audit line (the frame can arrive a moment late).
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while (!wildfly.getLogs().contains("logger=com.example.Probe") && System.nanoTime() < deadline) {
+            Thread.sleep(200);
+        }
+        assertTrue(wildfly.getLogs().contains("[logaperture-audit]") && wildfly.getLogs().contains("logger=com.example.Probe"),
+                "the audit line still reaches the console");
         String serverLog = exec("cat", SERVER_LOG).getStdout();
         assertFalse(serverLog.lines().anyMatch(line -> line.contains("[stderr]") && line.contains("[logaperture")),
                 "no LogAperture line was logged through WildFly's stderr wrapper:\n" + serverLog);
