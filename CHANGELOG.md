@@ -91,6 +91,9 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 - **A fifth demo recording: what is bursting?** `logctl enable storms`, `logctl storms` and a `drop`
   rule on a message whose numbers keep changing, embedded in How-to: Log storms and on Now Showing
   (issue #198).
+- **A sixth demo recording: is my logging config going to hurt me?** `logctl doctor` reports a chatty
+  logger left at `DEBUG` and the server's own handler settings, then `logctl reset logger` fixes the
+  one `logctl` can. Embedded in How-to: Find where the disk goes and on Now Showing (issue #342).
 
 ### Changed
 

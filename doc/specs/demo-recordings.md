@@ -1,16 +1,18 @@
 # Demo recordings
 
 Status: **signed off 2026-10-10**, decisions D1–D12 agreed as recommended. Story 5 (storms,
-issue #198): **signed off 2026-11-07**, decisions S1–S7 agreed as recommended. Implemented
+issue #198): **signed off 2026-11-07**, decisions S1–S7 agreed as recommended. Story 6 (`doctor`,
+issue #342): **signed off 2026-11-07**, decisions DR1–DR7 agreed as recommended. Implemented
 2026-10-10: story 1 as the prototype (D12), reviewed, then stories 2 and 3. Story 4 (a `trim`
 rule) added 2026-10-18, decisions T1–T6 agreed as recommended. The Now Showing page: C1–C5
 and N1–N6 agreed 2026-10-18, as recommended.
 Issues: [#196](https://github.com/ddeuchert/logaperture/issues/196) (stories 1–3),
 [#226](https://github.com/ddeuchert/logaperture/issues/226) (story 4),
 [#228](https://github.com/ddeuchert/logaperture/issues/228) (the Now Showing page),
-[#198](https://github.com/ddeuchert/logaperture/issues/198) (story 5). Stories 1–4 and the Now Showing page: milestone
+[#198](https://github.com/ddeuchert/logaperture/issues/198) (story 5),
+[#342](https://github.com/ddeuchert/logaperture/issues/342) (story 6). Stories 1–4 and the Now Showing page: milestone
 `1.0.0`; documentation and a test fixture only, so they could land after the beta 1 feature freeze (Oct 15). Story 5:
-milestone `1.1.0`, so it branches from and targets `develop`.
+milestone `1.1.0`; story 6: `1.x`; both branch from and target `develop`.
 Parent spec: [`doc/specs/user-documentation.md`](user-documentation.md) (the guide this adds to), and
 through it [`doc/logaperture-spec.md`](../logaperture-spec.md) §17.1 "User documentation".
 Related: [`wildfly-dev-environment.md`](wildfly-dev-environment.md) (the server the demos run
@@ -24,10 +26,12 @@ After this feature, the user will be able to:
   on the README, with the server's console above and `logctl` below.
 - Pause a recording on the guide and copy a command straight out of it, including in the guide
   that ships in the release zip.
-- See five stories: **why don't I see my TRACE?** (a handler stricter than the logger),
+- See six stories: **why don't I see my TRACE?** (a handler stricter than the logger),
   **debug one package for a while, then it cleans itself up** (`set logger … for`),
-  **something is flooding the log** (`top`, then a `drop` rule), and **stack traces are burying
-  the log** (a `trim` rule).
+  **something is flooding the log** (`top`, then a `drop` rule), **stack traces are burying
+  the log** (a `trim` rule), **what is bursting?** (`enable storms`, `storms`, then a `drop`
+  rule on the message), and **is my logging config going to hurt me?** (`doctor`, then the
+  one fix `logctl` can make).
 - Watch every recording in one place, the guide's **Now Showing** page: for each, when you'd
   run into that problem, the recording, and every command in it explained, linked to its
   reference.
@@ -36,7 +40,7 @@ After this feature, the user will be able to:
 
 Guide pages changed: `index.md` ("See it work") and `get-started/quick-start.md` (step 4) for
 story 1, `how-to/raise-a-level.md` for story 2, `how-to/silence-noise.md` for stories 3 and 4,
-`how-to/storms.md` for story 5.
+`how-to/storms.md` for story 5, `how-to/find-disk-usage.md` for story 6.
 `now-showing.md` (new, its own nav entry) for all of them, and a link to it from `index.md`'s
 "See it work". README: one GIF near the top.
 
@@ -199,6 +203,37 @@ logctl add rule drop com.example.shop.payment.RetryQueue --message-contains Retr
 The files: `dev/demos/storm.sh` (story 5), `RetryQueue` and the switch in the sample WAR's `DemoShop` and
 `DemoServlet`, `record.sh` (`stories`, the reset), `guide/assets/demos/storm.cast`.
 
+## Story 6: is my logging config going to hurt me? (issue #342, signed off 2026-11-07)
+
+Story 6 is the `doctor` candidate from #198 (S1). `doctor` reads the configuration and says what will hurt;
+it never changes anything. On the dev WildFly it reports three things about the server's own handlers
+(`FILE` has no size cap, `FILE` and `CONSOLE` flush on every record) that `logctl` does not change, so a
+film that only lists them has nothing to fix. It also flags a known-chatty framework logger left at
+`DEBUG` and prints the exact command that fixes it, which `logctl` can run. The film shows both: what is
+`logctl`'s to fix, and what it only reports.
+
+```sh
+# A web shop app deployed on a WildFly server. Is its logging configuration going to hurt it?
+logctl doctor
+#   [WARN] FILE has no size cap, and FILE and CONSOLE autoflush: WildFly's own handler settings (3 lines)
+#   [WARN] org.hibernate is explicitly set to DEBUG, a known-chatty framework logger
+#          suggested: logctl reset logger org.hibernate
+# doctor only reports. One of these is ours to fix, and it says how:
+logctl reset logger org.hibernate
+#   org.hibernate -> INFO (baseline)
+# The other three are the server's handler settings: doctor names them, and leaves them to you.
+```
+
+| # | Decision | Recommendation |
+|---|----------|----------------|
+| DR1 | Content | `doctor`, then the one fix `logctl` can make (`reset logger org.hibernate`, the command `doctor` itself suggests). The unbounded `FILE` and the autoflush warnings are narrated as the server's own settings, reported and left alone. |
+| DR2 | The setup | Hidden, before recording: `logctl set logger org.hibernate DEBUG`, an override that `record.sh`'s reset already clears. `doctor` reads it as "explicitly set to DEBUG" whether it came from the configuration or from an override, so the finding is real, not staged output. The story narrates it as DEBUG left on. |
+| DR3 | One `doctor` only | The pane holds 19 rows and `doctor` prints 12, so a second `doctor` after the fix does not fit. The proof is `reset`'s own line, `org.hibernate → INFO (baseline)`. The story ends at about 18 rows. |
+| DR4 | Real output | Nothing is edited. The last line is the disk check's, and its form depends on the run: `server.log is stable — no writes observed during the sample window` (as recorded), or `has 910.8 GB free at ~4 MB/h — about 9354d to full` when the shop wrote during the sample window. Either names no host. |
+| DR5 | Checks | `expect_output` for `org.hibernate is explicitly set to DEBUG` and the line `suggested: logctl reset logger org.hibernate`; after the reset, `org.hibernate → INFO (baseline)`. |
+| DR6 | Guide | `how-to/find-disk-usage.md` where it introduces `logctl doctor`, and film 6 on Now Showing with its commands explained. |
+| DR7 | Name and numbering | Story 6, `dev/demos/doctor.sh`, `guide/assets/demos/doctor.cast`. |
+
 ## Design
 
 ### The demo app (D1)
@@ -256,12 +291,14 @@ dev/demos/
   flood.sh                story 3
   trim.sh                 story 4
   storm.sh                story 5
+  doctor.sh               story 6
 guide/assets/demos/
   why-no-trace.cast       the recordings, committed (asciicast v2 text: ~40 KB each,
   debug-for-a-while.cast  ~580 KB for the flood, whose stack traces are most of it)
   flood.cast
   trim.cast
   storm.cast              ~770 KB: the console scrolls ~200 lines a second until the rule
+  doctor.cast             ~26 KB
 ```
 
 A story script is a `story()` function made of steps:
@@ -394,7 +431,7 @@ Reference: [`set logger`](reference/logctl.md#set-logger) · How-to:
 
 - A film's anchor is its recording's name, which is stable: it is the `.cast` file's name and
   `record.sh`'s story name. The commands heading gets an explicit `{#<name>-commands}`, since
-  five identical headings would otherwise get `_1`, `_2`… suffixes that move when a film is
+  six identical headings would otherwise get `_1`, `_2`… suffixes that move when a film is
   added.
 - Every command the film runs is listed, as typed, with every argument and option explained.
   A command a later film repeats (`set handler CONSOLE AUTO` in films 1 and 2, `list rules` in
@@ -402,7 +439,7 @@ Reference: [`set logger`](reference/logctl.md#set-logger) · How-to:
 - Each command links to its `reference/logctl.md` anchor (every command there has one) and to
   the how-to section that covers that use of it.
 - The player is the guide's existing embed, unchanged: poster at the last frame, plays from the
-  release zip with no network (C4). All five films load with the page (N3).
+  release zip with no network (C4). All six films load with the page (N3).
 
 The paragraph for each film, and the commands it explains:
 
@@ -413,6 +450,7 @@ The paragraph for each film, and the commands it explains:
 | Something is flooding the log | One component repeats the same failure many times a second, and you need to find it and quiet it without a restart. | `top --limit 5`, `add rule drop com.example.shop.inventory.StockSync --throwable java.net.ConnectException --sample-full 1m`, `list rules` | `#top`, `#add-rule`, `#list-rules` | `find-disk-usage.md#which-loggers-write-the-most`, `silence-noise.md#drop-a-message`, `silence-noise.md#see-and-change-rules` |
 | Stack traces are burying the log | A known failure, the same root cause every time, prints a full stack trace each time, and the trace teaches nothing new. | `add rule trim com.example.shop.payment.PaymentGateway --throwable java.net.ConnectException --any-cause`, `list rules` | `#add-rule`, `#list-rules` | `silence-noise.md#shorten-a-stack-trace`, `silence-noise.md#matching-on-the-exception` |
 | What is bursting? | The log scrolls too fast to read and you don't know which message is doing it. | `enable storms`, `storms`, `add rule drop com.example.shop.payment.RetryQueue --message-contains Retrying` | `#storms`, `#add-rule` | `storms.md#turn-it-on`, `storms.md#see-the-storms`, `silence-noise.md#drop-a-message` |
+| Is my logging config going to hurt me? | You want to know what in the logging configuration will cost you disk or noise, before it does. | `doctor`, `reset logger org.hibernate` | `#doctor`, `#reset` | `find-disk-usage.md#what-in-the-configuration-will-hurt`, `undo-changes.md#reset` |
 
 The "for 30s" in film 2 is explained as the recording's stand-in for a real duration such as
 `for 1h` (D7).
@@ -475,7 +513,7 @@ The Now Showing page (issue #228), agreed 2026-10-18:
 | C5 | Process | Issue #228, this section, its own PR after story 4 (#227) lands; strict builds fail on broken anchors. |
 | N1 | Subtitle | No count of films ("Short films of…"), so story 5 doesn't make it stale. |
 | N2 | A command repeated in a later film | Explained again, briefly: a film reached from a link reads on its own. |
-| N3 | Loading | All films load with the page, as elsewhere in the guide (about 0.7 MB for four, most of it the flood; story 5 adds about 0.77 MB, so about 1.5 MB for five, most of it the flood and the storm). No lazy loading. |
+| N3 | Loading | All films load with the page, as elsewhere in the guide (about 0.7 MB for four, most of it the flood; story 5 adds about 0.77 MB and story 6 about 26 KB, so about 1.5 MB for six, most of it the flood and the storm). No lazy loading. |
 | N4 | Anchor validation | Site-wide `validation: anchors: warn`; existing broken anchors it finds are fixed in the same PR. |
 | N5 | Commands drift check | The hook fails when a recording is missing from the page, or a story's `run logctl …` line isn't on it as typed. |
 | N6 | Top of the page | A short "programme" list linking to each film, as on a cinema bill. |

@@ -14,6 +14,7 @@ its reference and to the how-to that covers it.
 3. [Something is flooding the log](#flood): find the source, and silence one exception.
 4. [Stack traces are burying the log](#trim): keep every warning, but not its trace.
 5. [What is bursting?](#storm): find the one message behind a scrolling console.
+6. [Is my logging config going to hurt me?](#doctor): what `doctor` reports, and the one fix `logctl` can make.
 
 ## Why don't I see my TRACE? {#why-no-trace}
 
@@ -212,3 +213,33 @@ The rule lasts `for 4h`, since no duration was given.
 
 Reference: [`add rule`](reference/logctl.md#add-rule) · How-to:
 [Drop a message](how-to/silence-noise.md#drop-a-message)
+
+## Is my logging config going to hurt me? {#doctor}
+
+Nothing has failed yet, but a logging configuration can quietly cost you a disk or a noisy log: a
+file with no size cap, a chatty framework logger left at `DEBUG`, a handler that flushes on every
+record. `doctor` reads the configuration and says which of those apply. It only reports, and where
+`logctl` can fix a finding it prints the exact command. Reach for it before an incident, or when
+you take over a server you didn't set up.
+
+<div class="la-cast" data-cast="doctor"></div>
+
+### Commands in this film {#doctor-commands}
+
+**`logctl doctor`**: run the checks and print one line per finding, with a detail line and a
+suggested fix where there is one. It never changes anything.
+
+- The `org.hibernate` finding is the one `logctl` can fix, and it prints the command. Here the
+  `DEBUG` was set at runtime, which `reset` undoes; a level the application's own configuration
+  sets is changed there, or turned down with `logctl set logger`.
+- The `FILE` and `CONSOLE` findings are the server's own handler settings (no size cap, autoflush).
+  `doctor` names them and leaves them to you: LogAperture doesn't change handler settings other than
+  the level.
+
+Reference: [`doctor`](reference/logctl.md#doctor), [Doctor checks](reference/doctor-checks.md) ·
+How-to: [What in the configuration will hurt](how-to/find-disk-usage.md#what-in-the-configuration-will-hurt)
+
+**`logctl reset logger org.hibernate`**: put the logger back to the level the application
+configured. It prints the level it went back to, with `(baseline)`.
+
+Reference: [`reset`](reference/logctl.md#reset) · How-to: [Reset](how-to/undo-changes.md#reset)
