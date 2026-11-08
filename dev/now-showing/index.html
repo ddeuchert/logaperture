@@ -1022,6 +1022,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#attach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Try it, no restart
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Try it, no restart">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#attach-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands in this film
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2387,6 +2415,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#attach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Try it, no restart
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Try it, no restart">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#attach-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands in this film
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2422,6 +2478,7 @@ its reference and to the how-to that covers it.</p>
 <li><a href="#storm">What is bursting?</a>: find the one message behind a scrolling console.</li>
 <li><a href="#doctor">Is my logging config going to hurt me?</a>: what <code>doctor</code> reports, and the one fix <code>logctl</code> can make.</li>
 <li><a href="#export">Ship what you tuned</a>: turn sticky changes into the file your product ships.</li>
+<li><a href="#attach">Try it, no restart</a>: load LogAperture into a server that is already running.</li>
 </ol>
 <h2 id="why-no-trace">Why don't I see my TRACE?<a class="headerlink" href="#why-no-trace" title="Permanent link">&para;</a></h2>
 <p>A customer reports failed payments, so you turn on <code>TRACE</code> for the payment code, and the console
@@ -2634,6 +2691,34 @@ Add <code>--out &lt;file&gt;</code> to write it to a file. Ship the file with th
 <code>--vendor-defaults=&lt;file&gt;</code>.</p>
 <p>Reference: <a href="../reference/logctl/#export-vendor-defaults"><code>export vendor-defaults</code></a> · How-to:
 <a href="../vendors/vendor-defaults/#making-the-file-tune-then-export">Making the file: tune, then export</a></p>
+<h2 id="attach">Try it, no restart<a class="headerlink" href="#attach" title="Permanent link">&para;</a></h2>
+<p>An application is misbehaving on a server that was started without LogAperture, and it can't be
+restarted to add the <code>-javaagent</code> option. <code>logctl attach</code> loads the agent into the running JVM, and
+from then on every <code>logctl</code> command works on it. Reach for it to try LogAperture, or to debug a
+production problem, without changing the launch line. It lasts until that JVM stops. This film runs
+on Java 17, where the attach is silent; Java 21 and later print a warning on the server's own
+console.</p>
+<div class="la-cast" data-cast="attach"></div>
+
+<h3 id="attach-commands">Commands in this film<a class="headerlink" href="#attach-commands" title="Permanent link">&para;</a></h3>
+<p><strong><code>jps -l</code></strong>: the JDK's own list of running Java processes, with each one's process id. Not a
+<code>logctl</code> command: it finds the id to attach to. The server is the line ending in <code>jboss-modules.jar</code>.</p>
+<p><strong><code>logctl attach &lt;pid&gt;</code></strong>: load the agent into the running JVM with that process id.</p>
+<ul>
+<li><code>&lt;pid&gt;</code>: the process id from <code>jps -l</code>. On a terminal, <code>logctl attach</code> alone lists the JVMs it can
+  attach to and asks which.</li>
+</ul>
+<p><code>logctl</code> waits until LogAperture is active, then says which logging backend it found and which agent
+jar it loaded. The jar is carried inside <code>logctl</code>, so there is nothing else to install. Attaching to a
+JVM that already runs LogAperture loads nothing and says so.</p>
+<p>Reference: <a href="../reference/logctl/#attach"><code>attach</code></a> · How-to:
+<a href="../how-to/try-without-restart/">Try LogAperture without a restart</a></p>
+<p><strong><code>logctl set logger com.example.shop.payment DEBUG for 5m</code></strong>: raise the payment code's level, as in
+<a href="#why-no-trace-commands">the first film</a>, now on the server <code>logctl</code> just attached to. The console
+handler follows the change, so the <code>DEBUG</code> lines reach the console straight away; <code>for 5m</code> reverts it
+by itself.</p>
+<p>Reference: <a href="../reference/logctl/#set-logger"><code>set logger</code></a> · How-to:
+<a href="../how-to/raise-a-level/">Raise a log level</a></p>
 
 
 

@@ -2161,6 +2161,10 @@ as in the <a href="../../get-started/install-plain-jvm/">install guides</a>.</p>
 <p>With <a href="../run-with-jbang/">JBang</a> installed, the whole trial needs nothing else: write
 <code>jbang logctl@ddeuchert/logaperture</code> where this page says <code>logctl</code>. Each command then starts JBang
 again; <code>jbang app install</code> on that page makes <code>logctl</code> a command of its own.</p>
+<p>The film shows it on a WildFly server that does not run LogAperture: attach, then raise a logger,
+with no restart. <a href="../../now-showing/#attach">Now Showing</a> explains each command.</p>
+<div class="la-cast" data-cast="attach"></div>
+
 <h2 id="attach">Attach<a class="headerlink" href="#attach" title="Permanent link">&para;</a></h2>
 <p>Find the process id of the application (<code>jps -l</code> lists Java processes), then:</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>attach<span class="w"> </span><span class="m">1344371</span>
