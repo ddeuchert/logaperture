@@ -33,11 +33,12 @@ before you ship it.
 ## Making the file: tune, then export
 
 You don't need to write the file by hand. Run the product in a test environment, tune its logging
-live with `sticky` changes until it is right, then export. The film shows a logger and a rule exported; the example below adds a handler.
+live with `sticky` changes until it is right, then export. The film shows a logger and a rule
+exported.
 
 <div class="la-cast" data-cast="export"></div>
 
-In text:
+In text, from an earlier run that also sets a handler:
 
 ```sh
 logctl set logger org.jboss.as.server.deployment WARN sticky

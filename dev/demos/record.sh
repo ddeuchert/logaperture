@@ -62,7 +62,9 @@ record_story() {
     # A story may ask for a shorter console, and so a taller logctl pane (story 7 does:
     # doc/specs/demo-recordings.md V2); the rest keep console_rows.
     local story_console_rows
-    story_console_rows=$(grep -m1 '^DEMO_CONSOLE_ROWS=' "$here/$story.sh" | cut -d= -f2)
+    # sed, not grep: a story with no such line is the normal case, and under `set -e` a failing grep ends
+    # the script. Only the digits are kept, so a trailing comment on the line can't reach the arithmetic.
+    story_console_rows=$(sed -n 's/^DEMO_CONSOLE_ROWS=\([0-9][0-9]*\).*/\1/p' "$here/$story.sh" | head -n 1)
     story_console_rows=${story_console_rows:-$console_rows}
     work=$(mktemp -d)
     mkdir -p "$work/home"

@@ -3,10 +3,10 @@
 Status: **signed off 2026-10-10**, decisions D1–D12 agreed as recommended. Story 5 (storms,
 issue #198): **signed off 2026-11-07**, decisions S1–S7 agreed as recommended. Story 6 (`doctor`,
 issue #342): **signed off 2026-11-07**, decisions DR1–DR7 agreed as recommended. Story 7 (vendor-defaults
-`export`, issue #343): **signed off 2026-11-08**, decisions V1–V8 agreed as recommended. Implemented
+`export`, issue #343): **signed off 2026-11-07**, decisions V1–V8 agreed as recommended, V9 added the same day. Implemented
 2026-10-10: story 1 as the prototype (D12), reviewed, then stories 2 and 3. Story 4 (a `trim`
 rule) added 2026-10-18, decisions T1–T6 agreed as recommended. The Now Showing page: C1–C5
-and N1–N6 agreed 2026-10-18, as recommended.
+and N1–N6 agreed 2026-10-18, as recommended. Stories 5, 6 and 7 implemented 2026-11-07.
 Issues: [#196](https://github.com/ddeuchert/logaperture/issues/196) (stories 1–3),
 [#226](https://github.com/ddeuchert/logaperture/issues/226) (story 4),
 [#228](https://github.com/ddeuchert/logaperture/issues/228) (the Now Showing page),
@@ -235,7 +235,7 @@ logctl reset logger org.hibernate
 | DR6 | Guide | `how-to/find-disk-usage.md` where it introduces `logctl doctor`, and film 6 on Now Showing with its commands explained. |
 | DR7 | Name and numbering | Story 6, `dev/demos/doctor.sh`, `guide/assets/demos/doctor.cast`. |
 
-## Story 7: ship what you tuned (issue #343, signed off 2026-11-08)
+## Story 7: ship what you tuned (issue #343, signed off 2026-11-07)
 
 Story 7 is the vendor-defaults `export` candidate from #198 (S1). A product vendor tunes logging live with
 `sticky` changes, then exports them as the file the product ships, so customers start from the tuned
@@ -258,15 +258,15 @@ about 24 rows, past the 19 the `logctl` pane has (V2).
 
 | # | Decision | Recommendation |
 |---|----------|----------------|
-| V1 | Content | One sticky logger level and one sticky `drop` rule, then `export vendor-defaults` to the screen, ending on the YAML. Levels and rules, as the issue asks; a handler is left to the guide's example. (Agreed with David, 2026-11-08.) |
+| V1 | Content | One sticky logger level and one sticky `drop` rule, then `export vendor-defaults` to the screen, ending on the YAML. Levels and rules, as the issue asks; a handler is left to the guide's example. (Agreed with David, 2026-11-07.) |
 | V2 | Pane size | This one story gives the console 6 rows and `logctl` 25 (`DEMO_CONSOLE_ROWS=6` in the story file, read like `DEMO_TITLE`; every other story keeps 12 and 19). The console has nothing to show here, and the rule that the whole `logctl` pane fits, so the last frame (the guide's poster) shows the story from its first line, still holds: the film ends at about 24 of 25 rows. The one exception to the 19-row pane, noted where that rule is stated. |
 | V3 | Real output | Nothing is edited. The export's header carries the time and the agent's version (`1.1.0-SNAPSHOT` until the release), and each entry a random `stateId` that ties it to the sticky change it came from, so no two recordings are byte-identical. No host or path appears. |
 | V4 | The rule's matcher | `--message-contains synced`, one word, because `run` echoes arguments without their quotes; the file shows it as `messageContains: synced` (the exporter quotes only a value with a space in it; found while recording). |
 | V5 | Shipping the file | Narrated in the closing comment line, not shown: a restart cannot be filmed inside 90 seconds, and `--vendor-defaults=<file>` is the real agent argument. |
-| V9 | The opening (David, 2026-11-08) | Two comment lines say why: customers get the logging a product ships with, vendor defaults let the vendor change that, and sticky changes tuned live are what gets exported. The old mid-film line ("Both are sticky...") folds into the second, so the film stays at 24 of 25 rows. |
 | V6 | Checks | `expect_output` for the export header, `name: com.example.shop.payment`, `level: WARN`, `action: drop` and `messageContains: synced`. `reset_server` already clears sticky loggers, handlers and rules, so no story starts or ends with them set. |
 | V7 | Guide | `vendors/vendor-defaults.md`, "Making the file: tune, then export" (the static example stays, it uses other settings); film 7 on Now Showing with each command explained. |
 | V8 | Name and numbering | Story 7, `dev/demos/export.sh`, `guide/assets/demos/export.cast`. |
+| V9 | The opening (David, 2026-11-07) | Two comment lines say why: customers get the logging a product ships with, vendor defaults let the vendor change that, and sticky changes tuned live are what gets exported. The old mid-film line ("Both are sticky...") folds into the second, so the film stays at 24 of 25 rows (V2 and V3 hold). It amends V5: the narration is now the two opening lines and the closing line. |
 
 ## Design
 

@@ -72,7 +72,9 @@ a paragraph on when you'd need it, the embed, and a breakdown of each `run logct
 The guide build fails until it has one, and again whenever a story's commands change without
 its breakdown.
 
-Keep the whole bottom pane to 19 lines, so the last frame (the guide's poster and the GIF's
+Keep the whole bottom pane to 19 lines (a story that needs more can shrink the console with a line
+`DEMO_CONSOLE_ROWS=6` in its script, which `record.sh` reads: [`export.sh`](export.sh) does, because
+its export is 16 lines, and has 25), so the last frame (the guide's poster and the GIF's
 held frame) shows the story from its first line. Open by saying what is running, since the GIF
 has no page around it. Keep it to one problem and its fix, under 90 seconds, with generic names
 (`com.example…`) and the sample's demo shop as the application. Never record a real system.
