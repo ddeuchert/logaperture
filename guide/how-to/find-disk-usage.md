@@ -59,6 +59,11 @@ With `--json`, `persistentHandlers` is the number of file-backed handlers: `0` f
 
 ## What in the configuration will hurt
 
+<div class="la-cast" data-cast="doctor"></div>
+
+Above: `logctl doctor` flags a chatty framework logger left at `DEBUG` and prints the command that
+fixes it, and reports three settings of the server's own handlers that `logctl` leaves alone.
+
 ```sh
 logctl doctor
 ```
