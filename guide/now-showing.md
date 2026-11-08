@@ -216,7 +216,7 @@ Reference: [`add rule`](reference/logctl.md#add-rule) · How-to:
 
 ## Is my logging config going to hurt me? {#doctor}
 
-Nothing is wrong yet, but a logging configuration can quietly cost you a disk or a noisy log: a
+Nothing has failed yet, but a logging configuration can quietly cost you a disk or a noisy log: a
 file with no size cap, a chatty framework logger left at `DEBUG`, a handler that flushes on every
 record. `doctor` reads the configuration and says which of those apply. It only reports, and where
 `logctl` can fix a finding it prints the exact command. Reach for it before an incident, or when
@@ -229,7 +229,9 @@ you take over a server you didn't set up.
 **`logctl doctor`**: run the checks and print one line per finding, with a detail line and a
 suggested fix where there is one. It never changes anything.
 
-- The `org.hibernate` finding is the one `logctl` can fix, and it prints the command.
+- The `org.hibernate` finding is the one `logctl` can fix, and it prints the command. Here the
+  `DEBUG` was set at runtime, which `reset` undoes; a level the application's own configuration
+  sets is changed there, or turned down with `logctl set logger`.
 - The `FILE` and `CONSOLE` findings are the server's own handler settings (no size cap, autoflush).
   `doctor` names them and leaves them to you: LogAperture doesn't change handler settings other than
   the level.

@@ -62,11 +62,15 @@ With `--json`, `persistentHandlers` is the number of file-backed handlers: `0` f
 <div class="la-cast" data-cast="doctor"></div>
 
 Above: `logctl doctor` flags a chatty framework logger left at `DEBUG` and prints the command that
-fixes it, and reports three settings of the server's own handlers that `logctl` leaves alone.
+fixes it, and reports three settings of the server's own handlers that `logctl` leaves alone. In
+the film the `DEBUG` was set at runtime, which `logctl reset logger` undoes. A level that the
+application's own configuration sets is changed there, or turned down with `logctl set logger`.
 
 ```sh
 logctl doctor
 ```
+
+On a server with no chatty logger left on, the output looks like this:
 
 ```
 [OK]    logaperture-agent.jar is the first -javaagent.

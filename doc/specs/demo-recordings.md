@@ -215,7 +215,7 @@ film that only lists them has nothing to fix. It also flags a known-chatty frame
 ```sh
 # A web shop app deployed on a WildFly server. Is its logging configuration going to hurt it?
 logctl doctor
-#   [WARN] FILE has no size cap (unbounded), FILE and CONSOLE autoflush: WildFly's own handler settings
+#   [WARN] FILE has no size cap, and FILE and CONSOLE autoflush: WildFly's own handler settings (3 lines)
 #   [WARN] org.hibernate is explicitly set to DEBUG, a known-chatty framework logger
 #          suggested: logctl reset logger org.hibernate
 # doctor only reports. One of these is ours to fix, and it says how:
@@ -229,7 +229,7 @@ logctl reset logger org.hibernate
 | DR1 | Content | `doctor`, then the one fix `logctl` can make (`reset logger org.hibernate`, the command `doctor` itself suggests). The unbounded `FILE` and the autoflush warnings are narrated as the server's own settings, reported and left alone. |
 | DR2 | The setup | Hidden, before recording: `logctl set logger org.hibernate DEBUG`, an override that `record.sh`'s reset already clears. `doctor` reads it as "explicitly set to DEBUG" whether it came from the configuration or from an override, so the finding is real, not staged output. The story narrates it as DEBUG left on. |
 | DR3 | One `doctor` only | The pane holds 19 rows and `doctor` prints 12, so a second `doctor` after the fix does not fit. The proof is `reset`'s own line, `org.hibernate → INFO (baseline)`. The story ends at about 18 rows. |
-| DR4 | Real output | Nothing is edited. The disk line shows this machine's free space and write rate ("910.8 GB free at ~4 MB/h"), which varies by machine and names no host, so it stays as it is. |
+| DR4 | Real output | Nothing is edited. The last line is the disk check's, and its form depends on the run: `server.log is stable — no writes observed during the sample window` (as recorded), or `has 910.8 GB free at ~4 MB/h — about 9354d to full` when the shop wrote during the sample window. Either names no host. |
 | DR5 | Checks | `expect_output` for `org.hibernate is explicitly set to DEBUG` and the line `suggested: logctl reset logger org.hibernate`; after the reset, `org.hibernate → INFO (baseline)`. |
 | DR6 | Guide | `how-to/find-disk-usage.md` where it introduces `logctl doctor`, and film 6 on Now Showing with its commands explained. |
 | DR7 | Name and numbering | Story 6, `dev/demos/doctor.sh`, `guide/assets/demos/doctor.cast`. |
