@@ -73,6 +73,28 @@ public interface LoggingAdapter {
     void applyLevel(String loggerName, Level level);
 
     /**
+     * An opaque handle on the framework's own configured level for this logger, for a level the
+     * API cannot name (Log4j 2's {@code FATAL}, a custom level): read by {@code core} together with
+     * {@link #configuredLevel} when it captures a baseline, and handed back only to
+     * {@link #restoreLevel} (doc/specs/native-level-baseline.md N1). Default {@code null}: the API level
+     * says it all, as on Logback and JUL.
+     */
+    default Object nativeLevelToken(String loggerName) {
+        return null;
+    }
+
+    /**
+     * Puts a baseline back: {@code level} is what {@code core} captured from {@link #configuredLevel}
+     * and {@code token} what it captured from {@link #nativeLevelToken} (or {@code null}). Called only
+     * where a baseline is written back (reset, expiry, undo, stop), never for an override or a vendor
+     * level, so an adapter may use the token to restore the exact native level. It must apply
+     * {@code level} when the token no longer matches it (N2). Default: {@link #applyLevel}.
+     */
+    default void restoreLevel(String loggerName, Level level, Object token) {
+        applyLevel(loggerName, level);
+    }
+
+    /**
      * Registers {@code listener} to run after this adapter's underlying
      * framework completes a reconfiguration that may have discarded
      * previously-applied levels (doc/specs/persistence.md's "Reconfiguration

@@ -21,6 +21,8 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
   - A handler is an appender, named as in `log4j2.xml`. `set handler Console WARN` sets the level of the
     appender's reference in every logger; an appender behind an `<Async>` appender is not listed, the
     `<Async>` one is.
+  - A reset gives back the level the application declared, including `FATAL` and a custom level, which
+    `logctl` otherwise reads as the nearest level it can name (`ERROR`).
   - An override survives Log4j re-reading its configuration. A level changed behind LogAperture's back
     (Spring Boot Actuator, `Configurator.setLevel`) is put back, audited, and reported once a minute per
     logger in the application's log; `reset` then goes to the level that change set, not the one in the file.

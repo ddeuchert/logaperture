@@ -256,12 +256,14 @@ of "Scope":
   it created: after a reconfiguration the name may be a config the application declared, which is
   left alone. A declared one is given back its inheritance with `setLevel(null)`. `applyLevel` is
   synchronised. The root is `ROOT`, as on Logback and JUL.
-- **A limit: `FATAL`.** `FATAL` (and a custom level) reads back as the nearest API level, `ERROR`, so
-  a reset that writes the captured baseline back turns a declared `fatal` into `error`. The adapter
-  cannot fix it alone: a reset and a deliberate `set logger x error` reach `applyLevel` as the same
-  call, and remembering the native level (tried, reverted) turned the deliberate `error` into
-  `FATAL`. Exact restoration needs the baseline to carry the native level:
-  [#312](https://github.com/ddeuchert/logaperture/issues/312).
+- **`FATAL` and custom levels (#312).** They read back through `configuredLevel` as the nearest API
+  level (`FATAL` as `ERROR`). The adapter also returns the exact level as an opaque token
+  (`nativeLevelToken`, only for a level that does not round-trip), and a baseline write-back (reset,
+  expiry, undo, stop) goes through `restoreLevel` with it, so a declared `fatal` is back at `FATAL`. A
+  deliberate `set logger x error` still reaches `applyLevel` and stays `ERROR`. A token restore ends the
+  override's bookkeeping (`createdByLogAperture`, `declaredBeforeOverride`) the way clearing a level
+  does. See
+  [`native-level-baseline.md`](native-level-baseline.md).
 - **Contexts.** Taken in order of config location, then name, because the selector keeps them in a
   hash map in no stable order. A web path (`/appA`) is the name; a repeat of one becomes `/appA#2`.
   Only contexts without a web path are numbered (`log4j2`, `log4j2-2`), so a web context more or less
@@ -654,7 +656,8 @@ rule) when the guide slice lands.
   most calls are no-ops. The handler reads are synchronized with the swaps, so a floor walk never sees an
   appender in the remove-and-add window.
 - **A handler declared at `FATAL` reads as `ERROR`** (`LevelMapper`), so it under-reports its floor and a
-  reset writes `ERROR` back. Same limit as #312; not fixed here.
+  reset writes `ERROR` back. The same limit as #312, which fixed loggers only
+  ([`native-level-baseline.md`](native-level-baseline.md) N5).
 - **Guide pages are not in this PR**, by the earlier decision to write them in the last slice.
 
 **Verified** on 2.20.0, 2.23.1, 2.25.2 and 2.25.5 (`-Dlog4j2.version`); `BundledLog4j2EndToEndIT` in a real

@@ -819,7 +819,7 @@ public final class LevelControlService implements LevelControlOperations {
     /** Puts a logger reset to native back on its native value, unaudited -- undoing a vendor re-apply that lost a race. */
     private void restoreNativeSilently(String loggerName, LoggingAdapter targetAdapter) {
         try {
-            targetAdapter.applyLevel(loggerName, baselines.get(loggerName).orElse(null));
+            baselines.restore(loggerName, targetAdapter);
         } catch (IllegalStateException neverCaptured) {
             // nothing to restore to
         }
@@ -866,7 +866,7 @@ public final class LevelControlService implements LevelControlOperations {
         } catch (IllegalStateException neverCaptured) {
             return;
         }
-        adapter.applyLevel(loggerName, baseline.orElse(null));
+        baselines.restore(loggerName, adapter);
         auditLog.record(new AuditRecord(Instant.now(), principal, auditSource, loggerName, previousValue,
                 baseline.map(Level::toString).orElse("<inherited>"), reason, AuditRecord.Action.REVERSION));
     }
@@ -913,6 +913,7 @@ public final class LevelControlService implements LevelControlOperations {
      */
     void reapplyActiveOverrides(LoggingAdapter targetAdapter, Instant now) {
         lastReapplyAt = now;
+        baselines.refreshNativeTokens(targetAdapter); // keep a token only if the application still declares its level (N3)
         // The vendor layer first, for loggers no override covers -- doc/specs/vendor-defaults.md
         // "Reconfiguration and the verification sweep": a framework reset erased it too.
         for (String name : baselines.vendorLoggerNames()) {
@@ -1027,7 +1028,7 @@ public final class LevelControlService implements LevelControlOperations {
      *                      override back, and no baseline is written from a value nobody read
      */
     private record Reasserted(String loggerName, LevelOverride override, Level changedTo,
-                              Optional<Level> nativeSetting, boolean nativeSettingRead) {
+                              Optional<Level> nativeSetting, Object nativeToken, boolean nativeSettingRead) {
     }
 
     /**
@@ -1064,9 +1065,11 @@ public final class LevelControlService implements LevelControlOperations {
             // Read before the override overwrites it: what the native source set (A2). A logger the
             // adapter cannot read must not stop the others from being verified.
             Optional<Level> nativeSetting = Optional.empty();
+            Object nativeToken = null;
             boolean nativeSettingRead = true;
             try {
                 nativeSetting = adapter.configuredLevel(loggerName);
+                nativeToken = nativeSetting.isPresent() ? adapter.nativeLevelToken(loggerName) : null;
             } catch (RuntimeException e) {
                 nativeSettingRead = false;
             }
@@ -1080,14 +1083,14 @@ public final class LevelControlService implements LevelControlOperations {
                 // audit for a re-apply that did not stick.
                 afterApply.ifPresentOrElse(
                         replacement -> OverrideApplier.apply(replacement, adapter),
-                        () -> adapter.applyLevel(loggerName, baselines.get(loggerName).orElse(null)));
+                        () -> baselines.restore(loggerName, adapter));
                 continue;
             }
 
             auditLog.record(new AuditRecord(
                     now, principal, "verification-sweep", loggerName, current.toString(),
                     override.level().toString(), override.reason(), AuditRecord.Action.MUTATION));
-            reasserted.add(new Reasserted(loggerName, override, current, nativeSetting, nativeSettingRead));
+            reasserted.add(new Reasserted(loggerName, override, current, nativeSetting, nativeToken, nativeSettingRead));
         }
         return reasserted;
     }
@@ -1105,7 +1108,7 @@ public final class LevelControlService implements LevelControlOperations {
         // A level equal to the override's own is one this process wrote (a partial update), not the
         // native source's: never the baseline.
         if (one.nativeSettingRead() && !one.nativeSetting().equals(Optional.of(one.override().level()))) {
-            baselines.rebaseNative(one.loggerName(), one.nativeSetting());
+            baselines.rebaseNative(one.loggerName(), one.nativeSetting(), one.nativeToken());
         }
         warnNativeChange(one.loggerName(), one.override(), one.changedTo(), now);
     }
@@ -1331,7 +1334,7 @@ public final class LevelControlService implements LevelControlOperations {
                 continue; // never touched by this engine
             }
             try {
-                adapter.applyLevel(loggerName, baselines.nativeLevel(loggerName).orElse(null));
+                baselines.restoreNative(loggerName, adapter);
             } catch (RuntimeException e) {
                 Diagnostics.warn("failed to restore logger '" + loggerName + "' to its own level on stop: " + e);
             }
@@ -1418,7 +1421,7 @@ public final class LevelControlService implements LevelControlOperations {
         String previousValue = toRevert.level().toString();
         Optional<Level> baseline = baselines.get(loggerName); // always captured -- setLogger/resume guarantees it
 
-        adapter.applyLevel(loggerName, baseline.orElse(null)); // mutation
+        baselines.restore(loggerName, adapter); // mutation
 
         String newValue = baseline.map(Level::toString).orElse("<inherited>");
         auditLog.record(new AuditRecord(

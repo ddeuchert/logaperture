@@ -23,6 +23,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 /**
  * Captures each logger's baseline (framework-configured) level once,
@@ -45,7 +47,15 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class BaselineRegistry {
 
-    private final Map<String, Optional<Level>> captured = new ConcurrentHashMap<>();
+    /**
+     * A captured baseline: the level, and the adapter's {@link LoggingAdapter#nativeLevelToken} read with it
+     * ({@code null} for most loggers). One value per name, so a capture, a rebase and a refresh of the token
+     * each replace the pair atomically (doc/specs/native-level-baseline.md N3).
+     */
+    private record Baseline(Optional<Level> level, Object token) {
+    }
+
+    private final Map<String, Baseline> captured = new ConcurrentHashMap<>();
     private final Map<String, Level> vendorLevels;
     private final Map<String, String> vendorReasons;
     private final Set<String> resetToNative = ConcurrentHashMap.newKeySet();
@@ -78,18 +88,76 @@ public final class BaselineRegistry {
      * vendor layer -- so it must run before a vendor level is applied to {@code name}.
      */
     public Optional<Level> captureIfAbsent(String name, LoggingAdapter adapter) {
-        return captured.computeIfAbsent(name, adapter::configuredLevel);
+        Function<String, Baseline> captureWithToken = key -> {
+            Optional<Level> level = adapter.configuredLevel(key);
+            Object token = level.isPresent() ? adapter.nativeLevelToken(key) : null; // level first, then its token
+            return new Baseline(level, token);
+        };
+        return captured.computeIfAbsent(name, captureWithToken).level();
     }
 
     /**
      * Replaces {@code name}'s captured native value with {@code level}: the level the native source
      * (the application's configuration, Spring's {@code logging.level}, an Actuator call) last set,
-     * read at the moment an override against it was put back (doc/specs/log4j2-adapter.md A2). Only for
-     * a value someone else wrote: never for one this process applied itself. The vendor layer is
-     * untouched.
+     * read at the moment an override against it was put back (doc/specs/log4j2-adapter.md A2), with the
+     * {@code token} read alongside it. Only for a value someone else wrote: never for one this process
+     * applied itself. The vendor layer is untouched.
      */
-    public void rebaseNative(String name, Optional<Level> level) {
-        captured.computeIfPresent(name, (key, previous) -> level); // never creates a baseline nobody captured
+    public void rebaseNative(String name, Optional<Level> level, Object token) {
+        BiFunction<String, Baseline, Baseline> replace =
+                (key, previous) -> new Baseline(level, level.isPresent() ? token : null);
+        captured.computeIfPresent(name, replace); // never creates a baseline nobody captured
+    }
+
+    /**
+     * After a reconfiguration: re-reads every baseline's token from {@code adapter} and holds it only if the
+     * logger still declares the level the baseline holds -- also for a baseline that had none, so a token
+     * dropped earlier comes back when the application declares the level again. A reload of an unchanged
+     * configuration keeps every token; one that changed what the application declares drops that logger's token, so a reset writes the
+     * captured API level as for a logger with no token (doc/specs/native-level-baseline.md N3).
+     */
+    public void refreshNativeTokens(LoggingAdapter adapter) {
+        for (String name : captured.keySet()) {
+            BiFunction<String, Baseline, Baseline> refresh = (key, held) -> {
+                try {
+                    Object fresh = adapter.nativeLevelToken(key);
+                    boolean matches = fresh != null && adapter.configuredLevel(key).equals(held.level());
+                    return new Baseline(held.level(), matches ? fresh : null); // a dropped token can come back
+                } catch (RuntimeException unreadable) {
+                    return new Baseline(held.level(), null);
+                }
+            };
+            captured.computeIfPresent(name, refresh);
+        }
+    }
+
+    /**
+     * Puts {@code name}'s baseline back on {@code adapter}: the effective baseline, carrying the adapter's
+     * native-level token only when that baseline is the native value, never over a vendor level
+     * (doc/specs/native-level-baseline.md N3).
+     *
+     * @throws IllegalStateException if {@code name} has no vendor level and was never captured
+     */
+    public void restore(String name, LoggingAdapter adapter) {
+        Baseline held = captured.get(name); // one snapshot: a concurrent rebase must not split level from token
+        Level vendor = vendorLevels.get(name);
+        if (vendor != null && !resetToNative.contains(name)) {
+            adapter.restoreLevel(name, vendor, null); // a vendor level is never written with the native token
+            return;
+        }
+        if (held == null) {
+            throw new IllegalStateException("baseline not captured for " + name);
+        }
+        adapter.restoreLevel(name, held.level().orElse(null), held.token());
+    }
+
+    /** As {@link #restore}, but always the application's own captured value (stop). */
+    public void restoreNative(String name, LoggingAdapter adapter) {
+        Baseline held = captured.get(name);
+        if (held == null) {
+            throw new IllegalStateException("baseline not captured for " + name);
+        }
+        adapter.restoreLevel(name, held.level().orElse(null), held.token());
     }
 
     public boolean isCaptured(String name) {
@@ -117,7 +185,8 @@ public final class BaselineRegistry {
      * @throws IllegalStateException if {@code name}'s baseline was never captured
      */
     public Optional<Level> nativeLevel(String name) {
-        Optional<Level> value = captured.get(name);
+        Baseline held = captured.get(name);
+        Optional<Level> value = held == null ? null : held.level();
         if (value == null) {
             throw new IllegalStateException("baseline not captured for " + name);
         }

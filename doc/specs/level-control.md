@@ -121,6 +121,10 @@ reserved on the options type (§6.1) so Feature 2 is additive, not a breaking ch
 Reverts one logger to its captured baseline value. No-op, not an error, if no override
 is active.
 
+A baseline is written back through `LoggingAdapter.restoreLevel`, with the adapter's opaque
+native-level token if it gave one at capture, so a level the API cannot name (Log4j 2's `FATAL`)
+is restored exactly: [`native-level-baseline.md`](native-level-baseline.md).
+
 ### `resetAll()`
 
 Reverts every active override to baseline. Used for the "get me back to normal" escape

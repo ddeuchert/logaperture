@@ -63,10 +63,9 @@ import java.util.function.Function;
  * from the caller's class loader (spike SB3).
  *
  * <p>A native level the API cannot name ({@code FATAL}, a custom level) reads back as the nearest
- * one, so a reset that writes the captured baseline back turns a declared {@code fatal} into
- * {@code error}. The adapter cannot do better alone: a reset and a deliberate {@code set logger x
- * error} reach {@link #applyLevel} as the same call. Exact restoration needs the baseline to carry
- * the native level (#312).
+ * one. A baseline write-back therefore goes through {@link #restoreLevel} with the {@link
+ * #nativeLevelToken} read at capture, while a deliberate {@code set logger x error} reaches
+ * {@link #applyLevel} and stays {@code ERROR} (doc/specs/native-level-baseline.md, #312).
  *
  * <p>Reconfiguration (spec "Scope" 3). Log4j fires a {@code "config"} property event from the context
  * on a configuration swap ({@code old != new}) and from <em>every</em> {@code updateLoggers()}
@@ -326,14 +325,18 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
 
     @Override
     public Optional<Level> configuredLevel(String loggerName) {
+        return Optional.ofNullable(LevelMapper.toApi(explicitLevel(loggerName)));
+    }
+
+    /** The level the logger's own {@code LoggerConfig} declares in Log4j's terms, or null (spike L2: none of its own inherits). */
+    private org.apache.logging.log4j.Level explicitLevel(String loggerName) {
         Configuration config = context.getConfiguration();
         String name = nativeName(loggerName);
         LoggerConfig own = config.getLoggers().get(name);
         if (own == null && !name.isEmpty()) {
-            return Optional.empty(); // no LoggerConfig of its own: inherits (spike L2)
+            return null;
         }
-        LoggerConfig target = own != null ? own : config.getRootLogger();
-        return Optional.ofNullable(LevelMapper.toApi(target.getExplicitLevel()));
+        return (own != null ? own : config.getRootLogger()).getExplicitLevel();
     }
 
     @Override
@@ -344,6 +347,40 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
 
     @Override
     public synchronized void applyLevel(String loggerName, Level level) {
+        applyNative(loggerName, level == null ? null : LevelMapper.toLog4j(level));
+    }
+
+    /**
+     * The explicit level when it is one the API cannot name ({@code FATAL}, a custom level), else
+     * {@code null} (doc/specs/native-level-baseline.md N1).
+     */
+    @Override
+    public Object nativeLevelToken(String loggerName) {
+        org.apache.logging.log4j.Level explicit = explicitLevel(loggerName);
+        if (explicit == null || explicit.equals(LevelMapper.toLog4j(LevelMapper.toApi(explicit)))) {
+            return null; // the API level says it all
+        }
+        return explicit;
+    }
+
+    /** Applies the token's level only while it still maps to {@code level} (N2), else {@code level}. */
+    @Override
+    public synchronized void restoreLevel(String loggerName, Level level, Object token) {
+        if (token instanceof org.apache.logging.log4j.Level exact && level != null
+                && LevelMapper.toApi(exact) == level) {
+            // A reset ends the override's bookkeeping, as applyLevel(null) does through clear(): what the
+            // application declared before is back, so nothing is to be remembered for the next override.
+            String name = nativeName(loggerName);
+            createdByLogAperture.remove(name);
+            createdOnAGoneConfiguration.remove(name);
+            declaredBeforeOverride.remove(name);
+            applyNative(loggerName, exact);
+        } else {
+            applyLevel(loggerName, level);
+        }
+    }
+
+    private void applyNative(String loggerName, org.apache.logging.log4j.Level level) {
         forgetCreatedConfigsOfAGoneConfiguration();
         Configuration config = context.getConfiguration();
         String name = nativeName(loggerName);
@@ -351,7 +388,7 @@ final class Log4j2LoggingAdapter implements LoggingAdapter {
         if (level == null) {
             clear(config, name, own);
         } else {
-            set(config, name, own, LevelMapper.toLog4j(level));
+            set(config, name, own, level);
         }
         updateLoggersQuietly();
     }

@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -122,6 +123,53 @@ class Log4j2LoggingAdapterTest {
         assertEquals(org.apache.logging.log4j.Level.ERROR,
                 context.getConfiguration().getLoggers().get("critical").getExplicitLevel(),
                 "a deliberate 'error' must not be written as FATAL, which would drop the ERROR events asked for");
+    }
+
+    @Test
+    void aDeclaredFatal_carriesATokenThatRestoresItExactly_aPlainLevelCarriesNone() {
+        Object token = adapter.nativeLevelToken("critical");
+        assertEquals(org.apache.logging.log4j.Level.FATAL, token);
+        assertNull(adapter.nativeLevelToken("ROOT"), "an ERROR/WARN root round-trips: no token");
+        adapter.applyLevel("critical", Level.DEBUG);
+        adapter.restoreLevel("critical", Level.ERROR, token);
+        assertEquals(org.apache.logging.log4j.Level.FATAL,
+                context.getConfiguration().getLoggers().get("critical").getExplicitLevel());
+    }
+
+    @Test
+    void aTokenRestore_endsTheOverridesBookkeeping_likeAClear() {
+        adapter.applyLevel("late.Thing", Level.TRACE); // LogAperture creates the LoggerConfig
+        ConfigurationBuilder<BuiltConfiguration> builder = ConfigurationBuilderFactory.newConfigurationBuilder();
+        builder.add(builder.newLogger("late.Thing", org.apache.logging.log4j.Level.FATAL));
+        builder.add(builder.newRootLogger(org.apache.logging.log4j.Level.ERROR));
+        context.setConfiguration(builder.build()); // the application declares it at FATAL now
+        adapter.applyLevel("late.Thing", Level.DEBUG); // remembers the declared FATAL
+        adapter.restoreLevel("late.Thing", Level.ERROR, org.apache.logging.log4j.Level.FATAL);
+        // the application later declares WARN itself; the next override and clear must not bring back the old FATAL
+        context.getConfiguration().getLoggers().get("late.Thing").setLevel(org.apache.logging.log4j.Level.WARN);
+        adapter.applyLevel("late.Thing", Level.DEBUG);
+        adapter.applyLevel("late.Thing", null);
+        assertNull(context.getConfiguration().getLoggers().get("late.Thing").getExplicitLevel(),
+                "a stale declaredBeforeOverride would have put the earlier FATAL back");
+    }
+
+    @Test
+    void aTokenThatNoLongerMatchesTheLevel_fallsBackToTheLevel() {
+        adapter.restoreLevel("critical", Level.WARN, org.apache.logging.log4j.Level.FATAL);
+        assertEquals(org.apache.logging.log4j.Level.WARN,
+                context.getConfiguration().getLoggers().get("critical").getExplicitLevel());
+    }
+
+    @Test
+    void aCustomLevel_isRestoredExactly() {
+        org.apache.logging.log4j.Level notice = org.apache.logging.log4j.Level.forName("NOTICE", 350);
+        context.getConfiguration().getLoggers().get("critical").setLevel(notice);
+        Level read = adapter.configuredLevel("critical").orElseThrow(); // NOTICE (350) reads as INFO
+        Object token = adapter.nativeLevelToken("critical");
+        assertEquals(notice, token);
+        adapter.applyLevel("critical", Level.TRACE);
+        adapter.restoreLevel("critical", read, token);
+        assertEquals(notice, context.getConfiguration().getLoggers().get("critical").getExplicitLevel());
     }
 
     @Test
