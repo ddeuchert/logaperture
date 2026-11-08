@@ -16,6 +16,7 @@ its reference and to the how-to that covers it.
 5. [What is bursting?](#storm): find the one message behind a scrolling console.
 6. [Is my logging config going to hurt me?](#doctor): what `doctor` reports, and the one fix `logctl` can make.
 7. [Ship what you tuned](#export): turn sticky changes into the file your product ships.
+8. [Try it, no restart](#attach): load LogAperture into a server that is already running.
 
 ## Why don't I see my TRACE? {#why-no-trace}
 
@@ -281,3 +282,39 @@ Add `--out <file>` to write it to a file. Ship the file with the product and sta
 
 Reference: [`export vendor-defaults`](reference/logctl.md#export-vendor-defaults) · How-to:
 [Making the file: tune, then export](vendors/vendor-defaults.md#making-the-file-tune-then-export)
+
+## Try it, no restart {#attach}
+
+An application is misbehaving on a server that was started without LogAperture, and it can't be
+restarted to add the `-javaagent` option. `logctl attach` loads the agent into the running JVM, and
+from then on every `logctl` command works on it. Reach for it to try LogAperture, or to debug a
+production problem, without changing the launch line. It lasts until that JVM stops. This film runs
+on Java 17, where the attach is silent; Java 21 and later print a warning on the server's own
+console.
+
+<div class="la-cast" data-cast="attach"></div>
+
+### Commands in this film {#attach-commands}
+
+**`jps -l`**: the JDK's own list of running Java processes, with each one's process id. Not a
+`logctl` command: it finds the id to attach to. The server is the line ending in `jboss-modules.jar`.
+
+**`logctl attach <pid>`**: load the agent into the running JVM with that process id.
+
+- `<pid>`: the process id from `jps -l`. On a terminal, `logctl attach` alone lists the JVMs it can
+  attach to and asks which.
+
+`logctl` waits until LogAperture is active, then says which logging backend it found and which agent
+jar it loaded. The jar is carried inside `logctl`, so there is nothing else to install. Attaching to a
+JVM that already runs LogAperture loads nothing and says so.
+
+Reference: [`attach`](reference/logctl.md#attach) · How-to:
+[Try LogAperture without a restart](how-to/try-without-restart.md)
+
+**`logctl set logger com.example.shop.payment DEBUG for 5m`**: raise the payment code's level, as in
+[the first film](#why-no-trace-commands), now on the server `logctl` just attached to. The console
+handler follows the change, so the `DEBUG` lines reach the console straight away; `for 5m` reverts it
+by itself.
+
+Reference: [`set logger`](reference/logctl.md#set-logger) · How-to:
+[Raise a log level](how-to/raise-a-level.md)

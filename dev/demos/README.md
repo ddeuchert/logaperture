@@ -14,6 +14,7 @@ asciinema: the server console on top, `logctl` below. Design:
 | What is bursting? | [`storm.sh`](storm.sh) | `guide/assets/demos/storm.cast` | How-to: Log storms |
 | Is my logging config going to hurt me? | [`doctor.sh`](doctor.sh) | `guide/assets/demos/doctor.cast` | How-to: Find where the disk goes |
 | Ship what you tuned | [`export.sh`](export.sh) | `guide/assets/demos/export.cast` | Vendors: Vendor defaults |
+| Try it, no restart | [`attach.sh`](attach.sh) | `guide/assets/demos/attach.cast` | How-to: Try LogAperture without a restart |
 
 ## Prerequisites
 
@@ -57,6 +58,16 @@ dev/demos/record.sh --rehearse why-no-trace
 
 plays the story in your terminal (at 120×32, whatever its size) and waits for a key at every
 pause. Nothing is written.
+
+## A story on the agent-less server
+
+An attach lasts until the JVM stops, so story 8 ([`attach.sh`](attach.sh)) can't use the dev WildFly,
+which starts with `-javaagent`. A line `DEMO_SERVER=plain` in a story makes `record.sh` run
+`python3 dev/wildfly/wildflyctl.py plain-up` first: a second WildFly, created fresh, without the agent,
+on port 8081 with the sample deployed. The console pane, `logctl`, the shop switch and `jps` then run
+against it, the dev WildFly is left alone, and `plain-down` removes it afterwards. `record.sh` needs
+`logaperture-cli.jar` built (it builds it when missing). `plain-up` and `plain-down` can be run by hand
+too, to try an attach on your own.
 
 ## Write a story
 

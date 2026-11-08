@@ -41,11 +41,14 @@ REPO_ROOT = HERE.parent.parent
 COMPOSE_FILE = HERE / "docker-compose.yml"
 ENV_FILE = HERE / ".env"
 DEPLOYMENTS = HERE / "deployments"
+DEPLOYMENTS_PLAIN = HERE / "deployments-plain"   # the agent-less server's own (attach demo)
 VENDOR_ACTIVE = HERE / "vendor" / ".active"      # mounted at CONTAINER_VENDOR_DIR
 POM = REPO_ROOT / "pom.xml"
 
 PROJECT = "logaperture"
 SERVICE = "wildfly"
+PLAIN_SERVICE = "wildfly-plain"                  # no agent: the dynamic-attach demo's target
+PLAIN_CONTAINER = "logaperture-wildfly-plain"
 CONTAINER_LOG = "/opt/jboss/wildfly/standalone/log/server.log"
 CONTAINER_DEPLOY_DIR = "/opt/jboss/wildfly/standalone/deployments"
 CONTAINER_VENDOR_DIR = "/opt/logaperture-vendor"
@@ -372,9 +375,53 @@ def cmd_up(a):
                  "`python3 dev/wildfly/wildflyctl.py tail`.")
 
 
+def cmd_plain_up(a):
+    """(Re)create the agent-less WildFly with the sample WAR, and wait until the app answers.
+
+    Always a fresh container: an attach lasts until the JVM stops, so a server that was attached to
+    cannot be reset, only replaced. Not started by `up`.
+    """
+    require_docker()
+    if not CLI_JAR.is_file():
+        mvn("-pl", "logaperture-cli", "-am", "package", "-DskipTests")
+    ensure_sample_war()
+    compose("--profile", "attach-demo", "rm", "-sf", PLAIN_SERVICE, check=False)
+    if DEPLOYMENTS_PLAIN.exists():
+        shutil.rmtree(DEPLOYMENTS_PLAIN)
+    DEPLOYMENTS_PLAIN.mkdir()
+    if os.name != "nt":
+        DEPLOYMENTS_PLAIN.chmod(0o777)    # see ensure_deployments_dir
+    dest = DEPLOYMENTS_PLAIN / SAMPLE_WAR.name
+    shutil.copy2(SAMPLE_WAR, dest)
+    relabel_for_container(dest)
+    compose("--profile", "attach-demo", "up", "-d", "--force-recreate", PLAIN_SERVICE)
+
+    deployed = f"{CONTAINER_DEPLOY_DIR}/{SAMPLE_WAR.name}.deployed"
+    deadline = time.monotonic() + 180
+    while time.monotonic() < deadline:
+        if run(["docker", "exec", PLAIN_CONTAINER, "test", "-f", deployed],
+               check=False, capture=True).returncode == 0:
+            print("agent-less WildFly is up: http://localhost:8081/", file=sys.stderr)
+            return
+        time.sleep(2)
+    sys.exit("error: the agent-less WildFly did not deploy the sample in time — "
+             f"check `docker logs {PLAIN_CONTAINER}`.")
+
+
+def cmd_plain_down(a):
+    require_docker()
+    compose("--profile", "attach-demo", "rm", "-sf", PLAIN_SERVICE)
+    if DEPLOYMENTS_PLAIN.exists():
+        shutil.rmtree(DEPLOYMENTS_PLAIN)
+
+
 def cmd_down(a):
     require_docker()
-    compose("down")
+    # --profile: the agent-less server is under a profile, which `down` otherwise skips, leaving
+    # the project network in use.
+    compose("--profile", "attach-demo", "down")
+    if DEPLOYMENTS_PLAIN.exists():
+        shutil.rmtree(DEPLOYMENTS_PLAIN)
 
 
 def cmd_restart_agent(a):
@@ -505,6 +552,11 @@ def build_parser():
                     help="rebuild the agent + CLI jars first")
     add_vendor_arguments(up)
     up.set_defaults(func=cmd_up)
+
+    sub.add_parser("plain-up", help="(re)start the agent-less WildFly on :8081 (attach demo)"
+                   ).set_defaults(func=cmd_plain_up)
+    sub.add_parser("plain-down", help="remove the agent-less WildFly"
+                   ).set_defaults(func=cmd_plain_down)
 
     down = sub.add_parser("down", help="stop and remove the container")
     down.set_defaults(func=cmd_down)

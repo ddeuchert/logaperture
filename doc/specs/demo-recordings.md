@@ -6,13 +6,14 @@ issue #342): **signed off 2026-11-07**, decisions DR1–DR7 agreed as recommende
 `export`, issue #343): **signed off 2026-11-07**, decisions V1–V8 agreed as recommended, V9 added the same day. Implemented
 2026-10-10: story 1 as the prototype (D12), reviewed, then stories 2 and 3. Story 4 (a `trim`
 rule) added 2026-10-18, decisions T1–T6 agreed as recommended. The Now Showing page: C1–C5
-and N1–N6 agreed 2026-10-18, as recommended. Stories 5, 6 and 7 implemented 2026-11-07.
+and N1–N6 agreed 2026-10-18, as recommended. Stories 5, 6 and 7 implemented 2026-11-07. Story 8 (dynamic `attach`, issue #349): **signed off 2026-11-08**, decisions AT1–AT9 agreed as recommended.
 Issues: [#196](https://github.com/ddeuchert/logaperture/issues/196) (stories 1–3),
 [#226](https://github.com/ddeuchert/logaperture/issues/226) (story 4),
 [#228](https://github.com/ddeuchert/logaperture/issues/228) (the Now Showing page),
 [#198](https://github.com/ddeuchert/logaperture/issues/198) (story 5),
 [#342](https://github.com/ddeuchert/logaperture/issues/342) (story 6),
-[#343](https://github.com/ddeuchert/logaperture/issues/343) (story 7). Stories 1–4 and the Now Showing page: milestone
+[#343](https://github.com/ddeuchert/logaperture/issues/343) (story 7),
+[#349](https://github.com/ddeuchert/logaperture/issues/349) (story 8). Stories 1–4 and the Now Showing page: milestone
 `1.0.0`; documentation and a test fixture only, so they could land after the beta 1 feature freeze (Oct 15). Story 5:
 milestone `1.1.0`; stories 6 and 7: `1.x`; all branch from and target `develop`.
 Parent spec: [`doc/specs/user-documentation.md`](user-documentation.md) (the guide this adds to), and
@@ -28,12 +29,13 @@ After this feature, the user will be able to:
   on the README, with the server's console above and `logctl` below.
 - Pause a recording on the guide and copy a command straight out of it, including in the guide
   that ships in the release zip.
-- See seven stories: **why don't I see my TRACE?** (a handler stricter than the logger),
+- See eight stories: **why don't I see my TRACE?** (a handler stricter than the logger),
   **debug one package for a while, then it cleans itself up** (`set logger … for`),
   **something is flooding the log** (`top`, then a `drop` rule), **stack traces are burying
   the log** (a `trim` rule), **what is bursting?** (`enable storms`, `storms`, then a `drop`
   rule on the message), **is my logging config going to hurt me?** (`doctor`, then the one fix
-  `logctl` can make), and **ship what you tuned** (sticky changes, then `export vendor-defaults`).
+  `logctl` can make), **ship what you tuned** (sticky changes, then `export vendor-defaults`), and **try it, no restart**
+  (`logctl attach` into a server that doesn't run LogAperture, then a `set logger` that shows at once).
 - Watch every recording in one place, the guide's **Now Showing** page: for each, when you'd
   run into that problem, the recording, and every command in it explained, linked to its
   reference.
@@ -43,7 +45,7 @@ After this feature, the user will be able to:
 Guide pages changed: `index.md` ("See it work") and `get-started/quick-start.md` (step 4) for
 story 1, `how-to/raise-a-level.md` for story 2, `how-to/silence-noise.md` for stories 3 and 4,
 `how-to/storms.md` for story 5, `how-to/find-disk-usage.md` for story 6,
-`vendors/vendor-defaults.md` for story 7.
+`vendors/vendor-defaults.md` for story 7, `how-to/try-without-restart.md` for story 8.
 `now-showing.md` (new, its own nav entry) for all of them, and a link to it from `index.md`'s
 "See it work". README: one GIF near the top.
 
@@ -268,6 +270,41 @@ about 24 rows, past the 19 the `logctl` pane has (V2).
 | V8 | Name and numbering | Story 7, `dev/demos/export.sh`, `guide/assets/demos/export.cast`. |
 | V9 | The opening (David, 2026-11-07) | Two comment lines say why: customers get the logging a product ships with, vendor defaults let the vendor change that, and sticky changes tuned live are what gets exported. The old mid-film line ("Both are sticky...") folds into the second, so the film stays at 24 of 25 rows (V2 and V3 hold). It amends V5: the narration is now the two opening lines and the closing line. |
 
+## Story 8: try it, no restart (issue #349, signed off 2026-11-08)
+
+Story 8 shows `logctl attach` (#273, the guide's "Try LogAperture without a restart"): a server that does
+not run LogAperture, a customer reporting failed payments, and no restart to be had. The whole point is
+that nothing was installed beforehand, so this story needs a server that really started without the
+agent, which the dev WildFly (stories 1 to 7) does not.
+
+```sh
+# A web shop app on a WildFly server that does not run LogAperture. Customers report failed payments, and it can't be restarted.
+jps -l
+#   <pid> /opt/jboss/wildfly/jboss-modules.jar
+# Load LogAperture into the running server:
+logctl attach <pid>
+#   LogAperture 1.1.0 is active in PID <pid> (...).  Agent jar: ... (the agent jar carried inside this logctl)
+#   This lasts until PID <pid> stops. To keep it, add -javaagent:<agent jar> to its launch line.
+# It now works as if the server had started with it. Debug the payment code for a while:
+logctl set logger com.example.shop.payment DEBUG for 5m
+#   DEBUG lines from com.example.shop.payment appear on the console
+# Nothing in the launch line or standalone.xml changed; the next restart is back to how it was.
+```
+
+18 of the 19 `logctl` rows; the console pane is the standard 12. The recording runs about 36 seconds. `attach` reports the logging backend it found (`JBoss LogManager 2.1.18.Final`) and an agent jar under `/opt/jboss/.logaperture/agent/` inside the container (the tmpfs of AT3, a writable home as on a real server). `wildflyctl.py plain-up` and `plain-down` start and remove the server (AT3, AT4).
+
+| # | Decision | Recommendation |
+|---|----------|----------------|
+| AT1 | The target | A second WildFly, started without `-javaagent`, running the same sample WAR (agreed with David, 2026-11-08). The alternatives were a plain-JVM main class (a new fixture, and a console unlike stories 1 to 7) and restarting the dev WildFly without the agent (a 30 s restart in the film, and the agent to put back for every other story). |
+| AT2 | The story (agreed with David, 2026-11-08) | "Try it, no restart": `attach`, then one `set logger … DEBUG for 5m` whose lines reach the console. Not `top` and a rule (story 3 again), and not attach-twice (a weaker hook for a first viewer; the guide page covers it). |
+| AT3 | How the second server runs | A compose service `wildfly-plain` under a profile (`attach-demo`), so `wildflyctl up` never starts it: container `logaperture-wildfly-plain`, host port 8081 → 8080, no `jdwp`, no agent mount and no `JAVA_OPTS` line. Only `logaperture-cli.jar` is mounted (as `/opt/logctl.jar`): the agent comes from inside it, which is the real install story for `attach`. Its `/opt/jboss/.logaperture` is a tmpfs: an attach has no launch flag for `-Dlogaperture.home` and the image's home is not writable, so without it the agent prints a state-directory warning on the console (found in review; a real server's home is writable). It has its own `deployments-plain/` directory holding a copy of the sample WAR, because the deployment scanner writes marker files and two servers must not share one directory. |
+| AT4 | A fresh server for every recording | An attach lasts until the JVM stops, so a server that was attached to once cannot be put back with a reset. `record.sh` removes and re-creates `wildfly-plain` before the story (about 30 s to boot, waited for on its health check) and removes it afterwards, on any exit, failure and Ctrl-C included (a trap). The sample-app preflight runs per story, against the server the story uses, so this story does not need the dev WildFly. `wildflyctl down` removes the plain server too. A story chooses its server with a line `DEMO_SERVER=plain` in its file, read like `DEMO_TITLE` and `DEMO_CONSOLE_ROWS`; for it, `record.sh` points the console pane, `logctl`, and the shop switch at that container and port. The dev WildFly's reset is skipped (the film never touches it), so `record.sh all` grows by about a minute. `--rehearse` re-creates it too, so a rehearsal starts as the recording will. |
+| AT5 | Getting the PID onto the screen | `jps -l` shows it, then `logctl attach "$pid"` with the PID read from `jps` by the script (a helper in `lib.sh`). The screen types the real number. Alternative: the interactive picker (`logctl attach` alone), which is the usual first-time flow but needs a terminal and a typed answer inside the container, which `run` cannot feed. The Now Showing drift check (N5) compares `run logctl …` lines literally, so a PID in the script reads `"$pid"` and the page shows `<pid>`; the hook treats `"$pid"` (that one name, not any quoted variable) in a story line as `<pid>` on the page. |
+| AT6 | JDK and the JEP 451 warning | The WildFly image is JDK 17, which attaches silently. JDK 21 and later print a four-line warning on the target's own stderr, which would land in the console pane; the film is recorded on 17 and the guide page (which already explains the warning) is the place for it. |
+| AT7 | What it shows | `attach`'s own report, as printed, with its version (`1.1.0-SNAPSHOT` until the release) and the jar path inside the container (`/opt/jboss/…` or `/tmp/logaperture-…`; neither is a host path, V3 holds). Nothing is edited. |
+| AT8 | Checks | Before the attach, `expect_absent` on a payment `DEBUG` line. `expect_output` that `attach`'s report says it is active in the PID. After `set logger`, `wait_for` a `DEBUG … com.example.shop.payment` line within 15 s (an order every 1.5 s). Settled in the first run: `set logger` alone makes the console show `DEBUG` on an attached server (the default handlers follow, #210; `set logger` prints `handler CONSOLE → AUTO` itself), so the story has no `set handler` line. |
+| AT9 | Guide and numbering | Story 8, `dev/demos/attach.sh`, `guide/assets/demos/attach.cast`. Film 8 on Now Showing, anchor `#attach`, with `attach` and `set logger` explained (and linked to `reference/logctl.md#attach`, `how-to/try-without-restart.md`); the embed goes on `how-to/try-without-restart.md`, under its opening paragraphs. The README keeps its one GIF. |
+
 ## Design
 
 ### The demo app (D1)
@@ -327,6 +364,7 @@ dev/demos/
   storm.sh                story 5
   doctor.sh               story 6
   export.sh               story 7
+  attach.sh               story 8
 guide/assets/demos/
   why-no-trace.cast       the recordings, committed (asciicast v2 text: ~40 KB each,
   debug-for-a-while.cast  ~580 KB for the flood, whose stack traces are most of it)
@@ -335,6 +373,7 @@ guide/assets/demos/
   storm.cast              ~770 KB: the console scrolls ~200 lines a second until the rule
   doctor.cast             ~26 KB
   export.cast             ~29 KB
+  attach.cast             ~40 KB
 ```
 
 A story script is a `story()` function made of steps:
@@ -475,7 +514,7 @@ Reference: [`set logger`](reference/logctl.md#set-logger) · How-to:
 - Each command links to its `reference/logctl.md` anchor (every command there has one) and to
   the how-to section that covers that use of it.
 - The player is the guide's existing embed, unchanged: poster at the last frame, plays from the
-  release zip with no network (C4). All seven films load with the page (N3).
+  release zip with no network (C4). All eight films load with the page (N3).
 
 The paragraph for each film, and the commands it explains:
 
@@ -552,7 +591,7 @@ The Now Showing page (issue #228), agreed 2026-10-18:
 | N2 | A command repeated in a later film | Explained again, briefly: a film reached from a link reads on its own. |
 | N3 | Loading | All films load with the page, as elsewhere in the guide (about 0.7 MB for four, most of it the flood; story 5 adds about 0.77 MB and stories 6 and 7 about 26 and 29 KB, so about 1.5 MB for seven, most of it the flood and the storm). No lazy loading. |
 | N4 | Anchor validation | Site-wide `validation: anchors: warn`; existing broken anchors it finds are fixed in the same PR. |
-| N5 | Commands drift check | The hook fails when a recording is missing from the page, or a story's `run logctl …` line isn't on it as typed. |
+| N5 | Commands drift check | The hook fails when a recording is missing from the page, or a story's `run logctl …` line isn't on it as typed (the `"$pid"` a story reads at run time is written `<pid>`, story 8, AT5). |
 | N6 | Top of the page | A short "programme" list linking to each film, as on a cinema bill. |
 
 ### Changes during implementation
