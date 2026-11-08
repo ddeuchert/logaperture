@@ -58,7 +58,9 @@ and after it, once a minute has passed quietly:
 ```
 
 Each storm shows its logger, its exception type if there is one, and the message with the parts
-that vary replaced by `%s`, so 1,500 requests for different paths count as one storm. While it is
+that vary replaced by a placeholder, so 1,500 requests for different paths count as one storm. A
+message whose logger gave a format string, like the one above, keeps its own placeholder (`%s`);
+in a plain message, digits show as `<n>`, as in the film above. While it is
 going on, you also see its rate and a sample: the event that made it a storm, in full, with its
 message as logged and its stack trace if it has one. The sample is not the storm's first event; the
 event number says how far into the storm it came (the 1,000th here, the threshold).

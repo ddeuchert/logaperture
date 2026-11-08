@@ -31,7 +31,7 @@ import javax.servlet.http.HttpServletResponse;
  *       many times a second.</li>
  *   <li>{@code POST /logaperture-sample-war/demo/flood/stop} — end the flood.</li>
  *   <li>{@code POST /logaperture-sample-war/demo/retry-storm/start} — make a retry queue log the same
- *       message hundreds of times a second, its order and attempt numbers changing.</li>
+ *       message hundreds of times a second, its attempt number changing.</li>
  *   <li>{@code POST /logaperture-sample-war/demo/retry-storm/stop} — end the retry storm.</li>
  *   <li>{@code POST /logaperture-sample-war/demo/payment-outage/start} — make every order's
  *       first payment attempt fail with a refused connection and its stack trace.</li>

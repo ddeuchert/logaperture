@@ -179,8 +179,8 @@ Reference: [`list rules`](reference/logctl.md#list-rules) · How-to:
 ## What is bursting? {#storm}
 
 The shop's console is scrolling too fast to read, and nothing in it says why. A retry loop is
-logging the same message hundreds of times a second, with only an order number and an attempt
-number changing, so no single line stands out. Storm detection groups events like that into one
+logging the same message hundreds of times a second, with only an attempt number changing, so no
+single line stands out. Storm detection groups events like that into one
 storm and keeps one in full. Reach for it when the log is too fast to read and you don't know
 which message is doing it.
 
@@ -195,7 +195,7 @@ Reference: [`storms`](reference/logctl.md#storms) · How-to: [Turn it on](how-to
 
 **`logctl storms`**: list the storms detected so far. Each shows its logger, its exception if it
 has one, and the message with the changing parts replaced by `<n>`, so thousands of events with
-different order numbers count as one storm. An ongoing storm also shows its rate and a sample: the
+different attempt numbers count as one storm. An ongoing storm also shows its rate and a sample: the
 event that made it a storm, in full.
 
 Reference: [`storms`](reference/logctl.md#storms) · How-to: [See the storms](how-to/storms.md#see-the-storms)
@@ -203,8 +203,8 @@ Reference: [`storms`](reference/logctl.md#storms) · How-to: [See the storms](ho
 **`logctl add rule drop com.example.shop.payment.RetryQueue --message-contains Retrying`**: keep
 the storm out of the log while the cause is fixed.
 
-- `drop`: discard the matching events, letting one through every few minutes so the message is
-  never far away.
+- `drop`: discard the matching events, letting the first through and then one every 5 minutes, so
+  the message is never far away.
 - `com.example.shop.payment.RetryQueue`: the logger the storm named.
 - `--message-contains Retrying`: match events whose message contains the text.
 

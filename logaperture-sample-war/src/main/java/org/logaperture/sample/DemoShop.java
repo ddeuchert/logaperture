@@ -23,6 +23,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,7 +42,7 @@ import com.example.shop.payment.PaymentException;
  * "something is flooding the log" story. {@link #startPaymentOutage()} makes every order's
  * first payment attempt fail, logging a WARN with a {@link PaymentException} caused by a
  * {@link ConnectException}, for the "stack traces are burying the log" story.
- * {@link #startRetryStorm()} makes a retry queue log "Retrying payment for order N (attempt M)" every
+ * {@link #startRetryStorm()} makes a retry queue log "Retrying payment for order 10421 (attempt M)" every
  * {@value #RETRY_PERIOD_MS} ms, for the "what is bursting?" story (storm detection).
  *
  * <p>Order numbers, amounts and cards come from a fixed seed, so two recordings show the
@@ -63,8 +64,8 @@ enum DemoShop {
 
     private static final long SEED = 196L;
     private static final int FIRST_ORDER = 10_421;
-    private static final int FIRST_RETRIED_ORDER = 10_431;
-    private static final int ATTEMPTS_PER_ORDER = 8;
+    /** The order the retry storm is stuck on: one a recording's shop has already placed by then. */
+    private static final int RETRIED_ORDER = 10_421;
     private static final String[] CARDS = {"4242", "1881", "0005", "7310"};
 
     private final Logger checkout = LoggerFactory.getLogger(CHECKOUT_LOGGER);
@@ -81,7 +82,7 @@ enum DemoShop {
     private Random random;
     private int nextOrder;
     private long floodAttempts;
-    private long retries;
+    private final AtomicLong retries = new AtomicLong();
     private boolean paymentOutage;
 
     /** @return whether this call started the shop (false: it was already running) */
@@ -117,8 +118,8 @@ enum DemoShop {
     }
 
     /**
-     * The retry queue starts logging a WARN about every {@value #RETRY_PERIOD_MS} ms: the same message with
-     * the order and attempt numbers changing, no exception. Past storm detection's default threshold (1,000
+     * The retry queue starts logging a WARN about every {@value #RETRY_PERIOD_MS} ms: one order stuck in a retry
+     * loop, the same message with the attempt number changing, no exception. Past storm detection's default threshold (1,000
      * events in 10 s) within about five seconds.
      * @return whether this call started the storm (false: it was already on)
      */
@@ -126,7 +127,7 @@ enum DemoShop {
         if (retryStorm != null) {
             return false;
         }
-        retries = 0;
+        retries.set(0);
         ensureExecutor();
         retryStorm = executor.scheduleAtFixedRate(this::retryPayment, 0, RETRY_PERIOD_MS, TimeUnit.MILLISECONDS);
         return true;
@@ -250,13 +251,8 @@ enum DemoShop {
     }
 
     private void retryPayment() {
-        long n;
-        synchronized (this) {
-            n = ++retries;
-        }
-        // From a counter, not the shop's random: two recordings show the same numbers.
-        retryQueue.warn("Retrying payment for order {} (attempt {})", FIRST_RETRIED_ORDER + (n - 1) / ATTEMPTS_PER_ORDER,
-                1 + (n - 1) % ATTEMPTS_PER_ORDER);
+        // One order stuck in a retry loop: only the attempt number changes. From a counter, not the shop's random.
+        retryQueue.warn("Retrying payment for order {} (attempt {})", RETRIED_ORDER, retries.incrementAndGet());
     }
 
     private void failStockSync() {

@@ -26,13 +26,26 @@ before_recording() {
     curl -fsS -X POST "$DEMO_URL/retry-storm/start" >/dev/null
 }
 
+# Silent: polls until detection lists the storm, so the visible `logctl storms` is a single call.
+# A slow machine waits longer; one that never detects it fails the recording after the limit.
+wait_for_storm() {
+    local deadline=$((SECONDS + $1))
+    until logctl storms 2>/dev/null | grep -Eq '^\[ONGOING\]'; do
+        if ((SECONDS >= deadline)); then
+            _fail "no storm was listed within ${1}s of enabling detection"
+        fi
+        sleep 1
+    done
+    sleep 1
+}
+
 story() {
     wait_for "$RETRY_LINE" 10
     hold 2
     say "A web shop app deployed on a WildFly server. Its console is scrolling too fast to read."
     say "Storm detection is off by default. Turn it on, give it a few seconds, then ask what is bursting:"
     run logctl enable storms
-    hold 8
+    wait_for_storm 30
     run logctl storms
     expect_output '^\[ONGOING\] +com\.example\.shop\.payment\.RetryQueue'
     say "One message, thousands of times, the numbers changing. Keep it out of the log:"
