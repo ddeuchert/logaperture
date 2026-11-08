@@ -1,13 +1,16 @@
 # Demo recordings
 
-Status: **signed off 2026-10-10**, decisions D1–D12 agreed as recommended. Implemented
+Status: **signed off 2026-10-10**, decisions D1–D12 agreed as recommended. Story 5 (storms,
+issue #198): **signed off 2026-11-07**, decisions S1–S7 agreed as recommended. Implemented
 2026-10-10: story 1 as the prototype (D12), reviewed, then stories 2 and 3. Story 4 (a `trim`
 rule) added 2026-10-18, decisions T1–T6 agreed as recommended. The Now Showing page: C1–C5
 and N1–N6 agreed 2026-10-18, as recommended.
 Issues: [#196](https://github.com/ddeuchert/logaperture/issues/196) (stories 1–3),
 [#226](https://github.com/ddeuchert/logaperture/issues/226) (story 4),
-[#228](https://github.com/ddeuchert/logaperture/issues/228) (the Now Showing page). Milestone `1.0.0`;
-documentation and a test fixture only, so it can land after the beta 1 feature freeze (Oct 15).
+[#228](https://github.com/ddeuchert/logaperture/issues/228) (the Now Showing page),
+[#198](https://github.com/ddeuchert/logaperture/issues/198) (story 5). Stories 1–4 and the Now Showing page: milestone
+`1.0.0`; documentation and a test fixture only, so they could land after the beta 1 feature freeze (Oct 15). Story 5:
+milestone `1.1.0`, so it branches from and targets `develop`.
 Parent spec: [`doc/specs/user-documentation.md`](user-documentation.md) (the guide this adds to), and
 through it [`doc/logaperture-spec.md`](../logaperture-spec.md) §17.1 "User documentation".
 Related: [`wildfly-dev-environment.md`](wildfly-dev-environment.md) (the server the demos run
@@ -21,7 +24,7 @@ After this feature, the user will be able to:
   on the README, with the server's console above and `logctl` below.
 - Pause a recording on the guide and copy a command straight out of it, including in the guide
   that ships in the release zip.
-- See four stories: **why don't I see my TRACE?** (a handler stricter than the logger),
+- See five stories: **why don't I see my TRACE?** (a handler stricter than the logger),
   **debug one package for a while, then it cleans itself up** (`set logger … for`),
   **something is flooding the log** (`top`, then a `drop` rule), and **stack traces are burying
   the log** (a `trim` rule).
@@ -32,7 +35,8 @@ After this feature, the user will be able to:
   script against a real server and redone for each release.
 
 Guide pages changed: `index.md` ("See it work") and `get-started/quick-start.md` (step 4) for
-story 1, `how-to/raise-a-level.md` for story 2, `how-to/silence-noise.md` for stories 3 and 4.
+story 1, `how-to/raise-a-level.md` for story 2, `how-to/silence-noise.md` for stories 3 and 4,
+`how-to/storms.md` for story 5.
 `now-showing.md` (new, its own nav entry) for all of them, and a link to it from `index.md`'s
 "See it work". README: one GIF near the top.
 
@@ -48,8 +52,8 @@ explains the same steps.
 
 ## Out of scope
 
-- Story 5 (`doctor`, storm detection, vendor defaults with `export`), first planned as story 4:
-  a later issue, [#198](https://github.com/ddeuchert/logaperture/issues/198) (D11, T1).
+- The `doctor` story and the vendor-defaults `export` story, both candidates for #198: filed as their own
+  issues, 1.x (S1).
 - A narrated screen capture (OBS, audio). The issue leaves that for later.
 - Running the recordings in CI. They need Docker, a WildFly and a minute of wall-clock time each;
   the release step is manual (D10).
@@ -161,6 +165,40 @@ reaches it within 15 s, and every stack frame and `... N more` line leaves it wi
 (`wait_gone`) (T6). Its hidden setup starts the outage before recording, so the first frame
 already shows the problem.
 
+## Story 5: what is bursting? (issue #198, signed off 2026-11-07)
+
+The three candidates for #198 (`doctor`, storms, vendor-defaults `export`) are too much for one clip
+under 90 seconds. Story 5 is **storms**; the other two become their own issues (S1).
+
+**The problem.** The server's console is scrolling too fast to read and nobody knows which message is
+doing it. Story 3 finds a flood by logger with `top`; this one finds a *message*: storm detection groups
+near-identical events whose numbers differ, and keeps one in full.
+
+```sh
+# A web shop app deployed on a WildFly server. Its console is scrolling too fast to read.
+# Storm detection is off by default. Turn it on, give it a few seconds, then ask what is bursting:
+logctl enable storms
+logctl storms
+#   [ONGOING] com.example.shop.payment.RetryQueue  (no exception)  "Retrying payment for order <n> (attempt <n>)"
+#   events and rate, and the sample: the event that made it a storm, in full
+# One message, 1000s of times, the numbers changing. Keep it out of the log while the cause is fixed:
+logctl add rule drop com.example.shop.payment.RetryQueue --message-contains Retrying
+# The console is readable again; the shop still logs.
+```
+
+| # | Decision | Recommendation |
+|---|---|---|
+| S1 | Which story; the rest | Storms is story 5. `doctor` and `export` become two issues in milestone 1.x, so #198 closes with the one story. (David, 2026-11-07.) |
+| S2 | The demo shop | `POST /demo/retry-storm/start` makes a `RetryQueue` log a WARN `Retrying payment for order 10421 (attempt 7)` about every 10 ms (about 200 a second, no exception) until `/demo/stop`: one order stuck in a retry loop, so only the attempt number changes (revised after review: a counting-up order number raced past the shop's real orders). The attempt comes from a counter that restarts at each start, so the sample's attempt number depends on when detection is switched on. 1,000 events in 10 s, storm detection's default threshold, is crossed in about 5 s. `com.example.shop.payment`, so it reads as the shop's own code. |
+| S3 | The flood starts first | The storm is already running when the recording starts (hidden setup, like story 3's flood), so the console is scrolling in the first frame. Detection is off until the story turns it on, so the story needs no second hidden trigger. |
+| S4 | The ending | A `drop` rule by `--message-contains`, then the console quiets, as in story 3 but by message instead of by exception: the guide's own "Then" section for storms. |
+| S5 | Leaving the server clean | `record.sh`'s reset also runs `logctl disable storms`, so a story never starts or ends with detection on. (`enable` already clears what was tracked.) |
+| S6 | Checks | A silent poll (`wait_for_storm`) until detection lists the storm, up to 30 s after enabling, so the visible `logctl storms` is one call; then an `[ONGOING]` row naming `RetryQueue`; after the rule, no `Retrying payment` line on the console pane within 30 s (`wait_gone`). `enable` has no `for 10m`: with a tier its line is 145 characters and wraps, and the story's 19-row pane (it ends at 18) has no row to spare (found while recording). The match is the one word `Retrying`, because `run` echoes its arguments without their quotes. `reset_server` ends detection anyway. |
+| S7 | Guide placement | `how-to/storms.md`, under "See the storms", with the static output kept; the Now Showing page gains film 5 (C2, N5); the README keeps one GIF. |
+
+The files: `dev/demos/storm.sh` (story 5), `RetryQueue` and the switch in the sample WAR's `DemoShop` and
+`DemoServlet`, `record.sh` (`stories`, the reset), `guide/assets/demos/storm.cast`.
+
 ## Design
 
 ### The demo app (D1)
@@ -217,11 +255,13 @@ dev/demos/
   debug-for-a-while.sh    story 2
   flood.sh                story 3
   trim.sh                 story 4
+  storm.sh                story 5
 guide/assets/demos/
   why-no-trace.cast       the recordings, committed (asciicast v2 text: ~40 KB each,
   debug-for-a-while.cast  ~580 KB for the flood, whose stack traces are most of it)
   flood.cast
   trim.cast
+  storm.cast              ~770 KB: the console scrolls ~200 lines a second until the rule
 ```
 
 A story script is a `story()` function made of steps:
@@ -354,7 +394,7 @@ Reference: [`set logger`](reference/logctl.md#set-logger) · How-to:
 
 - A film's anchor is its recording's name, which is stable: it is the `.cast` file's name and
   `record.sh`'s story name. The commands heading gets an explicit `{#<name>-commands}`, since
-  four identical headings would otherwise get `_1`, `_2`… suffixes that move when a film is
+  five identical headings would otherwise get `_1`, `_2`… suffixes that move when a film is
   added.
 - Every command the film runs is listed, as typed, with every argument and option explained.
   A command a later film repeats (`set handler CONSOLE AUTO` in films 1 and 2, `list rules` in
@@ -362,7 +402,7 @@ Reference: [`set logger`](reference/logctl.md#set-logger) · How-to:
 - Each command links to its `reference/logctl.md` anchor (every command there has one) and to
   the how-to section that covers that use of it.
 - The player is the guide's existing embed, unchanged: poster at the last frame, plays from the
-  release zip with no network (C4). All four films load with the page (N3).
+  release zip with no network (C4). All five films load with the page (N3).
 
 The paragraph for each film, and the commands it explains:
 
@@ -372,6 +412,7 @@ The paragraph for each film, and the commands it explains:
 | Debug one package for a while | You need DEBUG for one investigation and don't want to remember to put it back. | `set logger com.example.shop.checkout DEBUG for 30s`, `set handler CONSOLE AUTO`, `list loggers com.example`, `status` | `#set-logger`, `#set-handler`, `#list-loggers`, `#status` | `raise-a-level.md#a-logger-and-everything-under-it`, `concepts/tiers-and-expiry.md#how-a-timed-change-ends`, `find-a-logger.md#from-the-start-of-the-name` |
 | Something is flooding the log | One component repeats the same failure many times a second, and you need to find it and quiet it without a restart. | `top --limit 5`, `add rule drop com.example.shop.inventory.StockSync --throwable java.net.ConnectException --sample-full 1m`, `list rules` | `#top`, `#add-rule`, `#list-rules` | `find-disk-usage.md#which-loggers-write-the-most`, `silence-noise.md#drop-a-message`, `silence-noise.md#see-and-change-rules` |
 | Stack traces are burying the log | A known failure, the same root cause every time, prints a full stack trace each time, and the trace teaches nothing new. | `add rule trim com.example.shop.payment.PaymentGateway --throwable java.net.ConnectException --any-cause`, `list rules` | `#add-rule`, `#list-rules` | `silence-noise.md#shorten-a-stack-trace`, `silence-noise.md#matching-on-the-exception` |
+| What is bursting? | The log scrolls too fast to read and you don't know which message is doing it. | `enable storms`, `storms`, `add rule drop com.example.shop.payment.RetryQueue --message-contains Retrying` | `#storms`, `#add-rule` | `storms.md#turn-it-on`, `storms.md#see-the-storms`, `silence-noise.md#drop-a-message` |
 
 The "for 30s" in film 2 is explained as the recording's stand-in for a real duration such as
 `for 1h` (D7).
@@ -434,7 +475,7 @@ The Now Showing page (issue #228), agreed 2026-10-18:
 | C5 | Process | Issue #228, this section, its own PR after story 4 (#227) lands; strict builds fail on broken anchors. |
 | N1 | Subtitle | No count of films ("Short films of…"), so story 5 doesn't make it stale. |
 | N2 | A command repeated in a later film | Explained again, briefly: a film reached from a link reads on its own. |
-| N3 | Loading | All four films load with the page, as elsewhere in the guide (about 0.7 MB, most of it the flood). No lazy loading. |
+| N3 | Loading | All films load with the page, as elsewhere in the guide (about 0.7 MB for four, most of it the flood; story 5 adds about 0.77 MB, so about 1.5 MB for five, most of it the flood and the storm). No lazy loading. |
 | N4 | Anchor validation | Site-wide `validation: anchors: warn`; existing broken anchors it finds are fixed in the same PR. |
 | N5 | Commands drift check | The hook fails when a recording is missing from the page, or a story's `run logctl …` line isn't on it as typed. |
 | N6 | Top of the page | A short "programme" list linking to each film, as on a cinema bill. |

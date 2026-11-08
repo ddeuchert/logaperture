@@ -23,6 +23,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +42,8 @@ import com.example.shop.payment.PaymentException;
  * "something is flooding the log" story. {@link #startPaymentOutage()} makes every order's
  * first payment attempt fail, logging a WARN with a {@link PaymentException} caused by a
  * {@link ConnectException}, for the "stack traces are burying the log" story.
+ * {@link #startRetryStorm()} makes a retry queue log "Retrying payment for order 10421 (attempt M)" every
+ * {@value #RETRY_PERIOD_MS} ms, for the "what is bursting?" story (storm detection).
  *
  * <p>Order numbers, amounts and cards come from a fixed seed, so two recordings show the
  * same orders. Logs through SLF4J, which WildFly routes into JBoss LogManager.
@@ -52,27 +55,34 @@ enum DemoShop {
     static final String CHECKOUT_LOGGER = "com.example.shop.checkout.CheckoutService";
     static final String PAYMENT_LOGGER = "com.example.shop.payment.PaymentGateway";
     static final String STOCK_LOGGER = "com.example.shop.inventory.StockSync";
+    static final String RETRY_LOGGER = "com.example.shop.payment.RetryQueue";
 
     static final long ORDER_PERIOD_MS = 1_500L;
     static final long STOCK_PERIOD_MS = 6_000L;
     static final long FLOOD_PERIOD_MS = 50L;
+    static final long RETRY_PERIOD_MS = 10L;
 
     private static final long SEED = 196L;
     private static final int FIRST_ORDER = 10_421;
+    /** The order the retry storm is stuck on: one a recording's shop has already placed by then. */
+    private static final int RETRIED_ORDER = 10_421;
     private static final String[] CARDS = {"4242", "1881", "0005", "7310"};
 
     private final Logger checkout = LoggerFactory.getLogger(CHECKOUT_LOGGER);
     private final Logger payment = LoggerFactory.getLogger(PAYMENT_LOGGER);
     private final Logger stock = LoggerFactory.getLogger(STOCK_LOGGER);
+    private final Logger retryQueue = LoggerFactory.getLogger(RETRY_LOGGER);
     private final CheckoutService checkoutService = new CheckoutService();
 
     private ScheduledExecutorService executor;
     private ScheduledFuture<?> orders;
     private ScheduledFuture<?> stockSync;
     private ScheduledFuture<?> flood;
+    private ScheduledFuture<?> retryStorm;
     private Random random;
     private int nextOrder;
     private long floodAttempts;
+    private final AtomicLong retries = new AtomicLong();
     private boolean paymentOutage;
 
     /** @return whether this call started the shop (false: it was already running) */
@@ -108,6 +118,29 @@ enum DemoShop {
     }
 
     /**
+     * The retry queue starts logging a WARN about every {@value #RETRY_PERIOD_MS} ms: one order stuck in a retry
+     * loop, the same message with the attempt number changing, no exception. Past storm detection's default threshold (1,000
+     * events in 10 s) within about five seconds.
+     * @return whether this call started the storm (false: it was already on)
+     */
+    synchronized boolean startRetryStorm() {
+        if (retryStorm != null) {
+            return false;
+        }
+        retries.set(0);
+        ensureExecutor();
+        retryStorm = executor.scheduleAtFixedRate(this::retryPayment, 0, RETRY_PERIOD_MS, TimeUnit.MILLISECONDS);
+        return true;
+    }
+
+    /** @return whether a retry storm was on (and is now over) */
+    synchronized boolean stopRetryStorm() {
+        boolean wasOn = retryStorm != null;
+        retryStorm = cancel(retryStorm);
+        return wasOn;
+    }
+
+    /**
      * From the next order on, the primary payment endpoint refuses connections: each order
      * fails once, then goes through on the fallback.
      * @return whether this call started the outage (false: already on)
@@ -132,10 +165,11 @@ enum DemoShop {
      * @return whether anything was running
      */
     synchronized boolean stop() {
-        boolean wasRunning = orders != null || flood != null || paymentOutage;
+        boolean wasRunning = orders != null || flood != null || retryStorm != null || paymentOutage;
         orders = cancel(orders);
         stockSync = cancel(stockSync);
         flood = cancel(flood);
+        retryStorm = cancel(retryStorm);
         paymentOutage = false;
         return wasRunning;
     }
@@ -155,6 +189,10 @@ enum DemoShop {
 
     synchronized boolean flooding() {
         return flood != null;
+    }
+
+    synchronized boolean retrying() {
+        return retryStorm != null;
     }
 
     synchronized boolean paymentOutage() {
@@ -210,6 +248,11 @@ enum DemoShop {
             skus = 200 + random.nextInt(30);
         }
         stock.info("Stock synced: {} SKUs updated", skus);
+    }
+
+    private void retryPayment() {
+        // One order stuck in a retry loop: only the attempt number changes. From a counter, not the shop's random.
+        retryQueue.warn("Retrying payment for order {} (attempt {})", RETRIED_ORDER, retries.incrementAndGet());
     }
 
     private void failStockSync() {

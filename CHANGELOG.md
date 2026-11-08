@@ -88,6 +88,9 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
   `quarkus.logaperture.vendor-defaults` file replaces it, and
   `quarkus.logaperture.bundled-vendor-defaults=false` turns it off (issue #269;
   `doc/specs/bundled-vendor-defaults.md`).
+- **A fifth demo recording: what is bursting?** `logctl enable storms`, `logctl storms` and a `drop`
+  rule on a message whose numbers keep changing, embedded in How-to: Log storms and on Now Showing
+  (issue #198).
 
 ### Changed
 

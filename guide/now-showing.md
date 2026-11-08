@@ -13,6 +13,7 @@ its reference and to the how-to that covers it.
 2. [Debug one package for a while](#debug-for-a-while): a change that cleans itself up.
 3. [Something is flooding the log](#flood): find the source, and silence one exception.
 4. [Stack traces are burying the log](#trim): keep every warning, but not its trace.
+5. [What is bursting?](#storm): find the one message behind a scrolling console.
 
 ## Why don't I see my TRACE? {#why-no-trace}
 
@@ -174,3 +175,40 @@ events each rule has trimmed.
 
 Reference: [`list rules`](reference/logctl.md#list-rules) · How-to:
 [See and change rules](how-to/silence-noise.md#see-and-change-rules)
+
+## What is bursting? {#storm}
+
+The shop's console is scrolling too fast to read, and nothing in it says why. A retry loop is
+logging the same message hundreds of times a second, with only an attempt number changing, so no
+single line stands out. Storm detection groups events like that into one
+storm and keeps one in full. Reach for it when the log is too fast to read and you don't know
+which message is doing it.
+
+<div class="la-cast" data-cast="storm"></div>
+
+### Commands in this film {#storm-commands}
+
+**`logctl enable storms`**: switch storm detection on. It starts off, because it costs a little on
+every log call; without a duration it stays on until the JVM stops.
+
+Reference: [`storms`](reference/logctl.md#storms) · How-to: [Turn it on](how-to/storms.md#turn-it-on)
+
+**`logctl storms`**: list the storms detected so far. Each shows its logger, its exception if it
+has one, and the message with the changing parts replaced by `<n>`, so thousands of events with
+different attempt numbers count as one storm. An ongoing storm also shows its rate and a sample: the
+event that made it a storm, in full.
+
+Reference: [`storms`](reference/logctl.md#storms) · How-to: [See the storms](how-to/storms.md#see-the-storms)
+
+**`logctl add rule drop com.example.shop.payment.RetryQueue --message-contains Retrying`**: keep
+the storm out of the log while the cause is fixed.
+
+- `drop`: discard the matching events, letting the first through and then one every 5 minutes, so
+  the message is never far away.
+- `com.example.shop.payment.RetryQueue`: the logger the storm named.
+- `--message-contains Retrying`: match events whose message contains the text.
+
+The rule lasts `for 4h`, since no duration was given.
+
+Reference: [`add rule`](reference/logctl.md#add-rule) · How-to:
+[Drop a message](how-to/silence-noise.md#drop-a-message)
