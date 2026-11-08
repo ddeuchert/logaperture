@@ -938,6 +938,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#storm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is bursting?
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What is bursting?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#storm-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands in this film
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2219,6 +2247,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#storm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is bursting?
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What is bursting?">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#storm-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands in this film
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2251,6 +2307,7 @@ its reference and to the how-to that covers it.</p>
 <li><a href="#debug-for-a-while">Debug one package for a while</a>: a change that cleans itself up.</li>
 <li><a href="#flood">Something is flooding the log</a>: find the source, and silence one exception.</li>
 <li><a href="#trim">Stack traces are burying the log</a>: keep every warning, but not its trace.</li>
+<li><a href="#storm">What is bursting?</a>: find the one message behind a scrolling console.</li>
 </ol>
 <h2 id="why-no-trace">Why don't I see my TRACE?<a class="headerlink" href="#why-no-trace" title="Permanent link">&para;</a></h2>
 <p>A customer reports failed payments, so you turn on <code>TRACE</code> for the payment code, and the console
@@ -2382,6 +2439,34 @@ rule lasts <code>for 4h</code>, since no duration was given.</p>
 events each rule has trimmed.</p>
 <p>Reference: <a href="../reference/logctl/#list-rules"><code>list rules</code></a> · How-to:
 <a href="../how-to/silence-noise/#see-and-change-rules">See and change rules</a></p>
+<h2 id="storm">What is bursting?<a class="headerlink" href="#storm" title="Permanent link">&para;</a></h2>
+<p>The shop's console is scrolling too fast to read, and nothing in it says why. A retry loop is
+logging the same message hundreds of times a second, with only an attempt number changing, so no
+single line stands out. Storm detection groups events like that into one
+storm and keeps one in full. Reach for it when the log is too fast to read and you don't know
+which message is doing it.</p>
+<div class="la-cast" data-cast="storm"></div>
+
+<h3 id="storm-commands">Commands in this film<a class="headerlink" href="#storm-commands" title="Permanent link">&para;</a></h3>
+<p><strong><code>logctl enable storms</code></strong>: switch storm detection on. It starts off, because it costs a little on
+every log call; without a duration it stays on until the JVM stops.</p>
+<p>Reference: <a href="../reference/logctl/#storms"><code>storms</code></a> · How-to: <a href="../how-to/storms/#turn-it-on">Turn it on</a></p>
+<p><strong><code>logctl storms</code></strong>: list the storms detected so far. Each shows its logger, its exception if it
+has one, and the message with the changing parts replaced by <code>&lt;n&gt;</code>, so thousands of events with
+different attempt numbers count as one storm. An ongoing storm also shows its rate and a sample: the
+event that made it a storm, in full.</p>
+<p>Reference: <a href="../reference/logctl/#storms"><code>storms</code></a> · How-to: <a href="../how-to/storms/#see-the-storms">See the storms</a></p>
+<p><strong><code>logctl add rule drop com.example.shop.payment.RetryQueue --message-contains Retrying</code></strong>: keep
+the storm out of the log while the cause is fixed.</p>
+<ul>
+<li><code>drop</code>: discard the matching events, letting the first through and then one every 5 minutes, so
+  the message is never far away.</li>
+<li><code>com.example.shop.payment.RetryQueue</code>: the logger the storm named.</li>
+<li><code>--message-contains Retrying</code>: match events whose message contains the text.</li>
+</ul>
+<p>The rule lasts <code>for 4h</code>, since no duration was given.</p>
+<p>Reference: <a href="../reference/logctl/#add-rule"><code>add rule</code></a> · How-to:
+<a href="../how-to/silence-noise/#drop-a-message">Drop a message</a></p>
 
 
 
