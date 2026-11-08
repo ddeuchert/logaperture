@@ -17,20 +17,27 @@ package org.logaperture.core;
 
 import org.junit.jupiter.api.Test;
 import org.logaperture.api.Level;
+import org.logaperture.api.LevelOverride;
+import org.logaperture.api.PersistenceTier;
 
+import java.time.Instant;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/** doc/specs/doctor-verbosity-fix.md D1: what a reset would land on, which decides whether it is the fix. */
+/**
+ * doc/specs/doctor-verbosity-fix.md D1: what a {@code reset} would do, which decides whether it is the fix.
+ * {@code DoctorFixExecutionTest} runs the suggested commands for the same cases.
+ */
 class ResetEffectTest {
 
     private static final String LOGGER = "org.hibernate";
 
-    private static Function<String, ResetEffect> resolverFor(BaselineRegistry baselines, Level configured) {
-        // The adapter's configured level at capture: what the application's own configuration sets.
+    private final OverrideRegistry overrides = new OverrideRegistry();
+
+    /** A resolver over a baseline captured with the application's {@code configured} level (null: none of its own). */
+    private Function<String, ResetEffect> resolverFor(BaselineRegistry baselines, Level configured) {
         FakeLoggingAdapter adapter = new FakeLoggingAdapter(Level.INFO);
         if (configured != null) {
             adapter.setConfiguredLevel(LOGGER, configured);
@@ -38,63 +45,71 @@ class ResetEffectTest {
             adapter.addKnownLogger(LOGGER);
         }
         baselines.captureIfAbsent(LOGGER, adapter);
-        return ResetEffect.resolver(baselines);
+        return ResetEffect.resolver(overrides, baselines);
+    }
+
+    private void overrideTo(Level level) {
+        overrides.put(new LevelOverride(LOGGER, level, "probe", Instant.now(), "jmx", PersistenceTier.SESSION,
+                null, null, null, null));
     }
 
     @Test
-    void aNotChattyConfiguredLevel_isFixedByReset() {
-        // An override on top of an INFO baseline, or the application raising it in code: a reset lands on INFO.
-        assertEquals(ResetEffect.FIXES, resolverFor(new BaselineRegistry(), Level.INFO).apply(LOGGER));
+    void anOverrideOverANotChattyBaseline_isFixedByReset() {
+        Function<String, ResetEffect> resolver = resolverFor(new BaselineRegistry(), Level.INFO);
+        overrideTo(Level.DEBUG);
+        assertEquals(ResetEffect.FIXES, resolver.apply(LOGGER));
     }
 
     @Test
-    void aLoggerWithNoLevelOfItsOwn_isFixedByReset() {
-        assertEquals(ResetEffect.FIXES, resolverFor(new BaselineRegistry(), null).apply(LOGGER));
+    void aLoggerWithNoLevelOfItsOwnAndAnOverride_isFixedByReset() {
+        Function<String, ResetEffect> resolver = resolverFor(new BaselineRegistry(), null);
+        overrideTo(Level.DEBUG);
+        assertEquals(ResetEffect.FIXES, resolver.apply(LOGGER));
     }
 
     @Test
-    void aChattyConfiguredLevel_isNotFixedByReset_whateverIsOnTopOfIt() {
-        // Including an override of TRACE on top: reset goes back to the configured DEBUG.
-        assertEquals(ResetEffect.LANDS_ON_CONFIGURED_LEVEL,
-                resolverFor(new BaselineRegistry(), Level.DEBUG).apply(LOGGER));
+    void aLevelTheApplicationRaisedItself_hasNothingForResetToUndo() {
+        // INFO at capture, DEBUG since, no override: resetLogger answers "nothing reset".
+        assertEquals(ResetEffect.NOTHING_TO_RESET, resolverFor(new BaselineRegistry(), Level.INFO).apply(LOGGER));
     }
 
     @Test
-    void aChattyVendorLevelInEffect_isNotFixedByReset_andIsNamedAsTheVendors() {
+    void aChattyConfiguredLevel_isNotFixedByReset_withOrWithoutAnOverrideOnTop() {
+        Function<String, ResetEffect> resolver = resolverFor(new BaselineRegistry(), Level.DEBUG);
+        assertEquals(ResetEffect.LANDS_ON_CONFIGURED_LEVEL, resolver.apply(LOGGER));
+        overrideTo(Level.TRACE);
+        assertEquals(ResetEffect.LANDS_ON_CONFIGURED_LEVEL, resolver.apply(LOGGER));
+    }
+
+    @Test
+    void aChattyVendorLevel_isNotFixedByReset_andIsNamedAsTheVendors() {
         BaselineRegistry baselines = new BaselineRegistry(Map.of(LOGGER, Level.DEBUG));
         assertEquals(ResetEffect.LANDS_ON_VENDOR_LEVEL, resolverFor(baselines, Level.INFO).apply(LOGGER));
     }
 
     @Test
-    void aVendorLevelThatIsNotChatty_isFixedByReset_evenWhenTheApplicationRaisedItInCode() {
-        BaselineRegistry baselines = new BaselineRegistry(Map.of(LOGGER, Level.INFO));
-        assertEquals(ResetEffect.FIXES, resolverFor(baselines, Level.DEBUG).apply(LOGGER));
-    }
-
-    @Test
-    void aChattyVendorLevelResetToNative_landsOnTheNativeLevel() {
+    void aChattyVendorLevelResetToNative_isStillWhereAPlainResetLands() {
+        // A plain reset clears the reset-to-native state first, so it goes back to the vendor's DEBUG, not the
+        // native INFO, even with an override on top.
         BaselineRegistry baselines = new BaselineRegistry(Map.of(LOGGER, Level.DEBUG));
         Function<String, ResetEffect> resolver = resolverFor(baselines, Level.INFO);
         baselines.markResetToNative(LOGGER);
+        overrideTo(Level.TRACE);
+        assertEquals(ResetEffect.LANDS_ON_VENDOR_LEVEL, resolver.apply(LOGGER));
+    }
+
+    @Test
+    void aVendorLevelThatIsNotChatty_isFixedByResetOnlyWhereThereIsSomethingToUndo() {
+        BaselineRegistry baselines = new BaselineRegistry(Map.of(LOGGER, Level.INFO));
+        Function<String, ResetEffect> resolver = resolverFor(baselines, Level.INFO);
+        assertEquals(ResetEffect.NOTHING_TO_RESET, resolver.apply(LOGGER));
+        overrideTo(Level.DEBUG);
         assertEquals(ResetEffect.FIXES, resolver.apply(LOGGER));
     }
 
     @Test
     void aBaselineNeverCaptured_isTakenToBeTheConfigurations() {
         assertEquals(ResetEffect.LANDS_ON_CONFIGURED_LEVEL,
-                ResetEffect.resolver(new BaselineRegistry()).apply(LOGGER));
-    }
-
-    @Test
-    void vendorLevelInEffect_isOneDefinitionForGetAndTheResolver() {
-        BaselineRegistry baselines = new BaselineRegistry(Map.of(LOGGER, Level.DEBUG));
-        FakeLoggingAdapter adapter = new FakeLoggingAdapter(Level.INFO);
-        adapter.setConfiguredLevel(LOGGER, Level.INFO);
-        baselines.captureIfAbsent(LOGGER, adapter);
-        assertEquals(true, baselines.vendorLevelInEffect(LOGGER));
-        assertEquals(Optional.of(Level.DEBUG), baselines.get(LOGGER));
-        baselines.markResetToNative(LOGGER);
-        assertEquals(false, baselines.vendorLevelInEffect(LOGGER));
-        assertEquals(Optional.of(Level.INFO), baselines.get(LOGGER));
+                ResetEffect.resolver(overrides, new BaselineRegistry()).apply(LOGGER));
     }
 }

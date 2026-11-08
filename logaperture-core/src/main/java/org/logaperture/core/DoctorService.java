@@ -236,8 +236,8 @@ public final class DoctorService implements DoctorOperations {
     }
 
     /**
-     * doc/specs/doctor-verbosity-fix.md D2: {@code reset} is the fix when it lands below the chatty levels; when it
-     * would land on a chatty level the configuration or the vendor defaults file sets, it changes nothing, so the
+     * doc/specs/doctor-verbosity-fix.md D2: {@code reset} is the fix when it undoes something and lands below the
+     * chatty levels; otherwise (nothing to undo, or it would land on a chatty configured or vendor level) the
      * finding gets a command that turns the logger down, and a detail line saying why.
      */
     private DoctorFinding chattyLoggerFinding(String name, Level level) {
@@ -247,10 +247,15 @@ public final class DoctorService implements DoctorOperations {
             return new DoctorFinding("logger.verbosity-left-on", Severity.WARNING, name, summary, null,
                     "logctl reset logger " + name);
         }
-        String source = effect == ResetEffect.LANDS_ON_VENDOR_LEVEL
-                ? "the vendor defaults file" : "the application's configuration";
-        return new DoctorFinding("logger.verbosity-left-on", Severity.WARNING, name, summary,
-                "reset would go back to the level " + source + " sets, which is also chatty",
+        String detail = switch (effect) {
+            case NOTHING_TO_RESET -> "no logctl change is in force on it, so reset would do nothing: "
+                    + "the application set this level itself";
+            case LANDS_ON_VENDOR_LEVEL -> "reset would go back to the level the vendor defaults file sets, "
+                    + "which is also chatty";
+            default -> "reset would go back to the level the application's configuration sets, "
+                    + "which is also chatty";
+        };
+        return new DoctorFinding("logger.verbosity-left-on", Severity.WARNING, name, summary, detail,
                 "logctl set logger " + name + " INFO sticky");
     }
 

@@ -12,10 +12,10 @@ film (#342).
 After this feature, the user will be able to:
 
 - Run `logctl doctor` and, for a chatty framework logger (`org.hibernate` and the like) left at `DEBUG`, be
-  given a command that actually turns it down: `logctl reset logger <name>` when someone set it with
-  `logctl`, and `logctl set logger <name> INFO sticky` when the application's own configuration or a vendor
-  defaults file set it.
-- Read in the finding where the level comes from, so it is clear why `reset` would not help.
+  given a command that actually turns it down: `logctl reset logger <name>` when it undoes something that
+  `logctl` set, and `logctl set logger <name> INFO sticky` when the application's own configuration, a vendor
+  defaults file or the application's code set it.
+- Read in the finding why `reset` would not help, so the suggestion is not a surprise.
 
 Guide pages this changes: `reference/doctor-checks.md` (the `logger.verbosity-left-on` fix), and the one
 sentence under the `doctor` film in `how-to/find-disk-usage.md` and `now-showing.md` that says the film's
@@ -37,33 +37,39 @@ today.
 
 ## Design
 
-**D1. Doctor is told what a reset would land on.** *(Revised after review, 2026-11-07: the first version asked
-where the level comes from, which misclassifies an override on top of a chatty configured level, and a vendor
-file that names the logger at `INFO` while the application raised it in code. The question that decides whether
-`reset` is the fix is what it lands on.)* A small function the container supplies,
-`Function<String, ResetEffect>`, answered from the baseline a reset returns to (`BaselineRegistry.get`: the vendor
-level when one is in effect, else the configured one):
+**D1. Doctor is told what a reset would do.** *(Revised twice after review, 2026-11-07. The first version asked where
+the level comes from, which misclassifies an override over a chatty configured level. The second asked what a
+reset lands on, using the effective baseline, and Copilot's review showed two more cases it gets wrong: a reset
+does nothing at all when no override or vendor reset-to-native state exists, and a plain reset clears
+reset-to-native first, so it lands on the vendor file's level, not the native one.)* A small function the container
+supplies, `Function<String, ResetEffect>`, answered from what `logctl reset logger` really does
+(`LevelControlService.resetLogger`/`resetOne`):
 
-- `FIXES`: that baseline is not a chatty level (`DEBUG`, `TRACE`, `ALL`), so `logctl reset logger` fixes it,
-  whether the chatty level came from an override or from the application's code;
-- `LANDS_ON_VENDOR_LEVEL`: the baseline is a chatty level the vendor defaults file sets (it is not reset to native);
-- `LANDS_ON_CONFIGURED_LEVEL`: the baseline is a chatty level the application's configuration sets, or was never
-  captured.
+- the **landing level** is the vendor defaults file's level when the file names the logger (a plain reset clears a
+  reset-to-native state before it applies the baseline), else the application's configured baseline;
+- it **changes anything** only when an override is present or a vendor reset-to-native state exists to undo.
 
-`ResetEffect.resolver(baselines)` builds it from the `BaselineRegistry` a context already holds, so `DoctorService`
-stays free of any state of its own and stays read-only. `BaselineRegistry.vendorLevelInEffect` is the one
-definition of "a vendor level is in effect", shared by `get`, `restore` and the resolver. There are two composition
-roots, `NoneContainer` and `JBossLogManagerContainer` (the WildFly path, with its own copy of the install wiring),
-and both pass it; the first version of this change wired only the first, and the real check on the dev WildFly is
-what found the second. A `DoctorService` built without one takes every level to land on the configuration's (a
-`set logger ... INFO sticky` suggestion, which fixes an override too but with a detail line that is not so); a new
-container must pass a resolver.
+| Value | When |
+|---|---|
+| `FIXES` | it changes something, and the landing level is not chatty (`DEBUG`, `TRACE`, `ALL`) |
+| `NOTHING_TO_RESET` | the landing level is not chatty, but there is nothing to undo: the application set the level itself, in code |
+| `LANDS_ON_VENDOR_LEVEL` | the landing level is a chatty one the vendor defaults file sets |
+| `LANDS_ON_CONFIGURED_LEVEL` | the landing level is a chatty one the application's configuration sets, or the baseline was never captured |
+
+`ResetEffect.resolver(overrides, baselines)` builds it from the `OverrideRegistry` and `BaselineRegistry` a context
+already holds, so `DoctorService` stays free of any state of its own and stays read-only. There are two
+composition roots, `NoneContainer` and `JBossLogManagerContainer` (the WildFly path, with its own copy of the
+install wiring), and both pass it; the first version of this change wired only the first, and the real check on
+the dev WildFly is what found the second. A `DoctorService` built without one takes every level to land on the
+configuration's (a `set logger ... INFO sticky` suggestion, which fixes an override too but with a detail line that
+is not so); a new container must pass a resolver.
 
 **D2. What the finding says.**
 
-| Reset would | Summary (unchanged) | Detail | Suggested fix |
+| Value | Summary (unchanged) | Detail | Suggested fix |
 |---|---|---|---|
 | `FIXES` | `<name> is explicitly set to DEBUG — a known-chatty framework logger.` | none, as today | `logctl reset logger <name>` |
+| `NOTHING_TO_RESET` | the same | `no logctl change is in force on it, so reset would do nothing: the application set this level itself` | `logctl set logger <name> INFO sticky` |
 | `LANDS_ON_CONFIGURED_LEVEL` | the same | `reset would go back to the level the application's configuration sets, which is also chatty` | `logctl set logger <name> INFO sticky` |
 | `LANDS_ON_VENDOR_LEVEL` | the same | `reset would go back to the level the vendor defaults file sets, which is also chatty` | `logctl set logger <name> INFO sticky` |
 
@@ -81,9 +87,11 @@ summary text stay as they are, so `--json` and the drift-tested check list are u
 which is exactly what it recorded. Only the sentence below it in the guide changes.
 
 **D6. Tests.** `DoctorServiceTest`: each effect gets its detail and suggested fix; the function is asked for
-the logger's name; no function means `LANDS_ON_CONFIGURED_LEVEL`. `ResetEffectTest`: the baseline cases above,
-including an override over a chatty configured level and a vendor `INFO` the application raised. A check against the dev WildFly with `org.hibernate`
-set at `DEBUG` in the server's own configuration (the case the bug is about), then the suggested
+the logger's name; no function means `LANDS_ON_CONFIGURED_LEVEL`. `ResetEffectTest`: the cases above. `DoctorFixExecutionTest`:
+each case **runs the suggested command** against the real `LevelControlService` and requires the finding to be
+gone (an override over `INFO`, a configured `DEBUG`, an override over it, a vendor `DEBUG`, a vendor `DEBUG` reset to
+native and then overridden, a level the application raised in code, with and without a vendor `INFO`). A check against the dev WildFly with `org.hibernate`
+set at `DEBUG` in the server's own configuration, and one raised in code after it was first seen (the case the bug is about), then the suggested
 `set logger ... INFO sticky`, and `doctor` again.
 
 ## Decisions to sign off

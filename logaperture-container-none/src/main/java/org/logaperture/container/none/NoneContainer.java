@@ -249,7 +249,7 @@ public final class NoneContainer implements AutoCloseable {
         // What a reset would land on, for the fix `doctor` suggests for a level left on
         // (doc/specs/doctor-verbosity-fix.md D1).
         DoctorService doctorService = new DoctorService(adapter, policy, List::of,
-                ResetEffect.resolver(baselines));
+                ResetEffect.resolver(overrides, baselines));
         TopService topService = new TopService(adapter, policy);
         StormService stormService = new StormService(adapter, policy, aggregate.stormDetectionSwitch());
         EnvironmentReportService environmentReportService = new EnvironmentReportService(adapter, policy);

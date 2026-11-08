@@ -185,6 +185,14 @@ class DoctorServiceTest {
     }
 
     @Test
+    void verbosity_whenThereIsNothingForResetToUndo_itIsTurnedDownAndSaysWhy() {
+        DoctorFinding finding = chattyFindingFor(ResetEffect.NOTHING_TO_RESET, new ArrayList<>());
+
+        assertEquals("logctl set logger org.hibernate INFO sticky", finding.suggestedFix());
+        assertTrue(finding.detail().contains("reset would do nothing"), finding.detail());
+    }
+
+    @Test
     void verbosity_whenResetLandsOnAVendorLevel_itIsTurnedDownAndNamesTheFile() {
         DoctorFinding finding = chattyFindingFor(ResetEffect.LANDS_ON_VENDOR_LEVEL, new ArrayList<>());
 

@@ -309,7 +309,7 @@ public final class JBossLogManagerContainer implements AutoCloseable {
         // What a reset would land on, for the fix `doctor` suggests for a level left on
         // (doc/specs/doctor-verbosity-fix.md D1).
         DoctorService doctorService = new DoctorService(adapter, policy, () -> containerFindings.get(),
-                ResetEffect.resolver(baselines));
+                ResetEffect.resolver(overrides, baselines));
         EnvironmentReportService environmentReportService = new EnvironmentReportService(adapter, policy);
 
         // Phase 1 ends here (doc/specs/wildfly-deferred-handler-install.md "Two phases"): the
