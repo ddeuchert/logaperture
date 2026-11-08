@@ -261,3 +261,7 @@ Decision #5 — not part of this exit criterion) — **met**:
   confirmed by `DoctorServiceTest` (a check with nothing to inspect contributes zero findings)
   and by the real-WildFly run (`handler.duplicate-output` correctly absent).
 - No capability beyond `VIEW` is required; unit-tested (`DoctorServiceTest`).
+
+**Amended (issue #345):** the fix suggested for a chatty logger left on depends on where its level comes
+from, so a level the configuration or a vendor defaults file sets is not sent to `reset`, which would
+change nothing: [`doctor-verbosity-fix.md`](doctor-verbosity-fix.md).

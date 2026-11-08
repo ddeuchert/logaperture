@@ -63,8 +63,9 @@ With `--json`, `persistentHandlers` is the number of file-backed handlers: `0` f
 
 Above: `logctl doctor` flags a chatty framework logger left at `DEBUG` and prints the command that
 fixes it, and reports three settings of the server's own handlers that `logctl` leaves alone. In
-the film the `DEBUG` was set at runtime, which `logctl reset logger` undoes. A level that the
-application's own configuration sets is changed there, or turned down with `logctl set logger`.
+the film the `DEBUG` was set at runtime, which `logctl reset logger` undoes. For a level that the
+application's own configuration sets, `doctor` suggests `logctl set logger <name> INFO sticky`
+instead, and says where the level comes from.
 
 ```sh
 logctl doctor

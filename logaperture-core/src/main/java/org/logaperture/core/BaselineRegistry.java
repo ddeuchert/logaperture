@@ -140,9 +140,8 @@ public final class BaselineRegistry {
      */
     public void restore(String name, LoggingAdapter adapter) {
         Baseline held = captured.get(name); // one snapshot: a concurrent rebase must not split level from token
-        Level vendor = vendorLevels.get(name);
-        if (vendor != null && !resetToNative.contains(name)) {
-            adapter.restoreLevel(name, vendor, null); // a vendor level is never written with the native token
+        if (vendorLevelInEffect(name)) {
+            adapter.restoreLevel(name, vendorLevels.get(name), null); // never written with the native token
             return;
         }
         if (held == null) {
@@ -172,11 +171,15 @@ public final class BaselineRegistry {
      *                               was never captured
      */
     public Optional<Level> get(String name) {
-        Level vendor = vendorLevels.get(name);
-        if (vendor != null && !resetToNative.contains(name)) {
-            return Optional.of(vendor);
+        if (vendorLevelInEffect(name)) {
+            return Optional.of(vendorLevels.get(name));
         }
         return nativeLevel(name);
+    }
+
+    /** Whether the vendor defaults file names {@code name} and its level is in effect (not reset to native). */
+    public boolean vendorLevelInEffect(String name) {
+        return vendorLevels.containsKey(name) && !resetToNative.contains(name);
     }
 
     /**

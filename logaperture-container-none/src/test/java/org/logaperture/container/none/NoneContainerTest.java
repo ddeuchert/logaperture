@@ -153,6 +153,32 @@ class NoneContainerTest {
         }
     }
 
+    /** doc/specs/doctor-verbosity-fix.md D1: the container tells doctor what a reset would land on. */
+    @Test
+    void doctor_resetIsTheFixOnlyWhereItLandsBelowTheChattyLevels() {
+        ch.qos.logback.classic.Logger configured =
+                (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("org.apache.http");
+        LoggerFactory.getLogger("org.hibernate"); // known to the adapter, as a framework's logger would be
+        configured.setLevel(ch.qos.logback.classic.Level.DEBUG); // the configuration's own level, there at install
+        try (NoneContainer root = newRoot()) {
+            AggregateLevelControl ops = install(root); // captures every known logger's baseline
+
+            ops.setLogger("org.hibernate", Level.DEBUG, SetLevelOptions.defaults()); // over an INFO baseline
+            ops.setLogger("org.apache.http", Level.TRACE, SetLevelOptions.defaults()); // over a DEBUG baseline
+
+            List<org.logaperture.api.DoctorFinding> findings = ops.diagnose();
+            org.logaperture.api.DoctorFinding overInfo = findings.stream()
+                    .filter(f -> "org.hibernate".equals(f.subject())).findFirst().orElseThrow();
+            org.logaperture.api.DoctorFinding overDebug = findings.stream()
+                    .filter(f -> "org.apache.http".equals(f.subject())).findFirst().orElseThrow();
+            assertEquals("logctl reset logger org.hibernate", overInfo.suggestedFix());
+            assertEquals("logctl set logger org.apache.http INFO sticky", overDebug.suggestedFix(),
+                    "a reset would go back to the configured DEBUG");
+        } finally {
+            configured.setLevel(null);
+        }
+    }
+
     // --- a context the class-loader detector bound (doc/specs/class-loader-detector.md C6) ------------
 
     @Test

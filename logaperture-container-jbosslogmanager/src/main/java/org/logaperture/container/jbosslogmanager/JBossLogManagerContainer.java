@@ -36,6 +36,7 @@ import org.logaperture.core.HandlerOverrideRegistry;
 import org.logaperture.core.LevelControlService;
 import org.logaperture.core.LoggerOverrideChangeListener;
 import org.logaperture.core.OverrideRegistry;
+import org.logaperture.core.ResetEffect;
 import org.logaperture.core.RuleService;
 import org.logaperture.core.StormDetectionSwitch;
 import org.logaperture.core.StormService;
@@ -305,7 +306,10 @@ public final class JBossLogManagerContainer implements AutoCloseable {
             Diagnostics.warn("failed to resume persisted overrides, continuing without them", e);
         }
 
-        DoctorService doctorService = new DoctorService(adapter, policy, () -> containerFindings.get());
+        // What a reset would land on, for the fix `doctor` suggests for a level left on
+        // (doc/specs/doctor-verbosity-fix.md D1).
+        DoctorService doctorService = new DoctorService(adapter, policy, () -> containerFindings.get(),
+                ResetEffect.resolver(overrides, baselines));
         EnvironmentReportService environmentReportService = new EnvironmentReportService(adapter, policy);
 
         // Phase 1 ends here (doc/specs/wildfly-deferred-handler-install.md "Two phases"): the

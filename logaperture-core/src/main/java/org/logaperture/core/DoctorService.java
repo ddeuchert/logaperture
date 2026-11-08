@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -65,6 +66,7 @@ public final class DoctorService implements DoctorOperations {
     private final LoggingAdapter adapter;
     private final CapabilityPolicy policy;
     private final Supplier<List<DoctorFinding>> containerFindings;
+    private final Function<String, ResetEffect> resetEffect;
 
     public DoctorService(LoggingAdapter adapter, CapabilityPolicy policy) {
         this(adapter, policy, List::of);
@@ -77,9 +79,22 @@ public final class DoctorService implements DoctorOperations {
      */
     public DoctorService(LoggingAdapter adapter, CapabilityPolicy policy,
             Supplier<List<DoctorFinding>> containerFindings) {
+        this(adapter, policy, containerFindings, name -> ResetEffect.LANDS_ON_CONFIGURED_LEVEL);
+    }
+
+    /**
+     * @param resetEffect what a {@code reset} would land on for a logger, so a level left on gets the fix that
+     *                    works for it (doc/specs/doctor-verbosity-fix.md D1). Every composition root passes
+     *                    {@link ResetEffect#resolver}; without one, every level is taken to land on the
+     *                    configuration's, which suggests {@code set logger ... INFO sticky}: it fixes an override
+     *                    too, but its detail line then says something that is not so. A new container must pass one.
+     */
+    public DoctorService(LoggingAdapter adapter, CapabilityPolicy policy,
+            Supplier<List<DoctorFinding>> containerFindings, Function<String, ResetEffect> resetEffect) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.policy = Objects.requireNonNull(policy, "policy");
         this.containerFindings = Objects.requireNonNull(containerFindings, "containerFindings");
+        this.resetEffect = Objects.requireNonNull(resetEffect, "resetEffect");
     }
 
     @Override
@@ -210,9 +225,7 @@ public final class DoctorService implements DoctorOperations {
             }
             Level configured = adapter.configuredLevel(seedName).orElse(null);
             if (isChattyLevel(configured)) {
-                flagged.add(new DoctorFinding("logger.verbosity-left-on", Severity.WARNING, seedName,
-                        seedName + " is explicitly set to " + configured + " — a known-chatty framework logger.",
-                        null, "logctl reset logger " + seedName));
+                flagged.add(chattyLoggerFinding(seedName, configured));
             }
         }
         if (flagged.isEmpty()) {
@@ -222,7 +235,31 @@ public final class DoctorService implements DoctorOperations {
         return List.copyOf(flagged);
     }
 
-    private static boolean isChattyLevel(Level level) {
+    /**
+     * doc/specs/doctor-verbosity-fix.md D2: {@code reset} is the fix when it undoes something and lands below the
+     * chatty levels; otherwise (nothing to undo, or it would land on a chatty configured or vendor level) the
+     * finding gets a command that turns the logger down, and a detail line saying why.
+     */
+    private DoctorFinding chattyLoggerFinding(String name, Level level) {
+        String summary = name + " is explicitly set to " + level + " — a known-chatty framework logger.";
+        ResetEffect effect = resetEffect.apply(name);
+        if (effect == ResetEffect.FIXES) {
+            return new DoctorFinding("logger.verbosity-left-on", Severity.WARNING, name, summary, null,
+                    "logctl reset logger " + name);
+        }
+        String detail = switch (effect) {
+            case NOTHING_TO_RESET -> "no logctl change is in force on it, so reset would do nothing: "
+                    + "the application set this level itself";
+            case LANDS_ON_VENDOR_LEVEL -> "reset would go back to the level the vendor defaults file sets, "
+                    + "which is also chatty";
+            default -> "reset would go back to the level the application's configuration sets, "
+                    + "which is also chatty";
+        };
+        return new DoctorFinding("logger.verbosity-left-on", Severity.WARNING, name, summary, detail,
+                "logctl set logger " + name + " INFO sticky");
+    }
+
+    static boolean isChattyLevel(Level level) {
         return level == Level.DEBUG || level == Level.TRACE || level == Level.ALL;
     }
 

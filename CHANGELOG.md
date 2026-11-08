@@ -103,6 +103,13 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 - **`logctl list loggers` with no loggers** now says `No loggers known yet. LogAperture is running; if it controls
   no logging context in this JVM, `logctl doctor` says why.`
 
+### Fixed
+
+- **`doctor` no longer suggests `logctl reset logger` for a chatty logger the configuration sets to `DEBUG`.**
+  `reset` goes back to the configured level, so the command changed nothing. For a level the application's
+  configuration or a vendor defaults file sets, `doctor` now says where the level comes from and suggests
+  `logctl set logger <name> INFO sticky`; for one `logctl` set, it still suggests `reset` (issue #345).
+
 ## [1.0.0-beta.4] — 2026-10-28
 
 `logctl` now finds a LocalSystem Windows service's JVM from an Administrator prompt. **Not for production yet.**
