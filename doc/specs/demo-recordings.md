@@ -199,6 +199,37 @@ logctl add rule drop com.example.shop.payment.RetryQueue --message-contains Retr
 The files: `dev/demos/storm.sh` (story 5), `RetryQueue` and the switch in the sample WAR's `DemoShop` and
 `DemoServlet`, `record.sh` (`stories`, the reset), `guide/assets/demos/storm.cast`.
 
+## Story 6: is my logging config going to hurt me? (issue #342, signed off 2026-11-07)
+
+Story 6 is the `doctor` candidate from #198 (S1). `doctor` reads the configuration and says what will hurt;
+it never changes anything. On the dev WildFly it reports three things about the server's own handlers
+(`FILE` has no size cap, `FILE` and `CONSOLE` flush on every record) that `logctl` does not change, so a
+film that only lists them has nothing to fix. It also flags a known-chatty framework logger left at
+`DEBUG` and prints the exact command that fixes it, which `logctl` can run. The film shows both: what is
+`logctl`'s to fix, and what it only reports.
+
+```sh
+# A web shop app deployed on a WildFly server. Is its logging configuration going to hurt it?
+logctl doctor
+#   [WARN] FILE has no size cap (unbounded), FILE and CONSOLE autoflush: WildFly's own handler settings
+#   [WARN] org.hibernate is explicitly set to DEBUG, a known-chatty framework logger
+#          suggested: logctl reset logger org.hibernate
+# doctor only reports. One of these is ours to fix, and it says how:
+logctl reset logger org.hibernate
+#   org.hibernate -> INFO (baseline)
+# The other three are the server's handler settings: doctor names them, and leaves them to you.
+```
+
+| # | Decision | Recommendation |
+|---|----------|----------------|
+| DR1 | Content | `doctor`, then the one fix `logctl` can make (`reset logger org.hibernate`, the command `doctor` itself suggests). The unbounded `FILE` and the autoflush warnings are narrated as the server's own settings, reported and left alone. |
+| DR2 | The setup | Hidden, before recording: `logctl set logger org.hibernate DEBUG`, an override that `record.sh`'s reset already clears. `doctor` reads it as "explicitly set to DEBUG" whether it came from the configuration or from an override, so the finding is real, not staged output. The story narrates it as DEBUG left on. |
+| DR3 | One `doctor` only | The pane holds 19 rows and `doctor` prints 12, so a second `doctor` after the fix does not fit. The proof is `reset`'s own line, `org.hibernate → INFO (baseline)`. The story ends at about 18 rows. |
+| DR4 | Real output | Nothing is edited. The disk line shows this machine's free space and write rate ("910.8 GB free at ~4 MB/h"), which varies by machine and names no host, so it stays as it is. |
+| DR5 | Checks | `expect_output` for `org.hibernate is explicitly set to DEBUG` and the line `suggested: logctl reset logger org.hibernate`; after the reset, `org.hibernate → INFO (baseline)`. |
+| DR6 | Guide | `how-to/find-disk-usage.md` where it introduces `logctl doctor`, and film 6 on Now Showing with its commands explained. |
+| DR7 | Name and numbering | Story 6, `dev/demos/doctor.sh`, `guide/assets/demos/doctor.cast`. |
+
 ## Design
 
 ### The demo app (D1)
