@@ -13,6 +13,7 @@ asciinema: the server console on top, `logctl` below. Design:
 | Stack traces are burying the log | [`trim.sh`](trim.sh) | `guide/assets/demos/trim.cast` | How-to: Silence noise |
 | What is bursting? | [`storm.sh`](storm.sh) | `guide/assets/demos/storm.cast` | How-to: Log storms |
 | Is my logging config going to hurt me? | [`doctor.sh`](doctor.sh) | `guide/assets/demos/doctor.cast` | How-to: Find where the disk goes |
+| Ship what you tuned | [`export.sh`](export.sh) | `guide/assets/demos/export.cast` | Vendors: Vendor defaults |
 
 ## Prerequisites
 
@@ -30,7 +31,7 @@ dev/demos/record.sh all             # every story, into guide/assets/demos/
 dev/demos/record.sh why-no-trace    # one story
 ```
 
-`all` takes about five minutes. Before each story, `record.sh` resets every
+`all` takes about six minutes. Before each story, `record.sh` resets every
 logger, handler and rule (sticky ones too) and starts the sample's demo shop
 (`POST /logaperture-sample-war/demo/start`); afterwards it resets again and stops the shop.
 **Don't record against a server whose overrides you want to keep.**

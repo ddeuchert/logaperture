@@ -15,6 +15,7 @@ its reference and to the how-to that covers it.
 4. [Stack traces are burying the log](#trim): keep every warning, but not its trace.
 5. [What is bursting?](#storm): find the one message behind a scrolling console.
 6. [Is my logging config going to hurt me?](#doctor): what `doctor` reports, and the one fix `logctl` can make.
+7. [Ship what you tuned](#export): turn sticky changes into the file your product ships.
 
 ## Why don't I see my TRACE? {#why-no-trace}
 
@@ -243,3 +244,40 @@ How-to: [What in the configuration will hurt](how-to/find-disk-usage.md#what-in-
 configured. It prints the level it went back to, with `(baseline)`.
 
 Reference: [`reset`](reference/logctl.md#reset) · How-to: [Reset](how-to/undo-changes.md#reset)
+
+## Ship what you tuned {#export}
+
+You ship a product on a JVM, and you have tuned its logging live in a test environment until it is
+right. Your customers shouldn't have to repeat that. `export vendor-defaults` writes every `sticky`
+change, on top of the file the JVM started with, as a vendor defaults file you ship with the
+product. Reach for it when the settings are right and you want customers to start from them.
+
+<div class="la-cast" data-cast="export"></div>
+
+### Commands in this film {#export-commands}
+
+**`logctl set logger com.example.shop.payment WARN sticky`**: change a logger's level and keep it
+across restarts. Only `sticky` changes are exported; `session` and `for` changes are left out.
+
+Reference: [`set logger`](reference/logctl.md#set-logger) · How-to:
+[Raise a log level](how-to/raise-a-level.md)
+
+**`logctl add rule drop com.example.shop.inventory.StockSync --message-contains synced --below WARN sticky`**:
+drop a repeating message below `WARN`, kept across restarts.
+
+- `drop`: discard the matching events, letting the first through and then one every 5 minutes.
+- `--message-contains synced`: match events whose message contains the text.
+- `--below WARN`: only events below `WARN`, so a warning or an error from the logger is never dropped.
+- `sticky`: keep it across restarts, which is what puts it in the export.
+
+Reference: [`add rule`](reference/logctl.md#add-rule) · How-to:
+[Drop a message](how-to/silence-noise.md#drop-a-message)
+
+**`logctl export vendor-defaults`**: print the vendor defaults file: the file the JVM started with,
+plus every `sticky` change. Each entry's `stateId` ties it to the change it came from, so when the
+agent starts with the new file, the file takes those changes over and each setting is active once.
+Add `--out <file>` to write it to a file. Ship the file with the product and start the agent with
+`--vendor-defaults=<file>`.
+
+Reference: [`export vendor-defaults`](reference/logctl.md#export-vendor-defaults) · How-to:
+[Making the file: tune, then export](vendors/vendor-defaults.md#making-the-file-tune-then-export)

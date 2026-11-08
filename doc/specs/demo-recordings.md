@@ -2,7 +2,8 @@
 
 Status: **signed off 2026-10-10**, decisions D1–D12 agreed as recommended. Story 5 (storms,
 issue #198): **signed off 2026-11-07**, decisions S1–S7 agreed as recommended. Story 6 (`doctor`,
-issue #342): **signed off 2026-11-07**, decisions DR1–DR7 agreed as recommended. Implemented
+issue #342): **signed off 2026-11-07**, decisions DR1–DR7 agreed as recommended. Story 7 (vendor-defaults
+`export`, issue #343): **signed off 2026-11-08**, decisions V1–V8 agreed as recommended. Implemented
 2026-10-10: story 1 as the prototype (D12), reviewed, then stories 2 and 3. Story 4 (a `trim`
 rule) added 2026-10-18, decisions T1–T6 agreed as recommended. The Now Showing page: C1–C5
 and N1–N6 agreed 2026-10-18, as recommended.
@@ -10,9 +11,10 @@ Issues: [#196](https://github.com/ddeuchert/logaperture/issues/196) (stories 1�
 [#226](https://github.com/ddeuchert/logaperture/issues/226) (story 4),
 [#228](https://github.com/ddeuchert/logaperture/issues/228) (the Now Showing page),
 [#198](https://github.com/ddeuchert/logaperture/issues/198) (story 5),
-[#342](https://github.com/ddeuchert/logaperture/issues/342) (story 6). Stories 1–4 and the Now Showing page: milestone
+[#342](https://github.com/ddeuchert/logaperture/issues/342) (story 6),
+[#343](https://github.com/ddeuchert/logaperture/issues/343) (story 7). Stories 1–4 and the Now Showing page: milestone
 `1.0.0`; documentation and a test fixture only, so they could land after the beta 1 feature freeze (Oct 15). Story 5:
-milestone `1.1.0`; story 6: `1.x`; both branch from and target `develop`.
+milestone `1.1.0`; stories 6 and 7: `1.x`; all branch from and target `develop`.
 Parent spec: [`doc/specs/user-documentation.md`](user-documentation.md) (the guide this adds to), and
 through it [`doc/logaperture-spec.md`](../logaperture-spec.md) §17.1 "User documentation".
 Related: [`wildfly-dev-environment.md`](wildfly-dev-environment.md) (the server the demos run
@@ -26,12 +28,12 @@ After this feature, the user will be able to:
   on the README, with the server's console above and `logctl` below.
 - Pause a recording on the guide and copy a command straight out of it, including in the guide
   that ships in the release zip.
-- See six stories: **why don't I see my TRACE?** (a handler stricter than the logger),
+- See seven stories: **why don't I see my TRACE?** (a handler stricter than the logger),
   **debug one package for a while, then it cleans itself up** (`set logger … for`),
   **something is flooding the log** (`top`, then a `drop` rule), **stack traces are burying
   the log** (a `trim` rule), **what is bursting?** (`enable storms`, `storms`, then a `drop`
-  rule on the message), and **is my logging config going to hurt me?** (`doctor`, then the
-  one fix `logctl` can make).
+  rule on the message), **is my logging config going to hurt me?** (`doctor`, then the one fix
+  `logctl` can make), and **ship what you tuned** (sticky changes, then `export vendor-defaults`).
 - Watch every recording in one place, the guide's **Now Showing** page: for each, when you'd
   run into that problem, the recording, and every command in it explained, linked to its
   reference.
@@ -40,7 +42,8 @@ After this feature, the user will be able to:
 
 Guide pages changed: `index.md` ("See it work") and `get-started/quick-start.md` (step 4) for
 story 1, `how-to/raise-a-level.md` for story 2, `how-to/silence-noise.md` for stories 3 and 4,
-`how-to/storms.md` for story 5, `how-to/find-disk-usage.md` for story 6.
+`how-to/storms.md` for story 5, `how-to/find-disk-usage.md` for story 6,
+`vendors/vendor-defaults.md` for story 7.
 `now-showing.md` (new, its own nav entry) for all of them, and a link to it from `index.md`'s
 "See it work". README: one GIF near the top.
 
@@ -56,8 +59,6 @@ explains the same steps.
 
 ## Out of scope
 
-- The `doctor` story and the vendor-defaults `export` story, both candidates for #198: filed as their own
-  issues, 1.x (S1).
 - A narrated screen capture (OBS, audio). The issue leaves that for later.
 - Running the recordings in CI. They need Docker, a WildFly and a minute of wall-clock time each;
   the release step is manual (D10).
@@ -248,7 +249,7 @@ logctl add rule drop com.example.shop.inventory.StockSync --message-contains syn
 logctl export vendor-defaults
 #   # Exported by logctl export vendor-defaults, ... agent 1.1.0-SNAPSHOT
 #   loggers: - name: com.example.shop.payment, level: WARN, stateId: ...
-#   rules:   - id: drop-stocksync, action: drop, ..., messageContains: "synced", below: WARN, ...
+#   rules:   - id: drop-stocksync, action: drop, ..., messageContains: synced, below: WARN, ...
 # Ship it with the product and start the agent with --vendor-defaults=<file>. These settings are the baseline.
 ```
 
@@ -260,9 +261,9 @@ about 24 rows, past the 19 the `logctl` pane has (V2).
 | V1 | Content | One sticky logger level and one sticky `drop` rule, then `export vendor-defaults` to the screen, ending on the YAML. Levels and rules, as the issue asks; a handler is left to the guide's example. (Agreed with David, 2026-11-08.) |
 | V2 | Pane size | This one story gives the console 6 rows and `logctl` 25 (`DEMO_CONSOLE_ROWS=6` in the story file, read like `DEMO_TITLE`; every other story keeps 12 and 19). The console has nothing to show here, and the rule that the whole `logctl` pane fits, so the last frame (the guide's poster) shows the story from its first line, still holds: the film ends at about 24 of 25 rows. The one exception to the 19-row pane, noted where that rule is stated. |
 | V3 | Real output | Nothing is edited. The export's header carries the time and the agent's version (`1.1.0-SNAPSHOT` until the release), and each entry a random `stateId` that ties it to the sticky change it came from, so no two recordings are byte-identical. No host or path appears. |
-| V4 | The rule's matcher | `--message-contains synced`, one word, because `run` echoes arguments without their quotes; the file shows it as `messageContains: "synced"`. |
+| V4 | The rule's matcher | `--message-contains synced`, one word, because `run` echoes arguments without their quotes; the file shows it as `messageContains: synced` (the exporter quotes only a value with a space in it; found while recording). |
 | V5 | Shipping the file | Narrated in one comment line, not shown: a restart cannot be filmed inside 90 seconds, and `--vendor-defaults=<file>` is the real agent argument. |
-| V6 | Checks | `expect_output` for the export header, `name: com.example.shop.payment`, `level: WARN`, `action: drop` and `messageContains: "synced"`. `reset_server` already clears sticky loggers, handlers and rules, so no story starts or ends with them set. |
+| V6 | Checks | `expect_output` for the export header, `name: com.example.shop.payment`, `level: WARN`, `action: drop` and `messageContains: synced`. `reset_server` already clears sticky loggers, handlers and rules, so no story starts or ends with them set. |
 | V7 | Guide | `vendors/vendor-defaults.md`, "Making the file: tune, then export" (the static example stays, it uses other settings); film 7 on Now Showing with each command explained. |
 | V8 | Name and numbering | Story 7, `dev/demos/export.sh`, `guide/assets/demos/export.cast`. |
 
@@ -324,6 +325,7 @@ dev/demos/
   trim.sh                 story 4
   storm.sh                story 5
   doctor.sh               story 6
+  export.sh               story 7
 guide/assets/demos/
   why-no-trace.cast       the recordings, committed (asciicast v2 text: ~40 KB each,
   debug-for-a-while.cast  ~580 KB for the flood, whose stack traces are most of it)
@@ -331,6 +333,7 @@ guide/assets/demos/
   trim.cast
   storm.cast              ~770 KB: the console scrolls ~200 lines a second until the rule
   doctor.cast             ~26 KB
+  export.cast             ~29 KB
 ```
 
 A story script is a `story()` function made of steps:
@@ -379,7 +382,7 @@ at **120×32**, split top and bottom, each pane titled in its top border:
   (unless `ANSICON` is set), and `-Dorg.jboss.logmanager.nocolor=true` turns it off anywhere.
   `server.log` never has colours.
 - **Bottom, 19 rows: `logctl`**, with the prompt `$ `. A story's whole bottom pane fits in 19
-  lines, so its last frame, which is the guide's poster and the GIF's held frame, shows the whole
+  lines (story 7 asks for a 6-row console and has 25: V2), so its last frame, which is the guide's poster and the GIF's held frame, shows the whole
   story from its first line.
 
 Top and bottom rather than side by side, because log lines and `logctl` tables both need the
@@ -463,7 +466,7 @@ Reference: [`set logger`](reference/logctl.md#set-logger) · How-to:
 
 - A film's anchor is its recording's name, which is stable: it is the `.cast` file's name and
   `record.sh`'s story name. The commands heading gets an explicit `{#<name>-commands}`, since
-  six identical headings would otherwise get `_1`, `_2`… suffixes that move when a film is
+  seven identical headings would otherwise get `_1`, `_2`… suffixes that move when a film is
   added.
 - Every command the film runs is listed, as typed, with every argument and option explained.
   A command a later film repeats (`set handler CONSOLE AUTO` in films 1 and 2, `list rules` in
@@ -471,7 +474,7 @@ Reference: [`set logger`](reference/logctl.md#set-logger) · How-to:
 - Each command links to its `reference/logctl.md` anchor (every command there has one) and to
   the how-to section that covers that use of it.
 - The player is the guide's existing embed, unchanged: poster at the last frame, plays from the
-  release zip with no network (C4). All six films load with the page (N3).
+  release zip with no network (C4). All seven films load with the page (N3).
 
 The paragraph for each film, and the commands it explains:
 
@@ -483,6 +486,7 @@ The paragraph for each film, and the commands it explains:
 | Stack traces are burying the log | A known failure, the same root cause every time, prints a full stack trace each time, and the trace teaches nothing new. | `add rule trim com.example.shop.payment.PaymentGateway --throwable java.net.ConnectException --any-cause`, `list rules` | `#add-rule`, `#list-rules` | `silence-noise.md#shorten-a-stack-trace`, `silence-noise.md#matching-on-the-exception` |
 | What is bursting? | The log scrolls too fast to read and you don't know which message is doing it. | `enable storms`, `storms`, `add rule drop com.example.shop.payment.RetryQueue --message-contains Retrying` | `#storms`, `#add-rule` | `storms.md#turn-it-on`, `storms.md#see-the-storms`, `silence-noise.md#drop-a-message` |
 | Is my logging config going to hurt me? | You want to know what in the logging configuration will cost you disk or noise, before it does. | `doctor`, `reset logger org.hibernate` | `#doctor`, `#reset` | `find-disk-usage.md#what-in-the-configuration-will-hurt`, `undo-changes.md#reset` |
+| Ship what you tuned | You tuned logging live and want customers to start from it: sticky changes become the file the product ships. | `set logger com.example.shop.payment WARN sticky`, `add rule drop com.example.shop.inventory.StockSync --message-contains synced --below WARN sticky`, `export vendor-defaults` | `#set-logger`, `#add-rule`, `#export-vendor-defaults` | `vendors/vendor-defaults.md#making-the-file-tune-then-export`, `raise-a-level.md`, `silence-noise.md#drop-a-message` |
 
 The "for 30s" in film 2 is explained as the recording's stand-in for a real duration such as
 `for 1h` (D7).
@@ -545,7 +549,7 @@ The Now Showing page (issue #228), agreed 2026-10-18:
 | C5 | Process | Issue #228, this section, its own PR after story 4 (#227) lands; strict builds fail on broken anchors. |
 | N1 | Subtitle | No count of films ("Short films of…"), so story 5 doesn't make it stale. |
 | N2 | A command repeated in a later film | Explained again, briefly: a film reached from a link reads on its own. |
-| N3 | Loading | All films load with the page, as elsewhere in the guide (about 0.7 MB for four, most of it the flood; story 5 adds about 0.77 MB and story 6 about 26 KB, so about 1.5 MB for six, most of it the flood and the storm). No lazy loading. |
+| N3 | Loading | All films load with the page, as elsewhere in the guide (about 0.7 MB for four, most of it the flood; story 5 adds about 0.77 MB and stories 6 and 7 about 26 and 29 KB, so about 1.5 MB for seven, most of it the flood and the storm). No lazy loading. |
 | N4 | Anchor validation | Site-wide `validation: anchors: warn`; existing broken anchors it finds are fixed in the same PR. |
 | N5 | Commands drift check | The hook fails when a recording is missing from the page, or a story's `run logctl …` line isn't on it as typed. |
 | N6 | Top of the page | A short "programme" list linking to each film, as on a cinema bill. |

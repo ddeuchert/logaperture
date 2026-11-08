@@ -94,6 +94,9 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 - **A sixth demo recording: is my logging config going to hurt me?** `logctl doctor` reports a chatty
   logger left at `DEBUG` and the server's own handler settings, then `logctl reset logger` fixes the
   one `logctl` can. Embedded in How-to: Find where the disk goes and on Now Showing (issue #342).
+- **A seventh demo recording: ship what you tuned.** Sticky changes to a logger and a rule, then
+  `logctl export vendor-defaults` writes them as the file a product ships. Embedded in Vendors: Vendor
+  defaults and on Now Showing (issue #343).
 
 ### Changed
 

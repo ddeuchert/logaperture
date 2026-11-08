@@ -27,7 +27,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 out_dir=$root/guide/assets/demos
-stories=(why-no-trace debug-for-a-while flood trim storm doctor)
+stories=(why-no-trace debug-for-a-while flood trim storm doctor export)
 
 cols=120
 rows=32
@@ -59,6 +59,11 @@ record_story() {
     local story=$1 mode=$2 work status title
     [[ -f $here/$story.sh ]] || die "no story '$story' (have: ${stories[*]})"
     title=$(grep -m1 '^DEMO_TITLE=' "$here/$story.sh" | cut -d'"' -f2)
+    # A story may ask for a shorter console, and so a taller logctl pane (story 7 does:
+    # doc/specs/demo-recordings.md V2); the rest keep console_rows.
+    local story_console_rows
+    story_console_rows=$(grep -m1 '^DEMO_CONSOLE_ROWS=' "$here/$story.sh" | cut -d= -f2)
+    story_console_rows=${story_console_rows:-$console_rows}
     work=$(mktemp -d)
     mkdir -p "$work/home"
 
@@ -90,7 +95,7 @@ record_story() {
         new-session -d -P -F '#{pane_id}' -s demo -x "$cols" -y "$rows" "$here/console.sh")
     tmux -L "$socket" select-pane -t "$console_pane" -T "server console"
     story_pane=$(tmux -L "$socket" split-window -v -P -F '#{pane_id}' \
-        -l $((rows - console_rows - 1)) -t "$console_pane" \
+        -l $((rows - story_console_rows - 1)) -t "$console_pane" \
         "DEMO_LOG_PANE=$console_pane $here/run-story.sh $story $work/status")
     tmux -L "$socket" select-pane -t "$story_pane" -T "logctl"
 
