@@ -57,7 +57,10 @@ apply to everyone.
   permanent; everything before it can be fixed and the tag pushed again.
   A pre-release of a *later* minor (`1.1.0-alpha.1` while 1.0 is still shipping) is cut the same
   way on `develop` but **skips the pull request into `main`**: `main` moves only for the current
-  line. Merge `release/1.0` into `develop` first.
+  line. Merge `release/1.0` into `develop` first. After such a pre-release is published, update the
+  "Try it early" box in `guide/coming-in-1-1.md` on `release/1.0` (docs only: the download and its guide), then run
+  the *Docs* workflow from `release/1.0` for version `1.0`
+  ([doc/specs/coming-in-1-1.md](doc/specs/coming-in-1-1.md)).
   Afterwards, bump the released branch to its next `-SNAPSHOT` and merge `release/*` forward into `develop`. How it works:
   [doc/specs/maven-central-publishing.md](doc/specs/maven-central-publishing.md).
 - **The JBang catalog** (`jbang-catalog.json`, [doc/specs/logctl-jbang.md](doc/specs/logctl-jbang.md))
