@@ -94,6 +94,11 @@ final class AgentBootstrap {
      *                  vendor-defaults.md "Agent arguments"
      */
     static void start(Instrumentation inst, String agentArgs, Entry entry) {
+        if (entry == Entry.AGENTMAIN) {
+            // An attach: the container has wrapped System.err long ago, so write to the process's own
+            // stderr, as after a -javaagent start (doc/specs/logctl-attach.md #11). Before anything prints.
+            Diagnostics.useProcessStderr();
+        }
         if (Boolean.getBoolean(DISABLED_PROPERTY)) {
             return; // global kill switch, honoured without needing the control plane reachable
         }

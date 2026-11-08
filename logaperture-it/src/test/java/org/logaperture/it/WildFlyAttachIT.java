@@ -30,6 +30,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -103,6 +104,19 @@ class WildFlyAttachIT {
                 "state is kept under the temp directory, since the jboss user has no writable home:\n" + env.stdout());
         assertTrue(wildfly.getLogs().contains("keeping state in /tmp/logaperture-"),
                 "the agent said where it put the state");
+    }
+
+    @Test
+    void theAgentsOwnOutputIsNotLoggedByTheServerAsErrorStderr() throws Exception {
+        // doc/specs/logctl-attach.md #11: after an attach the agent writes to the process's stderr, as after
+        // -javaagent, so WildFly does not file its lines as `ERROR [stderr]` in server.log.
+        logctl("set", "logger", "com.example.Probe", "DEBUG", "for", "5m"); // an audit line
+        logctl("reset", "logger", "com.example.Probe");
+
+        assertTrue(wildfly.getLogs().contains("[logaperture-audit]"), "the audit line still reaches the console");
+        String serverLog = exec("cat", SERVER_LOG).getStdout();
+        assertFalse(serverLog.lines().anyMatch(line -> line.contains("[stderr]") && line.contains("[logaperture")),
+                "no LogAperture line was logged through WildFly's stderr wrapper:\n" + serverLog);
     }
 
     @Test

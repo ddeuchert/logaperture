@@ -1,7 +1,9 @@
 # `logctl attach` — load the agent into a running JVM
 
 Status: **Signed off 2026-10-26** (decisions #1 to #10 below, #2 revised in the review to embed the
-agent jar in the CLI jar). Release `1.1.0`.
+agent jar in the CLI jar). Release `1.1.0`. **Decision #11** (the agent's output after an attach on
+WildFly, issue [#351](https://github.com/ddeuchert/logaperture/issues/351)) added and **signed off
+2026-11-08**, agreed as recommended (a).
 
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §2 (`premain` primary, `agentmain`
 best-effort), §8.1 (the CLI over the Attach API), §13 risk 3 (loggers created before install),
@@ -26,6 +28,8 @@ After this feature, the user will be able to:
   off, a JRE with no attach support, a JVM owned by another user) and what to do about it.
 - Be told, if the JVM already runs LogAperture, that it does, instead of getting a second copy.
 - See in `logctl doctor` why the `-javaagent` order check is missing for an attached JVM.
+- Attach to a WildFly and find the agent's own messages where they appear after a `-javaagent`
+  start: on the console as plain `[logaperture]` lines, not as `ERROR` records in `server.log`.
 
 An attach lasts until the JVM stops; adding `-javaagent` to the launch line is still the way to
 keep LogAperture permanently.
@@ -81,6 +85,32 @@ All ten were agreed on 2026-10-26 from the sign-off review, each as the outcome 
 | #9 | `doctor` and the missing agent-order check | (a) A new INFO check `agent.attached` that appears only on an attached JVM: "Loaded by attach, so the -javaagent order check does not apply. Add -javaagent to the launch line to make LogAperture permanent." (b) Print the note in `status` too. (c) Nothing. | **(a)**. It fills the gap the spike found without touching `status`. The check id is added to `reference/doctor-checks.md`, which `GuideReferenceDriftTest` enforces. The agent records the entry point (`premain` or `agentmain`) at start. |
 | #10 | Platforms and users | (a) Linux is the tested platform; macOS and Windows use the same Attach API and are expected to work but are documented as untested until someone checks. The target must be the same OS user as `logctl`, as for every other command. (b) Block the command off Linux. | **(a)**. `logctl` already attaches to read the MBean on all three; only the load differs. The guide says "tested on Linux". |
 
+### #11: the agent's own output after an attach (issue #351)
+
+Found while recording the attach demo. After `logctl attach` into a WildFly, the startup line and every
+audit line reach the console as `ERROR [stderr] (…) [logaperture] …`, which is also how they reach
+`server.log`. After a `-javaagent` start they are plain console lines, which is what
+[`quieter-output.md`](quieter-output.md) Q7 promises ("no LogAperture line is re-labelled `ERROR [stderr]`").
+
+Cause: `Diagnostics` captures `System.err` in a static field and `StderrAuditLog` takes it when it is
+constructed, both when their class loads. Under `-javaagent` that is before WildFly replaces
+`System.err` with a logging wrapper; under an attach it is after, so they capture the wrapper.
+
+| Option | |
+|---|---|
+| (a) | **When the agent starts through `agentmain`, write to the process's own stderr** (a `PrintStream` on `FileDescriptor.err`, auto-flushed) instead of whatever `System.err` is by then. `Diagnostics` gets a switch for it, called first thing in `agentmain`, and `StderrAuditLog` takes its default stream from `Diagnostics` so both agree. `premain` and the Quarkus extension are untouched. |
+| (b) | Leave it, and document that an attached WildFly logs the agent's lines as `ERROR`. |
+| (c) | Route the lines into the platform's own logging (a named logger). That is #124, a larger change for 1.x, and it would not make the attach case differ from the rest. |
+
+**Recommendation: (a).** It makes an attach behave as if the agent had started with the JVM, which is the
+promise of this feature, in a few lines, and the same fix covers every container that wraps `System.err`
+(Tomcat's `catalina.out`, for one). On a JVM whose stderr goes nowhere (a Windows service) the lines go
+nowhere, exactly as after a `-javaagent` start. An application that called `System.setErr` for its own
+purposes before the attach is bypassed too, as it would be after a `-javaagent` start, where the agent
+captured the stream before the application ran. `-Dlogaperture.audit.file` is unchanged: a named file
+still wins over the stream. The 60 s and one-second lines of #6 go through `Diagnostics` and follow the
+same stream.
+
 ## Scope
 
 1. **The command (#1, #2, #3, #4, #5).** A new `attach` command in `logaperture-cli`, parsed like
@@ -122,6 +152,10 @@ throws: every error becomes a `Diagnostics` line, and `logaperture.disabled` sti
   building (relative path made absolute); each failure message and exit code; the marker check
   for "already running"; `LogbackLoadDetector` with the class already loaded and not yet loaded;
   state-home fallback order; the `agent.attached` check appears only on an attach.
+- **#11**: a unit test that `Diagnostics` and a default `StderrAuditLog` write to the process stderr, and
+  not to a replaced `System.err`, once the switch is on, and to `System.err` as before when it is not;
+  `WildFlyAttachIT` checks that `server.log` has no `[stderr]` record containing `[logaperture`, while the
+  same lines still reach the container's console (`docker logs`).
 - **Integration**: a Logback application started *without* the agent, then `logctl attach`, then
   `set logger` observed in its output, on the JDKs the matrix already covers; the same on
   `java.util.logging`; the WildFly container IT started without the agent; a second attach is a

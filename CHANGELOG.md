@@ -105,6 +105,10 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ### Fixed
 
+- **After `logctl attach` on WildFly, the agent's own messages are no longer logged as `ERROR [stderr]`.**
+  Its startup line and every audit line went through the server's handlers, and so into `server.log`, as
+  `ERROR` records. An attach now writes them to the process's own standard error, as a `-javaagent` start
+  does (issue #351).
 - **`doctor` no longer suggests `logctl reset logger` for a chatty logger the configuration sets to `DEBUG`.**
   `reset` goes back to the configured level, so the command changed nothing. For a level the application's
   configuration or a vendor defaults file sets, `doctor` now says where the level comes from and suggests

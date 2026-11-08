@@ -23,7 +23,8 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * Production default {@link AuditLog}: one structured line per record, to
- * {@code System.err} unless {@code -Dlogaperture.audit.file=} names a file.
+ * {@code System.err} (the stream {@code Diagnostics} writes to: the process's own stderr after an attach,
+ * doc/specs/logctl-attach.md #11) unless {@code -Dlogaperture.audit.file=} names a file.
  * Hash-chaining and syslog/Event Log mirroring (doc/logaperture-spec.md
  * §9.7) are deferred — this is deliberately the minimal slice.
  *
@@ -64,14 +65,14 @@ public final class StderrAuditLog implements AuditLog {
     private static PrintStream resolveTarget() {
         String path = System.getProperty(FILE_PROPERTY);
         if (path == null) {
-            return System.err;
+            return Diagnostics.sink(); // System.err, or the process's stderr after an attach (#11)
         }
         try {
             return new PrintStream(new FileOutputStream(path, true), true, StandardCharsets.UTF_8);
         } catch (IOException e) {
             Diagnostics.warn("failed to open audit file '" + path
                     + "', falling back to stderr: " + e);
-            return System.err;
+            return Diagnostics.sink();
         }
     }
 }
