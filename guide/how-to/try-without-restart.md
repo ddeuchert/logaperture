@@ -91,7 +91,8 @@ container, run `logctl` inside the container, or pass `--agent-jar` with a path 
 - **A JVM started with `-XX:-EnableDynamicAgentLoading` refuses.** `logctl` says so and exits 5.
   Restart that JVM with `-javaagent`, or without the flag. A future Java may turn dynamic loading off
   by default, which would need `-XX:+EnableDynamicAgentLoading` when the JVM starts.
-- **Same machine, same user.** As for every `logctl` command.
+- **Same machine, same user.** As for every `logctl` command. On Windows, an Administrator prompt can also
+  reach a service running as another account; see [Use logctl with a Windows service](windows-service.md).
 - **Logging that happened before the attach** is not seen. A `sticky` change from an earlier run is
   applied once LogAperture starts.
 - **Tested on Linux.** The same attach mechanism exists on macOS and Windows, but it has not been

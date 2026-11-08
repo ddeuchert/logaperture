@@ -63,6 +63,8 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
   `--storm-detection` and `--agent-jar`. The `logctl` jar now carries the agent jar. `doctor` explains
   an attached JVM with `agent.attached`. When the default home can't be written, the state store now
   falls back to `/tmp/logaperture-<user>` for every start (issue #273; `doc/specs/logctl-attach.md`).
+  On Windows it does not report a running process as missing, and with no PID it also lists JVMs that
+  run as another account, such as a service under `LocalSystem`, from an Administrator prompt (issue #290).
 - **Plain JVM on `java.util.logging`.** A `java -jar` application that logs through
   `java.util.logging` alone is now picked up, with every feature WildFly has: logger and handler
   levels, vendor defaults, recipes, `drop` and `trim` rules, `top`, `doctor` and storm detection.

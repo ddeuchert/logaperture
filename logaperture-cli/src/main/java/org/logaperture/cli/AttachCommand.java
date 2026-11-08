@@ -113,8 +113,7 @@ final class AttachCommand implements Standalone {
         }
         candidates.sort(Comparator.comparingLong(JvmAttacher.Target::pid));
         if (candidates.isEmpty()) {
-            throw new CliError(CliError.NO_JVM, "No JVM to attach to: none is running as this user without "
-                    + "LogAperture. Name a process with 'logctl attach <pid>'.");
+            throw new CliError(CliError.NO_JVM, noJvmMessage(HostProcesses.system().windows()));
         }
         if (jvmQuestion == null) {
             throw new CliError(CliError.AMBIGUOUS, table(candidates, false)
@@ -144,6 +143,17 @@ final class AttachCommand implements Standalone {
             out.println();
             return chosen;
         }
+    }
+
+    /** The empty-list message; on Windows it also says how to reach a JVM of another account (attach-windows-existence.md W3). */
+    static String noJvmMessage(boolean windows) {
+        String message = "No JVM to attach to: none is running as this user without LogAperture. "
+                + "Name a process with 'logctl attach <pid>'.";
+        if (windows) {
+            message += "\n(If the JVM runs as another account, such as a Windows service, but is not listed, "
+                    + "open the command prompt as Administrator, find its PID and pass it: logctl attach <pid>.)";
+        }
+        return message;
     }
 
     private static JvmAttacher.Target choice(List<JvmAttacher.Target> candidates, String answer) {
