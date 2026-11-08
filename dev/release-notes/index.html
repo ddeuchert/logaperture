@@ -2852,7 +2852,9 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
   <code>-javaagent</code>, on Logback, <code>java.util.logging</code>, Log4j 2 or a standalone WildFly, and takes <code>--vendor-defaults</code>,
   <code>--storm-detection</code> and <code>--agent-jar</code>. The <code>logctl</code> jar now carries the agent jar. <code>doctor</code> explains
   an attached JVM with <code>agent.attached</code>. When the default home can't be written, the state store now
-  falls back to <code>/tmp/logaperture-&lt;user&gt;</code> for every start (issue #273; <code>doc/specs/logctl-attach.md</code>).</li>
+  falls back to <code>/tmp/logaperture-&lt;user&gt;</code> for every start (issue #273; <code>doc/specs/logctl-attach.md</code>).
+  On Windows it does not report a running process as missing, and with no PID it also lists JVMs that
+  run as another account, such as a service under <code>LocalSystem</code>, from an Administrator prompt (issue #290).</li>
 <li><strong>Plain JVM on <code>java.util.logging</code>.</strong> A <code>java -jar</code> application that logs through
   <code>java.util.logging</code> alone is now picked up, with every feature WildFly has: logger and handler
   levels, vendor defaults, recipes, <code>drop</code> and <code>trim</code> rules, <code>top</code>, <code>doctor</code> and storm detection.
