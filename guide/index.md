@@ -72,7 +72,7 @@ JDK 17, 21 and 25.
 
 Not supported in 1.0: WildFly domain mode, a plain JVM that logs through `java.util.logging`
 alone, Log4j 2, Spring Boot, Tomcat, Jetty, Quarkus. Quarkus native images can never be supported:
-they have no JVM to attach an agent to.
+they have no JVM to attach an agent to. Several of these are planned for 1.1: see [Coming in 1.1](coming-in-1-1.md).
 
 ## Where to start
 
