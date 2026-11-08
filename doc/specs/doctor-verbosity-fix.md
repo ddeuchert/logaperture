@@ -37,38 +37,52 @@ today.
 
 ## Design
 
-**D1. Doctor is told where a level comes from.** A small function the container supplies,
-`Function<String, LevelOrigin>`, with `LevelOrigin` one of `OVERRIDE` (an active `logctl` override),
-`VENDOR` (the vendor defaults file names the logger and it is not reset to native) and `CONFIGURATION`
-(neither). `LevelOrigin.resolver(overrides, baselines)` builds it from the `OverrideRegistry` and the
-`BaselineRegistry` a context already holds, so `DoctorService` stays free of any state of its own and stays
-read-only. There are two composition roots, `NoneContainer` and `JBossLogManagerContainer` (the WildFly path, with
-its own copy of the install wiring), and both pass it; the first version of this change wired only the first, and
-the real check below on the dev WildFly is what found the second. A `DoctorService` built
-without one treats every level as `CONFIGURATION`.
+**D1. Doctor is told what a reset would land on.** *(Revised after review, 2026-11-07: the first version asked
+where the level comes from, which misclassifies an override on top of a chatty configured level, and a vendor
+file that names the logger at `INFO` while the application raised it in code. The question that decides whether
+`reset` is the fix is what it lands on.)* A small function the container supplies,
+`Function<String, ResetEffect>`, answered from the baseline a reset returns to (`BaselineRegistry.get`: the vendor
+level when one is in effect, else the configured one):
+
+- `FIXES`: that baseline is not a chatty level (`DEBUG`, `TRACE`, `ALL`), so `logctl reset logger` fixes it,
+  whether the chatty level came from an override or from the application's code;
+- `LANDS_ON_VENDOR_LEVEL`: the baseline is a chatty level the vendor defaults file sets (it is not reset to native);
+- `LANDS_ON_CONFIGURED_LEVEL`: the baseline is a chatty level the application's configuration sets, or was never
+  captured.
+
+`ResetEffect.resolver(baselines)` builds it from the `BaselineRegistry` a context already holds, so `DoctorService`
+stays free of any state of its own and stays read-only. `BaselineRegistry.vendorLevelInEffect` is the one
+definition of "a vendor level is in effect", shared by `get`, `restore` and the resolver. There are two composition
+roots, `NoneContainer` and `JBossLogManagerContainer` (the WildFly path, with its own copy of the install wiring),
+and both pass it; the first version of this change wired only the first, and the real check on the dev WildFly is
+what found the second. A `DoctorService` built without one takes every level to land on the configuration's (a
+`set logger ... INFO sticky` suggestion, which fixes an override too but with a detail line that is not so); a new
+container must pass a resolver.
 
 **D2. What the finding says.**
 
-| Origin | Summary (unchanged) | Detail | Suggested fix |
+| Reset would | Summary (unchanged) | Detail | Suggested fix |
 |---|---|---|---|
-| `OVERRIDE` | `<name> is explicitly set to DEBUG — a known-chatty framework logger.` | none, as today | `logctl reset logger <name>` |
-| `CONFIGURATION` | the same | `the level comes from the application's configuration, so reset would not change it` | `logctl set logger <name> INFO sticky` |
-| `VENDOR` | the same | `the level comes from the vendor defaults file, so reset would not change it` | `logctl set logger <name> INFO sticky` |
+| `FIXES` | `<name> is explicitly set to DEBUG — a known-chatty framework logger.` | none, as today | `logctl reset logger <name>` |
+| `LANDS_ON_CONFIGURED_LEVEL` | the same | `reset would go back to the level the application's configuration sets, which is also chatty` | `logctl set logger <name> INFO sticky` |
+| `LANDS_ON_VENDOR_LEVEL` | the same | `reset would go back to the level the vendor defaults file sets, which is also chatty` | `logctl set logger <name> INFO sticky` |
 
 **D3. Why `INFO sticky`.** `INFO` is what a chatty framework logger is normally left at; `sticky` keeps the
 change across restarts, so it holds until the configuration is fixed, which is the one place that makes it
 permanent (the guide already says so). A shorter-lived change would put `DEBUG` back at the next restart with
-no sign that doctor had been right.
+no sign that doctor had been right. Like any `set logger` it changes that one logger: a child with a level of its
+own keeps it (the guide says so). The suggestion carries no `--reason`, to stay short enough to copy.
 
 **D4. Nothing else changes.** The finding's id (`logger.verbosity-left-on`), severity (`WARNING`) and
 summary text stay as they are, so `--json` and the drift-tested check list are unaffected; `detail` and
 `suggestedFix` are fields it already has. The root logger finding still offers no command.
 
-**D5. The demo film (#342) is unchanged.** Its `DEBUG` is an override, the `OVERRIDE` row, which is
-exactly what it recorded. Only the sentence below it in the guide changes.
+**D5. The demo film (#342) is unchanged.** Its `DEBUG` is an override over an `INFO` baseline, the `FIXES` row,
+which is exactly what it recorded. Only the sentence below it in the guide changes.
 
-**D6. Tests.** `DoctorServiceTest`: each origin gets its detail and suggested fix; the function is asked for
-the logger's name; no function means `CONFIGURATION`. A check against the dev WildFly with `org.hibernate`
+**D6. Tests.** `DoctorServiceTest`: each effect gets its detail and suggested fix; the function is asked for
+the logger's name; no function means `LANDS_ON_CONFIGURED_LEVEL`. `ResetEffectTest`: the baseline cases above,
+including an override over a chatty configured level and a vendor `INFO` the application raised. A check against the dev WildFly with `org.hibernate`
 set at `DEBUG` in the server's own configuration (the case the bug is about), then the suggested
 `set logger ... INFO sticky`, and `doctor` again.
 
@@ -76,7 +90,7 @@ set at `DEBUG` in the server's own configuration (the case the bug is about), th
 
 | # | Decision | Recommendation |
 |---|----------|----------------|
-| D1 | A supplied origin function, not state in `DoctorService` | Yes |
+| D1 | A supplied function answering what a reset lands on (revised), not state in `DoctorService` | Yes |
 | D2 | `reset` for an override; `set logger <name> INFO sticky` plus a detail line for configuration and vendor | Yes |
 | D3 | `INFO` and `sticky` | Yes |
 | D4 | Id, severity, summary and the root finding unchanged | Yes |

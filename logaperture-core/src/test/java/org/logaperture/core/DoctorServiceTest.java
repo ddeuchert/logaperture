@@ -151,22 +151,22 @@ class DoctorServiceTest {
 
     // doc/specs/doctor-verbosity-fix.md D2: the fix depends on where the level comes from.
 
-    private DoctorFinding chattyFindingFor(LevelOrigin origin, List<String> asked) {
+    private DoctorFinding chattyFindingFor(ResetEffect effect, List<String> asked) {
         adapter.setConfiguredLevel("org.hibernate", Level.DEBUG);
-        Function<String, LevelOrigin> originOf = name -> {
+        Function<String, ResetEffect> effectOf = name -> {
             asked.add(name);
-            return origin;
+            return effect;
         };
-        DoctorService withOrigin = new DoctorService(adapter, CapabilityPolicy.allowAll(), List::of, originOf);
-        return withOrigin.diagnose().stream()
+        DoctorService withEffect = new DoctorService(adapter, CapabilityPolicy.allowAll(), List::of, effectOf);
+        return withEffect.diagnose().stream()
                 .filter(f -> f.check().equals("logger.verbosity-left-on") && f.subject().equals("org.hibernate"))
                 .findFirst().orElseThrow();
     }
 
     @Test
-    void verbosity_anOverride_isFixedByReset() {
+    void verbosity_whenResetFixesIt_resetIsTheSuggestion() {
         List<String> asked = new ArrayList<>();
-        DoctorFinding finding = chattyFindingFor(LevelOrigin.OVERRIDE, asked);
+        DoctorFinding finding = chattyFindingFor(ResetEffect.FIXES, asked);
 
         assertEquals("logctl reset logger org.hibernate", finding.suggestedFix());
         assertNull(finding.detail());
@@ -174,26 +174,26 @@ class DoctorServiceTest {
     }
 
     @Test
-    void verbosity_aConfiguredLevel_isTurnedDownNotReset() {
-        DoctorFinding finding = chattyFindingFor(LevelOrigin.CONFIGURATION, new ArrayList<>());
+    void verbosity_whenResetLandsOnAConfiguredLevel_itIsTurnedDownNotReset() {
+        DoctorFinding finding = chattyFindingFor(ResetEffect.LANDS_ON_CONFIGURED_LEVEL, new ArrayList<>());
 
         assertEquals("logctl set logger org.hibernate INFO sticky", finding.suggestedFix());
         assertTrue(finding.detail().contains("the application's configuration"), finding.detail());
-        assertTrue(finding.detail().contains("reset would not change it"), finding.detail());
+        assertTrue(finding.detail().contains("which is also chatty"), finding.detail());
         assertEquals(Severity.WARNING, finding.severity());
         assertEquals("org.hibernate is explicitly set to DEBUG — a known-chatty framework logger.", finding.summary());
     }
 
     @Test
-    void verbosity_aVendorLevel_isTurnedDownAndNamesTheFile() {
-        DoctorFinding finding = chattyFindingFor(LevelOrigin.VENDOR, new ArrayList<>());
+    void verbosity_whenResetLandsOnAVendorLevel_itIsTurnedDownAndNamesTheFile() {
+        DoctorFinding finding = chattyFindingFor(ResetEffect.LANDS_ON_VENDOR_LEVEL, new ArrayList<>());
 
         assertEquals("logctl set logger org.hibernate INFO sticky", finding.suggestedFix());
         assertTrue(finding.detail().contains("the vendor defaults file"), finding.detail());
     }
 
     @Test
-    void verbosity_withNoOriginSource_isTakenToBeConfiguration() {
+    void verbosity_withNoResolver_isTakenToLandOnTheConfiguration() {
         adapter.setConfiguredLevel("org.hibernate", Level.DEBUG);
 
         DoctorFinding finding = service.diagnose().stream()

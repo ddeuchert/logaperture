@@ -42,12 +42,14 @@ The root logger at `DEBUG`, `TRACE` or `ALL`, or one of a few known-chatty frame
 (`org.hibernate`, `org.apache.http`, `com.zaxxer.hikari`, `org.apache.commons.dbcp2`) configured
 at one of those levels. `WARNING`.
 
-**Fix:** the command `doctor` gives depends on where the level comes from. If someone set it with
-`logctl set logger`, it is `logctl reset logger <name>`. If the application's own configuration, or a
-[vendor defaults file](../vendors/vendor-defaults.md), sets it, `reset` would go back to the same level,
-so `doctor` gives `logctl set logger <name> INFO sticky` instead and says where the level comes from.
+**Fix:** the command `doctor` gives depends on what a `reset` would do. If it would go back to a level that
+is not chatty (the logger was raised with `logctl set logger`, or by the application's code), it is
+`logctl reset logger <name>`. If it would go back to a chatty level that the application's own
+configuration, or a [vendor defaults file](../vendors/vendor-defaults.md), sets, `reset` would change
+nothing, so `doctor` gives `logctl set logger <name> INFO sticky` instead and says which of the two it is.
 `sticky` keeps it across restarts; change the level in the configuration (or the file) to make it
-permanent.
+permanent. Like any `set logger`, it changes that one logger: a logger under it, such as
+`org.hibernate.SQL`, that has a level of its own keeps it.
 
 ### `handler.duplicate-output`
 
