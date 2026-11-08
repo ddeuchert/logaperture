@@ -71,14 +71,17 @@ merged forward into `develop` with a merge commit.
 
 A feature branch is named for the issue it implements (`feature/<issue>-<slug>`) and its PR
 title/body reference that issue (e.g. `(issue #32)`) — deliberately never GitHub's `Closes #32`
-keyword, since merging to a branch is not a release. The moment that PR merges, set the issue's
-Status to **Merged**, as part of finishing the merge, not a separate followup step.
+keyword, so that closing, the label and the Status stay one deliberate step. The moment that PR
+merges, as part of finishing the merge and not a separate followup step: set the issue's Status to
+**Merged**, add the **`PendingRelease`** label, and close the issue.
 
-**Merged** means exactly that: code complete on its line, will be part of the release its
-milestone names. **It replaces closing the issue at merge time, it doesn't precede it** — the
-issue stays open, still trackable, until an actual release ships it; at the release cut the issue
-is closed and its Status becomes **Released**. Closing is a separate, release-cut concern this
-status is not standing in for.
+**`PendingRelease`** means: code complete on its line, will ship in the release its milestone
+names. The label carries no version — the milestone already does. A closed issue with this label
+is done but not yet shipped; the label is the "not yet released" filter. At the release cut,
+remove the label from every issue the release ships and set its Status to **Released**.
+
+An issue delivered across several PRs stays open, at **In progress**, until its final review;
+it is closed and labelled `PendingRelease` then, not per slice.
 
 A new issue gets a milestone when it is filed (`1.x` if it is not yet scheduled).
 
