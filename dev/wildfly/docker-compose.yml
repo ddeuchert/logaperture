@@ -119,6 +119,13 @@ services:
       - ../../logaperture-cli/target/logaperture-cli.jar:/opt/logctl.jar:ro,z
       - ./deployments-plain:/opt/jboss/wildfly/standalone/deployments:z
       - /etc/localtime:/etc/localtime:ro
+      # An attach has no launch flag to carry -Dlogaperture.home, so the agent uses ~/.logaperture,
+      # and this image's home is not writable: without this the attach prints a state-directory
+      # warning on the console (a real server's home is writable). Mode 1777, written in decimal.
+      - type: tmpfs
+        target: /opt/jboss/.logaperture
+        tmpfs:
+          mode: 1023
     healthcheck:
       test: ["CMD-SHELL", "grep -q 'WFLYSRV0025' /opt/jboss/wildfly/standalone/log/server.log"]
       interval: 5s

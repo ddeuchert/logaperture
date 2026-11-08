@@ -18,7 +18,7 @@
   build when guide/assets/demos/NAME.cast doesn't exist; so does a missing player file
   (extra_css / extra_javascript), which MkDocs itself only links to.
 - now-showing.md must embed every recording in guide/assets/demos/, and show each
-  `run logctl ...` line of the recording's story script, dev/demos/NAME.sh, exactly as typed (a `"$name"` the story fills in at run time is written `<name>`):
+  `run logctl ...` line of the recording's story script, dev/demos/NAME.sh, exactly as typed (the `"$pid"` a story reads at run time is written `<pid>`):
   its command breakdowns are written by hand, so a story whose commands change fails the build
   until its breakdown does too.
 - Each built assets/demos/NAME.cast gets a NAME.cast.js next to it, which casts.js loads
@@ -39,7 +39,7 @@ from mkdocs.exceptions import PluginError
 
 _EMBED = re.compile(r'class="la-cast"\s+data-cast="([^"]+)"')
 _STORY_COMMAND = re.compile(r"^\s*run (logctl .*?)\s*$", re.MULTILINE)
-_STORY_VARIABLE = re.compile(r'"\$(\w+)"')
+_STORY_VARIABLE = re.compile(r'"\$(pid)"')   # the one value a story fills in at run time
 _NOW_SHOWING = "now-showing.md"
 
 

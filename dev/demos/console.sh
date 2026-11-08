@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# The top pane: the dev WildFly's console from now on, as the CONSOLE handler writes it.
+# The top pane: the server's console (DEMO_CONTAINER: the dev WildFly, or the agent-less one for a
+# story with DEMO_SERVER=plain) from now on, as the CONSOLE handler writes it.
 # A line wider than the pane is cut with "…" rather than wrapped, so each record stays one
 # row. WildFly's colour codes only ever lead a line, so the cut counts what follows them. Each
 # line's newline is written before the next line rather than after it, so the cursor never

@@ -41,14 +41,15 @@ DEMO_LAST_OUTPUT=$(mktemp)
 
 PROMPT=$'\e[1;34m$\e[0m '
 
-# The screen shows `logctl ...` exactly as a user types it; underneath it runs in the dev
-# WildFly container, as wildflyctl.py's `logctl --` does.
+# The screen shows `logctl ...` exactly as a user types it; underneath it runs in the story's
+# server container (DEMO_CONTAINER, exported by record.sh: the dev WildFly, or the agent-less one
+# for a story with DEMO_SERVER=plain), as wildflyctl.py's `logctl --` does.
 logctl() {
     docker exec "$DEMO_CONTAINER" java -jar /opt/logctl.jar "$@"
 }
 
 # The agent-less server has no agent for `logctl` to find, so the story names the JVM: `jps` is the
-# JDK's own listing, run in the container like logctl.
+# JDK's own listing, run in the container like logctl (so both need DEMO_CONTAINER, set by record.sh).
 jps() {
     docker exec "$DEMO_CONTAINER" jps "$@"
 }

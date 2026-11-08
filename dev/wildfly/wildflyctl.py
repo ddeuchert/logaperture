@@ -417,7 +417,11 @@ def cmd_plain_down(a):
 
 def cmd_down(a):
     require_docker()
-    compose("down")
+    # --profile: the agent-less server is under a profile, which `down` otherwise skips, leaving
+    # the project network in use.
+    compose("--profile", "attach-demo", "down")
+    if DEPLOYMENTS_PLAIN.exists():
+        shutil.rmtree(DEPLOYMENTS_PLAIN)
 
 
 def cmd_restart_agent(a):

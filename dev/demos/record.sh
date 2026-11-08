@@ -74,10 +74,16 @@ record_story() {
     if [[ $server == plain ]]; then
         container=logaperture-wildfly-plain
         demo_url=http://localhost:8081/logaperture-sample-war/demo
+        # Removed on any exit, not only success: a failed check or Ctrl-C must not leave it on :8081.
+        trap 'python3 "$root/dev/wildfly/wildflyctl.py" plain-down >&2 || true' EXIT
         python3 "$root/dev/wildfly/wildflyctl.py" plain-up >&2
     elif [[ -n $server ]]; then
         die "$story: unknown DEMO_SERVER '$server'"
     fi
+    # The sample app must answer on the server this story uses (the dev WildFly's, or the plain one's).
+    # Before the shop starts, so a story that doesn't use the dev WildFly doesn't need it.
+    curl -fsS "$demo_url/status" >/dev/null ||
+        die "the sample app isn't answering at $demo_url; run dev/wildfly/wildflyctl.py up and deploy (plain-up for the agent-less server)"
     work=$(mktemp -d)
     mkdir -p "$work/home"
 
@@ -124,6 +130,7 @@ record_story() {
     status=$(cat "$work/status" 2>/dev/null || echo "no status")
     if [[ $server == plain ]]; then
         python3 "$root/dev/wildfly/wildflyctl.py" plain-down >&2
+        trap - EXIT
     else
         reset_server
     fi
@@ -161,8 +168,6 @@ done
 if docker version 2>&1 | grep -q 'Emulate Docker CLI'; then
     die "podman's docker shim prints a notice that would be recorded; quiet it: sudo touch /etc/containers/nodocker"
 fi
-curl -fsS "$demo_url/status" >/dev/null ||
-    die "the sample app isn't answering at $demo_url; run dev/wildfly/wildflyctl.py up and deploy"
 
 if [[ $1 == all ]]; then
     set -- "${stories[@]}"
