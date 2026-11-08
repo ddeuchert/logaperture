@@ -15,10 +15,13 @@ After this feature, the user will be able to:
   `java.util.logging` on a **plain JVM**, and running `logctl` with **JBang**.
 - See that a 1.1.0 pre-release is planned for late November or early December, with 1.1.0 after it, and where to
   look for it.
+- Find where to try early versions: the in-progress 1.1 guide now, and, as each pre-release ships, its download and
+  its guide, linked from the same place on the page.
 - Tell at a glance that none of this is in 1.0, so no command on the page is mistaken for one that works today.
 - Find the page from the guide's home page and its own entry in the navigation.
 
-Guide pages this changes: `coming-in-1-1.md` (new), `index.md` (one pointer), `mkdocs.yml` (the nav entry).
+Guide pages this changes: `coming-in-1-1.md` (new), `index.md` (one pointer), `mkdocs.yml` (the nav entry);
+`DEVELOPMENT.md` gains one release step.
 
 ## Why
 
@@ -50,27 +53,45 @@ A command shown on the page is in a `text` block, not `sh`, under a line saying 
 not copied and run. Links go to the public issues (a reader can follow progress there), never to guide pages that
 exist only on `develop`: the 1.0 guide's strict build fails on a link to a page it does not have.
 
+### "Try it early" (CS10 to CS12)
+
+A box near the top of the page, under the timing paragraph, and the one part of the page that is edited at each
+pre-release. Its first version links only to places that already work: the `dev` guide at `logaperture.org/dev/`
+(built from `develop` on every push), the GitHub releases page (where pre-releases are listed) and Discussions,
+and says that no pre-release has been published yet. There is no downloadable dev build (snapshots are published
+only for labelled pull requests), so the first version offers none and does not suggest building from source.
+
+When `1.1.0-alpha.1` is published the box is edited to name it: its download (the release tag) and its guide
+(`logaperture.org/1.1/`, which a pre-release tag deploys with a pre-release banner, without moving `latest`). The
+same at each beta and at 1.1.0, where it says 1.1.0 is out and points to the current guide. The edit is a docs-only
+commit on `release/1.0`, published by running the *Docs* workflow from that branch for version `1.0` (its manual
+run redeploys a chosen version from the branch it is run on): no release and no patch version. The guide copy
+inside the 1.0.0 release zip stays as it was released. The step is in `DEVELOPMENT.md`, with the pre-release steps.
+
 ### Where it lives, and when it goes (CS2)
 
 It is written on `release/1.0`, so the 1.0.0 guide has it, and merged forward into `develop` like any fix. On
-`develop` the guide documents all of this for real, so the page is removed there in the forward-merge pull request,
-in a commit of its own, along with its navigation entry and the `index.md` pointer. The 1.1.0 guide, built from
-`develop`, therefore never contains it; the 1.0 guide keeps it until it is superseded. A later edit to the page on
-`release/1.0` (a 1.0.x patch updating the dates) conflicts with that deletion on the next forward merge and is
-resolved by keeping the deletion.
+`develop` the guide documents all of this for real, so in the forward-merge pull request, in a commit of its own,
+the page's navigation entry and the `index.md` pointer are removed and the file is added to `exclude_docs`, so the
+1.1 guide never publishes it. The file itself stays, so that each later edit to the box on `release/1.0` merges
+forward without a modify/delete conflict. The 1.1.0 release cut deletes the file (and the `exclude_docs` line)
+from `develop`; the 1.0 guide keeps the page until 1.1.0 supersedes it.
 
 ## Decisions
 
 | # | Decision | Agreed |
 |---|---|---|
 | CS1 | Name and place | `guide/coming-in-1-1.md`, "Coming in 1.1", in the nav after Overhead; one line on `index.md` pointing to it. |
-| CS2 | Branch and lifecycle | Written on `release/1.0`; removed on `develop` in the forward-merge PR (see above). Agreed with David 2026-11-08 in the shape "release/1.0, removed at 1.1.0"; the removal moves to the forward merge so that `develop`'s guide never has a page contradicting itself. |
+| CS2 | Branch and lifecycle | Written on `release/1.0`. On `develop`, unpublished by the forward-merge PR (nav entry and pointer removed, file in `exclude_docs`) and deleted at the 1.1.0 cut. Agreed with David 2026-11-08 in the shape "release/1.0, removed at 1.1.0"; amended the same day (from "deleted in the forward merge") so that later edits to the box merge forward cleanly. |
 | CS3 | Dates | "A pre-release is planned for late November or early December; 1.1.0 follows it", as a plan, with no day. Agreed 2026-11-08. The roadmap rows in §17.1 on `develop` still say alpha mid/late December, beta early January, 1.1.0 late January: updated on `develop` separately (#353 follow-up), not in this change. |
 | CS4 | What is on it | Quarkus, `attach`, Log4j 2, plain-JVM `java.util.logging`, JBang, and one "Further out" paragraph. Agreed 2026-11-08. |
 | CS5 | Statuses | None per feature. A "built" or "in progress" label would be stale the day 1.0.0 ships, and the page cannot be updated before a patch. The page says the pre-release carries what is merged by then and that its release notes say exactly what that is. |
 | CS6 | Examples | Real commands from the 1.1 guide, in `text` blocks under an explicit "not in 1.0.0" note (above). Output is shown only if it was captured from a real run, as everywhere in the guide. |
 | CS7 | Where the pre-release is announced | Said generally: "announced on the GitHub releases page and in Discussions". No Maven coordinates or download steps, since they are not decided until the pre-release exists. |
 | CS8 | Demo recordings | Not embedded. The guide's build requires every recording in `guide/assets/demos/` to have a story script and a Now Showing film, and the `attach` film is for 1.1. |
+| CS10 | A "Try it early" box | Agreed 2026-11-08. A box near the top of the page pointing to the `dev` guide, the releases page and Discussions, and saying no pre-release is out yet; each of its links works from day one. |
+| CS11 | Keeping it current | Agreed 2026-11-08. Edited at each 1.1 pre-release and at 1.1.0 (the download and its guide), as a docs-only commit on `release/1.0` published by running the *Docs* workflow from that branch for `1.0`. A step in `DEVELOPMENT.md`; no release is needed. The alternative (static links only, never edited) was declined for being less direct. |
+| CS12 | No build-from-source offer | Agreed 2026-11-08. There is no packaged dev build, so the box does not send a reader to build `develop`; the alpha is the packaged download. |
 | CS9 | Reviewing the wording | The wording of the page is read by David before the PR merges, since it makes public promises about timing. |
 
 ## Testing
@@ -79,6 +100,8 @@ resolved by keeping the deletion.
 - `GuideReferenceDriftTest` and the demo-casts hook are unaffected: the page documents no property, agent argument
   or `doctor` check, and embeds no recording.
 - A person reads the rendered page before the PR merges (CS9).
+- At the first pre-release: the box names it, its two links open, and the *Docs* run from `release/1.0` for `1.0`
+  shows the edit on logaperture.org without changing `latest` (CS11). Checked by hand at that release.
 
 ## Out of scope
 

@@ -8,9 +8,15 @@
 1.0 supports WildFly and Logback. 1.1 is about reaching the applications that aren't there yet, and about
 trying LogAperture without committing to it first. A 1.1.0 pre-release is planned for **late November or early
 December**, and 1.1.0 itself follows it. The pre-release carries whatever is merged by then; its release notes say
-exactly what that is. It is announced on the
-[GitHub releases page](https://github.com/ddeuchert/logaperture/releases) and in
-[Discussions](https://github.com/ddeuchert/logaperture/discussions). This guide stays on 1.0 until 1.1.0 is out.
+exactly what that is. This guide stays on 1.0 until 1.1.0 is out.
+
+!!! tip "Try it early"
+    You don't have to wait for 1.1.0. The in-progress guide for 1.1 is at
+    [logaperture.org/dev](https://logaperture.org/dev/): it describes each feature on this page as it stands today,
+    and changes as work lands. When a pre-release is available, it is listed on the
+    [GitHub releases page](https://github.com/ddeuchert/logaperture/releases), announced in
+    [Discussions](https://github.com/ddeuchert/logaperture/discussions), and its guide appears in this guide's
+    version menu. No pre-release has been published yet.
 
 ## Quarkus, with no `-javaagent`
 
