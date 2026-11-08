@@ -28,6 +28,11 @@ from startup, start the agent with `--storm-detection=on` (see
 
 ## See the storms
 
+<div class="la-cast" data-cast="storm"></div>
+
+Above: a shop's console is scrolling too fast to read. `logctl enable storms` turns detection on,
+`logctl storms` names the message that is bursting, and a `drop` rule keeps it out of the log.
+
 ```sh
 logctl storms
 ```

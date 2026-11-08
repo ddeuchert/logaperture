@@ -27,7 +27,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 out_dir=$root/guide/assets/demos
-stories=(why-no-trace debug-for-a-while flood trim)
+stories=(why-no-trace debug-for-a-while flood trim storm)
 
 cols=120
 rows=32
@@ -52,6 +52,7 @@ reset_server() {
     logctl_hidden reset loggers --include-sticky
     logctl_hidden reset handlers --include-sticky
     logctl_hidden reset rules --include-sticky
+    logctl_hidden disable storms
 }
 
 record_story() {

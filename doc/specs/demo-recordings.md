@@ -36,7 +36,8 @@ After this feature, the user will be able to:
   script against a real server and redone for each release.
 
 Guide pages changed: `index.md` ("See it work") and `get-started/quick-start.md` (step 4) for
-story 1, `how-to/raise-a-level.md` for story 2, `how-to/silence-noise.md` for stories 3 and 4.
+story 1, `how-to/raise-a-level.md` for story 2, `how-to/silence-noise.md` for stories 3 and 4,
+`how-to/storms.md` for story 5.
 `now-showing.md` (new, its own nav entry) for all of them, and a link to it from `index.md`'s
 "See it work". README: one GIF near the top.
 
@@ -176,25 +177,24 @@ near-identical events whose numbers differ, and keeps one in full.
 
 ```sh
 # A web shop app deployed on a WildFly server. Its console is scrolling too fast to read.
-# Storm detection is off by default. Turn it on for ten minutes:
-logctl enable storms for 10m
-# ...give it a few seconds, then ask what is bursting:
+# Storm detection is off by default. Turn it on, give it a few seconds, then ask what is bursting:
+logctl enable storms
 logctl storms
-#   [ONGOING] com.example.shop.payment.RetryQueue  (no exception)  "Retrying payment for order %s (attempt %s)"
+#   [ONGOING] com.example.shop.payment.RetryQueue  (no exception)  "Retrying payment for order <n> (attempt <n>)"
 #   events and rate, and the sample: the event that made it a storm, in full
 # One message, 1000s of times, the numbers changing. Keep it out of the log while the cause is fixed:
-logctl add rule drop com.example.shop.payment.RetryQueue --message-contains "Retrying payment"
+logctl add rule drop com.example.shop.payment.RetryQueue --message-contains Retrying
 # The console is readable again; the shop still logs.
 ```
 
 | # | Decision | Recommendation |
 |---|---|---|
 | S1 | Which story; the rest | Storms is story 5. `doctor` and `export` become two issues in milestone 1.x, so #198 closes with the one story. (David, 2026-11-07.) |
-| S2 | The demo shop | `POST /demo/retry-storm/start` makes a `RetryQueue` log a WARN `Retrying payment for order 10431 (attempt 7)` about every 5 ms (200 a second, no exception) until `/demo/stop`. The numbers come from a counter, so every recording is the same. 1,000 events in 10 s, storm detection's default threshold, is crossed in about 5 s. `com.example.shop.payment`, so it reads as the shop's own code. |
+| S2 | The demo shop | `POST /demo/retry-storm/start` makes a `RetryQueue` log a WARN `Retrying payment for order 10431 (attempt 7)` about every 10 ms (about 200 a second, no exception) until `/demo/stop`. The numbers come from a counter, so every recording is the same. 1,000 events in 10 s, storm detection's default threshold, is crossed in about 5 s. `com.example.shop.payment`, so it reads as the shop's own code. |
 | S3 | The flood starts first | The storm is already running when the recording starts (hidden setup, like story 3's flood), so the console is scrolling in the first frame. Detection is off until the story turns it on, so the story needs no second hidden trigger. |
 | S4 | The ending | A `drop` rule by `--message-contains`, then the console quiets, as in story 3 but by message instead of by exception: the guide's own "Then" section for storms. |
 | S5 | Leaving the server clean | `record.sh`'s reset also runs `logctl disable storms`, so a story never starts or ends with detection on. (`enable` already clears what was tracked.) |
-| S6 | Checks | After `logctl storms`, an `[ONGOING]` row naming `RetryQueue` (within 30 s of enabling); after the rule, no `Retrying payment` line on the console pane within 30 s (`wait_gone`). The `enable` line carries timestamps that make it long; if it wraps past the 19-row pane, the recording fails and the story drops `for 10m`. |
+| S6 | Checks | After `logctl storms`, an `[ONGOING]` row naming `RetryQueue` (within 30 s of enabling); after the rule, no `Retrying payment` line on the console pane within 30 s (`wait_gone`). `enable` has no `for 10m`: with a tier its line is 145 characters and wraps, and the story's 19-row pane (it ends at 18) has no row to spare (found while recording). The match is the one word `Retrying`, because `run` echoes its arguments without their quotes. `reset_server` ends detection anyway. |
 | S7 | Guide placement | `how-to/storms.md`, under "See the storms", with the static output kept; the Now Showing page gains film 5 (C2, N5); the README keeps one GIF. |
 
 The files: `dev/demos/storm.sh` (story 5), `RetryQueue` and the switch in the sample WAR's `DemoShop` and
