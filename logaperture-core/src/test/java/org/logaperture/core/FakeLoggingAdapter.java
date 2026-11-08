@@ -51,6 +51,12 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     private String runOnEffectiveLevelFor;
     private Runnable runOnEffectiveLevel;
 
+    // --- native-level tokens (doc/specs/native-level-baseline.md) -----------------------------------
+    private final Map<String, Object> nativeTokens = new LinkedHashMap<>();
+    /** The token each {@link #restoreLevel} call carried, by logger, last call wins. */
+    private final Map<String, Object> lastRestoreToken = new LinkedHashMap<>();
+    private final Set<String> restoredBaselines = new LinkedHashSet<>();
+
     // --- handler support (doc/specs/handler-floor-control.md) --------------------------------------
     private final Map<HandlerRef, Level> handlerLevels = new LinkedHashMap<>();
     private final Set<HandlerRef> registeredHandlers = new LinkedHashSet<>();
@@ -193,6 +199,33 @@ final class FakeLoggingAdapter implements LoggingAdapter {
         } else {
             explicitLevels.put(loggerName, level);
         }
+    }
+
+    /** Gives {@code name} a native-level token, as an adapter whose framework has a level the API cannot name. */
+    void setNativeToken(String name, Object token) {
+        nativeTokens.put(name, token);
+    }
+
+    @Override
+    public Object nativeLevelToken(String loggerName) {
+        return nativeTokens.get(loggerName);
+    }
+
+    @Override
+    public void restoreLevel(String loggerName, Level level, Object token) {
+        restoredBaselines.add(loggerName);
+        lastRestoreToken.put(loggerName, token);
+        applyLevel(loggerName, level);
+    }
+
+    /** Whether a baseline write-back (not an {@link #applyLevel}) reached this logger. */
+    boolean wasRestored(String loggerName) {
+        return restoredBaselines.contains(loggerName);
+    }
+
+    /** The token the last baseline write-back for this logger carried, or null. */
+    Object lastRestoreToken(String loggerName) {
+        return lastRestoreToken.get(loggerName);
     }
 
     // --- handler support (doc/specs/handler-floor-control.md) --------------------------------------

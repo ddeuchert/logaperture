@@ -34,7 +34,7 @@ import java.util.List;
  *
  * <p>Like a real app it sets its own configuration file in {@code main} before its first logger, so
  * the test also shows the agent leaves that configuration alone (spike I-1 to I-4). Commands on
- * stdin: {@code LOG <tag>} logs one line per level and prints {@code LOGGED <tag>};
+ * stdin: {@code LOG <tag>} logs one line per level, from FATAL down and prints {@code LOGGED <tag>};
  * {@code LOGEX <tag>} logs an error with a two-level exception and prints {@code LOGGED <tag>};
  * {@code BURST <n> <tag>} logs {@code n} errors with an exception, as fast as it can, alternating a message
  * a trim rule can match ({@code TRIMME}) with one it cannot ({@code KEEPME}), then prints {@code LOGGED <tag>};
@@ -159,6 +159,7 @@ public final class BundledLog4j2FixtureApp {
 
         public static void log(String tag) {
             org.apache.logging.log4j.Logger logger = LOG;
+            logger.fatal("fatal {}", tag);
             logger.error("error {}", tag);
             logger.info("info {}", tag);
             logger.debug("debug {}", tag);

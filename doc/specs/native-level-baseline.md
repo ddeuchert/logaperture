@@ -56,13 +56,18 @@ A wrong token therefore degrades to today's behaviour, never to a different leve
 
 **N3. Core captures the token with the baseline and uses it only to put a baseline back.**
 `BaselineRegistry` stores the token beside the captured `Optional<Level>` (one read of each, level
-first); `rebaseNative` takes the token read with the level. A new `LevelControlService.restoreBaseline`
-calls `adapter.restoreLevel(name, level, token)` at every site that writes the baseline back: reset
-(`resetOne`), expiry, undo, the sweep's reapply of a baseline, `restoreNativeLevelsForStop`. It uses
-the token only when the level written is the **native** value; when a vendor default is in effect
-(`baselines.get` returns the vendor level) it calls `applyLevel`, so a vendor `error` is never
-turned into `FATAL`. Every other `applyLevel` (an override, a vendor default being applied) is
-untouched, which is what keeps a deliberate `set logger x error` an `ERROR`.
+first); `rebaseNative` takes the token read with the level. `BaselineRegistry.restore` (and
+`restoreNative`, for stop) calls `adapter.restoreLevel(name, level, token)`, and `LevelControlService`
+uses it at every site that writes the baseline back: reset (`applyBaseline`, `applyReset`), expiry,
+undo, the sweep's undo, `restoreNativeLevelsForStop`. It passes the token only when the level written
+is the **native** value; when a vendor default is in effect (`baselines.get` returns the vendor
+level) the token is `null`, so a vendor `error` is never turned into `FATAL`. A reconfiguration
+(`reapplyActiveOverrides`) **re-reads each token** and keeps it only if the logger still declares the level
+the baseline holds: a reload of an unchanged file keeps `FATAL`, one that changed the declaration drops that
+logger's token, and a reset then writes the captured API level as before. Level and token are one value per
+name in `BaselineRegistry`, so capture, rebase and refresh replace the pair together. Every other
+`applyLevel` (an override, a vendor default being applied) is untouched, which is what keeps a deliberate
+`set logger x error` an `ERROR`.
 
 **N4. Tokens are not persisted or exported.** A baseline is recaptured from the framework at start
 (level-control.md), so the token is too; nothing in the state file, `--json` or the MXBean changes.
@@ -79,7 +84,16 @@ untouched, which is what keeps a deliberate `set logger x error` an `ERROR`.
 
 (N4 is a statement, not a decision.)
 
+**Known limits.** The audit trail and `list` show the API level, so a logger restored to `FATAL` is
+audited as `ERROR` (the level names `logctl` offers do not change).
+
+`configuredLevel` and `nativeLevelToken` are two reads: a reconfiguration between them
+could pair a level from one configuration with a token from the other; the window is microseconds, and it
+matters only when the two configurations disagree about that logger. Not closed: it would need a combined
+read on the SPI.
+
 ## What changes in other documents
 
-`log4j2-adapter.md` "A limit: `FATAL`" and the Not-established line about handlers are updated to
-point here; `level-control.md` gets one sentence on the baseline token. `CHANGELOG.md` gets an entry.
+`log4j2-adapter.md` "`FATAL` and custom levels" and the Not-established line about handlers are updated
+to point here, and carry the Log4j 2 side (a token restore ends the override's bookkeeping the way clearing
+a level does); `level-control.md` gets one sentence on the baseline token. `CHANGELOG.md` gets an entry.

@@ -147,6 +147,29 @@ class BundledLog4j2EndToEndIT {
         assertFalse(reset.contains("info d"), "the native source's ERROR is the baseline now:\n" + reset);
     }
 
+    /** doc/specs/native-level-baseline.md: a declared FATAL is back at FATAL after a reset, a deliberate ERROR is ERROR. */
+    @Test
+    void aDeclaredFatal_isBackAtFatalAfterAReset_andADeliberateErrorIsError() throws Exception {
+        Path output = work.resolve("fatal.log");
+        // the application's own configuration declares fixture.Worker at FATAL
+        Process app = launch(output, BundledLog4j2FixtureApp.class.getName(), log4jJars(), true);
+        waitFor(output, "FIXTURE-READY");
+        LevelControlMXBean proxy = LevelControlEndToEndIT.pollForMxBeanProxy(
+                LevelControlEndToEndIT.attachAndConnect(app.pid()));
+        pollForLogger(proxy, WORKER); // captures the baseline: read as ERROR, with FATAL's token
+
+        proxy.setLogger(WORKER, "ERROR", "e2e", "SESSION", 60, false);
+        assertTrue(logAndWait(app, output, "a").contains("ERROR fixture.Worker error a"),
+                "a deliberate error shows ERROR events");
+
+        proxy.setLogger(WORKER, "DEBUG", "e2e", "SESSION", 60, false);
+        sendAndWait(app, output, "RECONFIGURE r1", "DONE r1"); // a reload of the same file must not lose FATAL
+        proxy.resetLogger(WORKER, false);
+        String reset = logAndWait(app, output, "b");
+        assertTrue(reset.contains("FATAL fixture.Worker fatal b"), "FATAL events still show:\n" + reset);
+        assertFalse(reset.contains("error b"), "the declared FATAL is back: no ERROR events\n" + reset);
+    }
+
     /** The gate (A3): a drop rule removes its lines, and is back on the new configuration after a reload. */
     @Test
     void aDropRule_removesItsLines_andSurvivesAReconfiguration() throws Exception {
@@ -387,11 +410,16 @@ class BundledLog4j2EndToEndIT {
     }
 
     private Process launch(Path output) throws IOException {
-        return launch(output, BundledLog4j2FixtureApp.class.getName(), log4jJars());
+        return launch(output, BundledLog4j2FixtureApp.class.getName(), log4jJars(), false);
+    }
+
+    private Process launch(Path output, String mainClass, String log4jJars) throws IOException {
+        return launch(output, mainClass, log4jJars, false);
     }
 
     /** The fixture {@code mainClass} on {@code log4jJars} (the cell's Log4j, or an older one for the too-old test). */
-    private Process launch(Path output, String mainClass, String log4jJars) throws IOException {
+    private Process launch(Path output, String mainClass, String log4jJars, boolean workerDeclaredFatal)
+            throws IOException {
         latestOutput = output;
         String agentJar = System.getProperty("logaperture.agent.jar");
         assertNotNull(agentJar, "system property logaperture.agent.jar must point at the shaded jar");
@@ -405,7 +433,9 @@ class BundledLog4j2EndToEndIT {
                 asyncAppender ? "    <Async name=\"AsyncOut\"><AppenderRef ref=\"Out\"/></Async>" : "",
                 asyncAppender ? "    <Async name=\"AsyncDisk\"><AppenderRef ref=\"Disk\"/></Async>" : "",
                 "  </Appenders>",
-                "  <Loggers><Root level=\"info\">",
+                "  <Loggers>",
+                workerDeclaredFatal ? "    <Logger name=\"fixture.Worker\" level=\"fatal\"/>" : "",
+                "  <Root level=\"info\">",
                 asyncAppender ? "    <AppenderRef ref=\"AsyncOut\"/><AppenderRef ref=\"AsyncDisk\"/>"
                         : "    <AppenderRef ref=\"Out\"/><AppenderRef ref=\"Disk\"/>",
                 "  </Root></Loggers>",
