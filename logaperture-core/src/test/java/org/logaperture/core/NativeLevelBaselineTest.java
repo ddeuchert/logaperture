@@ -128,6 +128,30 @@ class NativeLevelBaselineTest {
     }
 
     @Test
+    void aTokenDroppedByOneReload_comesBackWhenALaterOneDeclaresTheLevelAgain() {
+        service.setLogger(LOGGER, Level.DEBUG, SetLevelOptions.withReason("x"));
+        adapter.setConfiguredLevel(LOGGER, Level.WARN); // a reload that declares another level: token dropped
+        adapter.setNativeToken(LOGGER, null);
+        service.reapplyActiveOverrides(adapter);
+        adapter.setConfiguredLevel(LOGGER, Level.ERROR); // a later reload declares FATAL again
+        adapter.setNativeToken(LOGGER, FATAL);
+        service.reapplyActiveOverrides(adapter);
+        service.resetLogger(LOGGER, false);
+        assertSame(FATAL, adapter.lastRestoreToken(LOGGER));
+    }
+
+    @Test
+    void aReloadThatNowDeclaresFatal_picksTheTokenUpForATokenlessBaseline() {
+        adapter.setConfiguredLevel("com.acme.Plain", Level.ERROR); // declared ERROR at capture: no token
+        service.setLogger("com.acme.Plain", Level.DEBUG, SetLevelOptions.withReason("x"));
+        adapter.setConfiguredLevel("com.acme.Plain", Level.ERROR); // the reload wiped the override
+        adapter.setNativeToken("com.acme.Plain", FATAL); // the new configuration declares FATAL (reads as ERROR)
+        service.reapplyActiveOverrides(adapter);
+        service.resetLogger("com.acme.Plain", false);
+        assertSame(FATAL, adapter.lastRestoreToken("com.acme.Plain"));
+    }
+
+    @Test
     void aRebase_takesTheTokenReadWithTheNewLevel_andNullDropsIt() {
         baselines.captureIfAbsent(LOGGER, adapter);
         Object custom = new Object();

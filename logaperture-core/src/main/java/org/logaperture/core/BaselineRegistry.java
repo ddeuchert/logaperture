@@ -110,21 +110,19 @@ public final class BaselineRegistry {
     }
 
     /**
-     * After a reconfiguration: re-reads each baseline's token from {@code adapter} and keeps it only if the
-     * logger still declares the level the baseline holds. A reload of an unchanged configuration keeps every
-     * token; one that changed what the application declares drops that logger's token, so a reset writes the
+     * After a reconfiguration: re-reads every baseline's token from {@code adapter} and holds it only if the
+     * logger still declares the level the baseline holds -- also for a baseline that had none, so a token
+     * dropped earlier comes back when the application declares the level again. A reload of an unchanged
+     * configuration keeps every token; one that changed what the application declares drops that logger's token, so a reset writes the
      * captured API level as for a logger with no token (doc/specs/native-level-baseline.md N3).
      */
     public void refreshNativeTokens(LoggingAdapter adapter) {
         for (String name : captured.keySet()) {
             BiFunction<String, Baseline, Baseline> refresh = (key, held) -> {
-                if (held.token() == null) {
-                    return held;
-                }
                 try {
                     Object fresh = adapter.nativeLevelToken(key);
-                    boolean unchanged = fresh != null && adapter.configuredLevel(key).equals(held.level());
-                    return new Baseline(held.level(), unchanged ? fresh : null);
+                    boolean matches = fresh != null && adapter.configuredLevel(key).equals(held.level());
+                    return new Baseline(held.level(), matches ? fresh : null); // a dropped token can come back
                 } catch (RuntimeException unreadable) {
                     return new Baseline(held.level(), null);
                 }
@@ -141,16 +139,25 @@ public final class BaselineRegistry {
      * @throws IllegalStateException if {@code name} has no vendor level and was never captured
      */
     public void restore(String name, LoggingAdapter adapter) {
-        Optional<Level> level = get(name);
-        boolean vendorInEffect = vendorLevels.containsKey(name) && !resetToNative.contains(name);
-        Baseline held = captured.get(name);
-        adapter.restoreLevel(name, level.orElse(null), vendorInEffect || held == null ? null : held.token());
+        Baseline held = captured.get(name); // one snapshot: a concurrent rebase must not split level from token
+        Level vendor = vendorLevels.get(name);
+        if (vendor != null && !resetToNative.contains(name)) {
+            adapter.restoreLevel(name, vendor, null); // a vendor level is never written with the native token
+            return;
+        }
+        if (held == null) {
+            throw new IllegalStateException("baseline not captured for " + name);
+        }
+        adapter.restoreLevel(name, held.level().orElse(null), held.token());
     }
 
     /** As {@link #restore}, but always the application's own captured value (stop). */
     public void restoreNative(String name, LoggingAdapter adapter) {
-        Optional<Level> level = nativeLevel(name);
-        adapter.restoreLevel(name, level.orElse(null), captured.get(name).token());
+        Baseline held = captured.get(name);
+        if (held == null) {
+            throw new IllegalStateException("baseline not captured for " + name);
+        }
+        adapter.restoreLevel(name, held.level().orElse(null), held.token());
     }
 
     public boolean isCaptured(String name) {
