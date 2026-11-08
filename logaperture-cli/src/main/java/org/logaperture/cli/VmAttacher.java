@@ -24,8 +24,10 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 
 /** The JDK Attach API behind {@link JvmAttacher} (doc/specs/logctl-attach.md). */
 final class VmAttacher implements JvmAttacher {
@@ -34,7 +36,16 @@ final class VmAttacher implements JvmAttacher {
 
     @Override
     public List<Target> targets() {
+        return targets(HostProcesses.system());
+    }
+
+    /**
+     * The JDK's list, then on Windows the JVMs of other accounts that list cannot show (a service under
+     * {@code LocalSystem}): doc/specs/attach-windows-existence.md W2.
+     */
+    List<Target> targets(HostProcesses host) {
         List<Target> targets = new ArrayList<>();
+        Set<Long> listed = new HashSet<>();
         try {
             for (VirtualMachineDescriptor descriptor : VirtualMachine.list()) {
                 long pid;
@@ -43,6 +54,7 @@ final class VmAttacher implements JvmAttacher {
                 } catch (NumberFormatException notAPid) {
                     continue;
                 }
+                listed.add(pid);
                 if (pid == ProcessHandle.current().pid()) {
                     continue;
                 }
@@ -56,10 +68,58 @@ final class VmAttacher implements JvmAttacher {
                     Quietly.detach(vm);
                 }
             }
+            targets.addAll(probeUnlisted(listed, host, VmAttacher::probe));
         } catch (LinkageError noAttachModule) {
             throw noJdkAttach();
         }
         return targets;
+    }
+
+    /** Attaches to one PID and reads it; a seam for the test. */
+    @FunctionalInterface
+    interface PidProbe {
+        Target probe(long pid) throws Exception;
+    }
+
+    private static Target probe(long pid) throws Exception {
+        VirtualMachine vm = null;
+        try {
+            vm = VirtualMachine.attach(Long.toString(pid));
+            return targetOf(pid, "", vm.getSystemProperties());
+        } finally {
+            Quietly.detach(vm);
+        }
+    }
+
+    /**
+     * Probes each {@link #unlisted} PID once; one that cannot be attached to (not a JVM, another account, a race)
+     * is not a candidate. Package-visible for the test.
+     */
+    static List<Target> probeUnlisted(Set<Long> listed, HostProcesses host, PidProbe probe) {
+        List<Target> found = new ArrayList<>();
+        for (long pid : unlisted(listed, host)) {
+            try {
+                found.add(probe.probe(pid));
+            } catch (Exception cannotInspect) {
+                // skipped, as in the JDK list's own loop
+            }
+        }
+        return found;
+    }
+
+    /**
+     * The PIDs of other accounts' JVMs the JDK's list did not name, without this process: Windows only,
+     * from {@link HostProcesses#otherAccountJvmPids()}, which is also all that discovery probes. Package-visible
+     * for the test.
+     */
+    static List<Long> unlisted(Set<Long> listed, HostProcesses host) {
+        List<Long> pids = new ArrayList<>();
+        for (long pid : host.otherAccountJvmPids()) {
+            if (!listed.contains(pid) && pid != host.currentPid()) {
+                pids.add(pid);
+            }
+        }
+        return pids;
     }
 
     @Override
@@ -152,7 +212,15 @@ final class VmAttacher implements JvmAttacher {
 
     /** doc/specs/logctl-attach.md #4: the cause, and the way out. Package-visible for the test. */
     static CliError loadFailure(long pid, Exception cause) {
-        if (ProcessHandle.of(pid).isEmpty()) {
+        return loadFailure(pid, cause, HostProcesses.system());
+    }
+
+    /**
+     * As above; "no such process" is {@link HostProcesses#exists}'s answer, not {@code ProcessHandle}'s, which is
+     * empty on Windows for a running process the caller may not open (doc/specs/attach-windows-existence.md W1).
+     */
+    static CliError loadFailure(long pid, Exception cause, HostProcesses host) {
+        if (!host.exists(pid)) {
             return new CliError(CliError.NO_JVM, "No process with PID " + pid + ".");
         }
         String message = cause.getMessage() == null ? "" : cause.getMessage();
@@ -170,6 +238,6 @@ final class VmAttacher implements JvmAttacher {
             return new CliError(CliError.UNEXPECTED, "The agent was loaded into PID " + pid + " but failed to start: "
                     + message);
         }
-        return AgentConnection.attachFailure(pid, cause, HostProcesses.system());
+        return AgentConnection.attachDenied(pid, cause, host.windows()); // exists() was asked above: not twice
     }
 }

@@ -24,6 +24,26 @@ JVMs](several-jvms.md)).
     elevated command prompt. Other service accounts (`LocalService`, `NetworkService`, a named
     account) and a prompt that is not elevated have not been tested.
 
+## Start LogAperture in a service that is already running
+
+If the service was started without `-javaagent`, load the agent into it from the same Administrator
+prompt, with `logctl attach`. With no PID it lists the JVMs it can attach to, including a service's
+JVM, and asks which one. To build that list it briefly attaches to each `java.exe` and `javaw.exe` the
+machine runs, whoever owns it, and reads its system properties; it loads nothing into any of them until
+you choose one. With the PID from `tasklist` (see below) it goes straight to it:
+
+```
+logctl attach 7100
+```
+
+The service's JVM is not restarted. See [Try LogAperture without restarting](try-without-restart.md)
+for what `attach` does and its limits.
+
+!!! note "Not yet checked on a service"
+    `logctl attach` reaches a service's JVM through the same attach mechanism as the commands
+    above, but it has not yet been run against a Windows service. Treat it as untested until this
+    note is gone.
+
 ## If `logctl` doesn't find it
 
 ```

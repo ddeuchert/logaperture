@@ -20,6 +20,10 @@ import com.sun.tools.attach.AgentLoadException;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -58,6 +62,75 @@ class VmAttacherTest {
     void aProcessThatIsGoneIsExitThree() {
         CliError error = VmAttacher.loadFailure(Long.MAX_VALUE, new IOException("gone"));
         assertEquals(CliError.NO_JVM, error.exitCode());
+    }
+
+    /** A Windows host whose JDK view cannot see {@code pid} but whose {@code tasklist} lists it, or does not. */
+    private static HostProcesses windowsHost(String tasklistOutput) {
+        return new HostProcesses(true, pid -> false, command -> tasklistOutput, Path.of("no-such-root"), 99L);
+    }
+
+    @Test
+    void aRunningProcessTheJdkCannotOpen_isAnAttachProblem_notNoSuchProcess() {
+        HostProcesses host = windowsHost("\"java.exe\",\"7100\",\"Services\",\"0\",\"7,656,664 K\"\n");
+        CliError error = VmAttacher.loadFailure(7100, new IOException("Access is denied"), host);
+        assertEquals(CliError.ATTACH_DENIED, error.exitCode());
+        assertTrue(error.getMessage().contains("Administrator"), error.getMessage());
+    }
+
+    @Test
+    void whenTasklistCannotRun_theAttachReportsItsOwnOutcome() {
+        CliError error = VmAttacher.loadFailure(7100, new IOException("Access is denied"), windowsHost(null));
+        assertEquals(CliError.ATTACH_DENIED, error.exitCode());
+    }
+
+    @Test
+    void aProcessTasklistDoesNotListIsGone() {
+        CliError error = VmAttacher.loadFailure(7100, new IOException("gone"),
+                windowsHost("\"java.exe\",\"4242\",\"Services\",\"0\",\"1 K\"\n"));
+        assertEquals(CliError.NO_JVM, error.exitCode());
+    }
+
+    @Test
+    void otherAccountsJvms_areTheTasklistOnesTheJdkListDidNotName_withoutThisProcess() {
+        String tasklist = "\"java.exe\",\"7100\",\"Services\",\"0\",\"1 K\"\n"
+                + "\"javaw.exe\",\"7200\",\"Console\",\"1\",\"1 K\"\n"
+                + "\"java.exe\",\"99\",\"Console\",\"1\",\"1 K\"\n"
+                + "\"notepad.exe\",\"7300\",\"Console\",\"1\",\"1 K\"\n";
+        assertEquals(List.of(7100L), VmAttacher.unlisted(Set.of(7200L), windowsHost(tasklist)));
+    }
+
+    @Test
+    void probingOtherAccountsJvms_skipsOnesThatCannotBeAttached_andNamesNoOneTwice() {
+        String tasklist = "\"java.exe\",\"7100\",\"Services\",\"0\",\"1 K\"\n"
+                + "\"java.exe\",\"7200\",\"Services\",\"0\",\"1 K\"\n"
+                + "\"java.exe\",\"7300\",\"Console\",\"1\",\"1 K\"\n";
+        List<Long> asked = new ArrayList<>();
+        VmAttacher.PidProbe probe = pid -> {
+            asked.add(pid);
+            if (pid == 7200) {
+                throw new IOException("Access is denied");
+            }
+            return new JvmAttacher.Target(pid, "", null, null, null, null);
+        };
+        List<JvmAttacher.Target> found = VmAttacher.probeUnlisted(Set.of(7300L), windowsHost(tasklist), probe);
+        assertEquals(List.of(7100L, 7200L), asked, "7300 was already listed by the JDK");
+        assertEquals(1, found.size());
+        assertEquals(7100L, found.get(0).pid());
+        assertEquals("", found.get(0).displayName());
+    }
+
+    @Test
+    void offWindows_noOtherAccountsJvmsAreAdded() {
+        HostProcesses linux = new HostProcesses(false, pid -> true, command -> "x", Path.of("/"), 99L);
+        assertTrue(VmAttacher.unlisted(Set.of(), linux).isEmpty());
+    }
+
+    @Test
+    void theEmptyListMessage_namesTheWindowsServiceCaseOnWindowsOnly() {
+        assertTrue(AttachCommand.noJvmMessage(true).contains("Windows service"));
+        assertTrue(AttachCommand.noJvmMessage(true).contains("as Administrator"));
+        assertTrue(!AttachCommand.noJvmMessage(false).contains("Windows"));
+        assertTrue(AttachCommand.noJvmMessage(false).startsWith("No JVM to attach to: none is running as this user"));
     }
 
     @Test

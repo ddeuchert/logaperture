@@ -99,7 +99,12 @@ final class AgentConnection implements ControlPlane {
         if (!host.exists(pid)) {
             return new CliError(CliError.NO_JVM, "No process with PID " + pid + ".");
         }
-        String owner = host.windows()
+        return attachDenied(pid, cause, host.windows());
+    }
+
+    /** The refusal for a process known to exist; a caller that already asked {@link HostProcesses#exists} uses this. */
+    static CliError attachDenied(long pid, Exception cause, boolean windows) {
+        String owner = windows
                 ? "open the command prompt as Administrator, or run as the account that owns that process"
                 : "run as the user that owns that process, or as root";
         if (cause instanceof AttachNotSupportedException) {
