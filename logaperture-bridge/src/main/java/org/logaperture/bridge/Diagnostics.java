@@ -79,6 +79,7 @@ public final class Diagnostics {
      * {@code server.log}) has done so long before an attach, so capturing {@code System.err} then would
      * log every LogAperture line through the application's handlers. After a {@code -javaagent} start
      * the capture precedes the wrapping, which is what this reproduces (doc/specs/logctl-attach.md #11).
+     * A security manager that denies the stream leaves the current one in place.
      */
     public static void useProcessStderr() {
         // What System.err itself uses: stderr.encoding (JDK 19+), sun.stderr.encoding (JDK 17 and below, set
@@ -95,7 +96,12 @@ public final class Diagnostics {
                 }
             }
         }
-        target = new PrintStream(new FileOutputStream(FileDescriptor.err), true, charset);
+        try {
+            target = new PrintStream(new FileOutputStream(FileDescriptor.err), true, charset);
+        } catch (SecurityException denied) {
+            // A security manager that denies writeFileDescriptor (JDK 17 and below): keep the current stream.
+            // The attach goes on, with LogAperture's lines as they were before this switch existed.
+        }
     }
 
     /** The stream LogAperture's own output goes to now: what {@code StderrAuditLog} writes to by default. */
