@@ -212,7 +212,10 @@ class FileStateStoreTest {
         try (FileStateStore first = FileStateStore.open()) {
             FileStateStore.InstanceLockedException exception =
                     assertThrows(FileStateStore.InstanceLockedException.class, FileStateStore::open);
-            assertEquals(ProcessHandle.current().pid(), exception.holderPid());
+            long pid = exception.holderPid();
+            if (pid != -1) { // -1 on platforms where a locked file can't be read (e.g. Windows)
+                assertEquals(ProcessHandle.current().pid(), pid);
+            }
         }
     }
 
