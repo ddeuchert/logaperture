@@ -215,7 +215,7 @@ public final class StormDetectionSwitch {
         boolean previous;
         synchronized (this) {
             previous = enabled;
-            enabled = setting.enabled();
+            moveTo(setting.enabled());
             changedAt = setting.appliedAt();
             tier = setting.tier();
             expiresAt = setting.expiresAt();

@@ -307,6 +307,52 @@ class StormDetectionToggleTest {
     }
 
     @Test
+    void resume_turningOn_firesOnEnableListeners_justLikeSetDoes() {
+        store.saveStormDetection(new StormDetectionSetting(true, PersistenceTier.STICKY, null, "keep watching",
+                Instant.parse("2026-10-08T02:00:00Z"), "jmx"));
+        StormDetectionSwitch detectionSwitch = savingSwitch(false, CapabilityPolicy.allowAll());
+
+        List<Boolean> seenEnabled = new ArrayList<>();
+        detectionSwitch.onEnable(() -> seenEnabled.add(detectionSwitch.isEnabled()));
+
+        detectionSwitch.resume(Instant.parse("2026-10-09T00:00:00Z"));
+
+        assertTrue(detectionSwitch.isEnabled());
+        assertEquals(List.of(false), seenEnabled,
+                "enable listeners must fire before the volatile write, same contract as set()");
+    }
+
+    @Test
+    void resume_turningOff_doesNotFireOnEnableListeners() {
+        store.saveStormDetection(new StormDetectionSetting(false, PersistenceTier.STICKY, null, "quiet hours",
+                Instant.parse("2026-10-08T02:00:00Z"), "jmx"));
+        StormDetectionSwitch detectionSwitch = savingSwitch(true, CapabilityPolicy.allowAll());
+
+        List<Boolean> seenEnabled = new ArrayList<>();
+        detectionSwitch.onEnable(() -> seenEnabled.add(detectionSwitch.isEnabled()));
+
+        detectionSwitch.resume(Instant.parse("2026-10-09T00:00:00Z"));
+
+        assertFalse(detectionSwitch.isEnabled());
+        assertTrue(seenEnabled.isEmpty(), "turning off never fires enable listeners");
+    }
+
+    @Test
+    void resume_turningOn_whenAlreadyOn_doesNotFireOnEnableListeners() {
+        store.saveStormDetection(new StormDetectionSetting(true, PersistenceTier.STICKY, null, "keep watching",
+                Instant.parse("2026-10-08T02:00:00Z"), "jmx"));
+        StormDetectionSwitch detectionSwitch = savingSwitch(true, CapabilityPolicy.allowAll());
+
+        List<Boolean> seenEnabled = new ArrayList<>();
+        detectionSwitch.onEnable(() -> seenEnabled.add(detectionSwitch.isEnabled()));
+
+        detectionSwitch.resume(Instant.parse("2026-10-09T00:00:00Z"));
+
+        assertTrue(detectionSwitch.isEnabled());
+        assertTrue(seenEnabled.isEmpty(), "already on: no transition, no listeners");
+    }
+
+    @Test
     void resume_aForSettingWithTimeLeft_isApplied_andFlipsAtTheOriginalDeadline() {
         Instant deadline = Instant.parse("2026-10-08T02:30:00Z");
         store.saveStormDetection(new StormDetectionSetting(false, PersistenceTier.FOR, deadline, null,
