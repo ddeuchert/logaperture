@@ -261,7 +261,7 @@ class RecipeFileTest {
         assertEquals("com.acme:billing", recipe.id());
         assertEquals(RecipeSource.Kind.VENDOR_DEFAULTS, recipe.source().kind());
         assertEquals("vendor defaults", recipe.source().label());
-        assertEquals("/opt/app/vendor-defaults.yaml", recipe.source().location());
+        assertEquals("/opt/app/vendor-defaults.yaml", recipe.source().location().replace('\\', '/'));
         assertEquals("1 logger, 1 recipe", defaults.summary());
     }
 
