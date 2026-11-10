@@ -102,8 +102,9 @@ class AgentOrderCheckTest {
                 "-javaagent:/opt/logaperture-agent.jar"), AgentOrderCheck.ORDER_CHECK);
 
         assertEquals("2 agents are listed ahead of logaperture-agent.jar: agent.jar, agent.jar.", order.summary());
-        assertTrue(order.detail().endsWith("Listed ahead, in order: /a/agent.jar, /b/agent.jar."),
-                order.detail().replace('\\', '/'));
+        assertTrue(order.detail().endsWith("Listed ahead, in order: "
+                + dir.resolve("/a/agent.jar").toAbsolutePath().normalize() + ", "
+                + dir.resolve("/b/agent.jar").toAbsolutePath().normalize() + "."), order.detail());
     }
 
     @Test
