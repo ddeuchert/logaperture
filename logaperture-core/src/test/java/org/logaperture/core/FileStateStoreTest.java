@@ -28,8 +28,12 @@ import org.logaperture.api.PersistedRule;
 import org.logaperture.api.PersistenceTier;
 
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +43,7 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -214,6 +219,37 @@ class FileStateStoreTest {
                     assertThrows(FileStateStore.InstanceLockedException.class, FileStateStore::open);
             assertEquals(ProcessHandle.current().pid(), exception.holderPid());
         }
+    }
+
+    @Test
+    void tryLockOnce_whenFileAlreadyLocked_returnsNull_andClosesChannel() throws IOException {
+        Path lockFile = home.resolve("contention-test.lock");
+        Files.createFile(lockFile);
+
+        // Pre-lock the file: simulates another identity holding the lock.
+        FileLock preLock;
+        FileChannel preChannel = FileChannel.open(lockFile,
+                StandardOpenOption.READ, StandardOpenOption.WRITE);
+        preLock = preChannel.tryLock();
+        assertNotNull(preLock, "pre-lock must be acquired");
+
+        try {
+            // tryLockOnce opens its own channel and hits OverlappingFileLockException.
+            FileLock second = FileStateStore.tryLockOnce(lockFile);
+            assertNull(second, "contention must return null, not a lock");
+        } finally {
+            // Release the pre-lock so the file is unlocked.
+            preLock.release();
+            preChannel.close();
+        }
+
+        // After the pre-lock is gone, tryLockOnce must succeed — if the
+        // channel inside tryLockOnce leaked, the OS lock would still be held
+        // and this call would return null or throw.
+        FileLock reacquired = FileStateStore.tryLockOnce(lockFile);
+        assertNotNull(reacquired, "after pre-lock released, lock must be acquirable (no leaked channels)");
+        reacquired.release();
+        reacquired.channel().close();
     }
 
     @Test

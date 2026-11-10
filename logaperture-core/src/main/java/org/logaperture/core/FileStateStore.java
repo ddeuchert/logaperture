@@ -478,7 +478,7 @@ public final class FileStateStore implements StateStore, Closeable {
         throw new InstanceLockedException(holderPid);
     }
 
-    private static FileLock tryLockOnce(Path lockFile) throws IOException {
+    static FileLock tryLockOnce(Path lockFile) throws IOException {
         FileChannel channel = FileChannel.open(lockFile,
                 StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
         FileLock lock;
@@ -493,6 +493,9 @@ public final class FileStateStore implements StateStore, Closeable {
         } catch (OverlappingFileLockException e) {
             channel.close();
             return null;
+        } catch (IOException e) {
+            channel.close();
+            throw e;
         }
         if (lock == null) {
             channel.close();
