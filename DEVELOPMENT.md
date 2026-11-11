@@ -2,9 +2,8 @@
 
 How to build, test, run, and debug this project. For *what* the project is and
 *why*, see the [README](README.md) and the [design spec](doc/logaperture-spec.md).
-For contribution policy — the spec-driven workflow, gitflow branching, copyright
-headers — see [CLAUDE.md](CLAUDE.md); it is written for agents but the rules
-apply to everyone.
+For contribution policy — the spec-driven workflow, gitflow branching, issue and branch
+rules, copyright headers — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Branches and releases
 
