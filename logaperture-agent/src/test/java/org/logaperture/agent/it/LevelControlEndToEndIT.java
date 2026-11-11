@@ -15,6 +15,7 @@
  */
 package org.logaperture.agent.it;
 
+import com.sun.tools.attach.AttachNotSupportedException;
 import com.sun.tools.attach.VirtualMachine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -590,15 +591,30 @@ class LevelControlEndToEndIT {
     }
 
     static MBeanServerConnection attachAndConnect(long pid) throws Exception {
-        VirtualMachine vm = VirtualMachine.attach(Long.toString(pid));
-        try {
-            String connectorAddress = vm.startLocalManagementAgent();
-            JMXServiceURL url = new JMXServiceURL(connectorAddress);
-            JMXConnector connector = JMXConnectorFactory.connect(url);
-            return connector.getMBeanServerConnection();
-        } finally {
-            vm.detach();
+        // doc/specs/end-to-end-testing.md §"Test stability": a slow CI runner
+        // may start the child JVM before HotSpot's attach listener is ready.
+        // A bounded retry here avoids the flaky AttachNotSupportedException
+        // that otherwise kills the whole test run (issue #240).
+        Exception lastFailure = null;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                VirtualMachine vm = VirtualMachine.attach(Long.toString(pid));
+                try {
+                    String connectorAddress = vm.startLocalManagementAgent();
+                    JMXServiceURL url = new JMXServiceURL(connectorAddress);
+                    JMXConnector connector = JMXConnectorFactory.connect(url);
+                    return connector.getMBeanServerConnection();
+                } finally {
+                    vm.detach();
+                }
+            } catch (AttachNotSupportedException | IOException e) {
+                lastFailure = e;
+                if (attempt < 2) {
+                    Thread.sleep(1000);
+                }
+            }
         }
+        throw lastFailure;
     }
 
     static LevelControlMXBean pollForMxBeanProxy(MBeanServerConnection connection) throws Exception {
