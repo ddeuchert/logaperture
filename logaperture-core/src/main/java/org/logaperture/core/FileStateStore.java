@@ -478,6 +478,22 @@ public final class FileStateStore implements StateStore, Closeable {
         throw new InstanceLockedException(holderPid);
     }
 
+    /**
+     * Where the instance lock sits in the lock file. The holder's pid is written at the start of
+     * the file (see {@link #writeOwnPid}), and Windows enforces file locks on every other handle,
+     * so a lock over those bytes would make the pid unreadable to the process that needs it:
+     * {@code holderPid} came back {@code -1} (issue #363). Locking one byte far past the pid,
+     * beyond the end of the file, leaves the pid readable everywhere. Must stay at or beyond
+     * {@link #PID_READ_BYTES}.
+     */
+    static final long LOCK_OFFSET = 1024;
+
+    /** The length of the locked region, at {@link #LOCK_OFFSET}. */
+    static final long LOCK_SIZE = 1;
+
+    /** How many bytes from the start of the lock file {@link #readPidBestEffort} reads. */
+    static final int PID_READ_BYTES = 64;
+
     private static FileLock tryLockOnce(Path lockFile) throws IOException {
         FileChannel channel = FileChannel.open(lockFile,
                 StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
@@ -487,7 +503,8 @@ public final class FileStateStore implements StateStore, Closeable {
         // OverlappingFileLockException rather than returning null --
         // doc/specs/persistence.md's own "two install() calls against the
         // same identity in one test process" case.
-        return lockOrClose(channel, channel::tryLock);
+        LockAttempt lockPastThePid = () -> channel.tryLock(LOCK_OFFSET, LOCK_SIZE, false);
+        return lockOrClose(channel, lockPastThePid);
     }
 
     /** One attempt to take a lock; {@link FileChannel#tryLock()} in production, a stub in tests. */
@@ -527,7 +544,7 @@ public final class FileStateStore implements StateStore, Closeable {
 
     private static long readPidBestEffort(Path lockFile) {
         try (FileChannel channel = FileChannel.open(lockFile, StandardOpenOption.READ)) {
-            ByteBuffer buffer = ByteBuffer.allocate(64);
+            ByteBuffer buffer = ByteBuffer.allocate(PID_READ_BYTES);
             int read = channel.read(buffer);
             if (read <= 0) {
                 return -1;

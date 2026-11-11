@@ -267,7 +267,10 @@ horizontally-scaled instances of the same app — would derive the identical `in
 default. Detected, not silently merged:
 
 1. At agent install, after resolving the state file path, acquire an exclusive `FileLock` on a
-   sibling `.lock` file (create-if-absent). The lock file's content is this JVM's PID.
+   sibling `.lock` file (create-if-absent). The lock file's content is this JVM's PID. The lock is
+   one byte at offset 1024, past the PID bytes, not the whole file: Windows enforces file locks on
+   every other handle, so a lock over the PID would make it unreadable there and a collision would
+   report `pid=-1` (issue #363).
 2. Lock acquired → proceed normally; the channel stays open for the JVM's lifetime (OS releases it
    on process exit even on a hard kill, which is what makes this safe to rely on rather than just
    advisory).

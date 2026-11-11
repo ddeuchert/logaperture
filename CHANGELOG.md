@@ -108,6 +108,9 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ### Fixed
 
+- **On Windows, a second JVM that shares an instance identity now reports which process holds it.** The
+  "already locked" message named `pid=-1`, because Windows would not let it read the pid under the lock. The
+  lock now covers one byte past the pid, so the pid is readable on every OS (issue #363).
 - **After `logctl attach` on WildFly, the agent's own messages are no longer logged as `ERROR [stderr]`.**
   Its startup line and every audit line went through the server's handlers, and so into `server.log`, as
   `ERROR` records. An attach now writes them to the process's own standard error, as a `-javaagent` start
