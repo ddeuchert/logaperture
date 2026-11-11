@@ -2923,6 +2923,9 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
+<li><strong>On Windows, a second JVM that shares an instance identity now reports which process holds it.</strong> The
+  "already locked" message named <code>pid=-1</code>, because Windows would not let it read the pid under the lock. The
+  lock now covers one byte past the pid, so the pid is readable on every OS (issue #363).</li>
 <li><strong>After <code>logctl attach</code> on WildFly, the agent's own messages are no longer logged as <code>ERROR [stderr]</code>.</strong>
   Its startup line and every audit line went through the server's handlers, and so into <code>server.log</code>, as
   <code>ERROR</code> records. An attach now writes them to the process's own standard error, as a <code>-javaagent</code> start
