@@ -24,12 +24,14 @@ import org.openjdk.jmh.runner.options.OptionsBuilder;
 import org.openjdk.jmh.runner.options.TimeValue;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 import java.util.function.UnaryOperator;
 
 /**
@@ -203,9 +205,28 @@ public final class Suite {
         return runs;
     }
 
-    /** The Log4j 2 this jar runs on, recorded beside the results so the report can say what was measured. */
+    /**
+     * The Log4j 2 this jar runs on, recorded beside the results so the report can say what was measured.
+     * Read from log4j-core's own {@code pom.properties}: in the shaded benchmarks jar the manifest is the
+     * benchmark's, so {@code getImplementationVersion()} is {@code null} there and the report said
+     * "unknown" (issue #332).
+     */
     static String log4j2Version() {
-        String version = org.apache.logging.log4j.core.LoggerContext.class.getPackage().getImplementationVersion();
+        Class<?> context = org.apache.logging.log4j.core.LoggerContext.class;
+        String pomProperties = "META-INF/maven/org.apache.logging.log4j/log4j-core/pom.properties";
+        try (InputStream in = context.getClassLoader().getResourceAsStream(pomProperties)) {
+            if (in != null) {
+                Properties properties = new Properties();
+                properties.load(in);
+                String version = properties.getProperty("version");
+                if (version != null && !version.isBlank()) {
+                    return version.trim();
+                }
+            }
+        } catch (IOException e) {
+            // fall through to the manifest
+        }
+        String version = context.getPackage().getImplementationVersion();
         return version == null ? "unknown" : version;
     }
 
