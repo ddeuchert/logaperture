@@ -27,20 +27,31 @@ import org.logaperture.api.LevelOverride;
 import org.logaperture.api.PersistedRule;
 import org.logaperture.api.PersistenceTier;
 
+import java.io.Closeable;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.NonWritableChannelException;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
 /**
  * Against the real filesystem — a temp {@code logaperture.home} per test, so
  * no test touches the developer's actual {@code ~/.logaperture}. See
@@ -222,6 +233,86 @@ class FileStateStoreTest {
                 assertEquals(ownPid, holderPid);
             }
         }
+    }
+
+    @Test
+    void lockOrClose_aSuccessfulLock_isReturnedAndTheChannelStaysOpen() throws IOException {
+        Path lockFile = home.resolve("lock-or-close.lock");
+        try (FileChannel channel = FileChannel.open(lockFile,
+                StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+            AtomicBoolean closed = new AtomicBoolean();
+            Closeable watched = () -> closed.set(true);
+
+            FileLock lock = FileStateStore.lockOrClose(watched, channel::tryLock);
+
+            assertNotNull(lock);
+            assertFalse(closed.get(), "the caller keeps the channel it holds the lock on");
+            lock.release();
+        }
+    }
+
+    @Test
+    void lockOrClose_contention_returnsNullAndClosesTheChannel() throws IOException {
+        AtomicBoolean closed = new AtomicBoolean();
+        Closeable watched = () -> closed.set(true);
+        FileStateStore.LockAttempt heldElsewhere = () -> null;
+        FileStateStore.LockAttempt heldInThisJvm = () -> {
+            throw new OverlappingFileLockException();
+        };
+
+        assertNull(FileStateStore.lockOrClose(watched, heldElsewhere));
+        assertTrue(closed.getAndSet(false), "a null lock closes the channel");
+        assertNull(FileStateStore.lockOrClose(watched, heldInThisJvm));
+        assertTrue(closed.get(), "an overlapping lock closes the channel");
+    }
+
+    @Test
+    void lockOrClose_anIoFailure_closesTheChannelAndRethrows() {
+        AtomicBoolean closed = new AtomicBoolean();
+        Closeable watched = () -> closed.set(true);
+        IOException failure = new IOException("network filesystem went away");
+        FileStateStore.LockAttempt failing = () -> {
+            throw failure;
+        };
+
+        IOException thrown = assertThrows(IOException.class, () -> FileStateStore.lockOrClose(watched, failing));
+
+        assertSame(failure, thrown);
+        assertTrue(closed.get(), "the channel must not leak when tryLock throws");
+    }
+
+    @Test
+    void lockOrClose_anUncheckedFailure_closesTheChannelAndRethrows() {
+        AtomicBoolean closed = new AtomicBoolean();
+        Closeable watched = () -> closed.set(true);
+        NonWritableChannelException failure = new NonWritableChannelException();
+        FileStateStore.LockAttempt failing = () -> {
+            throw failure;
+        };
+
+        RuntimeException thrown = assertThrows(RuntimeException.class,
+                () -> FileStateStore.lockOrClose(watched, failing));
+
+        assertSame(failure, thrown);
+        assertTrue(closed.get(), "the channel must not leak on an unchecked failure either");
+    }
+
+    @Test
+    void lockOrClose_aFailingClose_isSuppressedOntoTheOriginalFailure() {
+        IOException closeFailure = new IOException("close failed");
+        Closeable failingClose = () -> {
+            throw closeFailure;
+        };
+        IOException original = new IOException("tryLock failed");
+        FileStateStore.LockAttempt failing = () -> {
+            throw original;
+        };
+
+        IOException thrown = assertThrows(IOException.class,
+                () -> FileStateStore.lockOrClose(failingClose, failing));
+
+        assertSame(original, thrown, "the lock failure is what the caller sees");
+        assertSame(closeFailure, thrown.getSuppressed()[0]);
     }
 
     @Test

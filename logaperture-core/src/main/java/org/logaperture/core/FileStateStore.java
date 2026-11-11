@@ -481,18 +481,42 @@ public final class FileStateStore implements StateStore, Closeable {
     private static FileLock tryLockOnce(Path lockFile) throws IOException {
         FileChannel channel = FileChannel.open(lockFile,
                 StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+        // A second collision candidate: the JVM itself (not just the OS)
+        // tracks locks per file, so a *second* instance racing for the
+        // same identity from within this same process throws
+        // OverlappingFileLockException rather than returning null --
+        // doc/specs/persistence.md's own "two install() calls against the
+        // same identity in one test process" case.
+        return lockOrClose(channel, channel::tryLock);
+    }
+
+    /** One attempt to take a lock; {@link FileChannel#tryLock()} in production, a stub in tests. */
+    @FunctionalInterface
+    interface LockAttempt {
+        FileLock tryLock() throws IOException;
+    }
+
+    /**
+     * Runs {@code attempt} and returns its lock, closing {@code channel} on every other exit:
+     * contention ({@code null} or {@link OverlappingFileLockException}) returns {@code null}, and
+     * any other failure -- {@link IOException} or unchecked -- is rethrown with the channel closed,
+     * so a failed attempt never leaks a file handle (issue #365). A failure from {@code close()}
+     * is attached to the rethrown exception as suppressed.
+     */
+    static FileLock lockOrClose(Closeable channel, LockAttempt attempt) throws IOException {
         FileLock lock;
         try {
-            // A second collision candidate: the JVM itself (not just the OS)
-            // tracks locks per file, so a *second* instance racing for the
-            // same identity from within this same process throws here
-            // rather than returning null -- doc/specs/persistence.md's own
-            // "two install() calls against the same identity in one test
-            // process" case.
-            lock = channel.tryLock();
+            lock = attempt.tryLock();
         } catch (OverlappingFileLockException e) {
             channel.close();
             return null;
+        } catch (Throwable failure) {
+            try {
+                channel.close();
+            } catch (IOException closeFailure) {
+                failure.addSuppressed(closeFailure);
+            }
+            throw failure;
         }
         if (lock == null) {
             channel.close();
