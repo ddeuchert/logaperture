@@ -158,7 +158,7 @@ class HandlerLevelControlServiceTest {
                 .filter(r -> r.ref().equals("FILE")).findFirst().orElseThrow();
         assertEquals(Level.DEBUG, fileRow.level(), "level reflects the active override");
         assertTrue(fileRow.persistent());
-        assertEquals("/var/log/server.log", fileRow.targetPath());
+        assertEquals(java.nio.file.Path.of("/var/log/server.log").toString(), fileRow.targetPath());
         assertEquals(Boolean.TRUE, fileRow.autoFlush());
         assertTrue(fileRow.overrideActive());
         assertEquals(Level.DEBUG, fileRow.overrideLevel());

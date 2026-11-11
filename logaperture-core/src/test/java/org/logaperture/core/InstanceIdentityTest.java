@@ -26,6 +26,7 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Pure path/hash/slug logic — see doc/specs/persistence.md "Location and identity". */
 class InstanceIdentityTest {
@@ -71,7 +72,12 @@ class InstanceIdentityTest {
     void sameCanonicalWorkingDirectory_reachedViaASymlink_yieldsTheSameHash(@TempDir Path tempDir) throws IOException {
         Path real = Files.createDirectory(tempDir.resolve("real-app-dir"));
         Path link = tempDir.resolve("link-to-app");
-        Files.createSymbolicLink(link, real);
+        try {
+            Files.createSymbolicLink(link, real);
+        } catch (IOException | UnsupportedOperationException | SecurityException e) {
+            // Windows without admin rights or Developer Mode: "A required privilege is not held".
+            assumeTrue(false, "cannot create symbolic links here: " + e);
+        }
 
         System.setProperty("user.dir", real.toString());
         String hashViaReal = InstanceIdentity.hash(InstanceIdentity.resolveIdentityString());
