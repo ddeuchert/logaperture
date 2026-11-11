@@ -41,8 +41,6 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeFalse;
-
 /**
  * Against the real filesystem — a temp {@code logaperture.home} per test, so
  * no test touches the developer's actual {@code ~/.logaperture}. See
@@ -213,11 +211,16 @@ class FileStateStoreTest {
         try (FileStateStore first = FileStateStore.open()) {
             FileStateStore.InstanceLockedException exception =
                     assertThrows(FileStateStore.InstanceLockedException.class, FileStateStore::open);
-            // Windows reports -1 here: its mandatory file lock blocks reading the pid (issue #363).
-            // The exception check above still ran; only the pid assertion is skipped there.
-            assumeFalse(System.getProperty("os.name", "").startsWith("Windows"),
-                    "holderPid is -1 on Windows until issue #363 is fixed");
-            assertEquals(ProcessHandle.current().pid(), exception.holderPid());
+            long ownPid = ProcessHandle.current().pid();
+            long holderPid = exception.holderPid();
+            boolean onWindows = System.getProperty("os.name", "").startsWith("Windows");
+            if (onWindows) {
+                // Windows' mandatory file lock blocks reading the pid, so -1 is expected there until
+                // issue #363 is fixed. Once it is, remove this branch and expect the pid everywhere.
+                assertTrue(holderPid == -1 || holderPid == ownPid, "holderPid was " + holderPid);
+            } else {
+                assertEquals(ownPid, holderPid);
+            }
         }
     }
 
