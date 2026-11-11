@@ -457,6 +457,15 @@ public final class FileStateStore implements StateStore, Closeable {
         return Path.of(System.getProperty("java.io.tmpdir"), "logaperture-" + System.getProperty("user.name"));
     }
 
+    /**
+     * Byte position the instance lock anchors on. The PID is written at
+     * position 0, outside the locked region, so it stays readable on
+     * platforms with mandatory file locks (Windows). Every process locks
+     * the same single byte, preserving mutual exclusion — see
+     * doc/specs/persistence.md "The same-working-directory collision".
+     */
+    static final long LOCK_BYTE_OFFSET = 64L;
+
     private static FileLock acquireLock(Path lockFile) throws IOException {
         FileLock lock = tryLockOnce(lockFile);
         if (lock != null) {
@@ -489,7 +498,7 @@ public final class FileStateStore implements StateStore, Closeable {
             // rather than returning null -- doc/specs/persistence.md's own
             // "two install() calls against the same identity in one test
             // process" case.
-            lock = channel.tryLock();
+            lock = channel.tryLock(LOCK_BYTE_OFFSET, 1);
         } catch (OverlappingFileLockException e) {
             channel.close();
             return null;

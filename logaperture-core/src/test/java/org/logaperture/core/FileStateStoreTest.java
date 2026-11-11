@@ -230,7 +230,7 @@ class FileStateStoreTest {
         FileLock preLock;
         FileChannel preChannel = FileChannel.open(lockFile,
                 StandardOpenOption.READ, StandardOpenOption.WRITE);
-        preLock = preChannel.tryLock();
+        preLock = preChannel.tryLock(FileStateStore.LOCK_BYTE_OFFSET, 1);
         assertNotNull(preLock, "pre-lock must be acquired");
 
         try {
