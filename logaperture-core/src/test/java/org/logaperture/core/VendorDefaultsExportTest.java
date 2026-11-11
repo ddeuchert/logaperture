@@ -154,7 +154,8 @@ class VendorDefaultsExportTest {
         String text = exportText();
 
         assertTrue(text.startsWith("# Exported by logctl export vendor-defaults, "), text);
-        assertTrue(text.contains("\n# Started from: /opt/app/vendor-defaults.yaml\nschemaVersion: 1\n"), text);
+        assertTrue(text.contains("\n# Started from: " + Path.of("/opt/app/vendor-defaults.yaml")
+                + "\nschemaVersion: 1\n"), text);
         String withoutTime = text.lines().skip(1).reduce("", (a, b) -> a + b + "\n");
         assertEquals(withoutTime, exportText().lines().skip(1).reduce("", (a, b) -> a + b + "\n"));
     }
