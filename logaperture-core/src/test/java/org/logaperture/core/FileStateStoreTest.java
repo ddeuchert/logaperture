@@ -222,16 +222,22 @@ class FileStateStoreTest {
         try (FileStateStore first = FileStateStore.open()) {
             FileStateStore.InstanceLockedException exception =
                     assertThrows(FileStateStore.InstanceLockedException.class, FileStateStore::open);
-            long ownPid = ProcessHandle.current().pid();
-            long holderPid = exception.holderPid();
-            boolean onWindows = System.getProperty("os.name", "").startsWith("Windows");
-            if (onWindows) {
-                // Windows' mandatory file lock blocks reading the pid, so -1 is expected there until
-                // issue #363 is fixed. Once it is, remove this branch and expect the pid everywhere.
-                assertTrue(holderPid == -1 || holderPid == ownPid, "holderPid was " + holderPid);
-            } else {
-                assertEquals(ownPid, holderPid);
-            }
+            assertEquals(ProcessHandle.current().pid(), exception.holderPid());
+        }
+    }
+
+    @Test
+    void theInstanceLock_isOneByteAtTheConfiguredOffset_clearOfTheBytesThePidIsReadFrom() throws IOException {
+        // Windows enforces file locks on other handles, so a lock over the pid bytes made
+        // holderPid unreadable there (issue #363). Asserting on the real lock catches a revert
+        // to a whole-file lock on every OS, not just Windows.
+        try (FileStateStore store = FileStateStore.open()) {
+            FileLock lock = store.instanceLock();
+
+            assertEquals(FileStateStore.LOCK_OFFSET, lock.position());
+            assertEquals(FileStateStore.LOCK_SIZE, lock.size());
+            assertFalse(lock.overlaps(0, FileStateStore.PID_READ_BYTES),
+                    "the lock must not cover the bytes readPidBestEffort reads");
         }
     }
 

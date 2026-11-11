@@ -373,6 +373,11 @@ public final class FileStateStore implements StateStore, Closeable {
         return Optional.of(stateFile.toAbsolutePath());
     }
 
+    /** The held instance lock; package-private so a test can assert where it sits (issue #363). */
+    FileLock instanceLock() {
+        return lock;
+    }
+
     /**
      * Releases the instance lock. Production never calls this (the OS
      * releases it at process exit); tests do. {@code synchronized} on the
@@ -463,11 +468,15 @@ public final class FileStateStore implements StateStore, Closeable {
             return lock;
         }
         long holderPid = readPidBestEffort(lockFile);
-        boolean stale = holderPid > 0 && ProcessHandle.of(holderPid).isEmpty();
+        boolean stale = !ON_WINDOWS && holderPid > 0 && ProcessHandle.of(holderPid).isEmpty();
         if (stale) {
             // The recorded holder is gone -- an abnormal exit that somehow
             // didn't release the OS lock (rare, but possible on some
             // network filesystems). Recreate the file and retry once.
+            // Never on Windows: it releases a dead process's locks itself, and
+            // ProcessHandle.of() also comes back empty for a live process it may
+            // not query (a service JVM, another session), so a live holder could
+            // be mistaken for a dead one and have its lock file deleted (issue #363).
             Files.deleteIfExists(lockFile);
             lock = tryLockOnce(lockFile);
             if (lock != null) {
@@ -478,19 +487,40 @@ public final class FileStateStore implements StateStore, Closeable {
         throw new InstanceLockedException(holderPid);
     }
 
+    /**
+     * Where the instance lock sits in the lock file. The holder's pid is written at the start of
+     * the file (see {@link #writeOwnPid}), and Windows enforces file locks on every other handle,
+     * so a lock over those bytes would make the pid unreadable to the process that needs it:
+     * {@code holderPid} came back {@code -1} (issue #363). Locking one byte far past the pid,
+     * beyond the end of the file, leaves the pid readable everywhere. Must stay at or beyond
+     * {@link #PID_READ_BYTES}, and beyond everything {@link #writeOwnPid} writes: a longer
+     * payload would overlap the locked byte and break pid reads on Windows again.
+     */
+    static final long LOCK_OFFSET = 1024;
+
+    /** Windows releases a dead process's locks itself, so stale-lock recovery is skipped there. */
+    private static final boolean ON_WINDOWS = System.getProperty("os.name", "").startsWith("Windows");
+
+    /** The length of the locked region, at {@link #LOCK_OFFSET}. */
+    static final long LOCK_SIZE = 1;
+
+    /** How many bytes from the start of the lock file {@link #readPidBestEffort} reads. */
+    static final int PID_READ_BYTES = 64;
+
     private static FileLock tryLockOnce(Path lockFile) throws IOException {
         FileChannel channel = FileChannel.open(lockFile,
                 StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-        // A second collision candidate: the JVM itself (not just the OS)
-        // tracks locks per file, so a *second* instance racing for the
-        // same identity from within this same process throws
+        // One byte past the pid, not the whole file (LOCK_OFFSET). The JVM itself
+        // (not just the OS) tracks locks per file, so a *second* instance racing
+        // for the same identity from within this same process throws
         // OverlappingFileLockException rather than returning null --
-        // doc/specs/persistence.md's own "two install() calls against the
-        // same identity in one test process" case.
-        return lockOrClose(channel, channel::tryLock);
+        // doc/specs/persistence.md's own "two install() calls against the same
+        // identity in one test process" case.
+        LockAttempt lockPastThePid = () -> channel.tryLock(LOCK_OFFSET, LOCK_SIZE, false);
+        return lockOrClose(channel, lockPastThePid);
     }
 
-    /** One attempt to take a lock; {@link FileChannel#tryLock()} in production, a stub in tests. */
+    /** One attempt to take a lock; {@code channel.tryLock(LOCK_OFFSET, LOCK_SIZE, false)} in production, a stub in tests. */
     @FunctionalInterface
     interface LockAttempt {
         FileLock tryLock() throws IOException;
@@ -527,7 +557,7 @@ public final class FileStateStore implements StateStore, Closeable {
 
     private static long readPidBestEffort(Path lockFile) {
         try (FileChannel channel = FileChannel.open(lockFile, StandardOpenOption.READ)) {
-            ByteBuffer buffer = ByteBuffer.allocate(64);
+            ByteBuffer buffer = ByteBuffer.allocate(PID_READ_BYTES);
             int read = channel.read(buffer);
             if (read <= 0) {
                 return -1;
