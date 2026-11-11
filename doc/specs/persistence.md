@@ -270,14 +270,18 @@ default. Detected, not silently merged:
    sibling `.lock` file (create-if-absent). The lock file's content is this JVM's PID. The lock is
    one byte at offset 1024, past the PID bytes, not the whole file: Windows enforces file locks on
    every other handle, so a lock over the PID would make it unreadable there and a collision would
-   report `pid=-1` (issue #363).
+   report `pid=-1` (issue #363). A holder from a release that still locks the whole file overlaps
+   this byte, so a mixed-version collision is still detected on a local filesystem.
 2. Lock acquired → proceed normally; the channel stays open for the JVM's lifetime (OS releases it
    on process exit even on a hard kill, which is what makes this safe to rely on rather than just
    advisory).
 3. Lock held by another process → read the recorded PID and check liveness via
    `ProcessHandle.of(pid)`. If that process is gone, the lock is stale from an abnormal exit that
    somehow didn't release it (rare, but possible on some network filesystems) — delete and retry
-   acquisition once.
+   acquisition once. Not on Windows: it releases a dead process's locks itself, and
+   `ProcessHandle.of` also returns empty for a live process it isn't allowed to query (a service
+   JVM, another session), so a live holder could be mistaken for a dead one and have its lock
+   file deleted. There a held lock always means a live holder.
 4. Still held by a live process → this instance degrades to session-only for its entire lifetime:
    no resume, no persisted writes, a loud diagnostic (§4.5) explaining why and naming
    `logaperture.instanceId` as the fix. This is the fail-open discipline (§9) applied to identity:

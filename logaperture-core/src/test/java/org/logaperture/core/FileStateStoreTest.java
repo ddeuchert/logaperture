@@ -227,23 +227,17 @@ class FileStateStoreTest {
     }
 
     @Test
-    void theInstanceLock_sitsPastTheBytesThePidIsReadFrom() {
+    void theInstanceLock_isOneByteAtTheConfiguredOffset_clearOfTheBytesThePidIsReadFrom() throws IOException {
         // Windows enforces file locks on other handles, so a lock over the pid bytes made
-        // holderPid unreadable there (issue #363). This holds on every OS; the strict
-        // holderPid assertion above is what proves it end to end on Windows.
-        assertTrue(FileStateStore.LOCK_OFFSET >= FileStateStore.PID_READ_BYTES,
-                "the locked region must not overlap the bytes readPidBestEffort reads");
-    }
+        // holderPid unreadable there (issue #363). Asserting on the real lock catches a revert
+        // to a whole-file lock on every OS, not just Windows.
+        try (FileStateStore store = FileStateStore.open()) {
+            FileLock lock = store.instanceLock();
 
-    @Test
-    void theHolderPid_isReadableWhileTheLockIsHeld() throws IOException {
-        try (FileStateStore first = FileStateStore.open()) {
-            Path lockFile;
-            try (Stream<Path> files = Files.list(home.resolve("instances"))) {
-                lockFile = files.filter(f -> f.toString().endsWith(".lock")).findFirst().orElseThrow();
-            }
-            String content = Files.readString(lockFile).trim();
-            assertEquals(Long.toString(ProcessHandle.current().pid()), content);
+            assertEquals(FileStateStore.LOCK_OFFSET, lock.position());
+            assertEquals(FileStateStore.LOCK_SIZE, lock.size());
+            assertFalse(lock.overlaps(0, FileStateStore.PID_READ_BYTES),
+                    "the lock must not cover the bytes readPidBestEffort reads");
         }
     }
 
