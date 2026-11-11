@@ -41,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 /**
  * Against the real filesystem — a temp {@code logaperture.home} per test, so
@@ -212,10 +213,11 @@ class FileStateStoreTest {
         try (FileStateStore first = FileStateStore.open()) {
             FileStateStore.InstanceLockedException exception =
                     assertThrows(FileStateStore.InstanceLockedException.class, FileStateStore::open);
-            long pid = exception.holderPid();
-            if (pid != -1) { // -1 on platforms where a locked file can't be read (e.g. Windows)
-                assertEquals(ProcessHandle.current().pid(), pid);
-            }
+            // Windows reports -1 here: its mandatory file lock blocks reading the pid (issue #363).
+            // The exception check above still ran; only the pid assertion is skipped there.
+            assumeFalse(System.getProperty("os.name", "").startsWith("Windows"),
+                    "holderPid is -1 on Windows until issue #363 is fixed");
+            assertEquals(ProcessHandle.current().pid(), exception.holderPid());
         }
     }
 
