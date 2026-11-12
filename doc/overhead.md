@@ -11,6 +11,7 @@ per-component benchmarks.
 
 | Run | Published | |
 |---|---|---|
+| [`2026-11-11-jdk21-log4j2`](overhead/2026-11-11-jdk21-log4j2/2.25.5/report.md) | the guide's Overhead page, Log4j 2 section, from 1.1.0 | Log4j 2.25.5 (all modes) and the 2.20.0 floor ([report](overhead/2026-11-11-jdk21-log4j2/2.20.0-floor/report.md)); `trim-typed` over budget, #371 |
 | [`2026-10-09-jdk21`](overhead/2026-10-09-jdk21/report.md) | the guide's Overhead page, from 1.0.0-beta.1 | storm detection off by default (#151), #148, #23 |
 | [`2026-10-06-jdk21`](overhead/2026-10-06-jdk21/report.md) | here, before the guide existed | the first run; storm detection on |
 
