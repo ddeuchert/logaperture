@@ -296,6 +296,22 @@ class JulLoggingAdapterTest {
     }
 
     @Test
+    void resolveHandler_skipsColdWalkWhenRefAlreadyLookedUpAndNotFound() {
+        // A code-review finding (issue #18): resolveHandler's cold fallback
+        // walked the full handler tree on every call for the same unknown ref,
+        // even though the first walk already confirmed it doesn't exist.  After
+        // the fix, a second lookup for the same unknown ref returns null
+        // without re-walking.
+        HandlerRef unknown = new HandlerRef("NoSuchHandlerAtAll");
+
+        Optional<Level> first = adapter.handlerLevel(unknown);
+        assertTrue(first.isEmpty(), "unknown ref: no level");
+
+        Optional<Level> second = adapter.handlerLevel(unknown);
+        assertTrue(second.isEmpty(), "second lookup for unknown ref also returns empty — negative cache");
+    }
+
+    @Test
     void knownHandlers_includesAHandlerAttachedToAKnownLogger() {
         ConsoleHandler console = testConsoleAtInfo();
         Logger.getLogger(name("handler.Known")).addHandler(console);

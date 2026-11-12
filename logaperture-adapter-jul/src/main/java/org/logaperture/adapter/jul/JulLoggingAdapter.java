@@ -108,6 +108,13 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             new ConcurrentHashMap<>();
     /** Handlers this adapter has resolved a {@link HandlerRef} for, keyed by that ref -- {@link #setHandlerLevel} needs it back. */
     private final ConcurrentHashMap<HandlerRef, Handler> handlersByRef = new ConcurrentHashMap<>();
+    /**
+     * The refs {@link #resolveHandler} has already cold-walked and not found — a negative cache
+     * so a second cold lookup for the same unknown ref doesn't walk again (issue #18). Pruned
+     * alongside {@link #handlersByRef} in {@link #pruneStaleHandlerEntries}: a handler that was
+     * absent when last walked might be attached now, so the next resolve must try again.
+     */
+    private final Set<HandlerRef> knownMissing = ConcurrentHashMap.newKeySet();
     /** doc/specs/top.md -- shared across every {@link ByteCountingFormatter} this adapter installs. */
     private final TopCounters topCounters = new TopCounters();
 
@@ -274,6 +281,7 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      */
     private void refreshHandlersAfterReload() {
         pruneStaleHandlerEntries(liveHandlers());
+        knownMissing.clear();
         synchronized (resolutionLock) {
             // Under the lock, as in invalidateNameCache(): an attempt already running from a
             // pre-reload snapshot must not set DONE after this and skip naming the new handlers.
@@ -731,6 +739,13 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         if (cached != null) {
             return cached;
         }
+        if (knownMissing.contains(ref)) {
+            // A prior cold walk already resolved every advertised handler and
+            // this ref wasn't among them — skip the walk (issue #18). The set
+            // is cleared at reload, so a handler attached since the last walk
+            // gets a fresh attempt.
+            return null;
+        }
         knownHandlers(); // side effect: resolves and caches every advertised handler's ref
         if (isJBossLogManager() && tokenRefs.contains(ref)) {
             // The cold walk (via realHandlers()) just cached an identity-token
@@ -740,6 +755,9 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             // before this call, i.e. handed straight back from realHandlers()
             // inside a fan-out) still resolves via the fast path above.
             return null;
+        }
+        if (handlersByRef.get(ref) == null) {
+            knownMissing.add(ref);
         }
         return handlersByRef.get(ref);
     }
@@ -860,6 +878,7 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         }
         Set<Handler> liveSet = Collections.newSetFromMap(new IdentityHashMap<>());
         liveSet.addAll(live);
+        boolean anyRemoved = false;
         for (Handler handler : refByHandler.keySet()) {
             if (liveSet.contains(handler)) {
                 continue;
@@ -871,6 +890,10 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             tokenRefs.remove(ref);
             handlersByRef.remove(ref, handler); // only if still pointing at this exact dead instance
             resolvedNames.remove(handler);
+            anyRemoved = true;
+        }
+        if (anyRemoved) {
+            knownMissing.clear();
         }
     }
 
