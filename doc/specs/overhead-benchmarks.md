@@ -723,6 +723,26 @@ and the disabled call against Decision #28's 10 ns). A rule row whose message is
 reported, not budgeted (Decision #32), so the budgeted rule rows are the `concatenated` ones; type-bound trims read
 no message and are budgeted for every message.
 
+**The pinned run and #29's outcome (2026-11-11).** The pinned run on Log4j 2.25.5 and the 2.20.0 floor run
+(Decision #26) are in `doc/overhead/2026-11-11-jdk21-log4j2/`. On 2.25.5, synchronous, one thread, the gate,
+`idle`, `drop-miss`, `drop-hit` (concatenated) and the disabled call pass. Over budget:
+
+| Check | Measured (ns) | Budget (ns) | Outcome |
+|---|--:|--:|---|
+| `trim-typed` − `idle`, template | +96.6 ± 12.7 | 50 | **Fix**, issue #371 (1.1.0) |
+| `trim-typed` − `idle`, concatenated | +57.3 ± 12.4 | 50 | **Fix**, issue #371 |
+| `trim-typed` − `idle`, throwable | +3124 ± 165 | 204 | **Fix**, issue #371 |
+| `trim` − `idle`, concatenated, 20 rules | +201 ± 13.9 | 204 | Accepted for 1.x as measured |
+| `gate-n` plain, 5 rules | +145 ± 1.1 | 140 | Accepted for 1.x as measured |
+| `gate-n` plain, 20 rules | +206 ± 1.7 | 204 | Accepted for 1.x as measured |
+| storm filter (opt-in, off by default), template | +120 ± 23.0 | 100 | Accepted for 1.x as measured |
+| storm filter (opt-in, off by default), concatenated | +367 ± 16.4 | 308 | Accepted for 1.x as measured |
+
+**Decided under #29: A** (owner, 2026-11-11). The marginal items are accepted for 1.x with the figures published,
+as with #158, #177 and #150; `trim-typed` gets its own issue under 1.1.0. On the 2.20.0 floor the disabled call
+passes; `idle` with a template is +48.1 ± 14.5 ns, over the 50 ns budget once the error is added, where 2.25.5
+shows +13.9 ± 10.5, and the floor run has no `idle` concatenated row. That row is reported as measured.
+
 ## Testing
 
 - The CI smoke pass (Decision #4) runs every benchmark once, which catches a scenario that

@@ -79,11 +79,31 @@ The machine has 4 cores and 8 hardware threads, so the 8-thread runs share cores
 
 ## On Log4j 2
 
-!!! info "Log4j 2 numbers come with 1.1"
-    Log4j 2 support is new in 1.1. Its numbers are measured with the same benchmark suite and
-    will be published here, from a quiet machine with the CPU pinned, before 1.1.0 ships. Until
-    then, [measure it yourself](#measure-it-yourself). What follows is what is different on
-    Log4j 2, and what the benchmarks measure because of it.
+!!! info "Measured on 2026-11-10, before 1.1"
+    These numbers are from the 1.1 code before its first release, on the same machine as the rest
+    of this page ([the run](#the-log4j-2-run)). Everything an idle agent does is within its budget.
+    Some checks on rules and type-bound `trim` are over: see
+    [Over budget on Log4j 2](#over-budget-on-log4j-2).
+
+### What the agent adds on Log4j 2
+
+One `INFO` call on one thread, synchronous loggers, one shared appender, against bare Log4j 2.
+Log4j 2.25.5.
+
+| What's installed | Template message | Concatenated message | With a 20-frame exception |
+|---|--:|--:|--:|
+| Nothing configured (the default) | +14 ± 11 ns | +31 ± 12 ns | −108 ± 129 ns (noise) |
+| 20 rules, none matching | +26 ± 11 ns | +40 ± 15 ns | −257 ± 100 ns (noise) |
+| 20 type-bound `trim` rules | +110 ± 10 ns | +88 ± 15 ns | +3,016 ± 135 ns |
+
+A call Log4j would not write at all (`logger.debug(...)` on an `INFO` logger) costs +1.1 ns. With
+`<Async>` appenders and with all-async loggers the idle agent adds between −14 and +15 ns on a template or
+concatenated message, within its error. At 4 and 8 threads the idle agent adds nothing measurable
+with a shared appender or one per thread.
+
+A rule that matches and drops the record costs +131 ± 20 ns on a concatenated message, against
+204 ns for 20 rules. A rule that reads a parameterized message pays to format it first: +243 ns
+at 20 rules on top of what the rules cost ([why](#on-log4j-2)).
 
 - **A disabled call still passes through the gate.** Log4j 2 runs a filter ahead of its level
   check, so `logger.debug(...)` on a logger whose level rejects it reaches LogAperture. The gate
@@ -108,6 +128,36 @@ The machine has 4 cores and 8 hardware threads, so the 8-thread runs share cores
   oldest LogAperture supports, for the idle agent and the disabled call. Log4j changed how it
   copies and renders events between those versions, so a cost on one is not a promise about the
   other.
+
+### Over budget on Log4j 2
+
+Each part has the same budget as on `java.util.logging`, plus 10 ns for a disabled call. On
+Log4j 2.25.5, synchronous, these are over:
+
+- **Type-bound `trim` rules, 20 rules:** +97 ns on a template and +57 ns on a concatenated
+  message against 50 ns, and **+3,124 ns on a record with an exception against 204 ns**
+  ([#371](https://github.com/ddeuchert/logaperture/issues/371)). Planned for a fix in 1.1.0.
+- **Accepted for 1.x as measured:**
+    - `trim` rules, 20 rules, concatenated message: +201 ± 14 ns against 204 ns.
+    - Rules that read a plain message: +145 ns at 5 rules against 140 ns, and +206 ns at 20 rules
+      against 204 ns.
+    - Storm detection, which is off by default: +120 ns on a template against 100 ns, and +367 ns
+      on a concatenated message against 308 ns.
+
+### The oldest supported version
+
+Log4j 2.20.0, the oldest LogAperture supports, measured for the idle agent and the disabled call
+only. The disabled call costs +1.2 ns, within its 10 ns budget. The idle agent adds +48 ± 15 ns
+on a template message against 50 ns, which is over once the error is counted; 2.25.5 shows +14 ns
+for the same call, and the gap is not yet explained. On a record with an exception it adds
++496 ± 386 ns, wide enough to be noise.
+
+### The Log4j 2 run
+
+Same machine, JDK and JMH settings as [the run above](#the-run), on Fedora Linux 44 with kernel
+7.3.3, at commit `725bb01`, on 2026-11-10 (2.25.5) and 2026-11-11 (2.20.0). The raw results are in
+the repository:
+[`doc/overhead/2026-11-11-jdk21-log4j2/`](https://github.com/ddeuchert/logaperture/tree/develop/doc/overhead/2026-11-11-jdk21-log4j2).
 
 ## What these numbers don't say
 
