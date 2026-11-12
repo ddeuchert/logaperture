@@ -73,6 +73,8 @@ final class GatePlan {
     /** Per rule, its {@code type} matcher's class name, or {@code null}; the keys of {@link #typeFlags}. */
     private final String[] typeNames;
     private final boolean anyTyped;
+    /** Whether any rule is not a {@link Trim}; computed once, since the Log4j 2 gate asks it on every call (R7). */
+    private final boolean hasRuleWithoutThrowable;
     /** R6: per exception class, per rule, whether the class satisfies the rule's {@code type} matcher. */
     private final ClassValue<boolean[]> typeFlags = new ClassValue<>() {
         @Override
@@ -107,6 +109,7 @@ final class GatePlan {
                 indexable++;
             }
         }
+        this.hasRuleWithoutThrowable = rules.stream().anyMatch(rule -> !(rule instanceof Trim));
         this.anyTyped = Arrays.stream(typeNames).anyMatch(java.util.Objects::nonNull);
         List<Integer> unindexed = new ArrayList<>();
         if (indexable >= INDEX_MIN_RULES) {
@@ -192,12 +195,7 @@ final class GatePlan {
      * does (R7), so a plan of trims alone is answered "allow" for such an event without further work.
      */
     boolean hasRuleWithoutThrowable() {
-        for (LogRule rule : rules) {
-            if (!(rule instanceof Trim)) {
-                return true;
-            }
-        }
-        return false;
+        return hasRuleWithoutThrowable;
     }
 
     boolean usesIndex() {
@@ -221,6 +219,15 @@ final class GatePlan {
                 || (indexLevelAtMost != null && indexLevelAtMost.isMoreVerboseThan(event.level()))) {
             return false; // no indexed rule could match: don't format the message for nothing
         }
+        return indexedCandidateMatches(event, types);
+    }
+
+    /**
+     * The message walk of {@link #anyCandidateMatches}, apart so that method stays under the JIT's hot-inline
+     * limit (325 bytecodes): the Log4j 2 gate's candidate event does not escape only while it is inlined,
+     * and a call that allocates nothing is part of the gate's budget.
+     */
+    private boolean indexedCandidateMatches(RuleCandidateEvent event, boolean[] types) {
         String message = event.formattedMessageSupplier().get();
         if (message == null || message.length() < 2) {
             return false; // every indexed rule needs at least two characters of message

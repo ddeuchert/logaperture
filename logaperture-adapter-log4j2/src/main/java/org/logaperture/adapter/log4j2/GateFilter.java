@@ -166,10 +166,14 @@ final class GateFilter extends AbstractFilter {
         StormObserver observer = storm;
         // R7: a logger with only trim rules is no work for a call without a throwable, looked for the way
         // Call.of looks for it, so it is never missed; asking costs one plan lookup, as appliesTo did.
-        boolean mayCarryThrowable = thrown != null || lastParam instanceof Throwable
-                || (message instanceof Message m && m.getThrowable() != null);
-        return (rules == null || !rules.appliesTo(logger.getName(), mayCarryThrowable))
+        return (rules == null || !rules.appliesTo(logger.getName(), mayCarryThrowable(message, thrown, lastParam)))
                 && (observer == null || !observer.isActive());
+    }
+
+    /** Whether {@code Call.of} would find a throwable: kept apart so {@link #skip} stays small enough to inline. */
+    private static boolean mayCarryThrowable(Object message, Throwable thrown, Object lastParam) {
+        return thrown != null || lastParam instanceof Throwable
+                || (message instanceof Message m && m.getThrowable() != null);
     }
 
     private Result run(Logger logger, Level level, Object message, Object[] params, Throwable thrown) {
