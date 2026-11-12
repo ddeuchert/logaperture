@@ -56,6 +56,17 @@ public interface RuleGate {
     }
 
     /**
+     * doc/specs/rule-pipeline-foundation.md "Evaluation cost", R7: {@link #appliesTo(String)}, narrowed by
+     * whether the call carries a throwable. A logger whose only rules are {@code trim} rules cannot be
+     * touched by a call with no throwable, so an adapter whose gate must build the event (read the clock,
+     * resolve the throwable) before asking can leave without doing so. {@code false} guarantees
+     * {@link #evaluate} would return {@link GateVerdict#allow()}.
+     */
+    default boolean appliesTo(String loggerName, boolean hasThrowable) {
+        return appliesTo(loggerName);
+    }
+
+    /**
      * doc/specs/log4j2-adapter.md A3: the trim a render stage should apply to {@code event}, chosen
      * the same way {@link #evaluate} chooses it, but <em>never counted</em>. For a backend whose
      * gate runs before the event exists and whose render stage sees the event on another thread

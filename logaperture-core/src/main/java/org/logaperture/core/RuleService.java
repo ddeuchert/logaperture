@@ -134,13 +134,19 @@ public final class RuleService implements RuleOperations {
         }
 
         @Override
+        public boolean appliesTo(String loggerName, boolean hasThrowable) {
+            GatePlan plan = gatePlan(loggerName);
+            return !plan.rules().isEmpty() && (hasThrowable || plan.hasRuleWithoutThrowable());
+        }
+
+        @Override
         public GateVerdict evaluateOnce(RuleCandidateEvent event) {
             GatePlan plan = gatePlan(event.loggerName());
             // R4 as in evaluateGate; then straight to the verdict, no decision cache to stripe or weaken.
             if (plan.rules().isEmpty() || !plan.anyCandidateMatches(event)) {
                 return GateVerdict.allow();
             }
-            return computeVerdict(plan.rules(), event);
+            return computeVerdict(plan, event);
         }
 
         @Override
@@ -154,7 +160,7 @@ public final class RuleService implements RuleOperations {
             if (plan.rules().isEmpty() || !plan.anyCandidateMatches(event)) {
                 return null;
             }
-            return decisionFor(selectTrim(plan.rules(), event));
+            return decisionFor(selectTrim(plan, event));
         }
     };
     private final Map<String, LongAdder> hitCounters = new ConcurrentHashMap<>();
@@ -1176,7 +1182,7 @@ public final class RuleService implements RuleOperations {
         }
         Map<Object, GateVerdict> stripe =
                 decisionStripes[System.identityHashCode(recordIdentity) & (DECISION_STRIPES - 1)];
-        return stripe.computeIfAbsent(recordIdentity, identity -> computeVerdict(plan.rules(), event));
+        return stripe.computeIfAbsent(recordIdentity, identity -> computeVerdict(plan, event));
     }
 
     @SuppressWarnings("unchecked")
@@ -1198,12 +1204,14 @@ public final class RuleService implements RuleOperations {
      * LogRule} type reaching this loop is simply not a candidate for a
      * gate-stage verdict.
      */
-    private GateVerdict computeVerdict(List<LogRule> effective, RuleCandidateEvent event) {
-        for (LogRule rule : effective) {
-            if (!(rule instanceof Drop drop)) {
+    private GateVerdict computeVerdict(GatePlan plan, RuleCandidateEvent event) {
+        List<LogRule> effective = plan.rules();
+        boolean[] types = plan.typeFlagsOf(event);
+        for (int i = 0; i < effective.size(); i++) {
+            if (!(effective.get(i) instanceof Drop drop)) {
                 continue;
             }
-            if (!RuleMatching.matches(drop.matchers(), event)) {
+            if (!plan.matches(i, event, types)) {
                 continue;
             }
             hitCounters.computeIfAbsent(drop.id(), id -> new LongAdder()).increment();
@@ -1215,7 +1223,7 @@ public final class RuleService implements RuleOperations {
             tally.suppressed.increment();
             return GateVerdict.deny(drop.id());
         }
-        return GateVerdict.allowWithTrim(mostRestrictiveTrim(effective, event));
+        return GateVerdict.allowWithTrim(mostRestrictiveTrim(plan, event));
     }
 
     /**
@@ -1223,8 +1231,8 @@ public final class RuleService implements RuleOperations {
      * incremented. {@code null} if none matches, so {@link GateVerdict#allowWithTrim} carries a
      * {@code null} trim exactly like {@link GateVerdict#allow()} would.
      */
-    private TrimDecision mostRestrictiveTrim(List<LogRule> effective, RuleCandidateEvent event) {
-        Trim winner = selectTrim(effective, event);
+    private TrimDecision mostRestrictiveTrim(GatePlan plan, RuleCandidateEvent event) {
+        Trim winner = selectTrim(plan, event);
         if (winner == null) {
             return null;
         }
@@ -1251,16 +1259,18 @@ public final class RuleService implements RuleOperations {
      * apply the decision to, inflating {@code list rules}' hit count with ordinary non-exception
      * log traffic.
      */
-    private static Trim selectTrim(List<LogRule> effective, RuleCandidateEvent event) {
+    private static Trim selectTrim(GatePlan plan, RuleCandidateEvent event) {
         if (event.thrown() == null) {
             return null;
         }
+        List<LogRule> effective = plan.rules();
+        boolean[] types = plan.typeFlagsOf(event);
         Trim winner = null;
-        for (LogRule rule : effective) {
-            if (!(rule instanceof Trim trim)) {
+        for (int i = 0; i < effective.size(); i++) {
+            if (!(effective.get(i) instanceof Trim trim)) {
                 continue;
             }
-            if (!RuleMatching.matches(trim.matchers(), event)) {
+            if (!plan.matches(i, event, types)) {
                 continue;
             }
             if (winner == null || trim.frames() < winner.frames()) {

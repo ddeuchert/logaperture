@@ -70,9 +70,25 @@ final class GatePlan {
     /** Whether any indexed rule is a {@link Drop}; if not, an event without a throwable skips the walk. */
     private final boolean indexHasDrop;
 
+    /** Per rule, its {@code type} matcher's class name, or {@code null}; the keys of {@link #typeFlags}. */
+    private final String[] typeNames;
+    private final boolean anyTyped;
+    /** R6: per exception class, per rule, whether the class satisfies the rule's {@code type} matcher. */
+    private final ClassValue<boolean[]> typeFlags = new ClassValue<>() {
+        @Override
+        protected boolean[] computeValue(Class<?> type) {
+            boolean[] flags = new boolean[typeNames.length];
+            for (int i = 0; i < flags.length; i++) {
+                flags[i] = typeNames[i] != null && RuleMatching.isInstanceByName(type, typeNames[i]);
+            }
+            return flags;
+        }
+    };
+
     GatePlan(List<LogRule> rules) {
         this.rules = rules;
         int size = rules.size();
+        this.typeNames = new String[size];
         this.matchers = new CompiledMatchers[size];
         this.trim = new boolean[size];
         int[][] pairsByRule = new int[size][];
@@ -85,11 +101,13 @@ final class GatePlan {
                 matchers[i] = t.matchers();
                 trim[i] = true;
             }
+            typeNames[i] = matchers[i] == null ? null : matchers[i].throwableType();
             pairsByRule[i] = needlePairs(matchers[i]);
             if (pairsByRule[i] != null) {
                 indexable++;
             }
         }
+        this.anyTyped = Arrays.stream(typeNames).anyMatch(java.util.Objects::nonNull);
         List<Integer> unindexed = new ArrayList<>();
         if (indexable >= INDEX_MIN_RULES) {
             List<List<Integer>> buckets = new ArrayList<>(BUCKETS);
@@ -169,6 +187,19 @@ final class GatePlan {
         return rules;
     }
 
+    /**
+     * Whether some rule here could act on an event with no throwable: a {@link Drop}. A {@link Trim} never
+     * does (R7), so a plan of trims alone is answered "allow" for such an event without further work.
+     */
+    boolean hasRuleWithoutThrowable() {
+        for (LogRule rule : rules) {
+            if (!(rule instanceof Trim)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     boolean usesIndex() {
         return index != null;
     }
@@ -179,8 +210,9 @@ final class GatePlan {
      * Free of side effects -- R4: only a {@code true} here sends the event to the decision cache.
      */
     boolean anyCandidateMatches(RuleCandidateEvent event) {
+        boolean[] types = typeFlagsOf(event);
         for (int i : direct) {
-            if (candidateMatches(i, event)) {
+            if (candidateMatches(i, event, types)) {
                 return true;
             }
         }
@@ -210,7 +242,7 @@ final class GatePlan {
                 int bucket = word << 6 | Long.numberOfTrailingZeros(hits);
                 hits &= hits - 1;
                 for (int i : index[bucket]) {
-                    if (containsAll(pairs, probes[i]) && candidateMatches(i, event)) {
+                    if (containsAll(pairs, probes[i]) && candidateMatches(i, event, types)) {
                         return true;
                     }
                 }
@@ -238,12 +270,26 @@ final class GatePlan {
         return picked;
     }
 
+    /**
+     * R6: which rules' {@code type} matchers the event's own throwable satisfies, one lookup per check;
+     * {@code null} when no rule here has a {@code type} matcher or the event has no throwable.
+     */
+    boolean[] typeFlagsOf(RuleCandidateEvent event) {
+        Throwable thrown = event.thrown();
+        return anyTyped && thrown != null ? typeFlags.get(thrown.getClass()) : null;
+    }
+
+    /** Whether rule {@code i} matches {@code event}; {@code types} is {@link #typeFlagsOf}'s answer for it. */
+    boolean matches(int i, RuleCandidateEvent event, boolean[] types) {
+        return RuleMatching.matches(matchers[i], event, types != null && typeNames[i] != null ? types[i] : null);
+    }
+
     /** Mirrors {@link RuleService}'s computeVerdict and mostRestrictiveTrim: keep the two in step. */
-    private boolean candidateMatches(int i, RuleCandidateEvent event) {
+    private boolean candidateMatches(int i, RuleCandidateEvent event, boolean[] types) {
         if (trim[i] && event.thrown() == null) {
             return false; // RuleService.mostRestrictiveTrim never trims an event without a throwable
         }
-        return RuleMatching.matches(matchers[i], event);
+        return matches(i, event, types);
     }
 
     /**

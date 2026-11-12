@@ -30,6 +30,16 @@ final class RuleMatching {
     }
 
     static boolean matches(CompiledMatchers matchers, RuleCandidateEvent event) {
+        return matches(matchers, event, null);
+    }
+
+    /**
+     * {@link #matches(CompiledMatchers, RuleCandidateEvent)} with the answer to the {@code type} matcher for
+     * the event's own throwable already known ("Evaluation cost", R6): {@code topLevelType} is whether that
+     * throwable's class satisfies it, or {@code null} to work it out. Causes, for an {@code anyCause}
+     * matcher, are always worked out.
+     */
+    static boolean matches(CompiledMatchers matchers, RuleCandidateEvent event, Boolean topLevelType) {
         // matchers.levelAtMost().isMoreVerboseThan(event.level()) -- not the reverse -- reuses
         // Level's own named comparator (every other severity comparison in this codebase does)
         // instead of re-deriving the ordinal-comparison direction by hand (a code-review finding).
@@ -37,7 +47,7 @@ final class RuleMatching {
             return false; // event is more severe than the keep-floor bound -- spared
         }
         if (matchers.throwableType() != null || matchers.throwableMessageContains() != null) {
-            if (!throwableMatches(matchers, event.thrown())) {
+            if (!throwableMatches(matchers, event.thrown(), topLevelType)) {
                 return false;
             }
         }
@@ -66,23 +76,24 @@ final class RuleMatching {
      * the live {@code Throwable} (doc/specs/rule-pipeline-foundation.md
      * "Matcher library").
      */
-    private static boolean throwableMatches(CompiledMatchers matchers, Throwable thrown) {
+    private static boolean throwableMatches(CompiledMatchers matchers, Throwable thrown, Boolean topLevelType) {
         if (thrown == null) {
             return false;
         }
         if (matchers.anyCause()) {
             for (Throwable t = thrown; t != null; t = causeOf(t)) {
-                if (oneThrowableMatches(matchers, t)) {
+                if (oneThrowableMatches(matchers, t, t == thrown ? topLevelType : null)) {
                     return true;
                 }
             }
             return false;
         }
-        return oneThrowableMatches(matchers, thrown);
+        return oneThrowableMatches(matchers, thrown, topLevelType);
     }
 
-    private static boolean oneThrowableMatches(CompiledMatchers matchers, Throwable t) {
-        if (matchers.throwableType() != null && !isInstanceByName(t.getClass(), matchers.throwableType())) {
+    private static boolean oneThrowableMatches(CompiledMatchers matchers, Throwable t, Boolean typeKnown) {
+        if (matchers.throwableType() != null
+                && !(typeKnown != null ? typeKnown : isInstanceByName(t.getClass(), matchers.throwableType()))) {
             return false;
         }
         if (matchers.throwableMessageContains() != null) {
@@ -94,7 +105,7 @@ final class RuleMatching {
         return true;
     }
 
-    private static boolean isInstanceByName(Class<?> actual, String expectedTypeName) {
+    static boolean isInstanceByName(Class<?> actual, String expectedTypeName) {
         for (Class<?> c = actual; c != null; c = c.getSuperclass()) {
             if (c.getName().equals(expectedTypeName)) {
                 return true;
