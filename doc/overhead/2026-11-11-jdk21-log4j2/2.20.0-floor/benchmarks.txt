@@ -1,0 +1,4149 @@
+
+== Run 1 of 2: log4j2-floor-layers (started 00:52)
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = template, mode = sync, scenario = baseline)
+
+# Run progress: 0.00% complete, ETA 00:09:00
+# Fork: 1 of 3
+# Warmup Iteration   1: 681.723 ns/op
+# Warmup Iteration   2: 534.790 ns/op
+# Warmup Iteration   3: 534.392 ns/op
+# Warmup Iteration   4: 531.821 ns/op
+# Warmup Iteration   5: 532.183 ns/op
+Iteration   1: 532.537 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 533.900 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 534.168 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 532.684 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 532.353 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 531.420 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 531.624 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 534.628 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 532.839 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 530.680 ns/op
+                 gc.alloc.rate:      0.040 MB/sec
+                 gc.alloc.rate.norm: 0.022 B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 2.78% complete, ETA 00:09:16
+# Fork: 2 of 3
+# Warmup Iteration   1: 724.365 ns/op
+# Warmup Iteration   2: 540.434 ns/op
+# Warmup Iteration   3: 547.857 ns/op
+# Warmup Iteration   4: 540.961 ns/op
+# Warmup Iteration   5: 541.767 ns/op
+Iteration   1: 541.624 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 545.337 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 539.125 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 541.782 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 539.369 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 552.039 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 545.738 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 543.294 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 541.028 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 542.491 ns/op
+                 gc.alloc.rate:      0.040 MB/sec
+                 gc.alloc.rate.norm: 0.023 B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 5.56% complete, ETA 00:08:57
+# Fork: 3 of 3
+# Warmup Iteration   1: 745.899 ns/op
+# Warmup Iteration   2: 549.070 ns/op
+# Warmup Iteration   3: 550.045 ns/op
+# Warmup Iteration   4: 554.380 ns/op
+# Warmup Iteration   5: 546.620 ns/op
+Iteration   1: 547.026 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 546.603 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 548.608 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 546.507 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 546.703 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 548.324 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 546.810 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 546.899 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 547.434 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 546.812 ns/op
+                 gc.alloc.rate:      0.040 MB/sec
+                 gc.alloc.rate.norm: 0.023 B/op
+                 gc.count:           ≈ 0 counts
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  541.013 ±(99.9%) 4.421 ns/op [Average]
+  (min, avg, max) = (530.680, 541.013, 552.039), stdev = 6.617
+  CI (99.9%): [536.592, 545.433] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate":
+  0.010 ±(99.9%) 0.007 MB/sec [Average]
+  (min, avg, max) = (0.007, 0.010, 0.040), stdev = 0.010
+  CI (99.9%): [0.003, 0.017] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate.norm":
+  0.006 ±(99.9%) 0.004 B/op [Average]
+  (min, avg, max) = (0.004, 0.006, 0.023), stdev = 0.006
+  CI (99.9%): [0.002, 0.010] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.count":
+  ≈ 0 counts
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = template, mode = sync, scenario = idle)
+
+# Run progress: 8.33% complete, ETA 00:08:40
+# Fork: 1 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+789.647 ns/op
+# Warmup Iteration   2: 623.846 ns/op
+# Warmup Iteration   3: 605.500 ns/op
+# Warmup Iteration   4: 606.802 ns/op
+# Warmup Iteration   5: 604.442 ns/op
+Iteration   1: 607.856 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 605.918 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 619.503 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 607.755 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 607.273 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 605.780 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 605.709 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 605.018 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 605.611 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 604.989 ns/op
+                 gc.alloc.rate:      0.040 MB/sec
+                 gc.alloc.rate.norm: 0.026 B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 11.11% complete, ETA 00:08:24
+# Fork: 2 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+739.940 ns/op
+# Warmup Iteration   2: 557.769 ns/op
+# Warmup Iteration   3: 556.535 ns/op
+# Warmup Iteration   4: 559.133 ns/op
+# Warmup Iteration   5: 555.062 ns/op
+Iteration   1: 555.195 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 556.745 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 554.958 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 560.713 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 561.006 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 555.201 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 601.471 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 601.413 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 556.107 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 556.839 ns/op
+                 gc.alloc.rate:      0.040 MB/sec
+                 gc.alloc.rate.norm: 0.024 B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 13.89% complete, ETA 00:08:08
+# Fork: 3 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+793.181 ns/op
+# Warmup Iteration   2: 600.538 ns/op
+# Warmup Iteration   3: 596.910 ns/op
+# Warmup Iteration   4: 601.535 ns/op
+# Warmup Iteration   5: 595.273 ns/op
+Iteration   1: 600.887 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 593.480 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 592.672 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 593.312 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 592.855 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 593.165 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 593.884 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 592.848 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 592.515 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 593.233 ns/op
+                 gc.alloc.rate:      0.040 MB/sec
+                 gc.alloc.rate.norm: 0.025 B/op
+                 gc.count:           ≈ 0 counts
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  589.130 ±(99.9%) 13.813 ns/op [Average]
+  (min, avg, max) = (554.958, 589.130, 619.503), stdev = 20.674
+  CI (99.9%): [575.318, 602.943] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate":
+  0.010 ±(99.9%) 0.007 MB/sec [Average]
+  (min, avg, max) = (0.007, 0.010, 0.040), stdev = 0.010
+  CI (99.9%): [0.003, 0.017] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate.norm":
+  0.006 ±(99.9%) 0.004 B/op [Average]
+  (min, avg, max) = (0.004, 0.006, 0.026), stdev = 0.006
+  CI (99.9%): [0.002, 0.010] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.count":
+  ≈ 0 counts
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = template, mode = async-appender, scenario = baseline)
+
+# Run progress: 16.67% complete, ETA 00:07:52
+# Fork: 1 of 3
+# Warmup Iteration   1: 1837.640 ns/op
+# Warmup Iteration   2: 839.546 ns/op
+# Warmup Iteration   3: 798.329 ns/op
+# Warmup Iteration   4: 719.309 ns/op
+# Warmup Iteration   5: 717.940 ns/op
+Iteration   1: 722.523 ns/op
+                 gc.alloc.rate:      407.876 MB/sec
+                 gc.alloc.rate.norm: 309.072 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   2: 725.616 ns/op
+                 gc.alloc.rate:      405.701 MB/sec
+                 gc.alloc.rate.norm: 308.739 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 724.986 ns/op
+                 gc.alloc.rate:      405.394 MB/sec
+                 gc.alloc.rate.norm: 308.230 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 718.370 ns/op
+                 gc.alloc.rate:      409.796 MB/sec
+                 gc.alloc.rate.norm: 308.739 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 729.515 ns/op
+                 gc.alloc.rate:      404.143 MB/sec
+                 gc.alloc.rate.norm: 309.213 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   6: 732.258 ns/op
+                 gc.alloc.rate:      403.007 MB/sec
+                 gc.alloc.rate.norm: 309.510 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 728.703 ns/op
+                 gc.alloc.rate:      404.294 MB/sec
+                 gc.alloc.rate.norm: 308.985 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   8: 745.778 ns/op
+                 gc.alloc.rate:      394.692 MB/sec
+                 gc.alloc.rate.norm: 308.717 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 714.353 ns/op
+                 gc.alloc.rate:      411.013 MB/sec
+                 gc.alloc.rate.norm: 307.931 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 725.483 ns/op
+                 gc.alloc.rate:      405.306 MB/sec
+                 gc.alloc.rate.norm: 309.080 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+
+# Run progress: 19.44% complete, ETA 00:07:37
+# Fork: 2 of 3
+# Warmup Iteration   1: 1542.583 ns/op
+# Warmup Iteration   2: 849.067 ns/op
+# Warmup Iteration   3: 704.840 ns/op
+# Warmup Iteration   4: 698.337 ns/op
+# Warmup Iteration   5: 700.648 ns/op
+Iteration   1: 699.962 ns/op
+                 gc.alloc.rate:      562.348 MB/sec
+                 gc.alloc.rate.norm: 412.828 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 700.086 ns/op
+                 gc.alloc.rate:      562.620 MB/sec
+                 gc.alloc.rate.norm: 413.097 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 696.447 ns/op
+                 gc.alloc.rate:      565.663 MB/sec
+                 gc.alloc.rate.norm: 413.162 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   4: 703.654 ns/op
+                 gc.alloc.rate:      559.993 MB/sec
+                 gc.alloc.rate.norm: 413.268 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 703.102 ns/op
+                 gc.alloc.rate:      560.564 MB/sec
+                 gc.alloc.rate.norm: 413.386 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   6: 699.165 ns/op
+                 gc.alloc.rate:      563.301 MB/sec
+                 gc.alloc.rate.norm: 413.053 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   7: 668.415 ns/op
+                 gc.alloc.rate:      587.324 MB/sec
+                 gc.alloc.rate.norm: 411.718 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   8: 706.223 ns/op
+                 gc.alloc.rate:      558.280 MB/sec
+                 gc.alloc.rate.norm: 413.511 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 696.202 ns/op
+                 gc.alloc.rate:      565.392 MB/sec
+                 gc.alloc.rate.norm: 412.831 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration  10: 694.660 ns/op
+                 gc.alloc.rate:      565.423 MB/sec
+                 gc.alloc.rate.norm: 412.892 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+
+# Run progress: 22.22% complete, ETA 00:07:21
+# Fork: 3 of 3
+# Warmup Iteration   1: 2197.147 ns/op
+# Warmup Iteration   2: 756.070 ns/op
+# Warmup Iteration   3: 704.926 ns/op
+# Warmup Iteration   4: 638.225 ns/op
+# Warmup Iteration   5: 641.583 ns/op
+Iteration   1: 630.056 ns/op
+                 gc.alloc.rate:      458.732 MB/sec
+                 gc.alloc.rate.norm: 303.129 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 640.757 ns/op
+                 gc.alloc.rate:      452.447 MB/sec
+                 gc.alloc.rate.norm: 304.050 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 635.158 ns/op
+                 gc.alloc.rate:      456.509 MB/sec
+                 gc.alloc.rate.norm: 304.094 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   4: 640.714 ns/op
+                 gc.alloc.rate:      452.170 MB/sec
+                 gc.alloc.rate.norm: 303.843 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 633.600 ns/op
+                 gc.alloc.rate:      456.455 MB/sec
+                 gc.alloc.rate.norm: 303.325 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 627.780 ns/op
+                 gc.alloc.rate:      460.176 MB/sec
+                 gc.alloc.rate.norm: 302.983 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   7: 654.839 ns/op
+                 gc.alloc.rate:      443.660 MB/sec
+                 gc.alloc.rate.norm: 304.706 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   8: 632.558 ns/op
+                 gc.alloc.rate:      457.250 MB/sec
+                 gc.alloc.rate.norm: 303.340 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 631.896 ns/op
+                 gc.alloc.rate:      457.941 MB/sec
+                 gc.alloc.rate.norm: 303.491 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration  10: 638.974 ns/op
+                 gc.alloc.rate:      452.459 MB/sec
+                 gc.alloc.rate.norm: 303.943 B/op
+                 gc.count:           ≈ 0 counts
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  686.728 ±(99.9%) 26.124 ns/op [Average]
+  (min, avg, max) = (627.780, 686.728, 745.778), stdev = 39.102
+  CI (99.9%): [660.604, 712.852] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate":
+  474.998 ±(99.9%) 45.597 MB/sec [Average]
+  (min, avg, max) = (394.692, 474.998, 587.324), stdev = 68.247
+  CI (99.9%): [429.401, 520.594] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate.norm":
+  341.829 ±(99.9%) 34.217 B/op [Average]
+  (min, avg, max) = (302.983, 341.829, 413.511), stdev = 51.214
+  CI (99.9%): [307.612, 376.046] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.count":
+  24.000 ±(99.9%) 0.001 counts [Sum]
+  (min, avg, max) = (≈ 0, 0.800, 1.000), stdev = 0.407
+  CI (99.9%): [24.000, 24.000] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.time":
+  18.000 ±(99.9%) 0.001 ms [Sum]
+  (min, avg, max) = (≈ 0, 0.600, 1.000), stdev = 0.498
+  CI (99.9%): [18.000, 18.000] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = template, mode = async-appender, scenario = idle)
+
+# Run progress: 25.00% complete, ETA 00:07:05
+# Fork: 1 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+1116.430 ns/op
+# Warmup Iteration   2: 848.725 ns/op
+# Warmup Iteration   3: 758.864 ns/op
+# Warmup Iteration   4: 778.824 ns/op
+# Warmup Iteration   5: 743.863 ns/op
+Iteration   1: 748.171 ns/op
+                 gc.alloc.rate:      528.234 MB/sec
+                 gc.alloc.rate.norm: 414.493 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 771.129 ns/op
+                 gc.alloc.rate:      513.911 MB/sec
+                 gc.alloc.rate.norm: 415.615 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 771.552 ns/op
+                 gc.alloc.rate:      514.514 MB/sec
+                 gc.alloc.rate.norm: 416.338 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   4: 767.662 ns/op
+                 gc.alloc.rate:      516.929 MB/sec
+                 gc.alloc.rate.norm: 416.196 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 756.305 ns/op
+                 gc.alloc.rate:      523.779 MB/sec
+                 gc.alloc.rate.norm: 415.453 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   6: 765.202 ns/op
+                 gc.alloc.rate:      518.524 MB/sec
+                 gc.alloc.rate.norm: 416.135 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   7: 761.937 ns/op
+                 gc.alloc.rate:      520.510 MB/sec
+                 gc.alloc.rate.norm: 415.944 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 784.290 ns/op
+                 gc.alloc.rate:      505.657 MB/sec
+                 gc.alloc.rate.norm: 415.916 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 766.374 ns/op
+                 gc.alloc.rate:      517.536 MB/sec
+                 gc.alloc.rate.norm: 415.986 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration  10: 756.906 ns/op
+                 gc.alloc.rate:      522.696 MB/sec
+                 gc.alloc.rate.norm: 415.905 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+
+# Run progress: 27.78% complete, ETA 00:06:50
+# Fork: 2 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+1364.264 ns/op
+# Warmup Iteration   2: 805.400 ns/op
+# Warmup Iteration   3: 766.185 ns/op
+# Warmup Iteration   4: 711.079 ns/op
+# Warmup Iteration   5: 714.920 ns/op
+Iteration   1: 702.620 ns/op
+                 gc.alloc.rate:      416.824 MB/sec
+                 gc.alloc.rate.norm: 307.153 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   2: 728.482 ns/op
+                 gc.alloc.rate:      403.533 MB/sec
+                 gc.alloc.rate.norm: 308.319 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 746.062 ns/op
+                 gc.alloc.rate:      395.459 MB/sec
+                 gc.alloc.rate.norm: 309.430 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 746.431 ns/op
+                 gc.alloc.rate:      394.777 MB/sec
+                 gc.alloc.rate.norm: 309.044 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 751.840 ns/op
+                 gc.alloc.rate:      392.369 MB/sec
+                 gc.alloc.rate.norm: 309.382 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   6: 763.757 ns/op
+                 gc.alloc.rate:      387.221 MB/sec
+                 gc.alloc.rate.norm: 310.169 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 746.192 ns/op
+                 gc.alloc.rate:      395.173 MB/sec
+                 gc.alloc.rate.norm: 309.255 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   8: 752.069 ns/op
+                 gc.alloc.rate:      391.988 MB/sec
+                 gc.alloc.rate.norm: 309.177 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 761.754 ns/op
+                 gc.alloc.rate:      388.115 MB/sec
+                 gc.alloc.rate.norm: 310.061 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration  10: 740.520 ns/op
+                 gc.alloc.rate:      396.204 MB/sec
+                 gc.alloc.rate.norm: 308.390 B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 30.56% complete, ETA 00:06:34
+# Fork: 3 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+1377.519 ns/op
+# Warmup Iteration   2: 802.901 ns/op
+# Warmup Iteration   3: 681.415 ns/op
+# Warmup Iteration   4: 639.593 ns/op
+# Warmup Iteration   5: 641.009 ns/op
+Iteration   1: 651.606 ns/op
+                 gc.alloc.rate:      447.282 MB/sec
+                 gc.alloc.rate.norm: 305.667 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 654.908 ns/op
+                 gc.alloc.rate:      445.121 MB/sec
+                 gc.alloc.rate.norm: 305.730 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 653.309 ns/op
+                 gc.alloc.rate:      446.023 MB/sec
+                 gc.alloc.rate.norm: 305.597 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   4: 654.238 ns/op
+                 gc.alloc.rate:      445.287 MB/sec
+                 gc.alloc.rate.norm: 305.536 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 650.465 ns/op
+                 gc.alloc.rate:      448.161 MB/sec
+                 gc.alloc.rate.norm: 305.733 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   6: 654.022 ns/op
+                 gc.alloc.rate:      445.930 MB/sec
+                 gc.alloc.rate.norm: 305.871 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 651.620 ns/op
+                 gc.alloc.rate:      447.317 MB/sec
+                 gc.alloc.rate.norm: 305.691 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   8: 657.134 ns/op
+                 gc.alloc.rate:      443.087 MB/sec
+                 gc.alloc.rate.norm: 305.363 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 656.492 ns/op
+                 gc.alloc.rate:      444.212 MB/sec
+                 gc.alloc.rate.norm: 305.859 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration  10: 655.798 ns/op
+                 gc.alloc.rate:      443.572 MB/sec
+                 gc.alloc.rate.norm: 305.773 B/op
+                 gc.count:           ≈ 0 counts
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  720.962 ±(99.9%) 33.588 ns/op [Average]
+  (min, avg, max) = (650.465, 720.962, 784.290), stdev = 50.273
+  CI (99.9%): [687.374, 754.549] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate":
+  453.332 ±(99.9%) 34.299 MB/sec [Average]
+  (min, avg, max) = (387.221, 453.332, 528.234), stdev = 51.337
+  CI (99.9%): [419.033, 487.630] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate.norm":
+  343.506 ±(99.9%) 34.751 B/op [Average]
+  (min, avg, max) = (305.363, 343.506, 416.338), stdev = 52.014
+  CI (99.9%): [308.755, 378.257] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.count":
+  23.000 ±(99.9%) 0.001 counts [Sum]
+  (min, avg, max) = (≈ 0, 0.767, 1.000), stdev = 0.430
+  CI (99.9%): [23.000, 23.000] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.time":
+  18.000 ±(99.9%) 0.001 ms [Sum]
+  (min, avg, max) = (≈ 0, 0.600, 1.000), stdev = 0.498
+  CI (99.9%): [18.000, 18.000] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = template, mode = async-loggers, scenario = baseline)
+
+# Run progress: 33.33% complete, ETA 00:06:18
+# Fork: 1 of 3
+# Warmup Iteration   1: 606.719 ns/op
+# Warmup Iteration   2: 432.065 ns/op
+# Warmup Iteration   3: 448.598 ns/op
+# Warmup Iteration   4: 444.339 ns/op
+# Warmup Iteration   5: 441.010 ns/op
+Iteration   1: 445.014 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 440.868 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 441.727 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 451.536 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 449.908 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 450.296 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 446.996 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 448.575 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 449.607 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 453.046 ns/op
+                 gc.alloc.rate:      0.049 MB/sec
+                 gc.alloc.rate.norm: 0.023 B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 36.11% complete, ETA 00:06:02
+# Fork: 2 of 3
+# Warmup Iteration   1: 634.838 ns/op
+# Warmup Iteration   2: 442.890 ns/op
+# Warmup Iteration   3: 445.763 ns/op
+# Warmup Iteration   4: 441.968 ns/op
+# Warmup Iteration   5: 442.602 ns/op
+Iteration   1: 443.871 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 447.168 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 444.900 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 444.225 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 446.081 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 444.242 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 446.172 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 446.351 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 444.528 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 446.146 ns/op
+                 gc.alloc.rate:      0.049 MB/sec
+                 gc.alloc.rate.norm: 0.023 B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 38.89% complete, ETA 00:05:47
+# Fork: 3 of 3
+# Warmup Iteration   1: 594.915 ns/op
+# Warmup Iteration   2: 463.776 ns/op
+# Warmup Iteration   3: 457.414 ns/op
+# Warmup Iteration   4: 456.009 ns/op
+# Warmup Iteration   5: 456.327 ns/op
+Iteration   1: 457.036 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 457.806 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 455.367 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 457.158 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 455.982 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 457.220 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 451.003 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 465.084 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 455.443 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 456.526 ns/op
+                 gc.alloc.rate:      0.049 MB/sec
+                 gc.alloc.rate.norm: 0.024 B/op
+                 gc.count:           ≈ 0 counts
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  449.996 ±(99.9%) 3.933 ns/op [Average]
+  (min, avg, max) = (440.868, 449.996, 465.084), stdev = 5.887
+  CI (99.9%): [446.063, 453.929] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate":
+  0.011 ±(99.9%) 0.009 MB/sec [Average]
+  (min, avg, max) = (0.007, 0.011, 0.049), stdev = 0.013
+  CI (99.9%): [0.002, 0.020] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate.norm":
+  0.005 ±(99.9%) 0.004 B/op [Average]
+  (min, avg, max) = (0.003, 0.005, 0.024), stdev = 0.006
+  CI (99.9%): [0.001, 0.009] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.count":
+  ≈ 0 counts
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = template, mode = async-loggers, scenario = idle)
+
+# Run progress: 41.67% complete, ETA 00:05:31
+# Fork: 1 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+688.201 ns/op
+# Warmup Iteration   2: 495.090 ns/op
+# Warmup Iteration   3: 501.009 ns/op
+# Warmup Iteration   4: 497.821 ns/op
+# Warmup Iteration   5: 503.819 ns/op
+Iteration   1: 499.042 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 501.799 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 503.203 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 501.428 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 500.072 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 504.881 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 504.483 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 507.617 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 501.603 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.004 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 503.187 ns/op
+                 gc.alloc.rate:      0.049 MB/sec
+                 gc.alloc.rate.norm: 0.026 B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 44.44% complete, ETA 00:05:15
+# Fork: 2 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+710.656 ns/op
+# Warmup Iteration   2: 487.283 ns/op
+# Warmup Iteration   3: 490.873 ns/op
+# Warmup Iteration   4: 482.229 ns/op
+# Warmup Iteration   5: 486.392 ns/op
+Iteration   1: 485.759 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 484.983 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 485.985 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 485.481 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 484.553 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 481.454 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 489.611 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 485.934 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 484.494 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 480.653 ns/op
+                 gc.alloc.rate:      0.049 MB/sec
+                 gc.alloc.rate.norm: 0.025 B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 47.22% complete, ETA 00:04:59
+# Fork: 3 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+648.496 ns/op
+# Warmup Iteration   2: 491.065 ns/op
+# Warmup Iteration   3: 491.524 ns/op
+# Warmup Iteration   4: 500.554 ns/op
+# Warmup Iteration   5: 489.561 ns/op
+Iteration   1: 493.267 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 491.313 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 492.875 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 494.471 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 493.953 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 489.573 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 489.441 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 491.395 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 488.886 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: 0.003 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 494.157 ns/op
+                 gc.alloc.rate:      0.049 MB/sec
+                 gc.alloc.rate.norm: 0.026 B/op
+                 gc.count:           ≈ 0 counts
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  493.185 ±(99.9%) 5.215 ns/op [Average]
+  (min, avg, max) = (480.653, 493.185, 507.617), stdev = 7.806
+  CI (99.9%): [487.970, 498.400] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate":
+  0.011 ±(99.9%) 0.009 MB/sec [Average]
+  (min, avg, max) = (0.007, 0.011, 0.049), stdev = 0.013
+  CI (99.9%): [0.002, 0.020] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate.norm":
+  0.006 ±(99.9%) 0.005 B/op [Average]
+  (min, avg, max) = (0.003, 0.006, 0.026), stdev = 0.007
+  CI (99.9%): [0.001, 0.010] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.count":
+  ≈ 0 counts
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = throwable, mode = sync, scenario = baseline)
+
+# Run progress: 50.00% complete, ETA 00:04:43
+# Fork: 1 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+37178.193 ns/op
+# Warmup Iteration   2: 25576.548 ns/op
+# Warmup Iteration   3: 18293.275 ns/op
+# Warmup Iteration   4: 17936.085 ns/op
+# Warmup Iteration   5: 17908.053 ns/op
+Iteration   1: 18266.178 ns/op
+                 gc.alloc.rate:      602.983 MB/sec
+                 gc.alloc.rate.norm: 11552.127 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 17984.414 ns/op
+                 gc.alloc.rate:      612.441 MB/sec
+                 gc.alloc.rate.norm: 11552.124 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 18079.691 ns/op
+                 gc.alloc.rate:      609.245 MB/sec
+                 gc.alloc.rate.norm: 11552.125 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   4: 18233.524 ns/op
+                 gc.alloc.rate:      604.094 MB/sec
+                 gc.alloc.rate.norm: 11552.126 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   5: 17871.821 ns/op
+                 gc.alloc.rate:      616.317 MB/sec
+                 gc.alloc.rate.norm: 11552.124 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   6: 17953.708 ns/op
+                 gc.alloc.rate:      613.489 MB/sec
+                 gc.alloc.rate.norm: 11552.125 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   7: 18847.936 ns/op
+                 gc.alloc.rate:      584.348 MB/sec
+                 gc.alloc.rate.norm: 11552.131 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   8: 17946.257 ns/op
+                 gc.alloc.rate:      613.704 MB/sec
+                 gc.alloc.rate.norm: 11552.124 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 17969.875 ns/op
+                 gc.alloc.rate:      612.893 MB/sec
+                 gc.alloc.rate.norm: 11552.124 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration  10: 17937.484 ns/op
+                 gc.alloc.rate:      613.263 MB/sec
+                 gc.alloc.rate.norm: 11552.761 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+
+# Run progress: 52.78% complete, ETA 00:04:28
+# Fork: 2 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+34364.002 ns/op
+# Warmup Iteration   2: 25946.427 ns/op
+# Warmup Iteration   3: 18394.919 ns/op
+# Warmup Iteration   4: 18106.743 ns/op
+# Warmup Iteration   5: 18190.397 ns/op
+Iteration   1: 18177.421 ns/op
+                 gc.alloc.rate:      605.942 MB/sec
+                 gc.alloc.rate.norm: 11552.126 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 18156.602 ns/op
+                 gc.alloc.rate:      606.661 MB/sec
+                 gc.alloc.rate.norm: 11552.125 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 18179.620 ns/op
+                 gc.alloc.rate:      605.887 MB/sec
+                 gc.alloc.rate.norm: 11552.126 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   4: 18188.074 ns/op
+                 gc.alloc.rate:      605.605 MB/sec
+                 gc.alloc.rate.norm: 11552.126 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 18473.148 ns/op
+                 gc.alloc.rate:      596.250 MB/sec
+                 gc.alloc.rate.norm: 11552.128 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   6: 18185.922 ns/op
+                 gc.alloc.rate:      605.672 MB/sec
+                 gc.alloc.rate.norm: 11552.126 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   7: 18132.114 ns/op
+                 gc.alloc.rate:      607.472 MB/sec
+                 gc.alloc.rate.norm: 11552.126 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   8: 18411.999 ns/op
+                 gc.alloc.rate:      598.237 MB/sec
+                 gc.alloc.rate.norm: 11552.128 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 18173.036 ns/op
+                 gc.alloc.rate:      606.115 MB/sec
+                 gc.alloc.rate.norm: 11552.136 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration  10: 18174.984 ns/op
+                 gc.alloc.rate:      605.276 MB/sec
+                 gc.alloc.rate.norm: 11552.771 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+
+# Run progress: 55.56% complete, ETA 00:04:12
+# Fork: 3 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+34582.022 ns/op
+# Warmup Iteration   2: 26257.684 ns/op
+# Warmup Iteration   3: 18804.495 ns/op
+# Warmup Iteration   4: 18168.316 ns/op
+# Warmup Iteration   5: 18189.201 ns/op
+Iteration   1: 18265.005 ns/op
+                 gc.alloc.rate:      603.040 MB/sec
+                 gc.alloc.rate.norm: 11552.127 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 18408.902 ns/op
+                 gc.alloc.rate:      598.321 MB/sec
+                 gc.alloc.rate.norm: 11552.127 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 18330.124 ns/op
+                 gc.alloc.rate:      600.894 MB/sec
+                 gc.alloc.rate.norm: 11552.127 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   4: 18386.052 ns/op
+                 gc.alloc.rate:      599.079 MB/sec
+                 gc.alloc.rate.norm: 11552.127 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 18452.330 ns/op
+                 gc.alloc.rate:      596.906 MB/sec
+                 gc.alloc.rate.norm: 11552.128 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   6: 18262.842 ns/op
+                 gc.alloc.rate:      603.111 MB/sec
+                 gc.alloc.rate.norm: 11552.126 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   7: 18341.156 ns/op
+                 gc.alloc.rate:      600.551 MB/sec
+                 gc.alloc.rate.norm: 11552.127 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   8: 18617.970 ns/op
+                 gc.alloc.rate:      591.619 MB/sec
+                 gc.alloc.rate.norm: 11552.129 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 18284.365 ns/op
+                 gc.alloc.rate:      602.388 MB/sec
+                 gc.alloc.rate.norm: 11552.127 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration  10: 18251.325 ns/op
+                 gc.alloc.rate:      602.682 MB/sec
+                 gc.alloc.rate.norm: 11552.773 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  18231.463 ±(99.9%) 142.068 ns/op [Average]
+  (min, avg, max) = (17871.821, 18231.463, 18847.936), stdev = 212.641
+  CI (99.9%): [18089.394, 18373.531] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate":
+  604.149 ±(99.9%) 4.650 MB/sec [Average]
+  (min, avg, max) = (584.348, 604.149, 616.317), stdev = 6.961
+  CI (99.9%): [599.499, 608.800] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate.norm":
+  11552.191 ±(99.9%) 0.131 B/op [Average]
+  (min, avg, max) = (11552.124, 11552.191, 11552.773), stdev = 0.196
+  CI (99.9%): [11552.060, 11552.322] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.count":
+  30.000 ±(99.9%) 0.001 counts [Sum]
+  (min, avg, max) = (1.000, 1.000, 1.000), stdev = 0.001
+  CI (99.9%): [30.000, 30.000] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.time":
+  26.000 ±(99.9%) 0.001 ms [Sum]
+  (min, avg, max) = (≈ 0, 0.867, 1.000), stdev = 0.346
+  CI (99.9%): [26.000, 26.000] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = throwable, mode = sync, scenario = idle)
+
+# Run progress: 58.33% complete, ETA 00:03:56
+# Fork: 1 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+45862.502 ns/op
+# Warmup Iteration   2: 25334.573 ns/op
+# Warmup Iteration   3: 19321.965 ns/op
+# Warmup Iteration   4: 18420.364 ns/op
+# Warmup Iteration   5: 18426.968 ns/op
+Iteration   1: 19270.827 ns/op
+                 gc.alloc.rate:      575.538 MB/sec
+                 gc.alloc.rate.norm: 11632.134 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 20518.351 ns/op
+                 gc.alloc.rate:      540.484 MB/sec
+                 gc.alloc.rate.norm: 11632.142 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 18647.060 ns/op
+                 gc.alloc.rate:      594.761 MB/sec
+                 gc.alloc.rate.norm: 11632.129 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   4: 18722.284 ns/op
+                 gc.alloc.rate:      591.647 MB/sec
+                 gc.alloc.rate.norm: 11632.129 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   5: 18584.780 ns/op
+                 gc.alloc.rate:      596.751 MB/sec
+                 gc.alloc.rate.norm: 11632.129 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   6: 18798.502 ns/op
+                 gc.alloc.rate:      589.954 MB/sec
+                 gc.alloc.rate.norm: 11632.131 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   7: 19916.316 ns/op
+                 gc.alloc.rate:      556.885 MB/sec
+                 gc.alloc.rate.norm: 11632.138 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   8: 18629.201 ns/op
+                 gc.alloc.rate:      595.345 MB/sec
+                 gc.alloc.rate.norm: 11632.129 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   9: 18421.362 ns/op
+                 gc.alloc.rate:      602.041 MB/sec
+                 gc.alloc.rate.norm: 11632.128 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration  10: 18389.847 ns/op
+                 gc.alloc.rate:      602.238 MB/sec
+                 gc.alloc.rate.norm: 11632.780 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+
+# Run progress: 61.11% complete, ETA 00:03:40
+# Fork: 2 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+36415.771 ns/op
+# Warmup Iteration   2: 25824.537 ns/op
+# Warmup Iteration   3: 18561.937 ns/op
+# Warmup Iteration   4: 18239.990 ns/op
+# Warmup Iteration   5: 18422.460 ns/op
+Iteration   1: 18218.726 ns/op
+                 gc.alloc.rate:      608.763 MB/sec
+                 gc.alloc.rate.norm: 11632.126 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 18212.703 ns/op
+                 gc.alloc.rate:      608.970 MB/sec
+                 gc.alloc.rate.norm: 11632.126 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 18207.460 ns/op
+                 gc.alloc.rate:      609.138 MB/sec
+                 gc.alloc.rate.norm: 11632.126 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   4: 18173.515 ns/op
+                 gc.alloc.rate:      610.268 MB/sec
+                 gc.alloc.rate.norm: 11632.126 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 18237.599 ns/op
+                 gc.alloc.rate:      608.123 MB/sec
+                 gc.alloc.rate.norm: 11632.125 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   6: 18173.293 ns/op
+                 gc.alloc.rate:      610.271 MB/sec
+                 gc.alloc.rate.norm: 11632.126 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   7: 18173.144 ns/op
+                 gc.alloc.rate:      610.278 MB/sec
+                 gc.alloc.rate.norm: 11632.126 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   8: 18222.839 ns/op
+                 gc.alloc.rate:      608.608 MB/sec
+                 gc.alloc.rate.norm: 11632.126 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 18365.571 ns/op
+                 gc.alloc.rate:      603.875 MB/sec
+                 gc.alloc.rate.norm: 11632.144 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration  10: 18278.528 ns/op
+                 gc.alloc.rate:      605.696 MB/sec
+                 gc.alloc.rate.norm: 11632.775 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+
+# Run progress: 63.89% complete, ETA 00:03:25
+# Fork: 3 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+36928.844 ns/op
+# Warmup Iteration   2: 26946.092 ns/op
+# Warmup Iteration   3: 19420.799 ns/op
+# Warmup Iteration   4: 18905.911 ns/op
+# Warmup Iteration   5: 19014.880 ns/op
+Iteration   1: 18905.715 ns/op
+                 gc.alloc.rate:      587.862 MB/sec
+                 gc.alloc.rate.norm: 11656.131 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   2: 18988.096 ns/op
+                 gc.alloc.rate:      585.291 MB/sec
+                 gc.alloc.rate.norm: 11656.132 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 18897.104 ns/op
+                 gc.alloc.rate:      588.138 MB/sec
+                 gc.alloc.rate.norm: 11656.131 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   4: 18892.497 ns/op
+                 gc.alloc.rate:      588.279 MB/sec
+                 gc.alloc.rate.norm: 11656.131 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   5: 19058.608 ns/op
+                 gc.alloc.rate:      583.120 MB/sec
+                 gc.alloc.rate.norm: 11656.132 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   6: 18923.134 ns/op
+                 gc.alloc.rate:      587.312 MB/sec
+                 gc.alloc.rate.norm: 11656.131 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   7: 19029.780 ns/op
+                 gc.alloc.rate:      584.010 MB/sec
+                 gc.alloc.rate.norm: 11656.132 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   8: 19058.730 ns/op
+                 gc.alloc.rate:      583.130 MB/sec
+                 gc.alloc.rate.norm: 11656.132 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 18809.465 ns/op
+                 gc.alloc.rate:      590.849 MB/sec
+                 gc.alloc.rate.norm: 11656.130 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration  10: 19103.725 ns/op
+                 gc.alloc.rate:      581.018 MB/sec
+                 gc.alloc.rate.norm: 11656.809 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  18727.625 ±(99.9%) 358.735 ns/op [Average]
+  (min, avg, max) = (18173.144, 18727.625, 20518.351), stdev = 536.938
+  CI (99.9%): [18368.890, 19086.361] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate":
+  592.955 ±(99.9%) 10.792 MB/sec [Average]
+  (min, avg, max) = (540.484, 592.955, 610.278), stdev = 16.153
+  CI (99.9%): [582.163, 603.747] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate.norm":
+  11640.196 ±(99.9%) 7.691 B/op [Average]
+  (min, avg, max) = (11632.125, 11640.196, 11656.809), stdev = 11.511
+  CI (99.9%): [11632.506, 11647.887] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.count":
+  32.000 ±(99.9%) 0.001 counts [Sum]
+  (min, avg, max) = (1.000, 1.067, 2.000), stdev = 0.254
+  CI (99.9%): [32.000, 32.000] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.time":
+  30.000 ±(99.9%) 0.001 ms [Sum]
+  (min, avg, max) = (≈ 0, 1.000, 2.000), stdev = 0.455
+  CI (99.9%): [30.000, 30.000] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = throwable, mode = async-appender, scenario = baseline)
+
+# Run progress: 66.67% complete, ETA 00:03:09
+# Fork: 1 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+26901.862 ns/op
+# Warmup Iteration   2: 15239.120 ns/op
+# Warmup Iteration   3: 13558.453 ns/op
+# Warmup Iteration   4: 13798.718 ns/op
+# Warmup Iteration   5: 13903.342 ns/op
+Iteration   1: 13433.700 ns/op
+                 gc.alloc.rate:      850.587 MB/sec
+                 gc.alloc.rate.norm: 11983.732 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 13508.614 ns/op
+                 gc.alloc.rate:      845.854 MB/sec
+                 gc.alloc.rate.norm: 11983.740 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   3: 13762.891 ns/op
+                 gc.alloc.rate:      830.216 MB/sec
+                 gc.alloc.rate.norm: 11983.859 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   4: 13512.115 ns/op
+                 gc.alloc.rate:      845.637 MB/sec
+                 gc.alloc.rate.norm: 11983.677 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   5: 13926.779 ns/op
+                 gc.alloc.rate:      820.487 MB/sec
+                 gc.alloc.rate.norm: 11983.785 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   6: 13643.524 ns/op
+                 gc.alloc.rate:      837.512 MB/sec
+                 gc.alloc.rate.norm: 11983.893 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   7: 14174.747 ns/op
+                 gc.alloc.rate:      806.096 MB/sec
+                 gc.alloc.rate.norm: 11983.395 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   8: 14050.929 ns/op
+                 gc.alloc.rate:      813.221 MB/sec
+                 gc.alloc.rate.norm: 11983.753 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 14038.123 ns/op
+                 gc.alloc.rate:      813.930 MB/sec
+                 gc.alloc.rate.norm: 11983.850 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            1.000 ms
+
+Iteration  10: 13508.339 ns/op
+                 gc.alloc.rate:      844.028 MB/sec
+                 gc.alloc.rate.norm: 11984.444 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+
+# Run progress: 69.44% complete, ETA 00:02:53
+# Fork: 2 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+28945.032 ns/op
+# Warmup Iteration   2: 16370.570 ns/op
+# Warmup Iteration   3: 13692.686 ns/op
+# Warmup Iteration   4: 13511.788 ns/op
+# Warmup Iteration   5: 13546.860 ns/op
+Iteration   1: 13474.439 ns/op
+                 gc.alloc.rate:      845.208 MB/sec
+                 gc.alloc.rate.norm: 11943.877 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   2: 13403.620 ns/op
+                 gc.alloc.rate:      849.603 MB/sec
+                 gc.alloc.rate.norm: 11942.929 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 13481.822 ns/op
+                 gc.alloc.rate:      844.675 MB/sec
+                 gc.alloc.rate.norm: 11943.523 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   4: 13404.555 ns/op
+                 gc.alloc.rate:      849.520 MB/sec
+                 gc.alloc.rate.norm: 11943.618 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 13414.136 ns/op
+                 gc.alloc.rate:      848.925 MB/sec
+                 gc.alloc.rate.norm: 11943.674 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   6: 13407.199 ns/op
+                 gc.alloc.rate:      849.407 MB/sec
+                 gc.alloc.rate.norm: 11943.599 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   7: 13467.245 ns/op
+                 gc.alloc.rate:      845.635 MB/sec
+                 gc.alloc.rate.norm: 11943.874 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   8: 13411.825 ns/op
+                 gc.alloc.rate:      849.134 MB/sec
+                 gc.alloc.rate.norm: 11943.907 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   9: 13451.284 ns/op
+                 gc.alloc.rate:      846.636 MB/sec
+                 gc.alloc.rate.norm: 11943.756 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration  10: 13950.145 ns/op
+                 gc.alloc.rate:      814.626 MB/sec
+                 gc.alloc.rate.norm: 11944.515 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+
+# Run progress: 72.22% complete, ETA 00:02:37
+# Fork: 3 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+26975.060 ns/op
+# Warmup Iteration   2: 16452.082 ns/op
+# Warmup Iteration   3: 14095.751 ns/op
+# Warmup Iteration   4: 13567.277 ns/op
+# Warmup Iteration   5: 13608.455 ns/op
+Iteration   1: 13559.707 ns/op
+                 gc.alloc.rate:      839.901 MB/sec
+                 gc.alloc.rate.norm: 11943.930 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 13587.334 ns/op
+                 gc.alloc.rate:      838.184 MB/sec
+                 gc.alloc.rate.norm: 11943.774 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   3: 13695.014 ns/op
+                 gc.alloc.rate:      831.543 MB/sec
+                 gc.alloc.rate.norm: 11943.572 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   4: 13769.158 ns/op
+                 gc.alloc.rate:      827.101 MB/sec
+                 gc.alloc.rate.norm: 11943.898 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   5: 14004.206 ns/op
+                 gc.alloc.rate:      813.198 MB/sec
+                 gc.alloc.rate.norm: 11943.745 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   6: 13631.029 ns/op
+                 gc.alloc.rate:      835.473 MB/sec
+                 gc.alloc.rate.norm: 11943.707 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   7: 13897.332 ns/op
+                 gc.alloc.rate:      819.461 MB/sec
+                 gc.alloc.rate.norm: 11943.648 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   8: 13498.383 ns/op
+                 gc.alloc.rate:      843.511 MB/sec
+                 gc.alloc.rate.norm: 11941.445 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 13620.640 ns/op
+                 gc.alloc.rate:      836.103 MB/sec
+                 gc.alloc.rate.norm: 11943.656 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            1.000 ms
+
+Iteration  10: 13591.691 ns/op
+                 gc.alloc.rate:      836.093 MB/sec
+                 gc.alloc.rate.norm: 11944.235 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  13642.684 ±(99.9%) 153.825 ns/op [Average]
+  (min, avg, max) = (13403.620, 13642.684, 14174.747), stdev = 230.238
+  CI (99.9%): [13488.860, 13796.509] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate":
+  835.717 ±(99.9%) 9.050 MB/sec [Average]
+  (min, avg, max) = (806.096, 835.717, 850.587), stdev = 13.545
+  CI (99.9%): [826.667, 844.766] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate.norm":
+  11957.034 ±(99.9%) 12.872 B/op [Average]
+  (min, avg, max) = (11941.445, 11957.034, 11984.444), stdev = 19.266
+  CI (99.9%): [11944.162, 11969.906] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.count":
+  42.000 ±(99.9%) 0.001 counts [Sum]
+  (min, avg, max) = (1.000, 1.400, 2.000), stdev = 0.498
+  CI (99.9%): [42.000, 42.000] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.time":
+  29.000 ±(99.9%) 0.001 ms [Sum]
+  (min, avg, max) = (≈ 0, 0.967, 2.000), stdev = 0.765
+  CI (99.9%): [29.000, 29.000] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = throwable, mode = async-appender, scenario = idle)
+
+# Run progress: 75.00% complete, ETA 00:02:21
+# Fork: 1 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+32941.318 ns/op
+# Warmup Iteration   2: 19025.201 ns/op
+# Warmup Iteration   3: 13945.706 ns/op
+# Warmup Iteration   4: 13988.953 ns/op
+# Warmup Iteration   5: 14498.489 ns/op
+Iteration   1: 14598.474 ns/op
+                 gc.alloc.rate:      786.834 MB/sec
+                 gc.alloc.rate.norm: 12047.019 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   2: 14701.022 ns/op
+                 gc.alloc.rate:      781.374 MB/sec
+                 gc.alloc.rate.norm: 12047.528 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 13849.313 ns/op
+                 gc.alloc.rate:      829.457 MB/sec
+                 gc.alloc.rate.norm: 12047.744 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   4: 14254.685 ns/op
+                 gc.alloc.rate:      805.795 MB/sec
+                 gc.alloc.rate.norm: 12046.254 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   5: 14335.969 ns/op
+                 gc.alloc.rate:      801.126 MB/sec
+                 gc.alloc.rate.norm: 12045.124 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   6: 14367.864 ns/op
+                 gc.alloc.rate:      799.513 MB/sec
+                 gc.alloc.rate.norm: 12047.705 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   7: 14498.947 ns/op
+                 gc.alloc.rate:      792.274 MB/sec
+                 gc.alloc.rate.norm: 12047.459 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   8: 14668.613 ns/op
+                 gc.alloc.rate:      783.068 MB/sec
+                 gc.alloc.rate.norm: 12046.874 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   9: 14115.419 ns/op
+                 gc.alloc.rate:      813.815 MB/sec
+                 gc.alloc.rate.norm: 12047.801 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration  10: 14432.775 ns/op
+                 gc.alloc.rate:      794.277 MB/sec
+                 gc.alloc.rate.norm: 12048.339 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+
+# Run progress: 77.78% complete, ETA 00:02:06
+# Fork: 2 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+39053.614 ns/op
+# Warmup Iteration   2: 18805.520 ns/op
+# Warmup Iteration   3: 14483.359 ns/op
+# Warmup Iteration   4: 14963.712 ns/op
+# Warmup Iteration   5: 15300.912 ns/op
+Iteration   1: 14916.845 ns/op
+                 gc.alloc.rate:      769.981 MB/sec
+                 gc.alloc.rate.norm: 12045.789 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 15052.830 ns/op
+                 gc.alloc.rate:      762.441 MB/sec
+                 gc.alloc.rate.norm: 12046.479 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 14978.983 ns/op
+                 gc.alloc.rate:      766.851 MB/sec
+                 gc.alloc.rate.norm: 12046.779 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   4: 14351.406 ns/op
+                 gc.alloc.rate:      800.445 MB/sec
+                 gc.alloc.rate.norm: 12047.632 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   5: 14377.365 ns/op
+                 gc.alloc.rate:      798.977 MB/sec
+                 gc.alloc.rate.norm: 12047.307 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   6: 14823.121 ns/op
+                 gc.alloc.rate:      774.940 MB/sec
+                 gc.alloc.rate.norm: 12047.252 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   7: 14486.809 ns/op
+                 gc.alloc.rate:      792.945 MB/sec
+                 gc.alloc.rate.norm: 12047.621 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   8: 14362.841 ns/op
+                 gc.alloc.rate:      799.749 MB/sec
+                 gc.alloc.rate.norm: 12047.030 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   9: 14222.060 ns/op
+                 gc.alloc.rate:      807.662 MB/sec
+                 gc.alloc.rate.norm: 12047.506 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration  10: 14348.420 ns/op
+                 gc.alloc.rate:      798.811 MB/sec
+                 gc.alloc.rate.norm: 12047.172 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+
+# Run progress: 80.56% complete, ETA 00:01:50
+# Fork: 3 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+33097.051 ns/op
+# Warmup Iteration   2: 20564.444 ns/op
+# Warmup Iteration   3: 14285.657 ns/op
+# Warmup Iteration   4: 14399.597 ns/op
+# Warmup Iteration   5: 14608.568 ns/op
+Iteration   1: 14100.583 ns/op
+                 gc.alloc.rate:      814.689 MB/sec
+                 gc.alloc.rate.norm: 12047.782 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 13903.951 ns/op
+                 gc.alloc.rate:      826.212 MB/sec
+                 gc.alloc.rate.norm: 12047.758 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 13993.725 ns/op
+                 gc.alloc.rate:      820.906 MB/sec
+                 gc.alloc.rate.norm: 12047.751 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   4: 14159.528 ns/op
+                 gc.alloc.rate:      811.296 MB/sec
+                 gc.alloc.rate.norm: 12047.617 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 14273.012 ns/op
+                 gc.alloc.rate:      804.780 MB/sec
+                 gc.alloc.rate.norm: 12046.793 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   6: 14208.052 ns/op
+                 gc.alloc.rate:      808.510 MB/sec
+                 gc.alloc.rate.norm: 12047.554 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   7: 14464.690 ns/op
+                 gc.alloc.rate:      794.157 MB/sec
+                 gc.alloc.rate.norm: 12047.344 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   8: 14530.485 ns/op
+                 gc.alloc.rate:      790.583 MB/sec
+                 gc.alloc.rate.norm: 12047.781 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 14192.257 ns/op
+                 gc.alloc.rate:      809.410 MB/sec
+                 gc.alloc.rate.norm: 12047.540 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            1.000 ms
+
+Iteration  10: 14338.080 ns/op
+                 gc.alloc.rate:      798.817 MB/sec
+                 gc.alloc.rate.norm: 12047.959 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  14396.938 ±(99.9%) 198.376 ns/op [Average]
+  (min, avg, max) = (13849.313, 14396.938, 15052.830), stdev = 296.920
+  CI (99.9%): [14198.561, 14595.314] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate":
+  797.990 ±(99.9%) 10.955 MB/sec [Average]
+  (min, avg, max) = (762.441, 797.990, 829.457), stdev = 16.397
+  CI (99.9%): [787.035, 808.945] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate.norm":
+  12047.276 ±(99.9%) 0.451 B/op [Average]
+  (min, avg, max) = (12045.124, 12047.276, 12048.339), stdev = 0.675
+  CI (99.9%): [12046.825, 12047.727] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.count":
+  42.000 ±(99.9%) 0.001 counts [Sum]
+  (min, avg, max) = (1.000, 1.400, 2.000), stdev = 0.498
+  CI (99.9%): [42.000, 42.000] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.time":
+  29.000 ±(99.9%) 0.001 ms [Sum]
+  (min, avg, max) = (≈ 0, 0.967, 2.000), stdev = 0.718
+  CI (99.9%): [29.000, 29.000] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = throwable, mode = async-loggers, scenario = baseline)
+
+# Run progress: 83.33% complete, ETA 00:01:34
+# Fork: 1 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+38232.101 ns/op
+# Warmup Iteration   2: 25118.060 ns/op
+# Warmup Iteration   3: 17888.689 ns/op
+# Warmup Iteration   4: 17412.894 ns/op
+# Warmup Iteration   5: 17252.684 ns/op
+Iteration   1: 17245.524 ns/op
+                 gc.alloc.rate:      632.975 MB/sec
+                 gc.alloc.rate.norm: 11448.884 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 17150.503 ns/op
+                 gc.alloc.rate:      635.683 MB/sec
+                 gc.alloc.rate.norm: 11434.295 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   3: 17506.083 ns/op
+                 gc.alloc.rate:      623.351 MB/sec
+                 gc.alloc.rate.norm: 11444.912 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   4: 17534.734 ns/op
+                 gc.alloc.rate:      622.432 MB/sec
+                 gc.alloc.rate.norm: 11446.541 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 16969.536 ns/op
+                 gc.alloc.rate:      643.479 MB/sec
+                 gc.alloc.rate.norm: 11452.286 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   6: 17199.555 ns/op
+                 gc.alloc.rate:      634.452 MB/sec
+                 gc.alloc.rate.norm: 11444.556 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   7: 17164.232 ns/op
+                 gc.alloc.rate:      635.950 MB/sec
+                 gc.alloc.rate.norm: 11448.222 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   8: 17757.684 ns/op
+                 gc.alloc.rate:      614.640 MB/sec
+                 gc.alloc.rate.norm: 11447.151 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   9: 17459.074 ns/op
+                 gc.alloc.rate:      625.172 MB/sec
+                 gc.alloc.rate.norm: 11447.354 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration  10: 17114.002 ns/op
+                 gc.alloc.rate:      618.099 MB/sec
+                 gc.alloc.rate.norm: 12235.359 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+
+# Run progress: 86.11% complete, ETA 00:01:18
+# Fork: 2 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+47351.910 ns/op
+# Warmup Iteration   2: 24721.045 ns/op
+# Warmup Iteration   3: 19220.322 ns/op
+# Warmup Iteration   4: 17670.198 ns/op
+# Warmup Iteration   5: 18768.227 ns/op
+Iteration   1: 18661.132 ns/op
+                 gc.alloc.rate:      584.946 MB/sec
+                 gc.alloc.rate.norm: 11448.068 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 19355.895 ns/op
+                 gc.alloc.rate:      563.602 MB/sec
+                 gc.alloc.rate.norm: 11441.113 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   3: 17339.990 ns/op
+                 gc.alloc.rate:      629.492 MB/sec
+                 gc.alloc.rate.norm: 11448.119 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   4: 18972.656 ns/op
+                 gc.alloc.rate:      575.410 MB/sec
+                 gc.alloc.rate.norm: 11449.771 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 19753.475 ns/op
+                 gc.alloc.rate:      552.559 MB/sec
+                 gc.alloc.rate.norm: 11447.498 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 18450.072 ns/op
+                 gc.alloc.rate:      591.767 MB/sec
+                 gc.alloc.rate.norm: 11450.828 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   7: 19113.335 ns/op
+                 gc.alloc.rate:      571.089 MB/sec
+                 gc.alloc.rate.norm: 11447.729 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   8: 19995.378 ns/op
+                 gc.alloc.rate:      546.055 MB/sec
+                 gc.alloc.rate.norm: 11451.214 B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 17629.071 ns/op
+                 gc.alloc.rate:      619.395 MB/sec
+                 gc.alloc.rate.norm: 11452.289 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration  10: 17452.546 ns/op
+                 gc.alloc.rate:      607.320 MB/sec
+                 gc.alloc.rate.norm: 12255.894 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+
+# Run progress: 88.89% complete, ETA 00:01:03
+# Fork: 3 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+29653.256 ns/op
+# Warmup Iteration   2: 23166.117 ns/op
+# Warmup Iteration   3: 17364.399 ns/op
+# Warmup Iteration   4: 17516.562 ns/op
+# Warmup Iteration   5: 17239.709 ns/op
+Iteration   1: 17196.378 ns/op
+                 gc.alloc.rate:      634.689 MB/sec
+                 gc.alloc.rate.norm: 11447.302 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 16957.072 ns/op
+                 gc.alloc.rate:      642.874 MB/sec
+                 gc.alloc.rate.norm: 11433.025 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 16907.004 ns/op
+                 gc.alloc.rate:      645.490 MB/sec
+                 gc.alloc.rate.norm: 11445.716 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   4: 16924.970 ns/op
+                 gc.alloc.rate:      645.005 MB/sec
+                 gc.alloc.rate.norm: 11449.207 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 16878.846 ns/op
+                 gc.alloc.rate:      646.708 MB/sec
+                 gc.alloc.rate.norm: 11448.328 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration   6: 16895.589 ns/op
+                 gc.alloc.rate:      646.211 MB/sec
+                 gc.alloc.rate.norm: 11450.778 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   7: 17910.348 ns/op
+                 gc.alloc.rate:      609.203 MB/sec
+                 gc.alloc.rate.norm: 11443.385 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   8: 17004.736 ns/op
+                 gc.alloc.rate:      642.013 MB/sec
+                 gc.alloc.rate.norm: 11450.065 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 17079.176 ns/op
+                 gc.alloc.rate:      639.150 MB/sec
+                 gc.alloc.rate.norm: 11449.003 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration  10: 16948.967 ns/op
+                 gc.alloc.rate:      623.722 MB/sec
+                 gc.alloc.rate.norm: 12225.196 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  17684.252 ±(99.9%) 612.867 ns/op [Average]
+  (min, avg, max) = (16878.846, 17684.252, 19995.378), stdev = 917.311
+  CI (99.9%): [17071.385, 18297.119] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate":
+  616.764 ±(99.9%) 19.789 MB/sec [Average]
+  (min, avg, max) = (546.055, 616.764, 646.708), stdev = 29.619
+  CI (99.9%): [596.975, 636.553] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate.norm":
+  11526.136 ±(99.9%) 161.480 B/op [Average]
+  (min, avg, max) = (11433.025, 11526.136, 12255.894), stdev = 241.696
+  CI (99.9%): [11364.656, 11687.616] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.count":
+  33.000 ±(99.9%) 0.001 counts [Sum]
+  (min, avg, max) = (≈ 0, 1.100, 2.000), stdev = 0.481
+  CI (99.9%): [33.000, 33.000] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.time":
+  27.000 ±(99.9%) 0.001 ms [Sum]
+  (min, avg, max) = (≈ 0, 0.900, 2.000), stdev = 0.607
+  CI (99.9%): [27.000, 27.000] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = throwable, mode = async-loggers, scenario = idle)
+
+# Run progress: 91.67% complete, ETA 00:00:47
+# Fork: 1 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+41719.121 ns/op
+# Warmup Iteration   2: 27609.881 ns/op
+# Warmup Iteration   3: 18534.301 ns/op
+# Warmup Iteration   4: 17092.762 ns/op
+# Warmup Iteration   5: 17590.211 ns/op
+Iteration   1: 17073.793 ns/op
+                 gc.alloc.rate:      643.327 MB/sec
+                 gc.alloc.rate.norm: 11519.787 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 17076.048 ns/op
+                 gc.alloc.rate:      643.175 MB/sec
+                 gc.alloc.rate.norm: 11518.766 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 17327.029 ns/op
+                 gc.alloc.rate:      634.298 MB/sec
+                 gc.alloc.rate.norm: 11527.516 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   4: 17173.206 ns/op
+                 gc.alloc.rate:      639.961 MB/sec
+                 gc.alloc.rate.norm: 11526.150 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 17575.818 ns/op
+                 gc.alloc.rate:      625.520 MB/sec
+                 gc.alloc.rate.norm: 11530.352 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   6: 17228.893 ns/op
+                 gc.alloc.rate:      637.486 MB/sec
+                 gc.alloc.rate.norm: 11518.862 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   7: 18315.400 ns/op
+                 gc.alloc.rate:      599.854 MB/sec
+                 gc.alloc.rate.norm: 11522.613 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   8: 17059.837 ns/op
+                 gc.alloc.rate:      644.114 MB/sec
+                 gc.alloc.rate.norm: 11524.299 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 17486.899 ns/op
+                 gc.alloc.rate:      627.961 MB/sec
+                 gc.alloc.rate.norm: 11529.475 B/op
+                 gc.count:           2.000 counts
+                 gc.time:            2.000 ms
+
+Iteration  10: 17135.174 ns/op
+                 gc.alloc.rate:      621.977 MB/sec
+                 gc.alloc.rate.norm: 12323.717 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+
+# Run progress: 94.44% complete, ETA 00:00:31
+# Fork: 2 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+33945.718 ns/op
+# Warmup Iteration   2: 25148.020 ns/op
+# Warmup Iteration   3: 18172.645 ns/op
+# Warmup Iteration   4: 17911.244 ns/op
+# Warmup Iteration   5: 18511.241 ns/op
+Iteration   1: 18792.711 ns/op
+                 gc.alloc.rate:      585.995 MB/sec
+                 gc.alloc.rate.norm: 11549.492 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 19504.368 ns/op
+                 gc.alloc.rate:      563.752 MB/sec
+                 gc.alloc.rate.norm: 11532.057 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 19745.043 ns/op
+                 gc.alloc.rate:      558.042 MB/sec
+                 gc.alloc.rate.norm: 11555.869 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   4: 17917.895 ns/op
+                 gc.alloc.rate:      614.690 MB/sec
+                 gc.alloc.rate.norm: 11550.957 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 17943.866 ns/op
+                 gc.alloc.rate:      613.946 MB/sec
+                 gc.alloc.rate.norm: 11553.962 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   6: 17932.701 ns/op
+                 gc.alloc.rate:      613.980 MB/sec
+                 gc.alloc.rate.norm: 11547.682 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   7: 18019.284 ns/op
+                 gc.alloc.rate:      611.112 MB/sec
+                 gc.alloc.rate.norm: 11548.843 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   8: 18189.725 ns/op
+                 gc.alloc.rate:      605.450 MB/sec
+                 gc.alloc.rate.norm: 11550.028 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration   9: 18048.991 ns/op
+                 gc.alloc.rate:      610.266 MB/sec
+                 gc.alloc.rate.norm: 11552.266 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration  10: 18954.230 ns/op
+                 gc.alloc.rate:      567.212 MB/sec
+                 gc.alloc.rate.norm: 12432.296 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+
+# Run progress: 97.22% complete, ETA 00:00:15
+# Fork: 3 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+32927.252 ns/op
+# Warmup Iteration   2: 26248.970 ns/op
+# Warmup Iteration   3: 18075.011 ns/op
+# Warmup Iteration   4: 18108.909 ns/op
+# Warmup Iteration   5: 17703.206 ns/op
+Iteration   1: 17752.993 ns/op
+                 gc.alloc.rate:      620.263 MB/sec
+                 gc.alloc.rate.norm: 11548.659 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   2: 19330.553 ns/op
+                 gc.alloc.rate:      568.827 MB/sec
+                 gc.alloc.rate.norm: 11532.296 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   3: 17652.435 ns/op
+                 gc.alloc.rate:      624.061 MB/sec
+                 gc.alloc.rate.norm: 11553.349 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   4: 18158.744 ns/op
+                 gc.alloc.rate:      606.284 MB/sec
+                 gc.alloc.rate.norm: 11546.123 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   5: 17742.091 ns/op
+                 gc.alloc.rate:      620.792 MB/sec
+                 gc.alloc.rate.norm: 11551.716 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   6: 17702.225 ns/op
+                 gc.alloc.rate:      622.305 MB/sec
+                 gc.alloc.rate.norm: 11553.603 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   7: 17704.019 ns/op
+                 gc.alloc.rate:      622.141 MB/sec
+                 gc.alloc.rate.norm: 11551.709 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   8: 17708.284 ns/op
+                 gc.alloc.rate:      622.060 MB/sec
+                 gc.alloc.rate.norm: 11552.758 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+Iteration   9: 17728.779 ns/op
+                 gc.alloc.rate:      621.235 MB/sec
+                 gc.alloc.rate.norm: 11550.558 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            ≈ 0 ms
+
+Iteration  10: 17671.848 ns/op
+                 gc.alloc.rate:      605.396 MB/sec
+                 gc.alloc.rate.norm: 12374.175 B/op
+                 gc.count:           1.000 counts
+                 gc.time:            1.000 ms
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  17921.763 ±(99.9%) 477.619 ns/op [Average]
+  (min, avg, max) = (17059.837, 17921.763, 19745.043), stdev = 714.878
+  CI (99.9%): [17444.144, 18399.382] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate":
+  613.183 ±(99.9%) 15.774 MB/sec [Average]
+  (min, avg, max) = (558.042, 613.183, 644.114), stdev = 23.610
+  CI (99.9%): [597.409, 628.957] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.alloc.rate.norm":
+  11624.331 ±(99.9%) 170.900 B/op [Average]
+  (min, avg, max) = (11518.766, 11624.331, 12432.296), stdev = 255.795
+  CI (99.9%): [11453.431, 11795.231] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.count":
+  31.000 ±(99.9%) 0.001 counts [Sum]
+  (min, avg, max) = (1.000, 1.033, 2.000), stdev = 0.183
+  CI (99.9%): [31.000, 31.000] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info:gc.time":
+  28.000 ±(99.9%) 0.001 ms [Sum]
+  (min, avg, max) = (≈ 0, 0.933, 2.000), stdev = 0.365
+  CI (99.9%): [28.000, 28.000] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:09:29
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                                   (handlers)  (message)          (mode)  (scenario)  Mode  Cnt      Score     Error   Units
+Log4jCallBenchmark.info                         shared   template            sync    baseline  avgt   30    541.013 ±   4.421   ns/op
+Log4jCallBenchmark.info:gc.alloc.rate           shared   template            sync    baseline  avgt   30      0.010 ±   0.007  MB/sec
+Log4jCallBenchmark.info:gc.alloc.rate.norm      shared   template            sync    baseline  avgt   30      0.006 ±   0.004    B/op
+Log4jCallBenchmark.info:gc.count                shared   template            sync    baseline  avgt   30        ≈ 0            counts
+Log4jCallBenchmark.info                         shared   template            sync        idle  avgt   30    589.130 ±  13.813   ns/op
+Log4jCallBenchmark.info:gc.alloc.rate           shared   template            sync        idle  avgt   30      0.010 ±   0.007  MB/sec
+Log4jCallBenchmark.info:gc.alloc.rate.norm      shared   template            sync        idle  avgt   30      0.006 ±   0.004    B/op
+Log4jCallBenchmark.info:gc.count                shared   template            sync        idle  avgt   30        ≈ 0            counts
+Log4jCallBenchmark.info                         shared   template  async-appender    baseline  avgt   30    686.728 ±  26.124   ns/op
+Log4jCallBenchmark.info:gc.alloc.rate           shared   template  async-appender    baseline  avgt   30    474.998 ±  45.597  MB/sec
+Log4jCallBenchmark.info:gc.alloc.rate.norm      shared   template  async-appender    baseline  avgt   30    341.829 ±  34.217    B/op
+Log4jCallBenchmark.info:gc.count                shared   template  async-appender    baseline  avgt   30     24.000            counts
+Log4jCallBenchmark.info:gc.time                 shared   template  async-appender    baseline  avgt   30     18.000                ms
+Log4jCallBenchmark.info                         shared   template  async-appender        idle  avgt   30    720.962 ±  33.588   ns/op
+Log4jCallBenchmark.info:gc.alloc.rate           shared   template  async-appender        idle  avgt   30    453.332 ±  34.299  MB/sec
+Log4jCallBenchmark.info:gc.alloc.rate.norm      shared   template  async-appender        idle  avgt   30    343.506 ±  34.751    B/op
+Log4jCallBenchmark.info:gc.count                shared   template  async-appender        idle  avgt   30     23.000            counts
+Log4jCallBenchmark.info:gc.time                 shared   template  async-appender        idle  avgt   30     18.000                ms
+Log4jCallBenchmark.info                         shared   template   async-loggers    baseline  avgt   30    449.996 ±   3.933   ns/op
+Log4jCallBenchmark.info:gc.alloc.rate           shared   template   async-loggers    baseline  avgt   30      0.011 ±   0.009  MB/sec
+Log4jCallBenchmark.info:gc.alloc.rate.norm      shared   template   async-loggers    baseline  avgt   30      0.005 ±   0.004    B/op
+Log4jCallBenchmark.info:gc.count                shared   template   async-loggers    baseline  avgt   30        ≈ 0            counts
+Log4jCallBenchmark.info                         shared   template   async-loggers        idle  avgt   30    493.185 ±   5.215   ns/op
+Log4jCallBenchmark.info:gc.alloc.rate           shared   template   async-loggers        idle  avgt   30      0.011 ±   0.009  MB/sec
+Log4jCallBenchmark.info:gc.alloc.rate.norm      shared   template   async-loggers        idle  avgt   30      0.006 ±   0.005    B/op
+Log4jCallBenchmark.info:gc.count                shared   template   async-loggers        idle  avgt   30        ≈ 0            counts
+Log4jCallBenchmark.info                         shared  throwable            sync    baseline  avgt   30  18231.463 ± 142.068   ns/op
+Log4jCallBenchmark.info:gc.alloc.rate           shared  throwable            sync    baseline  avgt   30    604.149 ±   4.650  MB/sec
+Log4jCallBenchmark.info:gc.alloc.rate.norm      shared  throwable            sync    baseline  avgt   30  11552.191 ±   0.131    B/op
+Log4jCallBenchmark.info:gc.count                shared  throwable            sync    baseline  avgt   30     30.000            counts
+Log4jCallBenchmark.info:gc.time                 shared  throwable            sync    baseline  avgt   30     26.000                ms
+Log4jCallBenchmark.info                         shared  throwable            sync        idle  avgt   30  18727.625 ± 358.735   ns/op
+Log4jCallBenchmark.info:gc.alloc.rate           shared  throwable            sync        idle  avgt   30    592.955 ±  10.792  MB/sec
+Log4jCallBenchmark.info:gc.alloc.rate.norm      shared  throwable            sync        idle  avgt   30  11640.196 ±   7.691    B/op
+Log4jCallBenchmark.info:gc.count                shared  throwable            sync        idle  avgt   30     32.000            counts
+Log4jCallBenchmark.info:gc.time                 shared  throwable            sync        idle  avgt   30     30.000                ms
+Log4jCallBenchmark.info                         shared  throwable  async-appender    baseline  avgt   30  13642.684 ± 153.825   ns/op
+Log4jCallBenchmark.info:gc.alloc.rate           shared  throwable  async-appender    baseline  avgt   30    835.717 ±   9.050  MB/sec
+Log4jCallBenchmark.info:gc.alloc.rate.norm      shared  throwable  async-appender    baseline  avgt   30  11957.034 ±  12.872    B/op
+Log4jCallBenchmark.info:gc.count                shared  throwable  async-appender    baseline  avgt   30     42.000            counts
+Log4jCallBenchmark.info:gc.time                 shared  throwable  async-appender    baseline  avgt   30     29.000                ms
+Log4jCallBenchmark.info                         shared  throwable  async-appender        idle  avgt   30  14396.938 ± 198.376   ns/op
+Log4jCallBenchmark.info:gc.alloc.rate           shared  throwable  async-appender        idle  avgt   30    797.990 ±  10.955  MB/sec
+Log4jCallBenchmark.info:gc.alloc.rate.norm      shared  throwable  async-appender        idle  avgt   30  12047.276 ±   0.451    B/op
+Log4jCallBenchmark.info:gc.count                shared  throwable  async-appender        idle  avgt   30     42.000            counts
+Log4jCallBenchmark.info:gc.time                 shared  throwable  async-appender        idle  avgt   30     29.000                ms
+Log4jCallBenchmark.info                         shared  throwable   async-loggers    baseline  avgt   30  17684.252 ± 612.867   ns/op
+Log4jCallBenchmark.info:gc.alloc.rate           shared  throwable   async-loggers    baseline  avgt   30    616.764 ±  19.789  MB/sec
+Log4jCallBenchmark.info:gc.alloc.rate.norm      shared  throwable   async-loggers    baseline  avgt   30  11526.136 ± 161.480    B/op
+Log4jCallBenchmark.info:gc.count                shared  throwable   async-loggers    baseline  avgt   30     33.000            counts
+Log4jCallBenchmark.info:gc.time                 shared  throwable   async-loggers    baseline  avgt   30     27.000                ms
+Log4jCallBenchmark.info                         shared  throwable   async-loggers        idle  avgt   30  17921.763 ± 477.619   ns/op
+Log4jCallBenchmark.info:gc.alloc.rate           shared  throwable   async-loggers        idle  avgt   30    613.183 ±  15.774  MB/sec
+Log4jCallBenchmark.info:gc.alloc.rate.norm      shared  throwable   async-loggers        idle  avgt   30  11624.331 ± 170.900    B/op
+Log4jCallBenchmark.info:gc.count                shared  throwable   async-loggers        idle  avgt   30     31.000            counts
+Log4jCallBenchmark.info:gc.time                 shared  throwable   async-loggers        idle  avgt   30     28.000                ms
+
+Benchmark result is saved to /home/ddeucher/projects/java/logaperture/logaperture-bench/target/results/floor-fedora-20261111-0052/log4j2-floor-layers.json
+
+== Run 2 of 2: log4j2-floor-disabled (started 01:02)
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled
+# Parameters: (handlers = shared, message = template, mode = sync, scenario = baseline)
+
+# Run progress: 0.00% complete, ETA 00:04:30
+# Fork: 1 of 3
+# Warmup Iteration   1: 3.809 ns/op
+# Warmup Iteration   2: 3.799 ns/op
+# Warmup Iteration   3: 3.599 ns/op
+# Warmup Iteration   4: 3.576 ns/op
+# Warmup Iteration   5: 3.575 ns/op
+Iteration   1: 3.566 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 3.575 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 3.582 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 3.577 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 3.581 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 3.572 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 3.577 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 3.621 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 3.586 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 3.593 ns/op
+                 gc.alloc.rate:      0.040 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 5.56% complete, ETA 00:04:26
+# Fork: 2 of 3
+# Warmup Iteration   1: 3.813 ns/op
+# Warmup Iteration   2: 3.802 ns/op
+# Warmup Iteration   3: 3.584 ns/op
+# Warmup Iteration   4: 3.575 ns/op
+# Warmup Iteration   5: 3.574 ns/op
+Iteration   1: 3.578 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 3.574 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 3.571 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 3.585 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 3.571 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 3.613 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 3.564 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 3.567 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 3.559 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 3.563 ns/op
+                 gc.alloc.rate:      0.040 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 11.11% complete, ETA 00:04:11
+# Fork: 3 of 3
+# Warmup Iteration   1: 3.830 ns/op
+# Warmup Iteration   2: 3.841 ns/op
+# Warmup Iteration   3: 3.580 ns/op
+# Warmup Iteration   4: 3.592 ns/op
+# Warmup Iteration   5: 3.572 ns/op
+Iteration   1: 3.595 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 3.586 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 3.652 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 3.591 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 3.590 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 3.598 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 3.610 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 3.607 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 3.590 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 3.584 ns/op
+                 gc.alloc.rate:      0.040 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled":
+  3.586 ±(99.9%) 0.013 ns/op [Average]
+  (min, avg, max) = (3.559, 3.586, 3.652), stdev = 0.020
+  CI (99.9%): [3.573, 3.599] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.alloc.rate":
+  0.010 ±(99.9%) 0.007 MB/sec [Average]
+  (min, avg, max) = (0.007, 0.010, 0.040), stdev = 0.010
+  CI (99.9%): [0.003, 0.017] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.alloc.rate.norm":
+  ≈ 10⁻⁴ B/op
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.count":
+  ≈ 0 counts
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled
+# Parameters: (handlers = shared, message = template, mode = sync, scenario = idle)
+
+# Run progress: 16.67% complete, ETA 00:03:55
+# Fork: 1 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+5.552 ns/op
+# Warmup Iteration   2: 5.720 ns/op
+# Warmup Iteration   3: 4.712 ns/op
+# Warmup Iteration   4: 4.715 ns/op
+# Warmup Iteration   5: 4.723 ns/op
+Iteration   1: 4.717 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 4.734 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 4.720 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 4.725 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 4.713 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 4.727 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 4.717 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 4.713 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 4.731 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 4.748 ns/op
+                 gc.alloc.rate:      0.040 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 22.22% complete, ETA 00:03:39
+# Fork: 2 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+5.564 ns/op
+# Warmup Iteration   2: 5.757 ns/op
+# Warmup Iteration   3: 4.721 ns/op
+# Warmup Iteration   4: 4.737 ns/op
+# Warmup Iteration   5: 4.720 ns/op
+Iteration   1: 4.715 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 4.725 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 4.719 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 4.720 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 4.723 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 4.722 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 4.721 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 4.723 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 4.728 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 4.766 ns/op
+                 gc.alloc.rate:      0.040 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 27.78% complete, ETA 00:03:24
+# Fork: 3 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+5.602 ns/op
+# Warmup Iteration   2: 5.746 ns/op
+# Warmup Iteration   3: 4.761 ns/op
+# Warmup Iteration   4: 4.758 ns/op
+# Warmup Iteration   5: 4.738 ns/op
+Iteration   1: 4.772 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 4.748 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 4.748 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 4.729 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 4.768 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 4.813 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 4.740 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 4.755 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 4.775 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 4.866 ns/op
+                 gc.alloc.rate:      0.040 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled":
+  4.741 ±(99.9%) 0.022 ns/op [Average]
+  (min, avg, max) = (4.713, 4.741, 4.866), stdev = 0.033
+  CI (99.9%): [4.719, 4.763] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.alloc.rate":
+  0.010 ±(99.9%) 0.007 MB/sec [Average]
+  (min, avg, max) = (0.007, 0.010, 0.040), stdev = 0.010
+  CI (99.9%): [0.003, 0.017] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.alloc.rate.norm":
+  ≈ 10⁻⁴ B/op
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.count":
+  ≈ 0 counts
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled
+# Parameters: (handlers = shared, message = template, mode = async-appender, scenario = baseline)
+
+# Run progress: 33.33% complete, ETA 00:03:08
+# Fork: 1 of 3
+# Warmup Iteration   1: 3.825 ns/op
+# Warmup Iteration   2: 3.824 ns/op
+# Warmup Iteration   3: 3.616 ns/op
+# Warmup Iteration   4: 3.618 ns/op
+# Warmup Iteration   5: 3.618 ns/op
+Iteration   1: 3.618 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 3.615 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 3.617 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 3.626 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 3.615 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 3.601 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 3.619 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 3.603 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 3.606 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 3.621 ns/op
+                 gc.alloc.rate:      0.050 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 38.89% complete, ETA 00:02:52
+# Fork: 2 of 3
+# Warmup Iteration   1: 3.833 ns/op
+# Warmup Iteration   2: 3.800 ns/op
+# Warmup Iteration   3: 3.621 ns/op
+# Warmup Iteration   4: 3.590 ns/op
+# Warmup Iteration   5: 3.589 ns/op
+Iteration   1: 3.577 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 3.569 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 3.587 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 3.574 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 3.568 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 3.565 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 3.569 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 3.573 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 3.579 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 3.571 ns/op
+                 gc.alloc.rate:      0.050 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 44.44% complete, ETA 00:02:37
+# Fork: 3 of 3
+# Warmup Iteration   1: 3.804 ns/op
+# Warmup Iteration   2: 3.797 ns/op
+# Warmup Iteration   3: 3.576 ns/op
+# Warmup Iteration   4: 3.575 ns/op
+# Warmup Iteration   5: 3.570 ns/op
+Iteration   1: 3.565 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 3.569 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 3.581 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 3.568 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 3.566 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 3.571 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 3.561 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 3.560 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 3.574 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 3.557 ns/op
+                 gc.alloc.rate:      0.050 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled":
+  3.585 ±(99.9%) 0.015 ns/op [Average]
+  (min, avg, max) = (3.557, 3.585, 3.626), stdev = 0.022
+  CI (99.9%): [3.570, 3.600] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.alloc.rate":
+  0.011 ±(99.9%) 0.009 MB/sec [Average]
+  (min, avg, max) = (0.007, 0.011, 0.050), stdev = 0.013
+  CI (99.9%): [0.002, 0.020] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.alloc.rate.norm":
+  ≈ 10⁻⁴ B/op
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.count":
+  ≈ 0 counts
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled
+# Parameters: (handlers = shared, message = template, mode = async-appender, scenario = idle)
+
+# Run progress: 50.00% complete, ETA 00:02:21
+# Fork: 1 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+5.550 ns/op
+# Warmup Iteration   2: 5.729 ns/op
+# Warmup Iteration   3: 4.744 ns/op
+# Warmup Iteration   4: 4.727 ns/op
+# Warmup Iteration   5: 4.744 ns/op
+Iteration   1: 4.750 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 4.729 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 4.753 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 4.729 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 4.756 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 4.730 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 4.756 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 4.739 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 4.730 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 4.735 ns/op
+                 gc.alloc.rate:      0.050 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 55.56% complete, ETA 00:02:05
+# Fork: 2 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+5.572 ns/op
+# Warmup Iteration   2: 5.718 ns/op
+# Warmup Iteration   3: 4.712 ns/op
+# Warmup Iteration   4: 4.734 ns/op
+# Warmup Iteration   5: 4.736 ns/op
+Iteration   1: 4.859 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 4.730 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 4.721 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 4.725 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 4.714 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 4.719 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 4.715 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 4.715 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 4.714 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 4.716 ns/op
+                 gc.alloc.rate:      0.050 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 61.11% complete, ETA 00:01:50
+# Fork: 3 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+5.551 ns/op
+# Warmup Iteration   2: 5.722 ns/op
+# Warmup Iteration   3: 4.724 ns/op
+# Warmup Iteration   4: 4.726 ns/op
+# Warmup Iteration   5: 4.720 ns/op
+Iteration   1: 4.726 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 4.711 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 4.710 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 4.708 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 4.712 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 4.745 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 4.734 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 4.710 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 4.735 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 4.735 ns/op
+                 gc.alloc.rate:      0.050 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled":
+  4.732 ±(99.9%) 0.019 ns/op [Average]
+  (min, avg, max) = (4.708, 4.732, 4.859), stdev = 0.028
+  CI (99.9%): [4.713, 4.751] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.alloc.rate":
+  0.011 ±(99.9%) 0.009 MB/sec [Average]
+  (min, avg, max) = (0.007, 0.011, 0.050), stdev = 0.013
+  CI (99.9%): [0.002, 0.020] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.alloc.rate.norm":
+  ≈ 10⁻⁴ B/op
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.count":
+  ≈ 0 counts
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled
+# Parameters: (handlers = shared, message = template, mode = async-loggers, scenario = baseline)
+
+# Run progress: 66.67% complete, ETA 00:01:34
+# Fork: 1 of 3
+# Warmup Iteration   1: 3.822 ns/op
+# Warmup Iteration   2: 3.814 ns/op
+# Warmup Iteration   3: 3.566 ns/op
+# Warmup Iteration   4: 3.575 ns/op
+# Warmup Iteration   5: 3.572 ns/op
+Iteration   1: 3.575 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 3.569 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 3.562 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 3.566 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 3.562 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 3.566 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 3.567 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 3.571 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 3.578 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 3.578 ns/op
+                 gc.alloc.rate:      0.049 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 72.22% complete, ETA 00:01:18
+# Fork: 2 of 3
+# Warmup Iteration   1: 3.823 ns/op
+# Warmup Iteration   2: 3.800 ns/op
+# Warmup Iteration   3: 3.611 ns/op
+# Warmup Iteration   4: 3.608 ns/op
+# Warmup Iteration   5: 3.602 ns/op
+Iteration   1: 3.611 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 3.605 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 3.611 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 3.623 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 3.618 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 3.609 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 3.601 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 3.627 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 3.621 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 3.601 ns/op
+                 gc.alloc.rate:      0.049 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 77.78% complete, ETA 00:01:02
+# Fork: 3 of 3
+# Warmup Iteration   1: 3.921 ns/op
+# Warmup Iteration   2: 3.801 ns/op
+# Warmup Iteration   3: 3.580 ns/op
+# Warmup Iteration   4: 3.579 ns/op
+# Warmup Iteration   5: 3.574 ns/op
+Iteration   1: 3.567 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 3.558 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 3.565 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 3.549 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 3.581 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 3.567 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 3.557 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 3.560 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 3.562 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁵ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 3.558 ns/op
+                 gc.alloc.rate:      0.049 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled":
+  3.581 ±(99.9%) 0.016 ns/op [Average]
+  (min, avg, max) = (3.549, 3.581, 3.627), stdev = 0.024
+  CI (99.9%): [3.565, 3.598] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.alloc.rate":
+  0.011 ±(99.9%) 0.009 MB/sec [Average]
+  (min, avg, max) = (0.007, 0.011, 0.049), stdev = 0.013
+  CI (99.9%): [0.002, 0.020] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.alloc.rate.norm":
+  ≈ 10⁻⁴ B/op
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.count":
+  ≈ 0 counts
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled
+# Parameters: (handlers = shared, message = template, mode = async-loggers, scenario = idle)
+
+# Run progress: 83.33% complete, ETA 00:00:47
+# Fork: 1 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+5.559 ns/op
+# Warmup Iteration   2: 5.732 ns/op
+# Warmup Iteration   3: 4.727 ns/op
+# Warmup Iteration   4: 4.727 ns/op
+# Warmup Iteration   5: 4.731 ns/op
+Iteration   1: 4.719 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 4.716 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 4.719 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 4.717 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 4.712 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 4.713 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 4.725 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 4.747 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 4.734 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 4.730 ns/op
+                 gc.alloc.rate:      0.049 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 88.89% complete, ETA 00:00:31
+# Fork: 2 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+5.527 ns/op
+# Warmup Iteration   2: 5.717 ns/op
+# Warmup Iteration   3: 4.729 ns/op
+# Warmup Iteration   4: 4.722 ns/op
+# Warmup Iteration   5: 4.718 ns/op
+Iteration   1: 4.718 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 4.711 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 4.734 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 4.749 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 4.735 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 4.712 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 4.714 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 4.717 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 4.708 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 4.709 ns/op
+                 gc.alloc.rate:      0.049 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+# Run progress: 94.44% complete, ETA 00:00:15
+# Fork: 3 of 3
+# Warmup Iteration   1: WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+5.535 ns/op
+# Warmup Iteration   2: 5.705 ns/op
+# Warmup Iteration   3: 4.733 ns/op
+# Warmup Iteration   4: 4.733 ns/op
+# Warmup Iteration   5: 4.728 ns/op
+Iteration   1: 4.720 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   2: 4.775 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   3: 4.720 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   4: 4.712 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   5: 4.731 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   6: 4.753 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   7: 4.739 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   8: 4.725 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration   9: 4.723 ns/op
+                 gc.alloc.rate:      0.007 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+Iteration  10: 4.729 ns/op
+                 gc.alloc.rate:      0.049 MB/sec
+                 gc.alloc.rate.norm: ≈ 10⁻⁴ B/op
+                 gc.count:           ≈ 0 counts
+
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled":
+  4.726 ±(99.9%) 0.010 ns/op [Average]
+  (min, avg, max) = (4.708, 4.726, 4.775), stdev = 0.015
+  CI (99.9%): [4.715, 4.736] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.alloc.rate":
+  0.011 ±(99.9%) 0.009 MB/sec [Average]
+  (min, avg, max) = (0.007, 0.011, 0.049), stdev = 0.013
+  CI (99.9%): [0.002, 0.020] (assumes normal distribution)
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.alloc.rate.norm":
+  ≈ 10⁻⁴ B/op
+
+Secondary result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.disabled:gc.count":
+  ≈ 0 counts
+
+
+# Run complete. Total time: 00:04:43
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                                       (handlers)  (message)          (mode)  (scenario)  Mode  Cnt   Score    Error   Units
+Log4jCallBenchmark.disabled                         shared   template            sync    baseline  avgt   30   3.586 ±  0.013   ns/op
+Log4jCallBenchmark.disabled:gc.alloc.rate           shared   template            sync    baseline  avgt   30   0.010 ±  0.007  MB/sec
+Log4jCallBenchmark.disabled:gc.alloc.rate.norm      shared   template            sync    baseline  avgt   30  ≈ 10⁻⁴             B/op
+Log4jCallBenchmark.disabled:gc.count                shared   template            sync    baseline  avgt   30     ≈ 0           counts
+Log4jCallBenchmark.disabled                         shared   template            sync        idle  avgt   30   4.741 ±  0.022   ns/op
+Log4jCallBenchmark.disabled:gc.alloc.rate           shared   template            sync        idle  avgt   30   0.010 ±  0.007  MB/sec
+Log4jCallBenchmark.disabled:gc.alloc.rate.norm      shared   template            sync        idle  avgt   30  ≈ 10⁻⁴             B/op
+Log4jCallBenchmark.disabled:gc.count                shared   template            sync        idle  avgt   30     ≈ 0           counts
+Log4jCallBenchmark.disabled                         shared   template  async-appender    baseline  avgt   30   3.585 ±  0.015   ns/op
+Log4jCallBenchmark.disabled:gc.alloc.rate           shared   template  async-appender    baseline  avgt   30   0.011 ±  0.009  MB/sec
+Log4jCallBenchmark.disabled:gc.alloc.rate.norm      shared   template  async-appender    baseline  avgt   30  ≈ 10⁻⁴             B/op
+Log4jCallBenchmark.disabled:gc.count                shared   template  async-appender    baseline  avgt   30     ≈ 0           counts
+Log4jCallBenchmark.disabled                         shared   template  async-appender        idle  avgt   30   4.732 ±  0.019   ns/op
+Log4jCallBenchmark.disabled:gc.alloc.rate           shared   template  async-appender        idle  avgt   30   0.011 ±  0.009  MB/sec
+Log4jCallBenchmark.disabled:gc.alloc.rate.norm      shared   template  async-appender        idle  avgt   30  ≈ 10⁻⁴             B/op
+Log4jCallBenchmark.disabled:gc.count                shared   template  async-appender        idle  avgt   30     ≈ 0           counts
+Log4jCallBenchmark.disabled                         shared   template   async-loggers    baseline  avgt   30   3.581 ±  0.016   ns/op
+Log4jCallBenchmark.disabled:gc.alloc.rate           shared   template   async-loggers    baseline  avgt   30   0.011 ±  0.009  MB/sec
+Log4jCallBenchmark.disabled:gc.alloc.rate.norm      shared   template   async-loggers    baseline  avgt   30  ≈ 10⁻⁴             B/op
+Log4jCallBenchmark.disabled:gc.count                shared   template   async-loggers    baseline  avgt   30     ≈ 0           counts
+Log4jCallBenchmark.disabled                         shared   template   async-loggers        idle  avgt   30   4.726 ±  0.010   ns/op
+Log4jCallBenchmark.disabled:gc.alloc.rate           shared   template   async-loggers        idle  avgt   30   0.011 ±  0.009  MB/sec
+Log4jCallBenchmark.disabled:gc.alloc.rate.norm      shared   template   async-loggers        idle  avgt   30  ≈ 10⁻⁴             B/op
+Log4jCallBenchmark.disabled:gc.count                shared   template   async-loggers        idle  avgt   30     ≈ 0           counts
+
+Benchmark result is saved to /home/ddeucher/projects/java/logaperture/logaperture-bench/target/results/floor-fedora-20261111-0052/log4j2-floor-disabled.json
