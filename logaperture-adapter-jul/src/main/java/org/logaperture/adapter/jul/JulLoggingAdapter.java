@@ -739,7 +739,8 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         if (cached != null) {
             return cached;
         }
-        if (knownMissing.contains(ref)) {
+        if (knownMissing.contains(ref)
+                && (nameResolver == HandlerNameResolver.NONE || resolution == Resolution.DONE)) {
             // A prior cold walk already resolved every advertised handler and
             // this ref wasn't among them — skip the walk (issue #18). The set
             // is cleared at reload, so a handler attached since the last walk
