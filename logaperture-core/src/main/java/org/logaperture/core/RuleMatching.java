@@ -17,6 +17,10 @@ package org.logaperture.core;
 
 import org.logaperture.api.CompiledMatchers;
 
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * Evaluates one {@link CompiledMatchers} against one {@link
  * RuleCandidateEvent} -- doc/specs/rule-pipeline-foundation.md "Matcher
@@ -28,6 +32,26 @@ final class RuleMatching {
 
     private RuleMatching() {
     }
+
+    /**
+     * The names of every class from {@code type} up through its superclass
+     * chain, cached per {@link Class} so {@link #isInstanceByName} does a
+     * hash lookup instead of walking the hierarchy for each rule's type
+     * matcher every time (issue #177). A class's supertype chain never
+     * changes, so the cache is never stale. {@link ClassValue} is designed
+     * for exactly this pattern: one computed value per class, lazily, with
+     * no expiration.
+     */
+    private static final ClassValue<Set<String>> SUPERTYPE_NAMES = new ClassValue<>() {
+        @Override
+        protected Set<String> computeValue(Class<?> type) {
+            Set<String> names = new HashSet<>();
+            for (Class<?> c = type; c != null; c = c.getSuperclass()) {
+                names.add(c.getName());
+            }
+            return Collections.unmodifiableSet(names);
+        }
+    };
 
     static boolean matches(CompiledMatchers matchers, RuleCandidateEvent event) {
         // matchers.levelAtMost().isMoreVerboseThan(event.level()) -- not the reverse -- reuses
@@ -95,12 +119,7 @@ final class RuleMatching {
     }
 
     private static boolean isInstanceByName(Class<?> actual, String expectedTypeName) {
-        for (Class<?> c = actual; c != null; c = c.getSuperclass()) {
-            if (c.getName().equals(expectedTypeName)) {
-                return true;
-            }
-        }
-        return false;
+        return SUPERTYPE_NAMES.get(actual).contains(expectedTypeName);
     }
 
     /** {@code Throwable.getCause()} can cycle back to itself; guards the same way {@code printStackTrace} does. */

@@ -412,6 +412,13 @@ has no side effects to deduplicate; its verdict is always "allow, no trim". So:
   entry is resolved into R2's cache, once per distinct effective rule list per rule change:
   descendants that only inherit an ancestor's rules share its plan. Below 6 rules, checking each
   one costs less than the walk.
+- **Throwable-type cache** *(#177)*. A rule's `.throwableType()` matcher compares a class name
+  by walking the live throwable's superclass hierarchy. With many type-bound rules on a logger
+  (20 moves it well past the budget), each one re-walks the same hierarchy. `RuleMatching` now
+  caches the supertype-name set of each `Class` in a `ClassValue`, so a type check
+  is a hash-set lookup regardless of hierarchy depth or rule count. A `ClassValue` lives
+  as long as its class does — which is the JVM's lifetime — and class hierarchies never change,
+  so the cache is never stale.
 
 Expected effect: the idle and `drop-miss` paths cost one `volatile` read, or one map lookup by
 logger name, and allocate nothing; only loggers with rules pay for deduplication, at a sixteenth
