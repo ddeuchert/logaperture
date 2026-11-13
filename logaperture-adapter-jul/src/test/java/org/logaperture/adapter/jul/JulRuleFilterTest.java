@@ -135,6 +135,42 @@ class JulRuleFilterTest {
     }
 
     @Test
+    void gateOnlyTrimsCanTouch_isEvaluatedOnlyForARecordWithAThrowable() { // "Evaluation cost", R7
+        java.util.concurrent.atomic.AtomicInteger evaluations = new java.util.concurrent.atomic.AtomicInteger();
+        RuleGate trimsOnly = new RuleGate() {
+            @Override
+            public GateVerdict evaluate(Object recordIdentity, org.logaperture.core.RuleCandidateEvent event) {
+                evaluations.incrementAndGet();
+                return GateVerdict.allow();
+            }
+
+            @Override
+            public boolean appliesTo(String loggerName, boolean hasThrowable) {
+                return hasThrowable;
+            }
+        };
+        FakePersistentHandler handler = new FakePersistentHandler();
+        Logger logger = Logger.getLogger(name("trimsonly"));
+        logger.addHandler(handler);
+        try {
+            adapter.installRulePipeline(trimsOnly);
+
+            LogRecord plain = new LogRecord(Level.INFO, "hello");
+            plain.setLoggerName(name("trimsonly"));
+            assertTrue(handler.getFilter().isLoggable(plain));
+            assertEquals(0, evaluations.get());
+
+            LogRecord withThrowable = new LogRecord(Level.INFO, "hello");
+            withThrowable.setLoggerName(name("trimsonly"));
+            withThrowable.setThrown(new IllegalStateException("boom"));
+            assertTrue(handler.getFilter().isLoggable(withThrowable));
+            assertEquals(1, evaluations.get());
+        } finally {
+            logger.removeHandler(handler);
+        }
+    }
+
+    @Test
     void installedFilter_chainsAPreExistingFilter_allowCase() {
         FakePersistentHandler handler = new FakePersistentHandler();
         Filter preExisting = record -> true;

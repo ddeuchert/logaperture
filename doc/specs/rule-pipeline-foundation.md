@@ -455,6 +455,11 @@ has no side effects to deduplicate; its verdict is always "allow, no trim". So:
   walk, `anyCause`, no-throwable; R7's `appliesTo`) and `GateFilterTest` (the gate is told about a throwable
   found each way `Call.of` finds one).
 
+  **R7 on JUL too** *(#371)*. The 11-12 pinned run showed JUL's no-exception `trim-typed` − `idle` at +74 / +60 ns
+  against 50 ns, so `JulRuleFilter` asks `appliesTo(loggerName, record.getThrown() != null)` as Log4j 2's gate
+  does: the record's throwable is `getThrown()`, so nothing is missed. The trim formatter already skipped a
+  record without one. Test: `JulRuleFilterTest`. Measured on the next pinned run.
+
 Expected effect: the idle and `drop-miss` paths cost one `volatile` read, or one map lookup by
 logger name, and allocate nothing; only loggers with rules pay for deduplication, at a sixteenth
 of today's contention. Since #148, a logger with rules pays for matching only, unless a rule

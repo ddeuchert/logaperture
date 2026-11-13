@@ -55,8 +55,9 @@ final class JulRuleFilter implements Filter {
     public boolean isLoggable(LogRecord record) {
         boolean allowed = true;
         try {
-            // "Evaluation cost", R3: an event no rule can touch builds nothing and takes no lock.
-            if (gate.appliesTo(RuleCandidateEvents.loggerName(record))) {
+            // "Evaluation cost", R3 and R7: an event no rule can touch builds nothing and takes no
+            // lock; a record with no throwable on a logger whose rules are all trims is such an event.
+            if (gate.appliesTo(RuleCandidateEvents.loggerName(record), record.getThrown() != null)) {
                 GateVerdict verdict = gate.evaluate(record, RuleCandidateEvents.of(record));
                 allowed = !verdict.deny();
             }
