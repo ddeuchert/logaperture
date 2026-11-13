@@ -86,52 +86,52 @@ final class GateFilter extends AbstractFilter {
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0) {
-        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0}, null);
+        return filterString(logger, level, message, new Object[] {p0});
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1) {
-        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1}, null);
+        return filterString(logger, level, message, new Object[] {p0, p1});
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1, Object p2) {
-        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2}, null);
+        return filterString(logger, level, message, new Object[] {p0, p1, p2});
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1, Object p2, Object p3) {
-        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3}, null);
+        return filterString(logger, level, message, new Object[] {p0, p1, p2, p3});
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1, Object p2, Object p3, Object p4) {
-        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4}, null);
+        return filterString(logger, level, message, new Object[] {p0, p1, p2, p3, p4});
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1, Object p2, Object p3, Object p4, Object p5) {
-        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5}, null);
+        return filterString(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5});
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1, Object p2, Object p3, Object p4, Object p5, Object p6) {
-        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5, p6}, null);
+        return filterString(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5, p6});
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1, Object p2, Object p3, Object p4, Object p5, Object p6, Object p7) {
-        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5, p6, p7}, null);
+        return filterString(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5, p6, p7});
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1, Object p2, Object p3, Object p4, Object p5, Object p6, Object p7, Object p8) {
-        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5, p6, p7, p8}, null);
+        return filterString(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5, p6, p7, p8});
     }
 
     @Override
     public Result filter(Logger logger, Level level, Marker marker, String message, Object p0, Object p1, Object p2, Object p3, Object p4, Object p5, Object p6, Object p7, Object p8, Object p9) {
-        return skip(logger, level, message, null) ? Result.NEUTRAL : run(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5, p6, p7, p8, p9}, null);
+        return filterString(logger, level, message, new Object[] {p0, p1, p2, p3, p4, p5, p6, p7, p8, p9});
     }
 
     @Override
@@ -164,12 +164,23 @@ final class GateFilter extends AbstractFilter {
         }
         RuleGate rules = gate;
         StormObserver observer = storm;
-        if (thrown == null && (observer == null || !observer.isActive()) && rules != null
+        if (thrown == null && !(message instanceof Message) && (observer == null || !observer.isActive()) && rules != null
                 && !rules.canAffectThrowableFreeEvents(logger.getName())) {
             return true; // trim-only plan, event without throwable — nothing to evaluate (issue #371)
         }
         return (rules == null || !rules.appliesTo(logger.getName()))
                 && (observer == null || !observer.isActive());
+    }
+
+    /**
+     * Varargs overload helper: extracts an implicit throwable from the last
+     * parameter so {@link #skip} doesn't miss it (issue #371, Copilot review).
+     */
+    private Result filterString(Logger logger, Level level, String message, Object[] params) {
+        Throwable implicit = params.length > 0 && params[params.length - 1] instanceof Throwable
+                ? (Throwable) params[params.length - 1] : null;
+        return skip(logger, level, message, implicit)
+                ? Result.NEUTRAL : run(logger, level, message, params, implicit);
     }
 
     private Result run(Logger logger, Level level, Object message, Object[] params, Throwable thrown) {
