@@ -164,7 +164,7 @@ final class GateFilter extends AbstractFilter {
         }
         RuleGate rules = gate;
         StormObserver observer = storm;
-        if (thrown == null && observer == null && rules != null
+        if (thrown == null && (observer == null || !observer.isActive()) && rules != null
                 && !rules.canAffectThrowableFreeEvents(logger.getName())) {
             return true; // trim-only plan, event without throwable — nothing to evaluate (issue #371)
         }
