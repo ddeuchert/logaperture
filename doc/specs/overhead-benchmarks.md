@@ -743,6 +743,15 @@ as with #158, #177 and #150; `trim-typed` gets its own issue under 1.1.0. On the
 passes; `idle` with a template is +48.1 ± 14.5 ns, over the 50 ns budget once the error is added, where 2.25.5
 shows +13.9 ± 10.5, and the floor run has no `idle` concatenated row. That row is reported as measured.
 
+**Resolution of #371 (2026-11-12).** The throwable row (3,124 ns) was the same core cost fixed by #177: a
+`ClassValue` cache in `RuleMatching.isInstanceByName` replaces repeated superclass-hierarchy walks with one
+hash-set lookup per class, for JUL and Log4j 2 together. The template and concatenated rows (97/57 ns) are
+Log4j-specific: `GateFilter.run()` still built a `Call` and `RuleCandidateEvent` and ran the R4 check for 20
+type-bound trim rules even when the event had no throwable — and a trim-only plan on a throwable-free event
+always answers "allow." Now `GatePlan` tracks whether any rule is a `Drop`, and `GateFilter.skip()` consults
+`RuleGate.canAffectThrowableFreeEvents` before entering `run()`: on a plan with only `Trim` rules and an event
+without a throwable, the gate returns `NEUTRAL` immediately, allocating nothing.
+
 ## Testing
 
 - The CI smoke pass (Decision #4) runs every benchmark once, which catches a scenario that

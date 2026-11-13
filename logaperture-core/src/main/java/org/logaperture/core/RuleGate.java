@@ -56,6 +56,20 @@ public interface RuleGate {
     }
 
     /**
+     * Whether any rule for {@code loggerName} can produce a non-allow verdict
+     * for an event without a throwable (issue #371). When the plan on this
+     * logger has only {@link org.logaperture.api.Trim} rules, the answer is
+     * {@code false}: a trim never applies to a throwable-free event, so the
+     * gate would answer "allow" regardless. A caller that already knows the
+     * event has no throwable can skip evaluation entirely. Default is
+     * conservative ({@code true}) — a gate that does not distinguish rule
+     * types overrides this.
+     */
+    default boolean canAffectThrowableFreeEvents(String loggerName) {
+        return true;
+    }
+
+    /**
      * doc/specs/log4j2-adapter.md A3: the trim a render stage should apply to {@code event}, chosen
      * the same way {@link #evaluate} chooses it, but <em>never counted</em>. For a backend whose
      * gate runs before the event exists and whose render stage sees the event on another thread

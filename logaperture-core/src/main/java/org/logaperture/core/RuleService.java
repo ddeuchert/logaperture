@@ -134,6 +134,11 @@ public final class RuleService implements RuleOperations {
         }
 
         @Override
+        public boolean canAffectThrowableFreeEvents(String loggerName) {
+            return gatePlan(loggerName).hasDropRule();
+        }
+
+        @Override
         public GateVerdict evaluateOnce(RuleCandidateEvent event) {
             GatePlan plan = gatePlan(event.loggerName());
             // R4 as in evaluateGate; then straight to the verdict, no decision cache to stripe or weaken.

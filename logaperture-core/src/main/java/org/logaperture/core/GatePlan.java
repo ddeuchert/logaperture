@@ -69,18 +69,22 @@ final class GatePlan {
     private final Level indexLevelAtMost;
     /** Whether any indexed rule is a {@link Drop}; if not, an event without a throwable skips the walk. */
     private final boolean indexHasDrop;
+    /** Whether any rule in the plan (direct or indexed) is a {@link Drop} (issue #371). */
+    private final boolean hasDropRule;
 
     GatePlan(List<LogRule> rules) {
         this.rules = rules;
         int size = rules.size();
         this.matchers = new CompiledMatchers[size];
         this.trim = new boolean[size];
+        boolean anyDrop = false;
         int[][] pairsByRule = new int[size][];
         int indexable = 0;
         for (int i = 0; i < size; i++) {
             LogRule rule = rules.get(i);
             if (rule instanceof Drop drop) {
                 matchers[i] = drop.matchers();
+                anyDrop = true;
             } else if (rule instanceof Trim t) {
                 matchers[i] = t.matchers();
                 trim[i] = true;
@@ -163,6 +167,7 @@ final class GatePlan {
             this.indexHasDrop = false;
         }
         this.direct = unindexed.stream().mapToInt(Integer::intValue).toArray();
+        this.hasDropRule = anyDrop;
     }
 
     List<LogRule> rules() {
@@ -171,6 +176,17 @@ final class GatePlan {
 
     boolean usesIndex() {
         return index != null;
+    }
+
+    /**
+     * Whether any rule in this plan is a {@link Drop} (issue #371). A plan
+     * with only {@link Trim} rules can never affect an event without a
+     * throwable: {@code selectTrim} returns {@code null} when thrown is
+     * absent, so the gate always answers "allow." A caller that already
+     * knows the event has no throwable can skip evaluation entirely.
+     */
+    boolean hasDropRule() {
+        return hasDropRule;
     }
 
     /**
