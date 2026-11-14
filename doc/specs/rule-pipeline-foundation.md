@@ -17,6 +17,12 @@ new R5 indexes message-contains rules by character pair, so the gate meets overh
 Decision #21's curve. Option A of three (pair index; the others were a full Aho–Corasick matcher
 and restating the budget as linear), chosen 2026-10-07.
 
+**Amendment (issues [#371](https://github.com/ddeuchert/logaperture/issues/371) and
+[#177](https://github.com/ddeuchert/logaperture/issues/177)), signed off 2026-11-11:**
+"Evaluation cost": new R6 remembers, per exception class, which type-bound rules it satisfies, so
+a record with an exception stops walking the class hierarchy once per rule per check. New R7 lets
+Log4j 2's gate leave early for a call that no effective rule could match.
+
 Status: **signed off 2026-09-22; implemented.** `core` (`RuleRegistry`/`RuleService`/matcher
 library/`useParentRules` resolution/`AggregateLevelControl` multi-context merge), the
 JUL/JBoss LogManager gate `Filter`, the JMX surface, the CLI (`list rules`/`reset rule`/`reset
@@ -412,6 +418,57 @@ has no side effects to deduplicate; its verdict is always "allow, no trim". So:
   entry is resolved into R2's cache, once per distinct effective rule list per rule change:
   descendants that only inherit an ancestor's rules share its plan. Below 6 rules, checking each
   one costs less than the walk.
+- **R6, type-bound rules answered per exception class** *(#177, #371)*. Whether a rule's
+  `type` matcher accepts a throwable depends only on the throwable's class, not on the record,
+  yet `RuleMatching.isInstanceByName` walks the superclass chain comparing names for every
+  type-bound rule on every check, and a record is checked up to three times (the handler filter's
+  R4 check, the trim formatter's gate call, and the verdict itself). With 20 type-bound `trim`
+  rules that is the +538 ns (JUL) and +3,124 ns (Log4j 2) of #177 and #371, against a 204 ns
+  budget. `GatePlan` keeps a `ClassValue<boolean[]>` of its own: per exception class, one flag per
+  rule saying whether that rule's `type` matcher accepts the class, computed on first sight of the
+  class and read as an array index after. The `message` part of a throwable matcher still runs per
+  record, and `anyCause` still walks the cause chain, but each cause costs a lookup instead of a
+  walk. The map belongs to the plan, so it is discarded with it on any rule change (R2), holds no
+  strong reference to an application class (`ClassValue` is weak on both sides), and is bounded by
+  the number of distinct exception classes seen. It never changes a result.
+- **R7, a call no rule could match, on Log4j 2** *(#371)*. Log4j 2's gate reads the clock, resolves the call's throwable and builds a
+  `RuleCandidateEvent` for every call on a logger with an effective rule, before R4's check can
+  say "no match". With 20 `trim` rules and no exception that is +97 ns (template) and +57 ns
+  (concatenated) against 50 ns; JUL pays +9 and +13 ns, because its record already carries the
+  timestamp and a throwable. `GatePlan` gains `mayMatchWithoutThrowable()` (any `drop`, or any
+  indexed or direct rule that is not a `trim`), and `RuleGate` exposes it beside `appliesTo`. The
+  gate's early exit then also covers "no throwable in the call, no `drop` on the logger, no active
+  storm detection": the call is neither timed nor wrapped. A throwable is looked for the way
+  `Call.of` does (explicit argument, `Message.getThrowable()`, a trailing `Throwable` parameter), so
+  it never misses one. `RuleGate.appliesTo(loggerName, hasThrowable)` carries the question (its default
+  ignores the second argument, so a gate that does not narrow is unchanged).
+
+  **Measured** (dev box, unpinned, so within-run differences only; 2 forks × 5 iterations, Log4j 2.25.5,
+  synchronous, one shared appender; the pinned run on the guide's Overhead page comes after #371 is done):
+  `trim-typed` − `idle` before R7 → after: template +71 ± 21 → +43 ± 32 ns; concatenated +53 ± 56 → +24 ± 50 ns
+  (about 30 ns of each was the clock read and the event; the remainder is inside the error). After R6, with
+  an exception, `trim-typed` − `idle` is +1,032 ± 314 ns, down from +3,124 ns on the pinned run, and below
+  `trim`'s +1,357 ± 390 ns in the same run: the hierarchy walks are gone and what is left is the cost of
+  rebuilding the event with a trimmed exception, which `trim` pays too. That is still over Decision #21's
+  204 ns, so the throwable row of the budget stays over for 1.1.0 and is decided on the pinned figures
+  (#29: fix, or accept with the figure published). Tests: `GatePlanTest` (R6 against the plain hierarchy
+  walk, `anyCause`, no-throwable; R7's `appliesTo`) and `GateFilterTest` (the gate is told about a throwable
+  found each way `Call.of` finds one).
+
+  **R7 on JUL too** *(#371)*. The 11-12 pinned run showed JUL's no-exception `trim-typed` − `idle` at +74 / +60 ns
+  against 50 ns, so `JulRuleFilter` asks `appliesTo(loggerName, record.getThrown() != null)` as Log4j 2's gate
+  does: the record's throwable is `getThrown()`, so nothing is missed. The trim formatter already skipped a
+  record without one. Test: `JulRuleFilterTest`. **Measured** (pinned, 2026-11-13, `0100d23`; `rules-t1` and
+  `idle-t1` rerun alone, `doc/overhead/2026-11-12-jdk21-log4j2/jul-rerun-0100d23/`): `trim-typed` − `idle`,
+  template +19 ± 17 ns, concatenated +16 ± 23 ns, both within 50 ns, down from +74 / +60 ns; `trim-typed` now
+  allocates what `drop-miss` does (1,296 B/op, template).
+
+  **Pinned results after R6 and R7** (Log4j 2.25.5, `13de3ac`, 2026-11-12; `doc/overhead/2026-11-12-jdk21-log4j2/`):
+  `trim-typed` − `idle` template +13.8 ± 10.4 ns, concatenated +5.3 ± 9.7 ns (both pass; were +96.6 / +57.3),
+  throwable +920 ± 155 ns against 204 ns (was +3,124 ± 165). **Decided (owner, 2026-11-12): accept** the throwable
+  row for 1.x with the figure published: what is left is the cost of rebuilding the event with a trimmed
+  exception, which `trim` pays too. The 2.20.0 floor's `idle` template is +53.7 ± 6.5 ns, a marginal miss, stated
+  as such in the guide.
 
 Expected effect: the idle and `drop-miss` paths cost one `volatile` read, or one map lookup by
 logger name, and allocate nothing; only loggers with rules pay for deduplication, at a sixteenth

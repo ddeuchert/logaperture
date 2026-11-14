@@ -442,4 +442,43 @@ class GateFilterTest {
         log.info("DROPME still written");
         assertEquals(List.of("DROPME still written"), written);
     }
+
+    /** R7 (#371): the gate is asked whether the call carries a throwable, found every way {@code Call.of} finds one. */
+    @Test
+    void theGateIsToldWhetherTheCallCarriesAThrowable() {
+        List<Boolean> asked = new CopyOnWriteArrayList<>();
+        RuleGate trimOnly = new RuleGate() {
+            @Override
+            public GateVerdict evaluate(Object recordIdentity, RuleCandidateEvent event) {
+                throw new AssertionError("must call evaluateOnce");
+            }
+
+            @Override
+            public boolean appliesTo(String loggerName) {
+                return true;
+            }
+
+            @Override
+            public boolean appliesTo(String loggerName, boolean hasThrowable) {
+                asked.add(hasThrowable);
+                return hasThrowable;
+            }
+
+            @Override
+            public GateVerdict evaluateOnce(RuleCandidateEvent event) {
+                seen.add(event);
+                return GateVerdict.allow();
+            }
+        };
+        adapter.installRulePipeline(trimOnly);
+        Exception boom = new RuntimeException("boom");
+        log.info("plain");                         // false
+        log.info("one {}", 1);                     // false
+        log.info("one {}", boom);                  // true: a trailing Throwable parameter
+        log.info("two {} {}", 1, boom);            // true
+        log.info("explicit", boom);                // true: the Throwable overload
+        log.info(new ParameterizedMessage("m {}", 1, boom)); // true: the Message carries one
+        assertEquals(List.of(false, false, true, true, true, true), asked);
+        assertEquals(4, seen.size(), "only the calls with a throwable are built into an event");
+    }
 }

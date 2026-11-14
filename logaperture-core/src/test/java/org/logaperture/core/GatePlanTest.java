@@ -17,6 +17,7 @@ package org.logaperture.core;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.Drop;
 import org.logaperture.api.Level;
@@ -225,5 +226,76 @@ class GatePlanTest {
     private GateVerdict evaluate(String message) {
         return service.gate().evaluate(new Object(),
                 new RuleCandidateEvent(WORKER, Level.INFO, null, () -> message, Instant.now()));
+    }
+
+    // --- R6 (#177, #371): the per-class answer to a rule's `type` matcher --------------------------------
+
+    private static class BaseFailure extends RuntimeException {
+        BaseFailure(Throwable cause) {
+            super(cause);
+        }
+    }
+
+    private static final class LeafFailure extends BaseFailure {
+        LeafFailure(Throwable cause) {
+            super(cause);
+        }
+    }
+
+    private void trimOfType(String type, boolean anyCause) {
+        service.addRuleTrim(WORKER, new CompiledMatchers(null, null, false, type, null, anyCause),
+                RuleAttachOptions.defaults(), 5, false);
+    }
+
+    @Test
+    void typeFlags_sameAnswerAsWalkingTheHierarchy() {
+        trimOfType(BaseFailure.class.getName(), false);
+        trimOfType(LeafFailure.class.getName(), false);
+        trimOfType(RuntimeException.class.getName(), false);
+        trimOfType(IllegalStateException.class.getName(), false);
+        trimOfType(Error.class.getName(), false);
+        trimOfType(IllegalStateException.class.getName(), true);
+        trimOfType("org.acme.NoSuchException", true);
+        GatePlan plan = plan();
+        Throwable[] thrown = {
+                new LeafFailure(null), new BaseFailure(null), new IllegalStateException(), new Error(),
+                new LeafFailure(new IllegalStateException()), new RuntimeException(new BaseFailure(null)),
+                new OutOfMemoryError(), null};
+        for (Throwable t : thrown) {
+            RuleCandidateEvent event = new RuleCandidateEvent(WORKER, Level.INFO, t, () -> "m", Instant.EPOCH);
+            boolean[] types = plan.typeFlagsOf(event);
+            for (int i = 0; i < plan.rules().size(); i++) {
+                CompiledMatchers m = ((org.logaperture.api.Trim) plan.rules().get(i)).matchers();
+                assertEquals(RuleMatching.matches(m, event), plan.matches(i, event, types),
+                        "rule " + m.throwableType() + " anyCause=" + m.anyCause() + " on " + t);
+            }
+        }
+    }
+
+    @Test
+    void typeFlags_nullWithoutTypeMatchersOrThrowable() {
+        service.addRuleTrim(WORKER, new CompiledMatchers(null, null, false, null, null, false),
+                RuleAttachOptions.defaults(), 5, false);
+        RuleCandidateEvent event = new RuleCandidateEvent(WORKER, Level.INFO, new IllegalStateException(),
+                () -> "m", Instant.EPOCH);
+        assertNull(plan().typeFlagsOf(event));
+        trimOfType(RuntimeException.class.getName(), false);
+        assertNull(plan().typeFlagsOf(new RuleCandidateEvent(WORKER, Level.INFO, null, () -> "m", Instant.EPOCH)));
+        assertNotNull(plan().typeFlagsOf(event));
+    }
+
+    // --- R7 (#371): a plan of trims alone is no work for a call without a throwable ----------------------
+
+    @Test
+    void appliesTo_trimOnlyPlanNeedsAThrowable() {
+        trimOfType(IllegalStateException.class.getName(), false);
+        assertFalse(plan().hasRuleWithoutThrowable());
+        assertTrue(service.gate().appliesTo(WORKER));
+        assertFalse(service.gate().appliesTo(WORKER, false));
+        assertTrue(service.gate().appliesTo(WORKER, true));
+        drop("x", false);
+        assertTrue(plan().hasRuleWithoutThrowable());
+        assertTrue(service.gate().appliesTo(WORKER, false));
+        assertFalse(service.gate().appliesTo("com.acme.Elsewhere", true));
     }
 }
