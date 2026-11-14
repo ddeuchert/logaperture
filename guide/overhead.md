@@ -151,7 +151,7 @@ Log4j 2.25.5, synchronous, these are over:
 
 Log4j 2.20.0, the oldest LogAperture supports, measured for the idle agent and the disabled call
 only. The disabled call costs +1.1 ns, within its 10 ns budget. The idle agent adds +54 ± 7 ns
-on a template message against 50 ns, which is over; 2.25.5 shows +19 ns for the same call, and the
+on a template message against 50 ns, which is over and accepted for 1.x as measured; 2.25.5 shows +19 ns for the same call, and the
 gap is not yet explained. On a record with an exception it adds +260 ± 273 ns, wide enough to be noise.
 
 ### The Log4j 2 run

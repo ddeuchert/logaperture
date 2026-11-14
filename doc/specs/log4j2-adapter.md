@@ -443,9 +443,10 @@ process: a drop rule removes its lines and keeps removing them after a reload.
 
 **Not in this slice:** the slot wrapper and trim; until it lands, a trim rule on a Log4j context is
 *counted* at the gate (`trimChoice` is what the wrapper will use, without counting) but not applied. The
-benchmark of the gate's cost against the budgets in `overhead-benchmarks.md` is not done either: the
-design allocates nothing on the fast path, but nothing has been measured, and "Acceptance" makes a gate
-over budget a release blocker.
+benchmark of the gate's cost against the budgets in `overhead-benchmarks.md` was not done in this slice. It
+was done later (#332): the gate allocates nothing on the fast path, and the pinned results and the owner's
+decisions on the items over budget are in `overhead-benchmarks.md` ("Revision 2026-11-06: the Log4j 2 gate")
+and `doc/overhead/2026-11-12-jdk21-log4j2/`. "Acceptance" makes a gate over budget a release blocker.
 
 ### Slice 5: the slot wrapper and trim (built, 2026-11-02)
 
@@ -932,8 +933,8 @@ Things the pages say that are narrower than this spec, on purpose:
   connection `logctl` opens starts using (the same effect as in the #322 spec). The guide explains it and says to
   ignore it. Whether `logctl` should hide a context with no application loggers is a separate decision.
 
-Open: the gate benchmark (a release blocker for #302) and the owner's testing may change what the pages promise
-(for example the cost statements, and any limit that testing turns up).
+Open: the owner's testing may change what the pages promise (any limit that testing turns up). The gate
+benchmark is done (#332); the pages' cost statements link to its numbers ("Overhead on Log4j 2" in the guide).
 
 ## Out of scope
 

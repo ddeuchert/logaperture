@@ -747,7 +747,8 @@ shows +13.9 ± 10.5, and the floor run has no `idle` concatenated row. That row 
 and a rerun in `doc/overhead/2026-11-12-jdk21-log4j2/`: on Log4j 2.25.5 `trim-typed` − `idle` is +13.8 ± 10.4 ns
 (template) and +5.3 ± 9.7 ns (concatenated), both within budget, and +920 ± 155 ns with an exception against 204 ns,
 which the owner accepted for 1.x with the figure published. The 2.20.0 floor's `idle` template is +53.7 ± 6.5 ns, a
-marginal miss, reported as measured. The other items under #29 are unchanged: `trim` concatenated +196 ± 8.1,
+marginal miss, which the owner accepted for 1.x as measured on 2026-11-13 (no issue; the cause is unexplained and
+stated as such in the guide). The other items under #29 are unchanged: `trim` concatenated +196 ± 8.1,
 `gate-n` plain +143 / +208 at 5 / 20 rules, the storm filter +116 / +368.
 
 ## Testing
