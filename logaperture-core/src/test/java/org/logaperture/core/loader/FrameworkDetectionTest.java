@@ -75,12 +75,27 @@ class FrameworkDetectionTest {
         FakeFrameworkState.reset();
     }
 
-    private static void await(BooleanSupplier condition) throws InterruptedException {
+    private void await(BooleanSupplier condition) throws InterruptedException {
         long deadline = System.nanoTime() + 5_000_000_000L;
         while (!condition.getAsBoolean() && System.nanoTime() < deadline) {
             Thread.sleep(5);
         }
-        assertTrue(condition.getAsBoolean(), "condition not reached within 5 s");
+        assertTrue(condition.getAsBoolean(), () -> "condition not reached within 5 s; " + stateForAFailure());
+    }
+
+    /**
+     * What a timed-out wait needs to be diagnosed from the CI log alone (issue #325, which has not
+     * reproduced locally): the calls the container saw, the fake framework's flags, any recorded
+     * bind failure and the loader threads still alive, which may belong to an earlier test.
+     */
+    private String stateForAFailure() {
+        String threads = Thread.getAllStackTraces().keySet().stream()
+                .map(Thread::getName).filter(n -> n.startsWith("logaperture-")).sorted().toList().toString();
+        return "calls=" + calls + ", ready=" + FakeFrameworkState.ready.get()
+                + ", readyCalls=" + FakeFrameworkState.readyCalls.get()
+                + ", opened=" + FakeFrameworkState.opened.get() + ", closed=" + FakeFrameworkState.closed.get()
+                + ", keys=" + FakeFrameworkState.keys + ", bindFailures=" + BindFailures.findings().size()
+                + ", threads=" + threads;
     }
 
     @Test
