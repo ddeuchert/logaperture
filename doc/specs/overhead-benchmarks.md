@@ -743,6 +743,13 @@ as with #158, #177 and #150; `trim-typed` gets its own issue under 1.1.0. On the
 passes; `idle` with a template is +48.1 ± 14.5 ns, over the 50 ns budget once the error is added, where 2.25.5
 shows +13.9 ± 10.5, and the floor run has no `idle` concatenated row. That row is reported as measured.
 
+**After #371 (2026-11-12).** R6 and R7 ([`rule-pipeline-foundation.md`](rule-pipeline-foundation.md) "Evaluation cost")
+and a rerun in `doc/overhead/2026-11-12-jdk21-log4j2/`: on Log4j 2.25.5 `trim-typed` − `idle` is +13.8 ± 10.4 ns
+(template) and +5.3 ± 9.7 ns (concatenated), both within budget, and +920 ± 155 ns with an exception against 204 ns,
+which the owner accepted for 1.x with the figure published. The 2.20.0 floor's `idle` template is +53.7 ± 6.5 ns, a
+marginal miss, reported as measured. The other items under #29 are unchanged: `trim` concatenated +196 ± 8.1,
+`gate-n` plain +143 / +208 at 5 / 20 rules, the storm filter +116 / +368.
+
 ## Testing
 
 - The CI smoke pass (Decision #4) runs every benchmark once, which catches a scenario that

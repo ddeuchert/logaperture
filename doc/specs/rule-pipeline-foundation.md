@@ -458,7 +458,17 @@ has no side effects to deduplicate; its verdict is always "allow, no trim". So:
   **R7 on JUL too** *(#371)*. The 11-12 pinned run showed JUL's no-exception `trim-typed` − `idle` at +74 / +60 ns
   against 50 ns, so `JulRuleFilter` asks `appliesTo(loggerName, record.getThrown() != null)` as Log4j 2's gate
   does: the record's throwable is `getThrown()`, so nothing is missed. The trim formatter already skipped a
-  record without one. Test: `JulRuleFilterTest`. Measured on the next pinned run.
+  record without one. Test: `JulRuleFilterTest`. **Measured** (pinned, 2026-11-13, `0100d23`; `rules-t1` and
+  `idle-t1` rerun alone, `doc/overhead/2026-11-12-jdk21-log4j2/jul-rerun-0100d23/`): `trim-typed` − `idle`,
+  template +19 ± 17 ns, concatenated +16 ± 23 ns, both within 50 ns, down from +74 / +60 ns; `trim-typed` now
+  allocates what `drop-miss` does (1,296 B/op, template).
+
+  **Pinned results after R6 and R7** (Log4j 2.25.5, `13de3ac`, 2026-11-12; `doc/overhead/2026-11-12-jdk21-log4j2/`):
+  `trim-typed` − `idle` template +13.8 ± 10.4 ns, concatenated +5.3 ± 9.7 ns (both pass; were +96.6 / +57.3),
+  throwable +920 ± 155 ns against 204 ns (was +3,124 ± 165). **Decided (owner, 2026-11-12): accept** the throwable
+  row for 1.x with the figure published: what is left is the cost of rebuilding the event with a trimmed
+  exception, which `trim` pays too. The 2.20.0 floor's `idle` template is +53.7 ± 6.5 ns, a marginal miss, stated
+  as such in the guide.
 
 Expected effect: the idle and `drop-miss` paths cost one `volatile` read, or one map lookup by
 logger name, and allocate nothing; only loggers with rules pay for deduplication, at a sixteenth
