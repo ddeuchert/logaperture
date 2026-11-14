@@ -2408,7 +2408,8 @@ to the level that change set (<code>ERROR</code> here), not the one in the file.
   is always listed.</li>
 <li><strong>A <code>drop</code> rule that matches on the message text</strong> formats the message once more to read it, so a
   parameter's <code>toString()</code> runs an extra time. Rules on the logger, the level or the unformatted pattern
-  never do.</li>
+  never do. What this costs per call, and what is over budget, is on
+  <a href="../../overhead/#on-log4j-2">Overhead on Log4j 2</a>.</li>
 <li><strong><code>doctor</code></strong> checks the file of a plain <code>File</code>, <code>RandomAccessFile</code> or <code>MemoryMappedFile</code> appender for a
   size cap and for disk space, and reports <code>handler.autoflush</code> for one that flushes every record (Log4j's
   default). A <code>RollingFile</code> appender is not inspected.</li>

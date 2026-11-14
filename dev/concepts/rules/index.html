@@ -2143,7 +2143,8 @@ logctl<span class="w"> </span>add<span class="w"> </span>rule<span class="w"> </
 JVM that logs through <code>java.util.logging</code> or Log4j 2. On a plain JVM with Logback they aren't available
 yet. On Log4j 2, <code>trim</code> cuts the exception in text layouts only, and not on Log4j 2.25.0 to 2.25.3; a
 rule that matches on the message text formats the message once more to read it, so a parameter's
-<code>toString()</code> runs an extra time. See <a href="../../get-started/install-plain-jvm/#limits-to-know">On Log4j 2</a>.</p>
+<code>toString()</code> runs an extra time. See <a href="../../get-started/install-plain-jvm/#limits-to-know">On Log4j 2</a>
+and <a href="../../overhead/#on-log4j-2">Overhead on Log4j 2</a> for what it costs.</p>
 </div>
 <h2 id="what-a-rule-matches">What a rule matches<a class="headerlink" href="#what-a-rule-matches" title="Permanent link">&para;</a></h2>
 <p>A rule is attached to one logger and applies to that logger's events and its descendants'
