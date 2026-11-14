@@ -33,6 +33,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -136,6 +137,31 @@ class BoundInstanceTest {
         assertEquals(List.of("fake:one"), added);
     }
 
+    /** Issue #314: a caller that sees isClosed() may read what close() did, so it is true only once release finished. */
+    @Test
+    void isClosedIsTrueOnlyOnceTheAdaptersCloseHasReturned() throws Exception {
+        BoundInstance instance = start(new FixtureOwnerLoader(), FAST, ADAPTER_CLASSES);
+        FakeFrameworkState.ready.set(true);
+        await(instance::isBound);
+        CountDownLatch closeMayReturn = new CountDownLatch(1);
+        FakeFrameworkState.closeGate.set(closeMayReturn);
+        Runnable shutdown = FakeFrameworkState.shutdown.get();
+        Thread shuttingDown = new Thread(shutdown, "test-shutdown");
+        shuttingDown.start();
+        try {
+            await(FakeFrameworkState.closeStarted::get);
+
+            assertFalse(instance.isClosed(), "close() has not returned yet");
+            assertEquals(0, FakeFrameworkState.closed.get());
+        } finally {
+            closeMayReturn.countDown();
+            shuttingDown.join(5_000);
+        }
+
+        await(instance::isClosed);
+        assertEquals(1, FakeFrameworkState.closed.get());
+    }
+
     @Test
     void letsGoWhenTheFrameworkShutsDown() throws Exception {
         BoundInstance instance = start(new FixtureOwnerLoader(), FAST, ADAPTER_CLASSES);
@@ -221,7 +247,7 @@ class BoundInstanceTest {
         BoundInstance instance = start(new FixtureOwnerLoader(), quick, ADAPTER_CLASSES);
 
         await(instance::isClosed);
-        // isClosed flips before the line is printed and before the entry's close() runs (issue #314): wait for both
+        // isClosed is true once close() has run (issue #314), but the line is printed before that: wait for both
         await(() -> FakeFrameworkState.closed.get() == 1);
         await(() -> diagnosticsText().contains("did not bind"));
         assertTrue(added.isEmpty());

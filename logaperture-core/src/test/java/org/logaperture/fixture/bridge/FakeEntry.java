@@ -51,6 +51,15 @@ public final class FakeEntry implements BridgedFramework {
 
     @Override
     public void close() {
+        FakeFrameworkState.closeStarted.set(true);
+        java.util.concurrent.CountDownLatch gate = FakeFrameworkState.closeGate.get();
+        if (gate != null) {
+            try {
+                gate.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
         FakeFrameworkState.closed.incrementAndGet();
     }
 }

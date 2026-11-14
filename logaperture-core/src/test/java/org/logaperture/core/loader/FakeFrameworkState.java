@@ -19,6 +19,7 @@ import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.LoggingAdapter;
 
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -39,6 +40,9 @@ public final class FakeFrameworkState {
     public static final AtomicBoolean shutdownDuringOpen = new AtomicBoolean();
     public static final AtomicBoolean readyThrows = new AtomicBoolean();
     public static final AtomicBoolean tooOld = new AtomicBoolean();
+    /** When set, the entry's {@code close()} blocks on it (after {@link #closeStarted}), to hold a close open. */
+    public static final AtomicReference<CountDownLatch> closeGate = new AtomicReference<>();
+    public static final AtomicBoolean closeStarted = new AtomicBoolean();
     public static final List<String> keys = new CopyOnWriteArrayList<>(List.of("fake:one"));
 
     private FakeFrameworkState() {
@@ -54,6 +58,8 @@ public final class FakeFrameworkState {
         shutdownDuringOpen.set(false);
         readyThrows.set(false);
         tooOld.set(false);
+        closeGate.set(null);
+        closeStarted.set(false);
         keys.clear();
         keys.add("fake:one");
     }

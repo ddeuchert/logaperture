@@ -64,6 +64,8 @@ public final class BoundInstance {
     private volatile BridgedFramework entry;
     private volatile List<ContextHandle> handles = List.of();
     private volatile boolean registered;
+    /** Set when release() has finished; what {@link #isClosed()} reports (issue #314). */
+    private volatile boolean released;
 
     private BoundInstance(FrameworkWatch watch, ClassLoader owner, BridgeSource source, ClassLoader system,
                           ContextSink sink, Timing timing) {
@@ -104,8 +106,14 @@ public final class BoundInstance {
         return state.get() == State.BOUND && registered;
     }
 
+    /**
+     * True once this instance has let go and its release has finished: the adapter's {@code close()}
+     * has returned and its contexts are removed. The state flips to closed first, so a caller that
+     * only needs "no longer bound" can read {@link #isBound()}; this one is for a caller that goes
+     * on to read what the release did (issue #314).
+     */
     public boolean isClosed() {
-        return state.get() == State.CLOSED;
+        return released;
     }
 
     /** The bridge loader, for the tests. */
@@ -235,6 +243,14 @@ public final class BoundInstance {
     }
 
     private void release() {
+        try {
+            releaseResources();
+        } finally {
+            released = true;
+        }
+    }
+
+    private void releaseResources() {
         BridgedFramework closing = entry;
         entry = null;
         try {
