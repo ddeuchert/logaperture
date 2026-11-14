@@ -36,6 +36,8 @@ jobs:
           java-version: '17'
           cache: maven
 
+      - uses: ./.github/actions/prepare-mvnw
+
       - name: Build and verify
         run: ./mvnw -B --no-transfer-progress verify
 
@@ -66,6 +68,8 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
+
+      - uses: ./.github/actions/prepare-mvnw
 
       - name: QuarkusIT and QuarkusExtensionIT on Quarkus ${{ matrix.quarkus-version }}
         run: |
@@ -108,6 +112,8 @@ jobs:
           java-version: '17'
           cache: maven
 
+      - uses: ./.github/actions/prepare-mvnw
+
       - name: Log4j ${{ matrix.log4j2-version }}, ${{ matrix.mode }}
         run: |
           ./mvnw -B --no-transfer-progress -pl logaperture-adapter-log4j2,logaperture-agent -am verify \
@@ -137,6 +143,8 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
+
+      - uses: ./.github/actions/prepare-mvnw
 
       - name: Build the benchmarks
         run: ./mvnw -B --no-transfer-progress -Pbench -pl logaperture-bench -am package -DskipTests
