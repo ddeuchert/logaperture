@@ -591,8 +591,8 @@ class LevelControlEndToEndIT {
     }
 
     static MBeanServerConnection attachAndConnect(long pid) throws Exception {
-        // doc/specs/end-to-end-testing.md §"Test stability": a slow CI runner
-        // may start the child JVM before HotSpot's attach listener is ready.
+        // A slow CI runner may start the child JVM before HotSpot's attach
+        // listener is ready.
         // A bounded retry here avoids the flaky AttachNotSupportedException
         // that otherwise kills the whole test run (issue #240).
         Exception lastFailure = null;
