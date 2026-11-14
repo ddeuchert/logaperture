@@ -2527,11 +2527,11 @@ message a <code>trim</code> has no stack trace to cut, so it only costs its rule
 <p>The machine has 4 cores and 8 hardware threads, so the 8-thread runs share cores.</p>
 <h2 id="on-log4j-2">On Log4j 2<a class="headerlink" href="#on-log4j-2" title="Permanent link">&para;</a></h2>
 <div class="admonition info">
-<p class="admonition-title">Measured on 2026-11-10, before 1.1</p>
+<p class="admonition-title">Measured on 2026-11-12, before 1.1</p>
 <p>These numbers are from the 1.1 code before its first release, on the same machine as the rest
-of this page (<a href="#the-log4j-2-run">the run</a>). Everything an idle agent does is within its budget.
-Some checks on rules and type-bound <code>trim</code> are over: see
-<a href="#over-budget-on-log4j-2">Over budget on Log4j 2</a>.</p>
+of this page (<a href="#the-log4j-2-run">the run</a>). Everything an idle agent does is within its budget on
+2.25.5. Some checks on rules, storm detection and type-bound <code>trim</code> on a record with an exception
+are over: see <a href="#over-budget-on-log4j-2">Over budget on Log4j 2</a>.</p>
 </div>
 <h3 id="what-the-agent-adds-on-log4j-2">What the agent adds on Log4j 2<a class="headerlink" href="#what-the-agent-adds-on-log4j-2" title="Permanent link">&para;</a></h3>
 <p>One <code>INFO</code> call on one thread, synchronous loggers, one shared appender, against bare Log4j 2.
@@ -2548,30 +2548,30 @@ Log4j 2.25.5.</p>
 <tbody>
 <tr>
 <td>Nothing configured (the default)</td>
-<td style="text-align: right;">+14 ± 11 ns</td>
-<td style="text-align: right;">+31 ± 12 ns</td>
-<td style="text-align: right;">−108 ± 129 ns (noise)</td>
+<td style="text-align: right;">+19 ± 10 ns</td>
+<td style="text-align: right;">+17 ± 8 ns</td>
+<td style="text-align: right;">−172 ± 76 ns (noise)</td>
 </tr>
 <tr>
 <td>20 rules, none matching</td>
-<td style="text-align: right;">+26 ± 11 ns</td>
-<td style="text-align: right;">+40 ± 15 ns</td>
-<td style="text-align: right;">−257 ± 100 ns (noise)</td>
+<td style="text-align: right;">+26 ± 14 ns</td>
+<td style="text-align: right;">+14 ± 13 ns</td>
+<td style="text-align: right;">−93 ± 143 ns (noise)</td>
 </tr>
 <tr>
 <td>20 type-bound <code>trim</code> rules</td>
-<td style="text-align: right;">+110 ± 10 ns</td>
-<td style="text-align: right;">+88 ± 15 ns</td>
-<td style="text-align: right;">+3,016 ± 135 ns</td>
+<td style="text-align: right;">+33 ± 10 ns</td>
+<td style="text-align: right;">+22 ± 9 ns</td>
+<td style="text-align: right;">+748 ± 166 ns</td>
 </tr>
 </tbody>
 </table>
 <p>A call Log4j would not write at all (<code>logger.debug(...)</code> on an <code>INFO</code> logger) costs +1.1 ns. With
-<code>&lt;Async&gt;</code> appenders and with all-async loggers the idle agent adds between −14 and +15 ns on a template or
-concatenated message, within its error. At 4 and 8 threads the idle agent adds nothing measurable
-with a shared appender or one per thread.</p>
-<p>A rule that matches and drops the record costs +131 ± 20 ns on a concatenated message, against
-204 ns for 20 rules. A rule that reads a parameterized message pays to format it first: +243 ns
+<code>&lt;Async&gt;</code> appenders and with all-async loggers the idle agent adds between −22 and +24 ns on a template or
+concatenated message, within its error. At 4 and 8 threads the idle agent adds at most about
++120 ns with a shared appender, within its error, and at most about +54 ns with one appender per thread.</p>
+<p>A rule that matches and drops the record costs +146 ± 14 ns on a concatenated message, against
+204 ns for 20 rules. A rule that reads a parameterized message pays to format it first: +251 ns
 at 20 rules on top of what the rules cost (<a href="#on-log4j-2">why</a>).</p>
 <ul>
 <li><strong>A disabled call still passes through the gate.</strong> Log4j 2 runs a filter ahead of its level
@@ -2602,29 +2602,31 @@ at 20 rules on top of what the rules cost (<a href="#on-log4j-2">why</a>).</p>
 <p>Each part has the same budget as on <code>java.util.logging</code>, plus 10 ns for a disabled call. On
 Log4j 2.25.5, synchronous, these are over:</p>
 <ul>
-<li><strong>Type-bound <code>trim</code> rules, 20 rules:</strong> +97 ns on a template and +57 ns on a concatenated
-  message against 50 ns, and <strong>+3,124 ns on a record with an exception against 204 ns</strong>
-  (<a href="https://github.com/ddeuchert/logaperture/issues/371">#371</a>). Planned for a fix in 1.1.0.</li>
+<li><strong>Type-bound <code>trim</code> rules, 20 rules, on a record with an exception: +920 ± 155 ns against
+  204 ns</strong> (<a href="https://github.com/ddeuchert/logaperture/issues/371">#371</a>). On a call with no
+  exception the same rules cost +14 ns on a template and +5 ns on a concatenated message
+  (against 50 ns); they were +97 and +57 ns, and +3,124 ns with an exception, before 1.1's
+  fix. What is left is the cost of rebuilding the event with a trimmed exception, which every
+  <code>trim</code> rule pays, so this stays over and the figure is published.</li>
 <li><strong>Accepted for 1.x as measured:</strong><ul>
-<li><code>trim</code> rules, 20 rules, concatenated message: +201 ± 14 ns against 204 ns.</li>
-<li>Rules that read a plain message: +145 ns at 5 rules against 140 ns, and +206 ns at 20 rules
+<li><code>trim</code> rules, 20 rules, concatenated message: +196 ± 8 ns against 204 ns.</li>
+<li>Rules that read a plain message: +143 ns at 5 rules against 140 ns, and +208 ns at 20 rules
   against 204 ns.</li>
-<li>Storm detection, which is off by default: +120 ns on a template against 100 ns, and +367 ns
+<li>Storm detection, which is off by default: +116 ns on a template against 100 ns, and +368 ns
   on a concatenated message against 308 ns.</li>
 </ul>
 </li>
 </ul>
 <h3 id="the-oldest-supported-version">The oldest supported version<a class="headerlink" href="#the-oldest-supported-version" title="Permanent link">&para;</a></h3>
 <p>Log4j 2.20.0, the oldest LogAperture supports, measured for the idle agent and the disabled call
-only. The disabled call costs +1.2 ns, within its 10 ns budget. The idle agent adds +48 ± 15 ns
-on a template message against 50 ns, which is over once the error is counted; 2.25.5 shows +14 ns
-for the same call, and the gap is not yet explained. On a record with an exception it adds
-+496 ± 386 ns, wide enough to be noise.</p>
+only. The disabled call costs +1.1 ns, within its 10 ns budget. The idle agent adds +54 ± 7 ns
+on a template message against 50 ns, which is over; 2.25.5 shows +19 ns for the same call, and the
+gap is not yet explained. On a record with an exception it adds +260 ± 273 ns, wide enough to be noise.</p>
 <h3 id="the-log4j-2-run">The Log4j 2 run<a class="headerlink" href="#the-log4j-2-run" title="Permanent link">&para;</a></h3>
 <p>Same machine, JDK and JMH settings as <a href="#the-run">the run above</a>, on Fedora Linux 44 with kernel
-7.3.3, at commit <code>725bb01</code>, on 2026-11-10 (2.25.5) and 2026-11-11 (2.20.0). The raw results are in
+7.3.3, at commit <code>13de3ac</code>, on 2026-11-12 (2.25.5 and 2.20.0). The raw results are in
 the repository:
-<a href="https://github.com/ddeuchert/logaperture/tree/develop/doc/overhead/2026-11-11-jdk21-log4j2"><code>doc/overhead/2026-11-11-jdk21-log4j2/</code></a>.</p>
+<a href="https://github.com/ddeuchert/logaperture/tree/develop/doc/overhead/2026-11-12-jdk21-log4j2"><code>doc/overhead/2026-11-12-jdk21-log4j2/</code></a>.</p>
 <h2 id="what-these-numbers-dont-say">What these numbers don't say<a class="headerlink" href="#what-these-numbers-dont-say" title="Permanent link">&para;</a></h2>
 <p>JMH measures a hot loop in steady state: code and data in cache, and the JIT specialized on one
 call site. A real application's log path is colder, and its lock contention depends on its
