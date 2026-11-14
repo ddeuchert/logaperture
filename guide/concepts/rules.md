@@ -14,7 +14,8 @@ logctl add rule trim '*.AutoUpdateHelper' --throwable java.net.ConnectException 
     JVM that logs through `java.util.logging` or Log4j 2. On a plain JVM with Logback they aren't available
     yet. On Log4j 2, `trim` cuts the exception in text layouts only, and not on Log4j 2.25.0 to 2.25.3; a
     rule that matches on the message text formats the message once more to read it, so a parameter's
-    `toString()` runs an extra time. See [On Log4j 2](../get-started/install-plain-jvm.md#limits-to-know).
+    `toString()` runs an extra time. See [On Log4j 2](../get-started/install-plain-jvm.md#limits-to-know)
+    and [Overhead on Log4j 2](../overhead.md#on-log4j-2) for what it costs.
 
 ## What a rule matches
 
