@@ -1,0 +1,42 @@
+# Copyright 2026 David Deuchert
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Makes ./mvnw ready before the build step: restores the Maven distribution the wrapper
+# downloads (setup-java's `cache: maven` covers ~/.m2/repository only) and, when it is not
+# cached, downloads it with retries, so a transient failure of repo.maven.apache.org does not
+# fail the job (issue #381). Use it right after setup-java.
+name: Prepare the Maven wrapper
+description: Cache the Maven distribution that ./mvnw downloads and retry the download.
+
+runs:
+  using: composite
+  steps:
+    - name: Cache the Maven wrapper distribution
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2/wrapper
+        key: mvnw-${{ runner.os }}-${{ hashFiles('.mvn/wrapper/maven-wrapper.properties') }}
+
+    - name: Download Maven, retrying
+      shell: bash
+      run: |
+        for attempt in 1 2 3; do
+          if ./mvnw -B --version; then
+            exit 0
+          fi
+          echo "::warning::./mvnw --version failed (attempt $attempt of 3); retrying"
+          sleep $((attempt * 15))
+        done
+        echo "::error::the Maven wrapper could not be prepared after 3 attempts"
+        exit 1

@@ -84,6 +84,8 @@ jobs:
           java-version: '17'
           cache: maven
 
+      - uses: ./.github/actions/prepare-mvnw
+
       - name: Log4j ${{ matrix.log4j2-version }}, ${{ matrix.mode }}
         run: |
           ./mvnw -B --no-transfer-progress -pl logaperture-adapter-log4j2,logaperture-agent -am verify \
