@@ -197,7 +197,8 @@ to the level that change set (`ERROR` here), not the one in the file. See
   is always listed.
 - **A `drop` rule that matches on the message text** formats the message once more to read it, so a
   parameter's `toString()` runs an extra time. Rules on the logger, the level or the unformatted pattern
-  never do.
+  never do. What this costs per call, and what is over budget, is on
+  [Overhead on Log4j 2](../overhead.md#on-log4j-2).
 - **`doctor`** checks the file of a plain `File`, `RandomAccessFile` or `MemoryMappedFile` appender for a
   size cap and for disk space, and reports `handler.autoflush` for one that flushes every record (Log4j's
   default). A `RollingFile` appender is not inspected.
