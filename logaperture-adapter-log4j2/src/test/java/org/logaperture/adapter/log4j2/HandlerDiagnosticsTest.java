@@ -52,24 +52,41 @@ class HandlerDiagnosticsTest {
     private Log4j2LoggingAdapter adapter;
 
     private BuiltConfiguration file() {
+        return file(dir, false);
+    }
+
+    private BuiltConfiguration file(Path baseDir, boolean mapped) {
+        return buildConfig(baseDir, mapped);
+    }
+
+    /** @param mapped when {@code true}, also adds a {@code MemoryMappedFile} appender —
+     *  on Windows its {@code MappedByteBuffer} keeps the file locked until GC,
+     *  so only the test that needs it turns it on. */
+    private BuiltConfiguration buildConfig(Path baseDir, boolean mapped) {
         ConfigurationBuilder<BuiltConfiguration> b = ConfigurationBuilderFactory.newConfigurationBuilder();
         var layout = b.newLayout("PatternLayout").addAttribute("pattern", "%m%n");
         b.add(b.newAppender("Con", "Console").add(layout));
-        b.add(b.newAppender("Plain", "File").addAttribute("fileName", dir.resolve("plain.log").toString()).add(layout));
+        b.add(b.newAppender("Plain", "File").addAttribute("fileName", baseDir.resolve("plain.log").toString()).add(layout));
         b.add(b.newAppender("Random", "RandomAccessFile")
-                .addAttribute("fileName", dir.resolve("random.log").toString()).addAttribute("immediateFlush", false).add(layout));
-        b.add(b.newAppender("Mapped", "MemoryMappedFile").addAttribute("fileName", dir.resolve("mapped.log").toString())
-                .add(layout));
-        b.add(b.newAppender("Rolling", "RollingFile").addAttribute("fileName", dir.resolve("rolling.log").toString())
-                .addAttribute("filePattern", dir.resolve("rolling-%i.log").toString()).add(layout)
+                .addAttribute("fileName", baseDir.resolve("random.log").toString()).addAttribute("immediateFlush", false).add(layout));
+        if (mapped) {
+            b.add(b.newAppender("Mapped", "MemoryMappedFile").addAttribute("fileName", baseDir.resolve("mapped.log").toString())
+                    .add(layout));
+        }
+        b.add(b.newAppender("Rolling", "RollingFile").addAttribute("fileName", baseDir.resolve("rolling.log").toString())
+                .addAttribute("filePattern", baseDir.resolve("rolling-%i.log").toString()).add(layout)
                 .addComponent(b.newComponent("Policies").addComponent(
                         b.newComponent("SizeBasedTriggeringPolicy").addAttribute("size", "1MB"))));
         b.add(b.newAppender("AsyncPlain", "Async").addComponent(b.newAppenderRef("Plain")));
         b.add(b.newAppender("AsyncTwo", "Async").addComponent(b.newAppenderRef("Plain")).addComponent(b.newAppenderRef("Con")));
         b.add(b.newAppender("AsyncRolling", "Async").addComponent(b.newAppenderRef("Rolling")));
-        b.add(b.newRootLogger(Level.INFO).add(b.newAppenderRef("Con")).add(b.newAppenderRef("Plain"))
-                .add(b.newAppenderRef("Random")).add(b.newAppenderRef("Mapped")).add(b.newAppenderRef("Rolling")).add(b.newAppenderRef("AsyncPlain"))
-                .add(b.newAppenderRef("AsyncTwo")).add(b.newAppenderRef("AsyncRolling")));
+        var rootLogger = b.newRootLogger(Level.INFO).add(b.newAppenderRef("Con")).add(b.newAppenderRef("Plain"))
+                .add(b.newAppenderRef("Random")).add(b.newAppenderRef("Rolling")).add(b.newAppenderRef("AsyncPlain"))
+                .add(b.newAppenderRef("AsyncTwo")).add(b.newAppenderRef("AsyncRolling"));
+        if (mapped) {
+            rootLogger.add(b.newAppenderRef("Mapped"));
+        }
+        b.add(rootLogger);
         return b.build();
     }
 
@@ -166,11 +183,27 @@ class HandlerDiagnosticsTest {
     }
 
     @Test
-    void aMemoryMappedFile_isAFileWithAKnownPath_andReportsItsOwnFlush() {
-        HandlerDiagnostics facts = of("Mapped");
-        assertEquals(dir.resolve("mapped.log"), facts.targetPath());
-        assertTrue(facts.hasKnownFile());
-        assertEquals(Boolean.FALSE, facts.autoFlush(), "memory-mapped writes are not flushed per record");
+    void aMemoryMappedFile_isAFileWithAKnownPath_andReportsItsOwnFlush() throws Exception {
+        // Replace the default (unmapped) context with one that includes a MemoryMappedFile.
+        // On Windows the MappedByteBuffer keeps the file locked, so we place it in a
+        // throwaway directory that we don't attempt to delete.
+        adapter.detach();
+        context.stop();
+        Path mappedDir = java.nio.file.Files.createTempDirectory("logaperature-mapped-");
+        try {
+            context = Configurator.initialize(file(mappedDir, true));
+            adapter = new Log4j2LoggingAdapter(context, "2.20.0");
+            HandlerDiagnostics facts = of("Mapped");
+            assertEquals(mappedDir.resolve("mapped.log"), facts.targetPath());
+            assertTrue(facts.hasKnownFile());
+            assertEquals(Boolean.FALSE, facts.autoFlush(), "memory-mapped writes are not flushed per record");
+        } finally {
+            adapter.detach();
+            context.stop();
+            // Re-create the default context for @AfterEach.
+            context = Configurator.initialize(file());
+            adapter = new Log4j2LoggingAdapter(context, "2.20.0");
+        }
     }
 
     @Test

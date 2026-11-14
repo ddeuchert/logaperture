@@ -67,7 +67,7 @@ class AgentOrderCheckTest {
         DoctorFinding order = single(findings, AgentOrderCheck.ORDER_CHECK);
         assertEquals(Severity.OK, order.severity());
         assertEquals("logaperture-agent.jar is the first -javaagent.", order.summary());
-        assertEquals(Path.of("/opt/logaperture-agent.jar").toAbsolutePath().normalize().toString(), order.subject());
+        assertEquals(dir.resolve("/opt/logaperture-agent.jar").toAbsolutePath().normalize().toString(), order.subject());
         assertNull(order.context(), "process-wide -- no context");
         assertEquals(1, findings.size(), "no duplicate row when nothing is duplicated");
     }
@@ -103,8 +103,8 @@ class AgentOrderCheckTest {
 
         assertEquals("2 agents are listed ahead of logaperture-agent.jar: agent.jar, agent.jar.", order.summary());
         assertTrue(order.detail().endsWith("Listed ahead, in order: "
-                + Path.of("/a/agent.jar").toAbsolutePath().normalize() + ", "
-                + Path.of("/b/agent.jar").toAbsolutePath().normalize() + "."), order.detail());
+                + dir.resolve("/a/agent.jar").toAbsolutePath().normalize() + ", "
+                + dir.resolve("/b/agent.jar").toAbsolutePath().normalize() + "."), order.detail());
     }
 
     @Test
