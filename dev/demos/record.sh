@@ -27,7 +27,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 out_dir=$root/guide/assets/demos
-stories=(why-no-trace debug-for-a-while flood trim storm)
+stories=(why-no-trace debug-for-a-while flood trim storm doctor)
 
 cols=120
 rows=32
