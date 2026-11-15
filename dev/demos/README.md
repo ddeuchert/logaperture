@@ -13,6 +13,7 @@ asciinema: the server console on top, `logctl` below. Design:
 | Stack traces are burying the log | [`trim.sh`](trim.sh) | `guide/assets/demos/trim.cast` | How-to: Silence noise |
 | What is bursting? | [`storm.sh`](storm.sh) | `guide/assets/demos/storm.cast` | How-to: Log storms |
 | Is my logging config going to hurt me? | [`doctor.sh`](doctor.sh) | `guide/assets/demos/doctor.cast` | How-to: Find where the disk goes |
+| Ship what you tuned | [`export.sh`](export.sh) | `guide/assets/demos/export.cast` | Vendors: Vendor defaults |
 
 ## Prerequisites
 
@@ -30,7 +31,7 @@ dev/demos/record.sh all             # every story, into guide/assets/demos/
 dev/demos/record.sh why-no-trace    # one story
 ```
 
-`all` takes about five minutes. Before each story, `record.sh` resets every
+`all` takes about six minutes. Before each story, `record.sh` resets every
 logger, handler and rule (sticky ones too) and starts the sample's demo shop
 (`POST /logaperture-sample-war/demo/start`); afterwards it resets again and stops the shop.
 **Don't record against a server whose overrides you want to keep.**
@@ -71,7 +72,9 @@ a paragraph on when you'd need it, the embed, and a breakdown of each `run logct
 The guide build fails until it has one, and again whenever a story's commands change without
 its breakdown.
 
-Keep the whole bottom pane to 19 lines, so the last frame (the guide's poster and the GIF's
+Keep the whole bottom pane to 19 lines (a story that needs more can shrink the console with a line
+`DEMO_CONSOLE_ROWS=6` in its script, which `record.sh` reads: [`export.sh`](export.sh) does, because
+its export is 16 lines, and has 25), so the last frame (the guide's poster and the GIF's
 held frame) shows the story from its first line. Open by saying what is running, since the GIF
 has no page around it. Keep it to one problem and its fix, under 90 seconds, with generic names
 (`com.example…`) and the sample's demo shop as the application. Never record a real system.
