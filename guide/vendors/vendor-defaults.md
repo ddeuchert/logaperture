@@ -33,7 +33,12 @@ before you ship it.
 ## Making the file: tune, then export
 
 You don't need to write the file by hand. Run the product in a test environment, tune its logging
-live with `sticky` changes until it is right, then export:
+live with `sticky` changes until it is right, then export. The film shows a logger and a rule
+exported.
+
+<div class="la-cast" data-cast="export"></div>
+
+In text, from an earlier run that also sets a handler:
 
 ```sh
 logctl set logger org.jboss.as.server.deployment WARN sticky
@@ -43,7 +48,7 @@ logctl export vendor-defaults --out logging.yaml
 ```
 
 ```yaml
-# Exported by logctl export vendor-defaults, 2026-10-16T01:45:07Z, agent 1.0.0-beta.4
+# Exported by logctl export vendor-defaults, 2026-10-16T01:45:07Z, agent 1.0.0
 # Started from: no vendor defaults file
 schemaVersion: 1
 loggers:

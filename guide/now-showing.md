@@ -13,6 +13,9 @@ its reference and to the how-to that covers it.
 2. [Debug one package for a while](#debug-for-a-while): a change that cleans itself up.
 3. [Something is flooding the log](#flood): find the source, and silence one exception.
 4. [Stack traces are burying the log](#trim): keep every warning, but not its trace.
+5. [What is bursting?](#storm): find the one message behind a scrolling console.
+6. [Is my logging config going to hurt me?](#doctor): what `doctor` reports, and the one fix `logctl` can make.
+7. [Ship what you tuned](#export): turn sticky changes into the file your product ships.
 
 ## Why don't I see my TRACE? {#why-no-trace}
 
@@ -174,3 +177,107 @@ events each rule has trimmed.
 
 Reference: [`list rules`](reference/logctl.md#list-rules) · How-to:
 [See and change rules](how-to/silence-noise.md#see-and-change-rules)
+
+## What is bursting? {#storm}
+
+The shop's console is scrolling too fast to read, and nothing in it says why. A retry loop is
+logging the same message hundreds of times a second, with only an attempt number changing, so no
+single line stands out. Storm detection groups events like that into one
+storm and keeps one in full. Reach for it when the log is too fast to read and you don't know
+which message is doing it.
+
+<div class="la-cast" data-cast="storm"></div>
+
+### Commands in this film {#storm-commands}
+
+**`logctl enable storms`**: switch storm detection on. It starts off, because it costs a little on
+every log call; without a duration it stays on until the JVM stops.
+
+Reference: [`storms`](reference/logctl.md#storms) · How-to: [Turn it on](how-to/storms.md#turn-it-on)
+
+**`logctl storms`**: list the storms detected so far. Each shows its logger, its exception if it
+has one, and the message with the changing parts replaced by `<n>`, so thousands of events with
+different attempt numbers count as one storm. An ongoing storm also shows its rate and a sample: the
+event that made it a storm, in full.
+
+Reference: [`storms`](reference/logctl.md#storms) · How-to: [See the storms](how-to/storms.md#see-the-storms)
+
+**`logctl add rule drop com.example.shop.payment.RetryQueue --message-contains Retrying`**: keep
+the storm out of the log while the cause is fixed.
+
+- `drop`: discard the matching events, letting the first through and then one every 5 minutes, so
+  the message is never far away.
+- `com.example.shop.payment.RetryQueue`: the logger the storm named.
+- `--message-contains Retrying`: match events whose message contains the text.
+
+The rule lasts `for 4h`, since no duration was given.
+
+Reference: [`add rule`](reference/logctl.md#add-rule) · How-to:
+[Drop a message](how-to/silence-noise.md#drop-a-message)
+
+## Is my logging config going to hurt me? {#doctor}
+
+Nothing has failed yet, but a logging configuration can quietly cost you a disk or a noisy log: a
+file with no size cap, a chatty framework logger left at `DEBUG`, a handler that flushes on every
+record. `doctor` reads the configuration and says which of those apply. It only reports, and where
+`logctl` can fix a finding it prints the exact command. Reach for it before an incident, or when
+you take over a server you didn't set up.
+
+<div class="la-cast" data-cast="doctor"></div>
+
+### Commands in this film {#doctor-commands}
+
+**`logctl doctor`**: run the checks and print one line per finding, with a detail line and a
+suggested fix where there is one. It never changes anything.
+
+- The `org.hibernate` finding is the one `logctl` can fix, and it prints the command. Here the
+  `DEBUG` was set at runtime, which `reset` undoes; a level the application's own configuration
+  sets is changed there, or turned down with `logctl set logger`.
+- The `FILE` and `CONSOLE` findings are the server's own handler settings (no size cap, autoflush).
+  `doctor` names them and leaves them to you: LogAperture doesn't change handler settings other than
+  the level.
+
+Reference: [`doctor`](reference/logctl.md#doctor), [Doctor checks](reference/doctor-checks.md) ·
+How-to: [What in the configuration will hurt](how-to/find-disk-usage.md#what-in-the-configuration-will-hurt)
+
+**`logctl reset logger org.hibernate`**: put the logger back to the level the application
+configured. It prints the level it went back to, with `(baseline)`.
+
+Reference: [`reset`](reference/logctl.md#reset) · How-to: [Reset](how-to/undo-changes.md#reset)
+
+## Ship what you tuned {#export}
+
+You ship a product on a JVM, and you have tuned its logging live in a test environment until it is
+right. Your customers shouldn't have to repeat that. `export vendor-defaults` writes every `sticky`
+change, on top of the file the JVM started with, as a vendor defaults file you ship with the
+product. Reach for it when the settings are right and you want customers to start from them.
+
+<div class="la-cast" data-cast="export"></div>
+
+### Commands in this film {#export-commands}
+
+**`logctl set logger com.example.shop.payment WARN sticky`**: change a logger's level and keep it
+across restarts. Only `sticky` changes are exported; `session` and `for` changes are left out.
+
+Reference: [`set logger`](reference/logctl.md#set-logger) · How-to:
+[Raise a log level](how-to/raise-a-level.md)
+
+**`logctl add rule drop com.example.shop.inventory.StockSync --message-contains synced --below WARN sticky`**:
+drop a repeating message below `WARN`, kept across restarts.
+
+- `drop`: discard the matching events, letting the first through and then one every 5 minutes.
+- `--message-contains synced`: match events whose message contains the text.
+- `--below WARN`: only events below `WARN`, so a warning or an error from the logger is never dropped.
+- `sticky`: keep it across restarts, which is what puts it in the export.
+
+Reference: [`add rule`](reference/logctl.md#add-rule) · How-to:
+[Drop a message](how-to/silence-noise.md#drop-a-message)
+
+**`logctl export vendor-defaults`**: print the vendor defaults file: the file the JVM started with,
+plus every `sticky` change. Each entry's `stateId` ties it to the change it came from, so when the
+agent starts with the new file, the file takes those changes over and each setting is active once.
+Add `--out <file>` to write it to a file. Ship the file with the product and start the agent with
+`--vendor-defaults=<file>`.
+
+Reference: [`export vendor-defaults`](reference/logctl.md#export-vendor-defaults) · How-to:
+[Making the file: tune, then export](vendors/vendor-defaults.md#making-the-file-tune-then-export)

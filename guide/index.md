@@ -14,12 +14,6 @@ logctl top                                           # which loggers write the m
 logctl add rule drop com.acme.batch.Worker --message-contains "This happens a lot"
 ```
 
-!!! warning "Pre-release"
-    LogAperture 1.0 is in beta. Try it on a server you can afford to restart, and
-    [tell us](https://github.com/ddeuchert/logaperture/issues) what breaks, or
-    [how it went](https://github.com/ddeuchert/logaperture/discussions/245). It is not for
-    production use before 1.0.0.
-
 ## See it work
 
 A logger raised to `TRACE` on a running WildFly. The console's own handler is at `INFO`, so it
@@ -72,7 +66,7 @@ JDK 17, 21 and 25.
 
 Not supported in 1.0: WildFly domain mode, a plain JVM that logs through `java.util.logging`
 alone, Log4j 2, Spring Boot, Tomcat, Jetty, Quarkus. Quarkus native images can never be supported:
-they have no JVM to attach an agent to.
+they have no JVM to attach an agent to. Several of these are planned for 1.1: see [Coming in 1.1](coming-in-1-1.md).
 
 ## Where to start
 
