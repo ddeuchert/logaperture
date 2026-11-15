@@ -20,9 +20,9 @@ on the same machine, run by the same operating-system user.
   `--json` or `--yes`, it can't ask. It prints the same list and exits with code 4:
 
     ```
-    PID    VERSION       STARTED           DIRECTORY   COMMAND
-    28337  1.0.0-beta.4  2026-10-15 20:45  /srv/app-a  org.logaperture.agent.it.FixtureApp
-    28342  1.0.0-beta.4  2026-10-15 20:45  /srv/app-b  org.logaperture.agent.it.FixtureApp
+    PID    VERSION  STARTED           DIRECTORY   COMMAND
+    28337  1.0.0    2026-10-15 20:45  /srv/app-a  org.logaperture.agent.it.FixtureApp
+    28342  1.0.0    2026-10-15 20:45  /srv/app-b  org.logaperture.agent.it.FixtureApp
     Several candidates — pass --pid <n>.
     ```
 

@@ -2,11 +2,20 @@
 
 All notable changes to LogAperture are recorded here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims
-to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it
-reaches 1.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`; the betas and release
+follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from 1.0.0. Pre-1.0 alpha builds are numbered `0.1.0-alpha.N`; the betas and release
 candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ## [Unreleased]
+
+## [1.0.0] — 2026-11-15
+
+The first stable release. The compatibility promise starts: within 1.x, the `logctl` commands and
+`--json` output and the agent's management interface only grow. It runs on standalone WildFly
+(26.1 and later) and on plain `java -jar` with Logback, on JDK 17, 21 and 25.
+
+Nothing in the product changed since beta.4. The guide gained three demos on the Now Showing page
+(what is bursting, `doctor`, and exporting vendor defaults) and a "Coming in 1.1" page. The
+"not for production" warnings are gone. What 1.0 does is in the beta entries below.
 
 ## [1.0.0-beta.4] — 2026-10-28
 
@@ -582,7 +591,8 @@ store's on-disk format may still change between builds without a migration path.
   `/subsystem=logging` reconfiguration
   ([#31](https://github.com/ddeuchert/logaperture/issues/31)).
 
-[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.4...HEAD
+[Unreleased]: https://github.com/ddeuchert/logaperture/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0
 [1.0.0-beta.4]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.4
 [1.0.0-beta.3]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.3
 [1.0.0-beta.2]: https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.2
