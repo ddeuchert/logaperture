@@ -2010,6 +2010,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#100-2026-11-15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.0.0 — 2026-11-15
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#100-beta4-2026-10-28" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2444,6 +2455,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#100-2026-11-15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.0.0 — 2026-11-15
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#100-beta4-2026-10-28" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2816,10 +2838,9 @@
 <h1 id="changelog">Changelog<a class="headerlink" href="#changelog" title="Permanent link">&para;</a></h1>
 <p>All notable changes to LogAperture are recorded here. The format is based on
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>, and this project aims
-to follow <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a> once it
-reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>; the betas and release
+follows <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a> from 1.0.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>; the betas and release
 candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code>.</p>
-<h2 id="unreleased"><a href="https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.4...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/ddeuchert/logaperture/compare/v1.0.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Log4j 2.</strong> An application that logs through Log4j 2.20.0 or later can now be controlled with <code>logctl</code>
@@ -2903,15 +2924,6 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
   <code>quarkus.logaperture.bundled-vendor-defaults=false</code> turns it off (issue #269;
   <code>doc/specs/bundled-vendor-defaults.md</code>).</p>
 </li>
-<li><strong>A fifth demo recording: what is bursting?</strong> <code>logctl enable storms</code>, <code>logctl storms</code> and a <code>drop</code>
-  rule on a message whose numbers keep changing, embedded in How-to: Log storms and on Now Showing
-  (issue #198).</li>
-<li><strong>A sixth demo recording: is my logging config going to hurt me?</strong> <code>logctl doctor</code> reports a chatty
-  logger left at <code>DEBUG</code> and the server's own handler settings, then <code>logctl reset logger</code> fixes the
-  one <code>logctl</code> can. Embedded in How-to: Find where the disk goes and on Now Showing (issue #342).</li>
-<li><strong>A seventh demo recording: ship what you tuned.</strong> Sticky changes to a logger and a rule, then
-  <code>logctl export vendor-defaults</code> writes them as the file a product ships. Embedded in Vendors: Vendor
-  defaults and on Now Showing (issue #343).</li>
 <li><strong>An eighth demo recording: try it, no restart.</strong> <code>logctl attach</code> loads the agent into a WildFly
   server that was started without it, then a <code>set logger</code> shows its effect on the console at once.
   Embedded in How-to: Try LogAperture without a restart and on Now Showing (issue #349).</li>
@@ -2935,6 +2947,13 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
   configuration or a vendor defaults file sets, <code>doctor</code> now says where the level comes from and suggests
   <code>logctl set logger &lt;name&gt; INFO sticky</code>; for one <code>logctl</code> set, it still suggests <code>reset</code> (issue #345).</li>
 </ul>
+<h2 id="100-2026-11-15"><a href="https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0">1.0.0</a> — 2026-11-15<a class="headerlink" href="#100-2026-11-15" title="Permanent link">&para;</a></h2>
+<p>The first stable release. The compatibility promise starts: within 1.x, the <code>logctl</code> commands and
+<code>--json</code> output and the agent's management interface only grow. It runs on standalone WildFly
+(26.1 and later) and on plain <code>java -jar</code> with Logback, on JDK 17, 21 and 25.</p>
+<p>Nothing in the product changed since beta.4. The guide gained three demos on the Now Showing page
+(what is bursting, <code>doctor</code>, and exporting vendor defaults) and a "Coming in 1.1" page. The
+"not for production" warnings are gone. What 1.0 does is in the beta entries below.</p>
 <h2 id="100-beta4-2026-10-28"><a href="https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.4">1.0.0-beta.4</a> — 2026-10-28<a class="headerlink" href="#100-beta4-2026-10-28" title="Permanent link">&para;</a></h2>
 <p><code>logctl</code> now finds a LocalSystem Windows service's JVM from an Administrator prompt. <strong>Not for production yet.</strong></p>
 <h3 id="fixed_1">Fixed<a class="headerlink" href="#fixed_1" title="Permanent link">&para;</a></h3>
