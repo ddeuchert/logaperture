@@ -92,9 +92,6 @@
             
             
   
-    This guide is for <strong>1.0.0-beta.4</strong>, a pre-release. Commands
-    and options may still change before 1.0.0.
-  
 
           </div>
           
@@ -420,6 +417,25 @@
     
   
   Overhead
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../coming-in-1-1/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Coming in 1.1
 
       </a>
     </li>
@@ -1835,6 +1851,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../../coming-in-1-1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming in 1.1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../../release-notes/" class="md-nav__link">
         
   
@@ -1953,6 +1996,10 @@ full for you to read. In 1.0 it only reports: nothing is suppressed.</p>
 from startup, start the agent with <code>--storm-detection=on</code> (see
 <a href="../../reference/agent-options/">Agent options</a>). <code>logctl disable storms</code> turns it off.</p>
 <h2 id="see-the-storms">See the storms<a class="headerlink" href="#see-the-storms" title="Permanent link">&para;</a></h2>
+<div class="la-cast" data-cast="storm"></div>
+
+<p>Above: a shop's console is scrolling too fast to read. <code>logctl enable storms</code> turns detection on,
+<code>logctl storms</code> names the message that is bursting, and a <code>drop</code> rule keeps it out of the log.</p>
 <div class="highlight"><pre><span></span><code>logctl<span class="w"> </span>storms
 </code></pre></div>
 <p>During a storm:</p>
@@ -1970,7 +2017,9 @@ from startup, start the agent with <code>--storm-detection=on</code> (see
            2026-10-10T02:41:22.667701316Z–2026-10-10T02:41:26.038228375Z (3s) — 1,500 events — ended 1m9s ago
 </code></pre></div>
 <p>Each storm shows its logger, its exception type if there is one, and the message with the parts
-that vary replaced by <code>%s</code>, so 1,500 requests for different paths count as one storm. While it is
+that vary replaced by a placeholder, so 1,500 requests for different paths count as one storm. A
+message whose logger gave a format string, like the one above, keeps its own placeholder (<code>%s</code>);
+in a plain message, digits show as <code>&lt;n&gt;</code>, as in the film above. While it is
 going on, you also see its rate and a sample: the event that made it a storm, in full, with its
 message as logged and its stack trace if it has one. The sample is not the storm's first event; the
 event number says how far into the storm it came (the 1,000th here, the threshold).</p>
@@ -2059,7 +2108,7 @@ few.</p>
   <div class="md-copyright__highlight">
     Copyright 2026 David Deuchert · Apache License 2.0
   </div>
-  Guide for LogAperture 1.0.0-beta.4
+  Guide for LogAperture 1.0.0
 </div>
       
     </div>

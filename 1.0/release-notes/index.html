@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://logaperture.org/1.0/release-notes/">
       
       
-        <link rel="prev" href="../overhead/">
+        <link rel="prev" href="../coming-in-1-1/">
       
       
       
@@ -89,9 +89,6 @@
           <div class="md-banner__inner md-grid md-typeset">
             
             
-  
-    This guide is for <strong>1.0.0-beta.4</strong>, a pre-release. Commands
-    and options may still change before 1.0.0.
   
 
           </div>
@@ -416,6 +413,25 @@
     
   
   Overhead
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../coming-in-1-1/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Coming in 1.1
 
       </a>
     </li>
@@ -1745,6 +1761,33 @@
       
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../coming-in-1-1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming in 1.1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
@@ -1812,6 +1855,17 @@
     <span class="md-ellipsis">
       
         Unreleased
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#100-2026-11-15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.0.0 — 2026-11-15
       
     </span>
   </a>
@@ -2214,6 +2268,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#100-2026-11-15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.0.0 — 2026-11-15
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#100-beta4-2026-10-28" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2586,10 +2651,16 @@
 <h1 id="changelog">Changelog<a class="headerlink" href="#changelog" title="Permanent link">&para;</a></h1>
 <p>All notable changes to LogAperture are recorded here. The format is based on
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>, and this project aims
-to follow <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a> once it
-reaches 1.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>; the betas and release
+follows <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a> from 1.0.0. Pre-1.0 alpha builds are numbered <code>0.1.0-alpha.N</code>; the betas and release
 candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code>.</p>
-<h2 id="unreleased"><a href="https://github.com/ddeuchert/logaperture/compare/v1.0.0-beta.4...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="unreleased"><a href="https://github.com/ddeuchert/logaperture/compare/v1.0.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h2 id="100-2026-11-15"><a href="https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0">1.0.0</a> — 2026-11-15<a class="headerlink" href="#100-2026-11-15" title="Permanent link">&para;</a></h2>
+<p>The first stable release. The compatibility promise starts: within 1.x, the <code>logctl</code> commands and
+<code>--json</code> output and the agent's management interface only grow. It runs on standalone WildFly
+(26.1 and later) and on plain <code>java -jar</code> with Logback, on JDK 17, 21 and 25.</p>
+<p>Nothing in the product changed since beta.4. The guide gained three demos on the Now Showing page
+(what is bursting, <code>doctor</code>, and exporting vendor defaults) and a "Coming in 1.1" page. The
+"not for production" warnings are gone. What 1.0 does is in the beta entries below.</p>
 <h2 id="100-beta4-2026-10-28"><a href="https://github.com/ddeuchert/logaperture/releases/tag/v1.0.0-beta.4">1.0.0-beta.4</a> — 2026-10-28<a class="headerlink" href="#100-beta4-2026-10-28" title="Permanent link">&para;</a></h2>
 <p><code>logctl</code> now finds a LocalSystem Windows service's JVM from an Administrator prompt. <strong>Not for production yet.</strong></p>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
@@ -3210,7 +3281,7 @@ store's on-disk format may still change between builds without a migration path.
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../overhead/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Overhead">
+          <a href="../coming-in-1-1/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Coming in 1.1">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -3220,7 +3291,7 @@ store's on-disk format may still change between builds without a migration path.
                 Previous
               </span>
               <div class="md-ellipsis">
-                Overhead
+                Coming in 1.1
               </div>
             </div>
           </a>
@@ -3235,7 +3306,7 @@ store's on-disk format may still change between builds without a migration path.
   <div class="md-copyright__highlight">
     Copyright 2026 David Deuchert · Apache License 2.0
   </div>
-  Guide for LogAperture 1.0.0-beta.4
+  Guide for LogAperture 1.0.0
 </div>
       
     </div>

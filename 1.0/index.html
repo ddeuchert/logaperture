@@ -90,9 +90,6 @@
             
             
   
-    This guide is for <strong>1.0.0-beta.4</strong>, a pre-release. Commands
-    and options may still change before 1.0.0.
-  
 
           </div>
           
@@ -418,6 +415,25 @@
     
   
   Overhead
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="coming-in-1-1/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Coming in 1.1
 
       </a>
     </li>
@@ -1850,6 +1866,33 @@
   
   
     <li class="md-nav__item">
+      <a href="coming-in-1-1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coming in 1.1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="release-notes/" class="md-nav__link">
         
   
@@ -1981,13 +2024,6 @@ restarting it, editing its configuration, or knowing in advance what will go wro
 logctl<span class="w"> </span>top<span class="w">                                           </span><span class="c1"># which loggers write the most</span>
 logctl<span class="w"> </span>add<span class="w"> </span>rule<span class="w"> </span>drop<span class="w"> </span>com.acme.batch.Worker<span class="w"> </span>--message-contains<span class="w"> </span><span class="s2">"This happens a lot"</span>
 </code></pre></div>
-<div class="admonition warning">
-<p class="admonition-title">Pre-release</p>
-<p>LogAperture 1.0 is in beta. Try it on a server you can afford to restart, and
-<a href="https://github.com/ddeuchert/logaperture/issues">tell us</a> what breaks, or
-<a href="https://github.com/ddeuchert/logaperture/discussions/245">how it went</a>. It is not for
-production use before 1.0.0.</p>
-</div>
 <h2 id="see-it-work">See it work<a class="headerlink" href="#see-it-work" title="Permanent link">&para;</a></h2>
 <p>A logger raised to <code>TRACE</code> on a running WildFly. The console's own handler is at <code>INFO</code>, so it
 follows the change to let the <code>TRACE</code> lines through, and both revert on their own. The top pane is
@@ -2083,7 +2119,7 @@ the WildFly console; <code>logctl</code> runs below.</p>
 </table>
 <p>Not supported in 1.0: WildFly domain mode, a plain JVM that logs through <code>java.util.logging</code>
 alone, Log4j 2, Spring Boot, Tomcat, Jetty, Quarkus. Quarkus native images can never be supported:
-they have no JVM to attach an agent to.</p>
+they have no JVM to attach an agent to. Several of these are planned for 1.1: see <a href="coming-in-1-1/">Coming in 1.1</a>.</p>
 <h2 id="where-to-start">Where to start<a class="headerlink" href="#where-to-start" title="Permanent link">&para;</a></h2>
 <ol>
 <li>Get it: the release zip, or Maven Central for a build: <a href="get-started/download/">Download</a>.</li>
@@ -2155,7 +2191,7 @@ with <code>logctl help &lt;command&gt;</code>.</p>
   <div class="md-copyright__highlight">
     Copyright 2026 David Deuchert · Apache License 2.0
   </div>
-  Guide for LogAperture 1.0.0-beta.4
+  Guide for LogAperture 1.0.0
 </div>
       
     </div>
