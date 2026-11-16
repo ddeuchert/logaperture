@@ -10,9 +10,10 @@ so its place on the list matters.
 JAVA_OPTS="$JAVA_OPTS -javaagent:/opt/logaperture/lib/logaperture-agent.jar -javaagent:/opt/other/other-agent.jar"
 ```
 
-An agent listed **before** LogAperture starts first. Anything it logs during startup is written
-before LogAperture can apply its rules, so `drop` and `trim` rules can't affect it, not even
-`sticky` ones. Listing LogAperture first makes that window as small as it can be.
+An agent listed **before** LogAperture starts first. Anything it logs before LogAperture has
+installed its logging handlers is out of reach of `drop` and `trim` rules, including `sticky`
+rules. Listing LogAperture first reduces that window when the logging framework is ready during
+agent startup. [On WildFly, the handlers become available later](#what-stays-out-of-reach).
 
 A typical case: another agent logs a `ConnectException` with a full stack trace while it starts.
 The `sticky` `trim` rule you added for exactly that exception shortens it every time it appears
@@ -20,8 +21,8 @@ later, but never the first one at startup.
 
 Agents set in `JAVA_TOOL_OPTIONS` or `JDK_JAVA_OPTIONS` start before any on the command line.
 
-Some sites are required to list another agent first, such as a monitoring or security agent. That
-is fine: LogAperture works the same, and only that agent's startup output is out of reach.
+Some sites are required to list another agent first, such as a monitoring or security agent.
+LogAperture still applies its rules to later records once its handlers are installed.
 
 ## What stays out of reach
 
@@ -29,9 +30,21 @@ Even listed first, LogAperture only sees what goes through the logging framework
 prints to the console directly, writes its own file, or keeps its own buffer is outside it. Change
 that agent's own settings instead.
 
-On WildFly, level changes apply from the moment LogAperture starts. `drop` and `trim` rules, `top`
-and storm detection take effect once LogAperture has installed itself into the server's logging
-handlers. If a launch needs that held back, see `-Dlogaperture.handlerInstallDelaySeconds` in
+On WildFly, all Java agents finish their `premain` methods before the server's `main` starts.
+WildFly initializes JBoss LogManager during `main`. LogAperture waits for that log manager before
+installing into the server's logging system. This is the order on a successful startup:
+
+1. The other agent logs its startup trace in `premain`.
+2. WildFly starts and initializes its logging system.
+3. LogAperture installs into the server's logging system and announces `active (WildFly)`.
+
+Any record emitted in `premain` is already written by step 3. Changing the `-javaagent` order or
+the rule tier can't affect it. That includes `sticky` rules and rules loaded from vendor defaults.
+To quiet that trace, use the other agent's own logging settings. If the agent has no setting for
+it, expect the trace on each restart.
+
+`drop` and `trim` rules, `top`, and storm detection operate after LogAperture wraps the server's
+logging handlers. To postpone that step, see `-Dlogaperture.handlerInstallDelaySeconds` in
 [Agent options](../reference/agent-options.md).
 
 ## Checking the order
