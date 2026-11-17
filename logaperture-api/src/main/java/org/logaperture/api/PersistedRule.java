@@ -30,17 +30,13 @@ import java.util.Map;
  * id}, never a freshly-generated one (doc/specs/rule-pipeline-foundation.md
  * "Rule identity").
  *
- * @param context the owning logging context's stable key (e.g. {@code
- *                "system"}) this rule was attached in — every context in a
- *                JVM shares one {@code StateStore}, so this is what a
- *                single-context {@code RuleService} filters {@code
- *                resumeFromStateStore} by: a row belongs to the context
- *                that wrote it, never resumed into a different one sharing
- *                the same store. {@code null} only for a row written before
- *                this field existed (there are none in practice, this
- *                schema having never shipped without it) or a hand-edited
- *                file — treated as "resume anywhere" for tolerance, the
- *                same convention every other optional field here follows
+ * @param context the logging context's stable key a vendor rule's saved
+ *                alteration belongs to (e.g. {@code "system"}). {@code null}
+ *                for an operator rule, which is system-wide and resumed in
+ *                every context (doc/specs/rule-multi-context.md M5). A
+ *                1.0.x operator row carries the key of whichever context was
+ *                first when it was added; resume ignores it. Any row with
+ *                {@code null} is "resume anywhere"
  * @param payload the attaching {@link LogRule}'s own {@link
  *                LogRule#persistedPayload()} — opaque to this type, decoded
  *                only by the {@link RuleFactory} its {@code action}

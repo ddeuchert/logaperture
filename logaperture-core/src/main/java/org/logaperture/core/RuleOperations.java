@@ -100,11 +100,9 @@ public interface RuleOperations {
      * Capability#SUPPRESS} (and, for a non-{@code SESSION} {@code tier},
      * {@link Capability#PERSIST}).
      *
-     * @implNote The {@link AggregateLevelControl} implementation attaches to
-     * the first registered context only — multi-context fan-out and
-     * leading-star pattern-target expansion (filtering-epic.md "Targeting
-     * by pattern is shorthand") are deferred past this pass; see
-     * doc/specs/drop-rule.md "Divergence from prior specs".
+     * @implNote The {@link AggregateLevelControl} implementation attaches the rule in every registered
+     * context under one id, and in a context that registers later (doc/specs/rule-multi-context.md).
+     * Leading-star pattern targets are expanded in {@code logctl}, one call per logger.
      */
     RuleView addRuleDrop(String loggerName, CompiledMatchers matchers, RuleAttachOptions options,
             SampleFullPolicy sampleFull);
@@ -116,10 +114,8 @@ public interface RuleOperations {
      * {@link Capability#PERSIST}) — same capability shape as {@link
      * #addRuleDrop}.
      *
-     * @implNote The {@link AggregateLevelControl} implementation attaches to
-     * the first registered context only, same scope reduction as {@link
-     * #addRuleDrop} — see doc/specs/trim-rule.md "Explicitly out of scope
-     * for this slice".
+     * @implNote The {@link AggregateLevelControl} implementation attaches the rule in every registered
+     * context, as {@link #addRuleDrop} does.
      */
     RuleView addRuleTrim(String loggerName, CompiledMatchers matchers, RuleAttachOptions options, int frames,
             boolean collapseCauses);

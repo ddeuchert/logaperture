@@ -452,4 +452,124 @@ class AggregateRuleFanOutTest {
         assertTrue(lines.get(0).contains("5 events suppressed by 1 rule"), lines.get(0));
         assertTrue(lines.get(0).contains(added.rule().id() + " 5"), lines.get(0));
     }
+
+    // --- From the code review of the PR -----------------------------------------------------------
+
+    @Test
+    void aRejectedAdd_doesNotUseUpAnId() {
+        for (int i = 0; i < 3; i++) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> aggregate.addRuleDrop("org.logaperture.drop", MATCHERS, FOR_AN_HOUR,
+                            SampleFullPolicy.disabled()));
+        }
+
+        assertEquals("r1", aggregate.addRuleDrop("com.acme", MATCHERS, FOR_AN_HOUR, SampleFullPolicy.disabled())
+                .rule().id());
+    }
+
+    @Test
+    void resetRule_withOneHolderSticky_refusesBeforeAnyContextRemovesTheRule() {
+        // Tiers that have diverged (say after a failed alter): the SESSION copy must not go while the STICKY one refuses.
+        appA.attach("com.acme", MATCHERS, RuleAttachOptions.defaults(), DropFactories.attach(SampleFullPolicy.disabled()),
+                Capability.SUPPRESS, "r9");
+        appB.attach("com.acme", MATCHERS, RuleAttachOptions.sticky(), DropFactories.attach(SampleFullPolicy.disabled()),
+                Capability.SUPPRESS, "r9");
+
+        assertThrows(IllegalArgumentException.class, () -> aggregate.resetRule("r9", false, false));
+
+        assertEquals(List.of("r9"), ids(appA), "the SESSION copy is still there");
+        assertEquals(List.of("r9"), ids(appB));
+    }
+
+    @Test
+    void aLaterContext_getsEveryContextsLiveRules_notJustOneArbitraryContexts() {
+        // Only appA holds r1; appB (whichever the map lists first) does not.
+        appA.attach("com.acme", MATCHERS, FOR_AN_HOUR, DropFactories.attach(SampleFullPolicy.disabled()),
+                Capability.SUPPRESS, "r1");
+
+        RuleService late = register("log4j2:/appC", true, true);
+
+        assertEquals(List.of("r1"), ids(late));
+    }
+
+    @Test
+    void aRuleAddedWhileAContextRegisters_isNeverMissedByThatContext() throws Exception {
+        for (int round = 0; round < 200; round++) {
+            setUp(); // a fresh aggregate with the three contexts
+            java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+            RuleService[] late = new RuleService[1];
+            Throwable[] failure = new Throwable[1];
+            Thread adder = new Thread(() -> {
+                try {
+                    go.await();
+                    aggregate.addRuleDrop("com.acme", MATCHERS, FOR_AN_HOUR, SampleFullPolicy.disabled());
+                } catch (Throwable t) {
+                    failure[0] = t;
+                }
+            });
+            Thread registrar = new Thread(() -> {
+                try {
+                    go.await();
+                    late[0] = register("log4j2:/appC", true, true);
+                } catch (Throwable t) {
+                    failure[0] = t;
+                }
+            });
+            adder.start();
+            registrar.start();
+            go.countDown();
+            adder.join();
+            registrar.join();
+
+            assertEquals(null, failure[0]);
+            assertEquals(1, ids(late[0]).size(), "round " + round + ": the new context missed the rule");
+        }
+    }
+
+    private long auditsFor(String loggerName, AuditRecord.Action action) {
+        return auditLog.records().stream()
+                .filter(r -> loggerName.equals(r.loggerName()) && r.action() == action).count();
+    }
+
+    @Test
+    void resetRule_isOneAuditRecord_notOnePerContext() {
+        RuleView added = aggregate.addRuleDrop("com.acme", MATCHERS, FOR_AN_HOUR, SampleFullPolicy.disabled());
+
+        aggregate.resetRule(added.rule().id(), false, false);
+
+        assertEquals(1, auditsFor("com.acme", AuditRecord.Action.REVERSION));
+    }
+
+    @Test
+    void resetRules_isOneAuditRecordPerRule() {
+        aggregate.addRuleDrop("com.acme", MATCHERS, FOR_AN_HOUR, SampleFullPolicy.disabled());
+        aggregate.addRuleTrim("com.acme.x", MATCHERS, FOR_AN_HOUR, 1, false);
+
+        aggregate.resetAllRules(false, false);
+
+        assertEquals(1, auditsFor("com.acme", AuditRecord.Action.REVERSION));
+        assertEquals(1, auditsFor("com.acme.x", AuditRecord.Action.REVERSION));
+    }
+
+    @Test
+    void alterRule_isOneAuditRecord_notOnePerContext() {
+        RuleView added = aggregate.addRuleDrop("com.acme", MATCHERS, FOR_AN_HOUR, SampleFullPolicy.disabled());
+        long before = auditsFor("com.acme", AuditRecord.Action.MUTATION);
+        org.logaperture.api.RuleChange change = new org.logaperture.api.RuleChange(null, false, null, null, null, null,
+                null, null, null, "tuned");
+
+        aggregate.alterRule(added.rule().id(), change, null, null);
+
+        assertEquals(before + 1, auditsFor("com.acme", AuditRecord.Action.MUTATION));
+    }
+
+    @Test
+    void anExpiredRule_isOneAuditRecord_notOnePerContext() {
+        aggregate.addRuleDrop("com.acme", MATCHERS, FOR_AN_HOUR, SampleFullPolicy.disabled());
+
+        aggregate.sweepExpiredOverrides(Instant.now().plus(Duration.ofHours(2)));
+
+        assertEquals(1, auditsFor("com.acme", AuditRecord.Action.REVERSION));
+        assertTrue(ids(appA).isEmpty() && ids(appB).isEmpty() && ids(system).isEmpty());
+    }
 }

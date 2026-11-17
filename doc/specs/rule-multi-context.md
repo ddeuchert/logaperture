@@ -138,6 +138,9 @@ breakdown of hits, if ever wanted, is a new optional field (additive), not this 
 - **`reset rule <id>`** removes the rule from every context that holds it, and the state row once
   (today it already tries every context; with a shared id it reaches all of them instead of the first
   match). A `STICKY` rule still needs `--include-sticky`; if one context refuses, none is removed.
+- **One audit record per action.** `reset rule`, `reset rules`, `alter rule` and the expiry sweep each write one
+  record per rule, not one per context: the aggregate shares one "already audited" set across the contexts of
+  one operation.
 - **`alter rule <id>`** applies the same patch to every holder. It throws today when more than one
   context holds an id (ids could collide); an operator id is now one rule everywhere, so that check goes,
   as it already does for a vendor id.
@@ -181,6 +184,17 @@ benchmark.
 | M9 | The drop summary | (a) Merge counts by rule id across contexts. (b) One entry per context. | **(a).** One rule, one line; (b) prints one id twice. |
 | M10 | Cost check | (a) Measure the existing "gate with a non-matching rule" case with a rule in two contexts. (b) A new benchmark. | **(a).** The path is the one already budgeted. |
 
+## Known limits
+
+- **`alter rule` is not atomic across contexts.** A validation error in the first context stops the call before
+  anything changes; a failure in a later one leaves the earlier ones altered, and each context takes its own
+  `now` for a `FOR` deadline. Not a regression (a vendor rule's `alter` always worked so).
+  [#399](https://github.com/ddeuchert/logaperture/issues/399), 1.x.
+- **A vendor rule's saved alteration** is written once per context under one id, so after a restart only the last
+  writer's context resumes it. This is the one row kind that still carries a context key (M5 leaves vendor
+  alterations with the context that wrote them, which is the intent; the overwrite is the defect).
+  [#400](https://github.com/ddeuchert/logaperture/issues/400), 1.x.
+
 ## Acceptance
 
 - Two contexts, an exact-name and a hierarchy `drop` and `trim` rule: each context's events are
@@ -195,6 +209,10 @@ benchmark.
   contexts, including `STICKY` refusal in one context (none removed).
 - Resume: a row reaches every context, whether or not it carries a 1.0.x context tag.
 - The state file never holds two rules with one id.
+- A rule added while a context registers is never missed by it (the two share one lock); a refused add does not use
+  up an id; the new context takes the union of every context's live rules, not one arbitrary context's.
+- `reset rule` refuses before any context removes the rule when a holder is `STICKY`; `reset`, `alter` and an
+  expiry write one audit record per rule.
 - `list rules`, `status`, `add rule` and `alter rule` show one row per rule with summed hits, in a JVM with several contexts; `--json` and MXBean `RuleData` unchanged in shape (the `JsonOutputTest` and MXBean contract tests), `context` always `"system"`.
 - The guide: the Tomcat and WildFly caveats removed, `concepts/rules.md` states where a rule applies.
 

@@ -53,6 +53,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -319,6 +320,14 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * this with fake contexts only; {@code none} never calls it.
      */
     public void addContext(ContextControl control) {
+        // One lock with `add rule`: a rule is either already attached when this reads the live rules, or its fan-out
+        // sees this context in its snapshot -- never neither (doc/specs/rule-multi-context.md M4).
+        synchronized (ruleLock) {
+            addContextLocked(control);
+        }
+    }
+
+    private void addContextLocked(ContextControl control) {
         Instant now = Instant.now();
         Optional<ContextControl> existingAny = byKey.values().stream().findFirst();
         List<LevelOverride> toRebroadcast = existingAny
@@ -335,9 +344,15 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 .toList();
         // doc/specs/rule-multi-context.md M4: an operator rule is in every context, so a late one gets the live
         // ones too (same id, tier and deadline; its own hit count).
-        List<RuleView> rulesToRebroadcast = existingAny
-                .map(existing -> existing.ruleService().liveOperatorRules(now))
-                .orElseGet(List::of);
+        // The union of every context's live rules, by key order: one that failed to apply a rule, or registered before
+        // it existed, must not hide it from the next context.
+        Map<String, RuleView> liveRules = new LinkedHashMap<>();
+        for (ContextControl existing : sortedByKey()) {
+            for (RuleView live : existing.ruleService().liveOperatorRules(now)) {
+                liveRules.putIfAbsent(live.rule().id(), live);
+            }
+        }
+        List<RuleView> rulesToRebroadcast = List.copyOf(liveRules.values());
         byKey.put(control.stableKey(), control);
         for (RuleView ruleView : rulesToRebroadcast) {
             try {
@@ -650,12 +665,23 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     @Override
     public Optional<RuleView> resetRule(String id, boolean includeSticky, boolean toNative) {
+        boolean vendorId = id.startsWith(VendorDefaults.RULE_ID_PREFIX);
+        List<ContextControl> ordered = new ArrayList<>(sortedByKey());
+        if (!vendorId && !includeSticky) {
+            // A STICKY holder refuses before any context removes anything (M8: if one refuses, none is removed).
+            ordered.sort(Comparator.comparing((ContextControl context) ->
+                    context.ruleService().tierOf(id).filter(tier -> tier == PersistenceTier.STICKY).isEmpty()));
+        }
+        Set<String> audited = new HashSet<>();
         List<RuleView> removed = new ArrayList<>();
         IllegalArgumentException refusal = null;
-        for (ContextControl context : sortedByKey()) {
+        for (ContextControl context : ordered) {
             try {
-                context.ruleService().resetRule(id, includeSticky, toNative).ifPresent(removed::add);
+                context.ruleService().resetRule(id, includeSticky, toNative, audited).ifPresent(removed::add);
             } catch (IllegalArgumentException e) {
+                if (!vendorId) {
+                    throw e; // nothing has been removed yet: the refusing holder went first
+                }
                 if (refusal == null) {
                     refusal = e;
                 }
@@ -673,11 +699,12 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     @Override
     public RuleResetOutcome resetAllRules(boolean includeSticky, boolean toNative) {
         // One id once, however many contexts held the rule (doc/specs/rule-multi-context.md M7).
+        Set<String> audited = new HashSet<>();
         Set<String> removed = new LinkedHashSet<>();
         Set<String> skippedSticky = new LinkedHashSet<>();
         Set<String> vendorReset = new LinkedHashSet<>();
         for (ContextControl context : sortedByKey()) {
-            RuleResetOutcome outcome = context.ruleService().resetAllRules(includeSticky, toNative);
+            RuleResetOutcome outcome = context.ruleService().resetAllRules(includeSticky, toNative, audited);
             removed.addAll(outcome.removedIds());
             skippedSticky.addAll(outcome.skippedStickyIds());
             vendorReset.addAll(outcome.vendorResetIds());
@@ -687,12 +714,13 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
 
     @Override
     public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky, boolean toNative) {
+        Set<String> audited = new HashSet<>();
         Set<String> removed = new LinkedHashSet<>();
         Set<String> skippedSticky = new LinkedHashSet<>();
         Set<String> vendorReset = new LinkedHashSet<>();
         for (ContextControl context : sortedByKey()) {
             RuleResetOutcome outcome =
-                    context.ruleService().resetRulesForLogger(loggerName, includeSticky, toNative);
+                    context.ruleService().resetRulesForLogger(loggerName, includeSticky, toNative, audited);
             removed.addAll(outcome.removedIds());
             skippedSticky.addAll(outcome.skippedStickyIds());
             vendorReset.addAll(outcome.vendorResetIds());
@@ -715,11 +743,12 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         if (holders.isEmpty()) {
             return Optional.empty();
         }
+        Set<String> audited = new HashSet<>();
         List<RuleView> before = new ArrayList<>();
         List<RuleView> after = new ArrayList<>();
         boolean changed = false;
         for (ContextControl context : holders) {
-            Optional<RuleAlteration> result = context.ruleService().alterRule(id, change, tier, expiresIn);
+            Optional<RuleAlteration> result = context.ruleService().alterRule(id, change, tier, expiresIn, audited);
             if (result.isPresent()) {
                 before.add(result.get().before());
                 after.add(result.get().after());
@@ -743,10 +772,18 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     @Override
     public RuleView addRuleDrop(String loggerName, CompiledMatchers matchers, RuleAttachOptions options,
             SampleFullPolicy sampleFull) {
-        List<ContextControl> contexts = contextsForNewRule();
-        String id = mintRuleId(contexts);
-        RuleView leader = contexts.get(0).ruleService().addRuleDrop(loggerName, matchers, options, sampleFull, id);
-        return adoptEverywhere(leader, contexts).withContext(ContextHandle.SYSTEM);
+        synchronized (ruleLock) {
+            List<ContextControl> contexts = contextsForNewRule();
+            String id = mintRuleId(contexts);
+            RuleView leader;
+            try {
+                leader = contexts.get(0).ruleService().addRuleDrop(loggerName, matchers, options, sampleFull, id);
+            } catch (RuntimeException refused) {
+                releaseRuleId(id); // the checks failed: the number was never used
+                throw refused;
+            }
+            return adoptEverywhere(leader, contexts).withContext(ContextHandle.SYSTEM);
+        }
     }
 
     /**
@@ -758,11 +795,19 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
     @Override
     public RuleView addRuleTrim(String loggerName, CompiledMatchers matchers, RuleAttachOptions options, int frames,
             boolean collapseCauses) {
-        List<ContextControl> contexts = contextsForNewRule();
-        String id = mintRuleId(contexts);
-        RuleView leader = contexts.get(0).ruleService().addRuleTrim(loggerName, matchers, options, frames,
-                collapseCauses, id);
-        return adoptEverywhere(leader, contexts).withContext(ContextHandle.SYSTEM);
+        synchronized (ruleLock) {
+            List<ContextControl> contexts = contextsForNewRule();
+            String id = mintRuleId(contexts);
+            RuleView leader;
+            try {
+                leader = contexts.get(0).ruleService().addRuleTrim(loggerName, matchers, options, frames,
+                        collapseCauses, id);
+            } catch (RuntimeException refused) {
+                releaseRuleId(id);
+                throw refused;
+            }
+            return adoptEverywhere(leader, contexts).withContext(ContextHandle.SYSTEM);
+        }
     }
 
     private List<ContextControl> contextsForNewRule() {
@@ -784,6 +829,14 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         }
         nextRuleNumber = next + 1;
         return "r" + next;
+    }
+
+    /** Hands back the number {@link #mintRuleId} just issued when the first context refused the rule, if no later one was issued. */
+    private synchronized void releaseRuleId(String id) {
+        long number = Long.parseLong(id.substring(1));
+        if (nextRuleNumber == number + 1) {
+            nextRuleNumber = number;
+        }
     }
 
     /**
@@ -1392,10 +1445,11 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         } catch (RuntimeException e) {
             Diagnostics.warn("failed to switch over an expired storm-detection setting", e);
         }
+        Set<String> expiredRuleAudits = new HashSet<>(); // a rule in every context expires once, and is audited once
         for (ContextControl context : sortedByKey()) {
             context.service().sweepExpiredOverrides(now);
             context.handlerService().sweepExpiredOverrides(now);
-            context.ruleService().sweepExpiredRules(now);
+            context.ruleService().sweepExpiredRules(now, expiredRuleAudits);
         }
     }
 
@@ -1538,6 +1592,9 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
 
     /** The next operator rule number (doc/specs/rule-multi-context.md M3), raised past every context's own at mint time. */
     private long nextRuleNumber = 1;
+
+    /** Serializes {@code add rule}'s fan-out with a context registering, so a new context cannot miss a rule. */
+    private final Object ruleLock = new Object();
 
     private List<ContextControl> sortedByKey() {
         return byKey.values().stream()
