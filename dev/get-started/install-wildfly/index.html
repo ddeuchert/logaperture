@@ -2294,6 +2294,10 @@ it inside the deployment and controls it as its own context, next to the server'
 (its web context path, if it has Log4j's web support, as on <a href="../install-tomcat/#context-names">Tomcat</a>). The
 agent line is the same as above; nothing is added to the deployment. When the deployment is redeployed,
 its overrides come back on the new copy.</p>
+<p><code>drop</code> and <code>trim</code> rules go to one context only, the first by name, which puts a deployment's Log4j
+(<code>log4j2:…</code>) before the server's <code>system</code>. With such a deployment present, a rule on a logger that lives in
+the server's own logging is not applied. Levels and handler levels reach every context. Tracked in
+<a href="https://github.com/ddeuchert/logaperture/issues/79">#79</a> for 1.1.0.</p>
 <p>It was tried on WildFly 26.1.3. This setup is checked by hand and not yet by automated tests; if it
 doesn't work for you, <a href="https://github.com/ddeuchert/logaperture/issues">tell us</a>. A Log4j older than 2.20.0
 is found but not controlled, and <code>logctl doctor</code> says so (<code>log4j2.version</code>).</p>
