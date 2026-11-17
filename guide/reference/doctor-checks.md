@@ -163,7 +163,9 @@ Agents set in `JAVA_TOOL_OPTIONS` or `JDK_JAVA_OPTIONS` count as listed first. N
 LogAperture was attached to a running JVM (`agent.attached` says so). See
 [Agent order](../concepts/agent-order.md).
 
-**Fix:** list LogAperture's `-javaagent` before the others, where the site allows it.
+**Fix:** list LogAperture's `-javaagent` before the others, where the site allows it. On WildFly
+this doesn't bring the other agents' startup output within reach; see
+[Agent order](../concepts/agent-order.md#on-wildfly).
 
 ### `agent.attached`
 

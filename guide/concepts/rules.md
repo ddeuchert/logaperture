@@ -85,5 +85,5 @@ has a tier like any other change and lasts `for 4h` unless you give one. See
 ## Rules and other agents
 
 A rule only sees events that go through the logging framework after LogAperture has started. An
-agent listed before LogAperture on the `-javaagent` line can log before that. See
-[Agent order](agent-order.md).
+agent listed before LogAperture on the `-javaagent` line can log before that, and on WildFly
+the server's own earliest messages are written before it too. See [Agent order](agent-order.md).

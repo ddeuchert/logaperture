@@ -128,7 +128,8 @@ Also check:
 - `--below` defaults to `ERROR`: an `ERROR` event isn't touched unless you give `--below FATAL`.
 - `--throwable` needs the exact class, not a parent class.
 - Events logged before LogAperture started, for example by another agent at startup, are out of
-  reach. See [Agent order](concepts/agent-order.md).
+  reach. On WildFly that includes the server's earliest boot messages, and listing LogAperture
+  first doesn't change it. See [Agent order](concepts/agent-order.md#on-wildfly).
 - `trim` works on text log formats only in 1.0. A JSON or XML formatter writes the full trace.
 - Rules don't work on a plain JVM with Logback yet.
 
