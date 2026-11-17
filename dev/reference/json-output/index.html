@@ -2587,7 +2587,9 @@ that would need an answer fails instead, as it does off a terminal.</p>
 <li><code>source</code> names where a change came from: <code>jmx</code> for a change made with <code>logctl</code>, <code>resume</code> for a
   <code>sticky</code> change restored at startup, <code>expiry-sweep</code> and <code>verification-sweep</code> for LogAperture's
   own periodic work, <code>vendor-defaults</code> and <code>recipe</code> for changes from those.</li>
-<li><code>context</code> names the logging context a row belongs to; on WildFly the server's own is <code>system</code>.</li>
+<li><code>context</code> names the logging context a row belongs to; on WildFly the server's own is <code>system</code>. A
+  rule applies to the whole JVM, so a rule's <code>context</code> is always <code>system</code>, and its <code>hitCount</code> adds up
+  every context.</li>
 <li>On a failure, the exit code says what went wrong (below) and the message goes to standard
   error, as text.</li>
 </ul>

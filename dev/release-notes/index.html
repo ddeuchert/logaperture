@@ -2930,6 +2930,14 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
+<li><strong><code>drop</code> and <code>trim</code> rules now apply in every logging context.</strong> Before, <code>logctl add rule</code> attached a rule to
+  the first context only, so on Tomcat with several web applications, or on WildFly with a deployment that
+  brings its own Log4j, the rule worked in one place and the others kept logging what it should remove. A rule
+  now goes to every context, including a web application deployed or redeployed afterwards, under one id.
+  <code>list rules</code> and <code>status</code> show it once, with its hit count added up; <code>reset rule</code> and <code>alter rule</code> reach every
+  copy. A rule saved by 1.0.x, which was tied to whichever context happened to be first, now applies in every
+  context after the upgrade, as <code>add rule</code> always read. In <code>--json</code> a rule's <code>context</code> is <code>system</code>
+  (issue #79; <code>doc/specs/rule-multi-context.md</code>).</li>
 <li><strong><code>logctl list loggers</code> with no loggers</strong> now says <code>No loggers known yet. LogAperture is running; if it controls
   no logging context in this JVM,</code>logctl doctor<code>says why.</code></li>
 </ul>

@@ -2237,13 +2237,8 @@ applications in one session.</p>
 <p>A change goes to every context that has that logger. There is no way to aim it at one web application,
 so a logger name that two applications share is changed in both; <code>list loggers</code> shows each context's
 own rows and levels.</p>
-<div class="admonition warning">
-<p class="admonition-title"><code>drop</code> and <code>trim</code> rules go to one context only</p>
-<p><code>logctl add rule drop</code> and <code>add rule trim</code> attach to a single context, the first by name, not to
-every web application. With several applications, the others keep logging what the rule should
-remove, and nothing says so. <code>logctl list rules</code> shows the one rule. Fixing this is tracked in
-<a href="https://github.com/ddeuchert/logaperture/issues/79">#79</a> for 1.1.0.</p>
-</div>
+<p>A <code>drop</code> or <code>trim</code> rule goes to every web application the same way, including one you deploy or redeploy
+afterwards. <code>logctl list rules</code> shows it once, with the events it dealt with added up across all of them.</p>
 <h2 id="context-names">Context names<a class="headerlink" href="#context-names" title="Permanent link">&para;</a></h2>
 <p>A web application that includes Log4j's web support (<code>log4j-web</code>, or <code>log4j-jakarta-web</code> on Jakarta EE)
 is named by its <strong>context path</strong>: <code>log4j2:/orders</code>. Add it if you can: that name stays the same when the

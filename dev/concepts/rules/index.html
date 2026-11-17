@@ -2187,6 +2187,10 @@ matches an event when <strong>all</strong> of its matchers match:</p>
 <p>The <code>--below</code> default means a rule leaves <code>ERROR</code> events alone unless you say otherwise. A <code>drop</code>
 rule needs at least one matcher besides <code>--below</code>, so it can't silence a logger by accident. A
 <code>trim</code> rule doesn't: trimming every <code>WARN</code> trace from a logger is a normal thing to want.</p>
+<p>A rule applies to the whole JVM. When a server runs several applications that each bring their own
+logging, such as web applications with their own Log4j on <a href="../../get-started/install-tomcat/">Tomcat</a>, the
+rule acts in all of them, and in one deployed later. <code>logctl list rules</code> shows it once, with one hit
+count that adds up what it did everywhere, and <code>reset rule</code> removes it everywhere.</p>
 <h2 id="drop"><code>drop</code><a class="headerlink" href="#drop" title="Permanent link">&para;</a></h2>
 <p>A matching event is discarded before any handler writes it. So the log never goes completely
 dark, a <code>drop</code> rule lets the first matching event through, and then one every 5 minutes. Change the
