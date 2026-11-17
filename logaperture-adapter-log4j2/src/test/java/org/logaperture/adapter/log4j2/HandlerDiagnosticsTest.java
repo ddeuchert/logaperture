@@ -34,8 +34,13 @@ import org.logaperture.core.RuleCandidateEvent;
 import org.logaperture.core.RuleGate;
 import org.logaperture.core.TrimDecision;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -55,14 +60,10 @@ class HandlerDiagnosticsTest {
         return file(dir, false);
     }
 
-    private BuiltConfiguration file(Path baseDir, boolean mapped) {
-        return buildConfig(baseDir, mapped);
-    }
-
     /** @param mapped when {@code true}, also adds a {@code MemoryMappedFile} appender —
      *  on Windows its {@code MappedByteBuffer} keeps the file locked until GC,
      *  so only the test that needs it turns it on. */
-    private BuiltConfiguration buildConfig(Path baseDir, boolean mapped) {
+    private BuiltConfiguration file(Path baseDir, boolean mapped) {
         ConfigurationBuilder<BuiltConfiguration> b = ConfigurationBuilderFactory.newConfigurationBuilder();
         var layout = b.newLayout("PatternLayout").addAttribute("pattern", "%m%n");
         b.add(b.newAppender("Con", "Console").add(layout));
@@ -184,25 +185,44 @@ class HandlerDiagnosticsTest {
 
     @Test
     void aMemoryMappedFile_isAFileWithAKnownPath_andReportsItsOwnFlush() throws Exception {
-        // Replace the default (unmapped) context with one that includes a MemoryMappedFile.
-        // On Windows the MappedByteBuffer keeps the file locked, so we place it in a
-        // throwaway directory that we don't attempt to delete.
+        // A MemoryMappedFile keeps its file locked on Windows until GC, so it lives in a
+        // throwaway directory outside @TempDir, removed best-effort below.
+        Path mappedDir = Files.createTempDirectory("logaperture-mapped-");
+        // Log4j keeps a started context of the same name, so the default one has to stop first.
         adapter.detach();
         context.stop();
-        Path mappedDir = java.nio.file.Files.createTempDirectory("logaperature-mapped-");
+        LoggerContext mappedContext = null;
+        Log4j2LoggingAdapter mappedAdapter = null;
         try {
-            context = Configurator.initialize(file(mappedDir, true));
-            adapter = new Log4j2LoggingAdapter(context, "2.20.0");
-            HandlerDiagnostics facts = of("Mapped");
+            mappedContext = Configurator.initialize(file(mappedDir, true));
+            mappedAdapter = new Log4j2LoggingAdapter(mappedContext, "2.20.0");
+            HandlerDiagnostics facts = mappedAdapter.handlerDiagnostics(new HandlerRef("Mapped"));
             assertEquals(mappedDir.resolve("mapped.log"), facts.targetPath());
             assertTrue(facts.hasKnownFile());
             assertEquals(Boolean.FALSE, facts.autoFlush(), "memory-mapped writes are not flushed per record");
         } finally {
-            adapter.detach();
-            context.stop();
-            // Re-create the default context for @AfterEach.
-            context = Configurator.initialize(file());
-            adapter = new Log4j2LoggingAdapter(context, "2.20.0");
+            if (mappedAdapter != null) {
+                mappedAdapter.detach();
+            }
+            if (mappedContext != null) {
+                mappedContext.stop();
+            }
+            deleteBestEffort(mappedDir);
+        }
+    }
+
+    /** Removes {@code root} and what is in it; whatever the OS still holds is left for it to reap. */
+    private static void deleteBestEffort(Path root) {
+        try (Stream<Path> paths = Files.walk(root)) {
+            for (Path p : paths.sorted(Comparator.reverseOrder()).toList()) {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException locked) {
+                    p.toFile().deleteOnExit();
+                }
+            }
+        } catch (IOException | UncheckedIOException ignored) {
+            // best effort: a temp directory that cannot be listed is left behind
         }
     }
 
