@@ -95,6 +95,11 @@ absolute expiry for `FOR`, hit count starting at 0 in the new context. A `FOR` r
 passed is not re-broadcast. A `SESSION` rule lasts as long as the JVM, so it reaches a context deployed
 tomorrow.
 
+Registering a context, adding a rule, `reset`, `alter` and the expiry sweep all take one lock, so a context
+that registers while a rule is being added, reset or altered ends up with the rule as it is after that
+operation, never a stale copy and never none. `register` (the initial-discovery path) carries the live rules
+over the same way `addContext` does.
+
 A context that goes away takes its copy with it (its hit count is lost); the rule stays in the others
 and in the state file.
 

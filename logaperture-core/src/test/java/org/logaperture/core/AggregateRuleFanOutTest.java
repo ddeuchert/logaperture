@@ -572,4 +572,51 @@ class AggregateRuleFanOutTest {
         assertEquals(1, auditsFor("com.acme", AuditRecord.Action.REVERSION));
         assertTrue(ids(appA).isEmpty() && ids(appB).isEmpty() && ids(system).isEmpty());
     }
+
+    @Test
+    void aContextRegisteredWithRegister_alsoGetsTheLiveRules() {
+        // register() is the initial-discovery path; an operator can already be adding rules while a slow context shows up.
+        RuleView session = aggregate.addRuleDrop("com.acme", MATCHERS, RuleAttachOptions.defaults(),
+                SampleFullPolicy.disabled()); // SESSION: no state row, so resume could never bring it in
+
+        RuleService found = register("log4j2:/appC", true, false);
+
+        assertEquals(List.of(session.rule().id()), ids(found));
+    }
+
+    @Test
+    void aResetThatRacesAContextRegistering_neverLeavesTheRuleInTheNewContextAlone() throws Exception {
+        for (int round = 0; round < 200; round++) {
+            setUp();
+            RuleView added = aggregate.addRuleDrop("com.acme", MATCHERS, FOR_AN_HOUR, SampleFullPolicy.disabled());
+            java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+            RuleService[] late = new RuleService[1];
+            Throwable[] failure = new Throwable[1];
+            Thread resetter = new Thread(() -> {
+                try {
+                    go.await();
+                    aggregate.resetRule(added.rule().id(), false, false);
+                } catch (Throwable t) {
+                    failure[0] = t;
+                }
+            });
+            Thread registrar = new Thread(() -> {
+                try {
+                    go.await();
+                    late[0] = register("log4j2:/appC", true, true);
+                } catch (Throwable t) {
+                    failure[0] = t;
+                }
+            });
+            resetter.start();
+            registrar.start();
+            go.countDown();
+            resetter.join();
+            registrar.join();
+
+            assertEquals(null, failure[0]);
+            assertTrue(ids(late[0]).isEmpty(), "round " + round + ": the new context adopted a rule that was just reset");
+            assertTrue(ids(appA).isEmpty() && ids(appB).isEmpty() && ids(system).isEmpty());
+        }
+    }
 }
