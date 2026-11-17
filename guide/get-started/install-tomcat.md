@@ -66,6 +66,12 @@ A change goes to every context that has that logger. There is no way to aim it a
 so a logger name that two applications share is changed in both; `list loggers` shows each context's
 own rows and levels.
 
+!!! warning "`drop` and `trim` rules go to one context only"
+    `logctl add rule drop` and `add rule trim` attach to a single context, the first by name, not to
+    every web application. With several applications, the others keep logging what the rule should
+    remove, and nothing says so. `logctl list rules` shows the one rule. Fixing this is tracked in
+    [#79](https://github.com/ddeuchert/logaperture/issues/79) for 1.1.0.
+
 ## Context names
 
 A web application that includes Log4j's web support (`log4j-web`, or `log4j-jakarta-web` on Jakarta EE)
