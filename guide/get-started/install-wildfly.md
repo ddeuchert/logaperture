@@ -52,9 +52,10 @@ logging on the running server. LogAperture never edits `standalone.xml`.
         set "JAVA_OPTS=%JAVA_OPTS% -javaagent:C:\opt\logaperture\lib\logaperture-agent.jar"
         ```
 
-    If the server already has other `-javaagent` entries, put LogAperture's first. An agent listed
-    before it can log during startup before LogAperture is ready. See
-    [Agent order](../concepts/agent-order.md).
+    If the server already has other `-javaagent` entries, put LogAperture's first. On WildFly this
+    does not bring another agent's startup output within reach of rules, because the server's
+    logging isn't ready until after every agent has started. See
+    [Agent order](../concepts/agent-order.md#on-wildfly).
 
     In a container, the server's user often has no writable home directory, and LogAperture can't
     save its state there. Point it somewhere writable as well:
