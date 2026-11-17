@@ -441,20 +441,31 @@ class RuleServiceTest {
     }
 
     @Test
-    void resumeFromStateStore_neverResumesARowPersistedByAnotherContextSharingTheSameStore() {
-        // A code-review finding: every context in a JVM shares one
-        // StateStore, but a rule is attached to exactly one context's own
-        // RuleService, never broadcast the way a level override is -- so
-        // resuming must filter by context, not resume every row into
-        // whichever context happens to call resumeFromStateStore first.
+    void resumeFromStateStore_resumesAnOperatorRowWhateverContextItCarries() {
+        // doc/specs/rule-multi-context.md M5: a rule is system-wide. The context a 1.0.x row carries was only the
+        // key of whichever context was first, never a choice, so every context resumes it.
         service.registerActionFactory("TestRule", TestRule.FACTORY);
         stateStore.saveRule(new org.logaperture.api.PersistedRule("r1", "com.acme.Worker", "TestRule",
                 CompiledMatchers.matchAll(), null, PersistenceTier.STICKY, null, Instant.now(), "myapp.war", java.util.Map.of()));
 
         service.resumeFromStateStore(Instant.now()); // service's own context is "system"
 
-        assertTrue(service.listRules().isEmpty(), "a row persisted under a different context is never resumed here");
-        assertEquals(1, stateStore.loadAllRules().size(), "and is left untouched, for that other context's own resume");
+        assertEquals(1, service.listRules().size(), "resumed here though the row names another context");
+        assertEquals(1, stateStore.loadAllRules().size());
+    }
+
+    @Test
+    void resumeFromStateStore_leavesAVendorRulesAlterationToTheContextThatWroteIt() {
+        // A vendor rule exists in every context with its own alteration state, so its saved alteration (the one
+        // row kind that still carries a context) is resumed only by that context.
+        service.registerActionFactory("TestRule", TestRule.FACTORY);
+        stateStore.saveRule(new org.logaperture.api.PersistedRule("vendor:noise", "com.acme.Worker", "TestRule",
+                CompiledMatchers.matchAll(), null, PersistenceTier.STICKY, null, Instant.now(), "myapp.war", java.util.Map.of()));
+
+        service.resumeFromStateStore(Instant.now());
+
+        assertTrue(service.listRules().isEmpty());
+        assertEquals(1, stateStore.loadAllRules().size(), "left for that other context's own resume");
     }
 
     @Test

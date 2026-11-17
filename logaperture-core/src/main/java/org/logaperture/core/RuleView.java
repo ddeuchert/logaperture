@@ -24,10 +24,10 @@ import org.logaperture.api.LogRule;
  * types (unlike {@code Storm}/{@code LoggerByteCount}, which are records
  * with their own {@code withContext} copy method), so context-stamping
  * happens at this wrapper level instead of on the domain object itself.
- * {@code context} is {@code null} only when produced directly by a
- * single-context {@link RuleService} -- {@code AggregateLevelControl}
- * always stamps the real key, same convention as every other multi-context
- * row in this codebase.
+ * {@code context} is the owning service's key when produced directly by a
+ * single-context {@link RuleService}. {@code AggregateLevelControl} rolls a
+ * rule's per-context rows into one and always stamps {@code "system"}: a rule
+ * applies to the whole JVM (doc/specs/rule-multi-context.md M7).
  *
  * @param hitCount how many candidate events this rule has matched so far --
  *                 doc/specs/drop-rule.md "Safety set", filtering-epic.md

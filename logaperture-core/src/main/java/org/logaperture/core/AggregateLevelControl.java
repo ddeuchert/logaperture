@@ -33,6 +33,7 @@ import org.logaperture.api.LoggerInfo;
 import org.logaperture.api.PersistenceTier;
 import org.logaperture.api.CompiledMatchers;
 import org.logaperture.api.ResetOutcome;
+import org.logaperture.api.LogRule;
 import org.logaperture.api.RuleAttachOptions;
 import org.logaperture.api.RuleResetOutcome;
 import org.logaperture.api.RuleChange;
@@ -52,6 +53,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -61,6 +63,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -306,7 +309,40 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * calling here).
      */
     public void register(ContextControl control) {
-        byKey.put(control.stableKey(), control);
+        // Under the rule lock, and carrying the live rules over, so a context found while an operator is already
+        // adding rules cannot be missed (doc/specs/rule-multi-context.md M4). Nearly always none at startup.
+        synchronized (ruleLock) {
+            List<RuleView> liveRules = liveRulesOfEveryContext(Instant.now());
+            byKey.put(control.stableKey(), control);
+            adoptLiveRules(control, liveRules);
+        }
+    }
+
+    /**
+     * The union of every registered context's live operator rules, by key order -- one that failed to apply a rule, or
+     * registered before it existed, must not hide it from the next context.
+     */
+    private List<RuleView> liveRulesOfEveryContext(Instant now) {
+        Map<String, RuleView> liveRules = new LinkedHashMap<>();
+        for (ContextControl existing : sortedByKey()) {
+            for (RuleView live : existing.ruleService().liveOperatorRules(now)) {
+                liveRules.putIfAbsent(live.rule().id(), live);
+            }
+        }
+        return List.copyOf(liveRules.values());
+    }
+
+    /** Gives a context that has just registered the live rules (same id, tier, deadline; its own hit count). */
+    private void adoptLiveRules(ContextControl control, List<RuleView> liveRules) {
+        for (RuleView ruleView : liveRules) {
+            try {
+                control.ruleService().rebroadcast(ruleView.rule(), ruleView.recipe());
+            } catch (RuntimeException e) {
+                // One rule that cannot be re-applied must not stop the context registering, or its siblings.
+                Diagnostics.warn("rule " + ruleView.rule().id() + " could not be applied in the new context '"
+                        + control.stableKey() + "', continuing: " + e);
+            }
+        }
     }
 
     /**
@@ -318,6 +354,14 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      * this with fake contexts only; {@code none} never calls it.
      */
     public void addContext(ContextControl control) {
+        // One lock with `add rule`: a rule is either already attached when this reads the live rules, or its fan-out
+        // sees this context in its snapshot -- never neither (doc/specs/rule-multi-context.md M4).
+        synchronized (ruleLock) {
+            addContextLocked(control);
+        }
+    }
+
+    private void addContextLocked(ContextControl control) {
         Instant now = Instant.now();
         Optional<ContextControl> existingAny = byKey.values().stream().findFirst();
         List<LevelOverride> toRebroadcast = existingAny
@@ -332,7 +376,10 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                 .stream()
                 .filter(override -> isStillLive(override.tier(), override.expiresAt(), now))
                 .toList();
+        // doc/specs/rule-multi-context.md M4: an operator rule is in every context, so a late one gets the live ones too.
+        List<RuleView> rulesToRebroadcast = liveRulesOfEveryContext(now);
         byKey.put(control.stableKey(), control);
+        adoptLiveRules(control, rulesToRebroadcast);
         for (LevelOverride override : toRebroadcast) {
             control.service().adoptOverride(override);
         }
@@ -591,108 +638,149 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
      */
     @Override
     public List<RuleView> listRules() {
-        List<RuleView> result = new ArrayList<>();
+        // doc/specs/rule-multi-context.md M7: a rule is one rule to the user, however many contexts carry it. One
+        // row per id, in the order the first context holding it lists it, with the hits of every context added up.
+        Map<String, List<RuleView>> byId = new LinkedHashMap<>();
         for (ContextControl context : sortedByKey()) {
-            String key = context.stableKey();
             for (RuleView view : context.ruleService().listRules()) {
-                // The 3-arg constructor -- re-stamping context via the 2-arg one silently
-                // defaulted hitCount back to 0, discarding what RuleService just computed (a
-                // code-review finding: every rule showed HITS=0 in production regardless of how
-                // many events it had actually matched).
-                result.add(view.withContext(key));
+                byId.computeIfAbsent(view.rule().id(), id -> new ArrayList<>()).add(view);
             }
+        }
+        List<RuleView> result = new ArrayList<>();
+        for (List<RuleView> perContext : byId.values()) {
+            result.add(rollUp(perContext));
         }
         return List.copyOf(result);
     }
 
     /**
-     * Broadcasts {@code reset rule <id>} across every registered context. A
-     * rule lives in exactly one context's registry, so only one context's
-     * call actually finds and removes it; the others are no-ops.
+     * One row for a rule held by several contexts (doc/specs/rule-multi-context.md M7): the first context's row,
+     * by key, with {@code hitCount} the sum and {@code context} always {@link ContextHandle#SYSTEM} -- the rule
+     * is system-wide, and the documented field keeps a value (DEVELOPMENT.md: narrowing it would be breaking).
+     * The re-stamp goes through the full constructor, not the two-arg one, which would reset the hit count
+     * (a code-review finding on the per-context version of this method).
+     */
+    static RuleView rollUp(List<RuleView> perContext) {
+        RuleView first = perContext.get(0);
+        long hits = 0;
+        for (RuleView view : perContext) {
+            hits += view.hitCount();
+        }
+        return new RuleView(first.rule(), ContextHandle.SYSTEM, hits, first.origin(), first.toNative(),
+                first.altered(), first.recipe());
+    }
+
+    /**
+     * {@code reset rule <id>} across every registered context -- doc/specs/rule-multi-context.md M8. A rule is in
+     * every context under one id, so it is removed from all of them, and the answer is the one rolled-up rule (hits
+     * added up). A vendor defaults rule ({@code vendor:<name>}) always lived in every context and is reset the
+     * same way.
      *
-     * <p>Rule ids are scoped per context and can collide across contexts
-     * (doc/specs/rule-pipeline-foundation.md "Rule identity": each {@code
-     * RuleService} mints its own sequence independently, disambiguated on
-     * read by {@code context}, same as a {@code HandlerRef}). So a {@code
-     * STICKY} refusal from the <em>first</em> context whose id happens to
-     * match must not stop a later context's own, unrelated match under the
-     * same bare id from being tried — that refusal is remembered and
-     * surfaced only if no other context yields a real match (a code-review
-     * finding against an earlier version of this method, which let the
-     * first refusal abort the whole call).
-     *
-     * <p>A vendor defaults rule ({@code vendor:<name>}) is the exception: the file is applied
-     * to every context, so the same id genuinely lives in each one, and a reset must reach
-     * all of them rather than stop at the first (doc/specs/vendor-defaults.md "Rules").
+     * <p>A {@code STICKY} rule refused without {@code --include-sticky} is refused by every holder alike (they
+     * share one tier), so nothing is removed anywhere and the refusal is thrown. A context that does not hold the
+     * id is a no-op.
      */
     @Override
     public Optional<RuleView> resetRule(String id, boolean includeSticky, boolean toNative) {
+        synchronized (ruleLock) { // with a context registering: it must not adopt a rule this just removed
+            return resetRuleLocked(id, includeSticky, toNative);
+        }
+    }
+
+    private Optional<RuleView> resetRuleLocked(String id, boolean includeSticky, boolean toNative) {
         boolean vendorId = id.startsWith(VendorDefaults.RULE_ID_PREFIX);
-        Optional<RuleView> firstRemoved = Optional.empty();
-        IllegalArgumentException stickyRefusal = null;
-        for (ContextControl context : sortedByKey()) {
+        List<ContextControl> ordered = new ArrayList<>(sortedByKey());
+        if (!vendorId && !includeSticky) {
+            // A STICKY holder refuses before any context removes anything (M8: if one refuses, none is removed).
+            // This ordering is the whole guarantee: on this path RuleService.resetRule throws
+            // IllegalArgumentException only for that sticky refusal, so a refusal always comes before a removal.
+            Comparator<ContextControl> stickyHoldersFirst =
+                    Comparator.comparing((ContextControl context) -> !holdsStickyCopy(context, id));
+            ordered.sort(stickyHoldersFirst);
+        }
+        Set<String> audited = new HashSet<>();
+        List<RuleView> removed = new ArrayList<>();
+        IllegalArgumentException refusal = null;
+        for (ContextControl context : ordered) {
             try {
-                Optional<RuleView> removed = context.ruleService().resetRule(id, includeSticky, toNative);
-                if (removed.isPresent()) {
-                    if (!vendorId) {
-                        return removed;
-                    }
-                    if (firstRemoved.isEmpty()) {
-                        firstRemoved = removed;
-                    }
-                }
+                context.ruleService().resetRule(id, includeSticky, toNative, audited).ifPresent(removed::add);
             } catch (IllegalArgumentException e) {
-                stickyRefusal = e;
+                if (!vendorId) {
+                    throw e; // nothing has been removed yet: the refusing holder went first
+                }
+                if (refusal == null) {
+                    refusal = e;
+                }
             }
         }
-        if (firstRemoved.isPresent()) {
-            return firstRemoved;
+        if (!removed.isEmpty()) {
+            return Optional.of(rollUp(removed));
         }
-        if (stickyRefusal != null) {
-            throw stickyRefusal;
+        if (refusal != null) {
+            throw refusal;
         }
         return Optional.empty();
     }
 
     @Override
     public RuleResetOutcome resetAllRules(boolean includeSticky, boolean toNative) {
-        List<String> removed = new ArrayList<>();
-        List<String> skippedSticky = new ArrayList<>();
-        List<String> vendorReset = new ArrayList<>();
+        synchronized (ruleLock) {
+            return resetAllRulesLocked(includeSticky, toNative);
+        }
+    }
+
+    private RuleResetOutcome resetAllRulesLocked(boolean includeSticky, boolean toNative) {
+        // One id once, however many contexts held the rule (doc/specs/rule-multi-context.md M7).
+        Set<String> audited = new HashSet<>();
+        Set<String> removed = new LinkedHashSet<>();
+        Set<String> skippedSticky = new LinkedHashSet<>();
+        Set<String> vendorReset = new LinkedHashSet<>();
         for (ContextControl context : sortedByKey()) {
-            RuleResetOutcome outcome = context.ruleService().resetAllRules(includeSticky, toNative);
+            RuleResetOutcome outcome = context.ruleService().resetAllRules(includeSticky, toNative, audited);
             removed.addAll(outcome.removedIds());
             skippedSticky.addAll(outcome.skippedStickyIds());
             vendorReset.addAll(outcome.vendorResetIds());
         }
-        return new RuleResetOutcome(removed, skippedSticky, vendorReset);
+        return new RuleResetOutcome(List.copyOf(removed), List.copyOf(skippedSticky), List.copyOf(vendorReset));
     }
 
     @Override
     public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky, boolean toNative) {
-        List<String> removed = new ArrayList<>();
-        List<String> skippedSticky = new ArrayList<>();
-        List<String> vendorReset = new ArrayList<>();
+        synchronized (ruleLock) {
+            return resetRulesForLoggerLocked(loggerName, includeSticky, toNative);
+        }
+    }
+
+    private RuleResetOutcome resetRulesForLoggerLocked(String loggerName, boolean includeSticky, boolean toNative) {
+        Set<String> audited = new HashSet<>();
+        Set<String> removed = new LinkedHashSet<>();
+        Set<String> skippedSticky = new LinkedHashSet<>();
+        Set<String> vendorReset = new LinkedHashSet<>();
         for (ContextControl context : sortedByKey()) {
             RuleResetOutcome outcome =
-                    context.ruleService().resetRulesForLogger(loggerName, includeSticky, toNative);
+                    context.ruleService().resetRulesForLogger(loggerName, includeSticky, toNative, audited);
             removed.addAll(outcome.removedIds());
             skippedSticky.addAll(outcome.skippedStickyIds());
             vendorReset.addAll(outcome.vendorResetIds());
         }
-        return new RuleResetOutcome(removed, skippedSticky, vendorReset);
+        return new RuleResetOutcome(List.copyOf(removed), List.copyOf(skippedSticky), List.copyOf(vendorReset));
     }
 
     /**
-     * {@code logctl alter rule <id>} across the registered contexts -- doc/specs/alter-rule.md. A
-     * vendor rule lives in every context (the vendor defaults file is applied to each), so its
-     * alteration is applied in each one and the first context's result returned; a validation
-     * error from the first stops the call before any context changes. An operator id lives in
-     * one context; ids are only unique per context, so an id found in more than one is refused as
-     * ambiguous rather than altered in a guessed one.
+     * {@code logctl alter rule <id>} across the registered contexts -- doc/specs/alter-rule.md. Every context
+     * that holds the id gets the same patch (doc/specs/rule-multi-context.md M8): an operator rule is in every
+     * context under one id, and a vendor rule always was. A validation error from the first context stops the call
+     * before any context changes. The answer is one rolled-up rule, as {@link #listRules} shows it.
      */
     @Override
     public Optional<RuleAlteration> alterRule(String id, RuleChange change, PersistenceTier tier,
+            Duration expiresIn) {
+        synchronized (ruleLock) { // with a context registering: it must not adopt the pre-alter definition
+            return alterRuleLocked(id, change, tier, expiresIn);
+        }
+    }
+
+    private Optional<RuleAlteration> alterRuleLocked(String id, RuleChange change, PersistenceTier tier,
             Duration expiresIn) {
         List<ContextControl> holders = sortedByKey().stream()
                 .filter(context -> context.ruleService().holds(id))
@@ -700,56 +788,133 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         if (holders.isEmpty()) {
             return Optional.empty();
         }
-        if (!id.startsWith(VendorDefaults.RULE_ID_PREFIX) && holders.size() > 1) {
-            throw new IllegalArgumentException("rule id " + id + " exists in more than one context ("
-                    + holders.stream().map(ContextControl::stableKey).toList() + ") -- can't tell which to alter.");
-        }
-        Optional<RuleAlteration> first = Optional.empty();
+        Set<String> audited = new HashSet<>();
+        List<RuleView> before = new ArrayList<>();
+        List<RuleView> after = new ArrayList<>();
+        boolean changed = false;
         for (ContextControl context : holders) {
-            Optional<RuleAlteration> result = context.ruleService().alterRule(id, change, tier, expiresIn)
-                    .map(alteration -> alteration.withContext(context.stableKey()));
-            if (first.isEmpty()) {
-                first = result;
+            Optional<RuleAlteration> result = context.ruleService().alterRule(id, change, tier, expiresIn, audited);
+            if (result.isPresent()) {
+                before.add(result.get().before());
+                after.add(result.get().after());
+                changed |= result.get().changed();
             }
         }
-        return first;
+        if (before.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(new RuleAlteration(rollUp(before), rollUp(after), changed));
     }
 
     /**
-     * {@code logctl add rule drop} — doc/specs/drop-rule.md "Command
-     * surface". Attaches to the first registered context only (deterministic
-     * by {@code stableKey}, same ordering every other fan-out here uses) —
-     * multi-context fan-out and leading-star pattern-target expansion are
-     * deferred past this pass, per {@link RuleOperations#addRuleDrop}'s own
-     * note.
+     * {@code logctl add rule drop} -- doc/specs/drop-rule.md "Command surface". The rule goes to every
+     * registered context under one id (doc/specs/rule-multi-context.md, M1 and M3): the first context by
+     * key runs the capability and name checks, writes the state row and the audit record; the others
+     * adopt the same rule. If adopting fails somewhere, every context that had it takes it back (M6).
      *
      * @throws IllegalStateException if no context is registered
      */
     @Override
     public RuleView addRuleDrop(String loggerName, CompiledMatchers matchers, RuleAttachOptions options,
             SampleFullPolicy sampleFull) {
-        List<ContextControl> contexts = sortedByKey();
-        if (contexts.isEmpty()) {
-            throw new IllegalStateException("no logging context registered -- nothing to attach a rule to");
-        }
-        return contexts.get(0).ruleService().addRuleDrop(loggerName, matchers, options, sampleFull);
+        BiFunction<RuleService, String, RuleView> attachDropInFirstContext = (first, id) ->
+                first.addRuleDrop(loggerName, matchers, options, sampleFull, id);
+        return attachInEveryContext(attachDropInFirstContext);
     }
 
     /**
-     * {@code logctl add rule trim} — doc/specs/trim-rule.md "Command
-     * surface". Attaches to the first registered context only, same scope
-     * reduction as {@link #addRuleDrop}.
+     * {@code logctl add rule trim} -- doc/specs/trim-rule.md "Command surface". One rule in every context,
+     * as {@link #addRuleDrop}.
      *
      * @throws IllegalStateException if no context is registered
      */
     @Override
     public RuleView addRuleTrim(String loggerName, CompiledMatchers matchers, RuleAttachOptions options, int frames,
             boolean collapseCauses) {
+        BiFunction<RuleService, String, RuleView> attachTrimInFirstContext = (first, id) ->
+                first.addRuleTrim(loggerName, matchers, options, frames, collapseCauses, id);
+        return attachInEveryContext(attachTrimInFirstContext);
+    }
+
+    /**
+     * The one fan-out sequence of every {@code add rule} verb (doc/specs/rule-multi-context.md): under the rule lock,
+     * mint the id, let the first context run the checks and write the row (a refusal hands the id back), then adopt
+     * the rule in the others. {@code attachInFirstContext} is the verb-specific part.
+     */
+    private RuleView attachInEveryContext(BiFunction<RuleService, String, RuleView> attachInFirstContext) {
+        synchronized (ruleLock) {
+            List<ContextControl> contexts = contextsForNewRule();
+            String id = mintRuleId(contexts);
+            RuleView first;
+            try {
+                first = attachInFirstContext.apply(contexts.get(0).ruleService(), id);
+            } catch (RuntimeException refused) {
+                releaseRuleId(id); // the checks failed: the number was never used
+                throw refused;
+            }
+            return adoptEverywhere(first, contexts).withContext(ContextHandle.SYSTEM);
+        }
+    }
+
+    private static boolean holdsStickyCopy(ContextControl context, String ruleId) {
+        return context.ruleService().tierOf(ruleId).filter(tier -> tier == PersistenceTier.STICKY).isPresent();
+    }
+
+    private List<ContextControl> contextsForNewRule() {
         List<ContextControl> contexts = sortedByKey();
         if (contexts.isEmpty()) {
             throw new IllegalStateException("no logging context registered -- nothing to attach a rule to");
         }
-        return contexts.get(0).ruleService().addRuleTrim(loggerName, matchers, options, frames, collapseCauses);
+        return contexts;
+    }
+
+    /**
+     * The next operator rule id, one sequence for the JVM (doc/specs/rule-multi-context.md M3). Starts past
+     * every number any context has resumed or minted, so a rule resumed from the state file is never reissued.
+     */
+    private synchronized String mintRuleId(List<ContextControl> contexts) {
+        long next = nextRuleNumber;
+        for (ContextControl context : contexts) {
+            next = Math.max(next, context.ruleService().nextIdNumber());
+        }
+        nextRuleNumber = next + 1;
+        return "r" + next;
+    }
+
+    /** Hands back the number {@link #mintRuleId} just issued when the first context refused the rule, if no later one was issued. */
+    private synchronized void releaseRuleId(String id) {
+        long number = Long.parseLong(id.substring(1));
+        if (nextRuleNumber == number + 1) {
+            nextRuleNumber = number;
+        }
+    }
+
+    /**
+     * Copies the rule the first context just attached into every other context. A failure takes the rule
+     * back out of every context that already holds it, so a rule is never half in place (M6).
+     */
+    private RuleView adoptEverywhere(RuleView leader, List<ContextControl> contexts) {
+        LogRule model = leader.rule();
+        List<ContextControl> holding = new ArrayList<>();
+        holding.add(contexts.get(0));
+        try {
+            for (ContextControl context : contexts.subList(1, contexts.size())) {
+                context.ruleService().adopt(model, leader.recipe());
+                holding.add(context);
+            }
+        } catch (RuntimeException failure) {
+            String reason = "rolled back: could not attach in every context (" + failure + ")";
+            for (ContextControl context : holding) {
+                try {
+                    context.ruleService().rollBack(model.id(), reason);
+                } catch (RuntimeException ignored) {
+                    Diagnostics.warn("could not roll back rule " + model.id() + " in context '"
+                            + context.stableKey() + "': " + ignored);
+                }
+            }
+            throw failure;
+        }
+        return leader;
     }
 
     /**
@@ -1333,7 +1498,12 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         for (ContextControl context : sortedByKey()) {
             context.service().sweepExpiredOverrides(now);
             context.handlerService().sweepExpiredOverrides(now);
-            context.ruleService().sweepExpiredRules(now);
+        }
+        synchronized (ruleLock) { // with a context registering
+            Set<String> expiredRuleAudits = new HashSet<>(); // a rule in every context expires once, audited once
+            for (ContextControl context : sortedByKey()) {
+                context.ruleService().sweepExpiredRules(now, expiredRuleAudits);
+            }
         }
     }
 
@@ -1473,6 +1643,12 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         }
         return allSucceeded;
     }
+
+    /** The next operator rule number (doc/specs/rule-multi-context.md M3), raised past every context's own at mint time. */
+    private long nextRuleNumber = 1;
+
+    /** Serializes {@code add rule}'s fan-out with a context registering, so a new context cannot miss a rule. */
+    private final Object ruleLock = new Object();
 
     private List<ContextControl> sortedByKey() {
         return byKey.values().stream()

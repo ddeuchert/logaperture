@@ -93,6 +93,14 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ### Changed
 
+- **`drop` and `trim` rules now apply in every logging context.** Before, `logctl add rule` attached a rule to
+  the first context only, so on Tomcat with several web applications, or on WildFly with a deployment that
+  brings its own Log4j, the rule worked in one place and the others kept logging what it should remove. A rule
+  now goes to every context, including a web application deployed or redeployed afterwards, under one id.
+  `list rules` and `status` show it once, with its hit count added up; `reset rule` and `alter rule` reach every
+  copy. A rule saved by 1.0.x, which was tied to whichever context happened to be first, now applies in every
+  context after the upgrade, as `add rule` always read. In `--json` a rule's `context` is `system`
+  (issue #79; `doc/specs/rule-multi-context.md`).
 - **`logctl list loggers` with no loggers** now says `No loggers known yet. LogAperture is running; if it controls
   no logging context in this JVM, `logctl doctor` says why.`
 

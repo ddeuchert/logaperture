@@ -189,13 +189,13 @@ public final class RuleService implements RuleOperations {
 
     /**
      * @param context this instance's owning logging context's stable key
-     *                (e.g. {@code "system"}, a deployment name) — every
-     *                context in a JVM shares one {@code stateStore}, so
-     *                this is what {@link #resumeFromStateStore} filters a
-     *                persisted row by (a row belongs to the context that
-     *                wrote it, never resumed into a different one sharing
-     *                the same store) and what {@link #toPersisted} stamps
-     *                on save.
+     *                (e.g. {@code "system"}, a deployment name). Every
+     *                context in a JVM shares one {@code stateStore}. An
+     *                operator rule is system-wide, so it is persisted
+     *                without a context and resumed in every one; the key
+     *                scopes only a vendor rule's saved alteration, which
+     *                each context keeps for itself
+     *                (doc/specs/rule-multi-context.md M5).
      */
     public RuleService(LoggingAdapter adapter, CapabilityPolicy policy, AuditLog auditLog, StateStore stateStore,
             String context, String principal, String source, ProtectedCategories protectedCategories) {
@@ -294,6 +294,16 @@ public final class RuleService implements RuleOperations {
      */
     public LogRule attach(String loggerName, CompiledMatchers matchers, RuleAttachOptions options,
             RuleFactory factory, Capability additionalRequired) {
+        return attach(loggerName, matchers, options, factory, additionalRequired, null);
+    }
+
+    /**
+     * Same as the five-arg {@link #attach}, with the id chosen by the caller instead of this service's own
+     * sequence -- doc/specs/rule-multi-context.md M3: one rule has one id across every context, minted by
+     * {@link AggregateLevelControl}. {@code fixedId == null} mints from this service's sequence.
+     */
+    public LogRule attach(String loggerName, CompiledMatchers matchers, RuleAttachOptions options,
+            RuleFactory factory, Capability additionalRequired, String fixedId) {
         Objects.requireNonNull(loggerName, "loggerName");
         Objects.requireNonNull(matchers, "matchers");
         Objects.requireNonNull(factory, "factory");
@@ -315,7 +325,10 @@ public final class RuleService implements RuleOperations {
                     + "be attached to it.");
         }
 
-        String id = "r" + idSequence.getAndIncrement();
+        String id = fixedId != null ? fixedId : "r" + idSequence.getAndIncrement();
+        if (fixedId != null) {
+            advanceIdSequencePast(fixedId); // a later own-sequence attach never reuses it
+        }
         Instant now = Instant.now();
         Instant expiresAt = opts.tier() == PersistenceTier.FOR ? now.plus(opts.expiresIn()) : null;
         LogRule rule = factory.create(id, loggerName, matchers, opts.reason(), opts.tier(), expiresAt, now,
@@ -344,7 +357,14 @@ public final class RuleService implements RuleOperations {
     @Override
     public RuleView addRuleDrop(String loggerName, CompiledMatchers matchers, RuleAttachOptions options,
             SampleFullPolicy sampleFull) {
-        LogRule rule = attach(loggerName, matchers, options, DropFactories.attach(sampleFull), Capability.SUPPRESS);
+        return addRuleDrop(loggerName, matchers, options, sampleFull, null);
+    }
+
+    /** {@link #addRuleDrop} with the id chosen by the caller (doc/specs/rule-multi-context.md M3); {@code null} mints. */
+    public RuleView addRuleDrop(String loggerName, CompiledMatchers matchers, RuleAttachOptions options,
+            SampleFullPolicy sampleFull, String fixedId) {
+        LogRule rule = attach(loggerName, matchers, options, DropFactories.attach(sampleFull), Capability.SUPPRESS,
+                fixedId);
         return view(rule);
     }
 
@@ -357,9 +377,101 @@ public final class RuleService implements RuleOperations {
     @Override
     public RuleView addRuleTrim(String loggerName, CompiledMatchers matchers, RuleAttachOptions options, int frames,
             boolean collapseCauses) {
+        return addRuleTrim(loggerName, matchers, options, frames, collapseCauses, null);
+    }
+
+    /** {@link #addRuleTrim} with the id chosen by the caller (doc/specs/rule-multi-context.md M3); {@code null} mints. */
+    public RuleView addRuleTrim(String loggerName, CompiledMatchers matchers, RuleAttachOptions options, int frames,
+            boolean collapseCauses, String fixedId) {
         LogRule rule = attach(loggerName, matchers, options, TrimFactories.attach(frames, collapseCauses),
-                Capability.SUPPRESS);
+                Capability.SUPPRESS, fixedId);
         return view(rule);
+    }
+
+    /**
+     * Puts {@code model}, a rule another context's service already attached, into this context under the same
+     * id, definition, tier and deadline -- doc/specs/rule-multi-context.md M3/M4. A new instance, so this
+     * context counts its own hits. No capability or name check (the first context ran them), no persisted
+     * row and no audit record (the first context wrote the one of each): the caller owns both.
+     *
+     * @param recipeId the recipe that made the rule, or {@code null}
+     * @throws IllegalStateException if no rule type is registered for the model's action
+     */
+    public LogRule adopt(LogRule model, String recipeId) {
+        Objects.requireNonNull(model, "model");
+        Optional<LogRule> already = registry.findById(model.id());
+        if (already.isPresent()) {
+            return already.get(); // idempotent: this context resumed or was handed the rule already
+        }
+        RuleFactory factory = actionFactories.get(model.actionName());
+        if (factory == null) {
+            throw new IllegalStateException("no rule type registered for action '" + model.actionName() + "'");
+        }
+        LogRule rule = factory.create(model.id(), model.loggerName(), model.matchers(), model.reason(), model.tier(),
+                model.expiresAt(), model.createdAt(), model.persistedPayload());
+        registry.attach(rule);
+        if (recipeId != null) {
+            recipes.put(rule.id(), recipeId);
+        }
+        advanceIdSequencePast(rule.id());
+        return rule;
+    }
+
+    /**
+     * {@link #adopt} for a context that registered after the rule was added (a redeploy), with a {@code "resume"}
+     * audit record the way {@code LevelControlService#adoptOverride} writes one -- doc/specs/rule-multi-context.md M4.
+     * Still no state row (the first context wrote it).
+     */
+    public LogRule rebroadcast(LogRule model, String recipeId) {
+        boolean wasHeld = registry.findById(model.id()).isPresent();
+        LogRule rule = adopt(model, recipeId);
+        if (!wasHeld) {
+            auditLog.record(new AuditRecord(Instant.now(), principal, "resume", rule.loggerName(), null, describe(rule),
+                    rule.reason(), AuditRecord.Action.MUTATION));
+        }
+        return rule;
+    }
+
+    /**
+     * The operator rules this context holds that are still live at {@code now}: what a context that registers
+     * later must receive (doc/specs/rule-multi-context.md M4). Vendor rules are left out (the vendor defaults
+     * file is applied to every context on its own), as is a {@code FOR} rule whose deadline has passed.
+     */
+    List<RuleView> liveOperatorRules(Instant now) {
+        List<RuleView> live = new ArrayList<>();
+        for (LogRule rule : registry.all()) {
+            boolean expired = rule.tier() == PersistenceTier.FOR && rule.expiresAt() != null
+                    && !rule.expiresAt().isAfter(now);
+            if (!isVendorRule(rule.id()) && !expired) {
+                live.add(view(rule));
+            }
+        }
+        return List.copyOf(live);
+    }
+
+    /** The number the next minted id would carry -- the aggregate starts its own sequence past every context's. */
+    public long nextIdNumber() {
+        return idSequence.get();
+    }
+
+    /**
+     * Takes back a rule this service just attached or adopted because attaching it in another context failed
+     * (doc/specs/rule-multi-context.md M6): out of the registry, out of the state file, audited as a reversion.
+     */
+    public void rollBack(String id, String reason) {
+        Optional<LogRule> held = registry.findById(id);
+        if (held.isEmpty()) {
+            return;
+        }
+        LogRule rule = held.get();
+        registry.removeById(id);
+        forgetEvaluationState(id);
+        recipes.remove(id);
+        if (rule.tier() != PersistenceTier.SESSION) {
+            safePersist(() -> stateStore.removeRule(id));
+        }
+        auditLog.record(new AuditRecord(Instant.now(), principal, source, rule.loggerName(), describe(rule), null,
+                reason, AuditRecord.Action.REVERSION));
     }
 
     /**
@@ -449,6 +561,16 @@ public final class RuleService implements RuleOperations {
      */
     @Override
     public Optional<RuleAlteration> alterRule(String id, RuleChange change, PersistenceTier tier, Duration expiresIn) {
+        return alterRule(id, change, tier, expiresIn, null);
+    }
+
+    /**
+     * {@link #alterRule(String, RuleChange, PersistenceTier, Duration)} for one context of several altering the same
+     * rule (doc/specs/rule-multi-context.md M8): {@code audited} holds the rule ids already audited by this operation, so
+     * the one user action writes one record, not one per context. {@code null} audits always.
+     */
+    Optional<RuleAlteration> alterRule(String id, RuleChange change, PersistenceTier tier, Duration expiresIn,
+            Set<String> audited) {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(change, "change");
         if (change.isEmpty() && tier == null) {
@@ -517,8 +639,10 @@ public final class RuleService implements RuleOperations {
         } else if (current.tier() != PersistenceTier.SESSION) {
             safePersist(() -> stateStore.removeRule(id));
         }
-        auditLog.record(new AuditRecord(now, principal, source, current.loggerName(), previousValue,
-                describeFull(candidate, false), newReason, AuditRecord.Action.MUTATION));
+        if (firstToAudit(audited, id)) {
+            auditLog.record(new AuditRecord(now, principal, source, current.loggerName(), previousValue,
+                    describeFull(candidate, false), newReason, AuditRecord.Action.MUTATION));
+        }
         return Optional.of(new RuleAlteration(before, view(candidate), true));
     }
 
@@ -587,7 +711,7 @@ public final class RuleService implements RuleOperations {
         // doc/specs/export-round-trip.md: an entry from a sticky rule or alteration carries its state id.
         Map<String, String> stateIds = new java.util.HashMap<>();
         for (PersistedRule persisted : stateStore.loadAllRules()) {
-            if (persisted.stateId() != null && (persisted.context() == null || persisted.context().equals(context))) {
+            if (persisted.stateId() != null && ownsRow(persisted)) {
                 stateIds.put(persisted.id(), persisted.stateId());
             }
         }
@@ -671,6 +795,11 @@ public final class RuleService implements RuleOperations {
      */
     @Override
     public Optional<RuleView> resetRule(String id, boolean includeSticky, boolean toNative) {
+        return resetRule(id, includeSticky, toNative, null);
+    }
+
+    /** {@link #resetRule(String, boolean, boolean)} audited once per rule across contexts, as {@code alterRule}'s. */
+    Optional<RuleView> resetRule(String id, boolean includeSticky, boolean toNative, Set<String> audited) {
         Objects.requireNonNull(id, "id");
         requireCapability(Capability.RULES_AUTHOR);
         if (isVendorRule(id)) {
@@ -689,7 +818,7 @@ public final class RuleService implements RuleOperations {
         registry.removeById(id);
         forgetEvaluationState(id);
         safePersist(() -> stateStore.removeRule(id));
-        auditRemoval(rule);
+        auditRemoval(rule, audited);
         return Optional.of(new RuleView(rule, context, finalHitCount, null, false, false, recipe));
     }
 
@@ -766,8 +895,13 @@ public final class RuleService implements RuleOperations {
     /** {@code reset rules} — bulk, skip-and-report shape (mirrors {@code reset loggers}). */
     @Override
     public RuleResetOutcome resetAllRules(boolean includeSticky, boolean toNative) {
+        return resetAllRules(includeSticky, toNative, null);
+    }
+
+    RuleResetOutcome resetAllRules(boolean includeSticky, boolean toNative, Set<String> audited) {
         requireCapability(Capability.RULES_AUTHOR);
-        return resetMatching(registry.all(), List.copyOf(toNativeVendorRules.values()), includeSticky, toNative);
+        return resetMatching(registry.all(), List.copyOf(toNativeVendorRules.values()), includeSticky, toNative,
+                audited);
     }
 
     /**
@@ -785,6 +919,11 @@ public final class RuleService implements RuleOperations {
      */
     @Override
     public RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky, boolean toNative) {
+        return resetRulesForLogger(loggerName, includeSticky, toNative, null);
+    }
+
+    RuleResetOutcome resetRulesForLogger(String loggerName, boolean includeSticky, boolean toNative,
+            Set<String> audited) {
         Objects.requireNonNull(loggerName, "loggerName");
         List<LogRule> candidates = registry.directRulesFor(loggerName);
         List<LogRule> switchedOff = toNativeVendorRules.values().stream()
@@ -796,7 +935,7 @@ public final class RuleService implements RuleOperations {
             return RuleResetOutcome.nothingReset();
         }
         requireCapability(Capability.RULES_AUTHOR);
-        return resetMatching(candidates, switchedOff, includeSticky, toNative);
+        return resetMatching(candidates, switchedOff, includeSticky, toNative, audited);
     }
 
     /**
@@ -804,7 +943,7 @@ public final class RuleService implements RuleOperations {
      *                    switches them back on (A8)
      */
     private RuleResetOutcome resetMatching(List<LogRule> candidates, List<LogRule> switchedOff,
-            boolean includeSticky, boolean toNative) {
+            boolean includeSticky, boolean toNative, Set<String> audited) {
         List<String> removed = new ArrayList<>();
         List<String> skippedSticky = new ArrayList<>();
         List<String> vendorReset = new ArrayList<>();
@@ -835,7 +974,7 @@ public final class RuleService implements RuleOperations {
                 registry.removeById(rule.id());
                 forgetEvaluationState(rule.id());
                 removed.add(rule.id());
-                auditRemoval(rule);
+                auditRemoval(rule, audited);
             }
             if (rule.tier() != PersistenceTier.SESSION) {
                 persistedRemovals.add(rule.id());
@@ -865,6 +1004,11 @@ public final class RuleService implements RuleOperations {
      * {@code SESSION} internally and never expire here.
      */
     public void sweepExpiredRules(Instant now) {
+        sweepExpiredRules(now, null);
+    }
+
+    /** {@link #sweepExpiredRules(Instant)} audited once per rule across contexts, as {@code alterRule}'s. */
+    void sweepExpiredRules(Instant now, Set<String> audited) {
         List<String> expired = new ArrayList<>();
         for (LogRule rule : registry.all()) {
             if (rule.tier() != PersistenceTier.FOR || rule.expiresAt() == null || rule.expiresAt().isAfter(now)) {
@@ -882,8 +1026,10 @@ public final class RuleService implements RuleOperations {
             } else if (registry.removeIfCurrent(rule)) {
                 forgetEvaluationState(rule.id());
                 expired.add(rule.id());
-                auditLog.record(new AuditRecord(now, principal, "expiry-sweep", rule.loggerName(), describe(rule),
-                        null, "expired", AuditRecord.Action.REVERSION));
+                if (firstToAudit(audited, rule.id())) {
+                    auditLog.record(new AuditRecord(now, principal, "expiry-sweep", rule.loggerName(), describe(rule),
+                            null, "expired", AuditRecord.Action.REVERSION));
+                }
             }
         }
         if (!expired.isEmpty()) {
@@ -891,9 +1037,26 @@ public final class RuleService implements RuleOperations {
         }
     }
 
-    private void auditRemoval(LogRule rule) {
+    private void auditRemoval(LogRule rule, Set<String> audited) {
+        if (!firstToAudit(audited, rule.id())) {
+            return;
+        }
         auditLog.record(new AuditRecord(Instant.now(), principal, source, rule.loggerName(), describe(rule), null,
                 rule.reason(), AuditRecord.Action.REVERSION));
+    }
+
+    /**
+     * One record per rule per user action (doc/specs/rule-multi-context.md): a rule lives in every context, and each
+     * context's service would otherwise audit the same reset, alteration or expiry. {@code audited} is the set one
+     * aggregate operation shares across its contexts; {@code null} means "not part of such an operation, always audit".
+     */
+    private static boolean firstToAudit(Set<String> audited, String ruleId) {
+        return audited == null || audited.add(ruleId);
+    }
+
+    /** The tier of the rule held under {@code id}, if this context holds it (no capability check; the aggregate orders resets by it). */
+    Optional<PersistenceTier> tierOf(String id) {
+        return registry.findById(id).map(LogRule::tier);
     }
 
     private static String describe(LogRule rule) {
@@ -938,15 +1101,9 @@ public final class RuleService implements RuleOperations {
     }
 
     private void resumeOne(PersistedRule persisted, Instant now) {
-        if (persisted.context() != null && !persisted.context().equals(context)) {
-            // Belongs to a different context sharing this JVM's one StateStore
-            // -- doc/specs/rule-pipeline-foundation.md "Persistence": a rule
-            // is attached to exactly one context's RuleService, never
-            // broadcast the way a level override is, so resuming it must be
-            // scoped the same way (a code-review finding: without this
-            // check, every context resumed every other context's rules
-            // too). Left untouched in the store for whichever context's own
-            // resumeFromStateStore call actually matches it.
+        if (!ownsRow(persisted)) {
+            // A vendor rule's saved alteration belongs to the context that wrote it; every context shares
+            // one StateStore, so another's row is left untouched for its own resume to find.
             return;
         }
         advanceIdSequencePast(persisted.id());
@@ -1039,9 +1196,21 @@ public final class RuleService implements RuleOperations {
         }
     }
 
+    /**
+     * Whether this context acts on the persisted row -- doc/specs/rule-multi-context.md M5. An operator rule is
+     * system-wide: every context resumes every row, whatever {@code context} a 1.0.x row carries (it was only the
+     * key of whichever context was first, never a choice). A vendor rule's saved alteration stays with the context
+     * that wrote it.
+     */
+    private boolean ownsRow(PersistedRule persisted) {
+        return !isVendorRule(persisted.id()) || persisted.context() == null || persisted.context().equals(context);
+    }
+
     private PersistedRule toPersisted(LogRule rule) {
+        // An operator rule is written without a context: it applies in every one (M5).
+        String rowContext = isVendorRule(rule.id()) ? context : null;
         return new PersistedRule(rule.id(), rule.loggerName(), rule.actionName(), rule.matchers(), rule.reason(),
-                rule.tier(), rule.expiresAt(), rule.createdAt(), context, rule.persistedPayload(), null,
+                rule.tier(), rule.expiresAt(), rule.createdAt(), rowContext, rule.persistedPayload(), null,
                 recipes.get(rule.id()));
     }
 

@@ -36,6 +36,11 @@ The `--below` default means a rule leaves `ERROR` events alone unless you say ot
 rule needs at least one matcher besides `--below`, so it can't silence a logger by accident. A
 `trim` rule doesn't: trimming every `WARN` trace from a logger is a normal thing to want.
 
+A rule applies to the whole JVM. When a server runs several applications that each bring their own
+logging, such as web applications with their own Log4j on [Tomcat](../get-started/install-tomcat.md), the
+rule acts in all of them, and in one deployed later. `logctl list rules` shows it once, with one hit
+count that adds up what it did everywhere, and `reset rule` removes it everywhere.
+
 ## `drop`
 
 A matching event is discarded before any handler writes it. So the log never goes completely

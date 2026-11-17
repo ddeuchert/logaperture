@@ -133,7 +133,7 @@ epic depends on this slice; it is the last piece needed to close #73.
   tracked by the *existing* [#79](https://github.com/ddeuchert/logaperture/issues/79), which
   was scoped to "`add rule`" generically, not `drop` specifically; this slice's `add rule trim`
   inherits the same first-registered-context-only limitation `drop` shipped with, closed by
-  #79 for both actions at once rather than a second issue.
+  #79 for both actions at once rather than a second issue. Specced in [`rule-multi-context.md`](rule-multi-context.md).
   *Update 2026-09-26:* the pattern-target half shipped with
   [`guided-add-rule.md`](guided-add-rule.md) (#104, G2); #79 now covers multi-context attachment
   only.

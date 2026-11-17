@@ -26,7 +26,9 @@ The same promise covers the agent's management interface; see the
 - `source` names where a change came from: `jmx` for a change made with `logctl`, `resume` for a
   `sticky` change restored at startup, `expiry-sweep` and `verification-sweep` for LogAperture's
   own periodic work, `vendor-defaults` and `recipe` for changes from those.
-- `context` names the logging context a row belongs to; on WildFly the server's own is `system`.
+- `context` names the logging context a row belongs to; on WildFly the server's own is `system`. A
+  rule applies to the whole JVM, so a rule's `context` is always `system`, and its `hitCount` adds up
+  every context.
 - On a failure, the exit code says what went wrong (below) and the message goes to standard
   error, as text.
 
