@@ -2224,8 +2224,8 @@ has a tier like any other change and lasts <code>for 4h</code> unless you give o
 </ul>
 <h2 id="rules-and-other-agents">Rules and other agents<a class="headerlink" href="#rules-and-other-agents" title="Permanent link">&para;</a></h2>
 <p>A rule only sees events that go through the logging framework after LogAperture has started. An
-agent listed before LogAperture on the <code>-javaagent</code> line can log before that. See
-<a href="../agent-order/">Agent order</a>.</p>
+agent listed before LogAperture on the <code>-javaagent</code> line can log before that, and on WildFly
+the server's own earliest messages are written before it too. See <a href="../agent-order/">Agent order</a>.</p>
 
 
 

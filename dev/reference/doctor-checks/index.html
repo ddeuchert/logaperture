@@ -2719,7 +2719,9 @@ listed ahead of it: anything they log while starting up is out of reach of <code
 Agents set in <code>JAVA_TOOL_OPTIONS</code> or <code>JDK_JAVA_OPTIONS</code> count as listed first. Not reported when
 LogAperture was attached to a running JVM (<code>agent.attached</code> says so). See
 <a href="../../concepts/agent-order/">Agent order</a>.</p>
-<p><strong>Fix:</strong> list LogAperture's <code>-javaagent</code> before the others, where the site allows it.</p>
+<p><strong>Fix:</strong> list LogAperture's <code>-javaagent</code> before the others, where the site allows it. On WildFly
+this doesn't bring the other agents' startup output within reach; see
+<a href="../../concepts/agent-order/#on-wildfly">Agent order</a>.</p>
 <h3 id="agentattached"><code>agent.attached</code><a class="headerlink" href="#agentattached" title="Permanent link">&para;</a></h3>
 <p>LogAperture was loaded into a running JVM with <code>logctl attach</code>, not started by a <code>-javaagent</code> entry,
 so the <code>-javaagent</code> order check has nothing to read. <code>INFO</code>, and reported only on an attached JVM.

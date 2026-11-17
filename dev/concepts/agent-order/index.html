@@ -1475,6 +1475,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="What stays out of reach">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#on-wildfly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On WildFly
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2075,6 +2092,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="What stays out of reach">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#on-wildfly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On WildFly
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2137,23 +2171,49 @@ so its place on the list matters.</p>
 <h2 id="put-logaperture-first">Put LogAperture first<a class="headerlink" href="#put-logaperture-first" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="nv">JAVA_OPTS</span><span class="o">=</span><span class="s2">"</span><span class="nv">$JAVA_OPTS</span><span class="s2"> -javaagent:/opt/logaperture/lib/logaperture-agent.jar -javaagent:/opt/other/other-agent.jar"</span>
 </code></pre></div>
-<p>An agent listed <strong>before</strong> LogAperture starts first. Anything it logs during startup is written
-before LogAperture can apply its rules, so <code>drop</code> and <code>trim</code> rules can't affect it, not even
-<code>sticky</code> ones. Listing LogAperture first makes that window as small as it can be.</p>
+<p>An agent listed <strong>before</strong> LogAperture starts first. Anything it logs before LogAperture has
+installed its logging handlers is out of reach of <code>drop</code> and <code>trim</code> rules, including <code>sticky</code>
+rules. On a plain JVM, Tomcat or Quarkus, where the logging framework is ready while the agents
+start, listing LogAperture first shrinks that window. <strong>On WildFly it doesn't help with another
+agent's startup output</strong>, because the server's logging doesn't exist yet; see
+<a href="#what-stays-out-of-reach">What stays out of reach</a>.</p>
 <p>A typical case: another agent logs a <code>ConnectException</code> with a full stack trace while it starts.
 The <code>sticky</code> <code>trim</code> rule you added for exactly that exception shortens it every time it appears
 later, but never the first one at startup.</p>
 <p>Agents set in <code>JAVA_TOOL_OPTIONS</code> or <code>JDK_JAVA_OPTIONS</code> start before any on the command line.</p>
-<p>Some sites are required to list another agent first, such as a monitoring or security agent. That
-is fine: LogAperture works the same, and only that agent's startup output is out of reach.</p>
+<p>Some sites are required to list another agent first, such as a monitoring or security agent.
+LogAperture still applies its rules to later records once its handlers are installed.</p>
 <h2 id="what-stays-out-of-reach">What stays out of reach<a class="headerlink" href="#what-stays-out-of-reach" title="Permanent link">&para;</a></h2>
 <p>Even listed first, LogAperture only sees what goes through the logging framework. An agent that
 prints to the console directly, writes its own file, or keeps its own buffer is outside it. Change
 that agent's own settings instead.</p>
-<p>On WildFly, level changes apply from the moment LogAperture starts. <code>drop</code> and <code>trim</code> rules, <code>top</code>
-and storm detection take effect once LogAperture has installed itself into the server's logging
-handlers. If a launch needs that held back, see <code>-Dlogaperture.handlerInstallDelaySeconds</code> in
-<a href="../../reference/agent-options/">Agent options</a>.</p>
+<h3 id="on-wildfly">On WildFly<a class="headerlink" href="#on-wildfly" title="Permanent link">&para;</a></h3>
+<p>All Java agents finish their <code>premain</code> methods before the server's <code>main</code> starts, and WildFly
+initializes JBoss LogManager during <code>main</code>. LogAperture waits for that log manager before
+installing into the server's logging system. This is the order on a successful startup:</p>
+<ol>
+<li>The agents run <code>premain</code>, and any of them may log a startup trace.</li>
+<li>WildFly starts and initializes its logging system. Its earliest boot messages are written
+   before LogAperture can see them.</li>
+<li>LogAperture installs into the server's logging system and announces <code>active (WildFly)</code>. Level
+   changes apply from here.</li>
+<li>LogAperture wraps the server's logging handlers, immediately by default. <code>drop</code> and <code>trim</code>
+   rules, <code>top</code> and storm detection act from here.</li>
+</ol>
+<p>Everything written before step 4 is out of reach, whichever agent wrote it. Changing the
+<code>-javaagent</code> order or the rule tier can't change that, and neither can <code>sticky</code> rules or rules
+loaded from vendor defaults. With <code>-Dlogaperture.handlerInstallDelaySeconds</code> set, step 4 happens
+that many seconds after startup instead, and the log says when; see
+<a href="../../reference/agent-options/">Agent options</a>. Only the delay moves the line later, so leave it
+at <code>0</code> unless you need it.</p>
+<p>To quiet another agent's startup trace:</p>
+<ul>
+<li>use that agent's own logging settings, which is the cleanest fix;</li>
+<li>filter it outside LogAperture, for example with a filter on the server's own handler that
+  writes it;</li>
+<li>or accept it: the trace appears once per restart, and later repeats of the same trace, logged
+  after step 4, are covered by your rules.</li>
+</ul>
 <h2 id="checking-the-order">Checking the order<a class="headerlink" href="#checking-the-order" title="Permanent link">&para;</a></h2>
 <p><code>logctl doctor</code> reports where LogAperture is:</p>
 <div class="highlight"><pre><span></span><code>[OK]    logaperture-agent.jar is the first -javaagent.

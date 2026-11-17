@@ -2238,9 +2238,10 @@ logging on the running server. LogAperture never edits <code>standalone.xml</cod
 </div>
 </div>
 </div>
-<p>If the server already has other <code>-javaagent</code> entries, put LogAperture's first. An agent listed
-before it can log during startup before LogAperture is ready. See
-<a href="../../concepts/agent-order/">Agent order</a>.</p>
+<p>If the server already has other <code>-javaagent</code> entries, put LogAperture's first. On WildFly this
+does not bring another agent's startup output within reach of rules, because the server's
+logging isn't ready until after every agent has started. See
+<a href="../../concepts/agent-order/#on-wildfly">Agent order</a>.</p>
 <p>In a container, the server's user often has no writable home directory, and LogAperture can't
 save its state there. Point it somewhere writable as well:
 <code>-Dlogaperture.home=$JBOSS_HOME/standalone/data/logaperture</code>.</p>

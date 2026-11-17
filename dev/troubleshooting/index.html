@@ -2568,7 +2568,8 @@ about it, with the command that fixes it. See
 <li><code>--below</code> defaults to <code>ERROR</code>: an <code>ERROR</code> event isn't touched unless you give <code>--below FATAL</code>.</li>
 <li><code>--throwable</code> needs the exact class, not a parent class.</li>
 <li>Events logged before LogAperture started, for example by another agent at startup, are out of
-  reach. See <a href="../concepts/agent-order/">Agent order</a>.</li>
+  reach. On WildFly that includes the server's earliest boot messages, and listing LogAperture
+  first doesn't change it. See <a href="../concepts/agent-order/#on-wildfly">Agent order</a>.</li>
 <li><code>trim</code> works on text log formats only in 1.0. A JSON or XML formatter writes the full trace.</li>
 <li>Rules don't work on a plain JVM with Logback yet.</li>
 </ul>
