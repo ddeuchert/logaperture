@@ -1670,7 +1670,7 @@ On a terminal, an `add rule` command that leaves out a required part prompts for
 
 A complete command, a stdin that isn't a terminal, or `--yes` behaves exactly as today and never prompts, so scripts are unaffected.
 
-**Cost / dependencies.** This is CLI-only and adds nothing to the agent or its MXBean contract (§8.1). It depends on [#79](https://github.com/ddeuchert/logaperture/issues/79), which adds leading-star pattern expansion to `add rule`. Guided mode reuses that matching and preview flow and adds choosing a subset of the matches, so #79 lands first or together with this. It is Layer 3 CLI polish (§17), aimed at the operator rather than the developer. The CLI has no terminal library today: prompts go through `System.console`. A numbered list with typed answers needs none.
+**Cost / dependencies.** This is CLI-only and adds nothing to the agent or its MXBean contract (§8.1). It builds on the leading-star pattern expansion of `add rule` that guided mode itself introduced ([`guided-add-rule.md`](specs/guided-add-rule.md), G2). Attaching a rule in every logging context, not only the first, is [#79](https://github.com/ddeuchert/logaperture/issues/79), specced in [`rule-multi-context.md`](specs/rule-multi-context.md) for 1.1.0. It is Layer 3 CLI polish (§17), aimed at the operator rather than the developer. The CLI has no terminal library today: prompts go through `System.console`. A numbered list with typed answers needs none.
 
 **Later phase: AI-assisted rule authoring.** Guided mode cannot turn a log line into a good matcher; an AI can. The later phase is a skill shipped in the distribution: the operator pastes the offending line and says what they want (for example, "drop these unless WARN or above"). The agent then:
 

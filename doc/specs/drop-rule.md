@@ -151,7 +151,7 @@ mistaken for "done"):
   "reset logger's rule-removal side effect is scoped to the exact-name path only" used.
   *Update 2026-09-26:* the pattern-target half shipped with
   [`guided-add-rule.md`](guided-add-rule.md) (#104, G2); #79 now covers multi-context attachment
-  only.
+  only. *Update 2026-11-16:* specced in [`rule-multi-context.md`](rule-multi-context.md), 1.1.0.
 - **`WildFlyContainerIT`** ([#80](https://github.com/ddeuchert/logaperture/issues/80)) — the
   epic's own required real-WildFly scenario (ERROR trimmed... restated for drop: INFO dropped,
   ERROR kept, non-matching/other-logger kept, survives

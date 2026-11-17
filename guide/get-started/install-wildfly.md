@@ -122,10 +122,8 @@ The server's logging is the context `system`; a deployment's Log4j is `log4j2:` 
 agent line is the same as above; nothing is added to the deployment. When the deployment is redeployed,
 its overrides come back on the new copy.
 
-`drop` and `trim` rules go to one context only, the first by name, which puts a deployment's Log4j
-(`log4j2:…`) before the server's `system`. With such a deployment present, a rule on a logger that lives in
-the server's own logging is not applied. Levels and handler levels reach every context. Tracked in
-[#79](https://github.com/ddeuchert/logaperture/issues/79) for 1.1.0.
+A `drop` or `trim` rule applies to the server's own logging and to every deployment's Log4j at once, so a
+rule on a logger reaches it wherever it is logged from. `logctl list rules` shows it once.
 
 It was tried on WildFly 26.1.3. This setup is checked by hand and not yet by automated tests; if it
 doesn't work for you, [tell us](https://github.com/ddeuchert/logaperture/issues). A Log4j older than 2.20.0

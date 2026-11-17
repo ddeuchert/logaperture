@@ -575,20 +575,21 @@ class AggregateLevelControlTest {
     // --- listRules/resetRule (doc/specs/rule-pipeline-foundation.md) -----------------------------
 
     @Test
-    void listRules_mergesEveryContext_eachTaggedWithItsContext() {
+    void listRules_mergesEveryContext_eachRuleOnce_systemWide() {
+        // doc/specs/rule-multi-context.md M7: one row per rule, and `context` is always "system".
         Ctx system = new Ctx("system");
         Ctx app = new Ctx("myapp.war");
         LogRule systemRule = system.ruleService.attach("com.acme.Worker", CompiledMatchers.matchAll(),
-                RuleAttachOptions.defaults(), TestRule.FACTORY);
+                RuleAttachOptions.defaults(), TestRule.FACTORY, null, "r1");
         LogRule appRule = app.ruleService.attach("com.acme.Other", CompiledMatchers.matchAll(),
-                RuleAttachOptions.defaults(), TestRule.FACTORY);
+                RuleAttachOptions.defaults(), TestRule.FACTORY, null, "r2");
         aggregate.register(system.control);
         aggregate.register(app.control);
 
         List<RuleView> views = aggregate.listRules();
         assertEquals(2, views.size());
         assertTrue(views.stream().anyMatch(v -> v.rule().id().equals(systemRule.id()) && "system".equals(v.context())));
-        assertTrue(views.stream().anyMatch(v -> v.rule().id().equals(appRule.id()) && "myapp.war".equals(v.context())));
+        assertTrue(views.stream().anyMatch(v -> v.rule().id().equals(appRule.id()) && "system".equals(v.context())));
     }
 
     @Test
@@ -617,30 +618,8 @@ class AggregateLevelControlTest {
 
         Optional<RuleView> removed = aggregate.resetRule(appRule.id(), false);
         assertTrue(removed.isPresent());
-        assertEquals("myapp.war", removed.get().context());
+        assertEquals("system", removed.get().context(), "a rule is system-wide: the context field says so");
         assertTrue(aggregate.listRules().isEmpty());
-    }
-
-    @Test
-    void resetRule_aStickyRefusalInOneContextDoesNotBlockAMatchInAnother() {
-        // A code-review finding: rule ids are only unique per context (each
-        // RuleService mints its own sequence independently), so the first
-        // context's own id "r1" can collide with a different, removable
-        // rule "r1" that happens to live in a second context.
-        Ctx system = new Ctx("system");
-        Ctx app = new Ctx("myapp.war");
-        system.ruleService.attach("com.acme.Sticky", CompiledMatchers.matchAll(), RuleAttachOptions.sticky(),
-                TestRule.FACTORY); // becomes "r1" in system's own sequence
-        LogRule collidingId = app.ruleService.attach("com.acme.Other", CompiledMatchers.matchAll(),
-                RuleAttachOptions.defaults(), TestRule.FACTORY); // also "r1", in app's own sequence
-        assertEquals("r1", collidingId.id());
-        aggregate.register(system.control);
-        aggregate.register(app.control);
-
-        Optional<RuleView> removed = aggregate.resetRule("r1", false);
-
-        assertTrue(removed.isPresent(), "system's sticky refusal on the same bare id must not block app's own match");
-        assertEquals("myapp.war", removed.get().context());
     }
 
     @Test
