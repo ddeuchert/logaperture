@@ -906,8 +906,39 @@ so a contributor can reproduce a failing one.
   touches it. On 2.25.0 to 2.25.3 the trim test goes on past the first rule: a reload keeps the trace whole and
   `doctor` keeps saying why, and the rule's hit count is asserted there too.
 
-**Not in this slice:** the Spring Boot, Tomcat and WildFly setup ITs (Slice 9); the gate benchmark; the guide
+**Not in this slice:** the Spring Boot, Tomcat and WildFly setup ITs (Slice 9, now [#396](https://github.com/ddeuchert/logaperture/issues/396) at 1.x; checked by hand instead, below); the gate benchmark; the guide
 pages; mixed `log4j-api` and `log4j-core` versions (A10, still "Not established"); JDK 25.
+
+### Setup hand checks (2026-11-16)
+
+The per-setup, reconfiguration and Actuator items of "Acceptance" were checked by hand against `develop`
+(1.1.0-SNAPSHOT) instead of by automated setup tests: Slice 9 was deferred on 2026-11-03 and is now
+[#396](https://github.com/ddeuchert/logaperture/issues/396), 1.x. Plain JVM stays covered by
+`BundledLog4j2EndToEndIT`. The probe applications are not kept.
+
+| Setup | Result |
+|---|---|
+| Spring Boot 3.5.16 (Log4j 2.24.3) and 4.1.2 (2.25.5), `spring-boot-starter-log4j2`, Actuator | Every item passes: `doctor` runs; `set logger … for` shows debug lines and expires; an appender `set handler` hides lines and `reset handlers` restores them; a `drop` rule removes its lines; a `trim` rule trims with no synthetic class name; `reconfigure()`, a `monitorInterval` reload and a Spring `logging.level` change each leave the override in force, with no errors. Actuator: a change to an overridden logger returns `204`, is put back, is audited (`source=verification-sweep`) and produces the A1 warning; a change to a logger LogAperture does not override is left alone and becomes the baseline (A2), so a later `reset` gives that level back. |
+| Tomcat 11.0.27, three webapps on Log4j 2.20.0, 2.24.3 and 2.25.5 | Each webapp binds as its own context (`log4j2:/appA`, …) and `doctor` runs. Levels (with expiry) and appender levels reach every webapp. **`drop` and `trim` act in the first context only** ([#79](https://github.com/ddeuchert/logaperture/issues/79), now 1.1.0): the first webapp by context key got both, the others still logged every line and whole traces; with it undeployed the next one did, so it is the context's order, not its Log4j version. Where a rule did act, the trim left no synthetic class name. |
+| WildFly 26.1.3, two WARs excluding `org.apache.logging.log4j.api` (2.25.5, 2.24.3) | The same as Tomcat: each deployment is its own context with its own file; levels and handlers reach both; `drop` and `trim` act in the first only (#79). |
+
+Not confirmed: an application that sets its own configuration in `main()` and keeps it (the
+context-selector side is covered by the async modes); `drop` and `trim` in a second context (#79);
+redeploy and undeploy of a webapp (the spike's TC5 and TC7 stand).
+
+**Findings, filed, none blocking:** [#393](https://github.com/ddeuchert/logaperture/issues/393), a broadcast
+`set handler` of a Log4j appender name logs "unknown handler" for the `system` (JUL) context on a Log4j
+2-only app (seen on Spring Boot and Tomcat); [#394](https://github.com/ddeuchert/logaperture/issues/394), on
+Spring Boot 4.1.2 a level seen as INFO about 16 s after startup was put back with an A1 warning (once, not on
+3.5, cause not found). An override expires up to one sweep late (30 s by default), which `list loggers` shows as
+"(now)"; that is the documented sweep.
+
+**Decided with the hand checks:** `top` on Log4j 2 ([#306](https://github.com/ddeuchert/logaperture/issues/306))
+and the warning for names no backend can reach ([#303](https://github.com/ddeuchert/logaperture/issues/303))
+move from 1.1.0 to 1.x; #79 moves to 1.1.0, because the setups this adapter exists for are the ones where
+"first context only" bites. `AggregateLevelControl` orders contexts by key, so `log4j2:…` comes before
+`system`: with both present, a rule on a JBoss LogManager logger is attached to the Log4j context and never
+fires. #79 decides the fan-out.
 
 ### Guide pages and CHANGELOG (written 2026-11-03)
 
@@ -938,7 +969,7 @@ benchmark is done (#332); the pages' cost statements link to its numbers ("Overh
 
 ## Out of scope
 
-`top` on Log4j 2 (A6); Log4j 1 and reload4j; the warning for names no backend can reach (#303);
+`top` on Log4j 2 (A6, #306, 1.x); Log4j 1 and reload4j; the warning for names no backend can reach (#303, 1.x);
 Spring Boot with Logback and a Spring-specific integration (1.2.0); WildFly domain mode and Jakarta
 EE 10 servers (27+) as tested targets; Log4j 2 configured only by `log4j-to-slf4j` (events go to
 Logback, which is controlled there); a Log4j 2 shared by several webapps from Tomcat's `lib/`.
