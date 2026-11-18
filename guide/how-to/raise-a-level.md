@@ -152,16 +152,111 @@ On a terminal, leave out what you don't know. `logctl set` alone asks what to se
 (starting from part of its name, such as `Worker`), the level and the tier, then shows the full
 command before applying it, so you learn the one-line form for next time.
 
-A few things make that quicker when you do it often:
+Three things make that quicker when you do it often: a list of recent loggers, paging through long
+lists, and one-letter levels. The sessions below are from a small Logback application on a plain
+JVM, not WildFly.
 
-- **Type `?` at the logger question** to pick from the loggers you set or added rules to recently.
-  If you have none yet, `logctl` shows the top-level packages that have loggers, such as
-  `org.hibernate` or `com.acme`, to give you something to type. Enter still cancels.
-- **A long list is paged.** When more than 50 loggers match, `logctl` shows the first 50 and Enter
-  shows the next page. Pick by number (`1,3-5`, or `all`), or type a shorter name such as
-  `org.hibernate` to search again under it.
-- **Answer the level with one letter:** `i` INFO, `d` DEBUG, `t` TRACE, `w` WARN, `e` ERROR, `o`
-  OFF. The full name works too.
+### Pick from recent loggers
+
+Type `?` at the logger question to pick from the loggers you set or added rules to recently. Enter
+still cancels.
+
+```
+$ logctl set logger
+Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)
+> ?
+Recent:
+  1  org.hibernate.SQL
+  2  com.shop.web.Router
+Which? (e.g. 1,3 or 1-2 or all; Enter to cancel)
+> 1
+Level? (i=INFO, d=DEBUG, t=TRACE, w=WARN, e=ERROR, o=OFF)
+> t
+How long? session, for <duration> (e.g. for 30m), or sticky [for 4h]
+> for 30m
+Reason (optional)
+> INC-4211 slow checkout
+
+This is the command:
+  logctl set logger org.hibernate.SQL TRACE for 30m --reason "INC-4211 slow checkout"
+Apply? [Y/n]
+>
+org.hibernate.SQL → TRACE   (FOR, reverts 10:04:39 local — in 29m)
+```
+
+The level took one letter, `t`. The letters are `i` INFO, `d` DEBUG, `t` TRACE, `w` WARN, `e` ERROR
+and `o` OFF. The full name works too.
+
+If you have no recent loggers yet, `?` shows the top-level packages that have loggers, to give you
+something to type:
+
+```
+$ logctl set logger
+Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)
+> ?
+No history yet.
+4 top-level packages (from first 144 loggers): com.shop, io.netty, org.apache, org.hibernate.
+Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)
+>
+Not applied.
+```
+
+### A long list is paged
+
+When more than 50 loggers match, `logctl` shows the first 50, and Enter shows the next page. Pick by
+number (`1,3-5`, or `all`, which means every match on every page), or type a shorter name to search
+again under it. A number that isn't in the list is explained and asked again. Rows 4 to 49 and 53 to
+59 are left out here:
+
+```
+$ logctl set logger
+Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)
+> Worker
+60 loggers match '*.Worker'. Page 1 of 2:
+   1  com.shop.billing.audit.Worker    (INFO, native)
+   2  com.shop.billing.batch.Worker    (INFO, native)
+   3  com.shop.billing.cache.Worker    (INFO, native)
+   ...
+  50  com.shop.payments.sync.Worker    (INFO, native)
+Which? (e.g. 1,3 or 1-2 or all, Enter for more, or type to narrow)
+>
+Page 2 of 2:
+  51  com.shop.shipping.audit.Worker  (INFO, native)
+  52  com.shop.shipping.batch.Worker  (INFO, native)
+   ...
+  60  com.shop.shipping.sync.Worker   (INFO, native)
+Which? (e.g. 1,3 or 1-2 or all, Enter to cancel, or type to narrow)
+> com.shop.orders
+21 loggers match 'com.shop.orders.*':
+   1  com.shop.orders               (INFO, native)
+   2  com.shop.orders.audit         (INFO, native)
+   3  com.shop.orders.audit.Worker  (INFO, native)
+   ...
+  21  com.shop.orders.sync.Worker   (INFO, native)
+Which? (e.g. 1,3 or 1-2 or all, Enter to cancel, or type to narrow)
+> 99
+99 isn't in the list -- choose from 1 to 21.
+Which? (e.g. 1,3 or 1-2 or all, Enter to cancel, or type to narrow)
+> 1-2
+Level? (i=INFO, d=DEBUG, t=TRACE, w=WARN, e=ERROR, o=OFF)
+> d
+How long? session, for <duration> (e.g. for 30m), or sticky [for 4h]
+> for 10m
+Reason (optional)
+>
+
+These are the commands:
+  logctl set logger com.shop.orders DEBUG for 10m
+  logctl set logger com.shop.orders.audit DEBUG for 10m
+Apply? [Y/n]
+>
+com.shop.orders → DEBUG   (FOR, reverts 09:44:42 local — in 9m)
+com.shop.orders.audit → DEBUG   (FOR, reverts 09:44:42 local — in 9m)
+```
+
+A name you type there is searched as a prefix: `com.shop.orders` became `com.shop.orders.*`.
+
+### Where the history is kept
 
 Your recent loggers are kept for you, not for the JVM, in `~/.logaperture/recent-loggers` (the last
 50 names, one per line; under `-Dlogaperture.home` if you set it). Delete the file to clear them.

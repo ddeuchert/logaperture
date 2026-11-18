@@ -61,5 +61,28 @@ logger is created.
 
 On a terminal, `logctl set` and `logctl add rule` accept part of a name, such as `Worker`, and list
 the matching loggers to choose from. Type `?` at the logger question to pick from the loggers you
-changed recently, or to see the top-level packages when you have no history. See
-[Raise a log level](raise-a-level.md#let-logctl-ask).
+changed recently, or to see the top-level packages when you have no history. Here it is on a plain
+JVM with nothing set yet:
+
+```
+$ logctl set logger
+Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)
+> ?
+No history yet.
+4 top-level packages (from first 144 loggers): com.shop, io.netty, org.apache, org.hibernate.
+Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)
+> org.hibernate
+Level? (i=INFO, d=DEBUG, t=TRACE, w=WARN, e=ERROR, o=OFF)
+>
+Not applied.
+```
+
+A plain name like `org.hibernate` stands for that logger and everything under it, so the next
+question is the level. Here the session was cancelled there (the end of input). To pick one logger
+under it, type a pattern instead, such as `*.SQL`.
+
+The list shows only the first two parts of each name, and only the deepest of each family, so `com`
+alone isn't listed next to `com.shop`. It is built from the first 200 loggers, so on a large
+application it's a hint for what to type, not a complete list. For the full list, use
+`logctl list loggers --show-all`. See [Raise a log level](raise-a-level.md#let-logctl-ask) for the
+rest: picking from recent loggers, paging through long lists, and one-letter levels.
