@@ -33,7 +33,7 @@ final class Questions {
 
     /** A level name (case-insensitive), with {@code AUTO} too when {@code autoAllowed}; returned upper-case.
      * Single-letter shortcuts: {@code i}=INFO, {@code d}=DEBUG, {@code t}=TRACE, {@code w}=WARN,
-     * {@code e}=ERROR, {@code o}=OFF, {@code a}=ALL. */
+     * {@code e}=ERROR, {@code o}=OFF. */
     static String askLevel(Prompter prompter, String question, boolean autoAllowed) {
         while (true) {
             String answer = prompter.ask("", question);
@@ -60,7 +60,6 @@ final class Questions {
             case 'w' -> "WARN";
             case 'e' -> "ERROR";
             case 'o' -> "OFF";
-            case 'a' -> "ALL";
             default -> token;
         };
     }

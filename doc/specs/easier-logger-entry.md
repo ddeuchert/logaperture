@@ -1,6 +1,7 @@
 # Easier logger entry in guided `set` (issue #TBD)
 
-Status: **draft — not yet signed off.**
+Status: **decisions agreed 2026-11-17** (see "Settled at review"); implemented on this branch; the
+issue number is still to be filled in.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §18.15 (guided commands).
 Builds on: [`guided-add-rule.md`](guided-add-rule.md) "Picking the loggers" (the numbered list, G4/G5,
 the `Which logger?` question), [`guided-commands.md`](guided-commands.md) (#3, #7: the guided
@@ -73,10 +74,11 @@ searched as before (G4: a bare word is `*.<word>`). At the numbered list:
   `org.hibernate.*`, and the narrowed matches are listed the same way. A name with a `*` in it is
   used as typed.
 
-**E5 — Level letters.** `i`=INFO, `d`=DEBUG, `t`=TRACE, `w`=WARN, `e`=ERROR, `o`=OFF, `a`=ALL,
+**E5 — Level letters.** `i`=INFO, `d`=DEBUG, `t`=TRACE, `w`=WARN, `e`=ERROR, `o`=OFF,
 case-insensitive, accepted at the `Level?` question of guided `set`. The prompt shows
 `Level? (i=INFO, d=DEBUG, t=TRACE, w=WARN, e=ERROR, o=OFF)`, plus `or AUTO` where AUTO is allowed
-(handlers). Full names work as before. `a` is ALL, never AUTO, and is not listed in the prompt.
+(handlers). Full names work as before, `ALL` included. There is deliberately no `a`: it could be
+meant as AUTO at the handler question, so it is explained and asked again like any unknown answer.
 
 **E6 — Nothing changes for complete commands.** `logctl set logger <name> <level>` and every
 non-terminal, `--yes` or `--json` use are untouched (G1). Level letters are a prompt convenience and
@@ -91,12 +93,15 @@ ask `Which logger?` and are unchanged, as are rule ids. E5 applies to the `Level
 `set logger` and `set handler`; `add rule`'s level options are not asked through them and do not
 change.
 
-## Open questions
+## Settled at review
 
-1. Should `a` mean ALL, given that AUTO is also a level answer at the handler question? It is
-   accepted but not shown in the prompt, which makes it easy to hit by mistake.
-2. Is a history file in the operator's home directory acceptable where `logctl` is run from a shared
-   or jump host account? (It holds only logger names.)
+- Enter keeps cancelling at `Which logger?`; recent loggers are behind `?` (E2).
+- `add rule` records to the same history as `set logger` (E1).
+- The history file lives in the operator's home directory. It holds only exact logger names, and
+  `-Dlogaperture.home` moves it, as it does the agent's state (E1).
+- There is no `a` level letter: it could be meant as ALL or as AUTO (E5).
+
+There are no open questions.
 
 ## Tests
 

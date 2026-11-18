@@ -45,7 +45,12 @@ class QuestionsLevelTest {
         assertEquals("WARN", ask(false, "w"));
         assertEquals("ERROR", ask(false, "E"));
         assertEquals("OFF", ask(false, "o"));
-        assertEquals("ALL", ask(false, "a"));
+    }
+
+    @Test
+    void aIsNotAShortcut_soItCannotBeMistakenForAuto() {
+        assertEquals("INFO", ask(true, "a", "i"));
+        assertTrue(outBytes.toString(StandardCharsets.UTF_8).length() > 0, "the bad answer was explained");
     }
 
     @Test
