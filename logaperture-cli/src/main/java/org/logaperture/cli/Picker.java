@@ -37,6 +37,9 @@ final class Picker {
 
     private static final String INDENT = "  ";
 
+    /** Typed at {@code Which logger?} to browse recent loggers; not a logger name or pattern. */
+    private static final String RECENT_KEY = "?";
+
     private Picker() {
     }
 
@@ -59,17 +62,26 @@ final class Picker {
         boolean typed = false;
         while (true) {
             if (current == null) {
+                List<String> recent = RecentLoggers.read();
                 String answer = prompter.ask("", "Which logger? A name or pattern, e.g. Deployer or "
-                        + "*.deployment.* (Enter for history)");
+                        + "*.deployment.* (Enter to cancel, ? for recent)");
                 if (answer.isEmpty()) {
-                    List<String> picked = pickRecent(prompter);
-                    if (picked != null) {
-                        return picked;
+                    return null;
+                }
+                if (answer.equals(RECENT_KEY)) {
+                    // A browse aid, not an answer: show what to type, then ask again.
+                    if (recent.isEmpty()) {
+                        out.println("No history yet.");
+                        showTopLevelPrefixes(mbean, out);
+                    } else {
+                        List<String> picked = pickRecent(prompter, recent);
+                        if (picked != null) {
+                            return picked;
+                        }
                     }
-                    showTopLevelPrefixes(mbean, out);
                     continue;
                 }
-                current = narrowNameShorthand(answer);
+                current = shortNameShorthand(answer);
                 typed = true;
             }
             // A trailing '.*' only picks from a subtree here (issue #139): the picked exact names are what get
@@ -165,29 +177,38 @@ final class Picker {
                         + "  " + rows.get(i));
             }
             String enterHint = offset + MAX_LISTED < total ? "Enter for more, " : "Enter to cancel, ";
-            String answer = prompter.ask("", "Which? (e.g. 1,3 or 1-2 or all, "
-                    + enterHint + "or type to narrow)");
-            if (answer.isEmpty()) {
-                if (offset + MAX_LISTED < total) {
-                    offset += MAX_LISTED;
-                    continue;
+            while (true) {
+                String answer = prompter.ask("", "Which? (e.g. 1,3 or 1-2 or all, "
+                        + enterHint + "or type to narrow)");
+                if (answer.isEmpty()) {
+                    if (offset + MAX_LISTED < total) {
+                        offset += MAX_LISTED;
+                        break; // on to the next page
+                    }
+                    return null;
                 }
-                return null;
-            }
-            // Try as a selection first.
-            try {
-                List<Integer> chosen = parseSelection(answer, total);
-                List<String> picked = new ArrayList<>();
-                for (int index : chosen) {
-                    picked.add(allNames.get(index - 1));
+                if (!looksLikeSelection(answer)) {
+                    // A name, not numbers: search again under it (drill-down).
+                    narrowTo[0] = answer;
+                    return null;
                 }
-                return picked;
-            } catch (IllegalArgumentException notASelection) {
-                // Not a selection — treat as a narrower pattern (drill-down).
-                narrowTo[0] = answer;
-                return null;
+                try {
+                    List<String> picked = new ArrayList<>();
+                    for (int index : parseSelection(answer, total)) {
+                        picked.add(allNames.get(index - 1));
+                    }
+                    return picked;
+                } catch (IllegalArgumentException invalid) {
+                    // Numbers, but not valid ones: explained and asked again, like every other selection.
+                    out.println(invalid.getMessage());
+                }
             }
         }
+    }
+
+    /** Whether {@code answer} is meant as a selection ({@code 1,3-5}, {@code all}) rather than a name. */
+    private static boolean looksLikeSelection(String answer) {
+        return answer.equalsIgnoreCase("all") || answer.matches("[0-9,\\- ]+");
     }
 
     /** G4: a name with no {@code *} and no {@code .} is looked up as {@code *.<name>} -- what a log line shows. */
@@ -289,7 +310,7 @@ final class Picker {
     }
 
     /**
-     * When the operator presses Enter at the logger prompt, show the first two segments of every
+     * When the operator asks for recent loggers and there are none, show the first two segments of every
      * known logger name as a quick browse aid. Two segments ({@code org.hibernate}, {@code
      * com.acme}) are more meaningful than one ({@code org}, {@code com}).
      */
@@ -323,14 +344,8 @@ final class Picker {
     }
 
     /** Shows the recent-loggers history as a numbered pick list. Returns chosen names or null if cancelled. */
-    private static List<String> pickRecent(Prompter prompter) {
-        List<String> recent = RecentLoggers.read();
-        if (recent.isEmpty()) {
-            prompter.out().println("No history yet.");
-            return null;
-        }
-        // Use the same paging as pickOrNarrow but without drill-down ability.
-        prompter.out().println("History:");
+    private static List<String> pickRecent(Prompter prompter, List<String> recent) {
+        prompter.out().println("Recent:");
         List<String> rows = new ArrayList<>(recent);
         List<Integer> chosen = choose(prompter, rows);
         if (chosen == null) {

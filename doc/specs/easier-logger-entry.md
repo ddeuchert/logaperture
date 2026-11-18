@@ -11,10 +11,10 @@ Milestone: 1.1.0.
 
 After this feature, the user will be able to:
 
-- Press Enter at `Which logger?` to pick from the loggers they set recently, instead of typing the
-  name again.
-- When there is no history yet, see the top-level packages the JVM has loggers in, to know what to
-  type.
+- Type `?` at `Which logger?` to pick from the loggers they set or added rules to recently, instead
+  of typing the name again.
+- When there is no history yet, type `?` to see the top-level packages the JVM has loggers in, to
+  know what to type.
 - Page through a long list of matching loggers, and type a shorter name to narrow it, instead of
   being told to try a narrower pattern.
 - Answer the `Level?` question with one letter: `i`, `d`, `t`, `w`, `e` or `o`.
@@ -39,18 +39,21 @@ repeatedly while chasing a problem.
 
 ## Decisions
 
-**E1 — Recent loggers.** A successful `set logger` records each logger it set, most recent first,
-without duplicates, keeping the last 50. Pressing Enter at `Which logger?` lists them, numbered, and
-the answer format is the usual `1,3-5` / `all` / Enter to cancel. The history belongs to the
-operator running `logctl`, not to the JVM, so it is the same whichever JVM they attach to. A
-history that can't be read or written never fails a command: it reads as empty and a failed write
-is ignored.
+**E1 — Recent loggers.** A successful `set logger` or `add rule` records each logger it changed,
+most recent first, without duplicates, keeping the last 50. A logger a command was refused for is
+not recorded, and neither is a pattern (`'*.Worker'`): only the exact loggers it applied to. The history belongs to the operator running `logctl`, not to the JVM, so it is the
+same whichever JVM they attach to. It is kept under the same home as the agent's state
+(`-Dlogaperture.home`, default `~/.logaperture`). A history that can't be read or written never
+fails a command: it reads as empty and a failed write is ignored.
 
-**E2 — Enter no longer cancels at `Which logger?`.** It opens history (E1) or, with no history or
-when the history list is cancelled, shows the top-level packages (E3) and asks again. Cancelling is
-Ctrl-C, or Ctrl-D (`Not applied.`, as every guided question already does). This changes what Enter
-did before and applies to every command that asks `Which logger?`, not only `set` (see
-"Scope of the change").
+**E2 — `?` at `Which logger?` shows what to type.** The question becomes
+`Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)`.
+`?` lists the recent loggers (E1), numbered, answered with the usual `1,3-5` / `all` / Enter to
+cancel; cancelling that list asks `Which logger?` again. With no history, `?` says
+`No history yet.` and shows the top-level packages (E3) instead, then asks again. Enter still
+cancels, as at every other guided question. The hint is always shown, so the prompt doesn't change
+with what happens to be in the history. A bare `?` is not a logger name or pattern, so nothing that
+worked before is taken over.
 
 **E3 — Top-level packages.** The first two name segments (`org.hibernate`, `com.acme`) of the
 loggers the JVM knows, sorted, with a note of how many loggers they were taken from. Two segments
@@ -59,9 +62,12 @@ so it stays quick, and says so (`from first 200 loggers`) — it is a hint for w
 complete list.
 
 **E4 — Paging and narrowing.** Matches are listed 50 to a page (was 30, and refused beyond that).
-`Page 1 of N` is shown when there is more than one page. At the numbered list:
+`Page 1 of N` is shown when there is more than one page. A name typed at `Which logger?` is
+searched as before (G4: a bare word is `*.<word>`). At the numbered list:
 
-- a selection (`1,3-5`, `all`) picks from the whole list, whichever page it is on;
+- a selection (`1,3-5`, `all`) picks from the whole list, whichever page it is on. An answer made
+  only of digits, commas, dashes and spaces, or `all`, is always meant as a selection: if it isn't
+  a valid one it is explained and asked again, as every other selection is, and never searched;
 - Enter shows the next page, or cancels on the last;
 - anything else is a **narrower name**, searched as a prefix: `org.hibernate` becomes
   `org.hibernate.*`, and the narrowed matches are listed the same way. A name with a `*` in it is
@@ -79,27 +85,29 @@ are not accepted on the command line.
 ## Scope of the change
 
 The logger picker is shared by guided `set logger` and guided `add rule`, so E2 and E4 apply to
-both. E1 records only from `set logger`. E5 applies to the `Level?` questions of `set logger` and
-`set handler`; `add rule`'s level options are not asked through them and do not change.
+both, and both record to the history (E1), including a complete `add rule <name> …` or
+`set logger <name> <level>` run from a terminal or a script. `list`, `reset` and `alter rule` don't
+ask `Which logger?` and are unchanged, as are rule ids. E5 applies to the `Level?` questions of
+`set logger` and `set handler`; `add rule`'s level options are not asked through them and do not
+change.
 
 ## Open questions
 
-1. Should Enter-to-cancel be kept at `Which logger?` and history moved behind a different key
-   (for example `?` or `h`)? E2 as written is the more convenient and the less discoverable.
-2. Should `add rule` also record to, and read from, the same history?
-3. Should `a` mean ALL, given that AUTO is also a level answer at the handler question? It is
+1. Should `a` mean ALL, given that AUTO is also a level answer at the handler question? It is
    accepted but not shown in the prompt, which makes it easy to hit by mistake.
-4. Is a history file in the operator's home directory acceptable where `logctl` is run from a shared
+2. Is a history file in the operator's home directory acceptable where `logctl` is run from a shared
    or jump host account? (It holds only logger names.)
 
 ## Tests
 
 - Recording: most-recent-first, de-duplication, the 50-entry cap, an unreadable and an unwritable
   history.
-- `Which logger?` + Enter: with history (pick one, `1,3`, cancel), without history (shows packages,
-  asks again).
+- `Which logger?` + Enter cancels. `?` with history (pick one, `1,3`, cancel and asked again) and
+  without history (`No history yet.`, packages, asked again).
+- Recording from `set logger` and `add rule`, for a picked, a typed and a refused logger.
 - Paging: exactly 50, 51 and 120 matches; Enter advances; a selection on page 2 picks the right
   names; `all` picks every match.
-- Narrowing: a typed name replaces the list; a name with `*` is used as typed.
+- Narrowing: a typed name replaces the list; a name with `*` is used as typed. An invalid
+  selection (`1,x`, `0`, `99`, `3-1`) is explained and asked again, never searched.
 - Level letters: each letter, upper case, an unknown letter (asked again), `AUTO` where allowed.
 - The existing tests that assert `too many to list` and `Enter to cancel` are updated for E2/E4.

@@ -25,7 +25,7 @@ import java.util.List;
 
 /**
  * Remembers recently set logger names in {@code ~/.logaperture/recent-loggers},
- * one per line, most recent first. Max 10 entries; duplicates are deduplicated
+ * one per line, most recent first. Max 50 entries; duplicates are deduplicated
  * on save.
  */
 final class RecentLoggers {
@@ -35,8 +35,13 @@ final class RecentLoggers {
     private RecentLoggers() {
     }
 
+    /** {@code ${logaperture.home}/recent-loggers}, home defaulting to {@code ~/.logaperture} as the agent's state does. */
     static Path file() {
-        return Path.of(System.getProperty("user.home"), ".logaperture", "recent-loggers");
+        String configured = System.getProperty("logaperture.home");
+        Path home = configured != null && !configured.isBlank()
+                ? Path.of(configured)
+                : Path.of(System.getProperty("user.home"), ".logaperture");
+        return home.resolve("recent-loggers");
     }
 
     /** Reads recent loggers, most recent first. Never throws. */
@@ -54,6 +59,9 @@ final class RecentLoggers {
 
     /** Records {@code name} as the most recently set logger. Never throws. */
     static void record(String name) {
+        if (name == null || name.isBlank() || name.indexOf('*') >= 0) {
+            return; // a pattern is not a logger: listed back later it would be taken as an exact name
+        }
         Path path = file();
         try {
             Files.createDirectories(path.getParent());
