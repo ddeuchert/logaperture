@@ -391,6 +391,20 @@ class GuidedAddRuleTest {
     }
 
     @Test
+    void thePackageList_leavesOutTheRootAndShallowParents(@TempDir Path home) {
+        // A framework registers a logger for each package level and one for the root.
+        mbean.loggers.add(logger("ROOT"));
+        mbean.loggers.add(logger("com"));
+        mbean.loggers.add(logger("org"));
+        mbean.loggers.add(logger("org.jboss"));
+        withHome(home, () -> {
+            guided(lines("?", ""), "add", "rule");
+
+            assertTrue(out().contains("2 top-level packages (from first 8 loggers): com.acme, org.jboss."), out());
+        });
+    }
+
+    @Test
     void addRule_recordsEachLoggerItAttached(@TempDir Path home) {
         withHome(home, () -> {
             guided(lines("*.batch.Deployer", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule",

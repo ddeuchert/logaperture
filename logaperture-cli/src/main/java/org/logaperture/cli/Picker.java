@@ -335,11 +335,26 @@ final class Picker {
             out.println("Could not list loggers: " + e);
             return;
         }
-        if (prefixes.isEmpty()) {
+        // A framework registers a logger for every level of a package (com, com.shop) and one for the root
+        // (ROOT in Logback): neither says what to type, so keep only the deepest of each family.
+        TreeSet<String> shown = new TreeSet<>();
+        for (String prefix : prefixes) {
+            boolean hasDeeper = false;
+            for (String other : prefixes) {
+                if (other.startsWith(prefix + ".")) {
+                    hasDeeper = true;
+                    break;
+                }
+            }
+            if (!hasDeeper && !prefix.isEmpty() && !prefix.equals("ROOT")) {
+                shown.add(prefix);
+            }
+        }
+        if (shown.isEmpty()) {
             out.println("No loggers are known yet on this JVM.");
         } else {
-            out.println(prefixes.size() + " top-level package" + (prefixes.size() == 1 ? "" : "s")
-                    + " (from first " + seen + " loggers): " + String.join(", ", prefixes) + ".");
+            out.println(shown.size() + " top-level package" + (shown.size() == 1 ? "" : "s")
+                    + " (from first " + seen + " loggers): " + String.join(", ", shown) + ".");
         }
     }
 
