@@ -1,0 +1,1367 @@
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = template, mode = sync, scenario = idle)
+
+# Run progress: 0.00% complete, ETA 00:13:30
+# Fork: 1 of 3
+# Warmup Iteration   1: 834.900 ns/op
+# Warmup Iteration   2: 557.509 ns/op
+# Warmup Iteration   3: 553.929 ns/op
+# Warmup Iteration   4: 569.662 ns/op
+# Warmup Iteration   5: 556.743 ns/op
+Iteration   1: 547.360 ns/op
+Iteration   2: 552.645 ns/op
+Iteration   3: 555.700 ns/op
+Iteration   4: 558.012 ns/op
+Iteration   5: 562.945 ns/op
+Iteration   6: 554.838 ns/op
+Iteration   7: 561.699 ns/op
+Iteration   8: 557.914 ns/op
+Iteration   9: 565.308 ns/op
+Iteration  10: 569.899 ns/op
+
+# Run progress: 1.85% complete, ETA 00:13:54
+# Fork: 2 of 3
+# Warmup Iteration   1: 909.482 ns/op
+# Warmup Iteration   2: 571.325 ns/op
+# Warmup Iteration   3: 561.959 ns/op
+# Warmup Iteration   4: 575.065 ns/op
+# Warmup Iteration   5: 574.250 ns/op
+Iteration   1: 562.780 ns/op
+Iteration   2: 562.895 ns/op
+Iteration   3: 564.273 ns/op
+Iteration   4: 571.903 ns/op
+Iteration   5: 571.696 ns/op
+Iteration   6: 571.951 ns/op
+Iteration   7: 577.820 ns/op
+Iteration   8: 580.309 ns/op
+Iteration   9: 573.575 ns/op
+Iteration  10: 571.309 ns/op
+
+# Run progress: 3.70% complete, ETA 00:13:36
+# Fork: 3 of 3
+# Warmup Iteration   1: 953.710 ns/op
+# Warmup Iteration   2: 575.689 ns/op
+# Warmup Iteration   3: 570.436 ns/op
+# Warmup Iteration   4: 585.114 ns/op
+# Warmup Iteration   5: 584.833 ns/op
+Iteration   1: 575.147 ns/op
+Iteration   2: 564.780 ns/op
+Iteration   3: 573.686 ns/op
+Iteration   4: 580.406 ns/op
+Iteration   5: 579.344 ns/op
+Iteration   6: 581.483 ns/op
+Iteration   7: 579.830 ns/op
+Iteration   8: 579.784 ns/op
+Iteration   9: 580.124 ns/op
+Iteration  10: 579.362 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  568.959 ±(99.9%) 6.507 ns/op [Average]
+  (min, avg, max) = (547.360, 568.959, 581.483), stdev = 9.740
+  CI (99.9%): [562.452, 575.467] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = template, mode = sync, scenario = drop-miss)
+
+# Run progress: 5.56% complete, ETA 00:13:20
+# Fork: 1 of 3
+# Warmup Iteration   1: 838.117 ns/op
+# Warmup Iteration   2: 597.906 ns/op
+# Warmup Iteration   3: 574.942 ns/op
+# Warmup Iteration   4: 582.365 ns/op
+# Warmup Iteration   5: 578.787 ns/op
+Iteration   1: 567.967 ns/op
+Iteration   2: 567.890 ns/op
+Iteration   3: 574.666 ns/op
+Iteration   4: 586.030 ns/op
+Iteration   5: 585.572 ns/op
+Iteration   6: 585.153 ns/op
+Iteration   7: 585.429 ns/op
+Iteration   8: 585.113 ns/op
+Iteration   9: 589.704 ns/op
+Iteration  10: 595.186 ns/op
+
+# Run progress: 7.41% complete, ETA 00:13:04
+# Fork: 2 of 3
+# Warmup Iteration   1: 979.513 ns/op
+# Warmup Iteration   2: 613.117 ns/op
+# Warmup Iteration   3: 615.379 ns/op
+# Warmup Iteration   4: 620.258 ns/op
+# Warmup Iteration   5: 625.223 ns/op
+Iteration   1: 607.671 ns/op
+Iteration   2: 606.797 ns/op
+Iteration   3: 607.038 ns/op
+Iteration   4: 622.046 ns/op
+Iteration   5: 632.776 ns/op
+Iteration   6: 622.688 ns/op
+Iteration   7: 623.570 ns/op
+Iteration   8: 625.538 ns/op
+Iteration   9: 623.909 ns/op
+Iteration  10: 624.980 ns/op
+
+# Run progress: 9.26% complete, ETA 00:12:49
+# Fork: 3 of 3
+# Warmup Iteration   1: 843.546 ns/op
+# Warmup Iteration   2: 551.235 ns/op
+# Warmup Iteration   3: 560.434 ns/op
+# Warmup Iteration   4: 574.023 ns/op
+# Warmup Iteration   5: 565.219 ns/op
+Iteration   1: 553.110 ns/op
+Iteration   2: 551.709 ns/op
+Iteration   3: 559.350 ns/op
+Iteration   4: 563.164 ns/op
+Iteration   5: 564.026 ns/op
+Iteration   6: 566.734 ns/op
+Iteration   7: 563.053 ns/op
+Iteration   8: 562.712 ns/op
+Iteration   9: 567.395 ns/op
+Iteration  10: 568.992 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  587.999 ±(99.9%) 17.065 ns/op [Average]
+  (min, avg, max) = (551.709, 587.999, 632.776), stdev = 25.542
+  CI (99.9%): [570.934, 605.064] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = template, mode = async-appender, scenario = idle)
+
+# Run progress: 11.11% complete, ETA 00:12:33
+# Fork: 1 of 3
+# Warmup Iteration   1: 1227.011 ns/op
+# Warmup Iteration   2: 851.521 ns/op
+# Warmup Iteration   3: 807.382 ns/op
+# Warmup Iteration   4: 776.090 ns/op
+# Warmup Iteration   5: 775.547 ns/op
+Iteration   1: 753.894 ns/op
+Iteration   2: 742.781 ns/op
+Iteration   3: 777.950 ns/op
+Iteration   4: 769.341 ns/op
+Iteration   5: 746.697 ns/op
+Iteration   6: 758.628 ns/op
+Iteration   7: 765.315 ns/op
+Iteration   8: 738.017 ns/op
+Iteration   9: 769.179 ns/op
+Iteration  10: 767.336 ns/op
+
+# Run progress: 12.96% complete, ETA 00:12:17
+# Fork: 2 of 3
+# Warmup Iteration   1: 1843.585 ns/op
+# Warmup Iteration   2: 817.549 ns/op
+# Warmup Iteration   3: 837.863 ns/op
+# Warmup Iteration   4: 755.310 ns/op
+# Warmup Iteration   5: 759.372 ns/op
+Iteration   1: 754.743 ns/op
+Iteration   2: 759.679 ns/op
+Iteration   3: 756.707 ns/op
+Iteration   4: 762.567 ns/op
+Iteration   5: 758.468 ns/op
+Iteration   6: 767.821 ns/op
+Iteration   7: 757.465 ns/op
+Iteration   8: 765.053 ns/op
+Iteration   9: 743.092 ns/op
+Iteration  10: 759.160 ns/op
+
+# Run progress: 14.81% complete, ETA 00:12:01
+# Fork: 3 of 3
+# Warmup Iteration   1: 1052.480 ns/op
+# Warmup Iteration   2: 868.321 ns/op
+# Warmup Iteration   3: 758.680 ns/op
+# Warmup Iteration   4: 740.032 ns/op
+# Warmup Iteration   5: 721.633 ns/op
+Iteration   1: 722.218 ns/op
+Iteration   2: 727.934 ns/op
+Iteration   3: 732.936 ns/op
+Iteration   4: 717.260 ns/op
+Iteration   5: 730.540 ns/op
+Iteration   6: 730.036 ns/op
+Iteration   7: 724.487 ns/op
+Iteration   8: 732.602 ns/op
+Iteration   9: 729.021 ns/op
+Iteration  10: 724.945 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  748.196 ±(99.9%) 11.638 ns/op [Average]
+  (min, avg, max) = (717.260, 748.196, 777.950), stdev = 17.419
+  CI (99.9%): [736.558, 759.834] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = template, mode = async-appender, scenario = drop-miss)
+
+# Run progress: 16.67% complete, ETA 00:11:46
+# Fork: 1 of 3
+# Warmup Iteration   1: 1138.430 ns/op
+# Warmup Iteration   2: 872.015 ns/op
+# Warmup Iteration   3: 807.455 ns/op
+# Warmup Iteration   4: 776.784 ns/op
+# Warmup Iteration   5: 771.267 ns/op
+Iteration   1: 782.745 ns/op
+Iteration   2: 772.028 ns/op
+Iteration   3: 762.439 ns/op
+Iteration   4: 771.422 ns/op
+Iteration   5: 761.946 ns/op
+Iteration   6: 762.389 ns/op
+Iteration   7: 773.076 ns/op
+Iteration   8: 779.159 ns/op
+Iteration   9: 774.086 ns/op
+Iteration  10: 776.370 ns/op
+
+# Run progress: 18.52% complete, ETA 00:11:30
+# Fork: 2 of 3
+# Warmup Iteration   1: 1781.710 ns/op
+# Warmup Iteration   2: 921.373 ns/op
+# Warmup Iteration   3: 814.328 ns/op
+# Warmup Iteration   4: 764.524 ns/op
+# Warmup Iteration   5: 763.880 ns/op
+Iteration   1: 773.371 ns/op
+Iteration   2: 768.824 ns/op
+Iteration   3: 745.274 ns/op
+Iteration   4: 754.939 ns/op
+Iteration   5: 744.856 ns/op
+Iteration   6: 743.808 ns/op
+Iteration   7: 743.117 ns/op
+Iteration   8: 738.436 ns/op
+Iteration   9: 742.396 ns/op
+Iteration  10: 743.123 ns/op
+
+# Run progress: 20.37% complete, ETA 00:11:15
+# Fork: 3 of 3
+# Warmup Iteration   1: 1554.976 ns/op
+# Warmup Iteration   2: 763.799 ns/op
+# Warmup Iteration   3: 805.648 ns/op
+# Warmup Iteration   4: 749.789 ns/op
+# Warmup Iteration   5: 703.288 ns/op
+Iteration   1: 736.624 ns/op
+Iteration   2: 755.707 ns/op
+Iteration   3: 766.646 ns/op
+Iteration   4: 757.666 ns/op
+Iteration   5: 738.177 ns/op
+Iteration   6: 755.805 ns/op
+Iteration   7: 770.342 ns/op
+Iteration   8: 788.716 ns/op
+Iteration   9: 786.277 ns/op
+Iteration  10: 785.103 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  761.829 ±(99.9%) 10.678 ns/op [Average]
+  (min, avg, max) = (736.624, 761.829, 788.716), stdev = 15.983
+  CI (99.9%): [751.151, 772.507] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = template, mode = async-loggers, scenario = idle)
+
+# Run progress: 22.22% complete, ETA 00:10:59
+# Fork: 1 of 3
+# Warmup Iteration   1: 743.917 ns/op
+# Warmup Iteration   2: 452.468 ns/op
+# Warmup Iteration   3: 452.152 ns/op
+# Warmup Iteration   4: 446.879 ns/op
+# Warmup Iteration   5: 453.693 ns/op
+Iteration   1: 454.666 ns/op
+Iteration   2: 453.450 ns/op
+Iteration   3: 452.205 ns/op
+Iteration   4: 452.593 ns/op
+Iteration   5: 466.145 ns/op
+Iteration   6: 453.014 ns/op
+Iteration   7: 454.078 ns/op
+Iteration   8: 454.161 ns/op
+Iteration   9: 462.121 ns/op
+Iteration  10: 452.439 ns/op
+
+# Run progress: 24.07% complete, ETA 00:10:43
+# Fork: 2 of 3
+# Warmup Iteration   1: 658.217 ns/op
+# Warmup Iteration   2: 463.119 ns/op
+# Warmup Iteration   3: 466.193 ns/op
+# Warmup Iteration   4: 460.357 ns/op
+# Warmup Iteration   5: 468.051 ns/op
+Iteration   1: 471.458 ns/op
+Iteration   2: 468.852 ns/op
+Iteration   3: 466.272 ns/op
+Iteration   4: 463.717 ns/op
+Iteration   5: 469.487 ns/op
+Iteration   6: 467.774 ns/op
+Iteration   7: 467.037 ns/op
+Iteration   8: 469.061 ns/op
+Iteration   9: 463.547 ns/op
+Iteration  10: 465.323 ns/op
+
+# Run progress: 25.93% complete, ETA 00:10:27
+# Fork: 3 of 3
+# Warmup Iteration   1: 688.464 ns/op
+# Warmup Iteration   2: 471.525 ns/op
+# Warmup Iteration   3: 470.621 ns/op
+# Warmup Iteration   4: 474.393 ns/op
+# Warmup Iteration   5: 473.503 ns/op
+Iteration   1: 471.062 ns/op
+Iteration   2: 474.489 ns/op
+Iteration   3: 474.624 ns/op
+Iteration   4: 476.743 ns/op
+Iteration   5: 477.522 ns/op
+Iteration   6: 487.382 ns/op
+Iteration   7: 473.480 ns/op
+Iteration   8: 471.266 ns/op
+Iteration   9: 475.630 ns/op
+Iteration  10: 473.143 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  466.091 ±(99.9%) 6.186 ns/op [Average]
+  (min, avg, max) = (452.205, 466.091, 487.382), stdev = 9.259
+  CI (99.9%): [459.906, 472.277] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = template, mode = async-loggers, scenario = drop-miss)
+
+# Run progress: 27.78% complete, ETA 00:10:11
+# Fork: 1 of 3
+# Warmup Iteration   1: 765.274 ns/op
+# Warmup Iteration   2: 534.705 ns/op
+# Warmup Iteration   3: 540.434 ns/op
+# Warmup Iteration   4: 536.812 ns/op
+# Warmup Iteration   5: 533.888 ns/op
+Iteration   1: 544.315 ns/op
+Iteration   2: 538.095 ns/op
+Iteration   3: 539.305 ns/op
+Iteration   4: 537.680 ns/op
+Iteration   5: 534.243 ns/op
+Iteration   6: 534.498 ns/op
+Iteration   7: 533.161 ns/op
+Iteration   8: 541.002 ns/op
+Iteration   9: 539.760 ns/op
+Iteration  10: 534.336 ns/op
+
+# Run progress: 29.63% complete, ETA 00:09:55
+# Fork: 2 of 3
+# Warmup Iteration   1: 785.418 ns/op
+# Warmup Iteration   2: 543.241 ns/op
+# Warmup Iteration   3: 544.593 ns/op
+# Warmup Iteration   4: 539.076 ns/op
+# Warmup Iteration   5: 538.616 ns/op
+Iteration   1: 541.454 ns/op
+Iteration   2: 539.188 ns/op
+Iteration   3: 539.798 ns/op
+Iteration   4: 545.572 ns/op
+Iteration   5: 538.315 ns/op
+Iteration   6: 541.186 ns/op
+Iteration   7: 541.586 ns/op
+Iteration   8: 534.215 ns/op
+Iteration   9: 535.724 ns/op
+Iteration  10: 535.979 ns/op
+
+# Run progress: 31.48% complete, ETA 00:09:40
+# Fork: 3 of 3
+# Warmup Iteration   1: 756.052 ns/op
+# Warmup Iteration   2: 541.671 ns/op
+# Warmup Iteration   3: 540.151 ns/op
+# Warmup Iteration   4: 539.271 ns/op
+# Warmup Iteration   5: 540.374 ns/op
+Iteration   1: 560.473 ns/op
+Iteration   2: 541.696 ns/op
+Iteration   3: 559.896 ns/op
+Iteration   4: 541.407 ns/op
+Iteration   5: 543.258 ns/op
+Iteration   6: 543.084 ns/op
+Iteration   7: 537.128 ns/op
+Iteration   8: 538.387 ns/op
+Iteration   9: 536.584 ns/op
+Iteration  10: 538.365 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  540.323 ±(99.9%) 4.193 ns/op [Average]
+  (min, avg, max) = (533.161, 540.323, 560.473), stdev = 6.275
+  CI (99.9%): [536.130, 544.516] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = concatenated, mode = sync, scenario = idle)
+
+# Run progress: 33.33% complete, ETA 00:09:24
+# Fork: 1 of 3
+# Warmup Iteration   1: 685.350 ns/op
+# Warmup Iteration   2: 495.939 ns/op
+# Warmup Iteration   3: 536.125 ns/op
+# Warmup Iteration   4: 504.796 ns/op
+# Warmup Iteration   5: 455.721 ns/op
+Iteration   1: 457.624 ns/op
+Iteration   2: 473.057 ns/op
+Iteration   3: 457.867 ns/op
+Iteration   4: 459.471 ns/op
+Iteration   5: 458.114 ns/op
+Iteration   6: 457.371 ns/op
+Iteration   7: 455.204 ns/op
+Iteration   8: 457.342 ns/op
+Iteration   9: 457.874 ns/op
+Iteration  10: 456.334 ns/op
+
+# Run progress: 35.19% complete, ETA 00:09:08
+# Fork: 2 of 3
+# Warmup Iteration   1: 689.036 ns/op
+# Warmup Iteration   2: 495.796 ns/op
+# Warmup Iteration   3: 527.545 ns/op
+# Warmup Iteration   4: 498.297 ns/op
+# Warmup Iteration   5: 453.328 ns/op
+Iteration   1: 451.168 ns/op
+Iteration   2: 460.268 ns/op
+Iteration   3: 449.303 ns/op
+Iteration   4: 454.378 ns/op
+Iteration   5: 458.842 ns/op
+Iteration   6: 461.382 ns/op
+Iteration   7: 462.361 ns/op
+Iteration   8: 460.943 ns/op
+Iteration   9: 451.441 ns/op
+Iteration  10: 456.801 ns/op
+
+# Run progress: 37.04% complete, ETA 00:08:53
+# Fork: 3 of 3
+# Warmup Iteration   1: 595.766 ns/op
+# Warmup Iteration   2: 471.500 ns/op
+# Warmup Iteration   3: 489.270 ns/op
+# Warmup Iteration   4: 440.939 ns/op
+# Warmup Iteration   5: 416.079 ns/op
+Iteration   1: 417.299 ns/op
+Iteration   2: 412.115 ns/op
+Iteration   3: 413.438 ns/op
+Iteration   4: 419.779 ns/op
+Iteration   5: 417.194 ns/op
+Iteration   6: 416.767 ns/op
+Iteration   7: 416.108 ns/op
+Iteration   8: 412.742 ns/op
+Iteration   9: 416.865 ns/op
+Iteration  10: 412.718 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  443.739 ±(99.9%) 13.862 ns/op [Average]
+  (min, avg, max) = (412.115, 443.739, 473.057), stdev = 20.748
+  CI (99.9%): [429.877, 457.601] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = concatenated, mode = sync, scenario = drop-miss)
+
+# Run progress: 38.89% complete, ETA 00:08:37
+# Fork: 1 of 3
+# Warmup Iteration   1: 702.619 ns/op
+# Warmup Iteration   2: 501.727 ns/op
+# Warmup Iteration   3: 552.444 ns/op
+# Warmup Iteration   4: 512.108 ns/op
+# Warmup Iteration   5: 463.590 ns/op
+Iteration   1: 465.866 ns/op
+Iteration   2: 468.780 ns/op
+Iteration   3: 468.050 ns/op
+Iteration   4: 467.051 ns/op
+Iteration   5: 466.100 ns/op
+Iteration   6: 465.817 ns/op
+Iteration   7: 461.795 ns/op
+Iteration   8: 464.080 ns/op
+Iteration   9: 465.461 ns/op
+Iteration  10: 464.060 ns/op
+
+# Run progress: 40.74% complete, ETA 00:08:21
+# Fork: 2 of 3
+# Warmup Iteration   1: 721.887 ns/op
+# Warmup Iteration   2: 505.639 ns/op
+# Warmup Iteration   3: 541.975 ns/op
+# Warmup Iteration   4: 518.767 ns/op
+# Warmup Iteration   5: 467.364 ns/op
+Iteration   1: 468.528 ns/op
+Iteration   2: 480.363 ns/op
+Iteration   3: 470.430 ns/op
+Iteration   4: 466.361 ns/op
+Iteration   5: 463.218 ns/op
+Iteration   6: 472.139 ns/op
+Iteration   7: 460.233 ns/op
+Iteration   8: 464.291 ns/op
+Iteration   9: 461.471 ns/op
+Iteration  10: 459.241 ns/op
+
+# Run progress: 42.59% complete, ETA 00:08:06
+# Fork: 3 of 3
+# Warmup Iteration   1: 719.086 ns/op
+# Warmup Iteration   2: 513.098 ns/op
+# Warmup Iteration   3: 550.966 ns/op
+# Warmup Iteration   4: 531.672 ns/op
+# Warmup Iteration   5: 476.540 ns/op
+Iteration   1: 477.275 ns/op
+Iteration   2: 469.588 ns/op
+Iteration   3: 468.215 ns/op
+Iteration   4: 475.830 ns/op
+Iteration   5: 471.576 ns/op
+Iteration   6: 473.453 ns/op
+Iteration   7: 478.483 ns/op
+Iteration   8: 478.747 ns/op
+Iteration   9: 473.008 ns/op
+Iteration  10: 468.325 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  468.594 ±(99.9%) 3.759 ns/op [Average]
+  (min, avg, max) = (459.241, 468.594, 480.363), stdev = 5.626
+  CI (99.9%): [464.836, 472.353] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = concatenated, mode = async-appender, scenario = idle)
+
+# Run progress: 44.44% complete, ETA 00:07:50
+# Fork: 1 of 3
+# Warmup Iteration   1: 1389.517 ns/op
+# Warmup Iteration   2: 537.164 ns/op
+# Warmup Iteration   3: 405.074 ns/op
+# Warmup Iteration   4: 438.702 ns/op
+# Warmup Iteration   5: 431.229 ns/op
+Iteration   1: 481.542 ns/op
+Iteration   2: 403.183 ns/op
+Iteration   3: 405.038 ns/op
+Iteration   4: 407.070 ns/op
+Iteration   5: 411.684 ns/op
+Iteration   6: 399.695 ns/op
+Iteration   7: 410.978 ns/op
+Iteration   8: 408.436 ns/op
+Iteration   9: 407.015 ns/op
+Iteration  10: 411.191 ns/op
+
+# Run progress: 46.30% complete, ETA 00:07:34
+# Fork: 2 of 3
+# Warmup Iteration   1: 982.053 ns/op
+# Warmup Iteration   2: 574.580 ns/op
+# Warmup Iteration   3: 522.824 ns/op
+# Warmup Iteration   4: 521.619 ns/op
+# Warmup Iteration   5: 498.888 ns/op
+Iteration   1: 501.938 ns/op
+Iteration   2: 423.874 ns/op
+Iteration   3: 424.218 ns/op
+Iteration   4: 423.186 ns/op
+Iteration   5: 435.685 ns/op
+Iteration   6: 423.919 ns/op
+Iteration   7: 431.590 ns/op
+Iteration   8: 416.569 ns/op
+Iteration   9: 397.614 ns/op
+Iteration  10: 409.098 ns/op
+
+# Run progress: 48.15% complete, ETA 00:07:19
+# Fork: 3 of 3
+# Warmup Iteration   1: 1085.629 ns/op
+# Warmup Iteration   2: 605.137 ns/op
+# Warmup Iteration   3: 454.537 ns/op
+# Warmup Iteration   4: 416.952 ns/op
+# Warmup Iteration   5: 417.430 ns/op
+Iteration   1: 422.183 ns/op
+Iteration   2: 429.569 ns/op
+Iteration   3: 420.540 ns/op
+Iteration   4: 429.640 ns/op
+Iteration   5: 431.270 ns/op
+Iteration   6: 440.764 ns/op
+Iteration   7: 445.804 ns/op
+Iteration   8: 403.187 ns/op
+Iteration   9: 414.894 ns/op
+Iteration  10: 422.292 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  423.122 ±(99.9%) 15.003 ns/op [Average]
+  (min, avg, max) = (397.614, 423.122, 501.938), stdev = 22.456
+  CI (99.9%): [408.119, 438.125] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = concatenated, mode = async-appender, scenario = drop-miss)
+
+# Run progress: 50.00% complete, ETA 00:07:03
+# Fork: 1 of 3
+# Warmup Iteration   1: 1298.417 ns/op
+# Warmup Iteration   2: 554.156 ns/op
+# Warmup Iteration   3: 376.550 ns/op
+# Warmup Iteration   4: 370.981 ns/op
+# Warmup Iteration   5: 391.140 ns/op
+Iteration   1: 403.535 ns/op
+Iteration   2: 412.947 ns/op
+Iteration   3: 426.206 ns/op
+Iteration   4: 438.460 ns/op
+Iteration   5: 438.524 ns/op
+Iteration   6: 424.154 ns/op
+Iteration   7: 427.996 ns/op
+Iteration   8: 413.349 ns/op
+Iteration   9: 432.552 ns/op
+Iteration  10: 383.091 ns/op
+
+# Run progress: 51.85% complete, ETA 00:06:47
+# Fork: 2 of 3
+# Warmup Iteration   1: 986.573 ns/op
+# Warmup Iteration   2: 504.110 ns/op
+# Warmup Iteration   3: 454.063 ns/op
+# Warmup Iteration   4: 490.370 ns/op
+# Warmup Iteration   5: 448.810 ns/op
+Iteration   1: 449.617 ns/op
+Iteration   2: 451.332 ns/op
+Iteration   3: 448.395 ns/op
+Iteration   4: 446.354 ns/op
+Iteration   5: 446.809 ns/op
+Iteration   6: 451.087 ns/op
+Iteration   7: 448.540 ns/op
+Iteration   8: 438.917 ns/op
+Iteration   9: 454.867 ns/op
+Iteration  10: 446.234 ns/op
+
+# Run progress: 53.70% complete, ETA 00:06:32
+# Fork: 3 of 3
+# Warmup Iteration   1: 1091.432 ns/op
+# Warmup Iteration   2: 573.001 ns/op
+# Warmup Iteration   3: 401.813 ns/op
+# Warmup Iteration   4: 351.944 ns/op
+# Warmup Iteration   5: 382.046 ns/op
+Iteration   1: 406.804 ns/op
+Iteration   2: 435.680 ns/op
+Iteration   3: 390.288 ns/op
+Iteration   4: 371.911 ns/op
+Iteration   5: 431.423 ns/op
+Iteration   6: 336.748 ns/op
+Iteration   7: 336.051 ns/op
+Iteration   8: 334.450 ns/op
+Iteration   9: 335.331 ns/op
+Iteration  10: 331.227 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  413.096 ±(99.9%) 27.595 ns/op [Average]
+  (min, avg, max) = (331.227, 413.096, 454.867), stdev = 41.303
+  CI (99.9%): [385.501, 440.691] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = concatenated, mode = async-loggers, scenario = idle)
+
+# Run progress: 55.56% complete, ETA 00:06:16
+# Fork: 1 of 3
+# Warmup Iteration   1: 489.950 ns/op
+# Warmup Iteration   2: 312.059 ns/op
+# Warmup Iteration   3: 310.417 ns/op
+# Warmup Iteration   4: 307.485 ns/op
+# Warmup Iteration   5: 303.087 ns/op
+Iteration   1: 308.260 ns/op
+Iteration   2: 321.070 ns/op
+Iteration   3: 302.010 ns/op
+Iteration   4: 303.037 ns/op
+Iteration   5: 301.569 ns/op
+Iteration   6: 301.931 ns/op
+Iteration   7: 307.351 ns/op
+Iteration   8: 302.709 ns/op
+Iteration   9: 301.383 ns/op
+Iteration  10: 303.825 ns/op
+
+# Run progress: 57.41% complete, ETA 00:06:00
+# Fork: 2 of 3
+# Warmup Iteration   1: 496.637 ns/op
+# Warmup Iteration   2: 310.040 ns/op
+# Warmup Iteration   3: 313.318 ns/op
+# Warmup Iteration   4: 307.286 ns/op
+# Warmup Iteration   5: 304.313 ns/op
+Iteration   1: 310.050 ns/op
+Iteration   2: 304.932 ns/op
+Iteration   3: 306.815 ns/op
+Iteration   4: 304.845 ns/op
+Iteration   5: 303.996 ns/op
+Iteration   6: 304.265 ns/op
+Iteration   7: 304.186 ns/op
+Iteration   8: 310.152 ns/op
+Iteration   9: 303.619 ns/op
+Iteration  10: 307.320 ns/op
+
+# Run progress: 59.26% complete, ETA 00:05:45
+# Fork: 3 of 3
+# Warmup Iteration   1: 491.705 ns/op
+# Warmup Iteration   2: 308.749 ns/op
+# Warmup Iteration   3: 311.328 ns/op
+# Warmup Iteration   4: 302.505 ns/op
+# Warmup Iteration   5: 304.081 ns/op
+Iteration   1: 304.111 ns/op
+Iteration   2: 303.864 ns/op
+Iteration   3: 304.643 ns/op
+Iteration   4: 305.201 ns/op
+Iteration   5: 308.269 ns/op
+Iteration   6: 303.790 ns/op
+Iteration   7: 312.056 ns/op
+Iteration   8: 304.668 ns/op
+Iteration   9: 304.608 ns/op
+Iteration  10: 303.711 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  305.608 ±(99.9%) 2.626 ns/op [Average]
+  (min, avg, max) = (301.383, 305.608, 321.070), stdev = 3.930
+  CI (99.9%): [302.982, 308.234] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = concatenated, mode = async-loggers, scenario = drop-miss)
+
+# Run progress: 61.11% complete, ETA 00:05:29
+# Fork: 1 of 3
+# Warmup Iteration   1: 528.276 ns/op
+# Warmup Iteration   2: 325.621 ns/op
+# Warmup Iteration   3: 329.615 ns/op
+# Warmup Iteration   4: 312.296 ns/op
+# Warmup Iteration   5: 303.078 ns/op
+Iteration   1: 303.065 ns/op
+Iteration   2: 304.077 ns/op
+Iteration   3: 301.370 ns/op
+Iteration   4: 305.776 ns/op
+Iteration   5: 301.603 ns/op
+Iteration   6: 302.259 ns/op
+Iteration   7: 301.271 ns/op
+Iteration   8: 302.318 ns/op
+Iteration   9: 305.452 ns/op
+Iteration  10: 302.043 ns/op
+
+# Run progress: 62.96% complete, ETA 00:05:14
+# Fork: 2 of 3
+# Warmup Iteration   1: 555.930 ns/op
+# Warmup Iteration   2: 319.960 ns/op
+# Warmup Iteration   3: 316.436 ns/op
+# Warmup Iteration   4: 308.847 ns/op
+# Warmup Iteration   5: 304.518 ns/op
+Iteration   1: 303.616 ns/op
+Iteration   2: 302.645 ns/op
+Iteration   3: 302.039 ns/op
+Iteration   4: 313.090 ns/op
+Iteration   5: 305.603 ns/op
+Iteration   6: 302.401 ns/op
+Iteration   7: 302.458 ns/op
+Iteration   8: 303.176 ns/op
+Iteration   9: 304.837 ns/op
+Iteration  10: 304.650 ns/op
+
+# Run progress: 64.81% complete, ETA 00:04:58
+# Fork: 3 of 3
+# Warmup Iteration   1: 540.347 ns/op
+# Warmup Iteration   2: 322.662 ns/op
+# Warmup Iteration   3: 326.250 ns/op
+# Warmup Iteration   4: 320.610 ns/op
+# Warmup Iteration   5: 321.374 ns/op
+Iteration   1: 322.477 ns/op
+Iteration   2: 322.348 ns/op
+Iteration   3: 324.338 ns/op
+Iteration   4: 324.541 ns/op
+Iteration   5: 327.226 ns/op
+Iteration   6: 326.235 ns/op
+Iteration   7: 324.808 ns/op
+Iteration   8: 328.114 ns/op
+Iteration   9: 321.921 ns/op
+Iteration  10: 321.414 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  310.572 ±(99.9%) 6.823 ns/op [Average]
+  (min, avg, max) = (301.271, 310.572, 328.114), stdev = 10.212
+  CI (99.9%): [303.750, 317.395] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = throwable, mode = sync, scenario = idle)
+
+# Run progress: 66.67% complete, ETA 00:04:42
+# Fork: 1 of 3
+# Warmup Iteration   1: 15052.125 ns/op
+# Warmup Iteration   2: 5750.862 ns/op
+# Warmup Iteration   3: 6432.114 ns/op
+# Warmup Iteration   4: 5687.861 ns/op
+# Warmup Iteration   5: 5734.424 ns/op
+Iteration   1: 5715.655 ns/op
+Iteration   2: 5739.095 ns/op
+Iteration   3: 5716.429 ns/op
+Iteration   4: 5743.307 ns/op
+Iteration   5: 5711.142 ns/op
+Iteration   6: 5736.343 ns/op
+Iteration   7: 5727.639 ns/op
+Iteration   8: 5698.821 ns/op
+Iteration   9: 5724.647 ns/op
+Iteration  10: 5740.706 ns/op
+
+# Run progress: 68.52% complete, ETA 00:04:26
+# Fork: 2 of 3
+# Warmup Iteration   1: 16254.694 ns/op
+# Warmup Iteration   2: 5826.480 ns/op
+# Warmup Iteration   3: 6611.275 ns/op
+# Warmup Iteration   4: 5760.033 ns/op
+# Warmup Iteration   5: 5757.672 ns/op
+Iteration   1: 5748.713 ns/op
+Iteration   2: 5749.791 ns/op
+Iteration   3: 5803.629 ns/op
+Iteration   4: 5747.514 ns/op
+Iteration   5: 5747.228 ns/op
+Iteration   6: 5790.922 ns/op
+Iteration   7: 5733.406 ns/op
+Iteration   8: 5734.836 ns/op
+Iteration   9: 5734.121 ns/op
+Iteration  10: 5766.810 ns/op
+
+# Run progress: 70.37% complete, ETA 00:04:11
+# Fork: 3 of 3
+# Warmup Iteration   1: 15589.863 ns/op
+# Warmup Iteration   2: 5983.421 ns/op
+# Warmup Iteration   3: 6630.576 ns/op
+# Warmup Iteration   4: 5878.908 ns/op
+# Warmup Iteration   5: 5815.605 ns/op
+Iteration   1: 5837.610 ns/op
+Iteration   2: 5814.196 ns/op
+Iteration   3: 5803.641 ns/op
+Iteration   4: 5998.083 ns/op
+Iteration   5: 5800.868 ns/op
+Iteration   6: 5810.078 ns/op
+Iteration   7: 5826.323 ns/op
+Iteration   8: 5809.460 ns/op
+Iteration   9: 5797.856 ns/op
+Iteration  10: 5788.005 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  5769.896 ±(99.9%) 38.691 ns/op [Average]
+  (min, avg, max) = (5698.821, 5769.896, 5998.083), stdev = 57.911
+  CI (99.9%): [5731.205, 5808.587] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = throwable, mode = sync, scenario = drop-miss)
+
+# Run progress: 72.22% complete, ETA 00:03:55
+# Fork: 1 of 3
+# Warmup Iteration   1: 14435.141 ns/op
+# Warmup Iteration   2: 6043.024 ns/op
+# Warmup Iteration   3: 6008.986 ns/op
+# Warmup Iteration   4: 5975.747 ns/op
+# Warmup Iteration   5: 5906.621 ns/op
+Iteration   1: 5940.267 ns/op
+Iteration   2: 5925.661 ns/op
+Iteration   3: 5950.171 ns/op
+Iteration   4: 5881.920 ns/op
+Iteration   5: 5871.251 ns/op
+Iteration   6: 5920.928 ns/op
+Iteration   7: 5914.300 ns/op
+Iteration   8: 5896.846 ns/op
+Iteration   9: 5900.374 ns/op
+Iteration  10: 6020.741 ns/op
+
+# Run progress: 74.07% complete, ETA 00:03:39
+# Fork: 2 of 3
+# Warmup Iteration   1: 14804.782 ns/op
+# Warmup Iteration   2: 6680.631 ns/op
+# Warmup Iteration   3: 5807.941 ns/op
+# Warmup Iteration   4: 5810.117 ns/op
+# Warmup Iteration   5: 5832.086 ns/op
+Iteration   1: 5844.265 ns/op
+Iteration   2: 5828.770 ns/op
+Iteration   3: 5849.272 ns/op
+Iteration   4: 5905.609 ns/op
+Iteration   5: 5809.216 ns/op
+Iteration   6: 5836.452 ns/op
+Iteration   7: 5844.056 ns/op
+Iteration   8: 5825.125 ns/op
+Iteration   9: 5828.114 ns/op
+Iteration  10: 5874.216 ns/op
+
+# Run progress: 75.93% complete, ETA 00:03:24
+# Fork: 3 of 3
+# Warmup Iteration   1: 16173.779 ns/op
+# Warmup Iteration   2: 5830.309 ns/op
+# Warmup Iteration   3: 6596.253 ns/op
+# Warmup Iteration   4: 5720.726 ns/op
+# Warmup Iteration   5: 5730.908 ns/op
+Iteration   1: 5737.339 ns/op
+Iteration   2: 5763.280 ns/op
+Iteration   3: 5717.119 ns/op
+Iteration   4: 5719.034 ns/op
+Iteration   5: 5747.788 ns/op
+Iteration   6: 5718.533 ns/op
+Iteration   7: 5750.157 ns/op
+Iteration   8: 5745.574 ns/op
+Iteration   9: 5749.510 ns/op
+Iteration  10: 5717.625 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  5834.450 ±(99.9%) 55.423 ns/op [Average]
+  (min, avg, max) = (5717.119, 5834.450, 6020.741), stdev = 82.955
+  CI (99.9%): [5779.027, 5889.874] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = throwable, mode = async-appender, scenario = idle)
+
+# Run progress: 77.78% complete, ETA 00:03:08
+# Fork: 1 of 3
+# Warmup Iteration   1: 9349.862 ns/op
+# Warmup Iteration   2: 19015.851 ns/op
+# Warmup Iteration   3: 7859.177 ns/op
+# Warmup Iteration   4: 7188.013 ns/op
+# Warmup Iteration   5: 7286.046 ns/op
+Iteration   1: 7623.405 ns/op
+Iteration   2: 7293.395 ns/op
+Iteration   3: 7466.586 ns/op
+Iteration   4: 7610.715 ns/op
+Iteration   5: 7649.658 ns/op
+Iteration   6: 7639.506 ns/op
+Iteration   7: 7558.088 ns/op
+Iteration   8: 7356.408 ns/op
+Iteration   9: 7207.951 ns/op
+Iteration  10: 7282.789 ns/op
+
+# Run progress: 79.63% complete, ETA 00:02:52
+# Fork: 2 of 3
+# Warmup Iteration   1: 8827.794 ns/op
+# Warmup Iteration   2: 12971.660 ns/op
+# Warmup Iteration   3: 7598.024 ns/op
+# Warmup Iteration   4: 7248.958 ns/op
+# Warmup Iteration   5: 7265.274 ns/op
+Iteration   1: 7536.897 ns/op
+Iteration   2: 7603.735 ns/op
+Iteration   3: 7299.586 ns/op
+Iteration   4: 7338.857 ns/op
+Iteration   5: 7264.019 ns/op
+Iteration   6: 7270.438 ns/op
+Iteration   7: 7299.618 ns/op
+Iteration   8: 7276.950 ns/op
+Iteration   9: 7283.935 ns/op
+Iteration  10: 7238.259 ns/op
+
+# Run progress: 81.48% complete, ETA 00:02:37
+# Fork: 3 of 3
+# Warmup Iteration   1: 9142.459 ns/op
+# Warmup Iteration   2: 16532.075 ns/op
+# Warmup Iteration   3: 7796.003 ns/op
+# Warmup Iteration   4: 7190.323 ns/op
+# Warmup Iteration   5: 7094.697 ns/op
+Iteration   1: 7348.344 ns/op
+Iteration   2: 7087.900 ns/op
+Iteration   3: 7090.060 ns/op
+Iteration   4: 6992.327 ns/op
+Iteration   5: 7116.672 ns/op
+Iteration   6: 7229.820 ns/op
+Iteration   7: 7160.427 ns/op
+Iteration   8: 7151.813 ns/op
+Iteration   9: 7112.941 ns/op
+Iteration  10: 7076.119 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  7315.574 ±(99.9%) 126.859 ns/op [Average]
+  (min, avg, max) = (6992.327, 7315.574, 7649.658), stdev = 189.877
+  CI (99.9%): [7188.715, 7442.433] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = throwable, mode = async-appender, scenario = drop-miss)
+
+# Run progress: 83.33% complete, ETA 00:02:21
+# Fork: 1 of 3
+# Warmup Iteration   1: 9390.870 ns/op
+# Warmup Iteration   2: 11608.814 ns/op
+# Warmup Iteration   3: 7633.302 ns/op
+# Warmup Iteration   4: 7584.476 ns/op
+# Warmup Iteration   5: 7192.420 ns/op
+Iteration   1: 7180.906 ns/op
+Iteration   2: 7087.369 ns/op
+Iteration   3: 7134.087 ns/op
+Iteration   4: 7596.993 ns/op
+Iteration   5: 7265.655 ns/op
+Iteration   6: 7113.444 ns/op
+Iteration   7: 7086.945 ns/op
+Iteration   8: 7082.282 ns/op
+Iteration   9: 7160.011 ns/op
+Iteration  10: 7323.463 ns/op
+
+# Run progress: 85.19% complete, ETA 00:02:05
+# Fork: 2 of 3
+# Warmup Iteration   1: 9561.027 ns/op
+# Warmup Iteration   2: 18099.224 ns/op
+# Warmup Iteration   3: 7405.795 ns/op
+# Warmup Iteration   4: 7221.149 ns/op
+# Warmup Iteration   5: 7363.586 ns/op
+Iteration   1: 7131.258 ns/op
+Iteration   2: 7469.245 ns/op
+Iteration   3: 7159.185 ns/op
+Iteration   4: 7091.278 ns/op
+Iteration   5: 7109.969 ns/op
+Iteration   6: 7162.211 ns/op
+Iteration   7: 7165.632 ns/op
+Iteration   8: 7111.415 ns/op
+Iteration   9: 7100.390 ns/op
+Iteration  10: 7096.065 ns/op
+
+# Run progress: 87.04% complete, ETA 00:01:50
+# Fork: 3 of 3
+# Warmup Iteration   1: 9405.725 ns/op
+# Warmup Iteration   2: 19833.693 ns/op
+# Warmup Iteration   3: 8184.970 ns/op
+# Warmup Iteration   4: 7510.025 ns/op
+# Warmup Iteration   5: 7386.069 ns/op
+Iteration   1: 7377.393 ns/op
+Iteration   2: 7352.035 ns/op
+Iteration   3: 7300.991 ns/op
+Iteration   4: 7219.990 ns/op
+Iteration   5: 7234.944 ns/op
+Iteration   6: 7232.396 ns/op
+Iteration   7: 7294.345 ns/op
+Iteration   8: 7355.245 ns/op
+Iteration   9: 7233.789 ns/op
+Iteration  10: 7231.813 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  7215.358 ±(99.9%) 83.761 ns/op [Average]
+  (min, avg, max) = (7082.282, 7215.358, 7596.993), stdev = 125.369
+  CI (99.9%): [7131.597, 7299.119] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = throwable, mode = async-loggers, scenario = idle)
+
+# Run progress: 88.89% complete, ETA 00:01:34
+# Fork: 1 of 3
+# Warmup Iteration   1: 16898.409 ns/op
+# Warmup Iteration   2: 5994.317 ns/op
+# Warmup Iteration   3: 6031.597 ns/op
+# Warmup Iteration   4: 6020.782 ns/op
+# Warmup Iteration   5: 6041.589 ns/op
+Iteration   1: 6116.587 ns/op
+Iteration   2: 6016.384 ns/op
+Iteration   3: 6018.715 ns/op
+Iteration   4: 6007.281 ns/op
+Iteration   5: 5972.077 ns/op
+Iteration   6: 5968.443 ns/op
+Iteration   7: 5999.388 ns/op
+Iteration   8: 5983.263 ns/op
+Iteration   9: 5961.384 ns/op
+Iteration  10: 5955.306 ns/op
+
+# Run progress: 90.74% complete, ETA 00:01:18
+# Fork: 2 of 3
+# Warmup Iteration   1: 19116.334 ns/op
+# Warmup Iteration   2: 5894.757 ns/op
+# Warmup Iteration   3: 5867.641 ns/op
+# Warmup Iteration   4: 5865.827 ns/op
+# Warmup Iteration   5: 5833.871 ns/op
+Iteration   1: 5856.049 ns/op
+Iteration   2: 6179.381 ns/op
+Iteration   3: 6071.988 ns/op
+Iteration   4: 5846.905 ns/op
+Iteration   5: 5850.825 ns/op
+Iteration   6: 5844.217 ns/op
+Iteration   7: 6087.695 ns/op
+Iteration   8: 6023.961 ns/op
+Iteration   9: 5943.516 ns/op
+Iteration  10: 5851.666 ns/op
+
+# Run progress: 92.59% complete, ETA 00:01:03
+# Fork: 3 of 3
+# Warmup Iteration   1: 13737.723 ns/op
+# Warmup Iteration   2: 5863.847 ns/op
+# Warmup Iteration   3: 5911.100 ns/op
+# Warmup Iteration   4: 6006.985 ns/op
+# Warmup Iteration   5: 6136.861 ns/op
+Iteration   1: 6073.387 ns/op
+Iteration   2: 5904.430 ns/op
+Iteration   3: 5908.068 ns/op
+Iteration   4: 5939.953 ns/op
+Iteration   5: 5907.163 ns/op
+Iteration   6: 5897.216 ns/op
+Iteration   7: 5926.841 ns/op
+Iteration   8: 5919.741 ns/op
+Iteration   9: 5982.874 ns/op
+Iteration  10: 6288.560 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  5976.775 ±(99.9%) 68.657 ns/op [Average]
+  (min, avg, max) = (5844.217, 5976.775, 6288.560), stdev = 102.762
+  CI (99.9%): [5908.119, 6045.432] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12, OpenJDK 64-Bit Server VM, 21.0.12+8-LTS
+# VM invoker: /home/ddeucher/.sdkman/candidates/java/21.0.12-tem/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 5 iterations, 1 s each
+# Measurement: 10 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: org.logaperture.adapter.log4j2.Log4jCallBenchmark.info
+# Parameters: (handlers = shared, message = throwable, mode = async-loggers, scenario = drop-miss)
+
+# Run progress: 94.44% complete, ETA 00:00:47
+# Fork: 1 of 3
+# Warmup Iteration   1: 21181.144 ns/op
+# Warmup Iteration   2: 6308.733 ns/op
+# Warmup Iteration   3: 5949.818 ns/op
+# Warmup Iteration   4: 5927.310 ns/op
+# Warmup Iteration   5: 5962.448 ns/op
+Iteration   1: 5952.523 ns/op
+Iteration   2: 5927.212 ns/op
+Iteration   3: 6081.490 ns/op
+Iteration   4: 6173.747 ns/op
+Iteration   5: 5963.129 ns/op
+Iteration   6: 5948.237 ns/op
+Iteration   7: 5922.457 ns/op
+Iteration   8: 6315.220 ns/op
+Iteration   9: 6061.321 ns/op
+Iteration  10: 6230.473 ns/op
+
+# Run progress: 96.30% complete, ETA 00:00:31
+# Fork: 2 of 3
+# Warmup Iteration   1: 20494.651 ns/op
+# Warmup Iteration   2: 6238.189 ns/op
+# Warmup Iteration   3: 6048.542 ns/op
+# Warmup Iteration   4: 6080.235 ns/op
+# Warmup Iteration   5: 6057.090 ns/op
+Iteration   1: 5992.906 ns/op
+Iteration   2: 5950.180 ns/op
+Iteration   3: 6004.848 ns/op
+Iteration   4: 5970.280 ns/op
+Iteration   5: 5996.251 ns/op
+Iteration   6: 5963.294 ns/op
+Iteration   7: 6404.652 ns/op
+Iteration   8: 6096.863 ns/op
+Iteration   9: 5980.845 ns/op
+Iteration  10: 5996.265 ns/op
+
+# Run progress: 98.15% complete, ETA 00:00:15
+# Fork: 3 of 3
+# Warmup Iteration   1: 18991.173 ns/op
+# Warmup Iteration   2: 6080.017 ns/op
+# Warmup Iteration   3: 5873.948 ns/op
+# Warmup Iteration   4: 5890.756 ns/op
+# Warmup Iteration   5: 5854.936 ns/op
+Iteration   1: 5977.047 ns/op
+Iteration   2: 6108.661 ns/op
+Iteration   3: 5922.804 ns/op
+Iteration   4: 5865.318 ns/op
+Iteration   5: 5924.778 ns/op
+Iteration   6: 5846.807 ns/op
+Iteration   7: 5902.277 ns/op
+Iteration   8: 5870.154 ns/op
+Iteration   9: 5871.935 ns/op
+Iteration  10: 5867.014 ns/op
+
+
+Result "org.logaperture.adapter.log4j2.Log4jCallBenchmark.info":
+  6002.966 ±(99.9%) 89.014 ns/op [Average]
+  (min, avg, max) = (5846.807, 6002.966, 6404.652), stdev = 133.232
+  CI (99.9%): [5913.952, 6091.980] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:14:11
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                (handlers)     (message)          (mode)  (scenario)  Mode  Cnt     Score     Error  Units
+Log4jCallBenchmark.info      shared      template            sync        idle  avgt   30   568.959 ±   6.507  ns/op
+Log4jCallBenchmark.info      shared      template            sync   drop-miss  avgt   30   587.999 ±  17.065  ns/op
+Log4jCallBenchmark.info      shared      template  async-appender        idle  avgt   30   748.196 ±  11.638  ns/op
+Log4jCallBenchmark.info      shared      template  async-appender   drop-miss  avgt   30   761.829 ±  10.678  ns/op
+Log4jCallBenchmark.info      shared      template   async-loggers        idle  avgt   30   466.091 ±   6.186  ns/op
+Log4jCallBenchmark.info      shared      template   async-loggers   drop-miss  avgt   30   540.323 ±   4.193  ns/op
+Log4jCallBenchmark.info      shared  concatenated            sync        idle  avgt   30   443.739 ±  13.862  ns/op
+Log4jCallBenchmark.info      shared  concatenated            sync   drop-miss  avgt   30   468.594 ±   3.759  ns/op
+Log4jCallBenchmark.info      shared  concatenated  async-appender        idle  avgt   30   423.122 ±  15.003  ns/op
+Log4jCallBenchmark.info      shared  concatenated  async-appender   drop-miss  avgt   30   413.096 ±  27.595  ns/op
+Log4jCallBenchmark.info      shared  concatenated   async-loggers        idle  avgt   30   305.608 ±   2.626  ns/op
+Log4jCallBenchmark.info      shared  concatenated   async-loggers   drop-miss  avgt   30   310.572 ±   6.823  ns/op
+Log4jCallBenchmark.info      shared     throwable            sync        idle  avgt   30  5769.896 ±  38.691  ns/op
+Log4jCallBenchmark.info      shared     throwable            sync   drop-miss  avgt   30  5834.450 ±  55.423  ns/op
+Log4jCallBenchmark.info      shared     throwable  async-appender        idle  avgt   30  7315.574 ± 126.859  ns/op
+Log4jCallBenchmark.info      shared     throwable  async-appender   drop-miss  avgt   30  7215.358 ±  83.761  ns/op
+Log4jCallBenchmark.info      shared     throwable   async-loggers        idle  avgt   30  5976.775 ±  68.657  ns/op
+Log4jCallBenchmark.info      shared     throwable   async-loggers   drop-miss  avgt   30  6002.966 ±  89.014  ns/op
+
+Benchmark result is saved to logaperture-bench/target/results/m10-idle-fedora-20261116-2334/log4j2-idle-vs-drop-miss.json
