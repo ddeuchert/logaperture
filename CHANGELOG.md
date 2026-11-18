@@ -90,6 +90,11 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 - **An eighth demo recording: try it, no restart.** `logctl attach` loads the agent into a WildFly
   server that was started without it, then a `set logger` shows its effect on the console at once.
   Embedded in How-to: Try LogAperture without a restart and on Now Showing (issue #349).
+- **Quicker logger entry in guided `set logger` and `add rule`.** Type `?` at `Which logger?` to pick from
+  the loggers you set or added rules to recently; with no history yet, it shows the top-level packages to
+  type from. `logctl` keeps the last 50 in `~/.logaperture/recent-loggers` (under `-Dlogaperture.home` if
+  you set it), never patterns, and Enter still cancels. At the level question, `i`, `d`, `t`, `w`, `e` and `o`
+  stand for INFO, DEBUG, TRACE, WARN, ERROR and OFF (issue #402; `doc/specs/easier-logger-entry.md`).
 
 ### Changed
 
@@ -103,6 +108,12 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
   (issue #79; `doc/specs/rule-multi-context.md`).
 - **`logctl list loggers` with no loggers** now says `No loggers known yet. LogAperture is running; if it controls
   no logging context in this JVM, `logctl doctor` says why.`
+- **A long list of matching loggers is paged.** In guided `set logger` and `add rule`, more than 30 matches used to
+  be refused with "too many to list; try a narrower pattern". `logctl` now lists them 50 to a page: Enter shows the
+  next page, a number or `all` picks from the whole list, and a shorter name typed there searches again under it.
+  A mistyped selection such as `0` or `3-1` is explained and asked again, never searched as a name. A complete
+  command, with a pattern and no terminal or with `--yes`, behaves as before (issue #402;
+  `doc/specs/easier-logger-entry.md`).
 
 ### Fixed
 
