@@ -247,6 +247,54 @@ class GuidedAddRuleTest {
         assertThrows(IllegalArgumentException.class, () -> Picker.parseSelection("0", 3));
     }
 
+    // --- a package name says what it covers (issue #404, doc/specs/guided-set-package-coverage.md) ---
+
+    @Test
+    void aNameThatIsALoggerWithLoggersUnderIt_saysHowManyBeforeTheNextQuestion() {
+        mbean.loggers.add(logger("com.acme"));
+        guided(lines("com.acme", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule");
+
+        assertTrue(out().contains("com.acme has 2 loggers under it, which inherit its level "
+                + "(e.g. com.acme.Worker)."), out());
+        assertTrue(out().indexOf("under it") < out().indexOf("Drop or trim?"),
+                "said before the next question: " + out());
+        assertEquals("com.acme", mbean.addRuleTrimCalls.get(0)[0]);
+    }
+
+    @Test
+    void oneLoggerUnderIt_isSaidInTheSingular() {
+        mbean.loggers.add(logger("com.acme.batch"));
+        guided(lines("com.acme.batch", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule");
+
+        assertTrue(out().contains("com.acme.batch has 1 logger under it, which inherits its level "
+                + "(e.g. com.acme.batch.Deployer)."), out());
+    }
+
+    @Test
+    void aLoggerWithNothingUnderIt_saysNothingExtra() {
+        guided(lines("com.acme.Worker", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule");
+
+        assertFalse(out().contains("under it"), out());
+        assertEquals("com.acme.Worker", mbean.addRuleTrimCalls.get(0)[0]);
+    }
+
+    @Test
+    void aPackageThatIsNotALoggerItself_keepsItsOwnExistingLine() {
+        guided(lines("org.jboss", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule");
+
+        assertTrue(out().contains("org.jboss isn't a logger itself yet; 2 loggers under it inherit from it"), out());
+        assertFalse(out().contains("org.jboss has"), out());
+    }
+
+    @Test
+    void aCompleteCommand_printsNoHint() {
+        mbean.loggers.add(logger("com.acme"));
+
+        assertEquals(CliError.OK, scripted("add", "rule", "trim", "com.acme"));
+
+        assertFalse(out().contains("under it"), out());
+    }
+
     @Test
     void oneMatch_isUsedWithoutASelectionQuestion() {
         guided(lines("trim", "", "", "", "", "", "", "", "", ""), "add", "rule", "*.batch.Deployer");

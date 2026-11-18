@@ -1694,6 +1694,8 @@ It drives `logctl --json`, whose shapes are already a compatibility contract (§
 
 **Status note.** Specced in [`doc/specs/guided-add-rule.md`](specs/guided-add-rule.md), signed off 2026-09-26 (G1–G12). The first three open questions above are resolved there: no JLine (G12), `add rule` only (G11), and the rule type may be left out (G3). The AI-phase questions remain open. Kept here as the roadmap record. After manual testing, prompting was extended to `list`, `set`, `reset` and `alter rule` in [`doc/specs/guided-commands.md`](specs/guided-commands.md) ([#116](https://github.com/ddeuchert/logaperture/issues/116)), signed off 2026-09-27 for beta 1 and shipped early, in 0.1.0-alpha.3.
 
+Naming a package in the guided flow says how many loggers are under it before the level question, in [`doc/specs/guided-set-package-coverage.md`](specs/guided-set-package-coverage.md) ([#404](https://github.com/ddeuchert/logaperture/issues/404)).
+
 ### 18.16 Restarting with a just-exported vendor file duplicates its sticky sources
 
 Tracked as [#107](https://github.com/ddeuchert/logaperture/issues/107); a follow-up to §18.12 / #62. **Specced and implemented:** [`doc/specs/export-round-trip.md`](specs/export-round-trip.md) chose the id approach below (an id assigned when a setting is first persisted, written as `stateId`); the open questions are settled there as decisions S1–S10.

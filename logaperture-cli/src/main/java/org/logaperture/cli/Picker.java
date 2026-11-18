@@ -84,6 +84,14 @@ final class Picker {
             }
             if (!Commands.isPattern(current)) {
                 if (known.contains(current)) {
+                    // Issue #404: naming a package sets everything under it, so say how much that is before
+                    // the level question; a logger with nothing under it has nothing to say.
+                    int under = known.size() - 1;
+                    if (under > 0) {
+                        out.println(current + " has " + under + " logger" + (under == 1 ? "" : "s")
+                                + " under it, which inherit" + (under == 1 ? "s" : "") + " its level (e.g. "
+                                + known.get(1) + ").");
+                    }
                     return List.of(current);
                 }
                 if (!known.isEmpty()) {
