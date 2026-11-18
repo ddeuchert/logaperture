@@ -152,6 +152,20 @@ On a terminal, leave out what you don't know. `logctl set` alone asks what to se
 (starting from part of its name, such as `Worker`), the level and the tier, then shows the full
 command before applying it, so you learn the one-line form for next time.
 
+A few things make that quicker when you do it often:
+
+- **Press Enter at the logger question** to pick from the loggers you set recently. If you haven't
+  set any yet, `logctl` shows the top-level packages that have loggers, such as `org.hibernate` or
+  `com.acme`, to give you something to type.
+- **A long list is paged.** When more than 50 loggers match, `logctl` shows the first 50 and Enter
+  shows the next page. Pick by number (`1,3-5`, or `all`), or type a shorter name such as
+  `org.hibernate` to search again under it.
+- **Answer the level with one letter:** `i` INFO, `d` DEBUG, `t` TRACE, `w` WARN, `e` ERROR, `o`
+  OFF. The full name works too.
+
+Your recent loggers are kept for you, not for the JVM, in `~/.logaperture/recent-loggers` (the last
+50 names, one per line). Delete the file to clear them.
+
 ## Put it back
 
 A timed change reverts by itself. To undo it sooner, `logctl reset logger io.undertow.request`.

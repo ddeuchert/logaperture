@@ -60,4 +60,6 @@ logger is created.
 ## Let `logctl` pick
 
 On a terminal, `logctl set` and `logctl add rule` accept part of a name, such as `Worker`, and list
-the matching loggers to choose from. See [Raise a log level](raise-a-level.md#let-logctl-ask).
+the matching loggers to choose from. Press Enter at the logger question to pick from the loggers you
+set recently, or to see the top-level packages when you have no history. See
+[Raise a log level](raise-a-level.md#let-logctl-ask).

@@ -1692,7 +1692,7 @@ It drives `logctl --json`, whose shapes are already a compatibility contract (§
   - where the agent must stop for approval;
   - whether formatter-pattern knowledge from the agent should help parse a pasted line.
 
-**Status note.** Specced in [`doc/specs/guided-add-rule.md`](specs/guided-add-rule.md), signed off 2026-09-26 (G1–G12). The first three open questions above are resolved there: no JLine (G12), `add rule` only (G11), and the rule type may be left out (G3). The AI-phase questions remain open. Kept here as the roadmap record. After manual testing, prompting was extended to `list`, `set`, `reset` and `alter rule` in [`doc/specs/guided-commands.md`](specs/guided-commands.md) ([#116](https://github.com/ddeuchert/logaperture/issues/116)), signed off 2026-09-27 for beta 1 and shipped early, in 0.1.0-alpha.3.
+**Status note.** Specced in [`doc/specs/guided-add-rule.md`](specs/guided-add-rule.md), signed off 2026-09-26 (G1–G12). The first three open questions above are resolved there: no JLine (G12), `add rule` only (G11), and the rule type may be left out (G3). The AI-phase questions remain open. Kept here as the roadmap record. After manual testing, prompting was extended to `list`, `set`, `reset` and `alter rule` in [`doc/specs/guided-commands.md`](specs/guided-commands.md) ([#116](https://github.com/ddeuchert/logaperture/issues/116)), signed off 2026-09-27 for beta 1 and shipped early, in 0.1.0-alpha.3. Entering loggers was made quicker (recent loggers, paging and narrowing, level letters) in [`doc/specs/easier-logger-entry.md`](specs/easier-logger-entry.md).
 
 ### 18.16 Restarting with a just-exported vendor file duplicates its sticky sources
 
