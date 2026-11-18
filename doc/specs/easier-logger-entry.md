@@ -1,7 +1,6 @@
-# Easier logger entry in guided `set` (issue #TBD)
+# Easier logger entry in guided `set` (issue #402)
 
-Status: **decisions agreed 2026-11-17** (see "Settled at review"); implemented on this branch; the
-issue number is still to be filled in.
+Status: **decisions agreed 2026-11-17** (see "Settled at review"); implemented on this branch.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §18.15 (guided commands).
 Builds on: [`guided-add-rule.md`](guided-add-rule.md) "Picking the loggers" (the numbered list, G4/G5,
 the `Which logger?` question), [`guided-commands.md`](guided-commands.md) (#3, #7: the guided
