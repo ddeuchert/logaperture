@@ -31,19 +31,38 @@ final class Questions {
     private Questions() {
     }
 
-    /** A level name (case-insensitive), with {@code AUTO} too when {@code autoAllowed}; returned upper-case. */
+    /** A level name (case-insensitive), with {@code AUTO} too when {@code autoAllowed}; returned upper-case.
+     * Single-letter shortcuts: {@code i}=INFO, {@code d}=DEBUG, {@code t}=TRACE, {@code w}=WARN,
+     * {@code e}=ERROR, {@code o}=OFF, {@code a}=ALL. */
     static String askLevel(Prompter prompter, String question, boolean autoAllowed) {
         while (true) {
             String answer = prompter.ask("", question);
             if (autoAllowed && answer.equalsIgnoreCase("auto")) {
                 return "AUTO";
             }
+            String expanded = expandLevelShortcut(answer);
             try {
-                return Parser.parseLevel(answer);
+                return Parser.parseLevel(expanded);
             } catch (CliError invalid) {
                 prompter.out().println(invalid.getMessage());
             }
         }
+    }
+
+    private static String expandLevelShortcut(String token) {
+        if (token.length() != 1) {
+            return token;
+        }
+        return switch (token.toLowerCase(Locale.ROOT).charAt(0)) {
+            case 'i' -> "INFO";
+            case 'd' -> "DEBUG";
+            case 't' -> "TRACE";
+            case 'w' -> "WARN";
+            case 'e' -> "ERROR";
+            case 'o' -> "OFF";
+            case 'a' -> "ALL";
+            default -> token;
+        };
     }
 
     /** {@code session}, {@code for <duration>} (or a bare duration), or {@code sticky}; Enter is {@code for 4h}. */

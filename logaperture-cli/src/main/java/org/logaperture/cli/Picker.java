@@ -33,7 +33,7 @@ import java.util.function.Function;
 final class Picker {
 
     /** G5: more matching loggers than this are not listed; the operator is asked for a narrower pattern. */
-    static final int MAX_LISTED = 30;
+    static final int MAX_LISTED = 50;
 
     private static final String INDENT = "  ";
 
@@ -60,11 +60,16 @@ final class Picker {
         while (true) {
             if (current == null) {
                 String answer = prompter.ask("", "Which logger? A name or pattern, e.g. Deployer or "
-                        + "*.deployment.* (Enter to cancel)");
+                        + "*.deployment.* (Enter for history)");
                 if (answer.isEmpty()) {
-                    return null;
+                    List<String> picked = pickRecent(prompter);
+                    if (picked != null) {
+                        return picked;
+                    }
+                    showTopLevelPrefixes(mbean, out);
+                    continue;
                 }
-                current = shortNameShorthand(answer);
+                current = narrowNameShorthand(answer);
                 typed = true;
             }
             // A trailing '.*' only picks from a subtree here (issue #139): the picked exact names are what get
@@ -111,34 +116,88 @@ final class Picker {
                         + describe(detail, matches.get(names.get(0))));
                 return names;
             }
-            if (names.size() > MAX_LISTED) {
-                out.println(names.size() + " loggers match '" + current + "' -- too many to list. Try a "
-                        + "narrower pattern.");
-                current = null;
+            String[] narrowTo = {null};
+            List<String> picked = pickOrNarrow(prompter, names, matches, current, detail, narrowTo);
+            if (narrowTo[0] != null) {
+                current = narrowNameShorthand(narrowTo[0]);
+                typed = true;
                 continue;
             }
-            out.println(names.size() + " loggers match '" + current + "':");
+            if (picked == null) {
+                return null; // cancelled
+            }
+            return picked;
+        }
+    }
+
+    /**
+     * Shows a numbered page of matching loggers and asks the operator to pick, page, or narrow.
+     * Returns the chosen exact names, {@code null} to cancel, or a single-element list containing
+     * a new pattern to re-search with.
+     */
+    private static List<String> pickOrNarrow(Prompter prompter, List<String> allNames,
+            TreeMap<String, LoggerInfoData> matches, String currentPattern,
+            Function<LoggerInfoData, String> detail, String[] narrowTo) {
+        PrintStream out = prompter.out();
+        int total = allNames.size();
+        int offset = 0;
+        while (true) {
+            int pageEnd = Math.min(offset + MAX_LISTED, total);
+            List<String> pageNames = allNames.subList(offset, pageEnd);
+            if (offset == 0 && total > MAX_LISTED) {
+                out.println(total + " loggers match '" + currentPattern + "'. Page 1 of "
+                        + ((total + MAX_LISTED - 1) / MAX_LISTED) + ":");
+            } else if (offset == 0) {
+                out.println(total + " loggers match '" + currentPattern + "':");
+            } else {
+                out.println("Page " + ((offset / MAX_LISTED) + 1) + " of "
+                        + ((total + MAX_LISTED - 1) / MAX_LISTED) + ":");
+            }
             List<String> rows = new ArrayList<>();
-            int width = names.stream().mapToInt(String::length).max().orElse(0);
-            for (String name : names) {
+            int width = pageNames.stream().mapToInt(String::length).max().orElse(0);
+            for (String name : pageNames) {
                 String described = describe(detail, matches.get(name));
                 rows.add(described.isEmpty() ? name : String.format("%-" + width + "s", name) + described);
             }
-            List<Integer> chosen = choose(prompter, rows);
-            if (chosen == null) {
+            int baseWidth = Integer.toString(pageEnd).length();
+            for (int i = 0; i < rows.size(); i++) {
+                out.println(INDENT + String.format("%" + baseWidth + "d", offset + i + 1)
+                        + "  " + rows.get(i));
+            }
+            String enterHint = offset + MAX_LISTED < total ? "Enter for more, " : "Enter to cancel, ";
+            String answer = prompter.ask("", "Which? (e.g. 1,3 or 1-2 or all, "
+                    + enterHint + "or type to narrow)");
+            if (answer.isEmpty()) {
+                if (offset + MAX_LISTED < total) {
+                    offset += MAX_LISTED;
+                    continue;
+                }
                 return null;
             }
-            List<String> picked = new ArrayList<>();
-            for (int index : chosen) {
-                picked.add(names.get(index - 1));
+            // Try as a selection first.
+            try {
+                List<Integer> chosen = parseSelection(answer, total);
+                List<String> picked = new ArrayList<>();
+                for (int index : chosen) {
+                    picked.add(allNames.get(index - 1));
+                }
+                return picked;
+            } catch (IllegalArgumentException notASelection) {
+                // Not a selection — treat as a narrower pattern (drill-down).
+                narrowTo[0] = answer;
+                return null;
             }
-            return picked;
         }
     }
 
     /** G4: a name with no {@code *} and no {@code .} is looked up as {@code *.<name>} -- what a log line shows. */
     static String shortNameShorthand(String name) {
         return name.indexOf('*') < 0 && name.indexOf('.') < 0 ? "*." + name : name;
+    }
+
+    /** Drill-down shorthand: always appends {@code .*} so the user gets a numbered pick list. */
+    private static String narrowNameShorthand(String name) {
+        return name.indexOf('*') >= 0 ? name : name + ".*";
     }
 
     private static String describe(Function<LoggerInfoData, String> detail, LoggerInfoData row) {
@@ -227,6 +286,61 @@ final class Picker {
             byName.putIfAbsent(logger.getName(), logger);
         }
         return byName;
+    }
+
+    /**
+     * When the operator presses Enter at the logger prompt, show the first two segments of every
+     * known logger name as a quick browse aid. Two segments ({@code org.hibernate}, {@code
+     * com.acme}) are more meaningful than one ({@code org}, {@code com}).
+     */
+    private static void showTopLevelPrefixes(LevelControlMXBean mbean, PrintStream out) {
+        TreeSet<String> prefixes = new TreeSet<>();
+        int seen = 0;
+        try {
+            for (LoggerInfoData logger : mbean.listLoggers(null)) {
+                String name = logger.getName();
+                int firstDot = name.indexOf('.');
+                if (firstDot < 0) {
+                    prefixes.add(name);
+                } else {
+                    int secondDot = name.indexOf('.', firstDot + 1);
+                    prefixes.add(secondDot < 0 ? name : name.substring(0, secondDot));
+                }
+                if (++seen >= 200) {
+                    break;
+                }
+            }
+        } catch (RuntimeException e) {
+            out.println("Could not list loggers: " + e);
+            return;
+        }
+        if (prefixes.isEmpty()) {
+            out.println("No loggers are known yet on this JVM.");
+        } else {
+            out.println(prefixes.size() + " top-level package" + (prefixes.size() == 1 ? "" : "s")
+                    + " (from first " + seen + " loggers): " + String.join(", ", prefixes) + ".");
+        }
+    }
+
+    /** Shows the recent-loggers history as a numbered pick list. Returns chosen names or null if cancelled. */
+    private static List<String> pickRecent(Prompter prompter) {
+        List<String> recent = RecentLoggers.read();
+        if (recent.isEmpty()) {
+            prompter.out().println("No history yet.");
+            return null;
+        }
+        // Use the same paging as pickOrNarrow but without drill-down ability.
+        prompter.out().println("History:");
+        List<String> rows = new ArrayList<>(recent);
+        List<Integer> chosen = choose(prompter, rows);
+        if (chosen == null) {
+            return null;
+        }
+        List<String> picked = new ArrayList<>();
+        for (int index : chosen) {
+            picked.add(recent.get(index - 1));
+        }
+        return picked;
     }
 
     /** The known loggers named {@code name} or under it, in name order ({@code name} itself first if known). */
