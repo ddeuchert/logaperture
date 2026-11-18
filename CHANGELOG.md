@@ -9,6 +9,11 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ### Added
 
+- **Guided `set logger` and `add rule` say what a package name covers.** Naming a logger with others under it,
+  such as `org.hibernate`, now prints how many are under it (`org.hibernate has 4 loggers under it, which
+  inherit its level`) before the level question, so one quick answer can't silently change a whole subtree. A
+  logger with nothing under it prints nothing, and a complete command, a script, `--yes` and `--json` are
+  unchanged (issue #404; `doc/specs/guided-set-package-coverage.md`).
 - **Log4j 2.** An application that logs through Log4j 2.20.0 or later can now be controlled with `logctl`
   as on WildFly: `set logger` and `reset`, `set handler` and `reset handlers`, vendor defaults, recipes,
   `drop` and `trim` rules, `doctor` and storm detection. LogAperture finds Log4j on the JVM's class path or

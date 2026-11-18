@@ -71,6 +71,33 @@ org.jboss.as.config → DEBUG (baseline)   (forced by org.jboss.as)
 
 A pattern ending in `*` (`'org.jboss.as.*'`) is refused for `set`: name the parent instead.
 
+On a terminal, `logctl set logger` and `logctl add rule` tell you how much a name covers before they
+ask for a level, so a quick answer can't silently change a whole subtree. This session is from a
+small Logback application on a plain JVM, not WildFly:
+
+```
+$ logctl set logger
+Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel)
+> org.hibernate
+org.hibernate has 4 loggers under it, which inherit its level (e.g. org.hibernate.SQL).
+Level? e.g. DEBUG, TRACE, OFF
+> DEBUG
+How long? session, for <duration> (e.g. for 30m), or sticky [for 4h]
+> for 10m
+Reason (optional)
+>
+
+This is the command:
+  logctl set logger org.hibernate DEBUG for 10m
+Apply? [Y/n]
+>
+org.hibernate → DEBUG   (FOR, reverts 13:58:29 local — in 9m)
+```
+
+The count is of the loggers the JVM knows now. A logger with nothing under it prints nothing extra,
+and a complete command such as `logctl set logger org.hibernate DEBUG for 10m` asks nothing and
+prints no count.
+
 ## Every logger matching a name
 
 A log line often shows only the last part of a logger's name. A pattern starting with `*` sets every
