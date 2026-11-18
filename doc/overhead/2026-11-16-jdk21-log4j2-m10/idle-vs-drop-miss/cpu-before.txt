@@ -1,0 +1,4 @@
+boost:    0
+governor: performance(x8)
+MHz:      3687 3687 3694 3686 3617 3677 3686 3576 
+state:    PINNED

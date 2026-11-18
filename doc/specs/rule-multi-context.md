@@ -174,6 +174,18 @@ the benchmark (`overhead-benchmarks.md`), whose budget the Log4j 2 adapter alrea
 verification step for this feature is that case, measured with a rule in two contexts, not a new
 benchmark.
 
+**Result (2026-11-16, pinned, merged `d6f0d35`, Log4j 2.25.5, JDK 21).** The change adds nothing to the
+per-event path: it touches no `GateFilter`, `GatePlan`, `RuleService.evaluateGate`, `effectiveRules` or `appliesTo`,
+and a context's gate and plan are its own, so a rule that sits in a second context adds to that context's events
+and no one else's. The measured case is therefore the existing `drop-miss` benchmark, one context with a rule it
+never matches, not a new two-context harness. `drop-miss` − `idle` for the budgeted plain message (`concatenated`,
+50 ns): sync **+24.9 ± 14.4**, async-appender −10.0 ± 31.4, async-loggers +5.0 ± 7.3: all pass, and each is within
+error of the 2026-11-12 run (−2.3, −15.8, −14.0). The reported rows (`template`, `throwable`) are unchanged within
+noise too; `async-loggers` `template` is +74.2 ± 7.5, as it was on 11-12 (+66.6 ± 2.1). The gate with N rules
+(`gate-n` − `gate-empty`) matches #332's run: plain +142 / +210 at 5 / 20 rules (+145 / +206 then), the two
+marginal rows already accepted for 1.x. Results:
+[`doc/overhead/2026-11-16-jdk21-log4j2-m10/`](../overhead/2026-11-16-jdk21-log4j2-m10/idle-vs-drop-miss/comparison.md).
+
 ## Decisions
 
 | # | Decision | Options | Recommendation |
