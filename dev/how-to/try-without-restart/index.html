@@ -2222,8 +2222,8 @@ container, run <code>logctl</code> inside the container, or pass <code>--agent-j
   reach a service running as another account; see <a href="../windows-service/">Use logctl with a Windows service</a>.</li>
 <li><strong>Logging that happened before the attach</strong> is not seen. A <code>sticky</code> change from an earlier run is
   applied once LogAperture starts.</li>
-<li><strong>Tested on Linux.</strong> The same attach mechanism exists on macOS and Windows, but it has not been
-  tested there.</li>
+<li><strong>Tested on Linux and Windows.</strong> On Windows, <code>attach</code> was checked from an elevated prompt against a
+  JVM running as <code>LocalSystem</code>. macOS uses the same attach mechanism but has not been tested.</li>
 <li><strong>A Quarkus application</strong> should use the <a href="../../get-started/install-quarkus/">extension</a> instead.
   Spring Boot and Tomcat are not supported yet.</li>
 </ul>

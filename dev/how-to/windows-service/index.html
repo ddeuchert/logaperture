@@ -1225,6 +1225,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Start LogAperture in a service that is already running">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-attach-says-when-it-cannot-attach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What attach says when it cannot attach
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2042,6 +2059,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Start LogAperture in a service that is already running">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-attach-says-when-it-cannot-attach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What attach says when it cannot attach
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2103,8 +2137,9 @@ JVMs</a>).</p>
 <div class="admonition note">
 <p class="admonition-title">Tested on</p>
 <p>Windows Server 2019, JDK 21.0.4, an application running as <code>LocalSystem</code>, <code>logctl</code> from an
-elevated command prompt. Other service accounts (<code>LocalService</code>, <code>NetworkService</code>, a named
-account) and a prompt that is not elevated have not been tested.</p>
+elevated command prompt. <code>logctl attach</code> was also checked from an elevated prompt against a
+<code>LocalSystem</code> JVM started without <code>-javaagent</code>. Other service accounts (<code>LocalService</code>,
+<code>NetworkService</code>, a named account) have not been tested.</p>
 </div>
 <h2 id="start-logaperture-in-a-service-that-is-already-running">Start LogAperture in a service that is already running<a class="headerlink" href="#start-logaperture-in-a-service-that-is-already-running" title="Permanent link">&para;</a></h2>
 <p>If the service was started without <code>-javaagent</code>, load the agent into it from the same Administrator
@@ -2114,14 +2149,41 @@ machine runs, whoever owns it, and reads its system properties; it loads nothing
 you choose one. With the PID from <code>tasklist</code> (see below) it goes straight to it:</p>
 <div class="highlight"><pre><span></span><code>logctl attach 7100
 </code></pre></div>
+<p>Run from an elevated prompt against a WildFly service running as <code>LocalSystem</code>, started without
+<code>-javaagent</code>, the list and the attach look like this (the user name in the path is replaced):</p>
+<div class="highlight"><pre><span></span><code>F:\wildfly-dev\logaperture\bin&gt;logctl attach
+1 JVM can be attached to:
+  #  PID   STARTED  DIRECTORY                        COMMAND
+  1  4484  ?        F:\wildfly-dev\wildfly\bin
+Attach to which? (a number from the list, or a PID; Enter to cancel)
+&gt;
+
+F:\wildfly-dev\logaperture\bin&gt;logctl attach 4484
+LogAperture 1.1.0-SNAPSHOT is active in PID 4484 (JBoss LogManager 2.1.18.Final).
+  Agent jar: C:\Users\&lt;you&gt;\.logaperture\agent\logaperture-agent-1.1.0-SNAPSHOT-2857a059712b.jar (the agent jar carried inside this logctl)
+  This lasts until PID 4484 stops. To keep it, add -javaagent:&lt;agent jar&gt; to its launch line.
+
+F:\wildfly-dev\logaperture\bin&gt;logctl status --pid 4484
+Storm detection: disabled
+
+No active overrides.
+</code></pre></div>
 <p>The service's JVM is not restarted. See <a href="../try-without-restart/">Try LogAperture without restarting</a>
 for what <code>attach</code> does and its limits.</p>
-<div class="admonition note">
-<p class="admonition-title">Not yet checked on a service</p>
-<p><code>logctl attach</code> reaches a service's JVM through the same attach mechanism as the commands
-above, but it has not yet been run against a Windows service. Treat it as untested until this
-note is gone.</p>
-</div>
+<h3 id="what-attach-says-when-it-cannot-attach">What <code>attach</code> says when it cannot attach<a class="headerlink" href="#what-attach-says-when-it-cannot-attach" title="Permanent link">&para;</a></h3>
+<p>A PID that does not exist:</p>
+<div class="highlight"><pre><span></span><code>F:\wildfly-dev\logaperture\bin&gt;logctl attach 999999
+No process with PID 999999.
+</code></pre></div>
+<p>A JVM started with <code>-XX:-EnableDynamicAgentLoading</code>:</p>
+<div class="highlight"><pre><span></span><code>F:\wildfly-dev\logaperture\bin&gt;logctl attach 13292
+PID 13292 was started with dynamic agent loading turned off (-XX:-EnableDynamicAgentLoading), so no agent can be loaded into it. Restart it with -javaagent:logaperture-agent.jar, or without that flag.
+(A future Java may turn dynamic loading off by default; the JVM would then need -XX:+EnableDynamicAgentLoading at launch, which is as much of a restart.)
+</code></pre></div>
+<p>From a prompt that is not elevated, against the service's JVM:</p>
+<div class="highlight"><pre><span></span><code>F:\wildfly-dev\logaperture\bin&gt;logctl attach 9616
+Can't attach to PID 9616 - open the command prompt as Administrator, or run as the account that owns that process.
+</code></pre></div>
 <h2 id="if-logctl-doesnt-find-it">If <code>logctl</code> doesn't find it<a class="headerlink" href="#if-logctl-doesnt-find-it" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>No LogAperture-enabled JVM found. Start the application with -javaagent:logaperture-agent.jar.
 (If the JVM runs LogAperture as another account, such as a Windows service, but is not listed, find its PID and pass --pid &lt;n&gt;.)
