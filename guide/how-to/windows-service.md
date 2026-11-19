@@ -21,8 +21,9 @@ JVMs](several-jvms.md)).
 
 !!! note "Tested on"
     Windows Server 2019, JDK 21.0.4, an application running as `LocalSystem`, `logctl` from an
-    elevated command prompt. Other service accounts (`LocalService`, `NetworkService`, a named
-    account) and a prompt that is not elevated have not been tested.
+    elevated command prompt. `logctl attach` was also checked from an elevated prompt against a
+    `LocalSystem` JVM started without `-javaagent`. Other service accounts (`LocalService`,
+    `NetworkService`, a named account) have not been tested.
 
 ## Start LogAperture in a service that is already running
 
@@ -36,13 +37,54 @@ you choose one. With the PID from `tasklist` (see below) it goes straight to it:
 logctl attach 7100
 ```
 
+Run from an elevated prompt against a WildFly service running as `LocalSystem`, started without
+`-javaagent`, the list and the attach look like this (the user name in the path is replaced):
+
+```
+F:\wildfly-dev\logaperture\bin>logctl attach
+1 JVM can be attached to:
+  #  PID   STARTED  DIRECTORY                        COMMAND
+  1  4484  ?        F:\wildfly-dev\wildfly\bin
+Attach to which? (a number from the list, or a PID; Enter to cancel)
+>
+
+F:\wildfly-dev\logaperture\bin>logctl attach 4484
+LogAperture 1.1.0-SNAPSHOT is active in PID 4484 (JBoss LogManager 2.1.18.Final).
+  Agent jar: C:\Users\<you>\.logaperture\agent\logaperture-agent-1.1.0-SNAPSHOT-2857a059712b.jar (the agent jar carried inside this logctl)
+  This lasts until PID 4484 stops. To keep it, add -javaagent:<agent jar> to its launch line.
+
+F:\wildfly-dev\logaperture\bin>logctl status --pid 4484
+Storm detection: disabled
+
+No active overrides.
+```
+
 The service's JVM is not restarted. See [Try LogAperture without restarting](try-without-restart.md)
 for what `attach` does and its limits.
 
-!!! note "Not yet checked on a service"
-    `logctl attach` reaches a service's JVM through the same attach mechanism as the commands
-    above, but it has not yet been run against a Windows service. Treat it as untested until this
-    note is gone.
+### What `attach` says when it cannot attach
+
+A PID that does not exist:
+
+```
+F:\wildfly-dev\logaperture\bin>logctl attach 999999
+No process with PID 999999.
+```
+
+A JVM started with `-XX:-EnableDynamicAgentLoading`:
+
+```
+F:\wildfly-dev\logaperture\bin>logctl attach 13292
+PID 13292 was started with dynamic agent loading turned off (-XX:-EnableDynamicAgentLoading), so no agent can be loaded into it. Restart it with -javaagent:logaperture-agent.jar, or without that flag.
+(A future Java may turn dynamic loading off by default; the JVM would then need -XX:+EnableDynamicAgentLoading at launch, which is as much of a restart.)
+```
+
+From a prompt that is not elevated, against the service's JVM:
+
+```
+F:\wildfly-dev\logaperture\bin>logctl attach 9616
+Can't attach to PID 9616 - open the command prompt as Administrator, or run as the account that owns that process.
+```
 
 ## If `logctl` doesn't find it
 
