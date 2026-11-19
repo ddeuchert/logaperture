@@ -19,6 +19,10 @@ on:
     branches: [develop, main, 'release/**']
   pull_request:
 
+# Read-only token: no job here writes to the repo, issues or packages.
+permissions:
+  contents: read
+
 jobs:
   build:
     # ubuntu-latest ships a running Docker daemon, so Testcontainers works here.
