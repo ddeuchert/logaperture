@@ -37,6 +37,28 @@ you choose one. With the PID from `tasklist` (see below) it goes straight to it:
 logctl attach 7100
 ```
 
+Run from an elevated prompt against a WildFly service running as `LocalSystem`, started without
+`-javaagent`, the list and the attach look like this (the user name in the path is replaced):
+
+```
+F:\wildfly-dev\logaperture\bin>logctl attach
+1 JVM can be attached to:
+  #  PID   STARTED  DIRECTORY                        COMMAND
+  1  4484  ?        F:\wildfly-dev\wildfly\bin
+Attach to which? (a number from the list, or a PID; Enter to cancel)
+>
+
+F:\wildfly-dev\logaperture\bin>logctl attach 4484
+LogAperture 1.1.0-SNAPSHOT is active in PID 4484 (JBoss LogManager 2.1.18.Final).
+  Agent jar: C:\Users\<you>\.logaperture\agent\logaperture-agent-1.1.0-SNAPSHOT-2857a059712b.jar (the agent jar carried inside this logctl)
+  This lasts until PID 4484 stops. To keep it, add -javaagent:<agent jar> to its launch line.
+
+F:\wildfly-dev\logaperture\bin>logctl status --pid 4484
+Storm detection: disabled
+
+No active overrides.
+```
+
 The service's JVM is not restarted. See [Try LogAperture without restarting](try-without-restart.md)
 for what `attach` does and its limits.
 
