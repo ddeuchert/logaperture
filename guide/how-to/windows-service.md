@@ -23,7 +23,7 @@ JVMs](several-jvms.md)).
     Windows Server 2019, JDK 21.0.4, an application running as `LocalSystem`, `logctl` from an
     elevated command prompt. `logctl attach` was also checked from an elevated prompt against a
     `LocalSystem` JVM started without `-javaagent`. Other service accounts (`LocalService`,
-    `NetworkService`, a named account) and a prompt that is not elevated have not been tested.
+    `NetworkService`, a named account) have not been tested.
 
 ## Start LogAperture in a service that is already running
 
@@ -61,6 +61,30 @@ No active overrides.
 
 The service's JVM is not restarted. See [Try LogAperture without restarting](try-without-restart.md)
 for what `attach` does and its limits.
+
+### What `attach` says when it cannot attach
+
+A PID that does not exist:
+
+```
+F:\wildfly-dev\logaperture\bin>logctl attach 999999
+No process with PID 999999.
+```
+
+A JVM started with `-XX:-EnableDynamicAgentLoading`:
+
+```
+F:\wildfly-dev\logaperture\bin>logctl attach 13292
+PID 13292 was started with dynamic agent loading turned off (-XX:-EnableDynamicAgentLoading), so no agent can be loaded into it. Restart it with -javaagent:logaperture-agent.jar, or without that flag.
+(A future Java may turn dynamic loading off by default; the JVM would then need -XX:+EnableDynamicAgentLoading at launch, which is as much of a restart.)
+```
+
+From a prompt that is not elevated, against the service's JVM:
+
+```
+F:\wildfly-dev\logaperture\bin>logctl attach 9616
+Can't attach to PID 9616 - open the command prompt as Administrator, or run as the account that owns that process.
+```
 
 ## If `logctl` doesn't find it
 
