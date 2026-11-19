@@ -21,8 +21,9 @@ JVMs](several-jvms.md)).
 
 !!! note "Tested on"
     Windows Server 2019, JDK 21.0.4, an application running as `LocalSystem`, `logctl` from an
-    elevated command prompt. Other service accounts (`LocalService`, `NetworkService`, a named
-    account) and a prompt that is not elevated have not been tested.
+    elevated command prompt. `logctl attach` was also checked from an elevated prompt against a
+    `LocalSystem` JVM started without `-javaagent`. Other service accounts (`LocalService`,
+    `NetworkService`, a named account) and a prompt that is not elevated have not been tested.
 
 ## Start LogAperture in a service that is already running
 
@@ -38,11 +39,6 @@ logctl attach 7100
 
 The service's JVM is not restarted. See [Try LogAperture without restarting](try-without-restart.md)
 for what `attach` does and its limits.
-
-!!! note "Not yet checked on a service"
-    `logctl attach` reaches a service's JVM through the same attach mechanism as the commands
-    above, but it has not yet been run against a Windows service. Treat it as untested until this
-    note is gone.
 
 ## If `logctl` doesn't find it
 
