@@ -34,8 +34,13 @@ import org.logaperture.core.RuleCandidateEvent;
 import org.logaperture.core.RuleGate;
 import org.logaperture.core.TrimDecision;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -52,24 +57,37 @@ class HandlerDiagnosticsTest {
     private Log4j2LoggingAdapter adapter;
 
     private BuiltConfiguration file() {
+        return file(dir, false);
+    }
+
+    /** @param mapped when {@code true}, also adds a {@code MemoryMappedFile} appender —
+     *  on Windows its {@code MappedByteBuffer} keeps the file locked until GC,
+     *  so only the test that needs it turns it on. */
+    private BuiltConfiguration file(Path baseDir, boolean mapped) {
         ConfigurationBuilder<BuiltConfiguration> b = ConfigurationBuilderFactory.newConfigurationBuilder();
         var layout = b.newLayout("PatternLayout").addAttribute("pattern", "%m%n");
         b.add(b.newAppender("Con", "Console").add(layout));
-        b.add(b.newAppender("Plain", "File").addAttribute("fileName", dir.resolve("plain.log").toString()).add(layout));
+        b.add(b.newAppender("Plain", "File").addAttribute("fileName", baseDir.resolve("plain.log").toString()).add(layout));
         b.add(b.newAppender("Random", "RandomAccessFile")
-                .addAttribute("fileName", dir.resolve("random.log").toString()).addAttribute("immediateFlush", false).add(layout));
-        b.add(b.newAppender("Mapped", "MemoryMappedFile").addAttribute("fileName", dir.resolve("mapped.log").toString())
-                .add(layout));
-        b.add(b.newAppender("Rolling", "RollingFile").addAttribute("fileName", dir.resolve("rolling.log").toString())
-                .addAttribute("filePattern", dir.resolve("rolling-%i.log").toString()).add(layout)
+                .addAttribute("fileName", baseDir.resolve("random.log").toString()).addAttribute("immediateFlush", false).add(layout));
+        if (mapped) {
+            b.add(b.newAppender("Mapped", "MemoryMappedFile").addAttribute("fileName", baseDir.resolve("mapped.log").toString())
+                    .add(layout));
+        }
+        b.add(b.newAppender("Rolling", "RollingFile").addAttribute("fileName", baseDir.resolve("rolling.log").toString())
+                .addAttribute("filePattern", baseDir.resolve("rolling-%i.log").toString()).add(layout)
                 .addComponent(b.newComponent("Policies").addComponent(
                         b.newComponent("SizeBasedTriggeringPolicy").addAttribute("size", "1MB"))));
         b.add(b.newAppender("AsyncPlain", "Async").addComponent(b.newAppenderRef("Plain")));
         b.add(b.newAppender("AsyncTwo", "Async").addComponent(b.newAppenderRef("Plain")).addComponent(b.newAppenderRef("Con")));
         b.add(b.newAppender("AsyncRolling", "Async").addComponent(b.newAppenderRef("Rolling")));
-        b.add(b.newRootLogger(Level.INFO).add(b.newAppenderRef("Con")).add(b.newAppenderRef("Plain"))
-                .add(b.newAppenderRef("Random")).add(b.newAppenderRef("Mapped")).add(b.newAppenderRef("Rolling")).add(b.newAppenderRef("AsyncPlain"))
-                .add(b.newAppenderRef("AsyncTwo")).add(b.newAppenderRef("AsyncRolling")));
+        var rootLogger = b.newRootLogger(Level.INFO).add(b.newAppenderRef("Con")).add(b.newAppenderRef("Plain"))
+                .add(b.newAppenderRef("Random")).add(b.newAppenderRef("Rolling")).add(b.newAppenderRef("AsyncPlain"))
+                .add(b.newAppenderRef("AsyncTwo")).add(b.newAppenderRef("AsyncRolling"));
+        if (mapped) {
+            rootLogger.add(b.newAppenderRef("Mapped"));
+        }
+        b.add(rootLogger);
         return b.build();
     }
 
@@ -166,11 +184,46 @@ class HandlerDiagnosticsTest {
     }
 
     @Test
-    void aMemoryMappedFile_isAFileWithAKnownPath_andReportsItsOwnFlush() {
-        HandlerDiagnostics facts = of("Mapped");
-        assertEquals(dir.resolve("mapped.log"), facts.targetPath());
-        assertTrue(facts.hasKnownFile());
-        assertEquals(Boolean.FALSE, facts.autoFlush(), "memory-mapped writes are not flushed per record");
+    void aMemoryMappedFile_isAFileWithAKnownPath_andReportsItsOwnFlush() throws Exception {
+        // A MemoryMappedFile keeps its file locked on Windows until GC, so it lives in a
+        // throwaway directory outside @TempDir, removed best-effort below.
+        Path mappedDir = Files.createTempDirectory("logaperture-mapped-");
+        // Log4j keeps a started context of the same name, so the default one has to stop first.
+        adapter.detach();
+        context.stop();
+        LoggerContext mappedContext = null;
+        Log4j2LoggingAdapter mappedAdapter = null;
+        try {
+            mappedContext = Configurator.initialize(file(mappedDir, true));
+            mappedAdapter = new Log4j2LoggingAdapter(mappedContext, "2.20.0");
+            HandlerDiagnostics facts = mappedAdapter.handlerDiagnostics(new HandlerRef("Mapped"));
+            assertEquals(mappedDir.resolve("mapped.log"), facts.targetPath());
+            assertTrue(facts.hasKnownFile());
+            assertEquals(Boolean.FALSE, facts.autoFlush(), "memory-mapped writes are not flushed per record");
+        } finally {
+            if (mappedAdapter != null) {
+                mappedAdapter.detach();
+            }
+            if (mappedContext != null) {
+                mappedContext.stop();
+            }
+            deleteBestEffort(mappedDir);
+        }
+    }
+
+    /** Removes {@code root} and what is in it; whatever the OS still holds is left for it to reap. */
+    private static void deleteBestEffort(Path root) {
+        try (Stream<Path> paths = Files.walk(root)) {
+            for (Path p : paths.sorted(Comparator.reverseOrder()).toList()) {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException locked) {
+                    p.toFile().deleteOnExit();
+                }
+            }
+        } catch (IOException | UncheckedIOException ignored) {
+            // best effort: a temp directory that cannot be listed is left behind
+        }
     }
 
     @Test

@@ -128,7 +128,7 @@ class ByteCountingFormatterTest {
         RuntimeException thrown = new RuntimeException("outer");
         String formatted = "ERROR [c] failed: " + thrown + ": " + render(thrown);
 
-        assertEquals(formatted.lastIndexOf(thrown + "\n\tat"), ByteCountingFormatter.traceStart(formatted, thrown),
+        assertEquals(formatted.lastIndexOf(thrown + System.lineSeparator() + "\tat"), ByteCountingFormatter.traceStart(formatted, thrown),
                 "%e follows the message with ': '; the copy in the message isn't followed by a line break");
     }
 
