@@ -97,6 +97,17 @@ jobs:
         # Broken links and nav entries pointing at missing pages fail here, on PRs too.
         run: mkdocs build --strict
 
+      - name: Check the link-preview tags and icons
+        # A theme change must not silently drop them (doc/specs/social-preview.md, SP8).
+        run: |
+          page=site/index.html
+          for want in 'property="og:image" content="https://' 'name="twitter:card"' 'rel="apple-touch-icon"' 'rel="icon"'; do
+            grep -q "$want" "$page" || { echo "::error::$page has no $want"; exit 1; }
+          done
+          for f in assets/social-preview.png assets/favicon.svg assets/favicon.ico assets/apple-touch-icon.png; do
+            test -s "site/$f" || { echo "::error::site/$f is missing from the build"; exit 1; }
+          done
+
       - name: Work out the version to deploy
         if: github.event_name != 'pull_request'
         id: v
@@ -153,7 +164,7 @@ jobs:
             fi
             if [ "$move_latest" = true ]; then
               mike deploy --push --update-aliases "$version" latest
-              mike set-default --push latest
+              mike set-default --push --template guide-overrides/root-redirect.html latest
             else
               mike deploy --push "$version"
             fi
@@ -161,7 +172,7 @@ jobs:
             mike deploy --push "${{ steps.v.outputs.version }}"
             # Until the first release there is no "latest"; / goes to dev meanwhile.
             if ! mike list --json | grep -q '"latest"'; then
-              mike set-default --push dev
+              mike set-default --push --template guide-overrides/root-redirect.html dev
             fi
           fi
 
