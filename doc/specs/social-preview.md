@@ -50,18 +50,15 @@ has a preview image on its GitHub page; the guide should present itself the same
 | `og:site_name` | `LogAperture` |
 | `og:title` | the page title and the site name (`Install · LogAperture`); the site name alone on a page with no title |
 | `og:description` | the page's `description` front matter, else `site_description` |
-| `og:url` | `https://logaperture.org/latest/` plus the page's path (see below) |
+| `og:url` | the page's canonical URL |
 | `og:image` | `https://logaperture.org/latest/assets/social-preview.png` (absolute) |
 | `og:image:width`, `og:image:height` | `1280`, `640` |
 | `og:image:alt` | a short description of the image |
 | `twitter:card` | `summary_large_image` |
 
 `og:image` is the same absolute URL on every version of the guide, so `1.0`, `1.1` and `dev` share one current
-image and no old version needs editing. `og:url` is not `page.canonical_url`. Found at implementation: `site_url` carries no version, so the theme's
-canonical link (and `canonical_url`) is `https://logaperture.org/<page>/`, a path that does not exist on the
-`mike`-published site (pages live under `/latest/` or `/<minor>/`). A preview crawler that follows `og:url` would
-land on a 404. So `og:url` names the page under `/latest/`. The existing canonical link is unchanged here (a
-follow-up: it is wrong on every version) and `site_url` is not touched.
+image and no old version needs editing. `og:url` is `page.canonical_url`. It first named the page under `/latest/` because `site_url` had no version and
+the canonical was a missing URL; [`guide-canonical.md`](guide-canonical.md) (#414) fixed the canonical and this follows it.
 
 ### The image (SP2, SP3)
 

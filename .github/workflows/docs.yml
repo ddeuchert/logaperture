@@ -101,7 +101,7 @@ jobs:
         # A theme change must not silently drop them (doc/specs/social-preview.md, SP8).
         run: |
           page=site/index.html
-          for want in 'property="og:image" content="https://' 'name="twitter:card"' 'rel="apple-touch-icon"' 'rel="icon"'; do
+          for want in 'rel="canonical" href="https://logaperture.org/latest/' 'property="og:image" content="https://' 'name="twitter:card"' 'rel="apple-touch-icon"' 'rel="icon"'; do
             grep -q "$want" "$page" || { echo "::error::$page has no $want"; exit 1; }
           done
           for f in assets/social-preview.png assets/favicon.svg assets/favicon.ico assets/apple-touch-icon.png; do
@@ -124,14 +124,29 @@ jobs:
               echo "label=$full" >> "$GITHUB_OUTPUT"
               echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
               echo "release=true" >> "$GITHUB_OUTPUT"
+              # A release defers to latest; a pre-release is canonical for itself
+              # (doc/specs/guide-canonical.md, CN1).
+              if [ -n "$pre" ]; then
+                echo "site_url=https://logaperture.org/$minor/" >> "$GITHUB_OUTPUT"
+              else
+                echo "site_url=https://logaperture.org/latest/" >> "$GITHUB_OUTPUT"
+              fi
               ;;
             *)
               if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
                 v="${{ inputs.version }}"
-                echo "prerelease=${{ inputs.prerelease }}" >> "$GITHUB_OUTPUT"
+                pre="${{ inputs.prerelease }}"
               else
                 v="dev"
-                echo "prerelease=" >> "$GITHUB_OUTPUT"
+                pre=""
+              fi
+              echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
+              # dev and a pre-release are canonical for themselves, anything else defers to latest
+              # (doc/specs/guide-canonical.md, CN1).
+              if [ "$v" = "dev" ] || [ -n "$pre" ]; then
+                echo "site_url=https://logaperture.org/$v/" >> "$GITHUB_OUTPUT"
+              else
+                echo "site_url=https://logaperture.org/latest/" >> "$GITHUB_OUTPUT"
               fi
               echo "version=$v" >> "$GITHUB_OUTPUT"
               echo "label=$v" >> "$GITHUB_OUTPUT"
@@ -144,6 +159,7 @@ jobs:
         env:
           DOCS_VERSION: ${{ steps.v.outputs.label }}
           DOCS_PRERELEASE: ${{ steps.v.outputs.prerelease }}
+          DOCS_SITE_URL: ${{ steps.v.outputs.site_url }}   # never empty: an empty value turns the canonical link off
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
