@@ -152,7 +152,7 @@ guide does:
 ```sh
 python3 -m venv .venv-docs
 .venv-docs/bin/pip install -r requirements-docs.txt
-.venv-docs/bin/mkdocs serve          # http://127.0.0.1:8000, reloads on save
+.venv-docs/bin/mkdocs serve          # http://127.0.0.1:8000/latest/, reloads on save
 .venv-docs/bin/mkdocs build --strict # what CI runs: fails on broken links
 ```
 

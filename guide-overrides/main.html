@@ -41,10 +41,8 @@
   <meta property="og:site_name" content="{{ config.site_name }}">
   <meta property="og:title" content="{{ og_title }}">
   <meta property="og:description" content="{{ og_description }}">
-  {#- Not page.canonical_url: site_url has no version in it, so that is https://logaperture.org/<page>/, which does
-      not exist on the mike-published site. -#}
-  {%- if page and page.url is not none %}
-  <meta property="og:url" content="https://logaperture.org/latest/{{ page.url }}">
+  {%- if page and page.canonical_url %}
+  <meta property="og:url" content="{{ page.canonical_url }}">
   {%- endif %}
   <meta property="og:image" content="https://logaperture.org/latest/assets/social-preview.png">
   <meta property="og:image:width" content="1280">
