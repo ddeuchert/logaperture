@@ -17,6 +17,8 @@ package org.logaperture.container.none;
 
 import org.junit.jupiter.api.Test;
 
+import java.lang.instrument.Instrumentation;
+import java.lang.reflect.Proxy;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -92,5 +94,58 @@ class NoneContainerIntegrationTest {
                 System.setProperty(key, before);
             }
         }
+    }
+
+    /** issue #279: install runs immediately when JUL is already initialised. */
+    @Test
+    void julAlreadyLoaded_installsAtOnce() throws ClassNotFoundException {
+        Class<?> rootLogger = Class.forName(JulLoadDetector.ROOT_LOGGER_CLASS, false, null);
+        Instrumentation inst = fakeInstrumentation(String.class, rootLogger);
+        AtomicInteger installed = new AtomicInteger();
+
+        NoneContainerIntegration.deferThenRun(inst, installed::incrementAndGet, 1000);
+
+        assertEquals(1, installed.get());
+    }
+
+    /** issue #279: install runs when JUL loads before the timeout. */
+    @Test
+    void julLoadsBeforeTimeout_installsWhenSeen() throws ClassNotFoundException {
+        Class<?> rootLogger = Class.forName(JulLoadDetector.ROOT_LOGGER_CLASS, false, null);
+        AtomicInteger calls = new AtomicInteger();
+        Instrumentation inst = (Instrumentation) Proxy.newProxyInstance(
+                Instrumentation.class.getClassLoader(), new Class<?>[] {Instrumentation.class},
+                (p, method, args) -> switch (method.getName()) {
+                    case "getAllLoadedClasses" -> calls.incrementAndGet() == 1
+                            ? new Class<?>[] {String.class}
+                            : new Class<?>[] {String.class, rootLogger};
+                    default -> throw new UnsupportedOperationException(method.getName());
+                });
+        AtomicInteger installed = new AtomicInteger();
+
+        NoneContainerIntegration.deferThenRun(inst, installed::incrementAndGet, 5000);
+
+        assertEquals(1, installed.get());
+        assertEquals(2, calls.get(), "two polls: first miss, second hit");
+    }
+
+    /** issue #279: install runs after timeout when JUL never loads. */
+    @Test
+    void timeoutExpires_installsAnyway() {
+        Instrumentation inst = fakeInstrumentation(String.class); // no RootLogger
+        AtomicInteger installed = new AtomicInteger();
+
+        NoneContainerIntegration.deferThenRun(inst, installed::incrementAndGet, 1);
+
+        assertEquals(1, installed.get());
+    }
+
+    private static Instrumentation fakeInstrumentation(Class<?>... loaded) {
+        return (Instrumentation) Proxy.newProxyInstance(
+                Instrumentation.class.getClassLoader(), new Class<?>[] {Instrumentation.class},
+                (p, method, args) -> switch (method.getName()) {
+                    case "getAllLoadedClasses" -> loaded;
+                    default -> throw new UnsupportedOperationException(method.getName());
+                });
     }
 }

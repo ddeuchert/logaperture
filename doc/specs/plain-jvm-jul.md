@@ -164,7 +164,15 @@ What the implementation settled or found that the decisions left open:
 The agent's own MBean registration initialises JUL in a Logback app (see "What is already
 established"). A Logback app that sets `java.util.logging.manager` itself after Logback has
 started would get the JDK default manager instead. That is 1.0 behaviour, not caused by this
-feature; tracked as [#279](https://github.com/ddeuchert/logaperture/issues/279).
+feature.
+
+**Fixed in 1.1.0 (issue #279).** The Logback path in {@code NoneContainerIntegration} now
+polls for JUL initialisation (signalled by {@code RootLogger} loading) for up to 10 s after
+Logback install is ready, before publishing the control surface. This gives {@code main()} time
+to set {@code java.util.logging.manager} before the agent's
+{@code getPlatformMBeanServer()} call triggers JUL initialisation at the JDK level. In a pure
+Logback app JUL never loads on its own, and the agent accepts the init side-effect after the
+timeout.
 
 ## Estimate and slot
 

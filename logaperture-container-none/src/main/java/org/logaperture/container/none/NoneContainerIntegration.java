@@ -47,6 +47,13 @@ import java.util.function.Supplier;
  * application to initialise {@code java.util.logging} and installs over that. Never both: the
  * agent's own MBean registration initialises JUL in every Logback application, so a JUL context
  * there would offer rules and {@code top} that never see a Logback event.
+ *
+ * <p>In the Logback path (issue #279) the agent also waits for JUL to initialise (up to 10 s)
+ * before publishing the control surface, so {@code main()} has time to set
+ * {@code java.util.logging.manager} before the agent's {@link
+ * java.lang.management.ManagementFactory#getPlatformMBeanServer()} call triggers JUL
+ * initialisation at the JDK level. In a pure Logback app JUL never loads on its own, and
+ * the agent accepts the init side-effect after the timeout.
  */
 public final class NoneContainerIntegration implements ContainerIntegration {
 
@@ -108,7 +115,10 @@ public final class NoneContainerIntegration implements ContainerIntegration {
             }
         };
         if (logback) {
-            LogbackLoadDetector.awaitLogbackAndThen(inst, installSystemContext);
+            // issue #279: give main() time to set java.util.logging.manager before
+            // the agent's getPlatformMBeanServer() call triggers JUL initialisation.
+            LogbackLoadDetector.awaitLogbackAndThen(inst,
+                    () -> deferThenRun(inst, installSystemContext));
         } else if (KnownFrameworks.julManagerFrontsABoundFramework(
                 System.getProperty(JUL_MANAGER_PROPERTY), KnownFrameworks.all())) {
             // doc/specs/class-loader-detector.md C1: JUL is only a front for a framework the detector
@@ -171,6 +181,45 @@ public final class NoneContainerIntegration implements ContainerIntegration {
             throw new IllegalStateException("the none integration has not been activated");
         }
         return active;
+    }
+
+    /**
+     * Waits up to 10 s for JUL to initialise (signalled by
+     * {@link JulLoadDetector#ROOT_LOGGER_CLASS} being loaded), then
+     * runs {@code install}. If JUL is already loaded the install runs
+     * immediately; in a pure Logback app where JUL never loads the
+     * timeout fires and the agent accepts the init side-effect (issue #279).
+     * <p>Package-visible for the test.
+     */
+    static void deferThenRun(Instrumentation inst, Runnable install) {
+        deferThenRun(inst, install, 10_000L);
+    }
+
+    /** Test seam: custom timeout in ms. Package-visible for the test. */
+    static void deferThenRun(Instrumentation inst, Runnable install, long timeoutMs) {
+        if (JulLoadDetector.isLoaded(inst.getAllLoadedClasses(), JulLoadDetector.ROOT_LOGGER_CLASS)) {
+            install.run();
+            return;
+        }
+        long deadline = System.nanoTime() + timeoutMs * 1_000_000L;
+        while (true) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            if (JulLoadDetector.isLoaded(inst.getAllLoadedClasses(), JulLoadDetector.ROOT_LOGGER_CLASS)) {
+                install.run();
+                return;
+            }
+            if (System.nanoTime() - deadline >= 0) {
+                Diagnostics.debug("none integration: JUL not initialised in"
+                        + " a Logback app; the agent's MBean registration will initialise it (issue #279)");
+                install.run();
+                return;
+            }
+        }
     }
 
     /** doc/specs/plain-jvm-jul.md #1. Package-visible for the test. */
