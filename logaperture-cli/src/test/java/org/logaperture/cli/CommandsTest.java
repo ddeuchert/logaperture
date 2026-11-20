@@ -1274,7 +1274,8 @@ class CommandsTest {
         run(Commands.setLogger("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "y", true);
 
         String text = output();
-        assertTrue(text.contains("This will set DEBUG on 31 currently-known loggers matching '*.Worker':"), text);
+        assertTrue(text.contains("This will set DEBUG on " + many.size()
+                + " currently-known loggers matching '*.Worker':"), text);
         assertTrue(text.contains("not affected"), text);
         assertTrue(text.contains("Apply? [y/N]"), text);
         assertArrayEquals(new Object[] {"*.Worker", "DEBUG", null, "SESSION", 0L, true}, mbean.setLevelCalls.get(0),
