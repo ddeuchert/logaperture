@@ -39,8 +39,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.function.LongSupplier;
 import java.util.logging.Formatter;
 import java.util.logging.Handler;
 import java.util.logging.LogManager;
@@ -109,12 +112,29 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     /** Handlers this adapter has resolved a {@link HandlerRef} for, keyed by that ref -- {@link #setHandlerLevel} needs it back. */
     private final ConcurrentHashMap<HandlerRef, Handler> handlersByRef = new ConcurrentHashMap<>();
     /**
-     * The refs {@link #resolveHandler} has already cold-walked and not found — a negative cache
-     * so a second cold lookup for the same unknown ref doesn't walk again (issue #18). Pruned
-     * alongside {@link #handlersByRef} in {@link #pruneStaleHandlerEntries}: a handler that was
-     * absent when last walked might be attached now, so the next resolve must try again.
+     * The refs {@link #resolveHandler} has cold-walked and not found, each with when and in which
+     * {@link #missGeneration} — a negative cache so a burst of lookups for the same unknown ref
+     * (core looping over tracked overrides or baselines) shares one walk (issue #18).
+     *
+     * <p>A miss is honoured for {@link #MISS_TTL_NANOS} only. Attaching a handler with a plain
+     * {@code logger.addHandler(...)} fires no event, and checking whether the live set changed
+     * would cost the very walk this cache skips, so a handler attached after a miss is found once
+     * that window has passed. Any walk that does run in the window caches every live handler's
+     * ref, and {@link #resolveHandler} reads that cache before any miss, so a handler only stays
+     * hidden while no walk has seen it. A reload or a name-cache invalidation advances {@link
+     * #missGeneration}, which voids every recorded miss at once — including one a walk that
+     * started before the invalidation records after it.
      */
-    private final Set<HandlerRef> knownMissing = ConcurrentHashMap.newKeySet();
+    private final ConcurrentHashMap<HandlerRef, Miss> knownMissing = new ConcurrentHashMap<>();
+    /** Advanced by {@link #forgetMisses()}; a {@link Miss} from an older generation is never honoured. */
+    private final AtomicLong missGeneration = new AtomicLong();
+    /** How long a cold-walk miss is remembered (issue #18). */
+    static final long MISS_TTL_NANOS = TimeUnit.SECONDS.toNanos(1);
+    /** {@link System#nanoTime()} outside tests; a test supplies its own to step past {@link #MISS_TTL_NANOS}. */
+    private final LongSupplier nanoClock;
+
+    /** One {@link #knownMissing} entry: when the walk that missed ran, and in which generation. */
+    private record Miss(long atNanos, long generation) { }
     /** doc/specs/top.md -- shared across every {@link ByteCountingFormatter} this adapter installs. */
     private final TopCounters topCounters = new TopCounters();
 
@@ -195,8 +215,14 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      * {@code LogManager} configuration reloads -- {@link JulAdapterFactory#forPlainJvm} only.
      */
     JulLoggingAdapter(HandlerNameResolver nameResolver, boolean configurationReloads) {
+        this(nameResolver, configurationReloads, System::nanoTime);
+    }
+
+    /** Package-visible for tests: {@code nanoClock} stands in for {@link System#nanoTime()}. */
+    JulLoggingAdapter(HandlerNameResolver nameResolver, boolean configurationReloads, LongSupplier nanoClock) {
         this.nameResolver = Objects.requireNonNull(nameResolver, "nameResolver");
         this.configurationReloads = configurationReloads;
+        this.nanoClock = Objects.requireNonNull(nanoClock, "nanoClock");
     }
 
     @Override
@@ -281,7 +307,7 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      */
     private void refreshHandlersAfterReload() {
         pruneStaleHandlerEntries(liveHandlers());
-        knownMissing.clear();
+        forgetMisses();
         synchronized (resolutionLock) {
             // Under the lock, as in invalidateNameCache(): an attempt already running from a
             // pre-reload snapshot must not set DONE after this and skip naming the new handlers.
@@ -739,14 +765,12 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         if (cached != null) {
             return cached;
         }
-        if (knownMissing.contains(ref)
-                && (nameResolver == HandlerNameResolver.NONE || resolution == Resolution.DONE)) {
-            // A prior cold walk already resolved every advertised handler and
-            // this ref wasn't among them — skip the walk (issue #18). The set
-            // is cleared at reload, so a handler attached since the last walk
-            // gets a fresh attempt.
-            return null;
+        if (isRecentMiss(ref)) {
+            return null; // a walk moments ago didn't find it either (issue #18)
         }
+        // Read before the walk: if anything invalidates the misses while it runs, the miss it
+        // records below is already stale and is never honoured.
+        long generation = missGeneration.get();
         knownHandlers(); // side effect: resolves and caches every advertised handler's ref
         if (isJBossLogManager() && tokenRefs.contains(ref)) {
             // The cold walk (via realHandlers()) just cached an identity-token
@@ -757,10 +781,38 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             // inside a fan-out) still resolves via the fast path above.
             return null;
         }
-        if (handlersByRef.get(ref) == null) {
-            knownMissing.add(ref);
+        Handler found = handlersByRef.get(ref);
+        if (found == null) {
+            knownMissing.put(ref, new Miss(nanoClock.getAsLong(), generation));
         }
-        return handlersByRef.get(ref);
+        return found;
+    }
+
+    /**
+     * Whether a walk in the current {@link #missGeneration}, less than {@link #MISS_TTL_NANOS}
+     * ago, already failed to find {@code ref}. Never while WildFly names are still pending: the
+     * next walk may be the one that names the handler.
+     */
+    private boolean isRecentMiss(HandlerRef ref) {
+        Miss miss = knownMissing.get(ref);
+        if (miss == null) {
+            return false;
+        }
+        if (nameResolver != HandlerNameResolver.NONE && resolution != Resolution.DONE) {
+            return false;
+        }
+        if (miss.generation() == missGeneration.get()
+                && nanoClock.getAsLong() - miss.atNanos() < MISS_TTL_NANOS) {
+            return true;
+        }
+        knownMissing.remove(ref, miss); // expired or voided; drop it unless a newer miss replaced it
+        return false;
+    }
+
+    /** Voids every recorded miss: after a reload or a rename, a missing ref may resolve. */
+    private void forgetMisses() {
+        missGeneration.incrementAndGet();
+        knownMissing.clear();
     }
 
     /**
@@ -879,7 +931,6 @@ public final class JulLoggingAdapter implements LoggingAdapter {
         }
         Set<Handler> liveSet = Collections.newSetFromMap(new IdentityHashMap<>());
         liveSet.addAll(live);
-        boolean anyRemoved = false;
         for (Handler handler : refByHandler.keySet()) {
             if (liveSet.contains(handler)) {
                 continue;
@@ -891,10 +942,6 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             tokenRefs.remove(ref);
             handlersByRef.remove(ref, handler); // only if still pointing at this exact dead instance
             resolvedNames.remove(handler);
-            anyRemoved = true;
-        }
-        if (anyRemoved) {
-            knownMissing.clear();
         }
     }
 
@@ -1096,6 +1143,7 @@ public final class JulLoggingAdapter implements LoggingAdapter {
             resolvedNames.clear();
             resolution = Resolution.PENDING;
         }
+        forgetMisses();
     }
 
     /**

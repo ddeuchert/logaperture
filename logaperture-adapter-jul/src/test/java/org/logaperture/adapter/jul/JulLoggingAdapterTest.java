@@ -27,7 +27,11 @@ import org.logaperture.api.Level;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.ConsoleHandler;
+import java.util.logging.Handler;
+import java.util.logging.LogManager;
 import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -295,20 +299,68 @@ class JulLoggingAdapterTest {
         }
     }
 
+    // --- cold-walk misses (issue #18) -----------------------------------------------------------
+
     @Test
-    void resolveHandler_skipsColdWalkWhenRefAlreadyLookedUpAndNotFound() {
-        // A code-review finding (issue #18): resolveHandler's cold fallback
-        // walked the full handler tree on every call for the same unknown ref,
-        // even though the first walk already confirmed it doesn't exist.  After
-        // the fix, a second lookup for the same unknown ref returns null
-        // without re-walking.
+    void coldMiss_aSecondLookupWithinTheWindowSkipsTheWalk() {
+        AtomicLong clock = new AtomicLong();
+        JulLoggingAdapter clocked = new JulLoggingAdapter(HandlerNameResolver.NONE, false, clock::get);
+        CountingLogger counting = registerCountingLogger(name("miss.Counting"));
         HandlerRef unknown = new HandlerRef("NoSuchHandlerAtAll");
 
-        Optional<Level> first = adapter.handlerLevel(unknown);
-        assertTrue(first.isEmpty(), "unknown ref: no level");
+        assertTrue(clocked.handlerLevel(unknown).isEmpty());
+        int afterFirst = counting.handlerReads.get();
+        assertTrue(afterFirst > 0, "the first lookup walks the logger tree");
 
-        Optional<Level> second = adapter.handlerLevel(unknown);
-        assertTrue(second.isEmpty(), "second lookup for unknown ref also returns empty — negative cache");
+        clock.addAndGet(JulLoggingAdapter.MISS_TTL_NANOS - 1);
+        assertTrue(clocked.handlerLevel(unknown).isEmpty());
+        assertEquals(afterFirst, counting.handlerReads.get(), "a miss inside the window does not walk again");
+
+        clock.addAndGet(1);
+        assertTrue(clocked.handlerLevel(unknown).isEmpty());
+        assertTrue(counting.handlerReads.get() > afterFirst, "once the window has passed, the next lookup walks");
+    }
+
+    @Test
+    void coldMiss_aHandlerAttachedAfterTheMissIsFoundOnceTheWindowPasses() {
+        // Attaching a handler fires no event, so a miss stands for its window and no longer.
+        AtomicLong clock = new AtomicLong();
+        JulLoggingAdapter clocked = new JulLoggingAdapter(HandlerNameResolver.NONE, false, clock::get);
+        ConsoleHandler console = testConsoleAtInfo();
+        HandlerRef ref = HandlerRef.anonymous(console);
+        Logger logger = Logger.getLogger(name("miss.LateAttach"));
+
+        assertTrue(clocked.handlerLevel(ref).isEmpty(), "not attached yet");
+        logger.addHandler(console);
+        try {
+            assertTrue(clocked.handlerLevel(ref).isEmpty(), "still inside the miss window");
+
+            clock.addAndGet(JulLoggingAdapter.MISS_TTL_NANOS);
+
+            assertEquals(Optional.of(Level.INFO), clocked.handlerLevel(ref));
+        } finally {
+            logger.removeHandler(console);
+        }
+    }
+
+    @Test
+    void coldMiss_invalidatingTheNameCacheForgetsTheMiss() {
+        AtomicLong clock = new AtomicLong();
+        JulLoggingAdapter clocked = new JulLoggingAdapter(HandlerNameResolver.NONE, false, clock::get);
+        ConsoleHandler console = testConsoleAtInfo();
+        HandlerRef ref = HandlerRef.anonymous(console);
+        Logger logger = Logger.getLogger(name("miss.Invalidated"));
+
+        assertTrue(clocked.handlerLevel(ref).isEmpty(), "not attached yet");
+        logger.addHandler(console);
+        try {
+            clocked.invalidateNameCache();
+
+            assertEquals(Optional.of(Level.INFO), clocked.handlerLevel(ref),
+                    "no time has passed, but the invalidation voided the miss");
+        } finally {
+            logger.removeHandler(console);
+        }
     }
 
     @Test
@@ -447,6 +499,31 @@ class JulLoggingAdapterTest {
 
         adapter.applyLevel(name("reapply.Worker"), Level.DEBUG); // still works
         assertEquals(Level.DEBUG, adapter.effectiveLevel(name("reapply.Worker")));
+    }
+
+    /**
+     * Registers a logger that counts {@link Logger#getHandlers()} calls -- each walk of the handler
+     * tree reads every known logger's handlers, so the count says whether a lookup walked. The
+     * returned instance must stay strongly reachable: the {@code LogManager} only holds it weakly.
+     */
+    private static CountingLogger registerCountingLogger(String loggerName) {
+        CountingLogger counting = new CountingLogger(loggerName);
+        assertTrue(LogManager.getLogManager().addLogger(counting), "a fresh name registers");
+        return counting;
+    }
+
+    private static final class CountingLogger extends Logger {
+        final AtomicInteger handlerReads = new AtomicInteger();
+
+        CountingLogger(String name) {
+            super(name, null);
+        }
+
+        @Override
+        public Handler[] getHandlers() {
+            handlerReads.incrementAndGet();
+            return super.getHandlers();
+        }
     }
 
     private static ConsoleHandler testConsoleAtInfo() {
