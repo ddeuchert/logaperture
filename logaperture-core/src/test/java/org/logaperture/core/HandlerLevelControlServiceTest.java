@@ -85,6 +85,87 @@ class HandlerLevelControlServiceTest {
         assertTrue(overrides.get(CONSOLE).isPresent());
     }
 
+    // --- a typed ref must be addressable (issue #417) ----------------------------------------------
+
+    private static final HandlerRef TOKEN = new HandlerRef("ConsoleHandler@1a2b3c");
+
+    @Test
+    void setHandlerLevel_onAnUnstableRef_throwsAndChangesNothing() {
+        adapter.addHandler(TOKEN, Level.INFO);
+        adapter.markUnstable(TOKEN);
+        int auditBefore = auditLog.records().size();
+
+        assertThrows(UnknownHandlerException.class,
+                () -> service.setHandlerLevel(TOKEN, Level.TRACE, SetHandlerLevelOptions.defaults()));
+        assertThrows(UnknownHandlerException.class,
+                () -> service.setHandlerLevel(TOKEN, Level.TRACE, SetHandlerLevelOptions.defaults()),
+                "refused on a retry too, not only on the first try");
+
+        assertEquals(Level.INFO, adapter.handlerLevel(TOKEN).orElseThrow());
+        assertTrue(overrides.get(TOKEN).isEmpty());
+        assertFalse(baselines.isCaptured(TOKEN), "nothing captured before the refusal");
+        assertEquals(auditBefore, auditLog.records().size());
+    }
+
+    @Test
+    void setHandlerAuto_onAnUnstableRef_throwsAndChangesNothing() {
+        adapter.addHandler(TOKEN, Level.INFO);
+        adapter.markUnstable(TOKEN);
+
+        assertThrows(UnknownHandlerException.class,
+                () -> service.setHandlerAuto(TOKEN, SetHandlerLevelOptions.defaults()));
+
+        assertEquals(Level.INFO, adapter.handlerLevel(TOKEN).orElseThrow());
+        assertTrue(overrides.get(TOKEN).isEmpty());
+    }
+
+    @Test
+    void allHandlers_stillReachesAnUnstableRef() {
+        adapter.addHandler(TOKEN, Level.INFO);
+        adapter.markUnstable(TOKEN);
+
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+
+        assertEquals(Level.TRACE, adapter.handlerLevel(TOKEN).orElseThrow(), "fan-out goes over the real handlers");
+        assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
+    }
+
+    @Test
+    void checkSetHandlerLevelPermitted_onAnUnstableRef_isUnknownBeforeAnyCapabilityIsJudged() {
+        // The aggregate runs this pre-check in every context first; a token must fail as unknown
+        // there, not as a denied capability, and without a baseline captured for it.
+        adapter.addHandler(TOKEN, Level.INFO);
+        adapter.markUnstable(TOKEN);
+        HandlerLevelControlService denied = newService(CapabilityPolicy.denyAll());
+
+        assertThrows(UnknownHandlerException.class,
+                () -> denied.checkSetHandlerLevelPermitted(TOKEN, Level.TRACE, SetHandlerLevelOptions.defaults()));
+
+        assertFalse(baselines.isCaptured(TOKEN));
+    }
+
+    @Test
+    void setDefaultHandlerMembers_anUnstableRef_throwsAndPersistsNothing() {
+        adapter.addHandler(TOKEN, Level.INFO);
+        adapter.markUnstable(TOKEN);
+
+        assertThrows(UnknownHandlerException.class, () -> service.setDefaultHandlerMembers(List.of(CONSOLE, TOKEN)));
+
+        assertTrue(stateStore.loadDefaultHandlerMembers().isEmpty());
+    }
+
+    @Test
+    void resetHandler_stillClearsAnOverrideSetOnATokenBeforeTheCheckExisted() {
+        adapter.addHandler(TOKEN, Level.INFO);
+        service.setHandlerLevel(TOKEN, Level.TRACE, SetHandlerLevelOptions.defaults()); // not yet checked then
+        adapter.markUnstable(TOKEN);
+
+        service.resetHandler(TOKEN, true);
+
+        assertEquals(Level.INFO, adapter.handlerLevel(TOKEN).orElseThrow());
+        assertTrue(overrides.get(TOKEN).isEmpty());
+    }
+
     @Test
     void resetHandler_restoresTheCapturedBaseline() {
         service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());

@@ -103,6 +103,13 @@ remove the label from every issue the release ships and set its Status to **Rele
 An issue delivered across several PRs stays open, at **In progress**, until its final review;
 it is closed and labelled `PendingRelease` then, not per slice.
 
+**`DeferUntilNeeded`** marks performance work that is real but not yet worth its cost: the issue
+stays open, at **Backlog** on milestone `1.x`, until a measurement shows the need. That can be a
+benchmark result, a profile, or a field report of the cost actually showing up. Whoever picks the
+issue up links that measurement from it first, then removes the label and schedules it like any
+other issue. A comment on the issue says what makes the change costly or risky, so the reason it
+waited survives (#18 is an example).
+
 A new issue gets a milestone when it is filed (`1.x` if it is not yet scheduled).
 
 ### Copyright header

@@ -97,6 +97,17 @@ jobs:
         # Broken links and nav entries pointing at missing pages fail here, on PRs too.
         run: mkdocs build --strict
 
+      - name: Check the link-preview tags and icons
+        # A theme change must not silently drop them (doc/specs/social-preview.md, SP8).
+        run: |
+          page=site/index.html
+          for want in 'rel="canonical" href="https://logaperture.org/latest/' 'property="og:image" content="https://' 'name="twitter:card"' 'rel="apple-touch-icon"' 'rel="icon"'; do
+            grep -q "$want" "$page" || { echo "::error::$page has no $want"; exit 1; }
+          done
+          for f in assets/social-preview.png assets/favicon.svg assets/favicon.ico assets/apple-touch-icon.png; do
+            test -s "site/$f" || { echo "::error::site/$f is missing from the build"; exit 1; }
+          done
+
       - name: Work out the version to deploy
         if: github.event_name != 'pull_request'
         id: v
@@ -113,14 +124,29 @@ jobs:
               echo "label=$full" >> "$GITHUB_OUTPUT"
               echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
               echo "release=true" >> "$GITHUB_OUTPUT"
+              # A release defers to latest; a pre-release is canonical for itself
+              # (doc/specs/guide-canonical.md, CN1).
+              if [ -n "$pre" ]; then
+                echo "site_url=https://logaperture.org/$minor/" >> "$GITHUB_OUTPUT"
+              else
+                echo "site_url=https://logaperture.org/latest/" >> "$GITHUB_OUTPUT"
+              fi
               ;;
             *)
               if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
                 v="${{ inputs.version }}"
-                echo "prerelease=${{ inputs.prerelease }}" >> "$GITHUB_OUTPUT"
+                pre="${{ inputs.prerelease }}"
               else
                 v="dev"
-                echo "prerelease=" >> "$GITHUB_OUTPUT"
+                pre=""
+              fi
+              echo "prerelease=$pre" >> "$GITHUB_OUTPUT"
+              # dev and a pre-release are canonical for themselves, anything else defers to latest
+              # (doc/specs/guide-canonical.md, CN1).
+              if [ "$v" = "dev" ] || [ -n "$pre" ]; then
+                echo "site_url=https://logaperture.org/$v/" >> "$GITHUB_OUTPUT"
+              else
+                echo "site_url=https://logaperture.org/latest/" >> "$GITHUB_OUTPUT"
               fi
               echo "version=$v" >> "$GITHUB_OUTPUT"
               echo "label=$v" >> "$GITHUB_OUTPUT"
@@ -133,6 +159,7 @@ jobs:
         env:
           DOCS_VERSION: ${{ steps.v.outputs.label }}
           DOCS_PRERELEASE: ${{ steps.v.outputs.prerelease }}
+          DOCS_SITE_URL: ${{ steps.v.outputs.site_url }}   # never empty: an empty value turns the canonical link off
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -153,7 +180,7 @@ jobs:
             fi
             if [ "$move_latest" = true ]; then
               mike deploy --push --update-aliases "$version" latest
-              mike set-default --push latest
+              mike set-default --push --template guide-overrides/root-redirect.html latest
             else
               mike deploy --push "$version"
             fi
@@ -161,7 +188,7 @@ jobs:
             mike deploy --push "${{ steps.v.outputs.version }}"
             # Until the first release there is no "latest"; / goes to dev meanwhile.
             if ! mike list --json | grep -q '"latest"'; then
-              mike set-default --push dev
+              mike set-default --push --template guide-overrides/root-redirect.html dev
             fi
           fi
 

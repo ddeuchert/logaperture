@@ -28,3 +28,25 @@
     and options may still change before 1.0.0.
   {% endif %}
 {% endblock %}
+
+{#- Link previews and icons (doc/specs/social-preview.md). The image URL is absolute and names "latest", so every
+    version of the guide shares one current image and no released version needs editing. -#}
+{% block extrahead %}
+  {{ super() }}
+  {%- set og_title = (page.title ~ " · " ~ config.site_name) if page and page.title and not page.is_homepage else config.site_name %}
+  {%- set og_description = (page.meta.description if page and page.meta and page.meta.description else config.site_description) %}
+  <link rel="icon" href="{{ 'assets/favicon.svg' | url }}" type="image/svg+xml" sizes="any">
+  <link rel="apple-touch-icon" href="{{ 'assets/apple-touch-icon.png' | url }}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name }}">
+  <meta property="og:title" content="{{ og_title }}">
+  <meta property="og:description" content="{{ og_description }}">
+  {%- if page and page.canonical_url %}
+  <meta property="og:url" content="{{ page.canonical_url }}">
+  {%- endif %}
+  <meta property="og:image" content="https://logaperture.org/latest/assets/social-preview.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="LogAperture: runtime logging control for the JVM">
+  <meta name="twitter:card" content="summary_large_image">
+{% endblock %}

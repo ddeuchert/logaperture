@@ -15,7 +15,7 @@
 # The LogAperture user guide (doc/specs/user-documentation.md). Pages live in guide/; the
 # design docs in doc/ are not part of the site.
 #
-#   Preview:   mkdocs serve
+#   Preview:   mkdocs serve                  (at http://127.0.0.1:8000/latest/, from site_url below)
 #   Zip copy:  OFFLINE=true mkdocs build     (opens from disk, no network requests)
 #   With GIFs: DEMO_GIFS=1 mkdocs build      (needs agg; what the docs workflow publishes)
 #
@@ -24,7 +24,10 @@
 
 site_name: LogAperture
 site_description: Runtime logging control for the JVM
-site_url: https://logaperture.org/
+# Where this build will be served: the canonical link, the sitemap and the 404 page are built from it. The docs
+# workflow sets DOCS_SITE_URL (doc/specs/guide-canonical.md): dev and pre-releases are canonical for themselves,
+# anything else for /latest/. mkdocs serve mounts the site at this path, so a local preview is under /latest/.
+site_url: !ENV [DOCS_SITE_URL, "https://logaperture.org/latest/"]
 repo_url: https://github.com/ddeuchert/logaperture
 repo_name: ddeuchert/logaperture
 edit_uri: edit/develop/guide/
@@ -46,6 +49,7 @@ validation:
 theme:
   name: material
   custom_dir: guide-overrides
+  favicon: assets/favicon.ico
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default

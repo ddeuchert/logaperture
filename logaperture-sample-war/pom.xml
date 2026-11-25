@@ -52,7 +52,7 @@
       LogManager#getLogger / Logger#trace..error surface is used, stable
       across 2.x.
     -->
-    <log4j-api.version>2.17.1</log4j-api.version>
+    <log4j-api.version>2.25.5</log4j-api.version>
     <maven-war-plugin.version>3.4.0</maven-war-plugin.version>
   </properties>
 

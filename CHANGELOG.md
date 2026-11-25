@@ -117,6 +117,12 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ### Fixed
 
+- **WildFly: `logctl handler` and `logctl set default-handler` no longer accept a handler's
+  identity token.** A handler WildFly's configuration doesn't name, such as one an application
+  attached itself, is known only by a `ConsoleHandler@1a2b3c`-style token, which changes on every
+  restart. Typing such a token now fails as an unknown handler, as the documentation always said,
+  instead of succeeding and leaving a setting that stopped applying after the next restart.
+  `reset` still accepts a token, so an override set that way before can be cleared (issue #417).
 - **On Windows, a second JVM that shares an instance identity now reports which process holds it.** The
   "already locked" message named `pid=-1`, because Windows would not let it read the pid under the lock. The
   lock now covers one byte past the pid, so the pid is readable on every OS (issue #363).
