@@ -18,7 +18,7 @@ package org.logaperture.cli;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -26,7 +26,7 @@ import java.util.List;
 /**
  * Remembers recently set logger names in {@code ~/.logaperture/recent-loggers},
  * one per line, most recent first. Max 50 entries; duplicates are deduplicated
- * on save.
+ * on save, and blank lines are ignored on read.
  */
 final class RecentLoggers {
 
@@ -44,39 +44,71 @@ final class RecentLoggers {
         return home.resolve("recent-loggers");
     }
 
-    /** Reads recent loggers, most recent first. Never throws. */
+    /** Reads recent loggers, most recent first, without blanks or repeats, at most 50. Never throws. */
     static List<String> read() {
         Path path = file();
         if (!Files.isRegularFile(path)) {
             return List.of();
         }
         try {
-            return Files.readAllLines(path);
-        } catch (IOException e) {
+            return clean(Files.readAllLines(path));
+        } catch (IOException | RuntimeException e) {
             return List.of();
         }
     }
 
     /** Records {@code name} as the most recently set logger. Never throws. */
     static void record(String name) {
-        if (name == null || name.isBlank() || name.indexOf('*') >= 0) {
-            return; // a pattern is not a logger: listed back later it would be taken as an exact name
+        recordAll(name == null ? List.of() : List.of(name));
+    }
+
+    /**
+     * Records {@code names} in one read-modify-write: they become the most recent entries, in the order
+     * given (the first is listed first), ahead of the existing history. Patterns and blanks are skipped.
+     * Never throws.
+     */
+    static void recordAll(List<String> names) {
+        List<String> fresh = new ArrayList<>();
+        for (String name : names) {
+            // A pattern is not a logger: listed back later it would be taken as an exact name.
+            if (name != null && !name.isBlank() && name.indexOf('*') < 0) {
+                fresh.add(name.strip());
+            }
+        }
+        if (fresh.isEmpty()) {
+            return;
         }
         Path path = file();
         try {
             Files.createDirectories(path.getParent());
-            LinkedHashSet<String> entries = new LinkedHashSet<>();
-            entries.add(name);
+            List<String> merged = new ArrayList<>(fresh);
             if (Files.isRegularFile(path)) {
-                entries.addAll(Files.readAllLines(path));
+                merged.addAll(Files.readAllLines(path));
             }
-            List<String> kept = new ArrayList<>(entries);
-            if (kept.size() > MAX) {
-                kept = kept.subList(0, MAX);
+            // Written beside the history and moved over it, so an interrupted write never leaves it
+            // empty or half-written. Two logctl runs at once can still lose one's update; the history is
+            // a convenience, not a record.
+            Path temp = Files.createTempFile(path.getParent(), "recent-loggers", ".tmp");
+            try {
+                Files.write(temp, clean(merged));
+                Files.move(temp, path, StandardCopyOption.REPLACE_EXISTING);
+            } finally {
+                Files.deleteIfExists(temp);
             }
-            Files.write(path, kept, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             // best effort
         }
+    }
+
+    private static List<String> clean(List<String> lines) {
+        LinkedHashSet<String> unique = new LinkedHashSet<>();
+        for (String line : lines) {
+            String name = line.strip();
+            if (!name.isEmpty() && name.indexOf('*') < 0) {
+                unique.add(name);
+            }
+        }
+        List<String> kept = new ArrayList<>(unique);
+        return kept.size() > MAX ? new ArrayList<>(kept.subList(0, MAX)) : kept;
     }
 }

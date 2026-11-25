@@ -1266,7 +1266,7 @@ class CommandsTest {
     @Test
     void setLevel_pattern_interactive_tooManyToList_previewsAndConfirmsAllOrNothing() {
         List<LoggerInfoData> many = new ArrayList<>();
-        for (int i = 0; i <= Picker.MAX_LISTED; i++) {
+        for (int i = 0; i <= 30; i++) { // a complete command keeps the old limit of 30
             many.add(new LoggerInfoData("com.acme.w" + i + ".Worker", "INFO", "INFO", false, null, null, null, null));
         }
         mbean.loggers = many;
@@ -1285,7 +1285,7 @@ class CommandsTest {
     @Test
     void setLevel_pattern_interactive_tooManyToList_declinedAppliesNothing() {
         List<LoggerInfoData> many = new ArrayList<>();
-        for (int i = 0; i <= Picker.MAX_LISTED; i++) {
+        for (int i = 0; i <= 30; i++) { // a complete command keeps the old limit of 30
             many.add(new LoggerInfoData("com.acme.w" + i + ".Worker", "INFO", "INFO", false, null, null, null, null));
         }
         mbean.loggers = many;

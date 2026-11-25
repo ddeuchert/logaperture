@@ -57,9 +57,9 @@ worked before is taken over.
 
 **E3 — Top-level packages.** The first two name segments (`org.hibernate`, `com.acme`) of the
 loggers the JVM knows, sorted, with a note of how many loggers they were taken from. Two segments
-rather than one because `org` and `com` say nothing. It looks at no more than the first 200 loggers
-so it stays quick, and says so (`from first 200 loggers`) — it is a hint for what to type, not a
-complete list.
+rather than one because `org` and `com` say nothing. It is taken from every logger the JVM knows
+(`from 144 loggers`), keeping only the deepest of each family (`com.shop`, not `com` beside it), and
+leaving out `ROOT`. It is a hint for what to type: use `list loggers` for the full list.
 
 **E4 — Paging and narrowing.** Matches are listed 50 to a page (was 30, and refused beyond that).
 `Page 1 of N` is shown when there is more than one page. A name typed at `Which logger?` is
@@ -68,10 +68,15 @@ searched as before (G4: a bare word is `*.<word>`). At the numbered list:
 - a selection (`1,3-5`, `all`) picks from the whole list, whichever page it is on. An answer made
   only of digits, commas, dashes and spaces, or `all`, is always meant as a selection: if it isn't
   a valid one it is explained and asked again, as every other selection is, and never searched;
-- Enter shows the next page, or cancels on the last;
-- anything else is a **narrower name**, searched as a prefix: `org.hibernate` becomes
-  `org.hibernate.*`, and the narrowed matches are listed the same way. A name with a `*` in it is
-  used as typed.
+- Enter cancels, on every page, as at every other guided question. `n` shows the next page and `p`
+  the previous one; the prompt names the keys that apply on the page being shown;
+- anything else is a **narrower name**, and the narrowed matches are listed the same way. A name
+  with a `*` in it is used as typed. A name with a `.` is a prefix: `org.hibernate` and
+  `org.hibernate.` both become `org.hibernate.*`. A bare word means what it means at `Which logger?`
+  (G4): `Worker` is `*.Worker`.
+
+A complete command (`set logger '*.Worker' DEBUG`) is untouched: with more than 30 matches it still
+shows the all-or-nothing `Apply?` preview rather than a pick list, as before.
 
 **E5 — Level letters.** `i`=INFO, `d`=DEBUG, `t`=TRACE, `w`=WARN, `e`=ERROR, `o`=OFF,
 case-insensitive, accepted at the `Level?` question of guided `set`. The prompt shows
@@ -105,13 +110,15 @@ There are no open questions.
 ## Tests
 
 - Recording: most-recent-first, de-duplication, the 50-entry cap, an unreadable and an unwritable
-  history.
+  history. Several loggers picked at once are recorded together (the first picked listed first, the
+  earlier history kept). Blank lines in the file are ignored; the file is replaced atomically.
 - `Which logger?` + Enter cancels. `?` with history (pick one, `1,3`, cancel and asked again) and
   without history (`No history yet.`, packages, asked again).
 - Recording from `set logger` and `add rule`, for a picked, a typed and a refused logger.
-- Paging: exactly 50, 51 and 120 matches; Enter advances; a selection on page 2 picks the right
+- Paging: exactly 50, 51 and 120 matches; `n` and `p` move between pages, Enter cancels on any; a selection on page 2 picks the right
   names; `all` picks every match.
-- Narrowing: a typed name replaces the list; a name with `*` is used as typed. An invalid
+- Narrowing: a typed name replaces the list; a name with `*` is used as typed; a trailing dot is a prefix; a bare
+  word is `*.<word>`. An invalid
   selection (`1,x`, `0`, `99`, `3-1`) is explained and asked again, never searched.
 - Level letters: each letter, upper case, an unknown letter (asked again), `AUTO` where allowed.
 - The existing tests that assert `too many to list` and `Enter to cancel` are updated for E2/E4.

@@ -203,7 +203,7 @@ Not applied.
 
 ### A long list is paged
 
-When more than 50 loggers match, `logctl` shows the first 50, and Enter shows the next page. Pick by
+When more than 50 loggers match, `logctl` shows the first 50, and `n` shows the next page (`p` the previous one; Enter cancels). Pick by
 number (`1,3-5`, or `all`, which means every match on every page), or type a shorter name to search
 again under it. A number that isn't in the list is explained and asked again. Rows 4 to 49 and 53 to
 59 are left out here:
@@ -218,14 +218,14 @@ Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cance
    3  com.shop.billing.cache.Worker    (INFO, native)
    ...
   50  com.shop.payments.sync.Worker    (INFO, native)
-Which? (e.g. 1,3 or 1-2 or all, Enter for more, or type to narrow)
->
+Which? (e.g. 1,3 or 1-2 or all, n for next page, Enter to cancel, or type to narrow)
+> n
 Page 2 of 2:
   51  com.shop.shipping.audit.Worker  (INFO, native)
   52  com.shop.shipping.batch.Worker  (INFO, native)
    ...
   60  com.shop.shipping.sync.Worker   (INFO, native)
-Which? (e.g. 1,3 or 1-2 or all, Enter to cancel, or type to narrow)
+Which? (e.g. 1,3 or 1-2 or all, p for previous, Enter to cancel, or type to narrow)
 > com.shop.orders
 21 loggers match 'com.shop.orders.*':
    1  com.shop.orders               (INFO, native)

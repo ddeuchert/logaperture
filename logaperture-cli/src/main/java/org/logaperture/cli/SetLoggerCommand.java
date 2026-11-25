@@ -46,6 +46,13 @@ final class SetLoggerCommand implements Command {
 
     private static final String INDENT = "  ";
 
+    /**
+     * A complete {@code set logger <pattern> <level>} with more matches than this gets the all-or-nothing
+     * "Apply?" preview instead of a pick list (#10). The guided list pages at {@link Picker#MAX_LISTED},
+     * but a complete command keeps the limit it always had.
+     */
+    private static final int COMPLETE_COMMAND_PICK_LIMIT = 30;
+
     private final String target;
     private final String level;
     private final String reason;
@@ -111,9 +118,10 @@ final class SetLoggerCommand implements Command {
                             + (matches.size() == 1 ? "" : "s") + ". Pass --yes to apply " + level
                             + " to all of them non-interactively (this affects only loggers that exist right now).");
         }
-        if (matches.size() > Picker.MAX_LISTED) {
+        if (matches.size() > COMPLETE_COMMAND_PICK_LIMIT) {
             // #10: too many to pick from, and a complete command has no narrower pattern to ask for --
-            // the all-or-nothing preview, as before.
+            // the all-or-nothing preview, as before (a complete command behaves as it always did, so
+            // this stays 30 although the guided list now pages at Picker.MAX_LISTED).
             printPatternPreview(out, matches);
             if (!prompter.askYesNo("", "Apply?", false)) {
                 throw new Prompter.Cancelled();
@@ -261,12 +269,13 @@ final class SetLoggerCommand implements Command {
         Map<String, FollowedHandlerData> following = new LinkedHashMap<>();
         String followDenied = null;
         List<String> refusals = new ArrayList<>();
+        List<String> succeeded = new ArrayList<>();
         int exitCode = CliError.OK;
         for (String name : names) {
             try {
                 SetLevelResultData result = setLogger(mbean, name, chosenLevel, chosenReason, chosenTier,
                         chosenForce, keepHandlers);
-                RecentLoggers.record(name);
+                succeeded.add(name);
                 overrides.addAll(result.getOverrides());
                 for (DescendantLevelData descendant : result.getDescendants()) {
                     descendants.putIfAbsent(descendant.getLoggerName(), descendant);
@@ -291,6 +300,7 @@ final class SetLoggerCommand implements Command {
                 }
             }
         }
+        RecentLoggers.recordAll(succeeded);
         render(out, chosenLevel, new SetLevelResultData(overrides, new ArrayList<>(blocking.values()),
                 new ArrayList<>(descendants.values()), new ArrayList<>(following.values()), followDenied,
                 new ArrayList<>(belowFloor.values())), null, chosenTier, chosenReason);

@@ -69,7 +69,7 @@ $ logctl set logger
 Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)
 > ?
 No history yet.
-4 top-level packages (from first 144 loggers): com.shop, io.netty, org.apache, org.hibernate.
+4 top-level packages (from 144 loggers): com.shop, io.netty, org.apache, org.hibernate.
 Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)
 > org.hibernate
 Level? (i=INFO, d=DEBUG, t=TRACE, w=WARN, e=ERROR, o=OFF)
@@ -82,7 +82,7 @@ question is the level. Here the session was cancelled there (the end of input). 
 under it, type a pattern instead, such as `*.SQL`.
 
 The list shows only the first two parts of each name, and only the deepest of each family, so `com`
-alone isn't listed next to `com.shop`. It is built from the first 200 loggers, so on a large
-application it's a hint for what to type, not a complete list. For the full list, use
+alone isn't listed next to `com.shop`. It is a hint for what to type, not a
+complete list. For the full list, use
 `logctl list loggers --show-all`. See [Raise a log level](raise-a-level.md#let-logctl-ask) for the
 rest: picking from recent loggers, paging through long lists, and one-letter levels.

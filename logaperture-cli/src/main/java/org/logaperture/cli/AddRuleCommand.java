@@ -291,11 +291,12 @@ final class AddRuleCommand implements Command {
         }
         List<RuleData> created = new ArrayList<>();
         List<String> refusals = new ArrayList<>();
+        List<String> succeeded = new ArrayList<>();
         int exitCode = CliError.OK;
         for (String name : names) {
             try {
                 created.add(attach(mbean, rule, name));
-                RecentLoggers.record(name);
+                succeeded.add(name);
             } catch (RuntimeException e) {
                 Main.Failure failure = Main.failureOf(e);
                 refusals.add(name + ": " + failure.message());
@@ -304,6 +305,7 @@ final class AddRuleCommand implements Command {
                 }
             }
         }
+        RecentLoggers.recordAll(succeeded);
         print(out, rule, created, jsonArray());
         for (String refusal : refusals) {
             err.println(refusal);
