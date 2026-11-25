@@ -2957,6 +2957,12 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
+<li><strong>WildFly: <code>logctl handler</code> and <code>logctl set default-handler</code> no longer accept a handler's
+  identity token.</strong> A handler WildFly's configuration doesn't name, such as one an application
+  attached itself, is known only by a <code>ConsoleHandler@1a2b3c</code>-style token, which changes on every
+  restart. Typing such a token now fails as an unknown handler, as the documentation always said,
+  instead of succeeding and leaving a setting that stopped applying after the next restart.
+  <code>reset</code> still accepts a token, so an override set that way before can be cleared (issue #417).</li>
 <li><strong>On Windows, a second JVM that shares an instance identity now reports which process holds it.</strong> The
   "already locked" message named <code>pid=-1</code>, because Windows would not let it read the pid under the lock. The
   lock now covers one byte past the pid, so the pid is readable on every OS (issue #363).</li>
