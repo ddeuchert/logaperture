@@ -468,26 +468,20 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      * {@code logctl set handler CONSOLE TRACE} cold, with no prior warning in
      * this session), when the cache is empty. In that case, fall back to
      * walking every known handler once — which populates the cache as a
-     * side effect via {@link #refFor} — before giving up. On WildFly the
-     * walk goes through {@link #knownHandlers()} (not {@link #realHandlers()}):
-     * a name that resolved (issue #14) is re-discoverable this way, a handler
-     * still on an unstable identity token deliberately is not.
+     * side effect via {@link #refFor} — before giving up.
+     *
+     * <p>Every real ref resolves here, identity tokens included: {@code
+     * ALL_HANDLERS} fan-out and {@code doctor} hand {@link #realHandlers()}'s
+     * refs straight back. Whether a user may <em>type</em> a ref is core's
+     * check against {@link #knownHandlers()}, which leaves WildFly's tokens
+     * out (issue #417) — this adapter can't tell a typed ref from a fan-out's.
      */
     private Handler resolveHandler(HandlerRef ref) {
         Handler cached = handlersByRef.get(ref);
         if (cached != null) {
             return cached;
         }
-        knownHandlers(); // side effect: resolves and caches every advertised handler's ref
-        if (isJBossLogManager() && tokenRefs.contains(ref)) {
-            // The cold walk (via realHandlers()) just cached an identity-token
-            // ref for ALL_HANDLERS fan-out -- but a user must not be able to
-            // name it (issue #13/#14: an unstable token is not on WildFly's
-            // addressable surface). A warm token ref (already in handlersByRef
-            // before this call, i.e. handed straight back from realHandlers()
-            // inside a fan-out) still resolves via the fast path above.
-            return null;
-        }
+        realHandlers(); // side effect: resolves and caches every real handler's ref
         return handlersByRef.get(ref);
     }
 

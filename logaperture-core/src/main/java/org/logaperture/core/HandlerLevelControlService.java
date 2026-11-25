@@ -144,11 +144,25 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (!adapter.hasHandlerLevels()) {
             return Optional.empty(); // doc/specs/handler-floor-control.md "Logback / none" -- documented no-op
         }
+        requireAddressable(ref);
         checkSetHandlerLevelPermitted(ref, level, opts);
         if (isGroupRef(ref)) {
             return Optional.of(applyAndRecordGroupMutation(ref, level, opts));
         }
         return Optional.of(applyAndRecordMutation(ref, level, opts));
+    }
+
+    /**
+     * Refuses a single-handler ref that a user typed but the adapter doesn't advertise: on
+     * WildFly, a handler still on its {@code <class>@<idhash>} identity token, which changes on
+     * every restart (doc/specs/handler-floor-control.md Decision #1/#2, issue #417). Checked here,
+     * before anything is captured or changed, because this is the layer that knows the ref came
+     * from a user: fan-out and resume pass the adapter's own real refs straight to it.
+     */
+    private void requireAddressable(HandlerRef ref) {
+        if (!isGroupRef(ref) && !adapter.knownHandlers().contains(ref)) {
+            throw new UnknownHandlerException(ref);
+        }
     }
 
     /**
@@ -457,6 +471,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (!adapter.hasHandlerLevels()) {
             return Optional.empty(); // doc/specs/handler-floor-control.md "Logback / none" -- same documented no-op
         }
+        requireAddressable(ref);
         checkSetHandlerAutoPermitted(opts);
 
         Optional<Level> explicit = activeLoggerFloor.lowestActive();

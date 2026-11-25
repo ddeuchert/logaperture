@@ -54,6 +54,8 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     private final Set<HandlerRef> registeredHandlers = new LinkedHashSet<>();
     private final Map<String, List<HandlerRef>> handlersOnPath = new LinkedHashMap<>();
     private final Set<HandlerRef> vanishedHandlers = new LinkedHashSet<>();
+    /** Real and resolvable, but left out of {@link #knownHandlers()} -- WildFly's identity tokens (issue #417). */
+    private final Set<HandlerRef> unadvertisedHandlers = new LinkedHashSet<>();
     /** Insertion-ordered -- doc/specs/handler-floor-control.md "Deterministic initial-membership rule" needs real attachment order. */
     private final Set<HandlerRef> handlersOnRoot = new LinkedHashSet<>();
     /** Per-(loggerName, ref) level, checked before the shared handlerLevels entry -- see addHandlerWithPerTargetLevel. */
@@ -291,11 +293,27 @@ final class FakeLoggingAdapter implements LoggingAdapter {
         return Optional.ofNullable(previous);
     }
 
+    /**
+     * Keeps an already-{@link #addHandler}ed ref real and resolvable, in {@link #realHandlers()},
+     * but out of {@link #knownHandlers()} -- how the JUL adapter treats a WildFly handler still on
+     * its identity token (issue #417).
+     */
+    void stopAdvertising(HandlerRef ref) {
+        unadvertisedHandlers.add(ref);
+    }
+
     @Override
     public List<HandlerRef> knownHandlers() {
-        List<HandlerRef> known = new ArrayList<>(registeredHandlers);
-        known.removeAll(vanishedHandlers);
+        List<HandlerRef> known = new ArrayList<>(realHandlers());
+        known.removeAll(unadvertisedHandlers);
         return List.copyOf(known);
+    }
+
+    @Override
+    public List<HandlerRef> realHandlers() {
+        List<HandlerRef> real = new ArrayList<>(registeredHandlers);
+        real.removeAll(vanishedHandlers);
+        return List.copyOf(real);
     }
 
     /** Whether {@code ref} resolves to a live handler in this fake -- registered, and never vanished. */

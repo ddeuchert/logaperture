@@ -85,6 +85,63 @@ class HandlerLevelControlServiceTest {
         assertTrue(overrides.get(CONSOLE).isPresent());
     }
 
+    // --- a typed ref must be addressable (issue #417) ----------------------------------------------
+
+    private static final HandlerRef TOKEN = new HandlerRef("ConsoleHandler@1a2b3c");
+
+    @Test
+    void setHandlerLevel_onAHandlerTheAdapterDoesNotAdvertise_throwsAndChangesNothing() {
+        adapter.addHandler(TOKEN, Level.INFO);
+        adapter.stopAdvertising(TOKEN);
+        int auditBefore = auditLog.records().size();
+
+        assertThrows(UnknownHandlerException.class,
+                () -> service.setHandlerLevel(TOKEN, Level.TRACE, SetHandlerLevelOptions.defaults()));
+        assertThrows(UnknownHandlerException.class,
+                () -> service.setHandlerLevel(TOKEN, Level.TRACE, SetHandlerLevelOptions.defaults()),
+                "refused on a retry too, not only on the first try");
+
+        assertEquals(Level.INFO, adapter.handlerLevel(TOKEN).orElseThrow());
+        assertTrue(overrides.get(TOKEN).isEmpty());
+        assertFalse(baselines.isCaptured(TOKEN), "nothing captured before the refusal");
+        assertEquals(auditBefore, auditLog.records().size());
+    }
+
+    @Test
+    void setHandlerAuto_onAHandlerTheAdapterDoesNotAdvertise_throwsAndChangesNothing() {
+        adapter.addHandler(TOKEN, Level.INFO);
+        adapter.stopAdvertising(TOKEN);
+
+        assertThrows(UnknownHandlerException.class,
+                () -> service.setHandlerAuto(TOKEN, SetHandlerLevelOptions.defaults()));
+
+        assertEquals(Level.INFO, adapter.handlerLevel(TOKEN).orElseThrow());
+        assertTrue(overrides.get(TOKEN).isEmpty());
+    }
+
+    @Test
+    void allHandlers_stillReachesAHandlerTheAdapterDoesNotAdvertise() {
+        adapter.addHandler(TOKEN, Level.INFO);
+        adapter.stopAdvertising(TOKEN);
+
+        service.setHandlerLevel(HandlerRef.ALL_HANDLERS, Level.TRACE, SetHandlerLevelOptions.defaults());
+
+        assertEquals(Level.TRACE, adapter.handlerLevel(TOKEN).orElseThrow(), "fan-out goes over the real handlers");
+        assertEquals(Level.TRACE, adapter.handlerLevel(CONSOLE).orElseThrow());
+    }
+
+    @Test
+    void resetHandler_stillClearsAnOverrideSetOnATokenBeforeTheCheckExisted() {
+        adapter.addHandler(TOKEN, Level.INFO);
+        service.setHandlerLevel(TOKEN, Level.TRACE, SetHandlerLevelOptions.defaults()); // advertised then
+        adapter.stopAdvertising(TOKEN);
+
+        service.resetHandler(TOKEN, true);
+
+        assertEquals(Level.INFO, adapter.handlerLevel(TOKEN).orElseThrow());
+        assertTrue(overrides.get(TOKEN).isEmpty());
+    }
+
     @Test
     void resetHandler_restoresTheCapturedBaseline() {
         service.setHandlerLevel(CONSOLE, Level.TRACE, SetHandlerLevelOptions.defaults());

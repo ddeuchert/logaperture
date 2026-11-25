@@ -237,7 +237,14 @@ logctl handler ALL_HANDLERS reset        # each reverts to its own baseline, not
   copied from an old log line or audit record) hits this exact same
   unknown-handler error — no dedicated exception type for "used to be known";
   from the addressable surface's point of view it genuinely isn't known
-  anymore (Decision #6).
+  anymore (Decision #6). Core enforces this, not the adapter: before
+  capturing or changing anything, a `set` (a level or `auto`) on a single
+  handler checks the name against `knownHandlers()` and throws the
+  unknown-handler error when it isn't there. The adapter resolves every real
+  ref, tokens included, because `ALL_HANDLERS` fan-out and `doctor` hand it
+  `realHandlers()`' refs, and it can't tell those from a typed one.
+  `reset` doesn't check, so an override set on a token before this check
+  existed can still be cleared (issue #417).
 - `<level>` is any LogAperture level, same grammar as `logctl set`.
 - Tier tokens are exactly Feature 1/2's, including the CLI's own bare-token
   default: no token at all means `for 4h`, same as `logctl trace <logger>` —
@@ -469,8 +476,8 @@ Optional<Level> handlerLevel(HandlerRef ref);
  *  ref in any managed context. Only called when hasHandlerLevels() is true. */
 Optional<Level> setHandlerLevel(HandlerRef ref, Level level);
 
-/** Every handler currently *addressable* by a user. Used to validate a
- *  `logctl handler <name>` argument and list known names on a mismatch; the
+/** Every handler currently *addressable* by a user. Core validates a
+ *  single-handler `set` against it (issue #417) and lists known names on a mismatch; the
  *  fuller status/discovery listing this could also back is deferred (Open
  *  decision A). May include the reserved HandlerRef.ALL_HANDLERS as a
  *  member, or — WildFly under JBoss LogManager — return List.of(ALL_HANDLERS)
