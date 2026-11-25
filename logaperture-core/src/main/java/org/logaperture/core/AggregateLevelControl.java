@@ -1045,6 +1045,10 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
             throw new IllegalStateException("no logging context is registered yet");
         }
         for (ContextControl context : contexts) {
+            // Every context first: a token is unknown everywhere, whichever context judges a capability first.
+            context.handlerService().refuseUnstableRef(ref);
+        }
+        for (ContextControl context : contexts) {
             context.handlerService().checkSetHandlerLevelPermitted(ref, level, options);
         }
         HandlerLevelOverride fromSystem = null;
@@ -1113,6 +1117,10 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         List<ContextControl> contexts = sortedByKey();
         if (contexts.isEmpty()) {
             throw new IllegalStateException("no logging context is registered yet");
+        }
+        for (ContextControl context : contexts) {
+            // Every context first: a token is unknown everywhere, whichever context judges a capability first.
+            context.handlerService().refuseUnstableRef(ref);
         }
         for (ContextControl context : contexts) {
             context.handlerService().checkSetHandlerAutoPermitted(options);

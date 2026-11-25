@@ -37,6 +37,7 @@ import org.logaperture.api.Severity;
 import org.logaperture.core.AggregateLevelControl.ContextControl;
 import org.logaperture.core.spi.ContextHandle;
 import org.logaperture.core.spi.StateStore;
+import org.logaperture.core.spi.UnknownHandlerException;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -286,6 +287,27 @@ class AggregateLevelControlTest {
             assertEquals(Level.INFO, c.adapter.effectiveLevel("com.a.One"));
             assertEquals(Level.INFO, c.adapter.effectiveLevel("com.b.Two"));
         }
+    }
+
+    // --- a typed handler ref the broadcast can't use (issue #417) ------------------------------
+
+    @Test
+    void setHandlerLevel_anUnstableRef_isUnknown_evenWithoutTheGrant_andCapturesNoBaseline() {
+        HandlerRef token = new HandlerRef("ConsoleHandler@1a2b3c");
+        Ctx system = new Ctx("system", CapabilityPolicy.denyAll());
+        Ctx app = new Ctx("myapp.war", CapabilityPolicy.denyAll());
+        system.adapter.addHandler(token, Level.INFO);
+        system.adapter.markUnstable(token);
+        aggregate.register(system.control);
+        aggregate.register(app.control);
+
+        assertThrows(UnknownHandlerException.class,
+                () -> aggregate.setHandlerLevel(token, Level.TRACE, SetHandlerLevelOptions.defaults()));
+        assertThrows(UnknownHandlerException.class,
+                () -> aggregate.setHandlerAuto(token, SetHandlerLevelOptions.defaults()),
+                "auto too, though the other context, which doesn't have it, would just do nothing");
+
+        assertEquals(Level.INFO, system.adapter.handlerLevel(token).orElseThrow());
     }
 
     @Test

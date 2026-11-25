@@ -152,6 +152,23 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     }
 
     /**
+     * Refuses a single-handler ref that a user typed but that names a handler only by an identity
+     * that changes on every restart: on WildFly, a handler still on its {@code <class>@<idhash>}
+     * token (doc/specs/handler-floor-control.md Decision #1/#2, issue #417). Runs before anything
+     * else a set checks, so no baseline is captured and no capability judged for it. Checked here
+     * because core knows the ref came from a user: fan-out, resume and {@code doctor} pass the
+     * adapter's own real refs to it directly. Public for the aggregate's all-or-nothing pre-check
+     * of {@code auto}, whose capability check takes no ref.
+     *
+     * @throws UnknownHandlerException if {@code ref} is unstable in this context
+     */
+    public void refuseUnstableRef(HandlerRef ref) {
+        if (adapter.hasHandlerLevels() && !isGroupRef(ref) && adapter.isUnstableRef(ref)) {
+            throw new UnknownHandlerException(ref);
+        }
+    }
+
+    /**
      * {@code squelchedByRaise} (doc/specs/handler-floor-control.md "Squelch
      * warning", issue #16) -- read-only, no capability check (nothing is
      * mutated). Not a raise at all (equal or a genuine lower) is always
@@ -214,6 +231,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (!adapter.hasHandlerLevels()) {
             return;
         }
+        refuseUnstableRef(ref);
         SetHandlerLevelOptions opts = options == null ? SetHandlerLevelOptions.defaults() : options;
         if (isGroupRef(ref)) {
             // Decision #5 (issue #13): no invented aggregate "current level"
@@ -416,7 +434,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         Set<HandlerRef> known = Set.copyOf(adapter.realHandlers());
         Set<HandlerRef> resolved = new LinkedHashSet<>();
         for (HandlerRef name : names) {
-            if (!known.contains(name)) {
+            if (!known.contains(name) || adapter.isUnstableRef(name)) { // a token never persists (issue #417)
                 throw new UnknownHandlerException(name);
             }
             resolved.add(name);
@@ -457,6 +475,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (!adapter.hasHandlerLevels()) {
             return Optional.empty(); // doc/specs/handler-floor-control.md "Logback / none" -- same documented no-op
         }
+        refuseUnstableRef(ref);
         checkSetHandlerAutoPermitted(opts);
 
         Optional<Level> explicit = activeLoggerFloor.lowestActive();
@@ -965,6 +984,9 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             Optional<Level> nativeLevel = baselines.captureIfAbsent(ref, adapter);
             if (nativeLevel.isEmpty()) {
                 return false;
+            }
+            if (adapter.isUnstableRef(ref)) { // after the capture resolved it: a cache read, no second walk
+                return false; // a token in a vendor file names this run's handler by chance, not by design (issue #417)
             }
             if (vendor.mode() == HandlerLevelMode.AUTO) {
                 // Not audited: the load's one record covers it, as for a fixed level (quieter-output.md Q1).

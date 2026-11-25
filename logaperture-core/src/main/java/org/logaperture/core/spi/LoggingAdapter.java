@@ -194,6 +194,17 @@ public interface LoggingAdapter {
     }
 
     /**
+     * Whether {@code ref} names a live handler only by an identity that changes on every restart
+     * -- WildFly's {@code <class>@<idhash>} token for a handler its configuration doesn't name.
+     * Such a ref still resolves (fan-out and {@code doctor} pass it back), but a user must not
+     * type it (doc/specs/handler-floor-control.md, issue #417): core refuses it as unknown before
+     * a set checks anything else. Default false, for an adapter whose every ref is stable.
+     */
+    default boolean isUnstableRef(HandlerRef ref) {
+        return false;
+    }
+
+    /**
      * Every real handler this adapter can act on right now — what {@link
      * HandlerRef#ALL_HANDLERS} fans out over, and what a per-handler
      * baseline is captured against (doc/specs/handler-floor-control.md
