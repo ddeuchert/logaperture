@@ -1262,30 +1262,26 @@ class CommandsTest {
         assertTrue(output().contains("Not applied."), output());
     }
 
-    /** #10: more matches than the pick list shows keeps the all-or-nothing preview. */
+    /** A complete command whose pattern matches more than a page is paged like the guided one. */
     @Test
-    void setLevel_pattern_interactive_tooManyToList_previewsAndConfirmsAllOrNothing() {
+    void setLevel_pattern_interactive_moreThanAPage_isPagedAndAllPicksEveryMatch() {
         List<LoggerInfoData> many = new ArrayList<>();
-        for (int i = 0; i <= 30; i++) { // a complete command keeps the old limit of 30
+        for (int i = 0; i <= Picker.MAX_LISTED; i++) {
             many.add(new LoggerInfoData("com.acme.w" + i + ".Worker", "INFO", "INFO", false, null, null, null, null));
         }
         mbean.loggers = many;
 
-        run(Commands.setLogger("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "y", true);
+        run(Commands.setLogger("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "all\n", true);
 
         String text = output();
-        assertTrue(text.contains("This will set DEBUG on " + many.size()
-                + " currently-known loggers matching '*.Worker':"), text);
-        assertTrue(text.contains("not affected"), text);
-        assertTrue(text.contains("Apply? [y/N]"), text);
-        assertArrayEquals(new Object[] {"*.Worker", "DEBUG", null, "SESSION", 0L, true}, mbean.setLevelCalls.get(0),
-                "a typed 'y' applies the pattern itself, confirmed");
+        assertTrue(text.contains(many.size() + " loggers match '*.Worker'. Page 1 of 2:"), text);
+        assertEquals(many.size(), mbean.setLevelCalls.size(), "every match on every page is set");
     }
 
     @Test
-    void setLevel_pattern_interactive_tooManyToList_declinedAppliesNothing() {
+    void setLevel_pattern_interactive_moreThanAPage_enterCancelsAndAppliesNothing() {
         List<LoggerInfoData> many = new ArrayList<>();
-        for (int i = 0; i <= 30; i++) { // a complete command keeps the old limit of 30
+        for (int i = 0; i <= Picker.MAX_LISTED; i++) {
             many.add(new LoggerInfoData("com.acme.w" + i + ".Worker", "INFO", "INFO", false, null, null, null, null));
         }
         mbean.loggers = many;

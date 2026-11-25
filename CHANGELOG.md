@@ -112,8 +112,8 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
   be refused with "too many to list; try a narrower pattern". `logctl` now lists them 50 to a page: `n` shows the
   next page (`p` the previous one, Enter cancels), a number or `all` picks from the whole list, and a shorter name typed there searches again under it.
   A mistyped selection such as `0` or `3-1` is explained and asked again, never searched as a name. A complete
-  command with a pattern still shows the all-or-nothing preview above 30 matches, and with no terminal or
-  `--yes` behaves as before (issue #402;
+  `set logger '<pattern>' <level>` on a terminal pages the same way, instead of the all-or-nothing "Apply?"
+  preview it showed above 30 matches; with no terminal or `--yes` it behaves as before (issue #402;
   `doc/specs/easier-logger-entry.md`).
 
 ### Fixed

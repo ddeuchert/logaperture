@@ -75,8 +75,12 @@ searched as before (G4: a bare word is `*.<word>`). At the numbered list:
   `org.hibernate.` both become `org.hibernate.*`. A bare word means what it means at `Which logger?`
   (G4): `Worker` is `*.Worker`.
 
-A complete command (`set logger '*.Worker' DEBUG`) is untouched: with more than 30 matches it still
-shows the all-or-nothing `Apply?` preview rather than a pick list, as before.
+**E4a — Complete commands page too.** A complete `set logger '*.Worker' DEBUG` on a terminal whose
+pattern matches more than a page opens the same paged pick list, however many matches there are:
+the all-or-nothing `Apply?` preview for more than 30 matches is gone. `all` still sets every match,
+on every page. `--yes` and a command with no terminal are unchanged (`--yes` takes every match
+without asking; no terminal is the usual usage error). *(Reverses the first draft of this feature,
+which kept the preview above 30; agreed 2026-11-25.)*
 
 **E5 — Level letters.** `i`=INFO, `d`=DEBUG, `t`=TRACE, `w`=WARN, `e`=ERROR, `o`=OFF,
 case-insensitive, accepted at the `Level?` question of guided `set`. The prompt shows
@@ -115,7 +119,7 @@ There are no open questions.
 - `Which logger?` + Enter cancels. `?` with history (pick one, `1,3`, cancel and asked again) and
   without history (`No history yet.`, packages, asked again).
 - Recording from `set logger` and `add rule`, for a picked, a typed and a refused logger.
-- Paging: exactly 50, 51 and 120 matches; `n` and `p` move between pages, Enter cancels on any; a selection on page 2 picks the right
+- Paging: exactly 50, 51 and 120 matches, from guided and from a complete `set logger`; `n` and `p` move between pages, Enter cancels on any; a selection on page 2 picks the right
   names; `all` picks every match.
 - Narrowing: a typed name replaces the list; a name with `*` is used as typed; a trailing dot is a prefix; a bare
   word is `*.<word>`. An invalid

@@ -46,13 +46,6 @@ final class SetLoggerCommand implements Command {
 
     private static final String INDENT = "  ";
 
-    /**
-     * A complete {@code set logger <pattern> <level>} with more matches than this gets the all-or-nothing
-     * "Apply?" preview instead of a pick list (#10). The guided list pages at {@link Picker#MAX_LISTED},
-     * but a complete command keeps the limit it always had.
-     */
-    private static final int COMPLETE_COMMAND_PICK_LIMIT = 30;
-
     private final String target;
     private final String level;
     private final String reason;
@@ -117,18 +110,6 @@ final class SetLoggerCommand implements Command {
                     : "'" + target + "' matches " + matches.size() + " currently-known logger"
                             + (matches.size() == 1 ? "" : "s") + ". Pass --yes to apply " + level
                             + " to all of them non-interactively (this affects only loggers that exist right now).");
-        }
-        if (matches.size() > COMPLETE_COMMAND_PICK_LIMIT) {
-            // #10: too many to pick from, and a complete command has no narrower pattern to ask for --
-            // the all-or-nothing preview, as before (a complete command behaves as it always did, so
-            // this stays 30 although the guided list now pages at Picker.MAX_LISTED).
-            printPatternPreview(out, matches);
-            if (!prompter.askYesNo("", "Apply?", false)) {
-                throw new Prompter.Cancelled();
-            }
-            SetLevelResultData result = setLogger(mbean, target, level, reason, tier, force, keepHandlers);
-            RecentLoggers.record(target);
-            return render(out, level, result, target, tier, reason);
         }
         List<String> names = Picker.loggers(mbean, prompter, target, "set it anyway?", SetLoggerCommand::currently);
         if (names == null) {
@@ -437,16 +418,5 @@ final class SetLoggerCommand implements Command {
                 ? INDENT + "To set " + (behind.size() == 1 ? "it" : "them") + " too: "
                         + commandLine(target, appliedLevel, appliedTier, appliedReason) + " --force"
                 : INDENT + "Add --force to set them too.");
-    }
-
-    /** The all-or-nothing preview (pattern-selection-semantics.md "Confirmation and CLI behavior"). */
-    private void printPatternPreview(PrintStream out, List<String> matches) {
-        out.println("This will set " + level + " on " + matches.size() + " currently-known loggers matching '"
-                + target + "':");
-        for (String match : matches) {
-            out.println(INDENT + match);
-        }
-        out.println("A logger created later that would also match this pattern is not affected — re-run "
-                + "this command if you need it too.");
     }
 }
