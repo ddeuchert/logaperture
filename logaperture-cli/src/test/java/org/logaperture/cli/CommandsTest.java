@@ -1371,8 +1371,10 @@ class CommandsTest {
                 new LoggerInfoData("org.apache.A", "INFO", "INFO", false, null, null, null, null),
                 new LoggerInfoData("com.acme.A", "INFO", "INFO", false, null, null, null, null));
         run(Commands.setLogger("*.A", "DEBUG", null, "SESSION", 0L, false, true), "all", true);
-        // The questions asked on the terminal come first on the same stream; the object is the last line.
-        String pickedFromList = output().strip().lines().reduce((first, last) -> last).orElseThrow();
+        // The questions asked on the terminal come first on the same stream (the last prompt, "> ", shares the
+        // object's line, as nothing echoes the typed answer); the object starts at its first brace.
+        String printed = output().strip();
+        String pickedFromList = printed.substring(printed.indexOf("{\"overrides\""));
 
         for (String text : List.of(sentAsPattern, pickedFromList)) {
             assertTrue(text.startsWith("{\"overrides\":["), text);
