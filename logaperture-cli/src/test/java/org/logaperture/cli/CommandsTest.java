@@ -1348,6 +1348,45 @@ class CommandsTest {
         assertTrue(text.contains("\"loggerName\":\"org.apache.A\""), text);
     }
 
+    /**
+     * The {@code --json} shape of a pattern target is the same object whether the agent was sent the pattern
+     * (--yes) or each picked logger in turn (a terminal, a pick list): same keys in the same order, with the
+     * picked loggers' overrides merged into the one {@code overrides} array. A script reading the output must
+     * not be able to tell which path produced it, and an older or newer agent sees the same calls either way.
+     */
+    private static final String SET_LEVEL_JSON_TAIL = "\"warnings\":[],\"descendants\":[],\"following\":[],"
+            + "\"followDenied\":null,\"belowFloor\":[]}";
+
+    @Test
+    void setLevel_pattern_json_isOneObjectWithTheSameKeys_whetherSentAsAPatternOrPickedFromAList() {
+        mbean.loggers = List.of(
+                new LoggerInfoData("org.apache.A", "INFO", "INFO", false, null, null, null, null),
+                new LoggerInfoData("org.apache.B", "INFO", "INFO", false, null, null, null, null));
+
+        run(Commands.setLogger("*.A", "DEBUG", null, "SESSION", 0L, true, true));
+        String sentAsPattern = output().strip();
+        captured.reset();
+
+        mbean.loggers = List.of(
+                new LoggerInfoData("org.apache.A", "INFO", "INFO", false, null, null, null, null),
+                new LoggerInfoData("com.acme.A", "INFO", "INFO", false, null, null, null, null));
+        run(Commands.setLogger("*.A", "DEBUG", null, "SESSION", 0L, false, true), "all", true);
+        // The questions asked on the terminal come first on the same stream; the object is the last line.
+        String pickedFromList = output().strip().lines().reduce((first, last) -> last).orElseThrow();
+
+        for (String text : List.of(sentAsPattern, pickedFromList)) {
+            assertTrue(text.startsWith("{\"overrides\":["), text);
+            assertTrue(text.endsWith("]," + SET_LEVEL_JSON_TAIL), text);
+            assertEquals(1, text.lines().count(), "one JSON object, not one per logger: " + text);
+            assertEquals(1, text.split("\"overrides\":", -1).length - 1, "a single object: " + text);
+        }
+        assertTrue(pickedFromList.contains("\"loggerName\":\"com.acme.A\""), pickedFromList);
+        assertTrue(pickedFromList.contains("\"loggerName\":\"org.apache.A\""), pickedFromList);
+        assertEquals(List.of("com.acme.A", "org.apache.A"),
+                mbean.setLevelCalls.stream().skip(1).map(call -> (String) call[0]).toList(),
+                "each picked logger is set by its exact name, in list order");
+    }
+
     @Test
     void setLevel_trailingWildcard_skipsThePreviewAndLetsTheServersUsageErrorPropagate() {
         // doc/specs/pattern-selection-semantics.md, Decision #5: rejected
