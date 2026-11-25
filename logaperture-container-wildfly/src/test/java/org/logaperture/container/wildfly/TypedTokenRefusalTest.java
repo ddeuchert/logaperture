@@ -34,6 +34,7 @@ import org.logaperture.core.InMemoryAuditLog;
 import org.logaperture.core.spi.StateStore;
 import org.logaperture.core.spi.UnknownHandlerException;
 
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Handler;
 import java.util.logging.Logger;
@@ -90,6 +91,8 @@ class TypedTokenRefusalTest {
             HandlerRef token = HandlerRef.anonymous(appHandler);
             assertTrue(adapter.realHandlers().contains(token), "a real handler, still on its token");
             assertFalse(adapter.knownHandlers().contains(token), "not advertised to users");
+            assertTrue(adapter.isUnstableRef(token));
+            assertFalse(adapter.isUnstableRef(new HandlerRef("CONSOLE")), "a resolved name is stable");
 
             for (int attempt = 1; attempt <= 2; attempt++) {
                 assertThrows(UnknownHandlerException.class,
@@ -97,6 +100,8 @@ class TypedTokenRefusalTest {
                         "attempt " + attempt);
             }
             assertEquals(java.util.logging.Level.INFO, appHandler.getLevel(), "the token's handler is unchanged");
+            assertThrows(UnknownHandlerException.class, () -> service.setDefaultHandlerMembers(List.of(token)),
+                    "nor can it be made a default handler, which persists");
 
             service.setHandlerLevel(new HandlerRef("CONSOLE"), Level.DEBUG, SetHandlerLevelOptions.defaults());
             assertEquals(java.util.logging.Level.FINE, console.getLevel(), "a resolved name still sets");

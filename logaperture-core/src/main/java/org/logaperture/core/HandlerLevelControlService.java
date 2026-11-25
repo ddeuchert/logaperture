@@ -144,7 +144,6 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (!adapter.hasHandlerLevels()) {
             return Optional.empty(); // doc/specs/handler-floor-control.md "Logback / none" -- documented no-op
         }
-        requireAddressable(ref);
         checkSetHandlerLevelPermitted(ref, level, opts);
         if (isGroupRef(ref)) {
             return Optional.of(applyAndRecordGroupMutation(ref, level, opts));
@@ -153,14 +152,18 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
     }
 
     /**
-     * Refuses a single-handler ref that a user typed but the adapter doesn't advertise: on
-     * WildFly, a handler still on its {@code <class>@<idhash>} identity token, which changes on
-     * every restart (doc/specs/handler-floor-control.md Decision #1/#2, issue #417). Checked here,
-     * before anything is captured or changed, because this is the layer that knows the ref came
-     * from a user: fan-out and resume pass the adapter's own real refs straight to it.
+     * Refuses a single-handler ref that a user typed but that names a handler only by an identity
+     * that changes on every restart: on WildFly, a handler still on its {@code <class>@<idhash>}
+     * token (doc/specs/handler-floor-control.md Decision #1/#2, issue #417). Runs before anything
+     * else a set checks, so no baseline is captured and no capability judged for it. Checked here
+     * because core knows the ref came from a user: fan-out, resume and {@code doctor} pass the
+     * adapter's own real refs to it directly. Public for the aggregate's all-or-nothing pre-check
+     * of {@code auto}, whose capability check takes no ref.
+     *
+     * @throws UnknownHandlerException if {@code ref} is unstable in this context
      */
-    private void requireAddressable(HandlerRef ref) {
-        if (!isGroupRef(ref) && !adapter.knownHandlers().contains(ref)) {
+    public void refuseUnstableRef(HandlerRef ref) {
+        if (adapter.hasHandlerLevels() && !isGroupRef(ref) && adapter.isUnstableRef(ref)) {
             throw new UnknownHandlerException(ref);
         }
     }
@@ -228,6 +231,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (!adapter.hasHandlerLevels()) {
             return;
         }
+        refuseUnstableRef(ref);
         SetHandlerLevelOptions opts = options == null ? SetHandlerLevelOptions.defaults() : options;
         if (isGroupRef(ref)) {
             // Decision #5 (issue #13): no invented aggregate "current level"
@@ -430,7 +434,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         Set<HandlerRef> known = Set.copyOf(adapter.realHandlers());
         Set<HandlerRef> resolved = new LinkedHashSet<>();
         for (HandlerRef name : names) {
-            if (!known.contains(name)) {
+            if (!known.contains(name) || adapter.isUnstableRef(name)) { // a token never persists (issue #417)
                 throw new UnknownHandlerException(name);
             }
             resolved.add(name);
@@ -471,7 +475,7 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
         if (!adapter.hasHandlerLevels()) {
             return Optional.empty(); // doc/specs/handler-floor-control.md "Logback / none" -- same documented no-op
         }
-        requireAddressable(ref);
+        refuseUnstableRef(ref);
         checkSetHandlerAutoPermitted(opts);
 
         Optional<Level> explicit = activeLoggerFloor.lowestActive();
@@ -976,6 +980,9 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return true;
         }
         try {
+            if (adapter.isUnstableRef(ref)) {
+                return false; // a token in a vendor file names this run's handler by chance, not by design (issue #417)
+            }
             // Native first, so the handler's own level is never read back as the vendor's.
             Optional<Level> nativeLevel = baselines.captureIfAbsent(ref, adapter);
             if (nativeLevel.isEmpty()) {

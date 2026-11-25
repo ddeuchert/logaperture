@@ -302,8 +302,8 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     /**
      * doc/specs/doctor.md "Adapter SPI". {@code ref} always arrives via
      * {@link #realHandlers}, which already populated {@link #handlersByRef}
-     * as a side effect, so this resolves via cache without ever needing
-     * {@code knownHandlers()}'s WildFly-collapsed fallback.
+     * as a side effect, so this resolves via cache, a WildFly identity token
+     * included, without walking again.
      */
     @Override
     public HandlerDiagnostics handlerDiagnostics(HandlerRef ref) {
@@ -473,9 +473,24 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      * <p>Every real ref resolves here, identity tokens included: {@code
      * ALL_HANDLERS} fan-out and {@code doctor} hand {@link #realHandlers()}'s
      * refs straight back. Whether a user may <em>type</em> a ref is core's
-     * check against {@link #knownHandlers()}, which leaves WildFly's tokens
-     * out (issue #417) — this adapter can't tell a typed ref from a fan-out's.
+     * call, through {@link #isUnstableRef} (issue #417) — this adapter can't
+     * tell a typed ref from a fan-out's.
      */
+    /**
+     * On JBoss LogManager, whether {@code ref} is a live handler's identity token rather than a
+     * resolved configured name (issue #417). Resolves {@code ref} first, so a cold token is minted
+     * and recognised; a warm one is a cache read. Plain JUL has no configured names to prefer, so
+     * a token is the handler's only ref there, and stays addressable.
+     */
+    @Override
+    public boolean isUnstableRef(HandlerRef ref) {
+        if (!isJBossLogManager()) {
+            return false;
+        }
+        resolveHandler(ref);
+        return tokenRefs.contains(ref);
+    }
+
     private Handler resolveHandler(HandlerRef ref) {
         Handler cached = handlersByRef.get(ref);
         if (cached != null) {

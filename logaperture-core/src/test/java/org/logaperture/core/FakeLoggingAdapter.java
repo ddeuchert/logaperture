@@ -54,8 +54,8 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     private final Set<HandlerRef> registeredHandlers = new LinkedHashSet<>();
     private final Map<String, List<HandlerRef>> handlersOnPath = new LinkedHashMap<>();
     private final Set<HandlerRef> vanishedHandlers = new LinkedHashSet<>();
-    /** Real and resolvable, but left out of {@link #knownHandlers()} -- WildFly's identity tokens (issue #417). */
-    private final Set<HandlerRef> unadvertisedHandlers = new LinkedHashSet<>();
+    /** Real and resolvable, but unstable and so not advertised -- WildFly's identity tokens (issue #417). */
+    private final Set<HandlerRef> unstableHandlers = new LinkedHashSet<>();
     /** Insertion-ordered -- doc/specs/handler-floor-control.md "Deterministic initial-membership rule" needs real attachment order. */
     private final Set<HandlerRef> handlersOnRoot = new LinkedHashSet<>();
     /** Per-(loggerName, ref) level, checked before the shared handlerLevels entry -- see addHandlerWithPerTargetLevel. */
@@ -294,18 +294,24 @@ final class FakeLoggingAdapter implements LoggingAdapter {
     }
 
     /**
-     * Keeps an already-{@link #addHandler}ed ref real and resolvable, in {@link #realHandlers()},
-     * but out of {@link #knownHandlers()} -- how the JUL adapter treats a WildFly handler still on
-     * its identity token (issue #417).
+     * Makes an already-{@link #addHandler}ed ref an unstable one: still real and resolvable, in
+     * {@link #realHandlers()}, but out of {@link #knownHandlers()} and reported by {@link
+     * #isUnstableRef} -- how the JUL adapter treats a WildFly handler still on its identity token
+     * (issue #417).
      */
-    void stopAdvertising(HandlerRef ref) {
-        unadvertisedHandlers.add(ref);
+    void markUnstable(HandlerRef ref) {
+        unstableHandlers.add(ref);
+    }
+
+    @Override
+    public boolean isUnstableRef(HandlerRef ref) {
+        return unstableHandlers.contains(ref);
     }
 
     @Override
     public List<HandlerRef> knownHandlers() {
         List<HandlerRef> known = new ArrayList<>(realHandlers());
-        known.removeAll(unadvertisedHandlers);
+        known.removeAll(unstableHandlers);
         return List.copyOf(known);
     }
 

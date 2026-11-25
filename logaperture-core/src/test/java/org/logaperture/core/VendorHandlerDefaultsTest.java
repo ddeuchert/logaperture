@@ -74,6 +74,19 @@ class VendorHandlerDefaultsTest {
     }
 
     @Test
+    void applyVendorDefaults_anUnstableRef_isLeftPendingAndUnchanged() {
+        // A vendor file can carry a token (issue #420); it matches this run's handler only by
+        // chance, so it is treated as unresolved, like a handler that isn't there (issue #417).
+        adapter.addHandler(LATE, Level.INFO);
+        adapter.markUnstable(LATE);
+
+        service.applyVendorDefaults(Instant.now());
+
+        assertEquals(Level.INFO, adapter.handlerLevel(LATE).orElseThrow());
+        assertTrue(service.pendingVendorHandlers().contains(LATE));
+    }
+
+    @Test
     void applyVendorDefaults_fixedLevel_andAutoTrackingItsNativeLevel() {
         service.applyVendorDefaults(Instant.now());
 

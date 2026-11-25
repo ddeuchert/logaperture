@@ -9,12 +9,14 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ### Fixed
 
-- **WildFly: `logctl handler` no longer accepts a handler's identity token.** A handler WildFly's
-  configuration doesn't name, such as one an application attached itself, is known only by a
-  `ConsoleHandler@1a2b3c`-style token, which changes on every restart. Setting such a handler by
-  typing its token now fails as an unknown handler, as the documentation always said, instead of
-  succeeding and leaving an override that stopped applying after the next restart. `reset` still
-  accepts a token, so an override set that way before can be cleared (issue #417).
+- **WildFly: `logctl handler` and `logctl set default-handler` no longer accept a handler's
+  identity token.** A handler WildFly's configuration doesn't name, such as one an application
+  attached itself, is known only by a `ConsoleHandler@1a2b3c`-style token, which changes on every
+  restart. Typing such a token now fails as an unknown handler, as the documentation always said,
+  instead of succeeding and leaving a setting that stopped applying after the next restart.
+  `reset` still accepts a token, so an override set that way before can be cleared (issue #417).
+- **WildFly: a handler name no deployment knows is reported as an unknown handler**, not as
+  "failed in every context" (issue #417).
 
 ## [1.0.0] — 2026-11-15
 
