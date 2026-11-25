@@ -392,8 +392,8 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     /**
      * doc/specs/doctor.md "Adapter SPI". {@code ref} always arrives via
      * {@link #realHandlers}, which already populated {@link #handlersByRef}
-     * as a side effect, so this resolves via cache without ever needing
-     * {@code knownHandlers()}'s WildFly-collapsed fallback.
+     * as a side effect, so this resolves via cache, a WildFly identity token
+     * included, without walking again.
      */
     @Override
     public HandlerDiagnostics handlerDiagnostics(HandlerRef ref) {
@@ -713,6 +713,22 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     }
 
     /**
+     * On JBoss LogManager with a name resolver (WildFly), whether {@code ref} is a live handler's
+     * identity token rather than a resolved configured name (issue #417). Resolves {@code ref}
+     * first, so a cold token is minted and recognised; a warm one is a cache read. Plain JUL, or
+     * JBoss LogManager with no resolver, has no configured names to prefer, so a token is the
+     * handler's only ref there and stays addressable.
+     */
+    @Override
+    public boolean isUnstableRef(HandlerRef ref) {
+        if (!isJBossLogManager() || nameResolver == HandlerNameResolver.NONE) {
+            return false;
+        }
+        resolveHandler(ref);
+        return tokenRefs.contains(ref);
+    }
+
+    /**
      * Finds the live {@link Handler} {@code ref} names. {@code ref} usually
      * arrives fresh from a {@link #handlerFloorsBelow} call that just
      * populated {@link #handlersByRef} via {@link #refFor} — but {@code
@@ -721,26 +737,20 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      * {@code logctl set handler CONSOLE TRACE} cold, with no prior warning in
      * this session), when the cache is empty. In that case, fall back to
      * walking every known handler once — which populates the cache as a
-     * side effect via {@link #refFor} — before giving up. On WildFly the
-     * walk goes through {@link #knownHandlers()} (not {@link #realHandlers()}):
-     * a name that resolved (issue #14) is re-discoverable this way, a handler
-     * still on an unstable identity token deliberately is not.
+     * side effect via {@link #refFor} — before giving up.
+     *
+     * <p>Every real ref resolves here, identity tokens included: {@code
+     * ALL_HANDLERS} fan-out and {@code doctor} hand {@link #realHandlers()}'s
+     * refs straight back. Whether a user may <em>type</em> a ref is core's
+     * call, through {@link #isUnstableRef} (issue #417) — this adapter can't
+     * tell a typed ref from a fan-out's.
      */
     private Handler resolveHandler(HandlerRef ref) {
         Handler cached = handlersByRef.get(ref);
         if (cached != null) {
             return cached;
         }
-        knownHandlers(); // side effect: resolves and caches every advertised handler's ref
-        if (isJBossLogManager() && tokenRefs.contains(ref)) {
-            // The cold walk (via realHandlers()) just cached an identity-token
-            // ref for ALL_HANDLERS fan-out -- but a user must not be able to
-            // name it (issue #13/#14: an unstable token is not on WildFly's
-            // addressable surface). A warm token ref (already in handlersByRef
-            // before this call, i.e. handed straight back from realHandlers()
-            // inside a fan-out) still resolves via the fast path above.
-            return null;
-        }
+        realHandlers(); // side effect: resolves and caches every real handler's ref
         return handlersByRef.get(ref);
     }
 
