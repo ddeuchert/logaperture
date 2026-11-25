@@ -24,11 +24,13 @@ import org.logaperture.api.HandlerFloor;
 import org.logaperture.api.HandlerRef;
 import org.logaperture.api.Level;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiFunction;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Handler;
 import java.util.logging.LogManager;
@@ -299,43 +301,44 @@ class JulLoggingAdapterTest {
         }
     }
 
-    // --- cold-walk misses (issue #18) -----------------------------------------------------------
+    // --- cold lookups share a recent walk (issue #18) -------------------------------------------
 
     @Test
-    void coldMiss_aSecondLookupWithinTheWindowSkipsTheWalk() {
+    void coldMiss_lookupsForSeveralUnknownRefsShareOneWalk() {
         AtomicLong clock = new AtomicLong();
         JulLoggingAdapter clocked = new JulLoggingAdapter(HandlerNameResolver.NONE, false, clock::get);
-        CountingLogger counting = registerCountingLogger(name("miss.Counting"));
-        HandlerRef unknown = new HandlerRef("NoSuchHandlerAtAll");
+        CountingLogger counting = registerCountingLogger(name("walk.Counting"));
 
-        assertTrue(clocked.handlerLevel(unknown).isEmpty());
+        assertTrue(clocked.handlerLevel(new HandlerRef("NoSuchHandlerA")).isEmpty());
         int afterFirst = counting.handlerReads.get();
         assertTrue(afterFirst > 0, "the first lookup walks the logger tree");
 
-        clock.addAndGet(JulLoggingAdapter.MISS_TTL_NANOS - 1);
-        assertTrue(clocked.handlerLevel(unknown).isEmpty());
-        assertEquals(afterFirst, counting.handlerReads.get(), "a miss inside the window does not walk again");
+        clock.addAndGet(JulLoggingAdapter.RECENT_WALK_NANOS - 1);
+        assertTrue(clocked.handlerLevel(new HandlerRef("NoSuchHandlerB")).isEmpty());
+        assertTrue(clocked.handlerLevel(new HandlerRef("NoSuchHandlerA")).isEmpty());
+        assertEquals(afterFirst, counting.handlerReads.get(),
+                "inside the window, neither a different unknown ref nor the same one walks again");
 
         clock.addAndGet(1);
-        assertTrue(clocked.handlerLevel(unknown).isEmpty());
+        assertTrue(clocked.handlerLevel(new HandlerRef("NoSuchHandlerB")).isEmpty());
         assertTrue(counting.handlerReads.get() > afterFirst, "once the window has passed, the next lookup walks");
     }
 
     @Test
-    void coldMiss_aHandlerAttachedAfterTheMissIsFoundOnceTheWindowPasses() {
-        // Attaching a handler fires no event, so a miss stands for its window and no longer.
+    void coldMiss_aHandlerAttachedAfterAWalkIsFoundOnceTheWindowPasses() {
+        // Attaching a handler fires no event, so a walk vouches for its window and no longer.
         AtomicLong clock = new AtomicLong();
         JulLoggingAdapter clocked = new JulLoggingAdapter(HandlerNameResolver.NONE, false, clock::get);
         ConsoleHandler console = testConsoleAtInfo();
         HandlerRef ref = HandlerRef.anonymous(console);
-        Logger logger = Logger.getLogger(name("miss.LateAttach"));
+        Logger logger = Logger.getLogger(name("walk.LateAttach"));
 
         assertTrue(clocked.handlerLevel(ref).isEmpty(), "not attached yet");
         logger.addHandler(console);
         try {
-            assertTrue(clocked.handlerLevel(ref).isEmpty(), "still inside the miss window");
+            assertTrue(clocked.handlerLevel(ref).isEmpty(), "still inside the window");
 
-            clock.addAndGet(JulLoggingAdapter.MISS_TTL_NANOS);
+            clock.addAndGet(JulLoggingAdapter.RECENT_WALK_NANOS);
 
             assertEquals(Optional.of(Level.INFO), clocked.handlerLevel(ref));
         } finally {
@@ -344,22 +347,53 @@ class JulLoggingAdapterTest {
     }
 
     @Test
-    void coldMiss_invalidatingTheNameCacheForgetsTheMiss() {
+    void coldMiss_aWalkInvalidatedWhileItRunsIsNotTrusted() {
+        // The invalidation lands mid-walk, after the walk read the generation, so the walk it
+        // records is already stale. A reload advances the same generation.
         AtomicLong clock = new AtomicLong();
         JulLoggingAdapter clocked = new JulLoggingAdapter(HandlerNameResolver.NONE, false, clock::get);
-        ConsoleHandler console = testConsoleAtInfo();
-        HandlerRef ref = HandlerRef.anonymous(console);
-        Logger logger = Logger.getLogger(name("miss.Invalidated"));
+        CountingLogger counting = registerCountingLogger(name("walk.Invalidated"));
+        Runnable invalidateOnce = () -> {
+            if (counting.handlerReads.get() == 1) {
+                clocked.invalidateNameCache();
+            }
+        };
+        counting.onRead = invalidateOnce;
 
-        assertTrue(clocked.handlerLevel(ref).isEmpty(), "not attached yet");
-        logger.addHandler(console);
+        assertTrue(clocked.handlerLevel(new HandlerRef("NoSuchHandler")).isEmpty());
+        int afterFirst = counting.handlerReads.get();
+
+        assertTrue(clocked.handlerLevel(new HandlerRef("NoSuchHandler")).isEmpty());
+        assertTrue(counting.handlerReads.get() > afterFirst,
+                "no time has passed, but the walk was invalidated while it ran, so this one walks again");
+    }
+
+    /** Named like the JDK type, so the plain-JVM resolver calls it "file". */
+    private static final class FileHandler extends java.util.logging.StreamHandler {
+    }
+
+    @Test
+    void coldMiss_aReloadVoidsTheRecentWalk() throws IOException {
+        AtomicLong clock = new AtomicLong();
+        JulLoggingAdapter plainJvm = new JulLoggingAdapter(new TypeHandlerNameResolver(), true, clock::get);
+        Runnable nothingToReapply = () -> { };
+        plainJvm.onReset(nothingToReapply);
+        HandlerRef file = new HandlerRef("file");
+        Logger logger = Logger.getLogger(name("walk.Reload"));
+        FileHandler handler = new FileHandler();
         try {
-            clocked.invalidateNameCache();
+            assertTrue(plainJvm.handlerLevel(file).isEmpty(), "no file handler attached yet");
+            logger.addHandler(handler);
+            assertTrue(plainJvm.handlerLevel(file).isEmpty(), "still inside the window");
 
-            assertEquals(Optional.of(Level.INFO), clocked.handlerLevel(ref),
-                    "no time has passed, but the invalidation voided the miss");
+            BiFunction<String, String, String> keepOld = (oldValue, newValue) -> oldValue;
+            LogManager.getLogManager().updateConfiguration(key -> keepOld);
+
+            assertTrue(plainJvm.handlerLevel(file).isPresent(), "no time has passed, but the reload voided the walk");
         } finally {
-            logger.removeHandler(console);
+            plainJvm.clearResetListener();
+            logger.removeHandler(handler);
+            handler.close();
         }
     }
 
@@ -514,6 +548,8 @@ class JulLoggingAdapterTest {
 
     private static final class CountingLogger extends Logger {
         final AtomicInteger handlerReads = new AtomicInteger();
+        /** Runs after each read is counted; a test sets it to act in the middle of a walk. */
+        volatile Runnable onRead = () -> { };
 
         CountingLogger(String name) {
             super(name, null);
@@ -522,6 +558,7 @@ class JulLoggingAdapterTest {
         @Override
         public Handler[] getHandlers() {
             handlerReads.incrementAndGet();
+            onRead.run();
             return super.getHandlers();
         }
     }

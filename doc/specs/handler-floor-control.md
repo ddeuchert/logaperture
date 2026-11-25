@@ -570,6 +570,17 @@ the above finding was even reachable:
   a cache miss now falls back to walking every known handler once (populating
   the cache as it goes) before giving up.
 
+  A walk less than one second old stands in for a new one (issue #18): it
+  cached every handler that was live, so a ref still missing from the cache is
+  reported unknown without walking again. Core looping over several tracked
+  refs that don't resolve then pays for one walk, not one per ref. Attaching a
+  handler with a plain `logger.addHandler(...)` fires no event, and checking
+  whether the handlers changed costs the walk being skipped, so a handler
+  attached within that second of a walk is found once the second has passed.
+  A configuration reload or a name-cache invalidation voids the recent walk at
+  once. While handler names are still resolving the walk always runs, since
+  the next walk may be the one that names the handler.
+
 Both are exactly the kind of gap that in-process unit tests — which always
 called `handlerFloorsBelow` first to obtain a ref, then used that same ref —
 could not have caught; only the real cross-process, real-server run did.
