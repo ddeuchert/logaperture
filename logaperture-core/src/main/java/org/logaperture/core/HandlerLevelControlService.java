@@ -980,13 +980,13 @@ public final class HandlerLevelControlService implements HandlerLevelControlOper
             return true;
         }
         try {
-            if (adapter.isUnstableRef(ref)) {
-                return false; // a token in a vendor file names this run's handler by chance, not by design (issue #417)
-            }
             // Native first, so the handler's own level is never read back as the vendor's.
             Optional<Level> nativeLevel = baselines.captureIfAbsent(ref, adapter);
             if (nativeLevel.isEmpty()) {
                 return false;
+            }
+            if (adapter.isUnstableRef(ref)) { // after the capture resolved it: a cache read, no second walk
+                return false; // a token in a vendor file names this run's handler by chance, not by design (issue #417)
             }
             if (vendor.mode() == HandlerLevelMode.AUTO) {
                 // Not audited: the load's one record covers it, as for a fixed level (quieter-output.md Q1).

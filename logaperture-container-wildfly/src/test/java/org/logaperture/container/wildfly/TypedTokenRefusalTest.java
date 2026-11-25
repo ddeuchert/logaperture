@@ -110,4 +110,16 @@ class TypedTokenRefusalTest {
             root.removeHandler(appHandler);
         }
     }
+
+    @Test
+    void withNoNameResolver_aTokenIsTheHandlersOnlyName_andStaysAddressable() {
+        ConsoleHandler handler = new ConsoleHandler();
+        JulLoggingAdapter adapter = JulAdapterFactory.forCurrentContext(HandlerNameResolver.NONE);
+        root.addHandler(handler);
+        try {
+            assertFalse(adapter.isUnstableRef(HandlerRef.anonymous(handler)));
+        } finally {
+            root.removeHandler(handler);
+        }
+    }
 }

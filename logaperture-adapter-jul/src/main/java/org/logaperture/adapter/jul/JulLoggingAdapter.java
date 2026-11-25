@@ -460,6 +460,22 @@ public final class JulLoggingAdapter implements LoggingAdapter {
     }
 
     /**
+     * On JBoss LogManager with a name resolver (WildFly), whether {@code ref} is a live handler's
+     * identity token rather than a resolved configured name (issue #417). Resolves {@code ref}
+     * first, so a cold token is minted and recognised; a warm one is a cache read. Plain JUL, or
+     * JBoss LogManager with no resolver, has no configured names to prefer, so a token is the
+     * handler's only ref there and stays addressable.
+     */
+    @Override
+    public boolean isUnstableRef(HandlerRef ref) {
+        if (!isJBossLogManager() || nameResolver == HandlerNameResolver.NONE) {
+            return false;
+        }
+        resolveHandler(ref);
+        return tokenRefs.contains(ref);
+    }
+
+    /**
      * Finds the live {@link Handler} {@code ref} names. {@code ref} usually
      * arrives fresh from a {@link #handlerFloorsBelow} call that just
      * populated {@link #handlersByRef} via {@link #refFor} — but {@code
@@ -476,21 +492,6 @@ public final class JulLoggingAdapter implements LoggingAdapter {
      * call, through {@link #isUnstableRef} (issue #417) — this adapter can't
      * tell a typed ref from a fan-out's.
      */
-    /**
-     * On JBoss LogManager, whether {@code ref} is a live handler's identity token rather than a
-     * resolved configured name (issue #417). Resolves {@code ref} first, so a cold token is minted
-     * and recognised; a warm one is a cache read. Plain JUL has no configured names to prefer, so
-     * a token is the handler's only ref there, and stays addressable.
-     */
-    @Override
-    public boolean isUnstableRef(HandlerRef ref) {
-        if (!isJBossLogManager()) {
-            return false;
-        }
-        resolveHandler(ref);
-        return tokenRefs.contains(ref);
-    }
-
     private Handler resolveHandler(HandlerRef ref) {
         Handler cached = handlersByRef.get(ref);
         if (cached != null) {

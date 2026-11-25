@@ -15,8 +15,6 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
   restart. Typing such a token now fails as an unknown handler, as the documentation always said,
   instead of succeeding and leaving a setting that stopped applying after the next restart.
   `reset` still accepts a token, so an override set that way before can be cleared (issue #417).
-- **WildFly: a handler name no deployment knows is reported as an unknown handler**, not as
-  "failed in every context" (issue #417).
 
 ## [1.0.0] — 2026-11-15
 

@@ -311,24 +311,6 @@ class AggregateLevelControlTest {
     }
 
     @Test
-    void setHandlerLevel_aNameNoContextKnows_isUnknown_notAFailureInEveryContext() {
-        Ctx system = new Ctx("system");
-        Ctx app = new Ctx("myapp.war");
-        HandlerRef console = new HandlerRef("CONSOLE");
-        system.adapter.addHandler(console, Level.INFO);
-        aggregate.register(system.control);
-        aggregate.register(app.control);
-        HandlerRef typo = new HandlerRef("CONSLOE");
-
-        assertThrows(UnknownHandlerException.class,
-                () -> aggregate.setHandlerLevel(typo, Level.TRACE, SetHandlerLevelOptions.defaults()));
-
-        aggregate.setHandlerLevel(console, Level.TRACE, SetHandlerLevelOptions.defaults());
-        assertEquals(Level.TRACE, system.adapter.handlerLevel(console).orElseThrow(),
-                "a name one context knows still sets there, though the other context doesn't know it");
-    }
-
-    @Test
     void resetAllLoggersAndResetAllHandlers_revertBothInEveryContext() {
         // doc/specs/reset-command-surface.md drops the combined resetAll() --
         // logctl reset loggers and logctl reset handlers are two separate

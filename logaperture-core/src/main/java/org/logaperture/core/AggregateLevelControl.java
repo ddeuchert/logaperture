@@ -45,7 +45,6 @@ import org.logaperture.api.SquelchedLogger;
 import org.logaperture.api.Storm;
 import org.logaperture.api.StormReport;
 import org.logaperture.core.spi.ContextHandle;
-import org.logaperture.core.spi.UnknownHandlerException;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -1055,7 +1054,6 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         HandlerLevelOverride fromSystem = null;
         HandlerLevelOverride fromAny = null;
         int succeeded = 0;
-        int unknown = 0;
         for (ContextControl context : contexts) {
             try {
                 Optional<HandlerLevelOverride> applied = context.handlerService().setHandlerLevel(ref, level, options);
@@ -1066,15 +1064,10 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                         fromSystem = applied.get();
                     }
                 }
-            } catch (UnknownHandlerException e) {
-                unknown++; // not this context's handler -- only a failure if it's no context's
             } catch (RuntimeException e) {
                 Diagnostics.warn("setHandlerLevel(" + ref + ") failed in context '"
                         + context.stableKey() + "', that context is unchanged: " + e);
             }
-        }
-        if (succeeded == 0 && unknown == contexts.size()) {
-            throw new UnknownHandlerException(ref); // spec: an unknown name fails as the adapter's own error does
         }
         if (succeeded == 0) {
             throw new IllegalStateException("setHandlerLevel(" + ref + ") failed in every context");
@@ -1135,7 +1128,6 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
         HandlerLevelOverride fromSystem = null;
         HandlerLevelOverride fromAny = null;
         int succeeded = 0;
-        int unknown = 0;
         for (ContextControl context : contexts) {
             try {
                 Optional<HandlerLevelOverride> applied = context.handlerService().setHandlerAuto(ref, options);
@@ -1146,15 +1138,10 @@ public final class AggregateLevelControl implements LevelControlOperations, Hand
                         fromSystem = applied.get();
                     }
                 }
-            } catch (UnknownHandlerException e) {
-                unknown++; // not this context's handler -- only a failure if it's no context's
             } catch (RuntimeException e) {
                 Diagnostics.warn("setHandlerAuto(" + ref + ") failed in context '"
                         + context.stableKey() + "', that context is unchanged: " + e);
             }
-        }
-        if (succeeded == 0 && unknown == contexts.size()) {
-            throw new UnknownHandlerException(ref); // spec: an unknown name fails as the adapter's own error does
         }
         if (succeeded == 0) {
             throw new IllegalStateException("setHandlerAuto(" + ref + ") failed in every context");

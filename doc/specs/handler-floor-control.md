@@ -237,18 +237,18 @@ logctl handler ALL_HANDLERS reset        # each reverts to its own baseline, not
   copied from an old log line or audit record) hits this exact same
   unknown-handler error — no dedicated exception type for "used to be known";
   from the addressable surface's point of view it genuinely isn't known
-  anymore (Decision #6). Core enforces this, not the adapter: before a
-  `set` (a level or `auto`) checks anything else, in every context, it asks
-  the adapter whether the name is unstable (`isUnstableRef`, below) and
-  throws the unknown-handler error if so. So no baseline is captured and no
-  capability judged for a token. `set default-handler` refuses a token the
+  anymore (Decision #6). Core enforces this, not the adapter: a `set` (a
+  level or `auto`) asks the adapter, in every context, whether the name is
+  unstable (`isUnstableRef`, below) and throws the unknown-handler error if
+  so, before any baseline is captured, capability judged or level changed. `set default-handler` refuses a token the
   same way, and a token in a vendor file is treated as unresolved. The
   adapter itself resolves every real ref, tokens included, because
   `ALL_HANDLERS` fan-out and `doctor` hand it `realHandlers()`' refs and it
   can't tell those from a typed one. `reset` doesn't check, so an override
-  set on a token before this check existed can still be cleared. A name no
-  context knows fails with the unknown-handler error too, not a generic
-  "failed in every context" (issue #417).
+  set on a token before this check existed can still be cleared. Only a
+  WildFly-style setup has unstable names: on plain JUL, or JBoss LogManager
+  without a name resolver, a token is the handler's only name and stays
+  addressable (issue #417).
 - `<level>` is any LogAperture level, same grammar as `logctl set`.
 - Tier tokens are exactly Feature 1/2's, including the CLI's own bare-token
   default: no token at all means `for 4h`, same as `logctl trace <logger>` —
