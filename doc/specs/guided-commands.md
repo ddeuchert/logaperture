@@ -54,7 +54,7 @@ These carry over from `guided-add-rule.md` unchanged and are not reopened here:
   plus one line: `Run this in a terminal to be prompted for the missing parts.`
 - **Picking loggers** (G4, G5): a typed answer with no `*` and no `.` is searched as `*.<answer>`;
   one match is used directly; several are numbered, answered with `1,3-5`, `all` or Enter to
-  cancel; more than 30 asks for a narrower pattern. A typed trailing `.*` picks from a subtree
+  cancel; more than 30 asks for a narrower pattern *(Superseded by [`easier-logger-entry.md`](easier-logger-entry.md) E4, #402: long lists are paged.)*. A typed trailing `.*` picks from a subtree
   (#139), and a package name with loggers under it counts as existing (#140) — both in
   `guided-add-rule.md` "Picking the loggers", shared by every command that picks loggers.
 - **Invalid answers** are explained and asked again, using the command line's own checks.
@@ -147,6 +147,9 @@ the numbered pick list with `all` for the same situation. This aligns `set logge
 pattern behaves the same way in both commands. More than 30 matches keeps today's preview and
 `[y/N]`, since there is no narrower pattern to ask for on a complete command. Without a terminal,
 and with `--yes`, nothing changes.
+
+*(The "more than 30" part is superseded by [`easier-logger-entry.md`](easier-logger-entry.md) E4a,
+#402: a complete command pages the pick list too.)*
 
 ### `logctl reset`
 
@@ -380,7 +383,7 @@ And while building slice (c):
 | 7 | Guided `set logger`: pick, show current level, level (no default), `for 4h`, reason | **Agreed** |
 | 8 | Guided `set handler`: pick from the catalog incl. ALL/DEFAULT_HANDLERS; `AUTO` accepted | **Agreed** |
 | 9 | Guided `set default-handler`: show membership, pick the new one | **Agreed** |
-| 10 | A complete `set logger '<pattern>'` on a terminal uses the pick list (>30 keeps today's preview) | **Agreed** |
+| 10 | A complete `set logger '<pattern>'` on a terminal uses the pick list (>30 keeps today's preview; superseded by #402 E4a) | **Agreed** |
 | 11 | `logctl reset` alone lists everything changed, grouped, multi-pick; one line per item | **Agreed** |
 | 12 | `reset logger`, `handler` or `rule` without a name lists only that kind | **Agreed** |
 | 13 | Sticky items listed and confirmed once (`--include-sticky` per line) | **Agreed** |

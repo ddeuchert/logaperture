@@ -181,7 +181,7 @@ This is the command:
   logctl set logger org.hibernate.SQL TRACE for 30m --reason "INC-4211 slow checkout"
 Apply? [Y/n]
 >
-org.hibernate.SQL → TRACE   (FOR, reverts 10:04:39 local — in 29m)
+org.hibernate.SQL → TRACE   (FOR, reverts 16:32:33 local — in 29m)
 ```
 
 The level took one letter, `t`. The letters are `i` INFO, `d` DEBUG, `t` TRACE, `w` WARN, `e` ERROR
@@ -195,7 +195,7 @@ $ logctl set logger
 Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)
 > ?
 No history yet.
-4 top-level packages (from first 144 loggers): com.shop, io.netty, org.apache, org.hibernate.
+4 top-level packages (from 149 loggers): com.shop, io.netty, org.apache, org.hibernate.
 Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)
 >
 Not applied.
@@ -203,10 +203,11 @@ Not applied.
 
 ### A long list is paged
 
-When more than 50 loggers match, `logctl` shows the first 50, and `n` shows the next page (`p` the previous one; Enter cancels). Pick by
-number (`1,3-5`, or `all`, which means every match on every page), or type a shorter name to search
-again under it. A number that isn't in the list is explained and asked again. Rows 4 to 49 and 53 to
-59 are left out here:
+When more than 50 loggers match, `logctl` shows the first 50, and `n` shows the next page (`p` the
+previous one; Enter cancels). Pick by number (`1,3-5`, or `all`, which means every match on every
+page), or type a shorter name to search again under it. A number that isn't in the list is explained
+and asked again. A complete command with a pattern, such as `logctl set logger '*.Worker' DEBUG`,
+shows the same pages on a terminal. Rows 4 to 49 and 53 to 59 are left out here:
 
 ```
 $ logctl set logger
@@ -250,8 +251,8 @@ These are the commands:
   logctl set logger com.shop.orders.audit DEBUG for 10m
 Apply? [Y/n]
 >
-com.shop.orders → DEBUG   (FOR, reverts 09:44:42 local — in 9m)
-com.shop.orders.audit → DEBUG   (FOR, reverts 09:44:42 local — in 9m)
+com.shop.orders → DEBUG   (FOR, reverts 16:12:34 local — in 9m)
+com.shop.orders.audit → DEBUG   (FOR, reverts 16:12:34 local — in 9m)
 ```
 
 A name you type there is searched as a prefix: `com.shop.orders` became `com.shop.orders.*`.

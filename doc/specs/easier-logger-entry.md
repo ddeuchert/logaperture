@@ -1,6 +1,7 @@
 # Easier logger entry in guided `set` (issue #402)
 
-Status: **decisions agreed 2026-11-17** (see "Settled at review"); implemented on this branch.
+Status: **decisions agreed 2026-11-17** (see "Settled at review"), E4a on 2026-11-25; implemented on this
+branch.
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §18.15 (guided commands).
 Builds on: [`guided-add-rule.md`](guided-add-rule.md) "Picking the loggers" (the numbered list, G4/G5,
 the `Which logger?` question), [`guided-commands.md`](guided-commands.md) (#3, #7: the guided
@@ -18,8 +19,10 @@ After this feature, the user will be able to:
 - Page through a long list of matching loggers, and type a shorter name to narrow it, instead of
   being told to try a narrower pattern.
 - Answer the `Level?` question with one letter: `i`, `d`, `t`, `w`, `e` or `o`.
-- Keep using complete commands in scripts exactly as today: nothing about a command that already
-  names its logger and level changes.
+- Pick from the same paged list when a complete `set logger` with a pattern matches many loggers on
+  a terminal, instead of answering one all-or-nothing `Apply?`.
+- Keep using complete commands in scripts as today: with an exact logger name, with `--yes`, or
+  without a terminal, a command does what it did before.
 
 Guide pages changed: [Raise a log level](../../guide/how-to/raise-a-level.md) ("Let `logctl` ask"),
 [Find a logger](../../guide/how-to/find-a-logger.md) ("Let `logctl` pick").
@@ -58,7 +61,7 @@ worked before is taken over.
 **E3 — Top-level packages.** The first two name segments (`org.hibernate`, `com.acme`) of the
 loggers the JVM knows, sorted, with a note of how many loggers they were taken from. Two segments
 rather than one because `org` and `com` say nothing. It is taken from every logger the JVM knows
-(`from 144 loggers`), keeping only the deepest of each family (`com.shop`, not `com` beside it), and
+(`from 149 loggers`), keeping only the deepest of each family (`com.shop`, not `com` beside it), and
 leaving out `ROOT`. It is a hint for what to type: use `list loggers` for the full list.
 
 **E4 — Paging and narrowing.** Matches are listed 50 to a page (was 30, and refused beyond that).
@@ -75,9 +78,10 @@ searched as before (G4: a bare word is `*.<word>`). At the numbered list:
   `org.hibernate.` both become `org.hibernate.*`. A bare word means what it means at `Which logger?`
   (G4): `Worker` is `*.Worker`.
 
-**E4a — Complete commands page too.** A complete `set logger '*.Worker' DEBUG` on a terminal whose
-pattern matches more than a page opens the same paged pick list, however many matches there are:
-the all-or-nothing `Apply?` preview for more than 30 matches is gone. `all` still sets every match,
+**E4a — Complete commands page too.** A complete `set logger '*.Worker' DEBUG` on a terminal opens
+the pick list however many loggers match, paged as in E4. Up to 30 matches already did
+([`guided-commands.md`](guided-commands.md) #10); the all-or-nothing `Apply?` preview for more is
+gone. `all` still sets every match,
 on every page. `--yes` and a command with no terminal are unchanged (`--yes` takes every match
 without asking; no terminal is the usual usage error). *(Reverses the first draft of this feature,
 which kept the preview above 30; agreed 2026-11-25.)*
@@ -88,9 +92,11 @@ case-insensitive, accepted at the `Level?` question of guided `set`. The prompt 
 (handlers). Full names work as before, `ALL` included. There is deliberately no `a`: it could be
 meant as AUTO at the handler question, so it is explained and asked again like any unknown answer.
 
-**E6 — Nothing changes for complete commands.** `logctl set logger <name> <level>` and every
-non-terminal, `--yes` or `--json` use are untouched (G1). Level letters are a prompt convenience and
-are not accepted on the command line.
+**E6 — Nothing else changes for complete commands.** A complete command with an exact logger name,
+with `--yes`, or without a terminal behaves as before, apart from being recorded in the history (E1).
+The one change is a pattern on a terminal (E4a). This feature doesn't change when `--json` may ask;
+issue [#422](https://github.com/ddeuchert/logaperture/issues/422) does. Level letters are a prompt
+convenience and are not accepted on the command line.
 
 ## Scope of the change
 
@@ -125,4 +131,6 @@ There are no open questions.
   word is `*.<word>`. An invalid
   selection (`1,x`, `0`, `99`, `3-1`) is explained and asked again, never searched.
 - Level letters: each letter, upper case, an unknown letter (asked again), `AUTO` where allowed.
+- A pattern `set logger --json` prints one object with the same keys whether the pattern was sent
+  (`--yes`) or the loggers were picked from the list.
 - The existing tests that assert `too many to list` and `Enter to cancel` are updated for E2/E4.
