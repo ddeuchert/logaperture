@@ -19,7 +19,9 @@ Give the whole command. Where a command would ask for confirmation, add `--yes`:
   every match;
 - `apply recipe … --yes` applies without showing the changes first.
 
-`--json` never asks either.
+`--json` never asks either, even on a terminal, and it doesn't stand in for `--yes`: with `--json`
+alone, those commands fail with exit code 2 and change nothing. Use `--json --yes` to apply the
+change and get JSON back.
 
 ## Pick the JVM explicitly
 

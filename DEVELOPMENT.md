@@ -190,6 +190,22 @@ agent attached — it filters on the `logaperture.version` system property the
 agent sets once installed. It works only for a JVM you could already attach a
 debugger to; authorization is the OS's.
 
+## When a `logctl` command may ask
+
+**`--json` and `--yes` mean the command runs as if there were no terminal: it asks nothing and reads
+nothing from standard input.** `--json` is an output format and is never consent; only `--yes` is.
+The rule and its reasons are in
+[doc/specs/cli-transport.md](doc/specs/cli-transport.md#when-logctl-asks).
+
+For a new or changed command:
+
+- Ask only when the `interactive` argument is true. `Main.run` has already made it false for
+  `--json` and `--yes`.
+- Check it before creating a question, not after printing the list the question is about: without it,
+  fail with exit 2 and say what to add.
+- Add the command to the `withJson_onATerminal_nothingIsAsked_norReadFromInput` cases in
+  `MainRunTest`.
+
 ## Local iteration without a container
 
 For agent-bootstrap logic that isn't WildFly-specific (`AgentBootstrap`, the
