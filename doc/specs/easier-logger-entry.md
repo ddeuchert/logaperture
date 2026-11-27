@@ -79,9 +79,9 @@ searched as before (G4: a bare word is `*.<word>`). At the numbered list:
   (G4): `Worker` is `*.Worker`.
 
 **E4a — Complete commands page too.** A complete `set logger '*.Worker' DEBUG` on a terminal opens
-the pick list however many loggers match, paged as in E4. Up to 30 matches already did
-([`guided-commands.md`](guided-commands.md) #10); the all-or-nothing `Apply?` preview for more is
-gone. `all` still sets every match,
+the pick list however many loggers match, paged as in E4 (unless `--yes` or `--json` is given, E6).
+Up to 30 matches already did ([`guided-commands.md`](guided-commands.md) #10); the all-or-nothing
+`Apply?` preview for more is gone. `all` still sets every match,
 on every page. `--yes` and a command with no terminal are unchanged (`--yes` takes every match
 without asking; no terminal is the usual usage error). *(Reverses the first draft of this feature,
 which kept the preview above 30; agreed 2026-11-25.)*
@@ -94,9 +94,10 @@ meant as AUTO at the handler question, so it is explained and asked again like a
 
 **E6 — Nothing else changes for complete commands.** A complete command with an exact logger name,
 with `--yes`, or without a terminal behaves as before, apart from being recorded in the history (E1).
-The one change is a pattern on a terminal (E4a). This feature doesn't change when `--json` may ask;
-issue [#422](https://github.com/ddeuchert/logaperture/issues/422) does. Level letters are a prompt
-convenience and are not accepted on the command line.
+The one change is a pattern on a terminal (E4a). `--json` never asks, even on a terminal
+([`cli-transport.md`](cli-transport.md#when-logctl-asks), issue
+[#422](https://github.com/ddeuchert/logaperture/issues/422)), so a pattern with `--json` needs `--yes`.
+Level letters are a prompt convenience and are not accepted on the command line.
 
 ## Scope of the change
 
@@ -131,6 +132,6 @@ There are no open questions.
   word is `*.<word>`. An invalid
   selection (`1,x`, `0`, `99`, `3-1`) is explained and asked again, never searched.
 - Level letters: each letter, upper case, an unknown letter (asked again), `AUTO` where allowed.
-- A pattern `set logger --json` prints one object with the same keys whether the pattern was sent
-  (`--yes`) or the loggers were picked from the list.
+- A pattern `set logger --json --yes` sends the pattern in one call and prints one object with every
+  key. `--json` without `--yes` fails without asking (the cases #422 added).
 - The existing tests that assert `too many to list` and `Enter to cancel` are updated for E2/E4.

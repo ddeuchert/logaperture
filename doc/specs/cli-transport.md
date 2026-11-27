@@ -30,7 +30,7 @@ After this feature, the user will be able to:
 - Clear an override: `logctl reset logger com.acme.batch` for one logger, `logctl reset
   loggers` to return every logger to how the application configured it (`logctl reset
   handlers` does the same for handlers — see [`reset-command-surface.md`](reset-command-surface.md)).
-- Get machine-readable output for any command with `--json`.
+- Get machine-readable output for any command with `--json`, and never be asked a question when using it.
 - Rely on the command only ever succeeding for someone who could already attach a
   debugger to that JVM — authorization is the operating system's, not a password.
 
@@ -190,7 +190,8 @@ existing operation, unchanged by this slice.
 | Option | Applies to | Meaning |
 |---|---|---|
 | `--pid <n>` | all | Target this PID; skip discovery. |
-| `--json` | all | Emit machine-readable JSON instead of a table. |
+| `--json` | all but `export vendor-defaults` | Emit machine-readable JSON instead of a table. Never asks ("When `logctl` asks", below). |
+| `--yes` | `set logger`, `add rule`, `apply recipe` | Never ask; go ahead with everything the command would have asked about. |
 | `--reason <text>` | mutating commands | Passed through as the override's `reason` (§5, §9.7). Optional; not enforced. |
 | `--include-children` | — | **Superseded (shipped).** §18.7 / [#41](https://github.com/ddeuchert/logaperture/issues/41) dropped this flag from the operations API entirely (this row is stale — not updated at the time #41 shipped). No trailing-wildcard replacement takes its place either: [`pattern-selection-semantics.md`](pattern-selection-semantics.md) (issue #49) makes a trailing-wildcard `set` target a usage error, so `logctl set logger org.apache DEBUG` alone now covers `org.apache` and every descendant, via the logging framework's own level-inheritance. |
 | `--version` | — | Print the CLI's version and exit 0. |
@@ -198,6 +199,31 @@ existing operation, unchanged by this slice.
 
 Anything unrecognized, or a command with the wrong arity, is a usage error: exit 2, usage
 to stderr.
+
+### When `logctl` asks
+
+One rule for every command (issue [#422](https://github.com/ddeuchert/logaperture/issues/422)):
+
+> `logctl` may ask a question, or read an answer from standard input, only when it is on a terminal
+> **and** neither `--json` nor `--yes` is given. With either option it behaves exactly as it does
+> without a terminal.
+
+So a command that would need an answer fails, writes nothing to standard output, changes nothing,
+and says what to add: the missing part or `--yes` (exit 2), or `--pid` where there are several JVMs
+to choose from (exit 4).
+
+The two options differ in what happens to a question the command can answer itself:
+
+- **`--json` chooses the output format. It is never consent**, and does not imply `--yes`. A
+  pattern `set logger` or `add rule`, and `apply recipe`, fail with `--json` alone.
+- **`--yes` is consent.** Those three commands go ahead: a pattern takes every match, a recipe is
+  applied without being shown first. It answers nothing else, so a missing part, or a choice of
+  several JVMs, still fails.
+
+**Where it is enforced.** `Main.run` passes a command `interactive = false` whenever either option
+is given, and hands JVM discovery no way to ask ([`pick-jvm.md`](pick-jvm.md) J1). The parser starts
+guided mode only under the same conditions ([`guided-commands.md`](guided-commands.md)). A command
+therefore asks only after checking `interactive`, and never needs to check `--json` to decide.
 
 ### `logctl list loggers [filter]`/`list handlers`
 
