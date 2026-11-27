@@ -9,6 +9,10 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ### Fixed
 
+- **`--json` no longer asks a question.** On a terminal, `logctl set logger '<pattern>' <level>
+  --json` listed the matching loggers and asked which to change, printing the questions ahead of the
+  JSON. It now fails with exit code 2 and asks for `--yes`, as it already did off a terminal and as
+  the guide describes. A script that adds `--yes` is unaffected (issue #422).
 - **WildFly: `logctl handler` and `logctl set default-handler` no longer accept a handler's
   identity token.** A handler WildFly's configuration doesn't name, such as one an application
   attached itself, is known only by a `ConsoleHandler@1a2b3c`-style token, which changes on every

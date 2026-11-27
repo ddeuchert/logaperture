@@ -1,8 +1,9 @@
 # JSON output
 
 Every `logctl` command except `export vendor-defaults` takes `--json`, and then prints one line of
-JSON on standard output instead of text. With `--json`, `logctl` never asks a question: a command
-that would need an answer fails instead, as it does off a terminal.
+JSON on standard output instead of text. With `--json`, `logctl` never asks a question, even on a
+terminal: a command that would need an answer fails instead, as it does off a terminal. `--json`
+doesn't imply `--yes`; give both to apply a pattern or a recipe and get JSON back.
 
 The examples below are formatted for reading. They were captured from WildFly 26.1.3.
 

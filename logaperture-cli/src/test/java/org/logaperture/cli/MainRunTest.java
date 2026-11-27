@@ -16,6 +16,8 @@
 package org.logaperture.cli;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.core.Capability;
 import org.logaperture.core.CapabilityDeniedException;
@@ -342,6 +344,76 @@ class MainRunTest {
         assertEquals(0, exitCode);
         assertTrue(out().contains("Not applied."), out());
         assertEquals(0, mbean.setLevelCalls.size(), "cancelling the pick must never call the server");
+    }
+
+    // --- cli-transport.md "When logctl asks": --json and --yes run as if there were no terminal --------
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            // complete commands that would ask on a terminal
+            "set logger *.Worker DEBUG",
+            "add rule drop *.Worker --message-contains boom",
+            "apply recipe io.undertow:sessions",
+            // incomplete commands, which would start guided mode on a terminal
+            "set",
+            "set logger",
+            "add rule",
+            "alter rule r1",
+            "apply recipe",
+            "reset",
+            "list"})
+    void withJson_onATerminal_nothingIsAsked_norReadFromInput(String command) {
+        FakeLevelControlMXBean mbean = withTwoWorkers();
+        UnreadableInput input = new UnreadableInput();
+
+        int exitCode = Main.run((command + " --json").split(" "), out, err, connectorFor(mbean), input, true);
+
+        assertEquals(CliError.USAGE, exitCode, err());
+        assertEquals("", out(), "standard output carries JSON or nothing");
+        assertFalse(input.wasRead, "must not wait for an answer");
+        assertEquals(0, mbean.setLevelCalls.size(), "must not have changed anything");
+    }
+
+    @Test
+    void patternWithJson_onATerminal_namesYesAsTheFix() {
+        assertEquals(CliError.USAGE, Main.run(new String[] {"set", "logger", "*.Worker", "DEBUG", "--json"}, out,
+                err, connectorFor(withTwoWorkers()), new UnreadableInput(), true));
+
+        assertTrue(err().contains("--yes"), err());
+    }
+
+    @Test
+    void patternWithJsonAndYes_onATerminal_printsOnlyTheJson() {
+        FakeLevelControlMXBean mbean = withTwoWorkers();
+        UnreadableInput input = new UnreadableInput();
+
+        int exitCode = Main.run(new String[] {"set", "logger", "*.Worker", "DEBUG", "--json", "--yes"}, out, err,
+                connectorFor(mbean), input, true);
+
+        assertEquals(CliError.OK, exitCode, err());
+        assertTrue(out().startsWith("{"), out());
+        assertEquals(1, out().lines().count(), out());
+        assertFalse(input.wasRead);
+        assertEquals(1, mbean.setLevelCalls.size());
+    }
+
+    private static FakeLevelControlMXBean withTwoWorkers() {
+        FakeLevelControlMXBean mbean = new FakeLevelControlMXBean();
+        mbean.loggers = List.of(
+                new LoggerInfoData("org.acme.Worker", "INFO", "INFO", false, null, null, null, null),
+                new LoggerInfoData("org.acme.batch.Worker", "INFO", "INFO", false, null, null, null, null));
+        return mbean;
+    }
+
+    /** Standard input that records being read, then reports end of input so a question can't block. */
+    private static final class UnreadableInput extends java.io.InputStream {
+        private boolean wasRead;
+
+        @Override
+        public int read() {
+            wasRead = true;
+            return -1;
+        }
     }
 
     /** A connector that must not be reached (help/version/usage paths never open a connection). */

@@ -114,10 +114,12 @@ public final class Main {
             return CliError.OK;
         }
 
-        // pick-jvm.md J1: discovery may ask which JVM only on a terminal, and never with --json or --yes.
-        Prompter jvmQuestion = interactive && !invocation.neverAsk() ? new Prompter(in, err) : null;
+        // cli-transport.md "When logctl asks": with --json or --yes, everything after parsing runs as it does
+        // without a terminal. Decided here, so no command has to remember it.
+        boolean mayAsk = interactive && !invocation.neverAsk();
+        Prompter jvmQuestion = mayAsk ? new Prompter(in, err) : null;
         try (ControlPlane controlPlane = connector.connect(invocation.pid(), jvmQuestion)) {
-            return invocation.command().run(controlPlane.mbean(), out, err, in, interactive);
+            return invocation.command().run(controlPlane.mbean(), out, err, in, mayAsk);
         } catch (CliError e) {
             err.println(e.getMessage());
             return e.exitCode();
