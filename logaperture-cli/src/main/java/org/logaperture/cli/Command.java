@@ -30,15 +30,10 @@ import java.io.PrintStream;
 interface Command {
 
     /**
-     * @param in          only read by a pattern-targeted {@code setLogger}'s
-     *                    confirmation prompt (doc/specs/
-     *                    pattern-level-targeting.md "Confirmation and CLI
-     *                    behavior"); every other command ignores it
-     * @param interactive whether a real controlling terminal is attached
-     *                    ({@code System.console() != null}, resolved once
-     *                    by {@link Main} so this stays a plain parameter
-     *                    instead of a static call — a command with nothing
-     *                    to confirm ignores this too
+     * @param in          where an answer to a question is read from; read only when {@code interactive}
+     * @param interactive whether this command may ask: a real terminal is attached and neither {@code
+     *                    --json} nor {@code --yes} was given (doc/specs/cli-transport.md "When logctl
+     *                    asks"). Decided once by {@link Main}; check it before creating any question
      * @return the process exit code (almost always {@link CliError#OK}; a
      *     failure is raised as a {@link CliError} instead)
      */
