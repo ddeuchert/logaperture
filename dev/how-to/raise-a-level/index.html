@@ -1003,6 +1003,45 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Let logctl ask">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pick-from-recent-loggers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pick from recent loggers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-long-list-is-paged" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A long list is paged
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#where-the-history-is-kept" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the history is kept
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2133,6 +2172,45 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Let logctl ask">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pick-from-recent-loggers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pick from recent loggers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-long-list-is-paged" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A long list is paged
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#where-the-history-is-kept" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the history is kept
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2259,6 +2337,100 @@ vendor or the application set stricter. Lower it for a while, as the warning say
 <p>On a terminal, leave out what you don't know. <code>logctl set</code> alone asks what to set, which logger
 (starting from part of its name, such as <code>Worker</code>), the level and the tier, then shows the full
 command before applying it, so you learn the one-line form for next time.</p>
+<p>Three things make that quicker when you do it often: a list of recent loggers, paging through long
+lists, and one-letter levels. The sessions below are from a small Logback application on a plain
+JVM, not WildFly.</p>
+<h3 id="pick-from-recent-loggers">Pick from recent loggers<a class="headerlink" href="#pick-from-recent-loggers" title="Permanent link">&para;</a></h3>
+<p>Type <code>?</code> at the logger question to pick from the loggers you set or added rules to recently. Enter
+still cancels.</p>
+<div class="highlight"><pre><span></span><code>$ logctl set logger
+Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)
+&gt; ?
+Recent:
+  1  org.hibernate.SQL
+  2  com.shop.web.Router
+Which? (e.g. 1,3 or 1-2 or all; Enter to cancel)
+&gt; 1
+Level? (i=INFO, d=DEBUG, t=TRACE, w=WARN, e=ERROR, o=OFF)
+&gt; t
+How long? session, for &lt;duration&gt; (e.g. for 30m), or sticky [for 4h]
+&gt; for 30m
+Reason (optional)
+&gt; INC-4211 slow checkout
+
+This is the command:
+  logctl set logger org.hibernate.SQL TRACE for 30m --reason "INC-4211 slow checkout"
+Apply? [Y/n]
+&gt;
+org.hibernate.SQL → TRACE   (FOR, reverts 16:32:33 local — in 29m)
+</code></pre></div>
+<p>The level took one letter, <code>t</code>. The letters are <code>i</code> INFO, <code>d</code> DEBUG, <code>t</code> TRACE, <code>w</code> WARN, <code>e</code> ERROR
+and <code>o</code> OFF. The full name works too.</p>
+<p>If you have no recent loggers yet, <code>?</code> shows the top-level packages that have loggers, to give you
+something to type:</p>
+<div class="highlight"><pre><span></span><code>$ logctl set logger
+Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)
+&gt; ?
+No history yet.
+4 top-level packages (from 149 loggers): com.shop, io.netty, org.apache, org.hibernate.
+Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)
+&gt;
+Not applied.
+</code></pre></div>
+<h3 id="a-long-list-is-paged">A long list is paged<a class="headerlink" href="#a-long-list-is-paged" title="Permanent link">&para;</a></h3>
+<p>When more than 50 loggers match, <code>logctl</code> shows the first 50, and <code>n</code> shows the next page (<code>p</code> the
+previous one; Enter cancels). Pick by number (<code>1,3-5</code>, or <code>all</code>, which means every match on every
+page), or type a shorter name to search again under it. A number that isn't in the list is explained
+and asked again. A complete command with a pattern, such as <code>logctl set logger '*.Worker' DEBUG</code>,
+shows the same pages on a terminal. Rows 4 to 49 and 53 to 59 are left out here:</p>
+<div class="highlight"><pre><span></span><code>$ logctl set logger
+Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)
+&gt; Worker
+60 loggers match '*.Worker'. Page 1 of 2:
+   1  com.shop.billing.audit.Worker    (INFO, native)
+   2  com.shop.billing.batch.Worker    (INFO, native)
+   3  com.shop.billing.cache.Worker    (INFO, native)
+   ...
+  50  com.shop.payments.sync.Worker    (INFO, native)
+Which? (e.g. 1,3 or 1-2 or all, n for next page, Enter to cancel, or type to narrow)
+&gt; n
+Page 2 of 2:
+  51  com.shop.shipping.audit.Worker  (INFO, native)
+  52  com.shop.shipping.batch.Worker  (INFO, native)
+   ...
+  60  com.shop.shipping.sync.Worker   (INFO, native)
+Which? (e.g. 1,3 or 1-2 or all, p for previous, Enter to cancel, or type to narrow)
+&gt; com.shop.orders
+21 loggers match 'com.shop.orders.*':
+   1  com.shop.orders               (INFO, native)
+   2  com.shop.orders.audit         (INFO, native)
+   3  com.shop.orders.audit.Worker  (INFO, native)
+   ...
+  21  com.shop.orders.sync.Worker   (INFO, native)
+Which? (e.g. 1,3 or 1-2 or all, Enter to cancel, or type to narrow)
+&gt; 99
+99 isn't in the list -- choose from 1 to 21.
+Which? (e.g. 1,3 or 1-2 or all, Enter to cancel, or type to narrow)
+&gt; 1-2
+Level? (i=INFO, d=DEBUG, t=TRACE, w=WARN, e=ERROR, o=OFF)
+&gt; d
+How long? session, for &lt;duration&gt; (e.g. for 30m), or sticky [for 4h]
+&gt; for 10m
+Reason (optional)
+&gt;
+
+These are the commands:
+  logctl set logger com.shop.orders DEBUG for 10m
+  logctl set logger com.shop.orders.audit DEBUG for 10m
+Apply? [Y/n]
+&gt;
+com.shop.orders → DEBUG   (FOR, reverts 16:12:34 local — in 9m)
+com.shop.orders.audit → DEBUG   (FOR, reverts 16:12:34 local — in 9m)
+</code></pre></div>
+<p>A name you type there is searched as a prefix: <code>com.shop.orders</code> became <code>com.shop.orders.*</code>.</p>
+<h3 id="where-the-history-is-kept">Where the history is kept<a class="headerlink" href="#where-the-history-is-kept" title="Permanent link">&para;</a></h3>
+<p>Your recent loggers are kept for you, not for the JVM, in <code>~/.logaperture/recent-loggers</code> (the last
+50 names, one per line; under <code>-Dlogaperture.home</code> if you set it). Delete the file to clear them.</p>
 <h2 id="put-it-back">Put it back<a class="headerlink" href="#put-it-back" title="Permanent link">&para;</a></h2>
 <p>A timed change reverts by itself. To undo it sooner, <code>logctl reset logger io.undertow.request</code>.
 See <a href="../undo-changes/">Undo changes</a>.</p>

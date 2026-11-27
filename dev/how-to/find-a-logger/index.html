@@ -2204,7 +2204,28 @@ logger may not be listed. You can still set it by its exact name: the setting ap
 logger is created.</p>
 <h2 id="let-logctl-pick">Let <code>logctl</code> pick<a class="headerlink" href="#let-logctl-pick" title="Permanent link">&para;</a></h2>
 <p>On a terminal, <code>logctl set</code> and <code>logctl add rule</code> accept part of a name, such as <code>Worker</code>, and list
-the matching loggers to choose from. See <a href="../raise-a-level/#let-logctl-ask">Raise a log level</a>.</p>
+the matching loggers to choose from. Type <code>?</code> at the logger question to pick from the loggers you
+changed recently, or to see the top-level packages when you have no history. Here it is on a plain
+JVM with nothing set yet:</p>
+<div class="highlight"><pre><span></span><code>$ logctl set logger
+Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)
+&gt; ?
+No history yet.
+4 top-level packages (from 149 loggers): com.shop, io.netty, org.apache, org.hibernate.
+Which logger? A name or pattern, e.g. Deployer or *.deployment.* (Enter to cancel, ? for recent)
+&gt; org.hibernate
+Level? (i=INFO, d=DEBUG, t=TRACE, w=WARN, e=ERROR, o=OFF)
+&gt;
+Not applied.
+</code></pre></div>
+<p>A plain name like <code>org.hibernate</code> stands for that logger and everything under it, so the next
+question is the level. The example was ended there with Ctrl-D. To pick one logger under a
+package, type a pattern instead, such as <code>*.SQL</code>.</p>
+<p>The list shows only the first two parts of each name, and only the deepest of each family, so <code>com</code>
+alone isn't listed next to <code>com.shop</code>. It is a hint for what to type, not a
+complete list. For the full list, use
+<code>logctl list loggers --show-all</code>. See <a href="../raise-a-level/#let-logctl-ask">Raise a log level</a> for the
+rest: picking from recent loggers, paging through long lists, and one-letter levels.</p>
 
 
 

@@ -2941,6 +2941,11 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
 <li><strong>An eighth demo recording: try it, no restart.</strong> <code>logctl attach</code> loads the agent into a WildFly
   server that was started without it, then a <code>set logger</code> shows its effect on the console at once.
   Embedded in How-to: Try LogAperture without a restart and on Now Showing (issue #349).</li>
+<li><strong>Quicker logger entry in guided <code>set logger</code> and <code>add rule</code>.</strong> Type <code>?</code> at <code>Which logger?</code> to pick from
+  the loggers you set or added rules to recently; with no history yet, it shows the top-level packages to
+  type from. <code>logctl</code> keeps the last 50 in <code>~/.logaperture/recent-loggers</code> (under <code>-Dlogaperture.home</code> if
+  you set it), never patterns, and Enter still cancels. At the level question, <code>i</code>, <code>d</code>, <code>t</code>, <code>w</code>, <code>e</code> and <code>o</code>
+  stand for INFO, DEBUG, TRACE, WARN, ERROR and OFF (issue #402; <code>doc/specs/easier-logger-entry.md</code>).</li>
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
@@ -2954,6 +2959,13 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
   (issue #79; <code>doc/specs/rule-multi-context.md</code>).</li>
 <li><strong><code>logctl list loggers</code> with no loggers</strong> now says <code>No loggers known yet. LogAperture is running; if it controls
   no logging context in this JVM,</code>logctl doctor<code>says why.</code></li>
+<li><strong>A long list of matching loggers is paged.</strong> In guided <code>set logger</code> and <code>add rule</code>, more than 30 matches used to
+  be refused with "too many to list; try a narrower pattern". <code>logctl</code> now lists them 50 to a page: <code>n</code> shows the
+  next page (<code>p</code> the previous one, Enter cancels), a number or <code>all</code> picks from the whole list, and a shorter name typed there searches again under it.
+  A mistyped selection such as <code>0</code> or <code>3-1</code> is explained and asked again, never searched as a name. A complete
+  <code>set logger '&lt;pattern&gt;' &lt;level&gt;</code> on a terminal pages the same way, instead of the all-or-nothing "Apply?"
+  preview it showed above 30 matches; with no terminal or <code>--yes</code> it behaves as before (issue #402;
+  <code>doc/specs/easier-logger-entry.md</code>).</li>
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
