@@ -2957,6 +2957,10 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
+<li><strong><code>--json</code> no longer asks a question.</strong> On a terminal, <code>logctl set logger '&lt;pattern&gt;' &lt;level&gt;
+  --json</code> listed the matching loggers and asked which to change, printing the questions ahead of the
+  JSON. It now fails with exit code 2 and asks for <code>--yes</code>, as it already did off a terminal and as
+  the guide describes. A script that adds <code>--yes</code> is unaffected (issue #422).</li>
 <li><strong>WildFly: <code>logctl handler</code> and <code>logctl set default-handler</code> no longer accept a handler's
   identity token.</strong> A handler WildFly's configuration doesn't name, such as one an application
   attached itself, is known only by a <code>ConsoleHandler@1a2b3c</code>-style token, which changes on every

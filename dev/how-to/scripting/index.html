@@ -2159,7 +2159,9 @@ Run this in a terminal to be prompted for the missing parts.
   every match;</li>
 <li><code>apply recipe … --yes</code> applies without showing the changes first.</li>
 </ul>
-<p><code>--json</code> never asks either.</p>
+<p><code>--json</code> never asks either, even on a terminal, and it doesn't stand in for <code>--yes</code>: with <code>--json</code>
+alone, those commands fail with exit code 2 and change nothing. Use <code>--json --yes</code> to apply the
+change and get JSON back.</p>
 <h2 id="pick-the-jvm-explicitly">Pick the JVM explicitly<a class="headerlink" href="#pick-the-jvm-explicitly" title="Permanent link">&para;</a></h2>
 <p>With several JVMs running the agent, <code>logctl</code> can't ask which one, and exits with code 4. In a
 script, always pass <code>--pid</code>. See <a href="../several-jvms/">Work with several JVMs</a>.</p>

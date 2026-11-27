@@ -2580,8 +2580,9 @@
 
 <h1 id="json-output">JSON output<a class="headerlink" href="#json-output" title="Permanent link">&para;</a></h1>
 <p>Every <code>logctl</code> command except <code>export vendor-defaults</code> takes <code>--json</code>, and then prints one line of
-JSON on standard output instead of text. With <code>--json</code>, <code>logctl</code> never asks a question: a command
-that would need an answer fails instead, as it does off a terminal.</p>
+JSON on standard output instead of text. With <code>--json</code>, <code>logctl</code> never asks a question, even on a
+terminal: a command that would need an answer fails instead, as it does off a terminal. <code>--json</code>
+doesn't imply <code>--yes</code>; give both to apply a pattern or a recipe and get JSON back.</p>
 <p>The examples below are formatted for reading. They were captured from WildFly 26.1.3.</p>
 <h2 id="what-stays-the-same">What stays the same<a class="headerlink" href="#what-stays-the-same" title="Permanent link">&para;</a></h2>
 <p>From 1.0.0, within a major version:</p>
