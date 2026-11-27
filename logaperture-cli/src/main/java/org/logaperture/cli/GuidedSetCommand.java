@@ -95,7 +95,7 @@ final class GuidedSetCommand implements Command {
             out.println("Handlers:");
             refs = pick(prompter, catalog);
         }
-        String level = Questions.askLevel(prompter, "Level? e.g. DEBUG, INFO, or AUTO", true);
+        String level = Questions.askLevel(prompter, "Level? (i=INFO, d=DEBUG, t=TRACE, w=WARN, e=ERROR, o=OFF, or AUTO)", true);
         Parser.TierChoice tier = Questions.askTier(prompter, "How long?");
         String chosenReason = reason != null ? reason : Questions.askOptional(prompter, "Reason (optional)");
 

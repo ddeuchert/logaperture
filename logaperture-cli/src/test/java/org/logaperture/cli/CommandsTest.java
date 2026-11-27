@@ -1262,27 +1262,24 @@ class CommandsTest {
         assertTrue(output().contains("Not applied."), output());
     }
 
-    /** #10: more matches than the pick list shows keeps the all-or-nothing preview. */
+    /** A complete command whose pattern matches more than a page is paged like the guided one. */
     @Test
-    void setLevel_pattern_interactive_tooManyToList_previewsAndConfirmsAllOrNothing() {
+    void setLevel_pattern_interactive_moreThanAPage_isPagedAndAllPicksEveryMatch() {
         List<LoggerInfoData> many = new ArrayList<>();
         for (int i = 0; i <= Picker.MAX_LISTED; i++) {
             many.add(new LoggerInfoData("com.acme.w" + i + ".Worker", "INFO", "INFO", false, null, null, null, null));
         }
         mbean.loggers = many;
 
-        run(Commands.setLogger("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "y", true);
+        run(Commands.setLogger("*.Worker", "DEBUG", null, "SESSION", 0L, false, false), "all\n", true);
 
         String text = output();
-        assertTrue(text.contains("This will set DEBUG on 31 currently-known loggers matching '*.Worker':"), text);
-        assertTrue(text.contains("not affected"), text);
-        assertTrue(text.contains("Apply? [y/N]"), text);
-        assertArrayEquals(new Object[] {"*.Worker", "DEBUG", null, "SESSION", 0L, true}, mbean.setLevelCalls.get(0),
-                "a typed 'y' applies the pattern itself, confirmed");
+        assertTrue(text.contains(many.size() + " loggers match '*.Worker'. Page 1 of 2:"), text);
+        assertEquals(many.size(), mbean.setLevelCalls.size(), "every match on every page is set");
     }
 
     @Test
-    void setLevel_pattern_interactive_tooManyToList_declinedAppliesNothing() {
+    void setLevel_pattern_interactive_moreThanAPage_enterCancelsAndAppliesNothing() {
         List<LoggerInfoData> many = new ArrayList<>();
         for (int i = 0; i <= Picker.MAX_LISTED; i++) {
             many.add(new LoggerInfoData("com.acme.w" + i + ".Worker", "INFO", "INFO", false, null, null, null, null));
@@ -1349,6 +1346,27 @@ class CommandsTest {
         String text = output().strip();
         assertTrue(text.startsWith("{\"overrides\":[{"), text);
         assertTrue(text.contains("\"loggerName\":\"org.apache.A\""), text);
+    }
+
+    /**
+     * The {@code --json} shape of a pattern target, which only {@code --yes} applies (doc/specs/cli-transport.md
+     * "When logctl asks"; {@code MainRunTest} covers {@code --json} without it): one object, with these keys in
+     * this order. The agent is sent the pattern itself in one call, not one call per match.
+     */
+    @Test
+    void setLevel_pattern_json_isOneObjectWithEveryKey_sentAsThePatternInOneCall() {
+        mbean.loggers = List.of(
+                new LoggerInfoData("org.apache.A", "INFO", "INFO", false, null, null, null, null),
+                new LoggerInfoData("com.acme.A", "INFO", "INFO", false, null, null, null, null));
+
+        run(Commands.setLogger("*.A", "DEBUG", null, "SESSION", 0L, true, true));
+
+        String printed = output().strip();
+        assertTrue(printed.startsWith("{\"overrides\":["), printed);
+        assertTrue(printed.endsWith("],\"warnings\":[],\"descendants\":[],\"following\":[],"
+                + "\"followDenied\":null,\"belowFloor\":[]}"), printed);
+        assertEquals(1, printed.lines().count(), printed);
+        assertEquals(List.of("*.A"), mbean.setLevelCalls.stream().map(call -> (String) call[0]).toList());
     }
 
     @Test

@@ -323,7 +323,7 @@ class MainRunTest {
                 connectorFor(mbean), typed, true);
 
         assertEquals(0, exitCode);
-        assertTrue(out().contains("Which? (e.g. 1,3 or 1-2 or all; Enter to cancel)"), out());
+        assertTrue(out().contains("Which? (e.g. 1,3 or 1-2 or all, Enter to cancel, or type to narrow)"), out());
         assertTrue(out().contains("org.acme.Worker → DEBUG"), out());
         Object[] call = mbean.setLevelCalls.get(0); // {target, level, reason, tier, forSeconds, confirmed}
         assertEquals("org.acme.Worker", call[0], "the picked exact name, not the pattern");

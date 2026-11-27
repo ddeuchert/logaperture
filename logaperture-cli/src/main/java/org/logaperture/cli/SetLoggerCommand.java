@@ -96,7 +96,9 @@ final class SetLoggerCommand implements Command {
         if (!Commands.isPattern(target) || yes || Commands.isTrailingWildcard(target)) {
             // An exact name, --yes, or a trailing-star target the server rejects on its own: one call,
             // already confirmed.
-            return render(out, level, setLogger(mbean, target, level, reason, tier, force, keepHandlers), target, tier, reason);
+            SetLevelResultData result = setLogger(mbean, target, level, reason, tier, force, keepHandlers);
+            RecentLoggers.record(target);
+            return render(out, level, result, target, tier, reason);
         }
         List<String> matches = Picker.matchingNames(mbean, target);
         if (!interactive) {
@@ -108,15 +110,6 @@ final class SetLoggerCommand implements Command {
                     : "'" + target + "' matches " + matches.size() + " currently-known logger"
                             + (matches.size() == 1 ? "" : "s") + ". Pass --yes to apply " + level
                             + " to all of them non-interactively (this affects only loggers that exist right now).");
-        }
-        if (matches.size() > Picker.MAX_LISTED) {
-            // #10: too many to pick from, and a complete command has no narrower pattern to ask for --
-            // the all-or-nothing preview, as before.
-            printPatternPreview(out, matches);
-            if (!prompter.askYesNo("", "Apply?", false)) {
-                throw new Prompter.Cancelled();
-            }
-            return render(out, level, setLogger(mbean, target, level, reason, tier, force, keepHandlers), target, tier, reason);
         }
         List<String> names = Picker.loggers(mbean, prompter, target, "set it anyway?", SetLoggerCommand::currently);
         if (names == null) {
@@ -134,7 +127,7 @@ final class SetLoggerCommand implements Command {
         if (names == null) {
             throw new Prompter.Cancelled();
         }
-        String chosenLevel = Questions.askLevel(prompter, "Level? e.g. DEBUG, TRACE, OFF", false);
+        String chosenLevel = Questions.askLevel(prompter, "Level? (i=INFO, d=DEBUG, t=TRACE, w=WARN, e=ERROR, o=OFF)", false);
         Parser.TierChoice chosenTier = Questions.askTier(prompter, "How long?");
         String chosenReason = reason != null ? reason : Questions.askOptional(prompter, "Reason (optional)");
         boolean chosenForce = force || askForce(mbean, prompter, names, chosenLevel);
@@ -244,8 +237,10 @@ final class SetLoggerCommand implements Command {
     private int apply(LevelControlMXBean mbean, PrintStream out, PrintStream err, List<String> names,
             String chosenLevel, Parser.TierChoice chosenTier, String chosenReason, boolean chosenForce) {
         if (names.size() == 1) {
-            return render(out, chosenLevel, setLogger(mbean, names.get(0), chosenLevel, chosenReason, chosenTier,
-                    chosenForce, keepHandlers), names.get(0), chosenTier, chosenReason);
+            SetLevelResultData result = setLogger(mbean, names.get(0), chosenLevel, chosenReason, chosenTier,
+                    chosenForce, keepHandlers);
+            RecentLoggers.record(names.get(0));
+            return render(out, chosenLevel, result, names.get(0), chosenTier, chosenReason);
         }
         List<LevelOverrideData> overrides = new ArrayList<>();
         // One warning per handler, however many of the loggers it would block.
@@ -255,11 +250,13 @@ final class SetLoggerCommand implements Command {
         Map<String, FollowedHandlerData> following = new LinkedHashMap<>();
         String followDenied = null;
         List<String> refusals = new ArrayList<>();
+        List<String> succeeded = new ArrayList<>();
         int exitCode = CliError.OK;
         for (String name : names) {
             try {
                 SetLevelResultData result = setLogger(mbean, name, chosenLevel, chosenReason, chosenTier,
                         chosenForce, keepHandlers);
+                succeeded.add(name);
                 overrides.addAll(result.getOverrides());
                 for (DescendantLevelData descendant : result.getDescendants()) {
                     descendants.putIfAbsent(descendant.getLoggerName(), descendant);
@@ -284,6 +281,7 @@ final class SetLoggerCommand implements Command {
                 }
             }
         }
+        RecentLoggers.recordAll(succeeded);
         render(out, chosenLevel, new SetLevelResultData(overrides, new ArrayList<>(blocking.values()),
                 new ArrayList<>(descendants.values()), new ArrayList<>(following.values()), followDenied,
                 new ArrayList<>(belowFloor.values())), null, chosenTier, chosenReason);
@@ -420,16 +418,5 @@ final class SetLoggerCommand implements Command {
                 ? INDENT + "To set " + (behind.size() == 1 ? "it" : "them") + " too: "
                         + commandLine(target, appliedLevel, appliedTier, appliedReason) + " --force"
                 : INDENT + "Add --force to set them too.");
-    }
-
-    /** The all-or-nothing preview (pattern-selection-semantics.md "Confirmation and CLI behavior"). */
-    private void printPatternPreview(PrintStream out, List<String> matches) {
-        out.println("This will set " + level + " on " + matches.size() + " currently-known loggers matching '"
-                + target + "':");
-        for (String match : matches) {
-            out.println(INDENT + match);
-        }
-        out.println("A logger created later that would also match this pattern is not affected — re-run "
-                + "this command if you need it too.");
     }
 }

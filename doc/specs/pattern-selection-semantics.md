@@ -294,6 +294,10 @@ confirm for a call that never mutates anything.
 target with `options.confirmed == false` still doesn't mutate anything, still throws
 `ConfirmationRequiredException` carrying the match list.
 
+*(The preview below is superseded: on a terminal the matches are a pick list
+([`guided-commands.md`](guided-commands.md) #10), paged however many there are
+([`easier-logger-entry.md`](easier-logger-entry.md) E4a, #402).)*
+
 **`logctl`'s preview**, reworded to drop the standing-rule framing (compare
 `pattern-level-targeting.md`'s original wording, which this replaces):
 

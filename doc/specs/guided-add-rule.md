@@ -148,7 +148,7 @@ r12   org.jboss.as.server.deployment.Deployer → trim   (for 1d, expires 2026-0
 - **Several matches** are numbered in name order. The answer is a comma-separated list of numbers
   and ranges (`1,3-5`), `all`, or Enter to cancel. An invalid answer is explained and asked again.
 - **More than 30 matches** are not listed; the operator is told how many matched and asked for a
-  narrower pattern.
+  narrower pattern. *(Superseded by [`easier-logger-entry.md`](easier-logger-entry.md) E4, #402: long lists are paged.)*
 - **A trailing `.*` picks from a subtree** (issue
   [#139](https://github.com/ddeuchert/logaperture/issues/139)). Typed at the prompt, or given as
   the target of an incomplete command (`set logger org.hibernate.*` with no level), `org.hibernate.*`
@@ -314,7 +314,7 @@ Small points the decisions above left open, settled while building it:
 | G2 | Leading-star pattern targets on the command line are accepted (pick list on a terminal, `--yes` for all), expanded in `logctl` with no agent change; this takes over #79's pattern half | **Agreed** |
 | G3 | The rule type may be left out; a word other than `drop`/`trim` after `add rule` is the target | **Agreed** |
 | G4 | At the prompt, an answer with no `*` and no `.` is searched as `*.<answer>`; not on the command line | **Agreed** |
-| G5 | Selection: numbered list, `1,3-5` / `all` / Enter cancels; one match used directly; more than 30 asks for a narrower pattern | **Agreed** |
+| G5 | Selection: numbered list, `1,3-5` / `all` / Enter cancels; one match used directly; more than 30 asks for a narrower pattern (superseded by #402 E4) | **Agreed** |
 | G6 | Question order and defaults as in the table; `drop` with no matcher re-asks | **Agreed** |
 | G7 | The printed command is one line per selected logger, exact names, non-default options only, shell-quoted | **Agreed** |
 | G8 | Confirmation is `Apply? [Y/n]` (Enter applies) | **Agreed** |

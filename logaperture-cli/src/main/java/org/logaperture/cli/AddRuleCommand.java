@@ -285,14 +285,18 @@ final class AddRuleCommand implements Command {
             List<String> names) {
         if (names.size() == 1 && !Commands.isPattern(request.target() == null ? "" : request.target())) {
             // One exact name, as before guided mode: a failure is the command's failure, reported by Main.
-            return print(out, rule, List.of(attach(mbean, rule, names.get(0))), jsonArray());
+            RuleData attached = attach(mbean, rule, names.get(0));
+            RecentLoggers.record(names.get(0));
+            return print(out, rule, List.of(attached), jsonArray());
         }
         List<RuleData> created = new ArrayList<>();
         List<String> refusals = new ArrayList<>();
+        List<String> succeeded = new ArrayList<>();
         int exitCode = CliError.OK;
         for (String name : names) {
             try {
                 created.add(attach(mbean, rule, name));
+                succeeded.add(name);
             } catch (RuntimeException e) {
                 Main.Failure failure = Main.failureOf(e);
                 refusals.add(name + ": " + failure.message());
@@ -301,6 +305,7 @@ final class AddRuleCommand implements Command {
                 }
             }
         }
+        RecentLoggers.recordAll(succeeded);
         print(out, rule, created, jsonArray());
         for (String refusal : refusals) {
             err.println(refusal);

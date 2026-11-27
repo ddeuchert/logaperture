@@ -15,7 +15,10 @@
  */
 package org.logaperture.cli;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.logaperture.control.jmx.LoggerInfoData;
 import org.logaperture.core.Capability;
 import org.logaperture.core.CapabilityDeniedException;
@@ -24,6 +27,8 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -231,13 +236,24 @@ class GuidedAddRuleTest {
 
     @Test
     void anInvalidSelection_isAskedAgain() {
-        guided(lines("4", "x", "3-1", "2-3", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule",
+        guided(lines("4", "3-1", "0", "2-3", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule",
                 "*.Deployer");
 
         assertTrue(out().contains("4 isn't in the list -- choose from 1 to 3."), out());
-        assertTrue(out().contains("'x' isn't a selection"), out());
         assertTrue(out().contains("backwards range"), out());
+        assertTrue(out().contains("0 isn't in the list -- choose from 1 to 3."), out());
+        assertFalse(out().contains("No logger matches"), "numbers are never searched as a name: " + out());
         assertEquals(2, mbean.addRuleTrimCalls.size());
+    }
+
+    // --- easier logger entry (doc/specs/easier-logger-entry.md) ----------------------------------
+
+    @Test
+    void aNameTypedAtTheList_narrowsTheSearchUnderIt() {
+        guided(lines("com.acme.batch", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule", "*.Deployer");
+
+        assertTrue(out().contains("1 logger matches 'com.acme.batch.*': com.acme.batch.Deployer"), out());
+        assertEquals("com.acme.batch.Deployer", mbean.addRuleTrimCalls.get(0)[0]);
     }
 
     @Test
@@ -283,14 +299,250 @@ class GuidedAddRuleTest {
     }
 
     @Test
-    void moreThanThirtyMatches_areNotListed() {
+    void moreThanOnePageOfMatches_isPaged_andAShorterNameNarrows() {
         for (int i = 0; i < Picker.MAX_LISTED + 1; i++) {
             mbean.loggers.add(logger("com.many.M" + i + ".Deployer"));
         }
-        guided(lines("*.batch.Deployer", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule", "*.Deployer");
+        // n shows page 2; a name typed there narrows the search.
+        guided(lines("n", "com.acme.batch", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule",
+                "*.Deployer");
 
-        assertTrue(out().contains("34 loggers match '*.Deployer' -- too many to list."), out());
+        int total = 3 + Picker.MAX_LISTED + 1;
+        assertTrue(out().contains(total + " loggers match '*.Deployer'. Page 1 of 2:"), out());
+        assertTrue(out().contains("Page 2 of 2:"), out());
         assertEquals("com.acme.batch.Deployer", mbean.addRuleTrimCalls.get(0)[0]);
+    }
+
+    @Test
+    void aSelectionOnLaterPage_picksFromTheWholeList() {
+        for (int i = 0; i < Picker.MAX_LISTED + 1; i++) {
+            mbean.loggers.add(logger("com.many.M" + i + ".Deployer"));
+        }
+        int last = 3 + Picker.MAX_LISTED + 1;
+        guided(lines("n", String.valueOf(last), "trim", "", "", "", "", "", "", "", "", ""), "add", "rule",
+                "*.Deployer");
+
+        assertEquals(1, mbean.addRuleTrimCalls.size());
+        assertEquals("org.jboss.as.server.deployment.Deployer", mbean.addRuleTrimCalls.get(0)[0],
+                "the last of the sorted names");
+    }
+
+    // --- recent loggers: ? at the prompt, Enter cancels, recording (E1, E2) ----------------------
+
+    @TempDir
+    Path home;
+
+    private String previousHome;
+
+    /** Every test keeps its history in its own directory, never the developer's (or the other tests'). */
+    @BeforeEach
+    void keepHistoryInATempDir() {
+        previousHome = System.getProperty("logaperture.home");
+        System.setProperty("logaperture.home", home.toString());
+    }
+
+    @AfterEach
+    void restoreHistoryHome() {
+        if (previousHome == null) {
+            System.clearProperty("logaperture.home");
+        } else {
+            System.setProperty("logaperture.home", previousHome);
+        }
+    }
+
+    @Test
+    void enterAtWhichLogger_stillCancels() {
+        assertEquals(CliError.OK, guided(lines(""), "add", "rule"));
+
+        assertTrue(out().contains("(Enter to cancel, ? for recent)"), out());
+        assertTrue(out().contains("Not applied."), out());
+        assertTrue(mbean.addRuleTrimCalls.isEmpty());
+    }
+
+    @Test
+    void aQuestionMark_listsRecentLoggers_andPicksFromThem() {
+        RecentLoggers.record("com.acme.Worker");
+        RecentLoggers.record("com.acme.batch.Deployer"); // the more recent: listed first
+
+        guided(lines("?", "1", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule");
+
+        assertTrue(out().contains("Recent:"), out());
+        assertEquals("com.acme.batch.Deployer", mbean.addRuleTrimCalls.get(0)[0]);
+    }
+
+    @Test
+    void cancellingTheRecentList_asksWhichLoggerAgain() {
+        RecentLoggers.record("com.acme.Worker");
+
+        guided(lines("?", "", ""), "add", "rule");
+
+        assertEquals(2, out().split("Which logger\\?", -1).length - 1, out());
+        assertTrue(out().contains("Not applied."), out());
+    }
+
+    @Test
+    void aQuestionMarkWithNoHistory_showsThePackagesToTypeFrom() {
+        guided(lines("?", ""), "add", "rule");
+
+        assertTrue(out().contains("No history yet."), out());
+        assertTrue(out().contains("com.acme"), out());
+        assertTrue(out().contains("2 top-level packages (from 4 loggers): com.acme, org.jboss."), out());
+        assertTrue(out().contains("Not applied."), out());
+    }
+
+    @Test
+    void thePackageList_leavesOutTheRootAndShallowParents() {
+        // A framework registers a logger for each package level and one for the root.
+        mbean.loggers.add(logger("ROOT"));
+        mbean.loggers.add(logger("com"));
+        mbean.loggers.add(logger("org"));
+        mbean.loggers.add(logger("org.jboss"));
+        guided(lines("?", ""), "add", "rule");
+
+        assertTrue(out().contains("2 top-level packages (from 8 loggers): com.acme, org.jboss."), out());
+    }
+
+    @Test
+    void addRule_recordsEachLoggerItAttached() {
+        guided(lines("*.batch.Deployer", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule",
+                "*.Deployer");
+
+        assertEquals(List.of("com.acme.batch.Deployer"), RecentLoggers.read());
+    }
+
+    @Test
+    void setLogger_recordsTheLoggerItSet() {
+        assertEquals(CliError.OK, scripted("set", "logger", "com.acme.Worker", "DEBUG"));
+
+        assertEquals(List.of("com.acme.Worker"), RecentLoggers.read());
+    }
+
+    @Test
+    void aRefusedLogger_isNotRecorded() {
+        mbean.throwOnNextCall = new IllegalStateException("refused");
+
+        scripted("set", "logger", "com.acme.Worker", "DEBUG");
+
+        assertEquals(List.of(), RecentLoggers.read());
+    }
+
+    @Test
+    void history_isNewestFirst_withoutDuplicates_andCappedAtFifty() {
+        for (int i = 0; i < 60; i++) {
+            RecentLoggers.record("com.acme.L" + i);
+        }
+        RecentLoggers.record("com.acme.L30"); // seen again: moves to the front, once
+
+        List<String> recent = RecentLoggers.read();
+        assertEquals(50, recent.size());
+        assertEquals("com.acme.L30", recent.get(0));
+        assertEquals("com.acme.L59", recent.get(1));
+        assertEquals(1, recent.stream().filter("com.acme.L30"::equals).count());
+    }
+
+    @Test
+    void aPattern_isNotRecorded() {
+        RecentLoggers.record("*.Worker");
+        RecentLoggers.record("com.acme.*");
+        RecentLoggers.record("");
+
+        assertEquals(List.of(), RecentLoggers.read());
+    }
+
+    @Test
+    void anUnreadableOrUnwritableHistory_neverFailsACommand() throws Exception {
+        // A regular file where the history's directory should be: nothing can be read or written there.
+        Path blocker = Files.writeString(home.resolve("blocker"), "x");
+        System.setProperty("logaperture.home", blocker.toString());
+        assertEquals(List.of(), RecentLoggers.read());
+        RecentLoggers.record("com.acme.Worker"); // ignored, not thrown
+
+        assertEquals(CliError.OK, scripted("set", "logger", "com.acme.Worker", "DEBUG"));
+    }
+
+    @Test
+    void enterOnAnyPage_cancels() {
+        for (int i = 0; i < Picker.MAX_LISTED * 2; i++) {
+            mbean.loggers.add(logger("com.many.M" + i + ".Deployer"));
+        }
+
+        guided(lines("n", ""), "add", "rule", "*.Deployer");
+
+        assertTrue(out().contains("Page 2 of"), out());
+        assertTrue(out().contains("Not applied."), out());
+        assertTrue(mbean.addRuleTrimCalls.isEmpty());
+    }
+
+    @Test
+    void pFromPageTwo_goesBack() {
+        for (int i = 0; i < Picker.MAX_LISTED + 1; i++) {
+            mbean.loggers.add(logger("com.many.M" + i + ".Deployer"));
+        }
+
+        guided(lines("n", "p", ""), "add", "rule", "*.Deployer");
+
+        assertEquals(2, out().split("Page 1 of 2:", -1).length - 1, out());
+    }
+
+    @Test
+    void aNarrowingNameWithATrailingDot_isAPrefix() {
+        for (int i = 0; i < Picker.MAX_LISTED + 1; i++) {
+            mbean.loggers.add(logger("com.many.M" + i + ".Deployer"));
+        }
+
+        guided(lines("com.acme.", "2", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule", "*.Deployer");
+
+        assertEquals("com.acme.batch.Deployer", mbean.addRuleTrimCalls.get(0)[0]);
+    }
+
+    @Test
+    void aBareNarrowingWord_isTheShortNameShorthand() {
+        for (int i = 0; i < Picker.MAX_LISTED + 1; i++) {
+            mbean.loggers.add(logger("com.many.M" + i + ".Deployer"));
+        }
+
+        guided(lines("Worker", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule", "*.Deployer");
+
+        assertEquals("com.acme.Worker", mbean.addRuleTrimCalls.get(0)[0], "Worker means *.Worker, as at the first prompt");
+    }
+
+    @Test
+    void picksOfSeveralLoggers_areRecordedTogether_firstPickedFirst() {
+        for (int i = 0; i < 60; i++) {
+            RecentLoggers.record("com.old.L" + i);
+        }
+        guided(lines("all", "trim", "", "", "", "", "", "", "", "", ""), "add", "rule", "*.Deployer");
+
+        List<String> recent = RecentLoggers.read();
+        assertEquals(50, recent.size());
+        assertEquals("com.acme.batch.Deployer", recent.get(0));
+        assertEquals("org.jboss.as.server.deployment.Deployer", recent.get(2));
+        assertEquals("com.old.L59", recent.get(3), "the earlier history is kept, not wiped by the batch");
+    }
+
+    @Test
+    void blankLinesInTheHistory_areIgnored() throws Exception {
+        Files.writeString(RecentLoggers.file(), "com.acme.Worker\r\n\r\n\ncom.acme.Worker\n  \ncom.acme.Other\n");
+
+        assertEquals(List.of("com.acme.Worker", "com.acme.Other"), RecentLoggers.read());
+    }
+
+    @Test
+    void writingTheHistory_leavesNoTempFileBehind() throws Exception {
+        RecentLoggers.record("com.acme.Worker");
+
+        try (var files = Files.list(RecentLoggers.file().getParent())) {
+            assertEquals(List.of("recent-loggers"), files.map(f -> f.getFileName().toString()).toList());
+        }
+    }
+
+    @Test
+    void theRecentListIsNotReadUntilAskedFor() throws Exception {
+        // A history that can't be read would be noticed only at '?': typing a name never touches it.
+        Files.createDirectories(RecentLoggers.file()); // a directory where the file should be
+        assertEquals(CliError.OK, guided(lines("com.acme.Worker", "trim", "", "", "", "", "", "", "", "", ""),
+                "add", "rule"));
+        assertEquals("com.acme.Worker", mbean.addRuleTrimCalls.get(0)[0]);
     }
 
     // --- without a terminal, --yes, --json (G1, G2, G9) ------------------------------------------

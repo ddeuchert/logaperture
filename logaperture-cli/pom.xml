@@ -194,9 +194,29 @@
         connection). It needs no agent jar, which is why this module can
         run the IT without a logaperture-agent dependency.
       -->
+      <!--
+        The CLI keeps a small history of the loggers it was used on under ${logaperture.home}
+        (doc/specs/easier-logger-entry.md E1). Unit and integration tests drive set and add rule, so
+        they must not write to the developer's real ~/.logaperture.
+      -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <systemPropertyVariables>
+            <logaperture.home>${project.build.directory}/test-home</logaperture.home>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <systemPropertyVariables>
+            <logaperture.home>${project.build.directory}/test-home</logaperture.home>
+          </systemPropertyVariables>
+        </configuration>
       </plugin>
     </plugins>
   </build>
