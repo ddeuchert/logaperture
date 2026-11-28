@@ -164,7 +164,8 @@ What the implementation settled or found that the decisions left open:
 The agent's own MBean registration initialises JUL in a Logback app (see "What is already
 established"). A Logback app that sets `java.util.logging.manager` itself after Logback has
 started would get the JDK default manager instead. That is 1.0 behaviour, not caused by this
-feature; tracked as [#279](https://github.com/ddeuchert/logaperture/issues/279).
+feature; tracked as [#279](https://github.com/ddeuchert/logaperture/issues/279), reproduced by
+`LogbackLateJulManagerIT` (agent module).
 
 ## Estimate and slot
 
