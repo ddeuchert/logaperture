@@ -23,6 +23,13 @@ argument is skipped with a warning in the log; the agent still starts.
 :   Whether storm detection starts on. Default `off`. A `sticky` `logctl enable storms` or
     `disable storms` from an earlier run wins over this. See [Log storms](../how-to/storms.md).
 
+`--wait-for-log-manager=on|off`
+:   For an application on a plain JVM that chooses its own `java.util.logging.manager` after
+    start-up. Settings apply from the start, but `logctl` can't connect until the application, or a
+    library in it, has first used `java.util.logging`. Ignored, with a warning, on WildFly and
+    Quarkus. Default `off`. See
+    [An application that chooses its own LogManager](../get-started/install-plain-jvm.md#an-application-that-chooses-its-own-logmanager).
+
 ## System properties
 
 `-Dlogaperture.disabled=true`
@@ -91,7 +98,8 @@ supported configuration.
 
 `logaperture.version` is set by the agent itself once it is running; `logctl` uses it to find JVMs
 with the agent. `logaperture.delivery` says whether the agent or the
-[Quarkus extension](quarkus-extension-config.md) is running in this JVM. Don't set either.
+[Quarkus extension](quarkus-extension-config.md) is running in this JVM. `logaperture.waiting` is set
+while `--wait-for-log-manager=on` is holding `logctl` back. Don't set any of them.
 
 On Quarkus with the LogAperture extension there is no `-javaagent` line: the same settings are
 `quarkus.logaperture.*` configuration properties. See

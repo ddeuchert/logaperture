@@ -22,9 +22,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.logging.Logger;
 
 /**
- * An application that logs through {@code java.util.logging} while {@code log4j-jul} is the JUL manager
- * ({@code -Djava.util.logging.manager}), on a Log4j 2 that LogAperture cannot bind, launched by
- * {@link Log4jJulFallbackEndToEndIT} (doc/specs/jul-fallback-on-log4j-bind-failure.md).
+ * An application that logs through {@code java.util.logging} while {@code log4j-jul} is the JUL manager, launched by
+ * {@link Log4jJulFallbackEndToEndIT} (doc/specs/jul-fallback-on-log4j-bind-failure.md). The manager is set with
+ * {@code -Djava.util.logging.manager}, or, given its class name as an argument, by the application's own code before
+ * it first uses {@code java.util.logging} (doc/specs/wait-for-log-manager.md).
  *
  * <p>Commands on stdin: {@code LOG <tag>} logs an INFO and a FINE line and prints {@code LOGGED <tag>}; anything
  * else, or end of input, exits.
@@ -37,6 +38,9 @@ public final class Log4jJulFixtureApp {
     }
 
     public static void main(String[] args) throws IOException {
+        if (args.length == 1) {
+            System.setProperty("java.util.logging.manager", args[0]);
+        }
         Logger worker = Logger.getLogger(WORKER_LOGGER);
         System.out.println("MANAGER " + java.util.logging.LogManager.getLogManager().getClass().getName());
         worker.info("fixture app started");

@@ -53,6 +53,11 @@ all, though before the Log4j 2 watch (#310) it had a working JUL context:
 - `log4j-jul`'s manager must be loaded by the system class loader, so the Log4j it fronts is the one
   visible there. That is the only owner whose failure matters here.
 
+Amended by [`wait-for-log-manager.md`](wait-for-log-manager.md) (issue #279): `log4j-jul` may also be
+found only once JUL is in use, when the application set it in code. If Log4j 2 has failed to bind by
+then, the fallback installs at that point, and J5's note is not added to the `doctor` row, whose
+finding was reported before.
+
 ## Decisions
 
 | Id | Decision | Options | Recommendation |

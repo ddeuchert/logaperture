@@ -25,6 +25,7 @@ import javax.management.MBeanServerConnection;
 import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
+import java.util.Properties;
 
 /**
  * A short-lived client connection to one JVM's level-control surface:
@@ -47,6 +48,20 @@ final class AgentConnection implements ControlPlane {
         this.mbean = mbean;
     }
 
+    /**
+     * doc/specs/wait-for-log-manager.md #7: an agent started with {@code --wait-for-log-manager=on} has not
+     * published yet. Starting the management agent now would initialise {@code java.util.logging} ahead of the
+     * application, which is what the argument is there to prevent. Package-visible for the test.
+     */
+    static void refuseWhileWaiting(long pid, Properties target) {
+        if (Discovery.isWaiting(target)) {
+            throw new CliError(CliError.NO_JVM, "LogAperture in PID " + pid + " is not active yet: it is waiting "
+                    + "for the application to set up java.util.logging (--wait-for-log-manager). logctl has not "
+                    + "connected, because connecting would set it up first. Try again once the application has "
+                    + "used java.util.logging.");
+        }
+    }
+
     static AgentConnection open(long pid) {
         VirtualMachine vm;
         try {
@@ -57,6 +72,8 @@ final class AgentConnection implements ControlPlane {
 
         JMXConnector connector = null;
         try {
+            // Read before connecting: reading properties starts nothing in the target.
+            refuseWhileWaiting(pid, vm.getSystemProperties());
             String address = vm.startLocalManagementAgent();
             connector = JMXConnectorFactory.connect(new JMXServiceURL(address));
             MBeanServerConnection connection = connector.getMBeanServerConnection();

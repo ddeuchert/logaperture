@@ -155,10 +155,23 @@ public final class EngineStartup {
     public static Consumer<AggregateLevelControl> onFirstContextReady(String containerId, Delivery delivery,
             CapabilityPolicy policy, AuditLog auditLog, VendorDefaults vendorDefaults,
             LibraryRecipeScanner recipeScanner) {
+        return onFirstContextReady(containerId, delivery, policy, auditLog, vendorDefaults, recipeScanner,
+                Runnable::run);
+    }
+
+    /**
+     * As above, with {@code publication} deciding when the control surface is published: it is handed the publishing
+     * step, to run at once or later (doc/specs/wait-for-log-manager.md). The audit record is written at once.
+     */
+    public static Consumer<AggregateLevelControl> onFirstContextReady(String containerId, Delivery delivery,
+            CapabilityPolicy policy, AuditLog auditLog, VendorDefaults vendorDefaults,
+            LibraryRecipeScanner recipeScanner, Consumer<Runnable> publication) {
         return operations -> {
             auditVendorDefaults(vendorDefaults, auditLog);
             Supplier<RecipeOperations> recipes = () -> recipes(recipeScanner, policy, vendorDefaults, operations);
-            publishControlSurface(containerId, delivery, operations, recipes, vendorDefaults, false);
+            Runnable publish = () -> publishControlSurface(containerId, delivery, operations, recipes,
+                    vendorDefaults, false);
+            publication.accept(publish);
         };
     }
 
@@ -170,9 +183,19 @@ public final class EngineStartup {
      */
     public static Consumer<AggregateLevelControl> onSurfaceNeeded(String containerId, Delivery delivery,
             CapabilityPolicy policy, VendorDefaults vendorDefaults, LibraryRecipeScanner recipeScanner) {
+        return onSurfaceNeeded(containerId, delivery, policy, vendorDefaults, recipeScanner, Runnable::run);
+    }
+
+    /** As above, with {@code publication} as for {@link #onFirstContextReady}. */
+    public static Consumer<AggregateLevelControl> onSurfaceNeeded(String containerId, Delivery delivery,
+            CapabilityPolicy policy, VendorDefaults vendorDefaults, LibraryRecipeScanner recipeScanner,
+            Consumer<Runnable> publication) {
         return operations -> {
             Supplier<RecipeOperations> recipes = () -> recipes(recipeScanner, policy, vendorDefaults, operations);
-            publishControlSurface(containerId, delivery, operations, recipes, vendorDefaults, true);
+            // Asked when publishing, not now: a context may have been installed while publication was held.
+            Runnable publish = () -> publishControlSurface(containerId, delivery, operations, recipes,
+                    vendorDefaults, operations.contextCount() == 0);
+            publication.accept(publish);
         };
     }
 

@@ -42,6 +42,7 @@ import java.util.List;
  * after everything before it, so a test knows the output is complete;
  * {@code RECONFIGURE <tag>} reloads Log4j's configuration; {@code NATIVE <level> <tag>} sets the worker's
  * level through Log4j's own API, as Spring's {@code logging.level} and an Actuator POST do. Both print
+ * {@code DONE <tag>}. {@code JUL <tag>} makes the application's first use of {@code java.util.logging} and prints
  * {@code DONE <tag>}.
  */
 public final class BundledLog4j2FixtureApp {
@@ -84,6 +85,10 @@ public final class BundledLog4j2FixtureApp {
                     burst.invoke(null, Integer.parseInt(parts[0]), parts[1]);
                 } else if (line.startsWith("RECONFIGURE ")) {
                     reconfigure.invoke(null, line.substring(12)); // what monitorInterval and Spring's swap do
+                } else if (line.startsWith("JUL ")) {
+                    java.util.logging.Logger.getLogger("fixture.jul");
+                    System.out.println("DONE " + line.substring(4));
+                    System.out.flush();
                 } else if (line.startsWith("NATIVE ")) {
                     String[] parts = line.substring(7).split(" ", 2); // <level> <tag>: Spring's logging.level, Actuator
                     nativeLevel.invoke(null, parts[0], parts[1]);

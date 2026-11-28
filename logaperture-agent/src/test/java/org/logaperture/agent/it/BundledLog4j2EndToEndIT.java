@@ -73,6 +73,12 @@ class BundledLog4j2EndToEndIT {
 
     private final List<Process> processes = new ArrayList<>();
 
+    /** Appended to the {@code -javaagent} entry: empty, or {@code =<arguments>}. */
+    private String agentArguments = "";
+
+    /** More options for the fixture's JVM. */
+    private final List<String> jvmOptions = new ArrayList<>();
+
     @AfterEach
     void tearDown() {
         for (Process process : processes) {
@@ -442,9 +448,10 @@ class BundledLog4j2EndToEndIT {
                 "</Configuration>", ""));
         List<String> command = new ArrayList<>(List.of(
                 System.getProperty("java.home") + "/bin/java",
-                "-javaagent:" + agentJar,
+                "-javaagent:" + agentJar + agentArguments,
                 "-Dlogaperture.home=" + work.resolve("home"),
                 "-Dfixture.log4j.jars=" + log4jJars));
+        command.addAll(jvmOptions);
         if ("async-loggers".equals(MODE)) {
             command.add("-Dlog4j2.contextSelector=org.apache.logging.log4j.core.async.AsyncLoggerContextSelector");
         }
@@ -542,6 +549,34 @@ class BundledLog4j2EndToEndIT {
         assertTrue(rows.get(0).getSummary().contains("2.19.0"), rows.get(0).getSummary());
         assertTrue(proxy.listLoggers("").stream().noneMatch(l -> String.valueOf(l.getContext()).startsWith("log4j2")),
                 "nothing of the old Log4j is controlled");
+    }
+
+    /**
+     * doc/specs/wait-for-log-manager.md "What waits": the route taken for a framework that can't be bound waits too,
+     * and publishes once the application has used {@code java.util.logging}.
+     */
+    @Test
+    void withWaitForLogManager_theSurfaceForAnUnboundLog4jWaitsForJul() throws Exception {
+        assumeTrue("sync".equals(MODE) && "2.20.0".equals(VERSION),
+                "runs once, in the default cell; cell: " + VERSION + ", " + MODE);
+        Path output = work.resolve("old-waiting.log");
+        agentArguments = "=--wait-for-log-manager=on";
+        // This old Log4j registers JMX beans as it starts, which initialises JUL; that would end the wait at once.
+        jvmOptions.add("-Dlog4j2.disable.jmx=true");
+        Process app = launch(output, BundledLog4j2FixtureApp.class.getName(), oldLog4jJars());
+        waitFor(output, "FIXTURE-READY");
+        waitFor(output, "did not bind");
+        Thread.sleep(2000);
+        assertEquals(null, markerOf(app.pid()), "published while it should wait:\n" + fixtureOutput());
+
+        OutputStream stdin = app.getOutputStream();
+        stdin.write("JUL now\n".getBytes(StandardCharsets.UTF_8));
+        stdin.flush();
+
+        assertNotNull(awaitMarker(app.pid(), 15), "not published after JUL was in use:\n" + fixtureOutput());
+        // The java.util.logging context is installed first, so the one startup line doesn't say there is none.
+        String text = waitFor(output, "active (JVM)");
+        assertFalse(text.contains("no logging context yet"), text);
     }
 
     /**

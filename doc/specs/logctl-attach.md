@@ -85,6 +85,10 @@ All ten were agreed on 2026-10-26 from the sign-off review, each as the outcome 
 | #9 | `doctor` and the missing agent-order check | (a) A new INFO check `agent.attached` that appears only on an attached JVM: "Loaded by attach, so the -javaagent order check does not apply. Add -javaagent to the launch line to make LogAperture permanent." (b) Print the note in `status` too. (c) Nothing. | **(a)**. It fills the gap the spike found without touching `status`. The check id is added to `reference/doctor-checks.md`, which `GuideReferenceDriftTest` enforces. The agent records the entry point (`premain` or `agentmain`) at start. |
 | #10 | Platforms and users | (a) Linux is the tested platform; macOS and Windows use the same Attach API and are expected to work but are documented as untested until someone checks. The target must be the same OS user as `logctl`, as for every other command. (b) Block the command off Linux. | **(a)**. `logctl` already attaches to read the MBean on all three; only the load differs. The guide says "tested on Linux". |
 
+Amended by [`wait-for-log-manager.md`](wait-for-log-manager.md) #9 (issue #279): under #3, a JVM whose
+agent was started with `--wait-for-log-manager=on` and has not published yet is reported as waiting
+for `java.util.logging`.
+
 ### #11: the agent's own output after an attach (issue #351)
 
 Found while recording the attach demo. After `logctl attach` into a WildFly, the startup line and every

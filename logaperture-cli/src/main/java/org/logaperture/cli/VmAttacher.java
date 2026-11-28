@@ -189,7 +189,8 @@ final class VmAttacher implements JvmAttacher {
     private static Target targetOf(long pid, String displayName, Properties properties) {
         Instant startedAt = ProcessHandle.of(pid).flatMap(process -> process.info().startInstant()).orElse(null);
         return new Target(pid, displayName, properties.getProperty(Discovery.MARKER_PROPERTY),
-                properties.getProperty("logaperture.delivery"), startedAt, properties.getProperty("user.dir"));
+                properties.getProperty("logaperture.delivery"), startedAt, properties.getProperty("user.dir"),
+                Discovery.isWaiting(properties));
     }
 
     /** {@code 17} for {@code "17"}, {@code 8} for {@code "1.8"}, 0 when it is not a version. */

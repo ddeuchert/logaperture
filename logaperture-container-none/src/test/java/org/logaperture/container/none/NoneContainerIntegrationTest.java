@@ -31,6 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** doc/specs/plain-jvm-jul.md #1: the backend is chosen by whether Logback is on the class path. */
 class NoneContainerIntegrationTest {
 
+    private static final String LOG4J_JUL = "org.apache.logging.log4j.jul.LogManager";
+
     @Test
     void logbackOnTheClassPathChoosesLogback() {
         // This module's tests have logback-classic on the class path.
@@ -72,25 +74,54 @@ class NoneContainerIntegrationTest {
         assertFalse(integration.frameworkNotBound("log4j2", ClassLoader.getSystemClassLoader()),
                 "JUL was not left out, so there is nothing to fall back to");
 
-        String key = NoneContainerIntegration.JUL_MANAGER_PROPERTY;
-        String before = System.getProperty(key);
-        System.setProperty(key, "org.apache.logging.log4j.jul.LogManager");
-        try {
-            integration.armJulFallback(installs::incrementAndGet);
-            try (URLClassLoader webapp = new URLClassLoader(new URL[0], null)) {
-                assertFalse(integration.frameworkNotBound("log4j2", webapp));
-            }
-            assertEquals(0, installs.get());
-
-            assertTrue(integration.frameworkNotBound("log4j2", ClassLoader.getSystemClassLoader()));
-            assertTrue(integration.frameworkNotBound("log4j2", ClassLoader.getSystemClassLoader()));
-            assertEquals(1, installs.get(), "once, whatever the number of notices");
-        } finally {
-            if (before == null) {
-                System.clearProperty(key);
-            } else {
-                System.setProperty(key, before);
-            }
+        integration.armJulFallback(LOG4J_JUL, installs::incrementAndGet);
+        try (URLClassLoader webapp = new URLClassLoader(new URL[0], null)) {
+            assertFalse(integration.frameworkNotBound("log4j2", webapp));
         }
+        assertEquals(0, installs.get());
+
+        assertTrue(integration.frameworkNotBound("log4j2", ClassLoader.getSystemClassLoader()));
+        assertTrue(integration.frameworkNotBound("log4j2", ClassLoader.getSystemClassLoader()));
+        assertEquals(1, installs.get(), "once, whatever the number of notices");
+    }
+
+    /** class-loader-detector.md C1, for a manager the application set in its own code. */
+    @Test
+    void julInUseUnderAnOrdinaryManager_isInstalled() {
+        AtomicInteger installs = new AtomicInteger();
+        AtomicInteger fallbacks = new AtomicInteger();
+
+        new NoneContainerIntegration().julInUse("org.jboss.logmanager.LogManager", installs::incrementAndGet,
+                fallbacks::incrementAndGet);
+
+        assertEquals(1, installs.get());
+        assertEquals(0, fallbacks.get());
+    }
+
+    @Test
+    void julInUseUnderLog4jJul_isLeftToTheDetector_untilLog4jCannotBeBound() {
+        NoneContainerIntegration integration = new NoneContainerIntegration();
+        AtomicInteger installs = new AtomicInteger();
+        AtomicInteger fallbacks = new AtomicInteger();
+
+        integration.julInUse(LOG4J_JUL, installs::incrementAndGet, fallbacks::incrementAndGet);
+        assertEquals(0, installs.get(), "no second context over the log4j-jul tree");
+        assertEquals(0, fallbacks.get());
+
+        assertTrue(integration.frameworkNotBound("log4j2", ClassLoader.getSystemClassLoader()));
+        assertEquals(1, fallbacks.get());
+    }
+
+    @Test
+    void julInUseUnderLog4jJul_afterLog4jAlreadyFailedToBind_fallsBackAtOnce() {
+        NoneContainerIntegration integration = new NoneContainerIntegration();
+        AtomicInteger installs = new AtomicInteger();
+        AtomicInteger fallbacks = new AtomicInteger();
+        assertFalse(integration.frameworkNotBound("log4j2", ClassLoader.getSystemClassLoader()));
+
+        integration.julInUse(LOG4J_JUL, installs::incrementAndGet, fallbacks::incrementAndGet);
+
+        assertEquals(0, installs.get());
+        assertEquals(1, fallbacks.get());
     }
 }
