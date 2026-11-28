@@ -2857,6 +2857,12 @@ candidates before 1.0.0 are <code>1.0.0-beta.N</code> and <code>1.0.0-rc.N</code
 <h2 id="unreleased"><a href="https://github.com/ddeuchert/logaperture/compare/v1.0.0...HEAD">Unreleased</a><a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li><strong>An application can keep its own <code>LogManager</code>.</strong> On a plain JVM, an application that set
+  <code>java.util.logging.manager</code> in its code could get Java's default manager once the agent was added. Start it
+  with <code>-javaagent:logaperture-agent.jar=--wait-for-log-manager=on</code> and the agent opens the connection
+  <code>logctl</code> uses only after the application has used <code>java.util.logging</code>; settings apply from the start.
+  Until then <code>logctl</code> leaves the JVM alone and says why. Nothing changes without the argument (issue #279;
+  <code>doc/specs/wait-for-log-manager.md</code>).</li>
 <li><strong>Log4j 2.</strong> An application that logs through Log4j 2.20.0 or later can now be controlled with <code>logctl</code>
   as on WildFly: <code>set logger</code> and <code>reset</code>, <code>set handler</code> and <code>reset handlers</code>, vendor defaults, recipes,
   <code>drop</code> and <code>trim</code> rules, <code>doctor</code> and storm detection. LogAperture finds Log4j on the JVM's class path or

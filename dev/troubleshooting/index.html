@@ -1933,6 +1933,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-applications-own-logmanager-is-ignored" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The application's own LogManager is ignored
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#logctl-attach-didnt-work" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2247,6 +2258,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-applications-own-logmanager-is-ignored" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The application's own LogManager is ignored
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#logctl-attach-didnt-work" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2496,8 +2518,16 @@
 <li>In a container, run <code>logctl</code> inside the same container.</li>
 <li>On Windows, if the application runs as a service, open the command prompt as Administrator. See
   <a href="../how-to/windows-service/">Use logctl with a Windows service</a>.</li>
+<li><em><code>is waiting for the application to set up java.util.logging</code></em>: the agent was started with
+  <code>--wait-for-log-manager=on</code>, and <code>logctl</code> can connect only once the application has used
+  <code>java.util.logging</code>. If the application never does, remove the argument. See
+  <a href="../get-started/install-plain-jvm/#an-application-that-chooses-its-own-logmanager">An application that chooses its own LogManager</a>.</li>
 </ul>
 <p>See <a href="../how-to/several-jvms/">Work with several JVMs</a> for "Several candidates" and attach errors.</p>
+<h2 id="the-applications-own-logmanager-is-ignored">The application's own <code>LogManager</code> is ignored<a class="headerlink" href="#the-applications-own-logmanager-is-ignored" title="Permanent link">&para;</a></h2>
+<p>An application that sets <code>java.util.logging.manager</code> in its code can get Java's default manager once
+the agent is added. See
+<a href="../get-started/install-plain-jvm/#an-application-that-chooses-its-own-logmanager">An application that chooses its own LogManager</a>.</p>
 <h2 id="logctl-attach-didnt-work"><code>logctl attach</code> didn't work<a class="headerlink" href="#logctl-attach-didnt-work" title="Permanent link">&para;</a></h2>
 <ul>
 <li><em><code>was started with dynamic agent loading turned off</code></em>: that JVM has <code>-XX:-EnableDynamicAgentLoading</code>.

@@ -816,6 +816,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#an-application-that-chooses-its-own-logmanager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        An application that chooses its own LogManager
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#on-javautillogging" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2164,6 +2175,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#an-application-that-chooses-its-own-logmanager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        An application that chooses its own LogManager
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#on-javautillogging" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2330,6 +2352,40 @@ logctl<span class="w"> </span>status
 </code></pre></div>
 <p>The <a href="../quick-start/">Quick start</a> is written for WildFly, but its level, tier and <code>reset</code> steps
 work the same here.</p>
+<h2 id="an-application-that-chooses-its-own-logmanager">An application that chooses its own <code>LogManager</code><a class="headerlink" href="#an-application-that-chooses-its-own-logmanager" title="Permanent link">&para;</a></h2>
+<p>From 1.1. This concerns an application that logs through Logback or Log4j 2 and also sets
+<code>java.util.logging.manager</code>, for example to JBoss LogManager. Most applications don't.</p>
+<p>Java fixes that choice the first time <code>java.util.logging</code> is used, and starting the connection that
+<code>logctl</code> talks to uses it. An application that sets the property in its own code can then get Java's
+default manager instead, with no error.</p>
+<p><strong>If the manager class is on the JVM's class path,</strong> and not nested inside a fat jar, put the property
+on the <code>java</code> command line. It is then in place whoever uses <code>java.util.logging</code> first:</p>
+<div class="highlight"><pre><span></span><code>java<span class="w"> </span>-Djava.util.logging.manager<span class="o">=</span>org.jboss.logmanager.LogManager<span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-javaagent:/opt/logaperture/lib/logaperture-agent.jar<span class="w"> </span>-cp<span class="w"> </span>myapp.jar:lib/*<span class="w"> </span>com.example.Main
+</code></pre></div>
+<p><strong>Otherwise,</strong> when the application sets the property in code, or only its own class loader can load
+the class, tell the agent to wait:</p>
+<div class="highlight"><pre><span></span><code>java<span class="w"> </span>-javaagent:/opt/logaperture/lib/logaperture-agent.jar<span class="o">=</span>--wait-for-log-manager<span class="o">=</span>on<span class="w"> </span>-jar<span class="w"> </span>myapp.jar
+</code></pre></div>
+<p>Vendor defaults and saved settings apply from the start. <code>logctl</code> can't connect until the
+application, or a library in it, has first used <code>java.util.logging</code>, and says so:</p>
+<div class="highlight"><pre><span></span><code>LogAperture in PID 623963 is not active yet: it is waiting for the application to set up java.util.logging (--wait-for-log-manager). logctl has not connected, because connecting would set it up first. Try again once the application has used java.util.logging.
+</code></pre></div>
+<p>The startup line appears when the wait ends. If it is still waiting after a minute, the application's
+log says so once:</p>
+<div class="highlight"><pre><span></span><code>[logaperture] WARN still waiting for java.util.logging to be initialised (--wait-for-log-manager); logctl cannot see this JVM until then
+</code></pre></div>
+<p>Limits:</p>
+<ul>
+<li>If nothing in the application ever uses <code>java.util.logging</code>, <code>logctl</code> can never connect. Set the
+  argument only for an application that needs it.</li>
+<li>A library that uses <code>java.util.logging</code> before your code sets the property still wins, as it would
+  without LogAperture. Log4j 2 up to 2.23 does so as it starts, by registering its JMX beans;
+  <code>-Dlog4j2.disable.jmx=true</code> stops that. Log4j 2 2.24.3 and later don't.</li>
+<li>Anything else that starts the JVM's management agent ends the wait early: an older <code>logctl</code> given
+  the PID, and probably tools such as JConsole (not tried).</li>
+<li>It is for <code>-javaagent</code>. <code>logctl attach</code> doesn't offer it.</li>
+</ul>
 <h2 id="on-javautillogging">On <code>java.util.logging</code><a class="headerlink" href="#on-javautillogging" title="Permanent link">&para;</a></h2>
 <p>LogAperture starts the moment the application makes its first <code>java.util.logging</code> call, never
 before, so the application's own <code>java.util.logging.manager</code> and <code>logging.properties</code> always take

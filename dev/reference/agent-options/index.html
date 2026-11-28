@@ -2118,6 +2118,12 @@ the file has an error, none of it applies, and <code>doctor</code> says why. See
 <dt><code>--storm-detection=on|off</code></dt>
 <dd>Whether storm detection starts on. Default <code>off</code>. A <code>sticky</code> <code>logctl enable storms</code> or
 <code>disable storms</code> from an earlier run wins over this. See <a href="../../how-to/storms/">Log storms</a>.</dd>
+<dt><code>--wait-for-log-manager=on|off</code></dt>
+<dd>For an application on a plain JVM that chooses its own <code>java.util.logging.manager</code> after
+start-up. Settings apply from the start, but <code>logctl</code> can't connect until the application, or a
+library in it, has first used <code>java.util.logging</code>. Ignored, with a warning, on WildFly and
+Quarkus. Default <code>off</code>. See
+<a href="../../get-started/install-plain-jvm/#an-application-that-chooses-its-own-logmanager">An application that chooses its own LogManager</a>.</dd>
 </dl>
 <h2 id="system-properties">System properties<a class="headerlink" href="#system-properties" title="Permanent link">&para;</a></h2>
 <dl>
@@ -2225,7 +2231,8 @@ supported configuration.</p>
 </table>
 <p><code>logaperture.version</code> is set by the agent itself once it is running; <code>logctl</code> uses it to find JVMs
 with the agent. <code>logaperture.delivery</code> says whether the agent or the
-<a href="../quarkus-extension-config/">Quarkus extension</a> is running in this JVM. Don't set either.</p>
+<a href="../quarkus-extension-config/">Quarkus extension</a> is running in this JVM. <code>logaperture.waiting</code> is set
+while <code>--wait-for-log-manager=on</code> is holding <code>logctl</code> back. Don't set any of them.</p>
 <p>On Quarkus with the LogAperture extension there is no <code>-javaagent</code> line: the same settings are
 <code>quarkus.logaperture.*</code> configuration properties. See
 <a href="../quarkus-extension-config/">Quarkus extension configuration</a>.</p>
