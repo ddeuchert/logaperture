@@ -133,7 +133,7 @@ codes don't change. A new `logctl` against an older agent behaves as before. An 
 | Id | Decision | Options | Proposed |
 |---|---|---|---|
 | #1 | How waiting is switched on | (a) An explicit agent argument. (b) Automatically for every application on a plain JVM. (c) Automatically when `java.util.logging.manager` is set at start-up. | **(a)**. (b) and (c) hide a JVM from `logctl` for good if it never uses JUL. (c) also misses the property set in code, which is the case that has no other remedy. |
-| #2 | The argument's name | (a) `--wait-for-log-manager=on\|off`. (b) `--wait-for-jul=on\|off`. (c) `--defer-to-log-manager=on\|off`. | **(a)**: it names the reason, and matches `--storm-detection=on\|off` in form. |
+| #2 | The argument's name | (a) `--wait-for-log-manager=on\|off`. (b) `--wait-for-jul=on\|off`. (c) `--defer-to-log-manager=on\|off`. (d) `--defer-to-defined-log-manager=on\|off`, after the first suggestion, `deferToDefinedLogManager=true`. | **(a)**: it names the reason, and matches `--storm-detection=on\|off` in form. "Defined" in (d) suggests the agent checks which manager, which it doesn't (#3). |
 | #3 | What ends the wait | (a) Any initialisation of JUL. (b) A manager class the user names being loaded. | **(a)**. A loaded class is not yet the installed manager, and a mistyped name would wait for ever. |
 | #4 | What waits | (a) Publication only. (b) The whole install. | **(a)**. Only publication initialises JUL, and settings should not be late. |
 | #5 | Time limit | (a) None. (b) Publish after a limit. | **(a)**. A limit takes the choice away from the application after all, which is what #377 did. |
