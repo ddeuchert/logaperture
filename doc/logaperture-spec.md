@@ -1040,6 +1040,8 @@ WildFly sets `java.util.logging.manager=org.jboss.logmanager.LogManager`. If **a
 
 The agent must therefore touch no logging class during `premain`. Registration must be lazy — triggered by observing the JBoss LogManager class being defined — never eager. Make this an explicit invariant with a test that boots WildFly with the agent attached and asserts the correct `LogManager` is installed.
 
+On a plain JVM the same trap is open after `premain`: publishing the control surface initialises `java.util.logging`, before an application that sets its manager in code gets to it ([#279](https://github.com/ddeuchert/logaperture/issues/279)). Proposed remedy, opt-in: [`wait-for-log-manager.md`](specs/wait-for-log-manager.md).
+
 #### The redeploy loop
 
 Developers redeploy constantly, and each redeploy discards and re-registers the deployment's `LogContext`. Overrides keyed on classloader identity evaporate. Key them on **deployment name / logging-profile name** instead, and re-apply on context registration. This makes the §6 persistence machinery load-bearing for the dev use case, not just the restart case — arguably it should be validated against redeploy before it's validated against restart.
