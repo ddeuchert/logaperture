@@ -34,12 +34,17 @@ import java.util.Optional;
  *                        working directory
  * @param stormDetection  {@code --storm-detection=on|off}: whether storm detection starts enabled,
  *                        {@code false} when absent (doc/specs/storm-detection-toggle.md T1, T2)
+ * @param waitForLogManager {@code --wait-for-log-manager=on|off}: whether the control surface is published only
+ *                        once something else has initialised {@code java.util.logging}, {@code false} when absent
+ *                        (doc/specs/wait-for-log-manager.md #1, #2)
  * @param warnings        one line per problem, for the caller to report
  */
-record AgentArguments(Optional<Path> vendorDefaults, boolean stormDetection, List<String> warnings) {
+record AgentArguments(Optional<Path> vendorDefaults, boolean stormDetection, boolean waitForLogManager,
+        List<String> warnings) {
 
     static final String VENDOR_DEFAULTS = "--vendor-defaults";
     static final String STORM_DETECTION = "--storm-detection";
+    static final String WAIT_FOR_LOG_MANAGER = "--wait-for-log-manager";
 
     AgentArguments {
         warnings = List.copyOf(warnings);
@@ -47,13 +52,14 @@ record AgentArguments(Optional<Path> vendorDefaults, boolean stormDetection, Lis
 
     /** No {@code --storm-detection}: storm detection starts disabled. */
     AgentArguments(Optional<Path> vendorDefaults, List<String> warnings) {
-        this(vendorDefaults, false, warnings);
+        this(vendorDefaults, false, false, warnings);
     }
 
     static AgentArguments parse(String args, Path workingDirectory) {
         List<String> warnings = new ArrayList<>();
         Path vendorDefaults = null;
         Boolean stormDetection = null;
+        Boolean waitForLogManager = null;
         if (args == null || args.isBlank()) {
             return new AgentArguments(Optional.empty(), warnings);
         }
@@ -95,11 +101,22 @@ record AgentArguments(Optional<Path> vendorDefaults, boolean stormDetection, Lis
                         stormDetection = parsed;
                     }
                 }
+                case WAIT_FOR_LOG_MANAGER -> {
+                    Boolean parsed = onOff(value);
+                    if (parsed == null) {
+                        warnings.add("ignoring " + WAIT_FOR_LOG_MANAGER + "=" + value + " -- expected on or off");
+                    } else if (waitForLogManager != null) {
+                        warnings.add(WAIT_FOR_LOG_MANAGER + " is given more than once -- using the first, "
+                                + (waitForLogManager ? "on" : "off"));
+                    } else {
+                        waitForLogManager = parsed;
+                    }
+                }
                 default -> warnings.add("ignoring unknown agent argument '" + name + "'");
             }
         }
         return new AgentArguments(Optional.ofNullable(vendorDefaults), Boolean.TRUE.equals(stormDetection),
-                warnings);
+                Boolean.TRUE.equals(waitForLogManager), warnings);
     }
 
     /** {@code on} or {@code off}, any case; {@code null} for anything else. */

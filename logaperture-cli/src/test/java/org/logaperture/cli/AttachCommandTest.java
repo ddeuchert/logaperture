@@ -206,6 +206,18 @@ class AttachCommandTest {
     }
 
     @Test
+    void aJvmWhoseAgentIsWaitingSaysSoAndIsLeftAlone() {
+        attacher.targets.add(new JvmAttacher.Target(9, "app.jar", null, "agent", null, "/w", true));
+
+        int exit = run(connector(null), null, "attach", "9", "--agent-jar", agentJar.toString());
+
+        assertEquals(0, exit);
+        assertTrue(attacher.loads.isEmpty());
+        assertTrue(out().contains("is waiting for the application to set up java.util.logging"), out());
+        assertTrue(out().contains("Nothing was loaded."), out());
+    }
+
+    @Test
     void theAgentOptionsBecomeTheAgentArgumentString() throws IOException {
         attacher.targets.add(plain(7, "app.jar"));
         Path defaults = Files.writeString(dir.resolve("vd.yaml"), "x: y");

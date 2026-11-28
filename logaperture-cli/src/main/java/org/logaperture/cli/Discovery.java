@@ -41,6 +41,14 @@ final class Discovery {
 
     static final String MARKER_PROPERTY = "logaperture.version";
 
+    /** Set by an agent that is holding back the control surface (doc/specs/wait-for-log-manager.md "logctl"). */
+    static final String WAITING_PROPERTY = "logaperture.waiting";
+
+    /** Whether the properties are those of a JVM that must not be connected to yet. */
+    static boolean isWaiting(Properties target) {
+        return target.getProperty(WAITING_PROPERTY) != null && target.getProperty(MARKER_PROPERTY) == null;
+    }
+
     /** doc/specs/pick-jvm.md: the numbered question's rows are shortened to fit this width. */
     static final int QUESTION_WIDTH = 120;
 
@@ -78,6 +86,10 @@ final class Discovery {
                 message += "\n(" + found.uninspectable() + " running JVM(s) could not be inspected — if one of them "
                         + "is yours, name it with --pid <n>.)";
             }
+            for (long pid : found.waiting()) {
+                message += "\nPID " + pid + " is waiting for the application to set up java.util.logging "
+                        + "(--wait-for-log-manager): logctl can't connect to it until then.";
+            }
             if (host.windows()) {
                 message += "\n(If the JVM runs LogAperture as another account, such as a Windows service, but is not "
                         + "listed, find its PID and pass --pid <n>.)";
@@ -88,9 +100,10 @@ final class Discovery {
     }
 
     /**
-     * The JVMs running our agent, and how many JVMs could not be inspected. The JDK's list comes
-     * first; on Windows the other accounts' JVMs from {@link HostProcesses#otherAccountJvmPids} are
-     * added, each PID probed once. The CLI's own JVM is never a candidate.
+     * The JVMs running our agent, those still waiting to publish, and how many JVMs could not be
+     * inspected. The JDK's list comes first; on Windows the other accounts' JVMs from {@link
+     * HostProcesses#otherAccountJvmPids} are added, each PID probed once. The CLI's own JVM is never a
+     * candidate.
      */
     static Found find(HostProcesses host, Jvms jvms) {
         Map<Long, String> targets = new LinkedHashMap<>();
@@ -103,20 +116,27 @@ final class Discovery {
         targets.remove(host.currentPid());
 
         List<Candidate> candidates = new ArrayList<>();
+        List<Long> waiting = new ArrayList<>();
         int uninspectable = 0;
         for (Map.Entry<Long, String> target : targets.entrySet()) {
             Probe probe = jvms.probe(target.getKey(), target.getValue());
             if (probe.candidate() != null) {
                 candidates.add(probe.candidate());
+            } else if (probe.waiting()) {
+                waiting.add(target.getKey());
             } else if (probe.failed()) {
                 uninspectable++;
             }
         }
-        return new Found(candidates, uninspectable);
+        waiting.sort(null);
+        return new Found(candidates, waiting, uninspectable);
     }
 
-    /** What {@link #find} saw: the candidates, and the count of JVMs it could not look into. */
-    record Found(List<Candidate> candidates, int uninspectable) {
+    /**
+     * What {@link #find} saw: the candidates, the PIDs of the JVMs not yet to be connected to, and the count of JVMs
+     * it could not look into.
+     */
+    record Found(List<Candidate> candidates, List<Long> waiting, int uninspectable) {
     }
 
     /** A JVM the JDK's list names. */
@@ -218,7 +238,7 @@ final class Discovery {
             Properties properties = vm.getSystemProperties();
             String version = properties.getProperty(MARKER_PROPERTY);
             if (version == null) {
-                return Probe.NOT_APPLICABLE;
+                return isWaiting(properties) ? Probe.WAITING : Probe.NOT_APPLICABLE;
             }
             Instant startedAt = ProcessHandle.of(pid).flatMap(process -> process.info().startInstant()).orElse(null);
             String name = displayName != null ? displayName : properties.getProperty("sun.java.command", "?");
@@ -317,12 +337,13 @@ final class Discovery {
     }
 
     /** One descriptor's outcome: our agent (a {@link Candidate}), not ours, or un-attachable. */
-    record Probe(Candidate candidate, boolean failed) {
-        static final Probe NOT_APPLICABLE = new Probe(null, false);
-        static final Probe FAILED = new Probe(null, true);
+    record Probe(Candidate candidate, boolean failed, boolean waiting) {
+        static final Probe NOT_APPLICABLE = new Probe(null, false, false);
+        static final Probe FAILED = new Probe(null, true, false);
+        static final Probe WAITING = new Probe(null, false, true);
 
         static Probe of(Candidate candidate) {
-            return new Probe(candidate, false);
+            return new Probe(candidate, false, false);
         }
     }
 }

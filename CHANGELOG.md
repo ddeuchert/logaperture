@@ -9,6 +9,12 @@ candidates before 1.0.0 are `1.0.0-beta.N` and `1.0.0-rc.N`.
 
 ### Added
 
+- **An application can keep its own `LogManager`.** On a plain JVM, an application that set
+  `java.util.logging.manager` in its code could get Java's default manager once the agent was added. Start it
+  with `-javaagent:logaperture-agent.jar=--wait-for-log-manager=on` and the agent opens the connection
+  `logctl` uses only after the application has used `java.util.logging`; settings apply from the start.
+  Until then `logctl` leaves the JVM alone and says why. Nothing changes without the argument (issue #279;
+  `doc/specs/wait-for-log-manager.md`).
 - **Log4j 2.** An application that logs through Log4j 2.20.0 or later can now be controlled with `logctl`
   as on WildFly: `set logger` and `reset`, `set handler` and `reset handlers`, vendor defaults, recipes,
   `drop` and `trim` rules, `doctor` and storm detection. LogAperture finds Log4j on the JVM's class path or

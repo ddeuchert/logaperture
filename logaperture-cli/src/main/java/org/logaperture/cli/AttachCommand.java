@@ -216,15 +216,16 @@ final class AttachCommand implements Standalone {
 
     /** What happened, for both renderings. */
     private record Result(long pid, String state, String version, String backend, String delivery, int javaVersion,
-            AgentJar.Choice jar) {
+            AgentJar.Choice jar, boolean waiting) {
 
         static Result alreadyRunning(JvmAttacher.Target target) {
-            return new Result(target.pid(), "already-running", target.version(), null, target.delivery(), 0, null);
+            return new Result(target.pid(), "already-running", target.version(), null, target.delivery(), 0, null,
+                    target.waiting());
         }
 
         static Result loaded(long pid, JvmAttacher.Loaded loaded, String backend, AgentJar.Choice jar) {
             return new Result(pid, loaded.version() == null ? "loaded" : "active", loaded.version(), backend, null,
-                    loaded.javaVersion(), jar);
+                    loaded.javaVersion(), jar, false);
         }
     }
 
@@ -241,7 +242,10 @@ final class AttachCommand implements Standalone {
                 String how = "extension".equals(result.delivery())
                         ? "through the Quarkus extension"
                         : "through the agent, from -javaagent or an earlier attach";
-                if (result.version() == null) {
+                if (result.waiting()) {
+                    out.println("PID " + pid + " already has LogAperture " + how + ", and is waiting for the "
+                            + "application to set up java.util.logging (--wait-for-log-manager). Nothing was loaded.");
+                } else if (result.version() == null) {
                     out.println("PID " + pid + " already has LogAperture " + how
                             + " and it is starting up. Nothing was loaded.");
                 } else {

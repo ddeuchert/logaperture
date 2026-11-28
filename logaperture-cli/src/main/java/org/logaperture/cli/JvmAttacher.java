@@ -34,9 +34,15 @@ interface JvmAttacher {
      * @param version  the {@code logaperture.version} marker, or {@code null}: the control surface is not up
      * @param delivery the {@code logaperture.delivery} claim ({@code agent} or {@code extension}), or
      *                 {@code null}: nothing has claimed the JVM
+     * @param waiting  the agent is holding the control surface back (doc/specs/wait-for-log-manager.md)
      */
     record Target(long pid, String displayName, String version, String delivery, Instant startedAt,
-            String directory) {
+            String directory, boolean waiting) {
+
+        /** A JVM that isn't waiting. */
+        Target(long pid, String displayName, String version, String delivery, Instant startedAt, String directory) {
+            this(pid, displayName, version, delivery, startedAt, directory, false);
+        }
 
         /** Whether LogAperture is, or is about to be, running in it. */
         boolean hasLogAperture() {

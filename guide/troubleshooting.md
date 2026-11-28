@@ -16,8 +16,18 @@ No LogAperture-enabled JVM found. Start the application with -javaagent:logapert
 - In a container, run `logctl` inside the same container.
 - On Windows, if the application runs as a service, open the command prompt as Administrator. See
   [Use logctl with a Windows service](how-to/windows-service.md).
+- *`is waiting for the application to set up java.util.logging`*: the agent was started with
+  `--wait-for-log-manager=on`, and `logctl` can connect only once the application has used
+  `java.util.logging`. If the application never does, remove the argument. See
+  [An application that chooses its own LogManager](get-started/install-plain-jvm.md#an-application-that-chooses-its-own-logmanager).
 
 See [Work with several JVMs](how-to/several-jvms.md) for "Several candidates" and attach errors.
+
+## The application's own `LogManager` is ignored
+
+An application that sets `java.util.logging.manager` in its code can get Java's default manager once
+the agent is added. See
+[An application that chooses its own LogManager](get-started/install-plain-jvm.md#an-application-that-chooses-its-own-logmanager).
 
 ## `logctl attach` didn't work
 

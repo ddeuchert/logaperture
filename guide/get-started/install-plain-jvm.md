@@ -75,6 +75,55 @@ logctl status
 The [Quick start](quick-start.md) is written for WildFly, but its level, tier and `reset` steps
 work the same here.
 
+## An application that chooses its own `LogManager`
+
+From 1.1. This concerns an application that logs through Logback or Log4j 2 and also sets
+`java.util.logging.manager`, for example to JBoss LogManager. Most applications don't.
+
+Java fixes that choice the first time `java.util.logging` is used, and starting the connection that
+`logctl` talks to uses it. An application that sets the property in its own code can then get Java's
+default manager instead, with no error.
+
+**If the manager class is on the JVM's class path,** and not nested inside a fat jar, put the property
+on the `java` command line. It is then in place whoever uses `java.util.logging` first:
+
+```sh
+java -Djava.util.logging.manager=org.jboss.logmanager.LogManager \
+     -javaagent:/opt/logaperture/lib/logaperture-agent.jar -cp myapp.jar:lib/* com.example.Main
+```
+
+**Otherwise,** when the application sets the property in code, or only its own class loader can load
+the class, tell the agent to wait:
+
+```sh
+java -javaagent:/opt/logaperture/lib/logaperture-agent.jar=--wait-for-log-manager=on -jar myapp.jar
+```
+
+Vendor defaults, recipes and saved settings apply from the start. `logctl` can't connect until the
+application, or a library in it, has first used `java.util.logging`, and says so:
+
+```
+LogAperture in PID 623963 is not active yet: it is waiting for the application to set up java.util.logging (--wait-for-log-manager). logctl has not connected, because connecting would set it up first. Try again once the application has used java.util.logging.
+```
+
+The startup line appears when the wait ends. If it is still waiting after a minute, the application's
+log says so once:
+
+```
+[logaperture] WARN still waiting for java.util.logging to be initialised (--wait-for-log-manager); logctl cannot see this JVM until then
+```
+
+Limits:
+
+- If nothing in the application ever uses `java.util.logging`, `logctl` can never connect. Set the
+  argument only for an application that needs it.
+- A library that uses `java.util.logging` before your code sets the property still wins, as it would
+  without LogAperture. Log4j 2 up to 2.23 does so as it starts, by registering its JMX beans;
+  `-Dlog4j2.disable.jmx=true` stops that. Log4j 2 2.24.3 and later don't.
+- Anything else that starts the JVM's management agent ends the wait early: an older `logctl` given
+  the PID, and probably tools such as JConsole (not tried).
+- It is for `-javaagent`. `logctl attach` doesn't offer it.
+
 ## On `java.util.logging`
 
 LogAperture starts the moment the application makes its first `java.util.logging` call, never

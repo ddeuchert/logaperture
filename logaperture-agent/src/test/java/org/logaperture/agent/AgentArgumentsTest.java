@@ -108,6 +108,33 @@ class AgentArgumentsTest {
     }
 
     @Test
+    void waitForLogManager_isOffWhenAbsent() {
+        assertFalse(AgentArguments.parse(null, CWD).waitForLogManager());
+        assertFalse(AgentArguments.parse("--storm-detection=on", CWD).waitForLogManager());
+    }
+
+    @Test
+    void waitForLogManager_onOrOff_inAnyCase_alongsideAnotherArgument() {
+        AgentArguments on = AgentArguments.parse("--storm-detection=on,--wait-for-log-manager=ON", CWD);
+        assertTrue(on.waitForLogManager());
+        assertTrue(on.stormDetection());
+        assertTrue(on.warnings().isEmpty(), on.warnings().toString());
+        assertFalse(AgentArguments.parse("--wait-for-log-manager=Off", CWD).waitForLogManager());
+    }
+
+    @Test
+    void waitForLogManager_badValueWarnsAndStaysOff_andRepeatedKeepsTheFirst() {
+        AgentArguments bad = AgentArguments.parse("--wait-for-log-manager=yes", CWD);
+        assertFalse(bad.waitForLogManager());
+        assertTrue(bad.warnings().get(0).contains("--wait-for-log-manager=yes"), bad.warnings().toString());
+
+        AgentArguments repeated =
+                AgentArguments.parse("--wait-for-log-manager=on,--wait-for-log-manager=off", CWD);
+        assertTrue(repeated.waitForLogManager());
+        assertTrue(repeated.warnings().get(0).contains("more than once"), repeated.warnings().toString());
+    }
+
+    @Test
     void malformedEmptyAndRepeatedOptions_warnAndAreSkipped() {
         AgentArguments args = AgentArguments.parse(
                 "config=/etc/x.yaml,--vendor-defaults=,--vendor-defaults=/a.yaml,--vendor-defaults=/b.yaml", CWD);

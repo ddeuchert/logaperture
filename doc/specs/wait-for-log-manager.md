@@ -1,6 +1,6 @@
 # Waiting for the application's `LogManager`
 
-Status: **draft for review, 2026-11-27. Not signed off.** Decisions #1 to #12 below are proposals.
+Status: **signed off 2026-11-27, decisions #1 to #12 all agreed.** Implemented. Release `1.1.0`.
 Issue: [#279](https://github.com/ddeuchert/logaperture/issues/279).
 Parent spec: [`doc/logaperture-spec.md`](../logaperture-spec.md) §15.2 (the `none` integration) and
 §15.6 (the premain gotcha: never be the first `java.util.logging` caller).
@@ -74,8 +74,8 @@ a framework is found and can't be bound ([`surface-on-bind-failure.md`](surface-
 ### What ends the wait
 
 The class `java.util.logging.LogManager$RootLogger` being loaded, which means something else has
-initialised JUL and the manager is chosen (#3). The agent watches for it as the plain-JVM JUL
-integration does ([`plain-jvm-jul.md`](plain-jvm-jul.md) #2): every 100 ms for the first minute, then
+initialised JUL and the manager is chosen (#3). The agent watches for it from `premain`, whether or not
+anything is ready to publish yet, as the plain-JVM JUL integration does ([`plain-jvm-jul.md`](plain-jvm-jul.md) #2): every 100 ms for the first minute, then
 every second. It never gives up and never publishes early (#5). If it is still waiting after a minute,
 it writes one line (#6):
 
@@ -88,7 +88,7 @@ The agent does not check which manager was installed.
 ### `logctl`
 
 While it waits, the agent sets the system property `logaperture.waiting`, from `premain`, and clears
-it after publishing. `logctl` reads a target's properties before it starts the target's management
+it when the wait ends, after publishing whatever was held. `logctl` reads a target's properties before it starts the target's management
 agent. Reading them starts nothing. Starting the management agent would initialise JUL.
 
 | Command, against a waiting JVM | Result |
@@ -106,10 +106,12 @@ up first. Try again once the application has used java.util.logging.
 ### Which setups
 
 The argument applies to the `none` integration, whatever it binds: Logback, or Log4j 2 found by the
-class-loader detector (#10). A Log4j 2 application that sets `log4j-jul`'s manager in code is exposed
-by the same mechanism; that case has not been reproduced. On plain `java.util.logging` the agent
-already waits, so the argument changes nothing there. On WildFly and Quarkus it is ignored, with a
-warning.
+class-loader detector (#10). A Log4j 2 application that sets its manager in code, such as `log4j-jul`'s,
+is exposed in the same way: on Log4j 2.25.5, with a stand-in manager set 2 s after the first Log4j call,
+the application kept it in 5 of 5 runs without the agent, in none with the agent, and in 5 of 5 with the
+argument. On plain `java.util.logging` the agent
+already installs only once the application uses JUL, so there the argument adds one thing: `logctl`
+leaves the JVM alone until then. On WildFly and Quarkus it is ignored, with a warning.
 
 ### Compatibility
 
@@ -123,14 +125,16 @@ codes don't change. A new `logctl` against an older agent behaves as before. An 
   `java.util.logging`. If nothing ever does, it never can. Use the argument only for an application
   that needs it.
 - If a library uses `java.util.logging` before the application sets the property, the application gets
-  the default manager, as it would without the agent.
+  the default manager, as it would without the agent. Log4j 2 up to 2.23 is such a library: it registers
+  JMX beans as it starts, which initialises JUL (seen on 2.20.0 and 2.23.1; not on 2.24.3, 2.25.5 or
+  2.26.1). `-Dlog4j2.disable.jmx=true` stops that.
 - An older `logctl`, or another tool that starts the JVM's management agent, ends the wait early.
   JConsole and `jcmd ManagementAgent.start_local` are expected to do this; neither was tried.
 - It is for `-javaagent` starts.
 
 ## Decisions
 
-| Id | Decision | Options | Proposed |
+| Id | Decision | Options | Outcome |
 |---|---|---|---|
 | #1 | How waiting is switched on | (a) An explicit agent argument. (b) Automatically for every application on a plain JVM. (c) Automatically when `java.util.logging.manager` is set at start-up. | **(a)**. (b) and (c) hide a JVM from `logctl` for good if it never uses JUL. (c) also misses the property set in code, which is the case that has no other remedy. |
 | #2 | The argument's name | (a) `--wait-for-log-manager=on\|off`. (b) `--wait-for-jul=on\|off`. (c) `--defer-to-log-manager=on\|off`. (d) `--defer-to-defined-log-manager=on\|off`, after the first suggestion, `deferToDefinedLogManager=true`. | **(a)**: it names the reason, and matches `--storm-detection=on\|off` in form. "Defined" in (d) suggests the agent checks which manager, which it doesn't (#3). |
@@ -147,9 +151,8 @@ codes don't change. A new `logctl` against an older agent behaves as before. An 
 
 ## Prototype results
 
-Branch `spike/279-wait-for-log-manager`, commit `f6184250`, on the machine above. The prototype
-differs from this draft in #8, #9 and #10: it leaves discovery and `logctl attach`'s message
-unchanged, and applies the argument to every integration.
+Measured before sign-off with a prototype (branch `spike/279-wait-for-log-manager`, commit
+`f6184250`), on the machine above. It differed from the agreed design in #8, #9 and #10.
 
 - With the argument, the application kept its own manager in every run: set in code 0 to 500 ms after
   the first Logback call (10 of 10 at each of five delays), at 2 s and 12 s (3 of 3 each), with the
@@ -163,17 +166,19 @@ unchanged, and applies the argument to every integration.
 ## Tests
 
 - Argument parsing: `on`, `off`, any case, a bad value, absent.
-- `LogbackLateJulManagerIT`: the existing two cases, and with the argument the application's manager
-  wins, `logaperture.waiting` is set during the wait and cleared after, and the JVM is controllable.
-- A fat-jar-like class loader case in the same test.
-- The unbound-framework publication route waits too.
-- `logctl`: refuses on `waiting` without the version marker, connects with the marker or without
+- `LogbackLateJulManagerIT`: without the agent and without the argument as before; with the argument the
+  application's manager wins, `logaperture.waiting` is set during the wait and cleared after, and the
+  JVM is controllable. A manager only the application's class loader can see wins too.
+- `LogManagerWaitTest`: what is held and when it runs, the property, the reminder, and the argument
+  ignored with a warning on WildFly and Quarkus.
+- `BundledLog4j2EndToEndIT`: the publication route for a framework that can't be bound waits too.
+- `WaitForLogManagerIT`: the real `logctl` against a waiting JVM leaves it alone, and controls it
+  afterwards.
+- `logctl` units: refuses on `waiting` without the version marker, connects with the marker or without
   `waiting`; the discovery and `attach` messages.
-- The argument is ignored with a warning on WildFly and Quarkus.
 
 ## Not established
 
-- The unbound-framework route during a wait (not exercised by the prototype).
-- A Log4j 2 application with `log4j-jul` set in code, with and without the argument.
+- `log4j-jul` itself as the manager set in code.
 - A real Spring Boot fat jar; the nested case was simulated with a separate class loader.
 - Windows, and JDK 17 and 25.

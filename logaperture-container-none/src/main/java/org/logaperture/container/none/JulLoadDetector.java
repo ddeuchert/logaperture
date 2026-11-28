@@ -31,11 +31,13 @@ import java.util.function.BooleanSupplier;
  * class that was loaded before it started (an attach, #273) and does not depend on load hooks
  * firing for JDK classes from the shared archive.
  *
+ * <p>The agent also waits on it for {@code --wait-for-log-manager} (doc/specs/wait-for-log-manager.md #3).
+ *
  * <p>It never gives up: an application may make its first JUL call late. After the first minute it
  * checks once a second, which costs one scan of the loaded classes a second in an application that
  * never uses JUL.
  */
-final class JulLoadDetector {
+public final class JulLoadDetector {
 
     static final String ROOT_LOGGER_CLASS = "java.util.logging.LogManager$RootLogger";
 
@@ -46,7 +48,7 @@ final class JulLoadDetector {
     private JulLoadDetector() {
     }
 
-    static void awaitJulThen(Instrumentation inst, Runnable onReady) {
+    public static void awaitJulThen(Instrumentation inst, Runnable onReady) {
         BooleanSupplier julInitialised = () -> isLoaded(inst.getAllLoadedClasses(), ROOT_LOGGER_CLASS);
         Runnable detect = () -> await(julInitialised, FAST_POLL_MS, FAST_WINDOW_MS, SLOW_POLL_MS, onReady);
         Thread detectorThread = new Thread(detect, "logaperture-detector");
