@@ -14,7 +14,7 @@ After this feature, the user will be able to:
 
 - Start an application that chooses its own `java.util.logging.manager` after start-up with
   `-javaagent:logaperture-agent.jar=--wait-for-log-manager=on`, and keep the manager it chose.
-- Have vendor defaults, recipes and saved settings apply from the start while the agent waits.
+- Have vendor defaults and saved settings apply from the start while the agent waits.
 - Be told by `logctl` that such a JVM is not active yet, instead of `logctl` disturbing it.
 - Look up, in the guide, when `-Djava.util.logging.manager=…` on the command line is enough on its own.
 
@@ -66,7 +66,8 @@ unknown value is skipped with a warning, and the agent starts without waiting.
 Only publication waits (#4): registering the control MXBean, setting the `logaperture.version` marker,
 and the startup line. Everything else happens as without the argument. Logging contexts install when
 their framework is ready, vendor defaults, saved settings, rules and storm detection apply, and the
-vendor defaults load is audited.
+vendor defaults load is audited. The startup line is chosen when publishing happens, so it says "no
+logging context yet" only if none has been installed by then.
 
 Both routes to publication wait: the one taken when the first context installs, and the one taken when
 a framework is found and can't be bound ([`surface-on-bind-failure.md`](surface-on-bind-failure.md)).
@@ -76,7 +77,8 @@ a framework is found and can't be bound ([`surface-on-bind-failure.md`](surface-
 The class `java.util.logging.LogManager$RootLogger` being loaded, which means something else has
 initialised JUL and the manager is chosen (#3). The agent watches for it from `premain`, whether or not
 anything is ready to publish yet, as the plain-JVM JUL integration does ([`plain-jvm-jul.md`](plain-jvm-jul.md) #2): every 100 ms for the first minute, then
-every second. It never gives up and never publishes early (#5). If it is still waiting after a minute,
+every second. Where the integration waits for the same signal, one thread serves both, and installs
+before it publishes. It never gives up and never publishes early (#5). If it is still waiting after a minute,
 it writes one line (#6):
 
 ```
@@ -94,7 +96,7 @@ agent. Reading them starts nothing. Starting the management agent would initiali
 | Command, against a waiting JVM | Result |
 |---|---|
 | Any command with `--pid` | Exit 3, nothing connected, with the message below (#7) |
-| Any command without `--pid` | The JVM is not a candidate. When no other is, the "No LogAperture-enabled JVM found" message also names each waiting JVM (#8) |
+| Any command without `--pid` | The JVM is not a candidate. When no other is, `logctl` says no JVM is ready and names each waiting one, without advising to add the agent (#8) |
 | `logctl attach <pid>` | Nothing loaded; says the JVM already has LogAperture and is waiting for `java.util.logging` (#9) |
 
 ```
@@ -105,11 +107,19 @@ up first. Try again once the application has used java.util.logging.
 
 ### Which setups
 
-The argument applies to the `none` integration, whatever it binds: Logback, or Log4j 2 found by the
+The argument is read from a `-javaagent` start only: given to an attach, by whatever tool, it is
+ignored with a warning. It applies to the `none` integration, whatever it binds: Logback, or Log4j 2 found by the
 class-loader detector (#10). A Log4j 2 application that sets its manager in code, such as `log4j-jul`'s,
 is exposed in the same way: on Log4j 2.25.5, with a stand-in manager set 2 s after the first Log4j call,
 the application kept it in 5 of 5 runs without the agent, in none with the agent, and in 5 of 5 with the
-argument. On plain `java.util.logging` the agent
+argument.
+
+Where `java.util.logging` is only a front for a framework the detector binds, as under `log4j-jul`, it
+gets no context of its own ([`class-loader-detector.md`](class-loader-detector.md) C1). An application
+that sets the property in code has not set it when the agent starts, so the `none` integration decides
+again, on the manager in place, once JUL is in use.
+
+On plain `java.util.logging` the agent
 already installs only once the application uses JUL, so there the argument adds one thing: `logctl`
 leaves the JVM alone until then. On WildFly and Quarkus it is ignored, with a warning.
 
@@ -169,8 +179,10 @@ Measured before sign-off with a prototype (branch `spike/279-wait-for-log-manage
 - `LogbackLateJulManagerIT`: without the agent and without the argument as before; with the argument the
   application's manager wins, `logaperture.waiting` is set during the wait and cleared after, and the
   JVM is controllable. A manager only the application's class loader can see wins too.
-- `LogManagerWaitTest`: what is held and when it runs, the property, the reminder, and the argument
-  ignored with a warning on WildFly and Quarkus.
+- `LogManagerWaitTest`: what is held and when it runs, the property, the reminder, the startup line
+  chosen at publishing, and the argument ignored with a warning on WildFly, Quarkus and an attach.
+- `NoneContainerIntegrationTest` and `Log4jJulFallbackEndToEndIT`: a manager set in code that fronts
+  Log4j gets no second context, and the fallback to JUL still works.
 - `BundledLog4j2EndToEndIT`: the publication route for a framework that can't be bound waits too.
 - `WaitForLogManagerIT`: the real `logctl` against a waiting JVM leaves it alone, and controls it
   afterwards.
@@ -179,6 +191,5 @@ Measured before sign-off with a prototype (branch `spike/279-wait-for-log-manage
 
 ## Not established
 
-- `log4j-jul` itself as the manager set in code.
 - A real Spring Boot fat jar; the nested case was simulated with a separate class loader.
 - Windows, and JDK 17 and 25.

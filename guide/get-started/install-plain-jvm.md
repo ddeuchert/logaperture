@@ -99,7 +99,7 @@ the class, tell the agent to wait:
 java -javaagent:/opt/logaperture/lib/logaperture-agent.jar=--wait-for-log-manager=on -jar myapp.jar
 ```
 
-Vendor defaults, recipes and saved settings apply from the start. `logctl` can't connect until the
+Vendor defaults and saved settings apply from the start. `logctl` can't connect until the
 application, or a library in it, has first used `java.util.logging`, and says so:
 
 ```

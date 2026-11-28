@@ -45,6 +45,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 class Log4jJulFallbackEndToEndIT {
 
     private static final String WORKER = Log4jJulFixtureApp.WORKER_LOGGER;
+    private static final String LOG4J_JUL = "org.apache.logging.log4j.jul.LogManager";
 
     @TempDir
     private Path work;
@@ -85,7 +86,69 @@ class Log4jJulFallbackEndToEndIT {
         assertTrue(rows.get(0).getDetail().contains("java.util.logging is controlled instead"), rows.get(0).getDetail());
     }
 
+    /**
+     * doc/specs/wait-for-log-manager.md "Which setups": the property is not set when the agent starts, so only the
+     * manager in place once JUL is in use tells that the JUL tree is a front for Log4j.
+     */
+    @Test
+    void log4jJulSetInCode_aSupportedLog4jIsTheOnlyContext() throws Exception {
+        Path output = work.resolve("supported.log");
+        Path jul = Path.of(System.getProperty("log4j2.jul.dir"), "log4j-jul.jar");
+        assertTrue(Files.isRegularFile(jul), "the build copies log4j-jul to " + jul);
+        List<String> testClassPath = Arrays.asList(System.getProperty("java.class.path").split(File.pathSeparator));
+        String log4j = testClassPath.stream()
+                .filter(entry -> entry.contains("log4j-api") || entry.contains("log4j-core"))
+                .collect(Collectors.joining(File.pathSeparator));
+        Process app = launch(output, log4j + File.pathSeparator + jul,
+                List.of("=--wait-for-log-manager=on"), List.of(), List.of(LOG4J_JUL));
+        String started = waitFor(output, "FIXTURE-READY");
+        assertTrue(started.contains("MANAGER " + LOG4J_JUL), started);
+        waitFor(output, "active (JVM)");
+        Thread.sleep(1000); // a JUL context would be installed by now: the same thread publishes the surface
+
+        LevelControlMXBean proxy = LevelControlEndToEndIT.pollForMxBeanProxy(
+                LevelControlEndToEndIT.attachAndConnect(app.pid()));
+        assertEquals(1, proxy.listLoggers(WORKER).size(), "the worker is listed once: " + proxy.listLoggers(WORKER));
+        assertTrue(proxy.environmentReport().getBackendName().startsWith("Log4j 2"),
+                proxy.environmentReport().getBackendName());
+    }
+
+    /** The #311 fallback, with the manager set in code. */
+    @Test
+    void log4jJulSetInCode_aLog4jBelowTheFloorStillFallsBackToJul() throws Exception {
+        Path output = work.resolve("old-in-code.log");
+        Process app = launch(output, oldLog4j(), List.of("=--wait-for-log-manager=on"), List.of(),
+                List.of(LOG4J_JUL));
+        waitFor(output, "FIXTURE-READY");
+        waitFor(output, "controlling java.util.logging instead");
+
+        LevelControlMXBean proxy = LevelControlEndToEndIT.pollForMxBeanProxy(
+                LevelControlEndToEndIT.attachAndConnect(app.pid()));
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+        while (proxy.listLoggers(WORKER).isEmpty() && System.nanoTime() < deadline) {
+            Thread.sleep(50);
+        }
+        assertEquals("java.util.logging (JUL)", proxy.environmentReport().getBackendName());
+        assertEquals(1, proxy.listLoggers(WORKER).size(), "the worker is listed once: " + proxy.listLoggers(WORKER));
+    }
+
     private Process launch(Path output) throws IOException {
+        return launch(output, oldLog4j(), List.of(), List.of("-Djava.util.logging.manager=" + LOG4J_JUL), List.of());
+    }
+
+    private String oldLog4j() {
+        Path old = Path.of(System.getProperty("log4j2.old.dir"));
+        assertTrue(Files.isDirectory(old), "the build copies Log4j 2.19.0 to " + old);
+        return old.resolve("log4j-api-2.19.0.jar") + File.pathSeparator + old.resolve("log4j-core-2.19.0.jar")
+                + File.pathSeparator + old.resolve("log4j-jul-2.19.0.jar");
+    }
+
+    /**
+     * @param log4j          the Log4j jars: {@code log4j-jul} is the JUL manager, so they are on the system class path
+     * @param agentArguments empty, or the one {@code =<arguments>} to append to the {@code -javaagent} entry
+     */
+    private Process launch(Path output, String log4j, List<String> agentArguments, List<String> jvmOptions,
+            List<String> appArguments) throws IOException {
         String agentJar = System.getProperty("logaperture.agent.jar");
         assertNotNull(agentJar, "system property logaperture.agent.jar must point at the shaded jar");
         Path config = work.resolve("log4j2-app.xml");
@@ -95,19 +158,15 @@ class Log4jJulFallbackEndToEndIT {
                 "    <PatternLayout pattern=\"%level %logger %msg%n\"/></Console></Appenders>",
                 "  <Loggers><Root level=\"info\"><AppenderRef ref=\"Out\"/></Root></Loggers>",
                 "</Configuration>", ""));
-        Path old = Path.of(System.getProperty("log4j2.old.dir"));
-        assertTrue(Files.isDirectory(old), "the build copies Log4j 2.19.0 to " + old);
-        // log4j-jul is the JUL manager, so it and its Log4j must be on the system class path.
-        String log4j = old.resolve("log4j-api-2.19.0.jar") + File.pathSeparator + old.resolve("log4j-core-2.19.0.jar")
-                + File.pathSeparator + old.resolve("log4j-jul-2.19.0.jar");
-        List<String> command = List.of(
+        List<String> command = new ArrayList<>(List.of(
                 System.getProperty("java.home") + "/bin/java",
-                "-javaagent:" + agentJar,
+                "-javaagent:" + agentJar + String.join("", agentArguments),
                 "-Dlogaperture.home=" + work.resolve("home"),
-                "-Djava.util.logging.manager=org.apache.logging.log4j.jul.LogManager",
-                "-Dlog4j2.configurationFile=" + config,
-                "-cp", classPathWithoutLoggingFrameworks() + File.pathSeparator + log4j,
-                Log4jJulFixtureApp.class.getName());
+                "-Dlog4j2.configurationFile=" + config));
+        command.addAll(jvmOptions);
+        command.addAll(List.of("-cp", classPathWithoutLoggingFrameworks() + File.pathSeparator + log4j,
+                Log4jJulFixtureApp.class.getName()));
+        command.addAll(appArguments);
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.redirectErrorStream(true);
         builder.redirectOutput(output.toFile());

@@ -139,18 +139,23 @@ final class AgentBootstrap {
             // deployment still gets its control surface, and one that has the container's own does not
             // publish it twice (doc/specs/class-loader-detector.md C6).
             // doc/specs/wait-for-log-manager.md #4: contexts install as ever; only publishing may wait.
-            Consumer<Runnable> publication =
-                    LogManagerWait.publication(arguments.waitForLogManager(), container.id(), inst);
+            LogManagerWait publication = LogManagerWait.create(arguments.waitForLogManager(), container.id(),
+                    entry == Entry.AGENTMAIN);
             Consumer<AggregateLevelControl> onFirstContextReady = ContainerContextSink.once(
                     EngineStartup.onFirstContextReady(container.id(), EngineStartup.Delivery.AGENT, policy, auditLog,
                             vendorDefaults, recipeScanner(inst), publication));
-            AggregateLevelControl aggregate = container.activate(inst, policy, auditLog, vendorDefaults,
-                    stormDetection, onFirstContextReady);
-            // Found and not bound (an unsupported Log4j, an adapter that failed): the surface and the marker come up
-            // anyway, so logctl can discover this JVM and doctor can say why (doc/specs/surface-on-bind-failure.md).
-            Consumer<AggregateLevelControl> onUnbound = EngineStartup.onSurfaceNeeded(container.id(),
-                    EngineStartup.Delivery.AGENT, policy, vendorDefaults, recipeScanner(inst), publication);
-            startFrameworkDetection(inst, container, aggregate, onFirstContextReady, onUnbound);
+            try {
+                AggregateLevelControl aggregate = container.activate(inst, policy, auditLog, vendorDefaults,
+                        stormDetection, onFirstContextReady);
+                // Found and not bound (an unsupported Log4j, an adapter that failed): the surface and the marker come
+                // up anyway, so logctl can discover this JVM and doctor can say why
+                // (doc/specs/surface-on-bind-failure.md).
+                Consumer<AggregateLevelControl> onUnbound = EngineStartup.onSurfaceNeeded(container.id(),
+                        EngineStartup.Delivery.AGENT, policy, vendorDefaults, recipeScanner(inst), publication);
+                startFrameworkDetection(inst, container, aggregate, onFirstContextReady, onUnbound);
+            } finally {
+                publication.watch(inst); // even after a failed start, or the JVM would stay marked as waiting
+            }
             if (entry == Entry.AGENTMAIN) {
                 AttachWatch.start(container.id()); // doc/specs/logctl-attach.md #6: say why, if nothing comes up
             }

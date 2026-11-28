@@ -574,7 +574,9 @@ class BundledLog4j2EndToEndIT {
         stdin.flush();
 
         assertNotNull(awaitMarker(app.pid(), 15), "not published after JUL was in use:\n" + fixtureOutput());
-        waitFor(output, "no logging context yet");
+        // The java.util.logging context is installed first, so the one startup line doesn't say there is none.
+        String text = waitFor(output, "active (JVM)");
+        assertFalse(text.contains("no logging context yet"), text);
     }
 
     /**

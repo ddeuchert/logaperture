@@ -32,7 +32,8 @@ import java.util.function.Consumer;
  * <p>While it waits, {@link #WAITING_PROPERTY} is set, so that {@code logctl} leaves the JVM alone: opening a
  * management connection would itself initialise {@code java.util.logging}.
  *
- * <p>Each publishing step handed to {@link #accept} runs at once if the wait is over, and when it ends otherwise.
+ * <p>Each publishing step handed to {@link #accept} runs at once if there is no wait or it is over, and when it ends
+ * otherwise.
  */
 final class LogManagerWait implements Consumer<Runnable> {
 
@@ -51,23 +52,38 @@ final class LogManagerWait implements Consumer<Runnable> {
     }
 
     /**
-     * When publishing happens: at once, unless the argument was given on a plain JVM, where the wait starts here.
-     * Called on the {@code premain} thread, so the property is set before the application's {@code main}.
+     * The wait for this start: one that is on, with the JVM marked, if the argument was given to a {@code -javaagent}
+     * start on a plain JVM, and one already over otherwise. Called on the {@code premain} thread, so the property is
+     * set before the application's {@code main}. {@link #watch} starts the looking.
+     *
+     * @param attached whether the agent was loaded into a running JVM, where the application may have used JUL or not
+     *                 long ago and the argument is not offered
      */
-    static Consumer<Runnable> publication(boolean asked, String containerId, Instrumentation inst) {
-        if (!asked) {
-            return Runnable::run;
-        }
-        if (!PLAIN_JVM.equals(containerId)) {
-            Diagnostics.warn("ignoring --wait-for-log-manager: it applies to a plain JVM only, not " + containerId);
-            return Runnable::run;
-        }
+    static LogManagerWait create(boolean asked, String containerId, boolean attached) {
         LogManagerWait wait = new LogManagerWait();
-        wait.begin();
-        Runnable end = wait::end;
-        JulLoadDetector.awaitJulThen(inst, end);
-        wait.remindAfter(SAY_WAITING_AFTER_MS);
+        if (asked && attached) {
+            Diagnostics.warn("ignoring --wait-for-log-manager: it is for a -javaagent start, not an attach");
+        } else if (asked && !PLAIN_JVM.equals(containerId)) {
+            Diagnostics.warn("ignoring --wait-for-log-manager: it applies to a plain JVM only, not " + containerId);
+        } else if (asked) {
+            wait.begin();
+            return wait;
+        }
+        wait.over = true;
         return wait;
+    }
+
+    /**
+     * Looks for JUL being initialised, if the wait is on. Called after the container integration has started its own
+     * wait for it, so that what it installs then is there before the surface is published.
+     */
+    void watch(Instrumentation inst) {
+        if (isOver()) {
+            return;
+        }
+        Runnable end = this::end;
+        JulLoadDetector.awaitJulThen(inst, end);
+        remindAfter(SAY_WAITING_AFTER_MS);
     }
 
     /** Marks the JVM as waiting. Package-visible for the test. */

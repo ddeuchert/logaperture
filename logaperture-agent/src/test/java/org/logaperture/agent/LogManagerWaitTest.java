@@ -19,7 +19,16 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.logaperture.bridge.DiagnosticLevel;
+import org.logaperture.adapter.logback.LogbackAdapterFactory;
 import org.logaperture.bridge.Diagnostics;
+import org.logaperture.container.none.NoneContainer;
+import org.logaperture.core.AggregateLevelControl;
+import org.logaperture.core.CapabilityPolicy;
+import org.logaperture.core.InMemoryAuditLog;
+import org.logaperture.core.LibraryRecipeScanner;
+import org.logaperture.core.VendorDefaults;
+import org.logaperture.core.spi.ContextHandle;
+import org.logaperture.startup.EngineStartup;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -29,6 +38,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -52,9 +62,10 @@ class LogManagerWaitTest {
 
     @Test
     void withoutTheArgument_publishingRunsAtOnce_andNothingIsMarked() {
-        Consumer<Runnable> publication = LogManagerWait.publication(false, "none", null);
+        LogManagerWait publication = LogManagerWait.create(false, "none", false);
 
         publication.accept(() -> ran.add("published"));
+        publication.watch(null); // nothing to look for
 
         assertEquals(List.of("published"), ran);
         assertNull(System.getProperty(LogManagerWait.WAITING_PROPERTY));
@@ -64,12 +75,29 @@ class LogManagerWaitTest {
     @Test
     void onWildFlyAndQuarkus_theArgumentIsIgnoredWithAWarning() {
         for (String container : List.of("wildfly", "quarkus")) {
-            LogManagerWait.publication(true, container, null).accept(() -> ran.add(container));
+            LogManagerWait.create(true, container, false).accept(() -> ran.add(container));
 
             assertTrue(said().contains("ignoring --wait-for-log-manager") && said().contains(container), said());
         }
         assertEquals(List.of("wildfly", "quarkus"), ran);
         assertNull(System.getProperty(LogManagerWait.WAITING_PROPERTY));
+    }
+
+    @Test
+    void givenToAnAttach_theArgumentIsIgnoredWithAWarning() {
+        LogManagerWait.create(true, "none", true).accept(() -> ran.add("published"));
+
+        assertEquals(List.of("published"), ran);
+        assertNull(System.getProperty(LogManagerWait.WAITING_PROPERTY));
+        assertTrue(said().contains("it is for a -javaagent start, not an attach"), said());
+    }
+
+    @Test
+    void onAPlainJvmStartedWithTheAgent_theWaitIsOn() {
+        LogManagerWait.create(true, "none", false).accept(() -> ran.add("published"));
+
+        assertEquals(List.of(), ran);
+        assertNotNull(System.getProperty(LogManagerWait.WAITING_PROPERTY));
     }
 
     @Test
@@ -122,6 +150,27 @@ class LogManagerWaitTest {
         wait.remindAfter(1).join();
 
         assertEquals("", said());
+    }
+
+    /** A held step for a framework that couldn't be bound asks about contexts when it runs, not when it was held. */
+    @Test
+    void aFailedBindHeldByTheWait_doesNotSayThereIsNoContext_whenOneWasInstalledMeanwhile() {
+        LogManagerWait wait = new LogManagerWait();
+        wait.begin();
+        Consumer<AggregateLevelControl> unbound = EngineStartup.onSurfaceNeeded("none", EngineStartup.Delivery.AGENT,
+                CapabilityPolicy.allowAll(), VendorDefaults.none(), LibraryRecipeScanner.none(), wait);
+        try (NoneContainer container = new NoneContainer(CapabilityPolicy.allowAll(), new InMemoryAuditLog())) {
+            unbound.accept(container.operations());
+            container.installContext(
+                    ContextHandle.of(ContextHandle.SYSTEM, "none", LogbackAdapterFactory.forCurrentContext()));
+
+            wait.end();
+
+            assertTrue(said().contains("active (JVM)"), said());
+            assertFalse(said().contains("no logging context yet"), said());
+        } finally {
+            EngineStartup.withdrawControlSurface();
+        }
     }
 
     private String said() {

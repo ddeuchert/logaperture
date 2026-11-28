@@ -251,6 +251,25 @@
               <outputDirectory>${project.build.directory}/old-log4j2</outputDirectory>
             </configuration>
           </execution>
+          <!-- log4j-jul of the matrix cell's Log4j, for the manager-set-in-code test: never on the test class path. -->
+          <execution>
+            <id>copy-log4j-jul</id>
+            <phase>process-test-resources</phase>
+            <goals>
+              <goal>copy</goal>
+            </goals>
+            <configuration>
+              <artifactItems>
+                <artifactItem>
+                  <groupId>org.apache.logging.log4j</groupId>
+                  <artifactId>log4j-jul</artifactId>
+                  <version>${log4j2.version}</version>
+                  <destFileName>log4j-jul.jar</destFileName>
+                </artifactItem>
+              </artifactItems>
+              <outputDirectory>${project.build.directory}/log4j-jul</outputDirectory>
+            </configuration>
+          </execution>
         </executions>
       </plugin>
       <plugin>
@@ -260,6 +279,7 @@
           <systemPropertyVariables>
             <logaperture.agent.jar>${project.build.directory}/logaperture-agent.jar</logaperture.agent.jar>
             <log4j2.old.dir>${project.build.directory}/old-log4j2</log4j2.old.dir>
+            <log4j2.jul.dir>${project.build.directory}/log4j-jul</log4j2.jul.dir>
             <log4j2.version>${log4j2.version}</log4j2.version>
             <log4j2.mode>${log4j2.mode}</log4j2.mode>
           </systemPropertyVariables>

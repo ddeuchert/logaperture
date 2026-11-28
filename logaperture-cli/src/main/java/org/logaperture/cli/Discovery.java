@@ -80,15 +80,17 @@ final class Discovery {
 
         Found found = find(host, jvms);
         if (found.candidates().isEmpty()) {
-            String message =
-                    "No LogAperture-enabled JVM found. Start the application with -javaagent:logaperture-agent.jar.";
-            if (found.uninspectable() > 0) {
-                message += "\n(" + found.uninspectable() + " running JVM(s) could not be inspected — if one of them "
-                        + "is yours, name it with --pid <n>.)";
-            }
+            // With a JVM waiting, the advice to add the agent would be to do what has been done.
+            String message = found.waiting().isEmpty()
+                    ? "No LogAperture-enabled JVM found. Start the application with -javaagent:logaperture-agent.jar."
+                    : "No LogAperture-enabled JVM is ready.";
             for (long pid : found.waiting()) {
                 message += "\nPID " + pid + " is waiting for the application to set up java.util.logging "
                         + "(--wait-for-log-manager): logctl can't connect to it until then.";
+            }
+            if (found.uninspectable() > 0) {
+                message += "\n(" + found.uninspectable() + " running JVM(s) could not be inspected — if one of them "
+                        + "is yours, name it with --pid <n>.)";
             }
             if (host.windows()) {
                 message += "\n(If the JVM runs LogAperture as another account, such as a Windows service, but is not "

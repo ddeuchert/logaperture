@@ -46,6 +46,8 @@ class DiscoveryWaitingTest {
         assertTrue(message.contains("PID 10 is waiting for the application to set up java.util.logging"), message);
         assertTrue(message.indexOf("PID 10 ") < message.indexOf("PID 20 "), message);
         assertFalse(message.contains("PID 30"), message);
+        assertTrue(message.startsWith("No LogAperture-enabled JVM is ready.\nPID 10 "), message);
+        assertFalse(message.contains("-javaagent"), "the agent is already there: " + message);
     }
 
     @Test
@@ -57,9 +59,10 @@ class DiscoveryWaitingTest {
     }
 
     private long resolve() {
-        HostProcesses linux = new HostProcesses(false, pid -> true, command -> {
+        HostProcesses.Runner noCommands = command -> {
             throw new AssertionError("no command should run off Windows");
-        }, Path.of("/"), 99L);
+        };
+        HostProcesses linux = new HostProcesses(false, pid -> true, noCommands, Path.of("/"), 99L);
         Discovery.Jvms fake = new Discovery.Jvms() {
             @Override
             public List<Discovery.Listed> listed() {

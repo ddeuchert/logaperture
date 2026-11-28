@@ -192,8 +192,9 @@ public final class EngineStartup {
             Consumer<Runnable> publication) {
         return operations -> {
             Supplier<RecipeOperations> recipes = () -> recipes(recipeScanner, policy, vendorDefaults, operations);
+            // Asked when publishing, not now: a context may have been installed while publication was held.
             Runnable publish = () -> publishControlSurface(containerId, delivery, operations, recipes,
-                    vendorDefaults, true);
+                    vendorDefaults, operations.contextCount() == 0);
             publication.accept(publish);
         };
     }

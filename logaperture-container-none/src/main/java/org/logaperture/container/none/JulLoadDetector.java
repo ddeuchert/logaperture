@@ -15,7 +15,13 @@
  */
 package org.logaperture.container.none;
 
+import org.logaperture.bridge.Diagnostics;
+
 import java.lang.instrument.Instrumentation;
+import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -45,15 +51,45 @@ public final class JulLoadDetector {
     private static final long FAST_WINDOW_MS = 60_000;
     private static final long SLOW_POLL_MS = 1_000;
 
+    /** Who is waiting, for each {@code Instrumentation} (there is one in a JVM) that has a thread watching. */
+    private static final Map<Instrumentation, List<Runnable>> WAITING = new IdentityHashMap<>();
+
     private JulLoadDetector() {
     }
 
+    /**
+     * Runs {@code onReady} once JUL is initialised. Everyone who asks before then shares one thread, and one scan a
+     * tick, and is run in the order they asked; a failure in one doesn't stop the next.
+     */
     public static void awaitJulThen(Instrumentation inst, Runnable onReady) {
+        synchronized (WAITING) {
+            List<Runnable> already = WAITING.get(inst);
+            if (already != null) {
+                already.add(onReady);
+                return;
+            }
+            WAITING.put(inst, new ArrayList<>(List.of(onReady)));
+        }
         BooleanSupplier julInitialised = () -> isLoaded(inst.getAllLoadedClasses(), ROOT_LOGGER_CLASS);
-        Runnable detect = () -> await(julInitialised, FAST_POLL_MS, FAST_WINDOW_MS, SLOW_POLL_MS, onReady);
+        Runnable runWaiting = () -> runWaiting(inst);
+        Runnable detect = () -> await(julInitialised, FAST_POLL_MS, FAST_WINDOW_MS, SLOW_POLL_MS, runWaiting);
         Thread detectorThread = new Thread(detect, "logaperture-detector");
         detectorThread.setDaemon(true);
         detectorThread.start();
+    }
+
+    private static void runWaiting(Instrumentation inst) {
+        List<Runnable> due;
+        synchronized (WAITING) {
+            due = WAITING.remove(inst);
+        }
+        for (Runnable ready : due) {
+            try {
+                ready.run();
+            } catch (Throwable t) {
+                Diagnostics.error("LogAperture failed after java.util.logging was initialised", t);
+            }
+        }
     }
 
     /**
